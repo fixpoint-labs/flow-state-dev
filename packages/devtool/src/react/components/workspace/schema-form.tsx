@@ -8,9 +8,14 @@ type SchemaFormProps = {
   onChange: (values: Record<string, unknown>) => void;
   disabled?: boolean;
   onSubmit?: () => void;
+  /**
+   * Fields whose value is fixed by the caller: drawn with that value and not
+   * editable. The Tasks tab fixes a row action's `taskId` to the row's task.
+   */
+  locked?: Record<string, unknown>;
 };
 
-export function SchemaForm({ schema, values, onChange, disabled, onSubmit }: SchemaFormProps) {
+export function SchemaForm({ schema, values, onChange, disabled, onSubmit, locked }: SchemaFormProps) {
   if (schema.type !== "object") return null;
 
   const fields = Object.entries(schema.fields);
@@ -24,16 +29,20 @@ export function SchemaForm({ schema, values, onChange, disabled, onSubmit }: Sch
 
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-2 pt-2" onKeyDown={handleKeyDown}>
-      {fields.map(([name, field]) => (
-        <FieldInput
-          key={name}
-          name={name}
-          field={field}
-          value={values[name]}
-          onChange={(val) => onChange({ ...values, [name]: val })}
-          disabled={disabled}
-        />
-      ))}
+      {fields.map(([name, field]) =>
+        locked !== undefined && Object.hasOwn(locked, name) ? (
+          <LockedField key={name} name={name} value={locked[name]} />
+        ) : (
+          <FieldInput
+            key={name}
+            name={name}
+            field={field}
+            value={values[name]}
+            onChange={(val) => onChange({ ...values, [name]: val })}
+            disabled={disabled}
+          />
+        )
+      )}
     </div>
   );
 }
@@ -41,6 +50,25 @@ export function SchemaForm({ schema, values, onChange, disabled, onSubmit }: Sch
 // ---------------------------------------------------------------------------
 // Per-field renderer
 // ---------------------------------------------------------------------------
+
+/** A field the caller fixed: shown, never edited. */
+function LockedField({ name, value }: { name: string; value: unknown }) {
+  return (
+    <div className="min-w-[180px] flex-1 space-y-1" data-field={name}>
+      <Label className="text-[10px] uppercase text-slate-500">
+        {name}
+        <span className="ml-1 normal-case text-slate-600">(this task)</span>
+      </Label>
+      <Input
+        className="h-8 font-mono text-xs"
+        type="text"
+        value={typeof value === "string" ? value : JSON.stringify(value)}
+        readOnly
+        aria-readonly
+      />
+    </div>
+  );
+}
 
 type FieldInputProps = {
   name: string;

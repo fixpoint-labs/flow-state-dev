@@ -101,13 +101,16 @@ vi.mock("../src/react/hooks/use-action-dispatch", () => ({
   useActionDispatch: () => ({ sendAction, isSending: false, lastResponse: null }),
 }));
 
+/** What the watched stream has delivered; a test can hand it a partial log. */
+const streamMock = { items: [] as unknown[], streamState: null as unknown };
+
 vi.mock("../src/react/hooks/use-request-stream", () => ({
   useRequestStream: () => ({
-    streamState: null,
+    streamState: streamMock.streamState,
     // The whole point: a detached stream is `idle`, never `completed`, so the
     // terminal-status release never runs on a session switch.
     streamStatus: "idle",
-    items: [],
+    items: streamMock.items,
     error: null,
     lastSequenceNumber: 0,
   }),
@@ -171,13 +174,15 @@ vi.mock("../src/react/components/workspace/suspensions-view", () => ({
 }));
 
 // Same idea for the action bar: `handleSendAction` awaits the dispatch, so it
-// is the panel's one callback that can resume across a session change.
+// is the panel's one callback that can resume across a session change. What
+// each call answered is kept, because a Tasks-tab row reads its outcome from it.
+const sendAnswers: Array<Promise<unknown>> = [];
 vi.mock("../src/react/components/workspace/action-bar", () => ({
   ActionBar: ({
     onSendAction,
   }: {
-    onSendAction: (action: string, input: unknown) => void;
-  }) => <button onClick={() => onSendAction("run", {})}>send-stub</button>,
+    onSendAction: (action: string, input: unknown) => Promise<unknown>;
+  }) => <button onClick={() => sendAnswers.push(onSendAction("run", {}))}>send-stub</button>,
 }));
 
 // The third work-starting path: the per-row Continue action for an interrupted
@@ -187,6 +192,35 @@ vi.mock("../src/react/components/workspace/stream-view", () => ({
     <button onClick={() => onContinue("req_interrupted")}>continue-stub</button>
   ),
 }));
+
+// The Tasks tab, reduced to the row-action seam the panel hands it: each click
+// dispatches through `rowActions.run`, as an expanded row's form does.
+const rowAnswers: Array<Promise<unknown>> = [];
+/** The request groups the panel last handed the Tasks tab. */
+let lastRowRequests: Array<{ requestId: string; status?: string; items: unknown[]; rawItems: unknown[] }> = [];
+/** How many times the Tasks tab has been mounted; its open rows live in that mount's state. */
+let taskViewMounts = 0;
+vi.mock("../src/react/components/workspace/task-collections-view", async () => {
+  const { useState } = await import("react");
+  return {
+    TaskCollectionsView: ({
+      rowActions,
+    }: {
+      rowActions: {
+        run: (action: string, input: unknown) => Promise<unknown>;
+        requests: Array<{ requestId: string; items: unknown[]; rawItems: unknown[] }>;
+      };
+    }) => {
+      const [mount] = useState(() => ++taskViewMounts);
+      lastRowRequests = rowActions.requests;
+      return (
+        <button data-mount={mount} onClick={() => rowAnswers.push(rowActions.run("cancelTask_work", { taskId: "t1" }))}>
+          row-stub
+        </button>
+      );
+    },
+  };
+});
 
 import { DevToolPanel } from "../src/react/DevToolPanel";
 
@@ -200,6 +234,11 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     requestsState.requests = [];
     requestsState.refresh = vi.fn();
     liveModeCalls.length = 0;
+    sendAnswers.length = 0;
+    rowAnswers.length = 0;
+    streamMock.items = [];
+    streamMock.streamState = null;
+    lastRowRequests = [];
     devToolState.activeSessionId = "sess_1";
     devToolState.workspaceToken = 0;
     sendAction.mockReset().mockResolvedValue(null);
@@ -382,6 +421,269 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     });
 
     expect(latestDispatchedId()).toBe("req_from_send");
+  });
+
+  it("answers two dispatches started together in one session with their own requests", async () => {
+    // Two Tasks-tab rows can each send an action before the first POST comes
+    // back. Both actions run on the server, so each row has to be told which
+    // request is its own: a dispatch is not a read, and a later one does not
+    // make an earlier one's answer stale. Only leaving the session does.
+    const resolvers: Array<(value: unknown) => void> = [];
+    for (let i = 0; i < 2; i += 1) {
+      sendAction.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolvers.push(resolve);
+        })
+      );
+    }
+
+    await act(async () => render(<DevToolPanel userId="u1" />));
+    await act(async () => {
+      fireEvent.click(screen.getByText("send-stub"));
+      fireEvent.click(screen.getByText("send-stub"));
+    });
+
+    // The second comes back first; the first is still owed its answer.
+    await act(async () => {
+      resolvers[1]!({ request: { id: "req_second" } });
+      resolvers[0]!({ request: { id: "req_first" } });
+      await Promise.resolve();
+    });
+
+    expect(await sendAnswers[0]).toEqual({ requestId: "req_first" });
+    expect(await sendAnswers[1]).toEqual({ requestId: "req_second" });
+  });
+
+  it("keeps reading the session's requests until every row's request has finished", async () => {
+    // Only one request is ever streamed. With Live off, a row whose request is
+    // not the streamed one (an earlier, slower row) is never told it finished
+    // unless the panel reads the list again, and would say "Running…" forever.
+    sendAction
+      .mockResolvedValueOnce({ request: { id: "req_slow" } })
+      .mockResolvedValueOnce({ request: { id: "req_fast" } });
+    // Only the timers are faked, so the renders and dispatches settle as usual.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    try {
+      const view = await act(async () => render(<DevToolPanel userId="u1" />));
+      await act(async () => {
+        fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByText("row-stub"));
+        fireEvent.click(screen.getByText("row-stub"));
+        await Promise.all(rowAnswers);
+      });
+
+      // The fast one has finished and been listed; the slow one is still running.
+      requestsState.requests = [
+        { id: "req_slow", status: "in_progress" },
+        { id: "req_fast", status: "completed" },
+      ];
+      view.rerender(<DevToolPanel userId="u1" />);
+      requestsState.refresh.mockClear();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(requestsState.refresh).toHaveBeenCalled();
+
+      // Once both have finished, the panel stops asking.
+      requestsState.requests = [
+        { id: "req_slow", status: "completed" },
+        { id: "req_fast", status: "completed" },
+      ];
+      view.rerender(<DevToolPanel userId="u1" />);
+      requestsState.refresh.mockClear();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(requestsState.refresh).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps reading a row's request while it is suspended, and stops once it has finished", async () => {
+    // A suspended request is resumed by someone else (a person answering, a
+    // resume from another tab). Its stream has already closed, so without
+    // re-reading the list the row would say "Running…" forever.
+    sendAction.mockResolvedValueOnce({ request: { id: "req_parked" } });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    try {
+      const view = await act(async () => render(<DevToolPanel userId="u1" />));
+      await act(async () => {
+        fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByText("row-stub"));
+        await Promise.all(rowAnswers);
+      });
+
+      requestsState.requests = [{ id: "req_parked", status: "suspended" }];
+      view.rerender(<DevToolPanel userId="u1" />);
+      requestsState.refresh.mockClear();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(requestsState.refresh).toHaveBeenCalled();
+
+      requestsState.requests = [{ id: "req_parked", status: "completed" }];
+      view.rerender(<DevToolPanel userId="u1" />);
+      expect(lastRowRequests.find((group) => group.requestId === "req_parked")).toMatchObject({ status: "completed" });
+      requestsState.refresh.mockClear();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(requestsState.refresh).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not start a row poll while the previous read is still in flight", async () => {
+    // Each read retires the one before it, so a tick that overlaps a slow read
+    // discards it, and on a slow connection no snapshot would ever land.
+    sendAction.mockResolvedValueOnce({ request: { id: "req_slow" } });
+    let finish: () => void = () => {};
+    requestsState.refresh = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    try {
+      await act(async () => render(<DevToolPanel userId="u1" />));
+      await act(async () => {
+        fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByText("row-stub"));
+        await Promise.all(rowAnswers);
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(requestsState.refresh).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        finish();
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+      expect(requestsState.refresh).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows a finished request's polled log, not the partial one its displaced stream left", async () => {
+    // Row A's request streamed a little, then row B's request took the one
+    // stream slot. A's cached partial log must not outrank the complete log
+    // the list read returns once A has finished.
+    sendAction
+      .mockResolvedValueOnce({ request: { id: "req_a" } })
+      .mockResolvedValueOnce({ request: { id: "req_b" } });
+    const view = await act(async () => render(<DevToolPanel userId="u1" />));
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+    });
+    streamMock.items = [{ id: "a_partial", type: "component" }];
+    await act(async () => {
+      fireEvent.click(screen.getByText("row-stub"));
+      await Promise.all(rowAnswers);
+    });
+    streamMock.items = [];
+    await act(async () => {
+      fireEvent.click(screen.getByText("row-stub"));
+      await Promise.all(rowAnswers);
+    });
+
+    const complete = [{ id: "a_partial", type: "component" }, { id: "a_final", type: "block_trace" }];
+    requestsState.requests = [
+      { id: "req_a", status: "completed", items: complete },
+      { id: "req_b", status: "in_progress", items: [] },
+    ];
+    await act(async () => view.rerender(<DevToolPanel userId="u1" />));
+
+    expect(lastRowRequests.find((group) => group.requestId === "req_a")?.items).toEqual(complete);
+  });
+
+  it("keeps a finished request's streamed-only traces for reading its outcome, after the stream moved on", async () => {
+    // A transient block's root trace streams but is never persisted, so the
+    // polled log of the finished request lacks it. The rendered items come
+    // from the poll; the outcome still needs the trace the stream saw.
+    sendAction
+      .mockResolvedValueOnce({ request: { id: "req_a" } })
+      .mockResolvedValueOnce({ request: { id: "req_b" } });
+    const view = await act(async () => render(<DevToolPanel userId="u1" />));
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+    });
+    const transientRoot = { id: "a_root", type: "block_trace", transient: true };
+    streamMock.streamState = { requestId: "req_a", status: "completed", rawItems: [transientRoot] };
+    await act(async () => {
+      fireEvent.click(screen.getByText("row-stub"));
+      await Promise.all(rowAnswers);
+    });
+    // B takes the stream slot.
+    streamMock.streamState = { requestId: "req_b", status: "in_progress", rawItems: [] };
+    await act(async () => {
+      fireEvent.click(screen.getByText("row-stub"));
+      await Promise.all(rowAnswers);
+    });
+
+    const polled = [{ id: "a_hook", type: "block_trace" }];
+    requestsState.requests = [
+      { id: "req_a", status: "completed", items: polled },
+      { id: "req_b", status: "in_progress", items: [] },
+    ];
+    await act(async () => view.rerender(<DevToolPanel userId="u1" />));
+
+    const groupA = lastRowRequests.find((group) => group.requestId === "req_a");
+    expect(groupA?.items).toEqual(polled);
+    expect(groupA?.rawItems).toEqual([...polled, transientRoot]);
+  });
+
+  it("does not give a just-dispatched request another request's stream log or status", async () => {
+    // The stream can be on another request than the one just dispatched (a
+    // replay holds the slot). The not-yet-listed request's group must not
+    // borrow that request's traces, or its row reads another action's answer.
+    sendAction.mockResolvedValueOnce({ request: { id: "req_b" } });
+    streamMock.streamState = {
+      requestId: "req_a",
+      status: "completed",
+      rawItems: [{ id: "a_root", type: "block_trace" }],
+    };
+    await act(async () => render(<DevToolPanel userId="u1" />));
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("row-stub"));
+      await Promise.all(rowAnswers);
+    });
+
+    const groupB = lastRowRequests.find((group) => group.requestId === "req_b") as
+      | { rawItems: unknown[]; status: string }
+      | undefined;
+    expect(groupB?.rawItems).toEqual([]);
+    expect(groupB?.status).toBe("in_progress");
+  });
+
+  it("does not carry the Tasks tab's open rows into another workspace", async () => {
+    // Open rows are keyed by board and task id, which another session or flow
+    // instance can share. They must start closed there, so the tab's state
+    // cannot outlive the workspace it was opened in.
+    const { rerender } = await act(async () => render(<DevToolPanel userId="u1" />));
+    const openTasks = async () => {
+      await act(async () => {
+        fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+      });
+      return screen.getByText("row-stub").getAttribute("data-mount");
+    };
+    const before = await openTasks();
+
+    moveWorkspaceTo("sess_other");
+    await act(async () => {
+      rerender(<DevToolPanel userId="u1" />);
+    });
+
+    expect(await openTasks()).not.toBe(before);
   });
 
   it("clears dispatchedRequestId when the session changes, so live mode can follow the new one", async () => {

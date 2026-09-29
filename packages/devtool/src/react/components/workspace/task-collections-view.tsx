@@ -16,15 +16,21 @@
  * dispatch run (FIX-1071). The link is derived, absent for most tasks, and never
  * something the row is gated on — see `lib/dispatch-run-links`.
  *
- * A task also carries a short note about itself on `feedback`, and the Reason
- * column renders it so a parked row says why without the expander (FIX-1481).
- * The column is keyed on the field being present, never on the `parked`
- * status, and the note is rendered exactly as stored — see `showReason` in
- * `CollectionCard` for why both of those are load-bearing.
+ * A task also carries a short note about itself on `feedback`, and the row's
+ * reason slot renders it so a parked row says why without being opened
+ * (FIX-1481). The slot is keyed on the field being present, never on the
+ * `parked` status, and the note is rendered exactly as stored — see
+ * `showReason` in `CollectionCard` for why both of those are load-bearing.
+ *
+ * Each task is one row that opens in place, like an accordion (FIX-1629). The
+ * collapsed row leads with status, then goal and reason sharing the width, so
+ * the reason is in view on a laptop-width pane; the open row is
+ * `task-row-body`. Open rows are held here, keyed by board and task id, so a
+ * streamed change re-renders a row without closing it.
  */
-import { useMemo } from "react";
-import type { ChildSessionSummary } from "@flow-state-dev/client";
-import { ClipboardList, Eye, Layers } from "lucide-react";
+import { Component, useCallback, useId, useMemo, useState, type ReactNode } from "react";
+import type { ActionInputSchema, ChildSessionSummary } from "@flow-state-dev/client";
+import { ChevronRight, ClipboardList, Layers } from "lucide-react";
 import {
   groupCollections,
   type BoardMeta,
@@ -40,7 +46,21 @@ import {
 import type { Truncation } from "../../hooks/use-dispatch-runs";
 import { EmptyState } from "../shared/empty-state";
 import { Badge } from "../ui/badge";
-import { JsonViewer } from "../shared/json-viewer";
+import { TaskRowBody } from "./task-row-body";
+import { TaskRowActions, type RowDispatch } from "./task-row-actions";
+import { taskActionsFor, type RequestOutcomeSource } from "../../lib/task-actions";
+
+/**
+ * What a row needs to change its task: the viewed flow's actions, the panel's
+ * dispatch, and the session's requests to read an outcome from. Absent, rows
+ * are read-only and show no Actions strip.
+ */
+export type RowActions = {
+  names: readonly string[];
+  schemas?: Record<string, ActionInputSchema>;
+  run: (action: string, input: unknown) => Promise<RowDispatch>;
+  requests: readonly RequestOutcomeSource[];
+};
 
 type Props = {
   /**
@@ -60,14 +80,38 @@ type Props = {
   truncation: Truncation;
   /** Open the dispatch run running a task. */
   onOpenDispatchRun: (dispatchRun: ChildSessionSummary) => void;
+  /** The viewed flow's task actions. Omitted, rows only read. */
+  rowActions?: RowActions;
 };
 
-export function TaskCollectionsView({ items, dispatchRuns, truncation, onOpenDispatchRun }: Props) {
+export function TaskCollectionsView({
+  items,
+  dispatchRuns,
+  truncation,
+  onOpenDispatchRun,
+  rowActions,
+}: Props) {
   const collections = useMemo(() => groupCollections(items), [items]);
   const byTask = useMemo(
     () => linkDispatchRunsToTasks(dispatchRuns ?? [], collections).byTask,
     [dispatchRuns, collections]
   );
+  // Every board the tab lists, so a row tells another board's suffixed action
+  // from a generic one.
+  const boardIds = useMemo(() => collections.map((collection) => collection.id), [collections]);
+
+  // Open rows, keyed by board and task. Held above the rows so a streamed
+  // change, which re-renders every row, never closes one. The panel mounts
+  // this view under its workspace key, so another session or flow starts with
+  // every row closed even where its board and task ids repeat.
+  const [openRows, setOpenRows] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleRow = useCallback((key: string) => {
+    setOpenRows((was) => {
+      const next = new Set(was);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }, []);
 
   if (collections.length === 0) {
     return (
@@ -87,6 +131,10 @@ export function TaskCollectionsView({ items, dispatchRuns, truncation, onOpenDis
           byTask={byTask}
           truncation={truncation}
           onOpenDispatchRun={onOpenDispatchRun}
+          openRows={openRows}
+          onToggleRow={toggleRow}
+          rowActions={rowActions}
+          boardIds={boardIds}
         />
       ))}
     </div>
@@ -98,12 +146,28 @@ function CollectionCard({
   byTask,
   truncation,
   onOpenDispatchRun,
+  openRows,
+  onToggleRow,
+  rowActions,
+  boardIds,
 }: {
   collection: CollectionView;
   byTask: ReadonlyMap<string, ChildSessionSummary>;
   truncation: Truncation;
   onOpenDispatchRun: (dispatchRun: ChildSessionSummary) => void;
+  openRows: ReadonlySet<string>;
+  onToggleRow: (key: string) => void;
+  rowActions?: RowActions;
+  boardIds: readonly string[];
 }) {
+  // Once per board, not per row.
+  const actionNames = useMemo(
+    () =>
+      rowActions === undefined
+        ? undefined
+        : taskActionsFor(rowActions.names, rowActions.schemas, collection.id, boardIds),
+    [rowActions?.names, rowActions?.schemas, collection.id, boardIds]
+  );
   const counts = collection.boardMeta.counts;
   const total = counts?.total ?? collection.tasks.length;
   // THE PREDICATE IS THE PRESENCE OF THE FIELD, and status is out of it
@@ -116,14 +180,17 @@ function CollectionCard({
   // something wrote, and this panel reports what is stored rather than
   // deciding which stored values are worth a reader's attention.
   //
-  // Per board, so a board where nothing carries a note reads exactly as it did
-  // before — no empty column apologising for itself.
+  // Per board, so a board where nothing carries a note grows no reason slot —
+  // nothing apologising for itself on every row.
   const showReason = collection.tasks.some(
     (entry) => entry.task.feedback !== undefined
   );
 
   return (
-    <div className="rounded-md border border-slate-800 bg-slate-900/40">
+    <div
+      className="min-w-0 rounded-md border border-slate-800 bg-slate-900/40"
+      data-collection-id={collection.id}
+    >
       <div className="flex items-start justify-between gap-3 border-b border-slate-800 px-3 py-2">
         <div className="flex flex-col gap-0.5 min-w-0">
           <div className="flex items-center gap-1.5">
@@ -149,113 +216,135 @@ function CollectionCard({
           Board meta only — no task-change items yet.
         </p>
       ) : (
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-slate-800 text-left text-[10px] uppercase tracking-wide text-slate-500">
-              <th className="px-3 py-1.5 font-medium">Id</th>
-              <th className="py-1.5 font-medium">Goal</th>
-              <th className="py-1.5 font-medium">Status</th>
-              {showReason && <th className="py-1.5 font-medium">Reason</th>}
-              <th className="py-1.5 font-medium">Assignee</th>
-              <th className="py-1.5 font-medium">Dispatch run</th>
-              <th className="py-1.5 font-medium">Latest kind</th>
-              <th className="px-3 py-1.5 font-medium text-right">Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {collection.tasks.map((entry) => (
-              <TaskRow
-                key={entry.task.id}
-                entry={entry}
-                showReason={showReason}
-                dispatchRun={byTask.get(taskLinkKey(collection.id, entry.task.id))}
-                truncation={truncation}
-                onOpenDispatchRun={onOpenDispatchRun}
-              />
-            ))}
-          </tbody>
-        </table>
+        <ul className="min-w-0 text-xs">
+          {collection.tasks.map((entry) => {
+            const key = rowKey(collection.id, entry.task.id);
+            return (
+              <RowBoundary key={entry.task.id} taskId={entry.task.id} resetOn={entry.task}>
+                <TaskRow
+                  entry={entry}
+                  open={openRows.has(key)}
+                  onToggle={() => onToggleRow(key)}
+                  showReason={showReason}
+                  dispatchRun={byTask.get(taskLinkKey(collection.id, entry.task.id))}
+                  truncation={truncation}
+                  onOpenDispatchRun={onOpenDispatchRun}
+                  actions={
+                    rowActions === undefined || actionNames === undefined
+                      ? undefined
+                      : (taskId) => (
+                          <TaskRowActions
+                            taskId={taskId}
+                            actions={actionNames}
+                            schemas={rowActions.schemas}
+                            run={rowActions.run}
+                            requests={rowActions.requests}
+                          />
+                        )
+                  }
+                />
+              </RowBoundary>
+            );
+          })}
+        </ul>
       )}
     </div>
   );
 }
 
+/** One key per row across boards: two boards may both hold a task id. */
+function rowKey(collectionId: string, taskId: string): string {
+  return `${collectionId}\u0000${taskId}`;
+}
+
 function TaskRow({
   entry,
+  open,
+  onToggle,
   showReason,
   dispatchRun,
   truncation,
   onOpenDispatchRun,
+  actions,
 }: {
   entry: ResolvedTask;
-  /** Decided by the board, so every row in one table has the same columns. */
+  open: boolean;
+  onToggle: () => void;
+  /** Decided by the board, so every row on one board has the same slots. */
   showReason: boolean;
   dispatchRun?: ChildSessionSummary;
   truncation: Truncation;
   onOpenDispatchRun: (dispatchRun: ChildSessionSummary) => void;
+  /** The Actions strip for this row's task, when the panel supplies actions. */
+  actions?: (taskId: string) => ReactNode;
 }) {
   const { task } = entry;
+  const bodyId = useId();
+  // Status leads; goal and reason share what is left, each allowed to shrink
+  // to nothing (`minmax(0, 1fr)`) so neither pushes the row past the pane.
+  const columns = showReason
+    ? "auto minmax(0, 1fr) minmax(0, 1fr) auto auto"
+    : "auto minmax(0, 1fr) auto auto";
+  const runLink = (
+    <DispatchRunLink dispatchRun={dispatchRun} truncation={truncation} onOpen={onOpenDispatchRun} />
+  );
   return (
-    <tr className="border-b border-slate-800/50 align-top hover:bg-slate-900/40">
-      <td className="px-3 py-1.5 font-mono text-[11px] text-slate-300">
-        {task.id}
-      </td>
-      <td className="py-1.5 pr-2 text-slate-200 max-w-md truncate">
-        {task.goal}
-      </td>
-      <td className="py-1.5 pr-2">
-        <StatusPill status={task.status} />
-      </td>
-      {showReason && (
-        // Rendered exactly as the row carries it — not trimmed, not
-        // normalized. This panel's job is to report what is stored, and a
-        // stored note of spaces is a fact about the row worth seeing.
-        //
-        // Clamped like the Goal cell beside it, because a note can be an
-        // unbroken stack trace and the table has to stay a table. The whole
-        // string is on the title, and the expander below is still complete.
-        <td
-          className="max-w-[18rem] truncate py-1.5 pr-2 text-slate-300"
-          title={task.feedback}
+    <li className="min-w-0 border-b border-slate-800/50" data-task-id={task.id}>
+      <div className="flex min-w-0 items-center gap-2 pr-3 hover:bg-slate-900/40">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          onClick={onToggle}
+          data-row-grid
+          className="grid min-w-0 flex-1 items-center gap-2 py-1.5 pl-2 text-left"
+          style={{ gridTemplateColumns: columns }}
         >
-          {task.feedback ?? <span className="text-slate-600">—</span>}
-        </td>
-      )}
-      <td className="py-1.5 pr-2 text-slate-400">{task.assignee ?? "—"}</td>
-      <td className="py-1.5 pr-2">
-        <DispatchRunLink
-          dispatchRun={dispatchRun}
-          truncation={truncation}
-          onOpen={onOpenDispatchRun}
-        />
-      </td>
-      <td className="py-1.5 pr-2 text-slate-400">
-        <span className="font-mono text-[10px]">
-          {entry.kind ?? "—"}
+          <span data-slot="status" className="inline-flex items-center gap-1">
+            <ChevronRight
+              className={`h-3 w-3 shrink-0 text-slate-500 transition-transform ${open ? "rotate-90" : ""}`}
+              aria-hidden
+            />
+            <StatusPill status={task.status} />
+          </span>
+          {/* `title ?? goal`, the substrate's plan-UI contract: a verbose
+              goal stays in the open row, and the list stays scannable. */}
+          <span data-slot="goal" className="min-w-0 truncate text-slate-200" title={task.title ?? task.goal}>
+            {task.title ?? task.goal}
+          </span>
+          {showReason && (
+            // Rendered exactly as the row carries it — not trimmed, not
+            // normalized. This panel's job is to report what is stored, and a
+            // stored note of spaces is a fact about the row worth seeing.
+            // Clamped to one line; the whole string is on the title and in
+            // the open row.
+            <span data-slot="reason" className="min-w-0 truncate text-slate-300" title={task.feedback}>
+              {task.feedback ?? <span className="text-slate-600">—</span>}
+            </span>
+          )}
+          <span data-slot="assignee" className="max-w-[10rem] truncate text-slate-400" title={task.assignee}>
+            {task.assignee ?? "—"}
+          </span>
+          <span data-slot="kind" className="whitespace-nowrap text-slate-400">
+            <span className="font-mono text-[10px]">{entry.kind ?? "—"}</span>
+            {entry.changeCount > 1 && (
+              <span className="ml-1 rounded bg-slate-800 px-1 text-[10px] text-slate-400">
+                ×{entry.changeCount}
+              </span>
+            )}
+          </span>
+        </button>
+        {/* Outside the toggle: a button cannot hold another button. */}
+        <span data-slot="run" className="shrink-0">
+          {runLink}
         </span>
-        {entry.prevStatus !== undefined && (
-          <span className="ml-1 text-[10px] text-slate-600">
-            (was {entry.prevStatus})
-          </span>
-        )}
-        {entry.changeCount > 1 && (
-          <span className="ml-1 rounded bg-slate-800 px-1 text-[10px] text-slate-400">
-            ×{entry.changeCount}
-          </span>
-        )}
-      </td>
-      <td className="px-3 py-1.5 text-right">
-        <details className="inline-block">
-          <summary className="inline-flex cursor-pointer items-center gap-0.5 text-[10px] text-slate-400 hover:text-slate-200">
-            <Eye className="h-3 w-3" aria-hidden />
-            view
-          </summary>
-          <div className="mt-2 w-[28rem] max-w-full text-left">
-            <JsonViewer data={task} />
-          </div>
-        </details>
-      </td>
-    </tr>
+      </div>
+      {open && (
+        <TaskRowBody entry={entry} id={bodyId}>
+          {actions?.(task.id)}
+        </TaskRowBody>
+      )}
+    </li>
   );
 }
 
@@ -395,4 +484,33 @@ function CountsRibbon({ counts }: { counts: NonNullable<BoardMeta["counts"]> }) 
       )}
     </div>
   );
+}
+
+/**
+ * One row's render failure stays in that row. A task the view cannot draw (a
+ * field of a shape it does not expect) shows a one-line note in its place, and
+ * every other row on the board still renders. Retried when the task changes.
+ */
+class RowBoundary extends Component<
+  { taskId: string; resetOn: unknown; children: ReactNode },
+  { error: string | null }
+> {
+  state: { error: string | null } = { error: null };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+
+  componentDidUpdate(previous: { resetOn: unknown }) {
+    if (this.state.error !== null && previous.resetOn !== this.props.resetOn) this.setState({ error: null });
+  }
+
+  render() {
+    if (this.state.error === null) return this.props.children;
+    return (
+      <li className="min-w-0 border-b border-slate-800/50 px-3 py-1.5 text-red-300" data-task-id={this.props.taskId}>
+        <span className="font-mono">{this.props.taskId}</span> could not be drawn: {this.state.error}
+      </li>
+    );
+  }
 }

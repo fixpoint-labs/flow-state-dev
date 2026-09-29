@@ -285,3 +285,135 @@ describe("useSessionRequests — switching sessions", () => {
     expect(result.current.requests).toEqual([]);
   });
 });
+
+/**
+ * One read at a time (FIX-1629).
+ *
+ * Several callers refresh this list on their own schedules: the Tasks tab's
+ * row poll, live mode's fallback poll, the stream's end, focus, the manual
+ * button. Every read begins a fence that retires the one before it, so two
+ * callers whose slow reads overlap would discard each other's answers, and on
+ * a slow connection no snapshot would ever land. A refresh while a read is in
+ * flight joins it, and asks for exactly one read after it.
+ */
+describe("useSessionRequests — single-flight refresh", () => {
+  beforeEach(() => {
+    sessionClientMock.listSessionRequests.mockReset();
+    recoveryClientMock.checkInterrupted.mockReset().mockResolvedValue(undefined);
+    devToolState.config = { userId: "devuser" };
+    devToolState.autoRecoverInterrupted = false;
+    devToolState.sessionClient = sessionClientMock;
+  });
+
+  /** Queue slow reads the test resolves by hand, in order of issue. */
+  function slowReads() {
+    const pending: Array<(rows: unknown[]) => void> = [];
+    sessionClientMock.listSessionRequests.mockImplementation(
+      () => new Promise((resolve) => pending.push(resolve as (rows: unknown[]) => void))
+    );
+    return pending;
+  }
+
+  it("installs a snapshot when two callers' slow reads would overlap", async () => {
+    const pending = slowReads();
+    const { result } = renderHook(() => useSessionRequests("sess_1"));
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    // A second caller (another poller) asks while the mount read is in flight.
+    let second!: Promise<void>;
+    act(() => {
+      second = result.current.refresh();
+    });
+    expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pending[0]!([{ id: "req_a", status: "completed" }]);
+    });
+    // The first answer lands instead of being retired by the second caller.
+    expect(result.current.requests).toEqual([{ id: "req_a", status: "completed" }]);
+
+    // The second caller's own read follows, and its answer lands too.
+    await waitFor(() => expect(pending).toHaveLength(2));
+    await act(async () => {
+      pending[1]!([{ id: "req_a", status: "completed" }, { id: "req_b", status: "completed" }]);
+      await second;
+    });
+    expect(result.current.requests).toHaveLength(2);
+  });
+
+  it("gives any number of callers during a read one follow-up read, not one each", async () => {
+    const pending = slowReads();
+    const { result } = renderHook(() => useSessionRequests("sess_1"));
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    let waits: Array<Promise<void>> = [];
+    act(() => {
+      waits = [result.current.refresh(), result.current.refresh(), result.current.refresh()];
+    });
+    await act(async () => {
+      pending[0]!([]);
+    });
+    await waitFor(() => expect(pending).toHaveLength(2));
+    await act(async () => {
+      pending[1]!([{ id: "req_a", status: "completed" }]);
+      await Promise.all(waits);
+    });
+
+    expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(2);
+    expect(result.current.requests).toEqual([{ id: "req_a", status: "completed" }]);
+  });
+});
+
+/**
+ * A read that never settles (FIX-1629).
+ *
+ * The transport has no timeout, so one hung list request would otherwise hold
+ * the single flight forever: every later refresh would join it, and a poller
+ * awaiting its refresh would never tick again. A flight is let go after a
+ * stall bound; the next refresh starts a fresh read whose fence retires the
+ * hung one, so its answer is discarded if it ever arrives.
+ */
+describe("useSessionRequests — a stalled read", () => {
+  beforeEach(() => {
+    sessionClientMock.listSessionRequests.mockReset();
+    recoveryClientMock.checkInterrupted.mockReset().mockResolvedValue(undefined);
+    devToolState.config = { userId: "devuser" };
+    devToolState.autoRecoverInterrupted = false;
+    devToolState.sessionClient = sessionClientMock;
+  });
+
+  it("lets go of a read that never settles, and a later refresh reads again", async () => {
+    let resolveHung!: (rows: unknown[]) => void;
+    sessionClientMock.listSessionRequests.mockReturnValueOnce(
+      new Promise((resolve) => (resolveHung = resolve as (rows: unknown[]) => void))
+    );
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const { result } = renderHook(() => useSessionRequests("sess_1"));
+      await act(async () => {});
+      expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(1);
+
+      // A caller that joined the hung read is released once the bound passes,
+      // so a poller awaiting it ticks again.
+      let joinedSettled = false;
+      act(() => {
+        void result.current.refresh().then(() => (joinedSettled = true));
+      });
+      sessionClientMock.listSessionRequests.mockResolvedValue([{ id: "req_fresh", status: "completed" }]);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(joinedSettled).toBe(true);
+      expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(2);
+      expect(result.current.requests).toEqual([{ id: "req_fresh", status: "completed" }]);
+
+      // The hung read's answer, arriving late, does not overwrite the fresh one.
+      await act(async () => {
+        resolveHung([{ id: "req_hung", status: "in_progress" }]);
+      });
+      expect(result.current.requests).toEqual([{ id: "req_fresh", status: "completed" }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

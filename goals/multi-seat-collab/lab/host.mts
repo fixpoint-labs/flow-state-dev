@@ -131,6 +131,12 @@ export interface HireLabOptions {
   outbox: string;
   /** A worker-body perturbation, or none. */
   workerControl?: WorkerControl;
+  /**
+   * `false` hires the channel as if its `CHANNEL.md` had not opted in to its
+   * board's task actions — the `channel-actions-off` control. The file is
+   * left as written.
+   */
+  boardActions?: boolean;
 }
 
 /**
@@ -156,11 +162,14 @@ export function hireLab(options: HireLabOptions): Record<string, FlowInstance> {
     },
     channelBoards: channelBoardIds([tree.channel]),
   });
+  const { boardActions: _optIn, ...withoutOptIn } = tree.channel.declared;
+  const channel =
+    options.boardActions === false ? { ...tree.channel, declared: withoutOptIn } : tree.channel;
   return {
     // The inventory's writer half on the built-in channel kind, as the
     // inventory docs tell every app to build it. `openLab` runs the write.
     ...Object.fromEntries(
-      channelInstances([tree.channel], { inventory: true }).map((instance) => [instance.kind, instance]),
+      channelInstances([channel], { inventory: true }).map((instance) => [instance.kind, instance]),
     ),
     ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
   };
