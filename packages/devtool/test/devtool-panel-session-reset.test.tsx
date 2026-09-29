@@ -198,16 +198,29 @@ vi.mock("../src/react/components/workspace/stream-view", () => ({
 const rowAnswers: Array<Promise<unknown>> = [];
 /** The request groups the panel last handed the Tasks tab. */
 let lastRowRequests: Array<{ requestId: string; items: unknown[]; rawItems: unknown[] }> = [];
-vi.mock("../src/react/components/workspace/task-collections-view", () => ({
-  TaskCollectionsView: ({
-    rowActions,
-  }: {
-    rowActions: {
-      run: (action: string, input: unknown) => Promise<unknown>;
-      requests: Array<{ requestId: string; items: unknown[]; rawItems: unknown[] }>;
-    };
-  }) => (lastRowRequests = rowActions.requests) && <button onClick={() => rowAnswers.push(rowActions.run("cancelTask_work", { taskId: "t1" }))}>row-stub</button>,
-}));
+/** How many times the Tasks tab has been mounted; its open rows live in that mount's state. */
+let taskViewMounts = 0;
+vi.mock("../src/react/components/workspace/task-collections-view", async () => {
+  const { useState } = await import("react");
+  return {
+    TaskCollectionsView: ({
+      rowActions,
+    }: {
+      rowActions: {
+        run: (action: string, input: unknown) => Promise<unknown>;
+        requests: Array<{ requestId: string; items: unknown[]; rawItems: unknown[] }>;
+      };
+    }) => {
+      const [mount] = useState(() => ++taskViewMounts);
+      lastRowRequests = rowActions.requests;
+      return (
+        <button data-mount={mount} onClick={() => rowAnswers.push(rowActions.run("cancelTask_work", { taskId: "t1" }))}>
+          row-stub
+        </button>
+      );
+    },
+  };
+});
 
 import { DevToolPanel } from "../src/react/DevToolPanel";
 
@@ -613,6 +626,27 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
       | undefined;
     expect(groupB?.rawItems).toEqual([]);
     expect(groupB?.status).toBe("in_progress");
+  });
+
+  it("does not carry the Tasks tab's open rows into another workspace", async () => {
+    // Open rows are keyed by board and task id, which another session or flow
+    // instance can share. They must start closed there, so the tab's state
+    // cannot outlive the workspace it was opened in.
+    const { rerender } = await act(async () => render(<DevToolPanel userId="u1" />));
+    const openTasks = async () => {
+      await act(async () => {
+        fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+      });
+      return screen.getByText("row-stub").getAttribute("data-mount");
+    };
+    const before = await openTasks();
+
+    moveWorkspaceTo("sess_other");
+    await act(async () => {
+      rerender(<DevToolPanel userId="u1" />);
+    });
+
+    expect(await openTasks()).not.toBe(before);
   });
 
   it("clears dispatchedRequestId when the session changes, so live mode can follow the new one", async () => {

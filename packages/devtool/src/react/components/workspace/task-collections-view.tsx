@@ -101,7 +101,9 @@ export function TaskCollectionsView({
   const boardIds = useMemo(() => collections.map((collection) => collection.id), [collections]);
 
   // Open rows, keyed by board and task. Held above the rows so a streamed
-  // change, which re-renders every row, never closes one.
+  // change, which re-renders every row, never closes one. The panel mounts
+  // this view under its workspace key, so another session or flow starts with
+  // every row closed even where its board and task ids repeat.
   const [openRows, setOpenRows] = useState<ReadonlySet<string>>(() => new Set());
   const toggleRow = useCallback((key: string) => {
     setOpenRows((was) => {
