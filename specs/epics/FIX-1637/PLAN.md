@@ -8,12 +8,12 @@ write the page; that's FIX-1639's own spec. IDs cross-reference [DECISIONS.md](D
 
 ## The path
 
-![The path, as of 29 September 2026: an input lane for FIX-1634 under FIX-1635, not scheduled and not waited on. This epic spec in review at the now line. FIX-1639's spec, then the page, after the gate. FIX-1638 and FIX-1640 with no bars, marked proposed fold pending D1. FIX-1641's and FIX-1643's examples PRs in review beside them. The closure plan written beside FIX-1639, and its run after the page merges. The critical path runs gate, FIX-1639 spec, the page, the closure run](figures/path.svg)
+![The path after D1, as of 29 September 2026: an input lane for FIX-1634 under FIX-1635, not scheduled and not waited on. This epic spec approved and merged at the gate on 29 September, with the now line just past it. FIX-1639's spec, then the page, ahead. FIX-1641 and FIX-1643 with no bars, parked by the owner, off the critical path. The closure plan written beside FIX-1639, and its run after the page merges. The critical path runs gate, FIX-1639 spec, the page, the closure run. FIX-1638 and FIX-1640 have no lane: D1 folded them into FIX-1639 and both are canceled](figures/path.svg)
 
-A straight line with one wait: the gate, where D1 decides whether FIX-1639 writes alone.
-FIX-1641's and FIX-1643's examples run beside it and are already in review. The
+A straight line whose one wait, the gate, has passed: D1 is answered and FIX-1639 writes alone.
+FIX-1641 and FIX-1643 are parked beside it, off the critical path; Linear holds their state. The
 closure's QA plan is written while the page is, and its run waits for the page to merge, and
-for FIX-1641 and FIX-1643 to land or close, since every child blocks the closure. A #2369 or
+for every other open child to land, close or leave the epic; Linear holds the list. A #2369 or
 #2372 that outlasts the page would put its POC on the critical path; the owner can close it with
 its findings filed to FIX-1639 instead.
 FIX-1634 is drawn as an input that nothing waits on. The dependency graph is in
@@ -24,15 +24,13 @@ FIX-1634 is drawn as an input that nothing waits on. The dependency graph is in
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
 | **FIX-1639** the page | spec → docs PR | The eight reference pages on `main` · D1–D3 · this epic's [DOCS.md](DOCS.md) draft | The page, the table, the terms, drift fixes and links on existing pages, the contributor line | The closure run | Medium |
-| **FIX-1638** config matrix | proposed fold (D1) | — | Under a re-split: the table, as its own page | The closure run | Small |
-| **FIX-1640** terms | proposed fold (D1) | — | Under a re-split: the terms block and the contributor line | The closure run | Small |
+| **FIX-1638** config matrix | folded (D1) · canceled | — | Nothing on its own: the table is a section of FIX-1639's page | — | — |
+| **FIX-1640** terms | folded (D1) · canceled | — | Nothing on its own: the terms and the contributor line are FIX-1639's | — | — |
 | **FIX-1641** wake authoring POC | examples PR (#2369) | Today's webhook and schedule bindings | Three authoring shapes in `examples/wake-authoring`, user-land only, and a write-up | The closure run; findings to FIX-1639 if any | Small |
 | **FIX-1643** subscribe and route POC | examples PR (#2372) | Today's webhook transport adapter, webhook bindings and `dispatcher()` | The host registering GitHub once, then per-session subscribe and one webhook with route rules, in `examples/wake-subscribe`, user-land only, and a write-up | The closure run; findings to FIX-1639 if any | Small |
-| **FIX-1642** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit · a BullMQ host with Redis whose dispatcher hands work to the queue | The committed checks and the QA report; a child for every finding | The epic's wrap | Small, repeats per finding |
+| **FIX-1642** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit · a BullMQ host with Redis whose dispatcher hands work to the queue, the reply claim on a colocated consumer | The committed checks and the QA report; a child for every finding | The epic's wrap | Small, repeats per finding |
 
-FIX-1638, FIX-1639, FIX-1640, FIX-1641 and FIX-1643 carry no Kind label in Linear, so their route defaults to spec. The
-Architect's note on FIX-1638 suggests no spec unless a fork appears; that's the coordinator's
-call to make by labelling, not this spec's.
+FIX-1639, FIX-1641 and FIX-1643 carry no Kind label in Linear, so their route defaults to spec.
 
 ## Where it is
 
@@ -42,25 +40,24 @@ FIX-1635. Nothing here waits on it.
 
 ## What unblocks what, from here
 
-1. **The owner answers D1 at the gate, and the spec merges** → FIX-1639's spec starts. On a
-   fold, FIX-1638 and FIX-1640 close as folded, and their blocks on FIX-1642 go with them. On a
-   re-split, all three spec in parallel and a cross-spec pass follows.
+1. **Done: the spec merged and the owner answered D1 with a fold** → FIX-1639's spec starts.
+   FIX-1638 and FIX-1640 are canceled as folded and their blocks on FIX-1642 removed. One
+   writer, so no cross-spec pass between them.
 2. **FIX-1639's spec states which way the kill line reads** (ER-16) → if the page would be
    mostly "not yet", stop and file the gap. If it's all a nav edit, FIX-1639 shrinks to that.
 3. **The page merges** → FIX-1642's first run, on the published page.
-4. **FIX-1634 ships at any point** → its own docs work updates the fence sentence (ER-14). No
+4. **FIX-1634 ships at any point** → its own docs work updates the fence (ER-14). No
    child here re-sequences.
 
 ## Coordination seams to watch
 
 | Seam | Between | Rule |
 |---|---|---|
-| The `{ id }` fence sentence | FIX-1639 and FIX-1634 | FIX-1639 states it as the runtime has it; FIX-1634 owns changing it |
+| The queue-host fence, `{ id }` and a reply | FIX-1639 and FIX-1634 | FIX-1639 states it as the runtime has it, three rows, with no in-process route per flow ([#2403](https://github.com/fixpoint-labs/flow-state-dev/pull/2403)); FIX-1634 owns changing it |
 | *Work that outlives the turn* | FIX-1639 and that guide | The guide stays the step-3 map; the page links it, never repeats its table |
 | *Inbound transports → Known sources* | FIX-1639 and FIX-453 | FIX-1639 rewords the `notification` row and keeps the value; FIX-453's later architecture pass inherits the fix |
 | The examples vs the page | FIX-1641, FIX-1643 and FIX-1639 | The page teaches only framework exports. It may link either example, and never presents FIX-1641's `wakes:` alias or `WORKER.md` wake frontmatter, or FIX-1643's `subscribe` table or `route:` rules, as a framework feature |
 | The two POCs | FIX-1641 and FIX-1643 | Soft-related siblings; neither nests under the other. Each keeps its shapes coherent with the other's example |
-| Terms vs the table (only on a re-split) | FIX-1638 and FIX-1640 | Each reads the other's draft before publishing; the page links both |
 
 ## Not children, deliberately
 

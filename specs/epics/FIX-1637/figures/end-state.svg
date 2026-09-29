@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box: one published page holding the path from webhooks to schedules to work that keeps going, the id versus key section with the queue-host fence, the flow, host and ops table, and three defined terms. Linked, not rewritten: the reference pages for webhooks, scheduled actions, the schedule index, dispatched work, work that outlives the turn, inbound transports, channels and the BullMQ guide, plus the scheduler and deploy guides. Reworded in one line: the notification source row, and the epic-wake definition, which moves to contributor docs. Not built, below a fence: the id fix, a Heartbeats noun, new Layer 1 nouns, Relay, a per-cloud deploy guide, live UI.">
+     aria-label="What's in the box: one published page holding the path from webhooks to schedules to work that keeps going, the session section for a key, an id and a reply, with the queue-host fence: an id refused where a queue dispatches, and a reply from a colocated run, the flow, host and ops table, and three defined terms. Linked, not rewritten: the reference pages for webhooks, scheduled actions, the schedule index, dispatched work, work that outlives the turn, inbound transports, channels and the BullMQ guide, plus the scheduler and deploy guides. Reworded in one line: the notification source row, and the epic-wake definition, which moves to contributor docs. Not built, below a fence: the id fix, a Heartbeats noun, new Layer 1 nouns, Relay, a per-cloud deploy guide, live UI.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -31,9 +31,10 @@
     <text class="t-s" x="44" y="98">webhook &#8594; schedule &#8594; hand-off</text>
     <text class="t-s" x="44" y="114">&#8594; channel or board</text>
     <rect class="held" x="300" y="56" width="260" height="78" rx="4"/>
-    <text class="t-b" x="312" y="80">{ id } vs { key }</text>
-    <text class="t-s" x="312" y="98">queue host refuses { id }</text>
-    <text class="t-s" x="312" y="114">by name: external-dispatcher</text>
+    <text class="t-b" x="312" y="76">{ key } &#183; { id } &#183; a reply</text>
+    <text class="t-s" x="312" y="93">{ id } refused where a queue dispatches</text>
+    <text class="t-s" x="312" y="108">a reply too, from a colocated run</text>
+    <text class="t-s" x="312" y="123">by name: external-dispatcher</text>
     <rect class="held" x="32" y="144" width="256" height="78" rx="4"/>
     <text class="t-b" x="44" y="168">flow / host / ops table</text>
     <text class="t-s" x="44" y="186">webhook &#183; schedule &#183; another</text>

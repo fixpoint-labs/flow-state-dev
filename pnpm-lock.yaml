@@ -1155,15 +1155,24 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../engine
+      '@flow-state-dev/node':
+        specifier: workspace:*
+        version: link:../node
       '@flow-state-dev/orchestration':
         specifier: workspace:*
         version: link:../orchestration
       '@flow-state-dev/patterns':
         specifier: workspace:*
         version: link:../patterns
+      '@flow-state-dev/store-sqlite':
+        specifier: workspace:*
+        version: link:../store-sqlite
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing
+      '@flow-state-dev/tools':
+        specifier: workspace:*
+        version: link:../tools
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -1433,6 +1442,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.13)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
       zod:
         specifier: ^3.24.1
         version: 3.25.76

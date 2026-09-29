@@ -1,0 +1,108 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, where does arbitration across worker processes live? Chosen: the queue adapter supplies an ordered-lease backend under the engine's one arbiter, BullMQ on its Redis. Instead of: the shared store's leases, or deleting the refusal. It comes down to the first row, arrival order, which a queue policy promises: the adapter keeps it and wakes the next waiter; a store lease holds one request with no order, so waiters poll and race; deleting the refusal keeps none. Second row, an adapter that cannot arbitrate: under the choice it is refused by name; the store option covers every host; deletion lets it run silently unarbitrated. The price is the third row: each queue adapter builds a lease backend with four calls, take, is-my-turn, give back and renew, while the policy stays in the engine; the store option is built once in the engine and deletion builds nothing. Locks in: an optional member on the worker-adapter contract supplying a four-call lease backend, the place carried on the dispatch envelope, the policy written once in the engine, and external-dispatcher kept with a narrower meaning. Flips if: a second queue adapter can store but not order waiters."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Where does arbitration across worker processes live?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Adapter's lease backend</text>
+    <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="468" y="112">The store's leases</text>
+    <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="708" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="708" y="112">Delete the refusal</text>
+  </g>
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">ARRIVAL ORDER</text>
+    <text class="t-lbl" x="32" y="169">OF WAITERS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Kept; next one woken</text>
+    <text class="t-s" x="248" y="179">an ordered set in Redis</text>
+    <text class="mark minus" x="468" y="162">−</text>
+    <text class="t-b" x="488" y="161">No order; waiters poll</text>
+    <text class="t-s" x="488" y="179">one holder per request</text>
+    <text class="mark minus" x="708" y="162">−</text>
+    <text class="t-b" x="728" y="161">None kept</text>
+    <text class="t-s" x="728" y="179">runs race, as today</text>
+  </g>
+  <g id="row-no-arbiter">
+    <text class="t-lbl" x="32" y="222">AN ADAPTER THAT</text>
+    <text class="t-lbl" x="32" y="235">CAN'T ARBITRATE</text>
+    <text class="mark plus" x="228" y="228">+</text>
+    <text class="t-b" x="248" y="227">Refused by name</text>
+    <text class="t-s" x="248" y="245">external-dispatcher</text>
+    <text class="mark plus" x="468" y="228">+</text>
+    <text class="t-b" x="488" y="227">Covered anyway</text>
+    <text class="t-s" x="488" y="245">every host uses the store</text>
+    <text class="mark minus" x="708" y="228">−</text>
+    <text class="t-b" x="728" y="227">Runs unarbitrated</text>
+    <text class="t-s" x="728" y="245">silent under-delivery</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+  <g id="row-cost">
+    <text class="t-lbl" x="32" y="280">WHO BUILDS IT</text>
+    <text class="mark minus" x="228" y="286">−</text>
+    <text class="t-b" x="248" y="285">Each queue adapter</text>
+    <text class="t-s" x="248" y="303">four lease calls; policy stays in engine</text>
+    <text class="mark plus" x="468" y="286">+</text>
+    <text class="t-b" x="488" y="285">The engine, once</text>
+    <text class="t-s" x="488" y="303">every adapter inherits it</text>
+    <text class="mark plus" x="708" y="286">+</text>
+    <text class="t-b" x="728" y="285">Nobody</text>
+    <text class="t-s" x="728" y="303">one check removed</text>
+    <line class="row" x1="16" y1="314" x2="924" y2="314"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">A four-call lease backend on the worker adapter</text>
+    <text class="t-s" x="32" y="389">take, is-my-turn, give back, renew; one engine arbiter</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">A second queue adapter can store but not order</text>
+    <text class="t-s" x="494" y="389">then the store is the home, the member a default</text>
+  </g>
+</svg>

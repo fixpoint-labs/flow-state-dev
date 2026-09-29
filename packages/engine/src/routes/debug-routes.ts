@@ -17,7 +17,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { TERMINAL_SUSPENSION_STATUSES } from "@flow-state-dev/core/types";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
-import { jsonResponse } from "./route-utils";
+import { jsonResponse, loadTenantSession } from "./route-utils";
 import {
   buildDebugCollectionItems,
   buildDebugResourceTree,
@@ -185,6 +185,12 @@ export async function handleDebugListSuspensions(
 ): Promise<Response> {
   const denied = assertDebugAllowed(request, ctx.debug);
   if (denied !== null) return denied;
+  // A session that is not there is named as such, as the other debug routes
+  // name it, rather than listed as having no suspensions. The route guard
+  // answers another user's session with this same not-found, so an unused id
+  // and a session that is not the caller's read alike.
+  const session = await loadTenantSession(ctx.stores.session, route.sessionId, ctx.tenantId);
+  if (session === undefined) return jsonResponse(404, { error: "session_not_found" });
   const params = new URL(request.url).searchParams;
   const filter: SuspensionFilter = { sessionId: route.sessionId };
   const status = params.get("status");

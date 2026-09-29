@@ -31,8 +31,8 @@ invalid, reject the request before it reaches the framework, or throw
 is internally consistent with the rest of the runtime. Two checks:
 
 - **Session binding.** Once a session is created with `userId: A`, later
-  requests claiming `userId: B` against that session throw
-  `UserBindingMismatchError` at context creation. Same for `orgId` via
+  requests claiming `userId: B` against that session are refused with
+  `UserBindingMismatchError`, and nothing from them is written. Same for `orgId` via
   `OrgBindingMismatchError`. See [Session consistency check](#session-consistency-check).
 - **Schema compatibility.** If two flows on the same server declare
   incompatible `user.stateSchema` (or `org.stateSchema`) shapes,
@@ -352,15 +352,21 @@ debug endpoints.
 
 The framework resolves a principal through your hook on each of those
 requests, then checks that the principal owns what the URL addressed. A
-session or request belongs to the `userId` it was created under, so a caller
-holding a valid credential for a different user gets a `403`. The record's
-organization is checked as well, so one person who belongs to two
-organizations cannot reach the first one's session while acting for the
-second:
+session or request belongs to the `userId` it was created under. A caller
+holding a valid credential for a different user gets a `404` for someone
+else's session, the same answer as for an id nobody has used. Someone else's
+request gets that same `404`, whether the call reads its status or stream or
+would retry, continue, resume or abort it. A request stream resumed from a
+cursor (`starting_after` or `Last-Event-ID`) is the one read that answers
+differently for an unused id, with an empty `200`, and someone else's request
+gets that too. Creating a session is the one write that shows an id is taken:
+it answers `409` whoever holds the id. The record's organization is checked as well, so one
+person who belongs to two organizations cannot reach the first one's session
+while acting for the second:
 
 ```
 GET /api/flows/sessions/abc123   no credential                      -> 401
-GET /api/flows/sessions/abc123   bob's, session belongs to alice    -> 403
+GET /api/flows/sessions/abc123   bob's, session belongs to alice    -> 404
 GET /api/flows/sessions/abc123   alice's, session belongs to acme,
                                  alice is acting for globex         -> 403
 GET /api/flows/sessions/abc123   alice's, acting for acme           -> 200
@@ -405,9 +411,10 @@ request in the path, and the framework loads that record and checks its owner
 before your handler runs. `GET
 /api/flows/sessions/:sessionId/children` — the [sessions started
 under](./background-work.md) a conversation — is one of these. Its answer is
-scoped to the addressed conversation's owner, tenant, org and flow, all read
-from the stored record, so a child inherits the parent conversation's access
-rules rather than getting its own.
+scoped to the addressed conversation's owner, tenant and org, all read from the
+stored record, so a child inherits the parent conversation's access rules
+rather than getting its own. It is not scoped to a flow: work the conversation
+handed to another flow is listed too.
 
 The flow that governs such a read is the one recorded as the record's owner,
 not one the caller names. A session created through `review-east` is checked by
@@ -425,9 +432,60 @@ address and the stored owner have to agree before the resolver is consulted:
 The owner id is an address, not an authorization. Knowing that a session is
 `review-east`'s gives a caller nothing the resolver would not grant anyway.
 
+A session's request history keeps to its owning flow. Its request list, its
+state with items, and its stream show only requests that flow ran, so passing a
+session's check never gets a caller another flow's requests or items. The
+sessions it started are listed as the children route lists them, in its
+stream too, including work handed to another flow.
+
 No endpoint on the flow API enumerates across owners. A caller reaches
 background work through the conversation that started it; there is no mode that
 returns every session on the server.
+
+### Ids you choose are addresses
+
+A client can pick its own ids. The one you'll reach for most is `requestId` on
+an action call: send the same one again, say after a dropped connection, and
+you reach the same request instead of starting a second one.
+
+```ts
+await fetch("/api/flows/support/s_123/actions/reply", {
+  method: "POST",
+  headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+  body: JSON.stringify({ requestId: "req_7f3a", input: { text: "Where's my order?" } })
+});
+```
+
+An id tells the framework where to look. It never says who owns what's there.
+If another user already has a request under `req_7f3a`, your call still
+succeeds, as your own request, under an id the response gives you in the
+`x-request-id` header and the 202 body. Their request is untouched, and sending
+`req_7f3a` again lands on that same request of yours. With a resolver
+configured, the request routes check the caller against the user and
+organization stored on the request, not against knowing the id. Anything you
+ask of their request, its status, its stream, a retry, a continue, a resume or
+an abort,
+gets you the same answer an id nobody has used gets, so it doesn't even say the
+id is taken. That's a `404`, except for a stream you resume from a cursor,
+which answers an empty `200` either way.
+
+Session ids are addresses too, and they turn up in URLs all the time. With a
+resolver configured, if another user already has a session under the id you
+send, you get the same `404 Unknown session` you'd get for an id nobody has
+used, on every session route and on an action posted into it. Nothing of their
+session reaches you, not even whose it is, and nothing you send is written into
+it. The one place the id shows it's taken is creating a session with it, which
+answers `409` whoever holds it. Pick a fresh id and retry.
+
+```
+GET  /api/flows/sessions/s_42               bob's, s_42 belongs to alice   -> 404
+POST /api/flows/support/s_42/actions/reply  bob's, s_42 belongs to alice   -> 404
+POST /api/flows/support/sessions            bob's, body sessionId "s_42"   -> 409
+```
+
+So ids don't have to be unguessable to keep users apart. They show up in
+response headers, URLs and logs, and nothing depends on them staying secret. If
+you generate them on the client, anything unique per call will do.
 
 ### What the resolver sees
 
@@ -442,10 +500,13 @@ access from a field the caller writes.
 A session's `userId` and `orgId` are immutable for the session's lifetime.
 Once a session has been created against a particular identity, every
 later request that loads it has to match. If it doesn't, the framework
-throws at context creation:
+throws:
 
 - `UserBindingMismatchError` — request supplied a `userId` that doesn't
-  match the session's owner.
+  match the session's owner. Thrown before the request is accepted, so
+  nothing is written and no request exists to poll. Over HTTP the caller
+  gets `404 Unknown session`, and the error's message never names the
+  owner.
 - `OrgBindingMismatchError` — the request resolved to an organization
   that doesn't match the session's bound org.
 

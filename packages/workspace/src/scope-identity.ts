@@ -18,15 +18,18 @@
  * The one place that knows which context fields carry it. `session.identity.id`
  * and `request.identity.id` come off the request body; `userId`, `orgId` and
  * `tenantId` come from a verified principal, which is what makes them safe to
- * key a shared scope on (BP-031).
+ * key a shared scope on (BP-031). `request.incarnation` is the engine's, read
+ * from the request's stored record. It is optional here only so a hand-built
+ * context without one still resolves, to a key of its own.
  */
 export function principalFromContext(ctx: {
   session: { identity: { id: string; userId?: string; orgId?: string; tenantId?: string } };
-  request: { identity: { id: string } };
+  request: { identity: { id: string }; incarnation?: string };
 }): ScopePrincipal {
   return {
     sessionId: ctx.session.identity.id,
     requestId: ctx.request.identity.id,
+    requestIncarnation: ctx.request.incarnation,
     userId: ctx.session.identity.userId,
     orgId: ctx.session.identity.orgId,
     tenantId: ctx.session.identity.tenantId,
@@ -35,8 +38,15 @@ export function principalFromContext(ctx: {
 
 /** Who a run is, as far as scoping is concerned. */
 export interface ScopePrincipal {
-  /** This request. The narrowest scope there is. */
+  /** This request's id. The narrowest scope there is. */
   requestId: string;
+  /**
+   * Which request holds `requestId`: `ctx.request.incarnation`, stamped once
+   * when the request is first recorded. An id can be reused once its record
+   * is deleted; this cannot. Absent only on a context the engine did not
+   * build.
+   */
+  requestIncarnation?: string;
   sessionId: string;
   /** From a verified principal, not the request body. Absent when anonymous. */
   userId?: string;
@@ -53,7 +63,17 @@ export type ScopeName = "request" | "session" | "user" | "org";
  * The components that name ONE instance of `scope`, in order.
  *
  * `request` and `session` are namespaced by tenant because their ids arrive on
- * the request body: two tenants naming the same session must not meet. `user`
+ * the request body: two tenants naming the same session must not meet.
+ *
+ * `request` also carries the request's incarnation, because a request id names
+ * one request only while its record exists. Once retention (or anything else)
+ * deletes the record, the id is free for a new request, from the same user or
+ * another, while state keyed on it (a run workspace directory) stays behind.
+ * The incarnation is what makes the new request a new instance. An absent one
+ * is its own component, never equal to any token. Anything else that keys on
+ * a request and outlives it must key on this list, not on the id alone.
+ *
+ * `user`
  * and `org` are not, because they are keyed on an identity the framework
  * verified, and those scopes are shared across tenants by design — a tenant
  * segment would split the sharing they exist to provide.
@@ -69,7 +89,7 @@ export function scopeComponents(
   const tenantScoped = (id: string): (string | undefined)[] => [principal.tenantId, id];
   switch (scope) {
     case "request":
-      return tenantScoped(principal.requestId);
+      return [...tenantScoped(principal.requestId), principal.requestIncarnation];
     case "user":
       return principal.userId !== undefined
         ? [principal.userId]

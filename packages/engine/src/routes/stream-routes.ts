@@ -32,7 +32,8 @@ import {
   getString,
   jsonResponse,
   parseJsonBody,
-  SSE_HEADERS
+  SSE_HEADERS,
+  unknownRequestStreamResponse
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { resolveLiveTailLivenessMs } from "../streaming/live-tail-liveness";
@@ -182,16 +183,7 @@ export async function handleRequestStream(
       cursor.sequenceNumber
     );
     if (events.length === 0) {
-      // Without a cursor, an empty read means the request is genuinely
-      // unknown → 404. With a cursor, the resuming client already consumed
-      // the whole log; there's just nothing new, so return an empty 200
-      // rather than a spurious 404.
-      if (cursor.sequenceNumber === undefined) {
-        return jsonResponse(404, {
-          error: `Unknown request "${route.requestId}"`
-        });
-      }
-      return new Response("", { status: 200, headers: SSE_HEADERS });
+      return unknownRequestStreamResponse(request, route, ctx.registry);
     }
     let replay = replayRequestEvents({
       requestId: route.requestId,

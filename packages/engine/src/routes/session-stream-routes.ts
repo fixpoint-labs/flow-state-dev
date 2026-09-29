@@ -39,7 +39,7 @@
  *
  * The session the caller was checked against when the stream opened, and
  * nothing else, however long the connection lasts. Requests are read under
- * that session's tenant, owner and organization (`sessionRequestScope`, as the
+ * that session's tenant, owner, organization and flow (`sessionRequestScope`, as the
  * snapshot reads them), and runs under its tenant, owner and organization too.
  * After each read, before anything it found is sent, the session is read again:
  * if it is gone, or its id now holds another session (`isSameSession`), the
@@ -81,8 +81,8 @@ import { serializeSSEFrame } from "../streaming/sse";
 import { createSSEStream, type SSEStreamHandle } from "../streaming/sse-stream";
 import {
   isCheckedSession,
-  jsonResponse,
   loadTenantSession,
+  unknownSessionResponse,
   refuseUnattributedRecord,
   sessionRequestScope,
   snapshotItemsOf,
@@ -198,7 +198,7 @@ export async function handleSessionStream(
     !isCheckedSession(ctx.checkedSession, session) ||
     (named !== null && named !== "" && Number(named) !== session.createdAt)
   ) {
-    return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+    return unknownSessionResponse(route.sessionId);
   }
   const unattributed = refuseUnattributedRecord(ctx.registry, session);
   if (unattributed !== undefined) return unattributed;

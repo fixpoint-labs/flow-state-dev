@@ -7,12 +7,27 @@
  * requests that claim a different identity are rejected here rather than
  * silently routed against the loaded session's data.
  */
+import {
+  foreignRecordRefusal,
+  ownsRecord,
+  type OwnedRecord,
+  type OwnerIdentity
+} from "./record-owner";
+import { tenantMatches } from "../stores/scope-keys";
 
 /**
  * Thrown when a request supplies a `userId` that doesn't match the user the
  * session was created against. Closes a long-standing gap where the loaded
  * session record's `userId` was preserved without cross-checking the incoming
  * `options.userId`.
+ *
+ * Raised at admission, before a run is registered or acknowledged
+ * (`runAction`, and the transport host for a queued run), and again at
+ * context creation for a session created in between. The HTTP action route
+ * answers it as an unknown session. The message names the session only, never
+ * its owner: it reaches the caller as the run's error item, and the caller is
+ * the one user who must not learn whose the session is. `sessionUserId` still
+ * carries the owner for server-side code.
  */
 export class UserBindingMismatchError extends Error {
   readonly sessionId: string;
@@ -20,9 +35,7 @@ export class UserBindingMismatchError extends Error {
   readonly requestedUserId: string;
 
   constructor(sessionId: string, sessionUserId: string, requestedUserId: string) {
-    super(
-      `Session ${sessionId} is owned by user ${sessionUserId} but request supplied user ${requestedUserId}.`
-    );
+    super(`Session ${sessionId} belongs to another user and cannot be used by this caller.`);
     this.name = "UserBindingMismatchError";
     this.sessionId = sessionId;
     this.sessionUserId = sessionUserId;
@@ -115,5 +128,55 @@ export class FlowInstanceBindingMismatchError extends Error {
     this.recordId = recordId;
     this.addressedFlowId = addressedFlowId;
     this.reason = reason;
+  }
+}
+
+/**
+ * Thrown when a dispatch reaches a request record, or an in-flight entry,
+ * that another principal owns: a different user, tenant or organization
+ * (`context/request-principal.ts`). Raised at every point a dispatch writes or
+ * adopts a request record, before it does, so a request id can never move a
+ * record from one user to another. The HTTP action route hands such a caller
+ * its own id first; this is the refusal for the race it cannot see, and for
+ * any other entry point. The message names the id only, never the owner.
+ */
+export class RequestOwnerMismatchError extends Error {
+  readonly requestId: string;
+
+  constructor(requestId: string) {
+    super(`Request ${requestId} belongs to another principal and cannot be used by this caller.`);
+    this.name = "RequestOwnerMismatchError";
+    this.requestId = requestId;
+  }
+}
+
+/**
+ * Refuse a loaded session this caller must not run in.
+ *
+ * Another user's session is refused first, then another flow instance's, so
+ * the refusal names neither the owner nor which flow holds the session. A
+ * session in another tenant is left alone: the tenant binding refuses a key
+ * collision later, and it is not an ownership fact. No session is nothing
+ * to admit. `runAction` and the transport host both admit through this, so
+ * the order cannot drift between the direct path and a queued one.
+ */
+export function assertSessionAdmitted(
+  flow: OwnerIdentity & { id: string },
+  session: (OwnedRecord & { userId: string; tenantId?: string }) | undefined,
+  caller: { sessionId: string; userId: string; tenantId?: string }
+): void {
+  if (session === undefined || !tenantMatches(session.tenantId, caller.tenantId)) return;
+  if (session.userId !== caller.userId) {
+    throw new UserBindingMismatchError(caller.sessionId, session.userId, caller.userId);
+  }
+  if (!ownsRecord(flow, session)) {
+    const refusal = foreignRecordRefusal(flow, session);
+    throw new FlowInstanceBindingMismatchError(
+      "session",
+      caller.sessionId,
+      flow.id,
+      refusal.detail,
+      refusal.reason
+    );
   }
 }

@@ -27,6 +27,8 @@ import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
+import { principalOwnsRequest } from "../context/request-principal";
+import type { ResolvedPrincipal } from "../transports/types";
 import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
 import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
@@ -34,6 +36,7 @@ import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { normalizeResourceState } from "../resources/normalize-resource-state";
 import { sortItemsChronologically } from "../utils/sort";
+import { resolveRequestReplayCursor } from "../streaming/resume";
 
 export const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8"
@@ -108,6 +111,89 @@ export async function loadTenantSession(
 }
 
 /**
+ * What a session route answers for a session the caller cannot see: one no
+ * one has created, and one another user owns. The same status and the same
+ * words for both, so the answer says nothing about whether the id is in use
+ * or whose it is. One copy, because the route guard (`route-auth.ts`), the
+ * action route and every session handler's own missing-session branch must
+ * agree character for character, or the difference is the oracle.
+ */
+export function unknownSessionResponse(sessionId: string): Response {
+  return jsonResponse(404, { error: `Unknown session "${sessionId}"` });
+}
+
+/**
+ * What a request route answers for a request the caller cannot reach: one no
+ * one has created, one another user or tenant owns, and one the caller owns
+ * but may not re-enter from HTTP. The same status and words for each, for the
+ * reason `unknownSessionResponse` gives: a request id comes back in the
+ * `x-request-id` header and travels in URLs, so any difference between these
+ * answers tells a caller holding someone else's id that it is in use.
+ */
+export function unknownRequestResponse(requestId: string): Response {
+  return jsonResponse(404, { error: `Request "${requestId}" not found` });
+}
+
+/**
+ * What the request stream answers for an id with no request and no events
+ * behind it, and (from the route guard) for a request the caller may not
+ * read, so the two cannot be told apart. An unknown flow is named first, as
+ * the handler names it. Otherwise: without a resume cursor, a 404; with one,
+ * an empty 200, because a resuming client that already consumed the whole
+ * log is owed "nothing new" rather than a spurious 404.
+ */
+export function unknownRequestStreamResponse(
+  request: Request,
+  route: { flowKind: string; requestId: string },
+  registry: Pick<FlowRegistry, "get">
+): Response {
+  if (registry.get(route.flowKind) === undefined) {
+    return jsonResponse(404, {
+      error: `Unknown flow "${route.flowKind}"`
+    });
+  }
+  const cursor = resolveRequestReplayCursor({
+    requestId: route.requestId,
+    lastEventId: request.headers.get("last-event-id"),
+    startingAfter: new URL(request.url).searchParams.get("starting_after")
+  });
+  if (cursor.sequenceNumber === undefined) {
+    return jsonResponse(404, {
+      error: `Unknown request "${route.requestId}"`
+    });
+  }
+  return new Response("", { status: 200, headers: SSE_HEADERS });
+}
+
+/**
+ * Whether the caller may act on `record` through a request-control route
+ * (retry, continue, resume, abort). With a principal, the record must be that
+ * principal's in the caller's tenant (`principalOwnsRequest`: user, tenant,
+ * and organization when the record carries one). Without one, nothing in the
+ * app authenticates, so there is no user to compare and the tenant is the only
+ * boundary.
+ *
+ * Another user's or another tenant's request is answered as a missing one
+ * ({@link unknownRequestResponse}), and each handler asks this before any
+ * check that could tell them apart: status, flow, session or source. The
+ * request id is an address the caller may have learned from someone else's
+ * response, and these routes would otherwise re-run, continue, resume or stop
+ * that request under its owner's identity.
+ *
+ * The route guard (`route-auth.ts`) refuses another user's request before the
+ * handler runs, with the same answer. This is the handler's own check, and the
+ * only one of the two that compares the tenant.
+ */
+export function callerReachesRequest(
+  record: Pick<RequestRecord, "userId" | "orgId" | "tenantId">,
+  tenantId: string | undefined,
+  principal: ResolvedPrincipal | undefined
+): boolean {
+  if (principal === undefined) return tenantMatches(record.tenantId, tenantId);
+  return principalOwnsRequest(record, { userId: principal.userId, orgId: principal.orgId, tenantId });
+}
+
+/**
  * Whether `session`, a handler's own read of the session its route addresses,
  * is the session the owner check admitted the caller to
  * (`RouteAuthResult.session`). The check found none (`null`): then no session
@@ -135,6 +221,14 @@ export function isCheckedSession(
  * to show. Every key is present, so an `undefined` tenant or organization
  * exact-matches unbound records rather than lifting the filter.
  *
+ * And the session's own flow, as the request listing filters it: its kind,
+ * and its owning instance when the session records one. The session's flow is
+ * what admitted the caller, so it never authorizes another flow's run. Today
+ * admission refuses a run of any other instance into a session, but a session
+ * written before that check can hold one, and a read of the session must not
+ * serve its items. A legacy session with no owning instance keeps the kind
+ * filter alone, as the listing does.
+ *
  * @param sessionId The bare session id, as request records carry it.
  * @param session The session's own record, already read for the caller's tenant.
  * @param tenantId The caller's tenant.
@@ -143,8 +237,22 @@ export function sessionRequestScope(
   sessionId: string,
   session: SessionRecord,
   tenantId: string | undefined
-): { sessionId: string; tenantId: string | undefined; userId: string; orgId: string | undefined } {
-  return { sessionId, tenantId, userId: session.userId, orgId: session.orgId ?? undefined };
+): {
+  sessionId: string;
+  tenantId: string | undefined;
+  userId: string;
+  orgId: string | undefined;
+  flowKind: string;
+  flowId?: string;
+} {
+  return {
+    sessionId,
+    tenantId,
+    userId: session.userId,
+    orgId: session.orgId ?? undefined,
+    flowKind: session.flowKind,
+    ...(session.flowId != null ? { flowId: session.flowId } : {})
+  };
 }
 
 // `extractBareTopic` now lives in core alongside `getPatternPrefix` /

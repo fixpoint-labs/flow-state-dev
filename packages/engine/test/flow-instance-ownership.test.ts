@@ -209,6 +209,7 @@ describe("a session belongs to one instance", () => {
       request: { id: string };
     };
     await settle(stores, created.request.id);
+    const userBefore = await stores.user.get("u_1");
 
     const west = review({ id: "review-west" });
     await expect(
@@ -217,14 +218,15 @@ describe("a session belongs to one instance", () => {
         flow: west,
         actionName: "run",
         input: {},
-        userId: "u_other",
+        // The session's own user, so the only thing wrong is the instance.
+        userId: "u_1",
         sessionId: "s_direct",
         requestId: "req_foreign",
         stores,
         runtimeConfig: {}
       })
     ).rejects.toBeInstanceOf(FlowInstanceBindingMismatchError);
-    expect(await stores.user.get("u_other")).toBeUndefined();
+    expect(await stores.user.get("u_1")).toEqual(userBefore);
     expect(await stores.request.get("req_foreign")).toBeUndefined();
     expect(await stores.activeRequests.get("req_foreign")).toBeUndefined();
   });

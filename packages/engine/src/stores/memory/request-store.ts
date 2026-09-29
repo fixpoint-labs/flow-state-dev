@@ -72,10 +72,14 @@ export class InMemoryRequestStore implements RequestStore {
     id: string,
     fields: ConditionalRequestFields,
     allowedStatuses: readonly RequestStatus[],
-    updatedAt: number
+    updatedAt: number,
+    expectedCreatedAt?: number
   ): Promise<ConditionalWriteResult> {
     const current = this.records.get(id);
     if (current === undefined) return { applied: false, status: undefined };
+    if (expectedCreatedAt !== undefined && current.createdAt !== expectedCreatedAt) {
+      return { applied: false, status: undefined };
+    }
     if (!allowedStatuses.includes(current.status)) {
       return { applied: false, status: current.status };
     }

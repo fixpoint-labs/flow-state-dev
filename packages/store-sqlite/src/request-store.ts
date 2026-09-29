@@ -396,7 +396,8 @@ export function createSQLiteRequestStore(
       id: string,
       fields: ConditionalRequestFields,
       allowedStatuses: readonly RequestStatus[],
-      updatedAt: number
+      updatedAt: number,
+      expectedCreatedAt?: number
     ): Promise<ConditionalWriteResult> {
       // One transaction, and it must be IMMEDIATE. A plain better-sqlite3
       // transaction is DEFERRED: it takes only a read lock at the first
@@ -414,10 +415,14 @@ export function createSQLiteRequestStore(
           | { status: RequestStatus; data: string }
           | undefined;
         if (row === undefined) return { applied: false, status: undefined };
+        const record = JSON.parse(row.data) as RequestRecord;
+        // Another record under the same id is not the one the caller checked.
+        if (expectedCreatedAt !== undefined && record.createdAt !== expectedCreatedAt) {
+          return { applied: false, status: undefined };
+        }
         if (!allowedStatuses.includes(row.status)) {
           return { applied: false, status: row.status };
         }
-        const record = JSON.parse(row.data) as RequestRecord;
         const next = { ...record, ...fields, updatedAt };
         updateDataStmt.run(JSON.stringify(next), updatedAt, id);
         return { applied: true, status: row.status };

@@ -426,10 +426,12 @@ export class FilesystemRequestStore implements RequestStore {
     id: string,
     fields: ConditionalRequestFields,
     allowedStatuses: readonly RequestStatus[],
-    updatedAt: number
+    updatedAt: number,
+    expectedCreatedAt?: number
   ): Promise<ConditionalWriteResult> {
     const { abortRequested, ...recordFields } = fields;
     let found: RequestStatus | undefined;
+    let otherRecord = false;
 
     // `update` runs the merge under the per-id write lock, and awaits it there.
     // The marker write happens INSIDE that merge, so the status check, the
@@ -440,6 +442,11 @@ export class FilesystemRequestStore implements RequestStore {
     // reusing the id.
     await this.store.update(id, async (current) => {
       found = current.status;
+      // Another record under the same id is not the one the caller checked.
+      if (expectedCreatedAt !== undefined && current.createdAt !== expectedCreatedAt) {
+        otherRecord = true;
+        return current;
+      }
       // Returning `current` unchanged still rewrites the file — `update` has no
       // "decline" path. Deciding outside the lock instead would reintroduce the
       // read-then-write race this verb exists to remove, so the redundant write
@@ -473,7 +480,7 @@ export class FilesystemRequestStore implements RequestStore {
       );
     });
 
-    if (found === undefined) return { applied: false, status: undefined };
+    if (found === undefined || otherRecord) return { applied: false, status: undefined };
     if (!allowedStatuses.includes(found)) return { applied: false, status: found };
     return { applied: true, status: found };
   }

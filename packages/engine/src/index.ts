@@ -171,6 +171,7 @@ export {
 export {
   FlowInstanceBindingMismatchError,
   OrgBindingMismatchError,
+  RequestOwnerMismatchError,
   TenantBindingMismatchError,
   UserBindingMismatchError
 } from "./context/binding-errors";

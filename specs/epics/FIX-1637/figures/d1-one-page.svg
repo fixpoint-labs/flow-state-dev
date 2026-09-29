@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 478" role="img" aria-label="D1, open: fold the config matrix and the terms into the page, or keep three children. Recommended: one page from one writer. Or: three children, three pages, as the PRD split them. It comes down to the first row: one writer describes the five features once, where three isolated writers describe them three ways and a reader finds the disagreements. The price is the second row: the recommendation overrides the owner's split and the Architect's note, where the split honours both. Third row, a tie: every deliverable ships either way. Locks in FIX-1639 as the only writer, with FIX-1638 and FIX-1640 closed as folded. Flips if the owner wants each deliverable reviewable on its own."
+<svg viewBox="0 0 940 478" role="img" aria-label="D1, decided by the owner: fold the config matrix and the terms into the page, or keep three children. Chosen: one page from one writer. Instead of: three children, three pages, as the PRD split them. It comes down to the first row: one writer describes the five features once, where three isolated writers describe them three ways and a reader finds the disagreements. The price is the second row: the fold overrides the owner's first split and the Architect's note, where the split honours both. Third row, a tie: every deliverable ships either way. Locks in FIX-1639 as the only writer, with FIX-1638 and FIX-1640 canceled as folded. Flips if the owner wants each deliverable reviewable on its own."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -11,7 +11,6 @@
     .bg     { fill:var(--surface); }
     .ask    { fill:var(--surface-2); }
     .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
-    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
     .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
     .decide { fill:var(--accent-soft); }
     .bar    { fill:var(--accent); }
@@ -41,11 +40,11 @@
   </g>
 
   <g id="options">
-    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
     <text class="t-h c-code" x="228" y="112">One page, one writer</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="592" y="93">OR</text>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Three children, three pages</text>
   </g>
 
@@ -79,7 +78,7 @@
     <text class="t-lbl" x="32" y="282">WHAT SHIPS</text>
     <text class="mark tie" x="228" y="284">=</text>
     <text class="t-b" x="248" y="283">Guide, table, terms</text>
-    <text class="t-s" x="248" y="301">the table may be its own linkable page</text>
+    <text class="t-s" x="248" y="301">the table and terms as sections of one page</text>
     <text class="mark tie" x="592" y="284">=</text>
     <text class="t-b" x="612" y="283">Guide, table, terms</text>
     <text class="t-s" x="612" y="301">the same three deliverables</text>
@@ -101,13 +100,13 @@
     <rect class="foot" x="16" y="388" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="409">LOCKS IN</text>
     <text class="t-b" x="32" y="429">FIX-1639 is the only writer</text>
-    <text class="t-s" x="32" y="447">FIX-1638 and FIX-1640 close as folded, on your word</text>
+    <text class="t-s" x="32" y="447">FIX-1638 and FIX-1640 canceled as folded</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="388" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="409">FLIPS IF</text>
-    <text class="t-b" x="494" y="429">You want each deliverable reviewable on its own</text>
+    <text class="t-b" x="494" y="429">The owner wants each deliverable reviewable alone</text>
     <text class="t-s" x="494" y="447">e.g. for FIX-453 or a design partner</text>
   </g>
 
