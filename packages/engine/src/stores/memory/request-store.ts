@@ -116,7 +116,12 @@ export class InMemoryRequestStore implements RequestStore {
   }
 
   async delete(id: string): Promise<void> {
+    // The event log and runOnce results go with the record: ids are
+    // caller-supplied, so a later request may take this one, and a replay of
+    // it must not surface this run's events.
     this.records.delete(id);
+    this.eventsByRequestId.delete(id);
+    this.runOnceByRequestId.delete(id);
   }
 
   persistItems(_requestId: string, _items: OutputItem[]): void {

@@ -497,6 +497,55 @@ export function createRequestStoreConformanceTests(
     });
   });
 
+  // Request ids are caller-supplied, so a later request may take a deleted
+  // one. Nothing the deleted run left under the id may reach it.
+  describe(`${name} (RequestStore delete conformance)`, () => {
+    it("delete removes the request's events and runOnce results with the record", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_delete_children";
+        await store.set(requestId, makeRecord(requestId, "completed", []), "any");
+        store.persistEvents(requestId, [
+          makeRequestStreamEvent(requestId, 1),
+          makeRequestCompletedEvent(requestId, 2)
+        ]);
+        await store.flushEvents(requestId);
+        await store.setRunOnceResult(requestId, "step", { owner: "previous" });
+
+        await store.delete(requestId);
+
+        expect(await store.get(requestId)).toBeUndefined();
+        expect(await store.getEvents(requestId)).toEqual([]);
+        expect(await store.getRunOnceResult(requestId, "step")).toEqual({ found: false });
+      });
+    });
+
+    it("delete is not undone by events persisted just before it", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_delete_queued";
+        await store.set(requestId, makeRecord(requestId, "completed", []), "any");
+        // No flush: the write is still queued when delete runs.
+        store.persistEvents(requestId, [makeRequestStreamEvent(requestId, 1)]);
+
+        await store.delete(requestId);
+        await store.flushEvents(requestId);
+
+        expect(await store.getEvents(requestId)).toEqual([]);
+      });
+    });
+
+    it("delete leaves other requests' events in place", async () => {
+      await withStore(async (store) => {
+        store.persistEvents("req_delete_other", [makeRequestStreamEvent("req_delete_other", 1)]);
+        await store.flushEvents("req_delete_other");
+
+        await store.delete("req_delete_target");
+
+        const kept = await store.getEvents("req_delete_other");
+        expect(kept.map((e) => e.sequence_number)).toEqual([1]);
+      });
+    });
+  });
+
   describe(`${name} (RequestStore abort-intent conformance)`, () => {
     /** Seed an `in_progress` record with no abort intent. */
     async function seed(

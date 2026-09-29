@@ -447,8 +447,18 @@ export function createPostgresRequestStore(
       // re-insert rows after the DELETE.
       const pending = pendingItemWrites.get(id);
       if (pending) await pending;
+      // Same for events: drop the unwritten batch so a queued
+      // write inserts nothing, and wait out one already running.
+      pendingNewEvents.delete(id);
+      const pendingEvents = pendingEventWrites.get(id);
+      if (pendingEvents) await pendingEvents;
+      // Events and runOnce results go with the record: ids are
+      // caller-supplied, so a later request may take this one, and a replay
+      // of it must not surface this run's events.
       await Promise.all([
         executor.query("DELETE FROM request_items WHERE request_id = $1", [id]),
+        executor.query("DELETE FROM request_events WHERE request_id = $1", [id]),
+        executor.query("DELETE FROM request_runonce WHERE request_id = $1", [id]),
         base.delete(id)
       ]);
       clearItemMaps(id);

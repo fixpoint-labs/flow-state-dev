@@ -553,6 +553,8 @@ Retention policies operate at **request granularity** — entire old request rec
 
 The `maxItems` check counts items through `RequestStore.countItems(requestId)` rather than loading item payloads, so a retention sweep stays cheap on sessions with large logs. Custom `RequestStore` implementations must provide `countItems`; it returns what `get(id)` would surface as `items.length`.
 
+Eviction calls `RequestStore.delete(id)`, which removes everything the store keeps under that id: the record, its items, its stream events and its runOnce results. Request ids can be supplied by the caller, so a freed id may be taken by a later request, possibly from another user. Anything a custom store leaves behind under the id would be replayed on that request's stream. `createRequestStoreConformanceTests` checks the store's `delete`; `createRequestRetentionConformanceTests` (both from `@flow-state-dev/engine/testing`) runs the whole path through retention and the stream route against a `StoreRegistry`.
+
 Supported duration formats: `'30s'`, `'5m'`, `'2h'`, `'7d'`, or a raw number in milliseconds.
 
 ## Abort intent on `RequestStore` (adapter authors)
