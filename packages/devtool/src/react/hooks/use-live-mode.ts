@@ -12,9 +12,10 @@
  *     (`streamStatus === "disconnected"`), we fall back to polling the
  *     session requests list every 2s.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { SessionRequestSummary } from "@flow-state-dev/client";
 import type { StreamStatus } from "./use-request-stream";
+import { usePoll } from "./use-poll";
 
 export type UseLiveModeOptions = {
   requests: SessionRequestSummary[];
@@ -116,13 +117,6 @@ export function useLiveMode(options: UseLiveModeOptions): UseLiveModeResult {
     }
   }
 
-  // Keep latest refresh callback in a ref so the polling effect doesn't
-  // re-create its interval every render.
-  const refreshRef = useRef(refreshRequests);
-  useEffect(() => {
-    refreshRef.current = refreshRequests;
-  }, [refreshRequests]);
-
   // Decide whether SSE failed and we need to poll.
   useEffect(() => {
     if (!liveMode || !liveSubscriptionRequestId) {
@@ -136,15 +130,8 @@ export function useLiveMode(options: UseLiveModeOptions): UseLiveModeResult {
     }
   }, [streamStatus, liveMode, liveSubscriptionRequestId]);
 
-  // Run the polling interval while the fallback is active.
-  useEffect(() => {
-    if (!pollingFallback) return;
-    if (!liveSubscriptionRequestId) return;
-    const id = window.setInterval(() => {
-      void refreshRef.current?.();
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(id);
-  }, [pollingFallback, liveSubscriptionRequestId]);
+  // Poll while the fallback is active, one read at a time (see `usePoll`).
+  usePoll(pollingFallback && liveSubscriptionRequestId !== null, refreshRequests, POLL_INTERVAL_MS);
 
   const toggleLiveMode = useCallback((next?: boolean) => {
     setLiveMode((prev) => (typeof next === "boolean" ? next : !prev));

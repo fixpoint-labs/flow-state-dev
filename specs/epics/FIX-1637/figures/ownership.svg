@@ -1,0 +1,109 @@
+<svg viewBox="0 0 940 450" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: eight rules by four columns, FIX-1639 the page, FIX-1638 the matrix, FIX-1640 the terms, and FIX-1642 the closure. FIX-1639 owns the path, the table and event row, the terms, the queue-host fence, the project verified-caller rule, the drift fixes and links, and the internal epic-wake line. Dashed cells show FIX-1638 owning the table and the verified-caller rule and FIX-1640 owning the terms and the epic-wake line if D1 re-splits. The closure consumes every rule and owns the proof, which FIX-1639 consumes.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .own   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .alt   { fill:none; stroke:var(--accent); stroke-width:1.2; stroke-dasharray:4 3; }
+    .use   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .cell  { fill:none; stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-row { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9px; letter-spacing:.06em; }
+    .t-use { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="450"/>
+
+  <text class="t-lbl" x="16" y="20">WHO OWNS WHAT &#8212; ONE OWNER PER RULE, AS D1 RECOMMENDS</text>
+  <text class="t-col" x="324" y="44">FIX-1639 · page</text>
+  <text class="t-col" x="478" y="44">FIX-1638 · matrix</text>
+  <text class="t-col" x="632" y="44">FIX-1640 · terms</text>
+  <text class="t-col" x="786" y="44">FIX-1642 · closure</text>
+
+  <g id="er1">
+    <text class="t-row" x="16" y="80">ER-1 the path, on one page</text>
+    <rect class="own" x="316" y="58" width="146" height="36" rx="3"/>
+    <text class="t-own" x="328" y="80">OWNS</text>
+    <rect class="cell" x="470" y="58" width="146" height="36" rx="3"/>
+    <rect class="cell" x="624" y="58" width="146" height="36" rx="3"/>
+    <rect class="use" x="778" y="58" width="146" height="36" rx="3"/>
+    <text class="t-use" x="790" y="80">consumes</text>
+  </g>
+  <g id="er2">
+    <text class="t-row" x="16" y="124">ER-2, ER-5 the table, event row</text>
+    <rect class="own" x="316" y="102" width="146" height="36" rx="3"/>
+    <text class="t-own" x="328" y="124">OWNS</text>
+    <rect class="alt" x="470" y="102" width="146" height="36" rx="3"/>
+    <text class="t-own" x="482" y="124">owns if re-split</text>
+    <rect class="cell" x="624" y="102" width="146" height="36" rx="3"/>
+    <rect class="use" x="778" y="102" width="146" height="36" rx="3"/>
+    <text class="t-use" x="790" y="124">consumes</text>
+  </g>
+  <g id="er3">
+    <text class="t-row" x="16" y="168">ER-3 the three terms</text>
+    <rect class="own" x="316" y="146" width="146" height="36" rx="3"/>
+    <text class="t-own" x="328" y="168">OWNS</text>
+    <rect class="cell" x="470" y="146" width="146" height="36" rx="3"/>
+    <rect class="alt" x="624" y="146" width="146" height="36" rx="3"/>
+    <text class="t-own" x="636" y="168">owns if re-split</text>
+    <rect class="use" x="778" y="146" width="146" height="36" rx="3"/>
+    <text class="t-use" x="790" y="168">consumes</text>
+  </g>
+  <g id="er4">
+    <text class="t-row" x="16" y="212">ER-4 the queue-host fence</text>
+    <rect class="own" x="316" y="190" width="146" height="36" rx="3"/>
+    <text class="t-own" x="328" y="212">OWNS</text>
+    <rect class="cell" x="470" y="190" width="146" height="36" rx="3"/>
+    <rect class="cell" x="624" y="190" width="146" height="36" rx="3"/>
+    <rect class="use" x="778" y="190" width="146" height="36" rx="3"/>
+    <text class="t-use" x="790" y="212">consumes</text>
+  </g>
+  <g id="pr1">
+    <text class="t-row" x="16" y="256">PR-1 verified caller (project)</text>
+    <rect class="own" x="316" y="234" width="146" height="36" rx="3"/>
+    <text class="t-own" x="328" y="256">OWNS</text>
+    <rect class="alt" x="470" y="234" width="146" height="36" rx="3"/>
+    <text class="t-own" x="482" y="256">owns if re-split</text>
+    <rect class="cell" x="624" y="234" width="146" height="36" rx="3"/>
+    <rect class="use" x="778" y="234" width="146" height="36" rx="3"/>
+    <text class="t-use" x="790" y="256">consumes</text>
+  </g>
+  <g id="er9">
+    <text class="t-row" x="16" y="300">ER-9 drift fixes and links</text>
+    <rect class="own" x="316" y="278" width="146" height="36" rx="3"/>
+    <text class="t-own" x="328" y="300">OWNS</text>
+    <rect class="cell" x="470" y="278" width="146" height="36" rx="3"/>
+    <rect class="cell" x="624" y="278" width="146" height="36" rx="3"/>
+    <rect class="use" x="778" y="278" width="146" height="36" rx="3"/>
+    <text class="t-use" x="790" y="300">consumes</text>
+  </g>
+  <g id="er8">
+    <text class="t-row" x="16" y="344">ER-8 epic-wake line, internal</text>
+    <rect class="own" x="316" y="322" width="146" height="36" rx="3"/>
+    <text class="t-own" x="328" y="344">OWNS</text>
+    <rect class="cell" x="470" y="322" width="146" height="36" rx="3"/>
+    <rect class="alt" x="624" y="322" width="146" height="36" rx="3"/>
+    <text class="t-own" x="636" y="344">owns if re-split</text>
+    <rect class="use" x="778" y="322" width="146" height="36" rx="3"/>
+    <text class="t-use" x="790" y="344">consumes</text>
+  </g>
+  <g id="er15">
+    <text class="t-row" x="16" y="388">ER-15 the proof</text>
+    <rect class="use" x="316" y="366" width="146" height="36" rx="3"/>
+    <text class="t-use" x="328" y="388">consumes</text>
+    <rect class="cell" x="470" y="366" width="146" height="36" rx="3"/>
+    <rect class="cell" x="624" y="366" width="146" height="36" rx="3"/>
+    <rect class="own" x="778" y="366" width="146" height="36" rx="3"/>
+    <text class="t-own" x="790" y="388">OWNS</text>
+  </g>
+  <text class="t-use" x="16" y="436">A dashed cell is where ownership moves if the owner answers D1 with a re-split.</text>
+</svg>

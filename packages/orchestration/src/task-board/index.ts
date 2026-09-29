@@ -157,6 +157,7 @@ import {
 import { boardExitsConnector } from "./exits-connector";
 import { createTaskGate } from "./task-entry";
 import { createHandOff } from "./blocks/hand-off";
+import { recordBoardResolver } from "./board-resolver";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -271,6 +272,13 @@ export { StaleTaskClaimError, createTaskGate, taskDispatchInputSchema } from "./
 export type { TaskGateOptions, TaskDispatchInput } from "./task-entry";
 export { createHandOff } from "./blocks/hand-off";
 export type { HandOffOptions } from "./blocks/hand-off";
+// A durable board's eight task tools as flow actions (FIX-1629). Defined with
+// the tools; re-exported here because a board's author reaches for it here.
+export {
+  taskToolActions,
+  taskToolSuffix,
+  type TaskToolActionsBoard,
+} from "../skills/task-tools-capability";
 
 // ---------------------------------------------------------------------------
 // Public config / handle
@@ -1316,7 +1324,7 @@ export function taskBoard<
   // once-chosen backing onto every downstream wiring, so no call site restates
   // it. `board.capability` is always defined; `uses: [board.capability]` gets a
   // typed `ctx.cap.<name>` accessor regardless of backing.
-  return {
+  const handle: TaskBoardHandle<TInput, TOutput, TName> = {
     drain,
     collectionId,
     capability,
@@ -1327,6 +1335,10 @@ export function taskBoard<
     caps,
     unparkAndDrain,
   };
+  // So `taskToolActions(board)` reaches these rows through the same resolver
+  // the drain uses, without the handle carrying one publicly.
+  recordBoardResolver(handle, collectionFactory);
+  return handle;
 }
 
 // ---------------------------------------------------------------------------

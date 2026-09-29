@@ -1,0 +1,12 @@
+{
+  "piece": {
+    "goal": "split the onboarding email into a welcome note and a separate setup checklist, keeping the legal footer on both",
+    "desk": "build",
+    "asks": "should the setup checklist go out on the same day as the welcome note, or wait until the account is verified?"
+  },
+  "answer": "wait until the account is verified",
+  "spare": {
+    "goal": "retire the old status page once the new one has run clean for a week"
+  },
+  "cancelReason": "superseded by the migration plan"
+}

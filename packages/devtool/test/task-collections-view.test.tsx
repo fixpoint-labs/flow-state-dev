@@ -9,7 +9,7 @@
  * to prevent, arriving on the other tab.
  */
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import React from "react";
 import { TaskCollectionsView } from "../src/react/components/workspace/task-collections-view";
 import type { TaskStreamItem } from "../src/react/lib/task-collection-state";
@@ -51,6 +51,14 @@ function renderTasks(
       onOpenDispatchRun={vi.fn()}
     />
   );
+}
+
+/**
+ * The row's dispatch-run slot. Scoped because the row's own toggle also names
+ * the assignee, which here is the entry the run runs.
+ */
+function runSlot(): HTMLElement {
+  return document.querySelector<HTMLElement>('[data-slot="run"]')!;
 }
 
 /** A dispatch run whose per-task key names `task-a`, dispatched for the `implement` entry. */
@@ -97,7 +105,7 @@ describe("TaskCollectionsView — a matched task", () => {
   it("links plainly when the whole listing was read", () => {
     renderTasks("complete", [matching]);
 
-    const link = screen.getByRole("button", { name: /implement/ });
+    const link = within(runSlot()).getByRole("button", { name: /implement/ });
     expect(link.getAttribute("title")).not.toMatch(/may not be the one/i);
   });
 
@@ -111,7 +119,7 @@ describe("TaskCollectionsView — a matched task", () => {
     // page.
     renderTasks("more", [matching]);
 
-    const link = screen.getByRole("button", { name: /implement/ });
+    const link = within(runSlot()).getByRole("button", { name: /implement/ });
     expect(link.getAttribute("title")).toMatch(/may not be the one running the task/i);
   });
 });

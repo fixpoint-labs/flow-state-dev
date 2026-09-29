@@ -128,7 +128,11 @@ async function openBadgeSession(page: Page): Promise<string | undefined> {
   return /^Session ID: (\S+)/.exec(title ?? "")?.[1];
 }
 
-/** One row of the Tasks tab, cell by column heading, or `undefined` if it never appeared. */
+/**
+ * One row of the Tasks tab, found by its task id, read slot by slot (status,
+ * goal, reason, assignee) off the collapsed row — or `undefined` if it never
+ * appeared.
+ */
 async function taskRow(
   page: Page,
   taskId: string,
@@ -145,22 +149,21 @@ async function taskRow(
   );
   for (let waited = 0; waited < 10_000; waited += 250) {
     const read = await page.evaluate((id) => {
-      // Only the Tasks tab's own panel — never a table some other view drew.
-      for (const table of document.querySelectorAll("main [role='tabpanel'][data-state='active'] table")) {
-        const heads = [...table.querySelectorAll("thead th")].map((th) => (th.textContent ?? "").trim());
-        for (const tr of table.querySelectorAll("tbody tr")) {
-          const tds = [...tr.querySelectorAll("td")];
-          if ((tds[0]?.textContent ?? "").trim() !== id) continue;
-          const cells: Record<string, string> = {};
-          heads.forEach((head, i) => (cells[head] = (tds[i]?.textContent ?? "").trim()));
-          const hasLink = tr.querySelector("button[title^='Open dispatch run']") !== null;
-          const reasonCell = tds[heads.indexOf("Reason")];
-          // A long note is clamped to the column and carries its whole text on
-          // the cell's title — the DevTool's own design. Read both, so a clamp
-          // is graded on the title rather than passed on text nobody can see.
-          const reasonClipped = reasonCell !== undefined && reasonCell.scrollWidth > reasonCell.clientWidth;
-          return { cells, hasLink, reasonClipped, reasonTitle: reasonCell?.getAttribute("title") ?? null };
+      // Only the Tasks tab's own panel — never a row some other view drew.
+      for (const row of document.querySelectorAll("main [role='tabpanel'][data-state='active'] [data-task-id]")) {
+        if (row.getAttribute("data-task-id") !== id) continue;
+        const cells: Record<string, string> = {};
+        for (const [head, name] of [["Status", "status"], ["Goal", "goal"], ["Reason", "reason"], ["Assignee", "assignee"]]) {
+          const el = row.querySelector(`[data-slot="${name}"]`);
+          if (el !== null) cells[head!] = (el.textContent ?? "").trim();
         }
+        const hasLink = row.querySelector("[data-slot='run'] button[title^='Open dispatch run']") !== null;
+        const reasonCell = row.querySelector<HTMLElement>('[data-slot="reason"]');
+        // A long note is clamped to its slot and carries its whole text on
+        // the slot's title — the DevTool's own design. Read both, so a clamp
+        // is graded on the title rather than passed on text nobody can see.
+        const reasonClipped = reasonCell !== null && reasonCell.scrollWidth > reasonCell.clientWidth;
+        return { cells, hasLink, reasonClipped, reasonTitle: reasonCell?.getAttribute("title") ?? null };
       }
       return undefined;
     }, taskId);
@@ -294,7 +297,7 @@ async function main() {
     // ---- VB (2a). follow the link: the reason, with nothing expanded ------
     let childSession: string | undefined;
     if (screen1?.hasLink) {
-      await page.locator("main tr", { hasText: firstId }).locator("button[title^='Open dispatch run']").click();
+      await page.locator(`main [data-task-id="${firstId}"] [data-slot="run"] button[title^='Open dispatch run']`).first().click();
       await page.waitForFunction(
         (seatSession) => ![...document.querySelectorAll("[title^='Session ID: ']")].some((el) => el.getAttribute("title")?.includes(seatSession)),
         lab.seatSession(owner),
@@ -306,8 +309,8 @@ async function main() {
       }
       const screen2 = await taskRow(page, firstId, (cells) => cells.Status === "parked");
       await page.screenshot({ path: join(SHOTS, "2a-child-parked.png") });
-      const expanded = await page.locator("main details[open]").count();
-      if (expanded !== 0) fail("VB", `screen 2: ${expanded} expander(s) open; the reason must be legible without one`);
+      const expanded = await page.locator("main [data-task-id] button[aria-expanded='true']").count();
+      if (expanded !== 0) fail("VB", `screen 2: ${expanded} row(s) open; the reason must be legible without opening one`);
       if (screen2 === undefined) {
         fail("VB", `screen 2: the child session never showed row ${firstId} parked`);
       } else if (screen2.cells.Reason === undefined || screen2.cells.Reason.length === 0 || screen2.cells.Reason === "—") {
@@ -318,7 +321,7 @@ async function main() {
         if (screen2.reasonTitle !== parked?.feedback) {
           fail("VB", `screen 2: the reason is clamped on screen and its title reads ${JSON.stringify(screen2.reasonTitle)}`);
         } else {
-          notes.push("the reason is clamped to its column on screen and whole on hover");
+          notes.push("the reason is clamped to its slot on screen and whole on hover");
         }
       }
     }

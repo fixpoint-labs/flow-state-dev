@@ -120,7 +120,7 @@ describe("useLiveMode", () => {
     expect(result.current.liveMode).toBe(true);
   });
 
-  it("falls back to polling when SSE disconnects, refreshing every 2s", () => {
+  it("falls back to polling when SSE disconnects, refreshing every 2s", async () => {
     const refresh = vi.fn();
     const requests = [makeRequest("r1", "in_progress")];
     const { result, rerender } = renderHook(
@@ -139,15 +139,41 @@ describe("useLiveMode", () => {
     rerender({ streamStatus: "disconnected" });
     expect(result.current.pollingFallback).toBe(true);
 
-    act(() => {
-      vi.advanceTimersByTime(2000);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
     });
     expect(refresh).toHaveBeenCalledTimes(1);
 
-    act(() => {
-      vi.advanceTimersByTime(4000);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
     });
     expect(refresh).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not start a poll while the previous one is still reading", async () => {
+    // Each read retires the one before it, so ticks that overlap a slow read
+    // would discard every answer and never install a snapshot.
+    let finish: () => void = () => {};
+    const refresh = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    renderHook(() =>
+      useLiveMode({
+        requests: [makeRequest("r1", "in_progress")],
+        streamStatus: "disconnected",
+        dispatchedRequestId: null,
+        refreshRequests: refresh,
+      }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finish();
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(refresh).toHaveBeenCalledTimes(2);
   });
 
   it("stops polling once the in-progress request finishes", () => {

@@ -16,7 +16,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FlowInstance } from "@flow-state-dev/core";
-import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
+import {
+  createFlowApiRouter,
+  createFlowRegistry,
+  type InboundTransportAdapter
+} from "@flow-state-dev/engine";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { createSQLiteStores, type SQLiteStoreRegistry } from "@flow-state-dev/store-sqlite";
 
@@ -33,6 +37,11 @@ export type TwoUserServer = {
   readonly api: string;
   /** A `fetch` that authenticates as `userId` in the shared tenant. */
   as(userId: string): (path: string, init?: RequestInit) => Promise<Response>;
+  /**
+   * The server's stores. Only for leaving a record the way an older release
+   * wrote it, before a case probes it over HTTP; a probe never uses them.
+   */
+  readonly stores: SQLiteStoreRegistry;
   /** Stop the server and delete its database. */
   close(): Promise<void>;
 };
@@ -41,6 +50,11 @@ export type TwoUserServer = {
 export type TwoUserServerOptions = {
   /** Serve the session debug routes, as a development deployment does. */
   debugEndpointsEnabled?: boolean;
+  /**
+   * Inbound transports mounted beside HTTP, for a case whose hole depends on
+   * which transport a request arrived on.
+   */
+  adapters?: InboundTransportAdapter[];
 };
 
 /**
@@ -57,6 +71,7 @@ export async function startTwoUserServer(
   const router = createFlowApiRouter({
     registry,
     stores,
+    adapters: options.adapters,
     ...(options.debugEndpointsEnabled === undefined
       ? {}
       : { debugEndpointsEnabled: options.debugEndpointsEnabled }),
@@ -75,6 +90,7 @@ export async function startTwoUserServer(
 
   return {
     api,
+    stores,
     as: (userId) => (path, init) =>
       fetch(`${api}${path}`, {
         ...init,

@@ -248,3 +248,52 @@ describe("useRequestStream (devtool)", () => {
     expect(result.current.items.length).toBe(0);
   });
 });
+
+describe("useRequestStream — moving to another request", () => {
+  beforeEach(() => {
+    devToolState.workspaceToken = 1;
+    connections.length = 0;
+    seq = 0;
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("never hands back the previous request's state under the new request id, not even for one render", () => {
+    // The snapshot is replaced in an effect, so the render in which the id
+    // changes would otherwise still carry the old request's items, raw log and
+    // status, and every consumer would file them under the new id.
+    const seen: Array<{ requestId: string; stateFor: string | null; items: number; status: string }> = [];
+    const { rerender } = renderHook(
+      ({ requestId }: { requestId: string }) => {
+        const result = useRequestStream({ flowId: "demo", requestId, enabled: true });
+        seen.push({
+          requestId,
+          stateFor: result.streamState?.requestId ?? null,
+          items: result.items.length,
+          status: result.streamStatus,
+        });
+        return result;
+      },
+      { initialProps: { requestId: "req_1" } },
+    );
+    act(() => {
+      feed(requestCreated());
+      feed(itemAdded(makeMessage("m1", "hello")));
+      feed(requestStatus("request.completed", "completed"));
+    });
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+    expect(seen[seen.length - 1]).toMatchObject({ requestId: "req_1", stateFor: "req_1", items: 1, status: "completed" });
+
+    seen.length = 0;
+    rerender({ requestId: "req_2" });
+    for (const render of seen) {
+      expect(render.stateFor === null || render.stateFor === "req_2").toBe(true);
+      if (render.stateFor === null) expect(render.items).toBe(0);
+      expect(render.status).not.toBe("completed");
+    }
+  });
+});

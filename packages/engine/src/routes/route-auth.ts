@@ -32,7 +32,7 @@ import {
   jsonResponse,
   loadTenantSession,
   refuseUnattributedRecord,
-  unknownRequestStatusResponse,
+  unknownRequestResponse,
   unknownRequestStreamResponse,
   unknownSessionResponse
 } from "./route-utils";
@@ -109,18 +109,21 @@ function hiddenSessionResponse(route: ParsedFlowRoute, sessionId: string): Respo
 }
 
 /**
- * The answer a request read gives for an id with no request behind it, given
- * for a request another user owns. Undefined for a request route that acts
- * rather than reads.
+ * The answer a request route gives an id with no request behind it, given for
+ * a request another user owns. Every request-addressed route has one: the
+ * stream's (which names an unknown flow first, and is an empty 200 for a
+ * resume cursor), and `unknownRequestResponse` for status, retry, continue,
+ * resume and abort.
  */
 function hiddenRequestResponse(
   request: Request,
   route: ParsedFlowRoute,
-  registry: FlowRegistry
-): Response | undefined {
-  if (route.kind === "request_status") return unknownRequestStatusResponse(route.requestId);
-  if (route.kind === "request_stream") return unknownRequestStreamResponse(request, route, registry);
-  return undefined;
+  registry: FlowRegistry,
+  requestId: string
+): Response {
+  return route.kind === "request_stream"
+    ? unknownRequestStreamResponse(request, route, registry)
+    : unknownRequestResponse(requestId);
 }
 
 /**
@@ -520,12 +523,12 @@ export async function authorizeManagementRoute(
       sessionHidden: true
     };
   }
-  // The same for a request's reads, its status and its stream: a request id
-  // travels in headers, bodies and URLs, so another user's is answered as an
-  // id nobody has used, a legacy one included.
+  // The same for every request-addressed route, reads and control alike: a
+  // request id travels in headers, bodies and URLs, so another user's is
+  // answered as an id nobody has used, a legacy one included (ahead of the
+  // held refusal, as for the session above).
   if (subject.kind === "request" && owner !== undefined && principal.userId !== owner) {
-    const hidden = hiddenRequestResponse(request, route, ctx.registry);
-    if (hidden !== undefined) return { denied: hidden };
+    return { denied: hiddenRequestResponse(request, route, ctx.registry, subject.requestId) };
   }
 
   // The caller has now proven who they are, so the held refusal costs nothing
@@ -534,8 +537,8 @@ export async function authorizeManagementRoute(
   if (pendingDenial !== undefined) return { denied: pendingDenial };
 
   if (owner !== undefined && principal.userId !== owner) {
-    // The routes that act on a request (abort, resume, retry, continue)
-    // answer 403 "not yours"; its reads were answered above.
+    // Only a user-addressed route reaches here (sessions and requests were
+    // answered above): the path names someone else, and 403 says so.
     return {
       denied: jsonResponse(403, {
         error: "Caller is not the owner of the requested resource"

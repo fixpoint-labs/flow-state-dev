@@ -354,9 +354,9 @@ The framework resolves a principal through your hook on each of those
 requests, then checks that the principal owns what the URL addressed. A
 session or request belongs to the `userId` it was created under. A caller
 holding a valid credential for a different user gets a `404` for someone
-else's session, the same answer as for an id nobody has used. Reading someone
-else's request, its status or its stream, gets the same answer an unused id
-does too. Acting on it, say resuming or aborting it, is refused. The record's organization is checked as well, so one
+else's session, the same answer as for an id nobody has used. Someone else's
+request gets that same `404`, whether the call reads its status or stream or
+would retry, continue, resume or abort it. The record's organization is checked as well, so one
 person who belongs to two organizations cannot reach the first one's session
 while acting for the second:
 
@@ -455,10 +455,10 @@ succeeds, as your own request, under an id the response gives you in the
 `x-request-id` header and the 202 body. Their request is untouched, and sending
 `req_7f3a` again lands on that same request of yours. With a resolver
 configured, the request routes check the caller against the user and
-organization stored on the request, not against knowing the id. Asking for
-their request's status or stream gets you the same `404` an id nobody has used
-gets, so the answer doesn't even say the id is taken. Acting on it, say
-resuming or aborting it, is refused.
+organization stored on the request, not against knowing the id. Anything you
+ask of their request, its status, its stream, a retry, a resume or an abort,
+gets you the same `404` an id nobody has used gets, so the answer doesn't even
+say the id is taken.
 
 Session ids are addresses too, and they turn up in URLs all the time. With a
 resolver configured, if another user already has a session under the id you

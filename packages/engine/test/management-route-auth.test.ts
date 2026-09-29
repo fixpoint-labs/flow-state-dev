@@ -369,7 +369,7 @@ describe("session creation ownership", () => {
 });
 
 describe("request-addressed routes", () => {
-  it("denies aborting another user's in-flight request", async () => {
+  it("answers another user's in-flight request as not found, and leaves it running", async () => {
     const { router, stores } = buildRouter([secureFlow()]);
     await seedRequest(stores, { id: "r1", flowKind: "secure", userId: "alice" });
 
@@ -377,7 +377,9 @@ describe("request-addressed routes", () => {
       headers: { "x-verified-user": "bob" }
     });
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Request "r1" not found' });
+    expect((await stores.request.get("r1"))?.abortRequested).not.toBe(true);
   });
 
   it("rejects an anonymous abort", async () => {
@@ -420,14 +422,11 @@ describe("request-addressed routes", () => {
       lastHeartbeatAt: now
     });
 
-    const res = await call(
-      router,
-      "POST",
-      ["secure", "requests", "r-inflight", "abort"],
-      { headers: { "x-verified-user": "bob" } }
-    );
+    // Anonymous, so the guard's answer (401) differs from what the handler
+    // gives an id with no record yet (404): a pass-through would show.
+    const res = await call(router, "POST", ["secure", "requests", "r-inflight", "abort"]);
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
   });
 
   it("denies retrying another user's request named under a session the caller owns", async () => {
@@ -452,7 +451,8 @@ describe("request-addressed routes", () => {
       { headers: { "x-verified-user": "bob" }, body: { inputOverride: { evil: true } } }
     );
 
-    expect(res.status).toBe(403);
+    // Not found, as an unused id is: a 403 would tell Bob the id is in use.
+    expect(res.status).toBe(404);
   });
 
   it("denies continuing another user's request named under a session the caller owns", async () => {
@@ -467,7 +467,7 @@ describe("request-addressed routes", () => {
       { headers: { "x-verified-user": "bob" }, body: {} }
     );
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 
   it("scopes the active-request listing to the caller", async () => {
