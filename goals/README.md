@@ -48,7 +48,7 @@ A title (`<describe> › it <behaviour>`), then the fields, then a verdict log. 
 - **Anti-game** (required) — what a hollow pass would look like, and what the check must therefore **not** assert on. If you can't name a way to fake it, the goal is mechanism-shaped, not outcome-shaped — rework it. This is the most important field.
 - **Model** — for a model-backed goal, the real model id (never a mock); use `openai/gpt-5.4-mini` unless the goal needs a stronger one. For a **model-free** goal (real path, no LLM — e.g. suspend/resume, CRUD persistence), state `n/a` (or `none`) here — that is a valid, well-formed goal, not a malformed one, and it needs no model credential.
 - **Run** — the exact command.
-- **Controls** — any `GOAL_CONTROL=<name>` runs this goal understands, and the legs each must fail. Omit if the goal has none.
+- **Controls** — any `GOAL_CONTROL=<name>` runs this goal understands, and the assertions each must fail, by name. Omit if the goal has none.
 - **Verdict log** — a table, one row per run: date, commit, model, verdict, notes. This is what makes the goal a regression record. Append; don't overwrite.
 
 ## Script techniques
@@ -76,7 +76,7 @@ Checks that cannot fail are the common case, not the rare one. A leg asserting `
 GOAL_CONTROL=by-name pnpm tsx goals/channel-boards/it-runs-a-row-a-file-declared-board-holds/run.mts
 ```
 
-`run.mts` reads `process.env.GOAL_CONTROL` and passes it to the harness, which degrades the one behaviour the control names. Declare each one in `goal.md` under **Controls**, with the legs it must fail — *"Must FAIL, and must name legs (d)/(e) rather than leg 0"* — because a control that fails the wrong leg is itself a check that cannot fail. Record the run in the **Verdict log** as a `FAIL (expected)` row with what it printed.
+`run.mts` reads `process.env.GOAL_CONTROL` and passes it to the harness, which degrades the one behaviour the control names. Declare each one in `goal.md` under **Controls**, with the assertions it must fail, by name (`a:working`, not leg a) — a leg goes red on any of its assertions, so a control that fails the wrong one is itself a check that cannot fail. Record the run in the **Verdict log** as a `FAIL (expected)` row with what it printed.
 
 **When no control fits, mutate the code — and snapshot first.** `git restore -- <path>` on the one file you touched, never `git restore .` or `git checkout -- .`. The trap is a fix and a mutation living in the same uncommitted file: the revert looks successful, keeps the tree green, and throws the fix away. A commit is the easiest snapshot, but some workflows hold the first commit until a human approves the change — `git stash create` gives you a dangling snapshot commit without touching the tree or the shared stash stack, and copying the file aside works too. Snapshot, mutate, revert the one file, restore.
 

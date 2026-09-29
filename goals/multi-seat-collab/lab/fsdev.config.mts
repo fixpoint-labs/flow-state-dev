@@ -23,6 +23,8 @@
  * - `ignore-the-answer`, `silent-park` — passed to the worker kind.
  * - `no-inventory` — the boot opens the channel and skips `openInventory`, so
  *   the organization's inventory holds no rows.
+ * - `channel-actions-off` — the channel is hired as if its `CHANNEL.md` had
+ *   not declared `boardActions: true`, so it exposes no task actions.
  *
  * Any other value leaves the app as written.
  *
@@ -81,6 +83,7 @@ const flows = hireLab({
   routes: routesFor(control),
   outbox,
   ...(workerControl === undefined ? {} : { workerControl }),
+  boardActions: control !== "channel-actions-off",
 });
 
 const flowstate = createFlowState({

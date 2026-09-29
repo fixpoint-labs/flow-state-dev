@@ -58,6 +58,7 @@ import {
   deregisterAbortController
 } from "./abort-registry";
 import {
+  assertSessionAdmitted,
   FlowInstanceBindingMismatchError,
   RequestOwnerMismatchError
 } from "../context/binding-errors";
@@ -931,20 +932,14 @@ export async function runActionInternal<
     sessionKey !== undefined ? options.stores.session.get(sessionKey) : undefined,
     options.stores.request.get(requestId)
   ]);
-  if (
-    admittedSession !== undefined &&
-    options.sessionId !== undefined &&
-    tenantMatches(admittedSession.tenantId, options.tenantId) &&
-    !ownsRecord(options.flow, admittedSession)
-  ) {
-    const refusal = foreignRecordRefusal(options.flow, admittedSession);
-    throw new FlowInstanceBindingMismatchError(
-      "session",
-      options.sessionId,
-      options.flow.id,
-      refusal.detail,
-      refusal.reason
-    );
+  // Another user's session, then another flow instance's: a session id is an
+  // address, and the caller learns nothing of a session that is not theirs.
+  if (options.sessionId !== undefined) {
+    assertSessionAdmitted(options.flow, admittedSession, {
+      sessionId: options.sessionId,
+      userId: options.userId,
+      tenantId: options.tenantId
+    });
   }
   if (admittedRequest !== undefined && !ownsRecord(options.flow, admittedRequest)) {
     const refusal = foreignRecordRefusal(options.flow, admittedRequest);

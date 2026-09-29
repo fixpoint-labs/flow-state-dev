@@ -33,7 +33,11 @@
 
 import { defineCapability } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { buildTaskToolsList, type TaskCollectionResolver } from "@flow-state-dev/orchestration";
+import {
+  buildTaskToolsList,
+  taskToolSuffix,
+  type TaskCollectionResolver
+} from "@flow-state-dev/orchestration";
 import {
   defineTaskCollection,
   getOrCreateTaskCollection,
@@ -287,6 +291,10 @@ export async function resolveChannelBoard<TInput = unknown, TOutput = unknown>(
   });
 }
 
+function resolveFor(board: ChannelBoardCollection): TaskCollectionResolver {
+  return async (ctx) => resolveChannelBoard(ctx, board.id);
+}
+
 /**
  * The model's door onto a channel board: the eight `taskTools` handlers, over
  * this board's ledger.
@@ -311,24 +319,6 @@ export async function resolveChannelBoard<TInput = unknown, TOutput = unknown>(
  * @param board The declaration {@link channelBoard} handed back.
  * @returns The capability to list in a seat kind's `uses`.
  */
-/**
- * The qualifier that makes one board's eight task tools distinct from another's.
- *
- * Derived from the minted id rather than the local name: two channels may both
- * declare `triage`, and a seat may hold both, so the local name is not unique
- * where it has to be. Dots become underscores because providers restrict a
- * tool name to `[a-zA-Z0-9_-]` — the framework would sanitize it anyway, and
- * doing it here keeps the name the model is told about equal to the name this
- * code chose.
- */
-function boardToolSuffix(boardId: string): string {
-  return boardId.replace(/[^a-zA-Z0-9_-]/g, "_");
-}
-
-function resolveFor(board: ChannelBoardCollection): TaskCollectionResolver {
-  return async (ctx) => resolveChannelBoard(ctx, board.id);
-}
-
 export function channelBoardTaskTools(board: ChannelBoardCollection) {
   return defineCapability({
     // Per board, not per kind. A seat holding two boards composes this twice,
@@ -352,8 +342,10 @@ export function channelBoardTaskTools(board: ChannelBoardCollection) {
         // generator asserts its tool names are unique, and the eight are fixed
         // strings. Two boards on one seat would collide on every one of them.
         // The id is the qualifier because it is unique across the roster by
-        // construction, where a local name is not.
-        controlTools: buildTaskToolsList(resolveFor(board), undefined, boardToolSuffix(board.id))
+        // construction, where a local name is not: two channels may both
+        // declare `triage`. `taskToolSuffix` is orchestration's one rule for
+        // it, shared with the channel's own board actions.
+        controlTools: buildTaskToolsList(resolveFor(board), undefined, taskToolSuffix(board.id))
       },
       default: ["tools"]
     }

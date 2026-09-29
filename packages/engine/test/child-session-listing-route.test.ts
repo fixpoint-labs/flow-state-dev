@@ -220,15 +220,17 @@ describe("route registration", () => {
     expect(owner.status).toBe(200);
   });
 
-  it("403s a caller who authenticated but does not own the parent", async () => {
+  it("404s a caller who authenticated but does not own the parent, as an absent parent", async () => {
     const { router, stores } = buildRouter([secureFlow("secure")]);
     await seedSession(stores, "parent", { flowKind: "secure", userId: "alice", orgId: "org_test" });
 
     const res = await call(router, ["sessions", "parent", "children"], {
       headers: { "x-verified-user": "mallory" }
     });
-    // Deliberately not 404: the caller authenticated and already holds the id.
-    expect(res.status).toBe(403);
+    // Holding the id proves nothing, so another user's parent is not found:
+    // the answer must not say the id is in use.
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Unknown session "parent"' });
   });
 });
 

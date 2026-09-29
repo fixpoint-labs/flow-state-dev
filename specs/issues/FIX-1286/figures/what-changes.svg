@@ -1,0 +1,69 @@
+<svg viewBox="0 0 940 300" role="img" aria-label="Two rows for one request id X in one tenant. Today, once retention has deleted Alice's request record: Alice's run and Bob's later run under X both open the directory run/tenant/X, so Bob reads Alice's note. After: each directory also carries its request's incarnation, a random token stamped when the request was first recorded, so Alice's run opened run/tenant/X/token-A and Bob's opens run/tenant/X/token-B, which is empty; Alice's directory is out of his reach."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .run   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .dir-bad  { fill:var(--surface); stroke:var(--gone); stroke-width:1.6; }
+    .dir-ok   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .dir-old  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .arrow-bad { stroke:var(--gone); stroke-width:1.6; fill:none; }
+    .evict { stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-m   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .tipf  { fill:var(--ink-3); }
+    .tipb  { fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="300"/>
+
+  <g id="today">
+    <rect class="lane" x="16" y="14" width="908" height="128" rx="6"/>
+    <text class="t-lbl" x="32" y="34">TODAY · WITH FIX-1018 · ALICE'S RECORD DELETED BY RETENTION</text>
+    <rect class="run" x="32" y="48" width="200" height="34" rx="4"/>
+    <text class="t-b" x="44" y="69">Alice's run · id X</text>
+    <text class="t-bad" x="244" y="58">record deleted</text>
+    <rect class="run" x="32" y="96" width="200" height="34" rx="4"/>
+    <text class="t-b" x="44" y="117">Bob's run · sends X</text>
+    <path class="arrow" d="M232,65 C 380,65 420,86 516,86"/>
+    <path class="tipf" d="M516,82 L524,86 L516,90 z"/>
+    <path class="arrow-bad" d="M232,113 C 380,113 420,94 516,94"/>
+    <path class="tipb" d="M516,90 L524,94 L516,98 z"/>
+    <rect class="dir-bad" x="524" y="68" width="220" height="44" rx="4"/>
+    <text class="t-m" x="538" y="87">run/tenant/X/</text>
+    <text class="t-s" x="538" y="103">note.txt, Alice's</text>
+    <text class="t-bad" x="760" y="86">Bob reads it</text>
+    <text class="t-s" x="760" y="102">one directory, two users</text>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="16" y="156" width="908" height="128" rx="6"/>
+    <text class="t-lbl" x="32" y="176">AFTER · NAMED FOR THE REQUEST’S INCARNATION</text>
+    <rect class="run" x="32" y="190" width="200" height="34" rx="4"/>
+    <text class="t-b" x="44" y="211">Alice's run · id X</text>
+    <rect class="run" x="32" y="238" width="200" height="34" rx="4"/>
+    <text class="t-b" x="44" y="259">Bob's run · sends X</text>
+    <path class="arrow" d="M232,207 L516,207"/>
+    <path class="tipf" d="M516,203 L524,207 L516,211 z"/>
+    <path class="arrow" d="M232,255 L516,255"/>
+    <path class="tipf" d="M516,251 L524,255 L516,259 z"/>
+    <rect class="dir-old" x="524" y="190" width="220" height="34" rx="4"/>
+    <text class="t-m" x="538" y="211">run/tenant/X/token-A/</text>
+    <rect class="dir-ok" x="524" y="238" width="220" height="34" rx="4"/>
+    <text class="t-m" x="538" y="259">run/tenant/X/token-B/</text>
+    <text class="t-s" x="760" y="211">Alice's, out of Bob's reach</text>
+    <text class="t-ok" x="760" y="252">Bob's, empty</text>
+    <text class="t-s" x="760" y="267">a new request, its own place</text>
+  </g>
+</svg>

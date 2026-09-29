@@ -99,7 +99,7 @@ describe("substrate premises the channel floor rests on", () => {
           stores: runtime.stores,
           runtimeConfig: { ...runtime.runtimeConfig }
         })
-      ).rejects.toThrow(/owned by user u_owner/);
+      ).rejects.toThrow(/belongs to another user/);
 
       expect(await transcriptLength(runtime.stores, "engineering.standup")).toBe(0);
     } finally {

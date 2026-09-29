@@ -17,7 +17,8 @@ import {
 import { generateId } from "../utils/generate-id";
 import {
   FlowInstanceBindingMismatchError,
-  RequestOwnerMismatchError
+  RequestOwnerMismatchError,
+  UserBindingMismatchError
 } from "../context/binding-errors";
 import { resolveCallerRequestId } from "../context/request-principal";
 import { UnknownFlowError } from "../context/instance-pin";
@@ -27,7 +28,8 @@ import {
   getString,
   jsonResponse,
   parseJsonBody,
-  SSE_HEADERS
+  SSE_HEADERS,
+  unknownSessionResponse
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { InternalRouteSeams, RequestContext } from "./http-handlers";
@@ -227,6 +229,13 @@ export async function handleExecuteAction(
     try {
       await handle.accepted;
     } catch (error) {
+      // A session another user owns: refused at admission with nothing
+      // written, and answered as the session routes answer it, as an id with
+      // no session behind it. Neither the owner nor the session's existence
+      // reaches the caller.
+      if (error instanceof UserBindingMismatchError) {
+        return unknownSessionResponse(error.sessionId);
+      }
       // A request id another principal took between the check above and the
       // dispatch's write. Nothing of theirs was touched, and the same call
       // retried resolves to this caller's own request.

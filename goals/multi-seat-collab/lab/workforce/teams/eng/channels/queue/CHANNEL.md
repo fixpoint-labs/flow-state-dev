@@ -2,6 +2,7 @@
 description: Where this team takes in work.
 members: [eng.planner, eng.builder, eng.reviewer]
 boards: [work]
+boardActions: true
 ---
 
 Work arrives here. The planner files a row and names the desk it is for; each

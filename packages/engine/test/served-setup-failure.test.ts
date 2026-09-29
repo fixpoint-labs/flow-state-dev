@@ -3,7 +3,7 @@
  *
  * The HTTP 202 path awaits acceptance (`onRegistered`), not `finished`.
  * `createExecutionContext` can still throw after that write — a malformed
- * ambient `FSDEV_DEFAULT_MODEL`, or a session/user mismatch — and `finished` is then swallowed so it is not an unhandled
+ * ambient `FSDEV_DEFAULT_MODEL`, for one — and `finished` is then swallowed so it is not an unhandled
  * rejection. If the already-written `in_progress` row is not marked
  * terminal, a client polling `GET …/requests/:id/status` hangs forever
  * (FIX-1511).
@@ -137,7 +137,9 @@ describe("served setup failure (FIX-1511)", () => {
     )).toBe(true);
   });
 
-  it("settles a request when the session user does not match the caller", async () => {
+  it("refuses a caller who does not own the session before anything is acknowledged or written", async () => {
+    // Not a setup failure any more: another user's session is refused at
+    // admission, so there is no row to settle and nothing for a client to poll.
     delete process.env[DEFAULT_MODEL_ENV];
 
     const registry = createFlowRegistry();
@@ -151,23 +153,23 @@ describe("served setup failure (FIX-1511)", () => {
     const ownerRecord = await settleStore(stores, ownerBody.request.id);
     expect(ownerRecord?.status).toBe("completed");
 
-    const interloper = await postRun(router, "sess_owner", "user-b");
-    expect(interloper.status).toBe(202);
-    const { request } = (await interloper.json()) as { request: { id: string } };
-
-    const snapshot = await waitForServedStatus(router, request.id);
-    const record = await settleStore(stores, request.id);
+    const interloper = await router.POST(
+      new Request("http://localhost/api/flows/ping/sess_owner/actions/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: "user-b", requestId: "req_interloper", input: {} })
+      }),
+      { params: { path: ["ping", "sess_owner", "actions", "run"] } }
+    );
+    const body = await interloper.text();
 
     await disposeFlowApiRouter(router);
 
-    expect(snapshot.httpStatus).toBe(200);
-    expect(snapshot.body.status).toBe("failed");
-    expect(record?.status).toBe("failed");
-    expect(record?.items?.some((item) =>
-      item.type === "error" &&
-      typeof item.message === "string" &&
-      item.message.includes("owned by user user-a")
-    )).toBe(true);
+    expect(interloper.status).toBe(404);
+    expect(JSON.parse(body)).toEqual({ error: 'Unknown session "sess_owner"' });
+    expect(body).not.toContain("user-a");
+    expect(await stores.request.get("req_interloper")).toBeUndefined();
+    expect(await stores.activeRequests.get("req_interloper")).toBeUndefined();
   });
 
   it("still completes a healthy served request", async () => {

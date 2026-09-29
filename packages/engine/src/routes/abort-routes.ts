@@ -2,15 +2,20 @@
  * Abort route handler for cancelling in-flight requests.
  */
 import type { StoreRegistry } from "../stores/types";
+import type { ResolvedPrincipal } from "../transports/types";
 import {
   abortRequest,
   hasActiveAbortController
 } from "../execution/abort-registry";
-import { jsonResponse } from "./route-utils";
+import { callerReachesRequest, jsonResponse, unknownRequestResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 type AbortRouteContext = {
   stores: StoreRegistry;
+  /** Caller's tenant (FIX-682), extracted as every other request route does. */
+  tenantId?: string;
+  /** The authenticated caller, when route-level authentication is active. */
+  principal?: ResolvedPrincipal;
 };
 
 /**
@@ -28,7 +33,7 @@ type AbortRouteContext = {
  *
  * Returns 204 when the in-memory controller was fired here, 202 when the
  * intent was recorded for the running process to pick up, 404 if the request
- * doesn't exist, 409 if it's already terminal.
+ * doesn't exist or is not the caller's, 409 if it's already terminal.
  */
 export async function handleAbortRequest(
   _request: Request,
@@ -37,21 +42,27 @@ export async function handleAbortRequest(
 ): Promise<Response> {
   const { requestId } = route;
 
+  const record = await ctx.stores.request.get(requestId);
+  if (record === undefined || !callerReachesRequest(record, ctx.tenantId, ctx.principal)) {
+    return unknownRequestResponse(requestId);
+  }
+
   // One atomic step: record the intent only while the request is still
   // running. A read-then-write cannot express this — the worker can commit a
   // terminal status between the two, and writing afterwards would restore an
-  // `in_progress` record over a finished one.
+  // `in_progress` record over a finished one. Fenced to the record checked
+  // above by its `createdAt`: if the id was deleted and taken by someone else
+  // since, the write misses and the caller gets the unused-id answer.
   const result = await ctx.stores.request.setFieldsIfStatus(
     requestId,
     { abortRequested: true },
     ["in_progress"],
-    Date.now()
+    Date.now(),
+    record.createdAt
   );
 
   if (result.status === undefined) {
-    return jsonResponse(404, {
-      error: `Request "${requestId}" is not in progress`
-    });
+    return unknownRequestResponse(requestId);
   }
 
   if (!result.applied) {

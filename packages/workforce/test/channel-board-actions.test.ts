@@ -440,3 +440,119 @@ describe("a board added to a channel that is already open", () => {
     }
   });
 });
+
+/**
+ * A channel's opt-in to its boards' eight task tools, as actions
+ * (`boardActions: true`). Off by default: with it on, anyone who can reach
+ * the channel can settle or reassign its rows, so a channel that says nothing
+ * keeps exactly today's public actions.
+ */
+describe("a channel's board task actions", () => {
+  const TOOLS = [
+    "addTask",
+    "assignTask",
+    "blockTask",
+    "cancelTask",
+    "completeTask",
+    "failTask",
+    "listTasks",
+    "updateTask"
+  ];
+
+  it("adds nothing to a channel that does not opt in", () => {
+    const [channel] = channelInstances([record("eng.feature", { boards: ["triage"] })]);
+    expect(Object.keys((channel as unknown as { actions: object }).actions).sort()).toEqual([
+      "fileTask",
+      "post",
+      "read",
+      "readBoard"
+    ]);
+  });
+
+  it("adds the eight tools per board, named for the board, on a channel that opts in", () => {
+    const [channel] = channelInstances([
+      record("eng.feature", { boards: ["triage", "work"], boardActions: true }),
+      record("eng.platform", { boards: ["triage"] })
+    ]);
+    const names = Object.keys((channel as unknown as { actions: object }).actions);
+    const expected = ["eng_feature_triage", "eng_feature_work"].flatMap((suffix) =>
+      TOOLS.map((tool) => `${tool}_${suffix}`)
+    );
+    expect(names.filter((name) => name.includes("_")).sort()).toEqual(expected.sort());
+    // The channel that did not opt in gains nothing, though it shares the kind.
+    expect(names.some((name) => name.endsWith("eng_platform_triage"))).toBe(false);
+  });
+
+  it("refuses two opted-in boards whose action names would be the same, at bind", () => {
+    // `eng.feature.work` and `eng_feature.work` both qualify as
+    // `eng_feature_work`. Merged into one actions map, the later board's
+    // actions would silently replace the earlier's, and that board's rows
+    // would be settled on the other ledger.
+    expect(() =>
+      channelInstances([
+        record("eng.feature", { boards: ["work"], boardActions: true }),
+        record("eng_feature", { boards: ["work"], boardActions: true })
+      ])
+    ).toThrow(/eng\.feature\.work.*eng_feature\.work|eng_feature\.work.*eng\.feature\.work/);
+  });
+
+  it("refuses an opted-in board whose action names match a board that did not opt in, at bind", () => {
+    // The DevTool offers a board's actions on the rows of every board whose
+    // name gives the same suffix, so an opted-out `eng_feature.work` would be
+    // handed `eng.feature.work`'s actions. Either order is refused.
+    for (const roster of [
+      [record("eng.feature", { boards: ["work"], boardActions: true }), record("eng_feature", { boards: ["work"] })],
+      [record("eng_feature", { boards: ["work"] }), record("eng.feature", { boards: ["work"], boardActions: true })]
+    ]) {
+      expect(() => channelInstances(roster)).toThrow(
+        /eng\.feature\.work.*eng_feature\.work|eng_feature\.work.*eng\.feature\.work/
+      );
+    }
+  });
+
+  it("refuses a value that is not true or false, by name, at bind", () => {
+    expect(() =>
+      channelInstances([record("eng.feature", { boards: ["triage"], boardActions: "yes" })])
+    ).toThrow(/boardActions/);
+    expect(() =>
+      channelInstances([record("eng.feature", { boards: ["triage"], boardActions: false })])
+    ).not.toThrow();
+  });
+
+  it("changes a row filed on this channel's board, from this channel's session", async () => {
+    const lab = await host([record("eng.feature", { boards: ["triage"], boardActions: true })]);
+    try {
+      const filed = await lab.act("eng.feature", "fileTask", { board: "triage", goal: "look" });
+      const { taskId } = filed.output as { taskId: string };
+
+      const cancelled = await lab.act("eng.feature", "cancelTask_eng_feature_triage", { taskId });
+      expect(cancelled.output).toEqual({ ok: true });
+      expect((await lab.row("eng.feature.triage", taskId))?.status).toBe("cancelled");
+
+      // A second cancel is the verb's own refusal, as a value, and writes nothing.
+      const again = await lab.act("eng.feature", "cancelTask_eng_feature_triage", { taskId });
+      expect(again.output).toMatchObject({ ok: false });
+    } finally {
+      await lab.dispose();
+    }
+  });
+
+  it("refuses one channel's board action run from another channel's session, before reading the ledger", async () => {
+    // Channels share one flow, so the action map alone does not fence them:
+    // `cancelTask_eng_feature_triage` is on the platform channel's session too.
+    const lab = await host([
+      record("eng.feature", { boards: ["triage"], boardActions: true }),
+      record("eng.platform", { boards: ["triage"], boardActions: true })
+    ]);
+    try {
+      const filed = await lab.act("eng.feature", "fileTask", { board: "triage", goal: "mine" });
+      const { taskId } = filed.output as { taskId: string };
+
+      const refused = await lab.act("eng.platform", "cancelTask_eng_feature_triage", { taskId });
+      expect(String(refused.error)).toContain("board-not-declared");
+      expect((await lab.row("eng.feature.triage", taskId))?.status).toBe("pending");
+    } finally {
+      await lab.dispose();
+    }
+  });
+});

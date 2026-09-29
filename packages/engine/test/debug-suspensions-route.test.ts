@@ -50,6 +50,22 @@ async function setupCtx(
 ): Promise<Ctx> {
   const stores = createInMemoryStores();
   const registry = createFlowRegistry();
+  const now = Date.now();
+  await stores.session.set(
+    SESSION_ID,
+    {
+      id: SESSION_ID,
+      flowKind: "chat",
+      userId: "user_1",
+      orgId: "org_1",
+      state: {},
+      version: 0,
+      createdAt: now,
+      updatedAt: now,
+      journal: []
+    },
+    "any"
+  );
   for (const record of records) {
     await stores.suspensions.set(record);
   }
@@ -70,6 +86,19 @@ function makeReq(
 }
 
 describe("handleDebugListSuspensions (FIX-141)", () => {
+  it("404s session_not_found for a session that is not there, as the other debug routes do", async () => {
+    // Not `200 []`: the route guard answers another user's session with this
+    // same not-found, so an empty list for an unused id would tell the two apart.
+    const ctx = await setupCtx([makeRecord({ sessionId: "sess_other" })]);
+    const res = await handleDebugListSuspensions(
+      makeReq("http://localhost/api/flows/sessions/sess_unused/debug/suspensions"),
+      { kind: "debug_list_suspensions", sessionId: "sess_unused" },
+      ctx
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "session_not_found" });
+  });
+
   it("403s when debug endpoints are disabled", async () => {
     const ctx = await setupCtx([], { debugEndpointsEnabled: false });
     const res = await handleDebugListSuspensions(

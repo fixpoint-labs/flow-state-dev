@@ -1,0 +1,70 @@
+<svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box: one published page holding the path from webhooks to schedules to work that keeps going, the id versus key section with the queue-host fence, the flow, host and ops table, and three defined terms. Linked, not rewritten: the reference pages for webhooks, scheduled actions, the schedule index, dispatched work, work that outlives the turn, inbound transports, channels and the BullMQ guide, plus the scheduler and deploy guides. Reworded in one line: the notification source row, and the epic-wake definition, which moves to contributor docs. Not built, below a fence: the id fix, a Heartbeats noun, new Layer 1 nouns, Relay, a per-cloud deploy guide, live UI.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .held  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .repl  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-non { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="372"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="24" width="560" height="212" rx="5"/>
+    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; ONE PUBLISHED PAGE</text>
+    <rect class="held" x="32" y="56" width="256" height="78" rx="4"/>
+    <text class="t-b" x="44" y="80">the path, in order</text>
+    <text class="t-s" x="44" y="98">webhook &#8594; schedule &#8594; hand-off</text>
+    <text class="t-s" x="44" y="114">&#8594; channel or board</text>
+    <rect class="held" x="300" y="56" width="260" height="78" rx="4"/>
+    <text class="t-b" x="312" y="80">{ id } vs { key }</text>
+    <text class="t-s" x="312" y="98">queue host refuses { id }</text>
+    <text class="t-s" x="312" y="114">by name: external-dispatcher</text>
+    <rect class="held" x="32" y="144" width="256" height="78" rx="4"/>
+    <text class="t-b" x="44" y="168">flow / host / ops table</text>
+    <text class="t-s" x="44" y="186">webhook &#183; schedule &#183; another</text>
+    <text class="t-s" x="44" y="202">flow or system &#183; keeps going</text>
+    <rect class="held" x="300" y="144" width="260" height="78" rx="4"/>
+    <text class="t-b" x="312" y="168">three terms, defined once</text>
+    <text class="t-s" x="312" y="186">wake &#183; dispatch &#183; schedule tick</text>
+  </g>
+
+  <g id="linked">
+    <rect class="comp" x="592" y="24" width="332" height="120" rx="5"/>
+    <text class="t-lbl" x="608" y="44">LINKED, NOT REWRITTEN</text>
+    <text class="t-b" x="608" y="68">the pages that already ship</text>
+    <text class="t-s" x="608" y="88">webhooks &#183; scheduled &#183; schedule index</text>
+    <text class="t-s" x="608" y="104">dispatched work &#183; outlives the turn</text>
+    <text class="t-s" x="608" y="120">inbound transports &#183; channels &#183; BullMQ</text>
+    <text class="t-s" x="608" y="136">scheduler and deploy guides</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="repl" x="592" y="156" width="332" height="80" rx="5"/>
+    <text class="t-lbl" x="608" y="176">REWORDED IN ONE LINE</text>
+    <text class="t-b" x="608" y="198">notification source row</text>
+    <text class="t-s" x="608" y="218">epic-wake: to contributor docs</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="fence" x="16" y="256" width="908" height="96" rx="5"/>
+    <text class="t-non" x="32" y="276">NOT BUILT &#8212; DOCS ONLY, NO NEW NOUN</text>
+    <text class="t-s" x="32" y="298">no { id } fix on a queue host (FIX-1634) &#183; no runtime or API change</text>
+    <text class="t-s" x="32" y="316">no Heartbeats noun &#183; no L1 Channel, Board, Agent, Team or Outbox &#183; no Relay</text>
+    <text class="t-s" x="32" y="334">no per-cloud deploy guide &#183; no live UI or fan-out</text>
+  </g>
+</svg>

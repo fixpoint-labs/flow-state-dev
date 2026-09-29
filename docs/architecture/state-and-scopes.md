@@ -501,6 +501,15 @@ Single-tenant apps are unaffected: `resolveSessionStorageKey(sessionId, undefine
 
 The `${tenantId}:${sessionId}` scheme is ambiguous because session ids may themselves contain `:` (chat ids like `slack:C123:...`) and both the tenant header and the session id are caller-supplied — tenant `acme` + session `chat-1` resolves to the same key as a *no-tenant* request using session id `acme:chat-1`. The key alone therefore can't isolate. Every load-and-act path closes this with a **tenant-binding check** (`tenantMatches`): the loaded record's stored `tenantId` must equal the request's, or the operation is rejected (`createExecutionContext` throws `TenantBindingMismatchError`; routes return 404; `session.create` keeps a raw existence check so a colliding id 409s rather than overwriting). To remove the ambiguity at the source, tenant ids themselves may not contain `:` (rejected with 400 at header extraction); session ids still may.
 
+### A session id is an address, not an ownership
+
+The session key carries the tenant and no user, so two users in one tenant address one key with one session id. What keeps the users apart is the stored record's `userId`, compared with the caller's on every path, and a session that is not the caller's answers exactly as an id with no session behind it:
+
+- **Session routes.** In an app that authenticates, the route guard answers another user's session with the not-found the route gives an unused id (`unknownSessionResponse`, or the debug routes' `session_not_found` after their own enablement and origin gate), never a 403 that says the id is in use (`routes/route-auth.ts`). It comes before a legacy session's `409 migration-required`, which is the owner's to hear. The organization check beside it answers 403: that caller is the session's own user, acting for another organization.
+- **Dispatch.** `runAction`, and the transport host for a queued or external run, refuse another user's session at admission with `UserBindingMismatchError`, before anything is registered, written or acknowledged, and before the flow-instance check, so the caller learns nothing of which flow holds it. The HTTP action route answers that as the same `404 Unknown session`. `createExecutionContext` repeats the check for a session created after admission read none. The error's message names the session, never its owner, because it reaches the caller as the run's error item.
+
+`session.create` answers `409` for an id already in use, whoever holds it. Nothing of that session reaches the caller, but the status shows the id is taken.
+
 ### A `requestId` is an address, not an ownership
 
 A request id is not a secret. A caller may choose its own (`body.requestId` on an action call) so a retry reaches the same request, and every id travels in the `x-request-id` header, the 202 body, URLs and logs. Nothing relies on it being unguessable. What keeps users apart is the stored record, checked on every path that writes a request, attaches to its stream or resumes it:

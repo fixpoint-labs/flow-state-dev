@@ -132,13 +132,23 @@ The lists are read when you open a session and when you refresh; they do not upd
 
 ## Task boards
 
-The Tasks tab lists the task boards the open session emitted, each as its own table with one row per task. A task board is the queue a flow files work into for workers to claim. Each row shows the task's id, goal, status and assignee.
+The Tasks tab lists the task boards the open session emitted. A task board is the queue a flow files work into for workers to claim. Each task is one row: its status first, then its goal, then a short note about it when there is one, then its assignee.
 
-A row can also carry a short note about itself, in a Reason column. The note is the task's `feedback` field. Parking a task for review records why it is waiting, or clears the note when you give no reason. A failure with retries left records the error and sends the row back to `pending`. Resuming a parked task writes the answer you hand it, or clears the note when you hand it none. The row shows whichever wrote last.
+Click a row, or focus it and press Enter, to open it in place. The open row shows what the task carries: the full goal, attempts, assignee, priority, labels, the note and any error, input and output, metadata, revision and timestamps, and the dispatch run working it. Fields the task doesn't have are left out. The raw record is folded at the bottom if you want the JSON. A row stays open while the task changes underneath it, and you can keep several open at once.
 
-The column appears on boards where at least one task carries a note, and not otherwise.
+The note is the task's `feedback` field. Parking a task for review records why it is waiting, or clears the note when you give no reason. A failure with retries left records the error and sends the row back to `pending`. Resuming a parked task writes the answer you hand it, or clears the note when you hand it none. The row shows whichever wrote last. The note slot appears only on boards where some task carries one.
 
-A note is not an error. A failure with no retries left writes the task's `error` field instead, and a row can hold both. Long text is clipped to keep the table readable, so hover the cell for the whole string, or open the row's Details for the full task record.
+A note is not an error. A failure with no retries left writes the task's `error` field instead, and a task can hold both. A long goal or note is clipped to one line on the collapsed row, so hover it for the whole string or open the row.
+
+### Changing a task from its row
+
+An open row lists the flow's actions that take a `taskId`. Pick one and its form opens in the row with the task's id filled in and locked. Run it and the DevTool sends the action the same way the action bar would, in the session you're looking at. The row updates when the task changes.
+
+If the task can't move that way, say you cancel a task that already finished, the action refuses and the row shows why in the action's own words. Nothing is written. The row reads that answer from the request's trace, so with trace observability off it can only tell you the action was sent.
+
+The DevTool changes tasks only through your flow's actions. There is no way to edit a task's record directly, so every change is a transition the task can legally make. The action doesn't claim the task. It acts as a coordinator would, so it can settle a task a worker is still running: your change lands, and the worker's result is dropped when it arrives. If a row says the flow has no actions that take a `taskId`, see [changing tasks from outside a run](/docs/orchestration/task-board#changing-tasks-from-outside-a-run).
+
+A row shows the changes made in the session you're looking at. When a worker hands a task off to a run of its own, the row here shows the handoff and the row's dispatch-run link opens the run where the task finished.
 
 See [Waiting on a person](/docs/orchestration/task-board#waiting-on-a-person-onreview) for parking and resuming.
 

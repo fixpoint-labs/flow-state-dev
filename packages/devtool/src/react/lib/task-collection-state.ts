@@ -82,6 +82,8 @@ export type TaskChangeKind =
 export type Task = {
   id: string;
   goal: string;
+  title?: string;
+  context?: string;
   status: TaskStatus;
   attempts?: number;
   maxAttempts?: number;
@@ -94,6 +96,8 @@ export type Task = {
   feedback?: string;
   labels?: string[];
   metadata?: Record<string, unknown>;
+  revision?: number;
+  leaseUntil?: number;
   createdAt?: number;
   updatedAt?: number;
   startedAt?: number;

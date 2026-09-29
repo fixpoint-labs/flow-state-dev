@@ -25,7 +25,8 @@
 
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import { taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration";
 import { taskSchema } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import {
@@ -679,6 +680,36 @@ const readBoardFor = (boardIds: readonly string[]) =>
   });
 
 /**
+ * One board's eight task tools as actions, for a channel that declared
+ * `boardActions: true` (FIX-1629).
+ *
+ * The same guarded verbs a seat's model holds through `channelBoardTaskTools`,
+ * so a refusal is the verb's own and comes back as `{ ok: false, error }`. The
+ * one thing added is the fence a channel needs and a board on its own flow
+ * does not: every channel shares this flow, so `cancelTask_eng_feature_work`
+ * is callable on every channel's session. The resolver refuses unless the
+ * session IS the board's channel, then reaches the ledger through
+ * {@link ledgerNamed} — the same checks `fileTask` and `readBoard` make —
+ * before any row is read.
+ */
+function boardTaskActionsFor(boardIds: readonly string[], boardId: string) {
+  // A board id is `<channelId>.<name>`, and a name carries no dot.
+  const split = boardId.lastIndexOf(".");
+  const channelId = boardId.slice(0, split);
+  const name = boardId.slice(split + 1);
+  return taskToolActions(boardId, async (ctx) => {
+    if (ctx.session.identity.id !== channelId) {
+      throw new ChannelPostRefusedError(
+        "board-not-declared",
+        `board "${boardId}" belongs to channel "${channelId}", and this is channel ` +
+          `"${ctx.session.identity.id}". A board's task actions work only in its own channel's session.`
+      );
+    }
+    return (await ledgerNamed(ctx, boardIds, name)).ledger;
+  });
+}
+
+/**
  * What the fan-out entry is handed: enough to say which post is being
  * delivered, and for a person's post on a routed channel, its case as the
  * post kept it. Internal-only entry, so no caller writes the case.
@@ -1035,6 +1066,18 @@ export interface DefineChannelFlowOptions {
   boards?: readonly string[];
 
   /**
+   * The channels that declared `boardActions: true`, by channel id. Each of
+   * their boards gets the eight task tools as actions, named
+   * `<tool>_<board id with dots as underscores>`. Supplied by
+   * `channelInstances` from the roster, as `boards` is, never by an app.
+   *
+   * Off by default, because anyone who can reach a channel can then settle
+   * or reassign its rows. A channel not listed keeps exactly the actions it
+   * had before.
+   */
+  boardActions?: readonly string[];
+
+  /**
    * Carry the live inventory's writer half — the two actions
    * {@link inventoryWriterActions} builds, and the collections they write.
    *
@@ -1081,6 +1124,8 @@ export type ChannelFlowFactory = ReturnType<typeof defineFlow> & {
   withBoards: (boards: readonly string[]) => ChannelFlowFactory;
   /** The same kind, rebuilt with each routed channel's `routing:`, by channel id. */
   withRouting: (routing: Readonly<Record<string, ChannelRouting>>) => ChannelFlowFactory;
+  /** The same kind, rebuilt exposing these channels' board task actions. */
+  withBoardActions: (channelIds: readonly string[]) => ChannelFlowFactory;
 };
 
 /** Is this channel kind one {@link defineChannelFlow} built? */
@@ -1112,7 +1157,7 @@ export function routeOf(kind: unknown): ChannelRoute | undefined {
  *
  * @param options `notify`: the per-member fan-out block, absent by default.
  *   `route`: from `routeByPurpose`, for channels that declare `routing:`.
- *   `boards` and `routing`: supplied by the binder from the roster.
+ *   `boards`, `routing` and `boardActions`: supplied by the binder from the roster.
  * @returns The flow factory. Call it (no arguments) to mint the one instance.
  */
 export function defineChannelFlow(options: DefineChannelFlowOptions = {}): ChannelFlowFactory {
@@ -1148,6 +1193,30 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   const readChannel = readChannelFor(boardIds);
   const fileTask = boardIds.length === 0 ? undefined : fileTaskFor(boardIds);
   const readBoard = boardIds.length === 0 ? undefined : readBoardFor(boardIds);
+
+  // Only for the boards of channels that opted in. Built from the minted ids,
+  // so a channel with no board, or one that did not opt in, adds nothing.
+  const optedIn = new Set(options.boardActions ?? []);
+  const actionBoards = boardIds.filter((id) => optedIn.has(id.slice(0, id.lastIndexOf("."))));
+  // The qualifier is not injective (`eng.feature.work` and `eng_feature.work`
+  // both give `eng_feature_work`), and one actions map holds every board's
+  // actions. Merged, the later board's would silently replace the earlier's and
+  // settle its rows on the wrong ledger. A board that did not opt in collides
+  // too: its rows would be offered the opted-in board's actions under its own
+  // suffix. So each opted-in board is checked against every board of the kind.
+  for (const id of actionBoards) {
+    const clash = boardIds.find((other) => other !== id && taskToolSuffix(other) === taskToolSuffix(id));
+    if (clash !== undefined) {
+      throw new Error(
+        `boardActions: boards "${clash}" and "${id}" would both answer to the task actions ` +
+          `\`<tool>_${taskToolSuffix(id)}\`. Rename a channel or a board.`
+      );
+    }
+  }
+  const boardTaskActions = Object.assign(
+    {},
+    ...actionBoards.map((id) => boardTaskActionsFor(boardIds, id))
+  ) as Record<string, ActionConfig>;
 
   // Built on the FACTORY, never behind a `kind === "channel"` test inside the
   // block: what the inventory promises is that EVERY open channel has a row,
@@ -1336,6 +1405,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
               description: "Read the rows on one of this channel's boards."
             }
           }),
+      ...boardTaskActions,
       // `registerChannel` only. It takes a closed, empty input and derives the
       // row entirely from `ctx.session.state` — the channel's own,
       // already-open state — so a caller cannot make it write anything but
@@ -1370,6 +1440,9 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         ...(fileTask === undefined || readBoard === undefined
           ? {}
           : { fileTask: { block: fileTask }, readBoard: { block: readBoard } }),
+        // Beside `fileTask` and `readBoard`, so another flow's dispatch lands on
+        // the same implementation a caller reaches.
+        ...boardTaskActions,
         // `registerSeats` lives ONLY here, never in the public `actions` map
         // above. Unlike `registerChannel`, it has no session state to derive
         // from — a seat has no session — so its whole input IS the row data,
@@ -1406,7 +1479,9 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   const factory = Object.assign(flow, {
     withBoards: (boards: readonly string[]) => defineChannelFlow({ ...options, boards }),
     withRouting: (routing: Readonly<Record<string, ChannelRouting>>) =>
-      defineChannelFlow({ ...options, routing })
+      defineChannelFlow({ ...options, routing }),
+    withBoardActions: (boardActions: readonly string[]) =>
+      defineChannelFlow({ ...options, boardActions })
   }) as ChannelFlowFactory;
   if (options.route !== undefined) Object.assign(factory, { [KIND_ROUTE]: options.route });
   return factory;
