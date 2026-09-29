@@ -94,8 +94,8 @@ Frontmatter: `title: Keeping a flow running`, `sidebar_label: Keeping a flow run
 > ```
 >
 > Point Stripe at `POST /api/flows/billing/webhooks/stripe`. The path names the flow by its
-> `kind`, not by its key in `flows`. A delivery with a bad signature is refused before any
-> block runs. A good one gets a `202` straight away, and the run carries on
+> id: for a single flow that's its `kind`, for a collection member its instance id, never its
+> key in `flows`. A delivery with a bad signature is refused before any block runs. A good one gets a `202` straight away, and the run carries on
 > after the response has gone, so a slow block never makes the provider retry.
 >
 > That holds on a server that stays up. A serverless host such as Vercel freezes the function
@@ -334,6 +334,7 @@ Contributor docs, not published. Append one sentence to the bullet:
 ## Ownership
 
 FIX-1639 publishes everything above. The fence rows, the fence paragraph and the refusal row
-are owned by the hard-gates epic [FIX-1635](https://linear.app/fixpoint-labs/issue/FIX-1635), whose
-FIX-1634 changes the behavior they describe; [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656)
-tracks their rewrite. See [EVOLUTION → Owned elsewhere](EVOLUTION.md).
+describe behavior that FIX-1634, under the hard-gates epic
+[FIX-1635](https://linear.app/fixpoint-labs/issue/FIX-1635), changes; FIX-1634's own docs work
+rewrites them (epic ER-14). [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656) is the
+backstop when FIX-1635 closes. See [EVOLUTION → Owned elsewhere](EVOLUTION.md).

@@ -16,18 +16,22 @@ Every named import in a code fence must be exported by the package it names. Eve
 span must be classified, and each classification is checked: an export, a property path on a
 real type (`FlowDefinition`, `CreateFlowStateOptions`, `dispatcher`'s options), a union member
 in source, or a route already published on a reference page. **A span nobody classified fails
-the run** (totality). A concrete `/api/flows/<segment>/…` route must name a `kind` the page's
-code declares. The segment is the registered instance's id, which for a singleton is its kind,
-and the `flows` map key is not the address. Each run proves that on the runtime: a
-`kind: "billing"` flow registered as `flows: { payments: billing() }` answers a webhook at
-`/api/flows/billing/…` (`202`) and 404s `flow_not_found` at `/api/flows/payments/…`.
+the run** (totality). A concrete `/api/flows/<segment>/…` route must name the id of a flow the
+page's code registers. The segment is the registered instance's id: for a singleton its `kind`,
+for a collection member the id its factory was called with, never the `flows` map key. Each run
+proves both shapes on one runtime. A singleton `kind: "billing"` registered as
+`flows: { payments: billing() }` answers a webhook at `/api/flows/billing/…` (`202`) and 404s
+`flow_not_found` at `/api/flows/payments/…`. A collection member of `kind: "tenant-billing"`
+registered as `flows: { acme: tenantBilling({ id: "acme-billing" }) }` answers at
+`/api/flows/acme-billing/…` (`202`) and 404s at both `/api/flows/tenant-billing/…` and
+`/api/flows/acme/…`.
 
 ```bash
 pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts                          # must PASS
 CONTROL=planted       pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts    # must FAIL: notifyTopic not exported
 CONTROL=unclassified  pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts    # must FAIL: totality
 CONTROL=false-option  pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts    # must FAIL: dispatcher has no delay
-CONTROL=wrong-segment pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts    # must FAIL: payments is the map key, not the kind
+CONTROL=wrong-segment pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts    # must FAIL: payments is the map key, not the flow's id
 ```
 
 ## `compile.mts` · every code fence compiles
@@ -68,8 +72,9 @@ consume. F3 and F5 are one job with two consumers, so each is the other's contra
 ## What it showed
 
 - **Every name on the page resolves on `main`**, and each control fails on the one thing it
-  planted. A route's flow segment is the flow's `kind`, not its key in `flows`: proved on the
-  runtime, and the page's routes and samples agree. [`names.evidence.txt`](names.evidence.txt).
+  planted. A route's flow segment is the flow's id (a singleton's `kind`, a collection
+  member's instance id), never its key in `flows`: proved on the runtime for both shapes, and
+  the page's routes and samples agree. [`names.evidence.txt`](names.evidence.txt).
 - **Every code fence compiles, after four fixes the first draft needed.** The draft registered
   `flows: { billing }` (the flow type, not an instance), declared flows without `actions`,
   gave the bearer resolver a principal without `orgId`, and left the dispatcher's `key`

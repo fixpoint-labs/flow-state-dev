@@ -27,7 +27,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 |---|---|
 | **Instead of** | The epic's draft: a two-row table (`{ key }` works, `{ id }` refused) and *"run dispatch in process for that flow, or design the hand-off so the receiving side starts from a key"*, which the epic asked this issue to confirm before publishing |
 | **Because** | Confirming it found two gaps. A `{ from: true }` reply is a delivery into an existing session. It is refused `external-dispatcher` when the process running the queued run has an external dispatcher (a `colocated` worker, or a custom dispatcher without `dispatchLocal`; [poc F3](poc/page-facts/README.md)), and goes in process, unretried, from a `worker-only` worker, which installs none (F5). So a builder following the draft on a colocated host would start work with a key and then fail reporting back. And there is no per-flow way to "run dispatch in process": the queue is set on the whole host. What works on every host is a `{ key }` hand-off whose result lands in state both sides read (a user- or org-scoped resource, a board), which the conversation reads, or which the builder's app lists with the client SDK's `listChildSessions`. Goal 4 says state a limitation plainly; stated one row short, or wider than the runtime, it isn't |
-| **Locks in** | The page publicly names three session choices and says where two are refused. Builders on a colocated BullMQ host will design hand-offs as fire-and-collect rather than call-and-reply until FIX-1634 ships; when it does, the page's fence rows are rewritten ([FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656)). The reference refusal table gets the same wording (one row) so the two pages agree |
+| **Locks in** | The page publicly names three session choices and says where two are refused. Builders on a colocated BullMQ host will design hand-offs as fire-and-collect rather than call-and-reply until FIX-1634 ships; when it does, its own docs work rewrites the page's fence rows (epic ER-14), with [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656) as the backstop when FIX-1635 closes. The reference refusal table gets the same wording (one row) so the two pages agree |
 
 ![D1, what a queue-host builder is told to do instead: a reply refused from a process that enqueues and in process on a worker-only worker, and a key plus shared data, chosen, beside the epic draft's two rows and run in process for that flow. Decides it: a builder who plans to report back by reply, who is warned up front instead of failing on the queue host. Price: the page names a wider limitation. Locks in fire-and-collect hand-offs on queue hosts until FIX-1634. Flips if a reply were not a delivery into an existing session](figures/d1-reply-refused.svg)
 
@@ -79,9 +79,13 @@ It comes down to what the page opens with: filed under *Background work*, webhoo
   Raised in Codex review of #2403; the epic's ER-4 (#2394) carries the same condition.
 - **A webhook whose `sessionId` names an existing session still runs on a queue host** —
   **CONFIRMED**, F4. The refusal is a flow-to-flow delivery rule, not a transport one.
-- **A webhook or schedule route names the flow by its `kind`, not its key in `flows`** —
-  **CONFIRMED** on the runtime: a `kind: "billing"` flow registered as `payments` answers at
-  `/api/flows/billing/…` and 404s at `/api/flows/payments/…`. `names.mts` re-proves it each run.
+- **A webhook or schedule route names the flow by its id, never its key in `flows`** —
+  **CONFIRMED** on the runtime for both shapes of id. A singleton's id is its `kind`: a
+  `kind: "billing"` flow registered as `payments` answers at `/api/flows/billing/…` and 404s at
+  `/api/flows/payments/…`. A collection member's id is its instance id: `tenant-billing`
+  registered as `acme` with id `acme-billing` answers at `/api/flows/acme-billing/…` and 404s at
+  both `/api/flows/tenant-billing/…` and `/api/flows/acme/…`. Codex review of #2410 caught the
+  first wording, which said `kind`. `names.mts` re-proves it each run.
 - **Every name the draft uses resolves on `main`, and every code fence compiles** —
   **CONFIRMED**, with a control each that fails on what it plants.
   [poc/page-facts](poc/page-facts/README.md).
@@ -99,7 +103,10 @@ It comes down to what the page opens with: filed under *Background work*, webhoo
   the samples fixed to compile (`actions`, an instantiated flow, an `orgId`, a typed key) and a
   compile check added; `onBackgroundWork` for serverless hosts; the architecture doc's
   `notification` row added to S3; V1 for S3/S4 made a targeted row check; the route segment
-  proved to be the flow's `kind`. The fence rows are owned by the hard-gates epic FIX-1635;
-  [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656) tracks their rewrite.
+  proved to be the flow's id (a singleton's `kind`, a collection member's instance id). The
+  fence rows describe today's behavior: FIX-1634 (under the hard-gates epic FIX-1635) owns
+  rewriting them in its own docs work (epic ER-14), and
+  [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656) is the backstop when FIX-1635
+  closes.
 
 **Open: none.**

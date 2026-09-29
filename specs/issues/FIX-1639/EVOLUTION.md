@@ -15,7 +15,9 @@ Re-check each against `main` and the merged epic before publishing ([PLAN → At
 time](PLAN.md#at-implement-time)).
 
 **Owned elsewhere.** The fence rows (the `{ id }` refusal and the `{ from: true }` topology
-rule), the fence paragraph and S4's refusal row describe today's behavior. They are owned by
+rule), the fence paragraph and S4's refusal row describe today's behavior. FIX-1634, under
 the in-flight hard-gates epic [FIX-1635](https://linear.app/fixpoint-labs/issue/FIX-1635),
-whose FIX-1634 changes it; when it lands they are rewritten or removed. Follow-up:
-[FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656).
+changes that behavior, and its own docs work rewrites or removes them when it lands (epic
+ER-14). Backstop: [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656). When FIX-1635
+closes, it confirms the rows match shipped behavior, rewrites any FIX-1634 missed, and
+re-reads FIX-1642's claims.

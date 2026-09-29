@@ -46,7 +46,9 @@ V0, V1 and V2 each run once, in the implementation PR: V0 on DOCS.md before writ
 on the final page. No goal check: docs only ([SPEC](SPEC.md#the-goal-and-how-well-know-its-met)).
 
 Second path (BP-035): F5 is the other topology (a `worker-only` worker), and `names.mts`'s
-`CONTROL=wrong-segment` checks a route addressed by the `flows` map key rather than the flow's `kind`.
+`CONTROL=wrong-segment` checks a route addressed by the `flows` map key rather than the flow's id.
+Its route probe covers both shapes of id: a singleton's `kind` and a collection member's
+instance id.
 
 ## Pinned names
 
@@ -83,13 +85,18 @@ resolves, every code fence compiles, and the queue-host paragraph matches the ru
 each showed is in the README, the one home for it. **It moved the design:** F3 and F5 showed
 where a `{ from: true }` reply is refused, which the epic's draft lacked, and D1 follows from it.
 
+The `names.mts` manifest is implementation-PR scratch. After that PR merges, the docs build
+and the closure FIX-1642 hold the page's truth, and no later edit to the page has to extend
+`names.mts`.
+
 ## At implement time
 
 - **Re-check the epic's amendment #2394.** If it merged with changes to D1's fold, the ER
   ownership, or the epic's `DOCS.md`, reconcile before publishing.
 - **Re-run V0 on fresh `main`.** The draft was checked at `07df7f9d0`.
 - **FIX-1634 may have moved.** If `{ id }` works on a queue host by then, the fence paragraph,
-  the table's third column and S4 change with it, and this plan's F2/F3/F5 expectations flip
-  ([FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656)).
+  the table's third column and S4 change with it, and this plan's F2/F3/F5 expectations flip.
+  After this page ships, rewriting those rows is FIX-1634's own docs work (epic ER-14);
+  [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656) is the backstop.
 - **The sidebar may have changed.** If a *Webhooks* category no longer leads that part of
   `sidebarsGuides.ts`, keep D2's intent: top level, above the webhooks and schedules material.

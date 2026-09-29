@@ -67,8 +67,10 @@ One page in the nav, five one-line edits beside it, and everything below the fen
 ## What stays as it is
 
 - **The refusal.** The page states it; FIX-1634, under the hard-gates epic FIX-1635, owns
-  changing it, and [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656) tracks the
-  page's rewrite when it lands.
+  changing it, and its own docs work rewrites the page's fence rows when it lands (epic
+  ER-14). [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656) is the backstop: when
+  FIX-1635 closes, it confirms those rows match shipped behavior and rewrites any FIX-1634
+  missed.
 - **The reference pages and guides** it links: linked, and fixed only where they disagree with
   `main` (three rows).
 - ***Work that outlives the turn*** stays the map for side chains, queues and dispatch.

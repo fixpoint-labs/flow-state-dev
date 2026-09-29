@@ -3,32 +3,43 @@
 $ CONTROL= pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
 page names vs main
 fences=4 spans=60 checks passed=84 failed=0
+route probe: singleton billing→202 payments(map key)→404 · collection acme-billing(id)→202 tenant-billing(kind)→404 acme(map key)→404
 exit 0
 
 $ CONTROL=planted pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
 CONTROL=planted (must FAIL)
 fences=4 spans=61 checks passed=84 failed=1
+route probe: singleton billing→202 payments(map key)→404 · collection acme-billing(id)→202 tenant-billing(kind)→404 acme(map key)→404
 FAIL  span  `notifyTopic`: notifyTopic is not exported by @flow-state-dev/core
 exit 1
 
 $ CONTROL=unclassified pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
 CONTROL=unclassified (must FAIL)
 fences=4 spans=61 checks passed=84 failed=1
+route probe: singleton billing→202 payments(map key)→404 · collection acme-billing(id)→202 tenant-billing(kind)→404 acme(map key)→404
 FAIL  TOTALITY  `madeUpOption` is on the page and nothing checks it
 exit 1
 
 $ CONTROL=false-option pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
 CONTROL=false-option (must FAIL)
 fences=4 spans=61 checks passed=84 failed=1
+route probe: singleton billing→202 payments(map key)→404 · collection acme-billing(id)→202 tenant-billing(kind)→404 acme(map key)→404
 FAIL  span  `dispatcher({ delay })`: @flow-state-dev/core dispatcher.(0).delay does not resolve
 exit 1
 
 $ CONTROL=wrong-segment pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
 CONTROL=wrong-segment (must FAIL)
 fences=4 spans=61 checks passed=84 failed=1
-FAIL  span  `POST /api/flows/payments/webhooks/stripe`: segment "payments" is not a kind the page declares (billing); it is the `flows` map key, which the route ignores
+route probe: singleton billing→202 payments(map key)→404 · collection acme-billing(id)→202 tenant-billing(kind)→404 acme(map key)→404
+FAIL  span  `POST /api/flows/payments/webhooks/stripe`: segment "payments" is not the id of a flow the page registers (billing); it is the `flows` map key, which the route ignores
 exit 1
 
-# route probe inside names.mts (kind "billing" registered as flows: { payments: billing() }):
-#   POST /api/flows/billing/webhooks/stripe  -> 202
-#   POST /api/flows/payments/webhooks/stripe -> 404 {"error":"flow_not_found"}
+# route probe inside names.mts, one host, one webhook POST per segment:
+#   singleton  kind "billing", registered as flows: { payments: billing() }
+#     POST /api/flows/billing/webhooks/stripe        -> 202   (a singleton's id is its kind)
+#     POST /api/flows/payments/webhooks/stripe       -> 404 {"error":"flow_not_found"}   (map key)
+#   collection kind "tenant-billing", cardinality "collection",
+#              registered as flows: { acme: tenantBilling({ id: "acme-billing" }) }
+#     POST /api/flows/acme-billing/webhooks/stripe   -> 202   (its instance id)
+#     POST /api/flows/tenant-billing/webhooks/stripe -> 404 {"error":"flow_not_found"}   (kind)
+#     POST /api/flows/acme/webhooks/stripe           -> 404 {"error":"flow_not_found"}   (map key)

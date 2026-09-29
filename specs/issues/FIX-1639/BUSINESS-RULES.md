@@ -32,9 +32,11 @@ this issue discharges it.
 | BR-14 | Needs a hand-off's result back in the conversation | Is told a reply works from a `worker-only` worker, unretried, and is refused on a `colocated` one; and steered to a `{ key }` hand-off writing to state both sides read, which works on every host, read from the conversation or listed by the app with the client SDK's `listChildSessions`; or to a host with no queue worker, whose runs aren't retried. No workaround noun | V1 · review |
 
 The fence paragraph, the table's third column and the reference refusal row all say the same
-thing, in the same words where they overlap. They describe today's behavior and are owned by the
-hard-gates epic FIX-1635: when its FIX-1634 ships, all three are rewritten or removed (ER-14,
-[FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656)).
+thing, in the same words where they overlap. They describe today's behavior. When FIX-1634
+(under the hard-gates epic FIX-1635) ships, its own docs work rewrites or removes all three
+(epic ER-14). [FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656) is the backstop: when
+FIX-1635 closes, it confirms the three match shipped behavior, rewrites any FIX-1634 missed, and
+re-reads FIX-1642's claims.
 
 ## What the page never teaches
 
