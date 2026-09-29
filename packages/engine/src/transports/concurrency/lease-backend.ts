@@ -16,6 +16,12 @@
  * than polled — the behaviour every in-process host had before backends existed.
  * The four public calls are the same line, answered asynchronously.
  *
+ * The side door is deliberately not extensible: it is keyed to backends this
+ * module built, and no other backend can join it. A supplied backend is reached
+ * only through the four calls, waits by re-checking its turn, and refuses a
+ * `reject` asynchronously. Don't imitate the side door in another backend; if a
+ * pushed wake is worth having there, it belongs on the public contract.
+ *
  * `planQueueWait` is the arbiter's answer to "not my turn, now what?" for a
  * backend with no in-process wake. It is exported for an adapter's worker,
  * which waits by requeueing its job rather than holding a slot, and must reach
@@ -59,13 +65,23 @@ export interface ConcurrencyLeaseBackend {
    * Append a place to the key's line, or with `ifEmpty` claim only a free key.
    * Returns the current holder's request id instead when `ifEmpty` finds the
    * key held.
+   *
+   * Not idempotent: each call appends a new place, even for a request id
+   * already on the line. The engine takes once per dispatch.
    */
   take(input: LeaseTakeInput): Promise<LeaseTakeResult>;
   /** True when this place is the first live place on its key. */
   isMyTurn(place: LeasePlace): Promise<boolean>;
   /** Remove the place. Idempotent. Wakes the next waiter on the key. */
   giveBack(place: LeasePlace): Promise<void>;
-  /** Extend the place's lease, for a backend whose places expire. */
+  /**
+   * Extend the place's lease, for a backend whose places expire. The engine's
+   * arbiter calls it every 2 seconds for a place it is running, and once per
+   * turn check (between `isMyTurn` and the next sleep, at most 2 seconds
+   * apart) for a place waiting its turn. A lease a few times longer than 2
+   * seconds survives one missed renewal. It is called on every waiting tick,
+   * so a backend for which renewal is a round trip should make it cheap.
+   */
   renew(place: LeasePlace): Promise<void>;
 }
 
@@ -94,8 +110,10 @@ export type QueueWaitStep =
  *
  * `waitedMs` counts only time spent waiting on the key, from the run's first
  * turn check: time queued behind unrelated work never consumes the budget.
- * `attempt` counts turn checks made so far, from 0. `random` defaults to
- * `Math.random`.
+ * `attempt` counts turn checks made so far, from 0, and must grow by one per
+ * check — a caller that restarts it keeps the backoff at its base. A worker
+ * that waits by requeueing its job carries both on the job. `random` defaults
+ * to `Math.random`.
  */
 export function planQueueWait(input: {
   key: string;
@@ -155,6 +173,11 @@ export function inMemoryInternalsOf(
  * how a test stands two processes on one deployment's backend.
  *
  * Places never expire, so `renew` does nothing. Idle keys are pruned.
+ *
+ * Not built on `createKeyedAsyncGate`, though the two look alike: the gate
+ * holds anonymous leases, and a backend must name each place (a ticket another
+ * process can hand back), say who holds the key, and answer "is it this
+ * place's turn" for a place it did not wake.
  */
 export function createInMemoryLeaseBackend(): ConcurrencyLeaseBackend {
   const lines = new Map<string, InMemoryPlace[]>();

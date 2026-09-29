@@ -451,7 +451,12 @@ async function handleToolsCall(
     // synchronous `dispatch` above) with `ConcurrencyQueueTimeoutError`. Map it
     // to the retryable server-busy code, the same family as a `reject` drop, so
     // the MCP client backs off rather than seeing a transport-level failure.
-    if (error instanceof ConcurrencyQueueTimeoutError) {
+    // A `reject` refused by an arbiter that spans processes arrives here too,
+    // after `dispatch` returned, and gets the same answer as a synchronous one.
+    if (
+      error instanceof ConcurrencyQueueTimeoutError ||
+      error instanceof ConcurrencyRejectedError
+    ) {
       return jsonRpcResponse(
         id,
         jsonRpcError(JSON_RPC_SERVER_BUSY, error.message, { retryable: true })

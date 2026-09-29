@@ -8,8 +8,8 @@
  * call this, so the two cannot drift into different answers for the same
  * duplicate.
  */
-import { jsonResponse } from "../../routes/route-utils";
-import { ConcurrencyRejectedError } from "../errors";
+import { jsonResponse } from "./route-utils";
+import { ConcurrencyRejectedError } from "../transports/errors";
 
 /**
  * The response for a `reject` refusal, or `undefined` when `error` is not one.

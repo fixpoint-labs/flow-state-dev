@@ -380,6 +380,34 @@ describe("MCP adapter — JSON-RPC dispatch", () => {
     expect(json.error?.data?.retryable).toBe(true);
   });
 
+  it("tools/call maps a concurrency reject that arrives after dispatch returns to the same retryable busy error", async () => {
+    const adapter = createMcpTransportAdapter();
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    // A host whose arbiter spans processes refuses a `reject` asynchronously:
+    // `dispatch` returns a handle and the refusal rejects `accepted` and
+    // `finished`. The client must see the same busy answer as a sync refusal.
+    const dispatch = host.dispatch.bind(host);
+    host.dispatch = (envelope) => {
+      const refusal = new ConcurrencyRejectedError("u_busy", "req_inflight");
+      const accepted = Promise.reject(refusal);
+      const finished = Promise.reject(refusal);
+      accepted.catch(() => undefined);
+      finished.catch(() => undefined);
+      return { ...dispatch(envelope), accepted, finished };
+    };
+    const response = await callAdapter(adapter, host, "POST", "billing", {
+      jsonrpc: "2.0",
+      id: 8,
+      method: "tools/call",
+      params: { name: "record_payment", arguments: { amount: 1 } }
+    });
+    const json = (await response.json()) as {
+      error?: { code: number; data?: { retryable?: boolean } };
+    };
+    expect(json.error?.code).toBe(-32000); // JSON_RPC_SERVER_BUSY
+    expect(json.error?.data?.retryable).toBe(true);
+  });
+
   it("tools/list returns only exposed actions with descriptions and JSON schemas", async () => {
     const adapter = createMcpTransportAdapter();
     const host = withFlow(createMockTransportHost(), buildFlow());

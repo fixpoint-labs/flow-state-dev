@@ -56,6 +56,12 @@ export interface DispatchEnvelope {
    *
    * `== null` → no place: a job from a host that does not arbitrate, or one
    * enqueued before this field existed. It runs as it always did.
+   *
+   * The place can be gone from the line by the time the worker reads it: the
+   * host gives it back when the enqueue fails, and a failure can be ambiguous
+   * (the queue accepted the job but the acknowledgement was lost), or its lease
+   * can lapse. A worker must not run under a place that is no longer on the
+   * line; it takes a new place at the back instead.
    */
   leasePlace?: LeasePlace | null;
 }

@@ -6,6 +6,7 @@ import {
   createInboundTransportConformanceTests
 } from "@flow-state-dev/testing/conformance";
 import {
+  ConcurrencyRejectedError,
   PrincipalResolutionError,
   type ActiveRequestRegistry
 } from "@flow-state-dev/engine";
@@ -597,6 +598,84 @@ describe("createScheduledTransportAdapter — edge cases", () => {
     expect(response.status).toBe(503);
     const json = (await response.json()) as { error: string };
     expect(json.error).toBe("flow_unregistered");
+  });
+
+  // A host whose concurrency arbiter is shared across processes refuses a
+  // `reject` through `accepted`, not by throwing from `dispatch`. The fire must
+  // still be acked as skipped, and must not be remembered as delivered: a
+  // retry of the same fire, once the key frees, has to run.
+  function hostRefusingThroughAccepted(failure: Error) {
+    const host = withFlow(
+      withActiveRegistry(createMockTransportHost(), makeStubActiveRegistry()),
+      buildFlow()
+    );
+    const dispatch = host.dispatch.bind(host);
+    let calls = 0;
+    (host as { dispatch: typeof host.dispatch }).dispatch = (envelope) => {
+      calls += 1;
+      const handle = dispatch(envelope);
+      if (calls > 1) return handle;
+      const accepted = Promise.reject(failure);
+      accepted.catch(() => undefined);
+      return { ...handle, accepted };
+    };
+    return host;
+  }
+
+  it("acks a refusal that arrives through `accepted` as skipped, and does not dedupe the fire", async () => {
+    const host = hostRefusingThroughAccepted(
+      new ConcurrencyRejectedError("billing:u_1", "req-holder")
+    );
+    const route = createScheduledTransportAdapter()
+      .createBindings(host)
+      .routes!.find((r) => r.method === "POST")!;
+    const body = { nominalFireTime: "2026-06-01T00:00:00Z" };
+
+    const first = await route.handler(
+      ...(Object.values(postRequest("billing", "monthly-invoices", body)) as [
+        Request,
+        { params: Record<string, string> }
+      ])
+    );
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({
+      status: "skipped",
+      reason: "in_flight",
+      requestId: "req-holder"
+    });
+
+    const retry = await route.handler(
+      ...(Object.values(postRequest("billing", "monthly-invoices", body)) as [
+        Request,
+        { params: Record<string, string> }
+      ])
+    );
+    expect(retry.status).toBe(202);
+    expect(host.dispatchCalls.length).toBe(2);
+  });
+
+  it("answers 503 when acceptance fails for another reason, and does not dedupe the fire", async () => {
+    const host = hostRefusingThroughAccepted(new Error("lease backend unreachable"));
+    const route = createScheduledTransportAdapter()
+      .createBindings(host)
+      .routes!.find((r) => r.method === "POST")!;
+    const body = { nominalFireTime: "2026-06-01T00:00:00Z" };
+
+    const first = await route.handler(
+      ...(Object.values(postRequest("billing", "monthly-invoices", body)) as [
+        Request,
+        { params: Record<string, string> }
+      ])
+    );
+    expect(first.status).toBe(503);
+
+    const retry = await route.handler(
+      ...(Object.values(postRequest("billing", "monthly-invoices", body)) as [
+        Request,
+        { params: Record<string, string> }
+      ])
+    );
+    expect(retry.status).toBe(202);
   });
 
   it("treats an empty body as no nominalFireTime and synthesizes one", async () => {

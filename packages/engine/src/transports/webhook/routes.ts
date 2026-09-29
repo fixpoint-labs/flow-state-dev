@@ -15,7 +15,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { InboundRequestEnvelope, InboundTransportHost, ResolvedPrincipal } from "../types";
 import { PrincipalResolutionError } from "../errors";
-import { concurrencyRefusalResponse } from "../concurrency/refusal-response";
+import { concurrencyRefusalResponse } from "../../routes/concurrency-refusal";
 import {
   WEBHOOK_TRANSPORT_SOURCE,
   type WebhookProviderDefinition

@@ -307,7 +307,12 @@ class InternalFlowState<TSettings extends object>
 
     this.#options = options;
     this.#arbiter = createConcurrencyArbiter(
-      options.worker?.leaseBackend !== undefined ? { backend: options.worker.leaseBackend } : {}
+      options.worker?.leaseBackend !== undefined
+        ? {
+            backend: options.worker.leaseBackend,
+            logger: { warn: (message, context) => this.#logVia("warn", message, context) }
+          }
+        : {}
     );
     this.#profileKeys = Object.keys(options.stores);
 

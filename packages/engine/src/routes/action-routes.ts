@@ -10,7 +10,7 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost } from "../transports/types";
 import { OrgRequiredError, PrincipalResolutionError } from "../transports/errors";
-import { concurrencyRefusalResponse } from "../transports/concurrency/refusal-response";
+import { concurrencyRefusalResponse } from "./concurrency-refusal";
 import { generateId } from "../utils/generate-id";
 import {
   FlowInstanceBindingMismatchError,

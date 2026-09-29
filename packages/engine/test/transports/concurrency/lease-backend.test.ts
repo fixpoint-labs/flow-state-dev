@@ -12,11 +12,12 @@
  * answer to "not my turn, now what?", which an adapter's worker imports rather
  * than re-deriving.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createConcurrencyArbiter,
   type ConcurrencyFlowView
 } from "../../../src/transports/concurrency/arbiter";
+import { admitAndRun } from "./admit-and-run";
 import {
   createInMemoryLeaseBackend,
   planQueueWait,
@@ -76,7 +77,7 @@ async function serializeAcross(
   const runs = Array.from({ length: n }, (_, i) => {
     const arbiter = arbiters[i % arbiters.length]!;
     const d = arbiter.resolve(queueFlow, "respond", envelope(`req_${i}`));
-    return arbiter.gate(d, `req_${i}`)(async () => {
+    return admitAndRun(arbiter, d, `req_${i}`)(async () => {
       active += 1;
       maxActive = Math.max(maxActive, active);
       order.push(i);
@@ -96,12 +97,12 @@ describe("two arbiters over one in-memory backend", () => {
 
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
-    const first = a.gate(a.resolve(rejectFlow, "respond", envelope("req_a")), "req_a")(() => held);
+    const first = admitAndRun(a, a.resolve(rejectFlow, "respond", envelope("req_a")), "req_a")(() => held);
 
     const d = b.resolve(rejectFlow, "respond", envelope("req_b"));
     let refused: unknown;
     try {
-      b.gate(d, "req_b");
+      admitAndRun(b, d, "req_b");
     } catch (e) {
       refused = e;
     }
@@ -110,7 +111,7 @@ describe("two arbiters over one in-memory backend", () => {
 
     release();
     await first;
-    expect(() => b.gate(b.resolve(rejectFlow, "respond", envelope("req_c")), "req_c")).not.toThrow();
+    expect(() => admitAndRun(b, b.resolve(rejectFlow, "respond", envelope("req_c")), "req_c")).not.toThrow();
   });
 
   it("serializes `queue` runs across both, in the order their places were taken", async () => {
@@ -139,11 +140,11 @@ describe("two arbiters over an adapter-shaped (four-call) backend", () => {
 
     let release!: () => void;
     const held = new Promise<void>((r) => (release = r));
-    const first = a.gate(a.resolve(rejectFlow, "respond", envelope("req_a")), "req_a")(() => held);
+    const first = admitAndRun(a, a.resolve(rejectFlow, "respond", envelope("req_a")), "req_a")(() => held);
     await new Promise((r) => setTimeout(r, 1));
 
     let loserRan = false;
-    const second = b.gate(b.resolve(rejectFlow, "respond", envelope("req_b")), "req_b")(async () => {
+    const second = admitAndRun(b, b.resolve(rejectFlow, "respond", envelope("req_b")), "req_b")(async () => {
       loserRan = true;
     });
     await expect(second).rejects.toBeInstanceOf(ConcurrencyRejectedError);
@@ -179,7 +180,7 @@ describe("two arbiters over an adapter-shaped (four-call) backend", () => {
     };
     const arbiter = createConcurrencyArbiter({ backend });
     let ran = false;
-    const run = arbiter.gate(arbiter.resolve(queueFlow, "respond", envelope("req_1")), "req_1")(
+    const run = admitAndRun(arbiter, arbiter.resolve(queueFlow, "respond", envelope("req_1")), "req_1")(
       async () => {
         ran = true;
       }
@@ -192,8 +193,114 @@ describe("two arbiters over an adapter-shaped (four-call) backend", () => {
     const { backend, calls } = fourCallBackend();
     const arbiter = createConcurrencyArbiter({ backend });
     const d = arbiter.resolve({ actions: {} }, "respond", envelope("req_1"));
-    await arbiter.gate(d, "req_1")(async () => undefined);
+    await admitAndRun(arbiter, d, "req_1")(async () => undefined);
     expect(calls).toEqual([]);
+  });
+});
+
+describe("a place the arbiter runs over a shared backend", () => {
+  it("a holder running longer than the lease is still renewed, and only until it gives the place back", async () => {
+    // A run the arbiter starts in this process (a web process's HTTP run, say)
+    // holds its place for as long as the run takes. On a backend whose places
+    // expire, a place nobody renews lapses mid-run and a worker's run on the
+    // same session starts alongside it.
+    vi.useFakeTimers();
+    try {
+      const { backend: shaped } = fourCallBackend();
+      const renewed: string[] = [];
+      const backend: ConcurrencyLeaseBackend = {
+        ...shaped,
+        renew: async (place) => {
+          renewed.push(place.ticket);
+        }
+      };
+      const arbiter = createConcurrencyArbiter({ backend });
+      let release!: () => void;
+      const held = new Promise<void>((r) => (release = r));
+      const admission = await arbiter.admit(
+        arbiter.resolve(rejectFlow, "respond", envelope("req_1")),
+        "req_1"
+      );
+      const run = admission.run(() => held);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(renewed.length).toBeGreaterThanOrEqual(3);
+
+      release();
+      await run;
+      const atGiveBack = renewed.length;
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(renewed.length).toBe(atGiveBack);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not report the run settled until its place is given back", async () => {
+    // A caller that sees the run settle and dispatches again on the same key
+    // (a chat's next turn) must not be refused by the place of the run it just
+    // watched finish. A give-back is a round trip on a shared backend.
+    const { backend: shaped, inner } = fourCallBackend();
+    let finishGiveBack!: () => void;
+    const giveBackLanded = new Promise<void>((r) => (finishGiveBack = r));
+    const backend: ConcurrencyLeaseBackend = {
+      ...shaped,
+      giveBack: async (place) => {
+        await giveBackLanded;
+        return inner.giveBack(place);
+      }
+    };
+    const arbiter = createConcurrencyArbiter({ backend });
+    const admission = await arbiter.admit(
+      arbiter.resolve(rejectFlow, "respond", envelope("req_1")),
+      "req_1"
+    );
+    let settled = false;
+    const run = admission.run(async () => "done").then((v) => {
+      settled = true;
+      return v;
+    });
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(settled).toBe(false);
+
+    finishGiveBack();
+    await expect(run).resolves.toBe("done");
+    await expect(inner.take({ key: "s_1", requestId: "req_2", ifEmpty: true })).resolves.toHaveProperty(
+      "place"
+    );
+  });
+
+  it("keeps the run's own outcome when the give-back fails, and says so in the log", async () => {
+    const { backend: shaped } = fourCallBackend();
+    const backend: ConcurrencyLeaseBackend = {
+      ...shaped,
+      giveBack: async () => {
+        throw new Error("backend unreachable");
+      }
+    };
+    const warn = vi.fn();
+    const arbiter = createConcurrencyArbiter({ backend, logger: { warn } });
+    const admission = await arbiter.admit(
+      arbiter.resolve(rejectFlow, "respond", envelope("req_1")),
+      "req_1"
+    );
+
+    await expect(admission.run(async () => "done")).resolves.toBe("done");
+    await expect(
+      (
+        await arbiter.admit(
+          arbiter.resolve(rejectFlow, "respond", { ...envelope("req_2"), sessionId: "s_2" }),
+          "req_2"
+        )
+      ).run(
+        async () => {
+          throw new Error("run failed");
+        }
+      )
+    ).rejects.toThrow("run failed");
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn.mock.calls[0]![1]).toMatchObject({ key: "s_1", error: "backend unreachable" });
   });
 });
 

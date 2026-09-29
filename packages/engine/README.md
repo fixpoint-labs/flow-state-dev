@@ -261,7 +261,8 @@ A flow's concurrency policy is enforced once at the host dispatch seam — the
 in-process dispatcher gates the run there, so every transport inherits the
 same behavior and adapters only map the outcome to their native response.
 When a `reject` policy drops a competing request, `host.dispatch` throws
-`ConcurrencyRejectedError` synchronously (carrying the contended `key` and the
+`ConcurrencyRejectedError` synchronously over the default in-memory backend
+(through `accepted` over a shared one; see below), carrying the contended `key` and the
 `inFlightRequestId`); the HTTP adapter maps it to 409, fire-and-forget
 webhook/scheduled adapters to a benign skipped 200, MCP to a server-busy
 error. A `queue` policy that waits past its budget rejects the request's
@@ -269,6 +270,39 @@ error. A `queue` policy that waits past its budget rejects the request's
 stream, not a synchronous status). Both errors are exported from this package.
 See the [concurrency policies
 reference](https://flow-state.dev/docs/advanced/concurrency-policies).
+
+### Concurrency across processes: `WorkerAdapter.leaseBackend`
+
+By default the arbiter keeps each key's line in the running process
+(`createInMemoryLeaseBackend()`), so a policy serializes requests that run in
+that process, and work handed to an external queue runs unarbitrated. A queue
+adapter whose runs land in several processes can supply a backend they all
+share as `leaseBackend` on its `WorkerAdapter`. The arbiter in every process
+then lines up on the same keys, and an external dispatch is arbitrated too: the
+host takes the run's place before enqueueing (once the caller's ownership of the
+session and request id is confirmed), and the job carries it as
+`DispatchEnvelope.leasePlace`.
+
+A backend implements four calls and holds no policy:
+
+| Call | Does |
+| --- | --- |
+| `take({ key, requestId, ifEmpty? })` | Appends a place to the key's line, or with `ifEmpty` (the `reject` policy) claims only a free key and otherwise answers `{ heldBy }`. Not idempotent |
+| `isMyTurn(place)` | True when the place is first on its key |
+| `giveBack(place)` | Removes the place and wakes the next waiter. Idempotent |
+| `renew(place)` | Extends a place whose lease expires. Called every 2 seconds for a running place, and on each turn check for a waiting one |
+
+Any call may throw when the backend is unreachable; the dispatch is then
+refused rather than run unarbitrated. Over a supplied backend a `reject`
+refusal arrives through the handle's `accepted` and `finished`, not as a
+synchronous throw, and the built-in adapters map it the same way.
+
+The worker owns a job's place: it waits for `isMyTurn`, runs, and gives the
+place back. `planQueueWait({ key, waitedMs, attempt })` answers "not my turn
+yet" the way the engine does, with jittered backoff inside the 30-second queue
+budget, so a worker that waits by requeueing its job reaches the same timeout
+an in-process run would. A job whose `leasePlace` is `null` or absent runs as it
+always did.
 
 ## Authentication
 

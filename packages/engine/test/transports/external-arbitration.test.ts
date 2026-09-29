@@ -468,13 +468,24 @@ describe("a run a process starts in process, over the deployment's backend", () 
   // A `worker-only` process runs its own deliveries in process. Over the
   // adapter's backend those runs line up on the same keys as every other
   // process's, with an admission that is asynchronous.
-  function inProcessHosts(concurrency: ConcurrencyConfig) {
+  function inProcessHosts(
+    concurrency: ConcurrencyConfig,
+    wrap: (backend: ConcurrencyLeaseBackend) => ConcurrencyLeaseBackend = (b) => b
+  ) {
     const observed: Observed = { runs: [] };
     const { flow, releaseOne, releaseAll } = queueFlow("in-proc", observed, concurrency);
     const registry = createFlowRegistry();
     registry.register(flow);
     const stores = createInMemoryStores();
-    const backend = adapterShaped();
+    const takes: string[] = [];
+    const shaped = adapterShaped();
+    const backend = wrap({
+      ...shaped,
+      take: (input) => {
+        takes.push(input.requestId);
+        return shaped.take(input);
+      }
+    });
     const host = () =>
       createInboundTransportHost({
         registry,
@@ -483,7 +494,7 @@ describe("a run a process starts in process, over the deployment's backend", () 
         runtimeConfig: {},
         arbiter: createConcurrencyArbiter({ backend })
       });
-    return { observed, stores, releaseOne, releaseAll, a: host(), b: host() };
+    return { observed, stores, takes, releaseOne, releaseAll, a: host(), b: host() };
   }
 
   const envelope = (note: string, requestId: string) => ({
@@ -522,6 +533,63 @@ describe("a run a process starts in process, over the deployment's backend", () 
     await expect(second.finished).rejects.toMatchObject({ inFlightRequestId: "req_1" });
     expect(await h.stores.request.get("req_2")).toBeUndefined();
     await until(() => h.observed.runs.length === 1, "the first run");
+    h.releaseAll();
+    await first.finished;
+  });
+
+  it.each(["queue", "reject"] as const)(
+    "takes no place for a caller who does not own the session (%s)",
+    async (policy) => {
+      // Every process honours a place on the shared backend. One taken before
+      // the ownership read would let another user stand in line on (or, for
+      // `reject`, hold) the owner's session key while that read runs.
+      const h = inProcessHosts(policy);
+      const ts = Date.now();
+      await h.stores.session.set(
+        "s_alice",
+        {
+          id: "s_alice",
+          state: {},
+          version: 0,
+          createdAt: ts,
+          updatedAt: ts,
+          flowKind: "in-proc",
+          userId: USER,
+          orgId: DEFAULT_ORG_ID,
+          lineageId: "lin_s_alice",
+          journal: []
+        },
+        "any"
+      );
+      const bob = h.a.dispatch({
+        ...envelope("from bob", "req_bob"),
+        principal: { userId: "u_bob", orgId: DEFAULT_ORG_ID }
+      });
+      await expect(bob.finished).rejects.toThrow();
+      expect(h.takes).not.toContain("req_bob");
+      expect(h.observed.runs).toEqual([]);
+    }
+  );
+
+  it("settles the record of a queued run whose wait fails before its turn", async () => {
+    // The backend becomes unreachable while the second run waits. The run
+    // never starts, so nothing else will settle its `in_progress` record.
+    let unreachable = false;
+    const h = inProcessHosts("queue", (b) => ({
+      ...b,
+      isMyTurn: async (place) => {
+        if (unreachable) throw new Error("lease backend unreachable");
+        return b.isMyTurn(place);
+      }
+    }));
+    const first = h.a.dispatch(envelope("first", "req_1"));
+    await first.accepted;
+    await until(() => h.observed.runs.length === 1, "the first run");
+    unreachable = true;
+    const second = h.b.dispatch(envelope("second", "req_2"));
+    await second.accepted;
+    await expect(second.finished).rejects.toThrow("lease backend unreachable");
+    expect((await h.stores.request.get("req_2"))?.status).toBe("failed");
     h.releaseAll();
     await first.finished;
   });
