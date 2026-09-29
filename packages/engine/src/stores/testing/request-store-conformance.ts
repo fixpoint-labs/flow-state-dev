@@ -497,6 +497,25 @@ export function createRequestStoreConformanceTests(
     });
   });
 
+  describe(`${name} (RequestStore incarnation conformance)`, () => {
+    // A request's incarnation is its identity: the engine stamps it once and
+    // every later context reads it back from here. An adapter that dropped it
+    // on write or on list would make every read of a record look like a
+    // legacy one, and a retry could open a new, empty run workspace.
+    it("carries a record's incarnation through set, get and list", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_incarnation_conformance";
+        const record = { ...makeRecord(requestId, "in_progress", []), incarnation: "inc_conformance" };
+        await store.set(requestId, record, "absent");
+        await store.set(requestId, { ...record, status: "completed", updatedAt: record.updatedAt + 1 }, "any");
+
+        expect((await store.get(requestId))?.incarnation).toBe("inc_conformance");
+        const listed = await store.list({ userId: "u_conformance" });
+        expect(listed.find((r) => r.id === requestId)?.incarnation).toBe("inc_conformance");
+      });
+    });
+  });
+
   describe(`${name} (RequestStore abort-intent conformance)`, () => {
     /** Seed an `in_progress` record with no abort intent. */
     async function seed(
