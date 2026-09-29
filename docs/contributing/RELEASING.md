@@ -43,7 +43,7 @@ The two stay separate because `packages:build` is also the editor/typecheck inpu
 
 The devtool package refuses to publish without them. Its `prepublishOnly` runs `scripts/check-assets.mjs`, which fails when `dist-client/index.html` is missing, so a release path that loses `build:assets` aborts rather than shipping a package whose `fsdev dev` throws. `pnpm publish` runs that hook before packing, and `changeset publish` calls `pnpm publish`.
 
-The hook covers the publish, not a pack: `pnpm pack` skips `prepublishOnly` and packs without the assets. The packed-install job above is what catches that before release. It runs `release:build`, installs the packed devtool and fails unless the installed copy serves its page and every script and stylesheet the page loads.
+The hook covers the publish, not a pack: `pnpm pack` skips `prepublishOnly` and packs without the assets. The packed-install job above is what catches that before release. It runs `release:build`, installs the packed devtool and fails unless the installed copy serves its page, every script and stylesheet the page loads, and every asset those files reference.
 
 ```bash
 # What the tarball actually contains. `pnpm pack` takes no filter — `--filter` puts pnpm

@@ -243,46 +243,40 @@ export const CHECKS = [
   },
   {
     name: "a server starts and answers an action",
-    run(project) {
-      copyFileSync(join(FIXTURES, "serve.mjs"), join(project.dir, "serve.mjs"));
-      const res = spawnSync(process.execPath, ["serve.mjs"], {
-        cwd: project.dir,
-        encoding: "utf8",
-        timeout: 60_000,
-      });
-      if (res.status === 0 && res.stdout.includes("serve: ok")) return [];
-      // The engine logs freely to stderr; the fixture's own verdict, or the
-      // tail of a crash, is what names the failure.
-      const out = `${res.stderr ?? ""}\n${res.stdout ?? ""}`;
-      const verdict = out.split("\n").find((l) => l.startsWith("serve: FAIL"));
-      return [`exit ${res.status ?? res.signal}: ${verdict ?? out.trim().slice(-800)}`];
-    },
+    run: (project) => runFixture(project, "serve.mjs", "serve"),
   },
   {
-    // DevTool's client app (`dist-client`) comes from `build:assets`, not the
-    // package's `build`, and `pnpm pack` does not run the `prepublishOnly`
-    // guard that refuses a publish without it. So a release build that drops
-    // the asset step packs cleanly and every import above still passes. This
-    // asks the installed copy for its assets and serves them as `fsdev dev`
-    // does, which is the first thing that breaks for a consumer.
+    // `pnpm pack` skips prepublishOnly, so a missing dist-client still packs and still imports.
     name: "DevTool serves its client assets from the installed copy",
-    run(project) {
-      copyFileSync(join(FIXTURES, "serve-devtool.mjs"), join(project.dir, "serve-devtool.mjs"));
-      const res = spawnSync(process.execPath, ["serve-devtool.mjs"], {
-        cwd: project.dir,
-        encoding: "utf8",
-        timeout: 60_000,
-      });
-      if (res.status === 0 && res.stdout.includes("devtool: ok")) {
-        log(`    ${res.stdout.trim().split("\n").pop()}`);
-        return [];
-      }
-      const out = `${res.stderr ?? ""}\n${res.stdout ?? ""}`;
-      const verdict = out.split("\n").find((l) => l.startsWith("devtool: FAIL"));
-      return [`exit ${res.status ?? res.signal}: ${verdict ?? out.trim().slice(-800)}`];
-    },
+    run: (project) => runFixture(project, "serve-devtool.mjs", "devtool"),
   },
 ];
+
+/**
+ * Copy one fixture into the consumer project and run it there. `stem` is its
+ * verdict prefix: the fixture prints `<stem>: ok` on success and
+ * `<stem>: FAIL at <step>: …` otherwise. Returns the check's failures: empty
+ * on pass, else the fixture's own verdict or, after a crash, the tail of its
+ * output.
+ */
+function runFixture(project, file, stem) {
+  copyFileSync(join(FIXTURES, file), join(project.dir, file));
+  const res = spawnSync(process.execPath, [file], {
+    cwd: project.dir,
+    encoding: "utf8",
+    timeout: 60_000,
+  });
+  const ok = (res.stdout ?? "").split("\n").find((l) => l.startsWith(`${stem}: ok`));
+  if (res.status === 0 && ok) {
+    log(`    ${ok}`);
+    return [];
+  }
+  // The engine logs freely to stderr; the fixture's own verdict, or the tail
+  // of a crash, is what names the failure.
+  const out = `${res.stderr ?? ""}\n${res.stdout ?? ""}`;
+  const verdict = out.split("\n").find((l) => l.startsWith(`${stem}: FAIL`));
+  return [`exit ${res.status ?? res.signal}: ${verdict ?? out.trim().slice(-800)}`];
+}
 
 /**
  * Import again, with their optional peers now installed, the subpaths the first
