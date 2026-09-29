@@ -131,7 +131,5 @@ works* already state the fence correctly and stay as they are. No per-cloud page
 | Material | Publisher | Specific draft |
 |---|---|---|
 | The page, its opening, the fence, the table, the terms, the channel-or-board section | FIX-1639 | This document, then FIX-1639's `DOCS.md` |
-| The table, as its own page, if D1 re-splits | FIX-1638 | Its own `DOCS.md`, reusing the table above |
-| The terms and the contributor line, if D1 re-splits | FIX-1640 | Its own `DOCS.md`, reusing the terms above |
-| Drift fix and link lines | FIX-1639 | This document |
+| Drift fix, link lines and the contributor `epic-wake` line | FIX-1639 | This document |
 | The fence sentence, once `{ id }` works on a queue | FIX-1634 | Its own docs work |

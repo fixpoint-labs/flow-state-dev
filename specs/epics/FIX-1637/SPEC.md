@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Epic · 6 issues · docs only, no runtime change · Framework simplification & cleanup
+Epic · 6 issues, 2 folded into the page by [D1](DECISIONS.md#d1) · docs only, no runtime change · Framework simplification & cleanup
 ([project spec #2367](https://github.com/fixpoint-labs/flow-state-dev/pull/2367)) · Goal 4,
 keep the foundation honest ([`docs/objectives.md`](../../../docs/objectives.md)) ·
 [FIX-1637](https://linear.app/fixpoint-labs/issue/FIX-1637)
@@ -81,16 +81,16 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1639](https://linear.app/fixpoint-labs/issue/FIX-1639) · the page | The published page: the path, the `{ id }` / `{ key }` fence, the terms block and the flow / host / ops table; drift fixes and links on the pages it leans on | The substance. Under [D1](DECISIONS.md#d1) it carries all three deliverables | Backlog · spec route |
-| [FIX-1638](https://linear.app/fixpoint-labs/issue/FIX-1638) · config matrix | The flow / host / ops table | **Proposed: folded into FIX-1639** ([D1](DECISIONS.md#d1), open) | Backlog |
-| [FIX-1640](https://linear.app/fixpoint-labs/issue/FIX-1640) · terms | Wake, dispatch, schedule tick; `epic-wake` moves to contributor docs | **Proposed: folded into FIX-1639** ([D1](DECISIONS.md#d1), open) | Backlog |
+| [FIX-1639](https://linear.app/fixpoint-labs/issue/FIX-1639) · the page | The published page: the path, the `{ id }` / `{ key }` fence, the terms block and the flow / host / ops table; drift fixes and links on the pages it leans on | The substance. By [D1](DECISIONS.md#d1) it carries all three deliverables | Backlog · spec route |
+| [FIX-1638](https://linear.app/fixpoint-labs/issue/FIX-1638) · config matrix | Nothing on its own: the flow / host / ops table is a section of FIX-1639's page | **Folded into FIX-1639** ([D1](DECISIONS.md#d1), decided) | Canceled as folded |
+| [FIX-1640](https://linear.app/fixpoint-labs/issue/FIX-1640) · terms | Nothing on its own: the terms are a section of FIX-1639's page, and the `epic-wake` line is FIX-1639's | **Folded into FIX-1639** ([D1](DECISIONS.md#d1), decided) | Canceled as folded |
 | [FIX-1641](https://linear.app/fixpoint-labs/issue/FIX-1641) · wake authoring POC | Three authoring shapes in an examples package, each compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Backlog · examples [#2369](https://github.com/fixpoint-labs/flow-state-dev/pull/2369) open, draft |
 | [FIX-1643](https://linear.app/fixpoint-labs/issue/FIX-1643) · subscribe and route POC | The host registers GitHub once, then two routing styles in an examples package: per-session subscribe, and one webhook with route rules compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. A sibling of FIX-1641, soft-related, not its child. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Backlog · examples [#2372](https://github.com/fixpoint-labs/flow-state-dev/pull/2372) open, draft |
-| [FIX-1642](https://linear.app/fixpoint-labs/issue/FIX-1642) · closure · **required** | The QA plan: the page followed as written on one `main` commit | Proves the whole ([ER-15](BUSINESS-RULES.md#the-closure)) | Backlog · blocked by FIX-1638, 1639, 1640, 1641, 1643 |
+| [FIX-1642](https://linear.app/fixpoint-labs/issue/FIX-1642) · closure · **required** | The QA plan: the page followed as written on one `main` commit | Proves the whole ([ER-15](BUSINESS-RULES.md#the-closure)) | Backlog · blocked by every other open child; Linear holds the list |
 
-**One page, two children proposed to fold, two POCs, and the closure.** Smaller if D1 holds;
-zero only if a nav change were enough, and it isn't ([D2](DECISIONS.md#d2)). FIX-1638 and
-FIX-1640 stay open in Linear until the owner answers D1. FIX-1641 was filed while this spec
+**One page, two POCs, and the closure.** The owner folded FIX-1638 and FIX-1640 into the page
+([D1](DECISIONS.md#d1)); both are canceled and no longer block the closure. The set would be
+zero only if a nav change were enough, and it isn't ([D2](DECISIONS.md#d2)). FIX-1641 was filed while this spec
 was written and FIX-1643 during its review. Both run beside the page, not before it; like every
 child each blocks the closure.
 
@@ -99,18 +99,13 @@ child each blocks the closure.
 ```mermaid
 flowchart LR
   I["FIX-1634 · id fix · under FIX-1635"] -.->|"the refusal the page states"| P["FIX-1639 · the page"]
-  M["FIX-1638 · config matrix"] -.->|"proposed: folded in"| P
-  G["FIX-1640 · terms"] -.->|"proposed: folded in"| P
   P -->|"the published page"| Z["FIX-1642 · closure · required"]
-  M --> Z
-  G --> Z
   E["FIX-1641 · wake authoring POC"] -->|"lands or closes first"| Z
   S["FIX-1643 · subscribe and route POC"] -->|"lands or closes first"| Z
 ```
 
-Solid edges are blocked-by; dashed edges into FIX-1639 are the proposed fold, and the one from
-FIX-1634 is an input from another epic. If D1 re-splits, FIX-1638 and FIX-1640 publish beside
-FIX-1639 and all still block the closure. FIX-1641 and FIX-1643 hand the page nothing it
+Solid edges are blocked-by; the dashed edge from FIX-1634 is an input from another epic.
+FIX-1638 and FIX-1640 have no node: D1 folded them into FIX-1639 and they are canceled. FIX-1641 and FIX-1643 hand the page nothing it
 must wait for, and the closure checks neither. Each blocks the closure only because every child
 does: the run waits for #2369 and #2372 to merge, or for the owner to close each POC with its
 findings filed to FIX-1639. The two are soft-related siblings, so no edge joins them.
@@ -128,13 +123,13 @@ findings filed to FIX-1639. The two are soft-related siblings, so no edge joins 
 it, with the queue-host gap stated plainly. If wrong: we ship a page nobody can build from, or
 a runtime gap gets documented instead of fixed.
 
-1. **[D1](DECISIONS.md#d1) · One page from one writer, FIX-1638 and FIX-1640 folded in. Open,
-   yours.** If wrong: one fold to re-split, or three pages drift apart describing one thing.
+1. **[D1](DECISIONS.md#d1) · One page from one writer, FIX-1638 and FIX-1640 folded in.
+   Decided by the owner, 2026-09-29.** If wrong: one fold to re-split, before the page is written.
 2. **[D2](DECISIONS.md#d2) · A new page, not a nav change.** If wrong: a page that repeats what
    a sidebar entry would have found.
 3. **[D3](DECISIONS.md#d3) · The event row names only doors that ship.** `dispatcher()` is the
    cross-flow bus that ships; FIX-441's topic bus is the one left out. If wrong: a reader builds
    on `.notify` and `NotificationFlow`, which were canceled.
 
-**Open: D1.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md). Rules:
+**Nothing open.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md). Rules:
 [BUSINESS-RULES.md](BUSINESS-RULES.md). Order: [PLAN.md](PLAN.md).

@@ -2,16 +2,16 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-The calls above any single issue. D1 is open and the owner's: it overrides the PRD's
-three-child split. D2 tests the epic's own kill line. D3 corrects one line of the Architect's
+The calls above any single issue. D1 is the owner's, answered on 2026-09-29: it overrides the
+PRD's three-child split. D2 tests the epic's own kill line. D3 corrects one line of the Architect's
 guidance against what ships. The rest were decided here so no child reopens them.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  E["FIX-1637"] --> D1["D1 · one page, one writer · open"]
-  D1 -.->|"alternative"| X1["three children, three pages, as the PRD split them"]
+  E["FIX-1637"] --> D1["D1 · one page, one writer · owner decided"]
+  D1 -.->|"rejected"| X1["three children, three pages, as the PRD split them"]
   E --> D2["D2 · a new page that links the rest"]
   D2 -.->|"rejected"| X2["a nav or index change only"]
   D2 -.->|"rejected"| X2b["grow the Work that outlives the turn guide"]
@@ -20,35 +20,25 @@ flowchart TD
 ```
 
 <a name="d1"></a>
-## D1 · One page from one writer: fold FIX-1638 and FIX-1640 into FIX-1639? · open
+## D1 · One page from one writer: FIX-1638 and FIX-1640 fold into FIX-1639 · decided by the owner
 
 | | |
 |---|---|
 | **Instead of** | The PRD's split: three children, three pages (the guide, the config matrix, the glossary), each written in isolation, as the Architect's "do not merge bodies" note asks |
 | **Because** | All three describe the same five surfaces: webhook ingress, schedule dispatch, `dispatcher()`, the `{ id }` / `{ key }` policy, channels and boards. Three isolated writers produce three phrasings of one thing, the drift `polish-docs` exists to clean. The split also costs two extra spec gates and a cross-spec pass for a three-column table and three definitions |
-| **Locks in** | FIX-1639 publishes everything. The table may still be its own linkable page inside FIX-1639 if the writer finds it reads better. FIX-1638 and FIX-1640 close as folded only when the owner says so |
+| **Locks in** | FIX-1639 publishes everything: the flow / host / ops table and the terms are sections of the one page. FIX-1638 and FIX-1640 are canceled as folded, and their blocks on FIX-1642 are removed. The `epic-wake` entry is one line in `docs/contributing/`, not published docs |
 
-### Fold the table and the terms into the page, or keep three children?
+**Decided.** The owner, in session on 2026-09-29: fold. It is the recommendation this spec put
+to the gate, so it changes no direction. Every deliverable still ships; only the ticket count
+changed.
 
-**Plain terms.** The PRD asks for three documents: a guide, a table of where settings live, and
-a short glossary. They explain the same handful of features. Written by three people who never
-see each other's drafts, they'll describe those features three slightly different ways, and a
-reader will find the disagreements.
+**What would change my mind:** the owner wanting the table or the terms reviewable on their own
+schedule, say for FIX-453's architecture work or a design partner. Re-splitting would reopen
+two children, not this epic.
 
-**The trade-off.** Folding gives one consistent page for one review. It overrides the owner's
-split and the Architect's note. Every deliverable still ships; only the number of tickets changes.
-
-![Fold into one page, recommended, beside three children as the PRD split them. Decides it: one writer describing five features once, where three would describe them three ways. Price: overriding the owner's split and the Architect's note. Tie: every deliverable ships either way. Locks in FIX-1639 as the only writer. Flips if the owner wants each deliverable reviewable on its own](figures/open-one-page.svg)
+![Fold into one page, chosen, beside three children as the PRD split them. Decides it: one writer describing five features once, where three would describe them three ways. Price: overriding the owner's first split and the Architect's note. Tie: every deliverable ships either way. Locks in FIX-1639 as the only writer, FIX-1638 and FIX-1640 canceled as folded. Flips if the owner wants each deliverable reviewable on its own](figures/d1-one-page.svg)
 
 It comes down to consistency: three isolated writers describe five features three ways.
-
-**My recommendation.** Fold. The table and the terms read against the page they sit in, so
-they should be written with it.
-
-**What would change my mind.** If you want the table or the terms reviewable and linkable on
-their own schedule, say for FIX-453's architecture work or a design partner, keep them split.
-
-**What being wrong costs.** Low and reversible: one fold to re-split, before any page is written.
 
 <a name="d2"></a>
 ## D2 · A new page that links the existing ones, not a nav change and not a longer guide
@@ -84,19 +74,18 @@ It comes down to the export check: the canceled topic bus on the page fails the 
 
 ## Who owns what
 
-![Who owns what: eight rules by FIX-1639, FIX-1638, FIX-1640 and the closure FIX-1642. FIX-1639 owns the page, the fence statement, the project's verified-caller rule, the drift fixes and the contributor line; it owns the table and the terms under D1, with dashed cells showing FIX-1638 and FIX-1640 owning them, and FIX-1638 owning the verified-caller rule, if D1 re-splits. The closure owns the proof and consumes every other rule](figures/ownership.svg)
+![Who owns what: eight rules by FIX-1639, the page, and FIX-1642, the closure. FIX-1639 owns the path, the table and its event row, the terms, the queue-host fence, the project's verified-caller rule, the drift fixes and links, and the contributor epic-wake line. The closure owns the proof, which FIX-1639 consumes, and consumes every other rule](figures/ownership.svg)
 
-Every rule has one owner today, the project's PR-1 included. The dashed cells are where
-ownership moves if the owner answers D1 with a re-split; nothing else changes. FIX-1641 and
-FIX-1643 own no rule and have no column: they consume ER-6.
+Every rule has one owner, the project's PR-1 included, and after D1 that owner is FIX-1639 for
+all but the proof. FIX-1641 and FIX-1643 own no rule and have no column: they consume ER-6.
 
 ## Decided, not asked
 
 - **`epic-wake` moves out of published docs.** One line in `docs/contributing/orchestration.md`
   says it is contributor tooling and not the product's *wake*. The outsider rule
   ([`user-docs.md`](../../../docs/contributing/user-docs.md)) keeps internal tooling names out
-  of `apps/docs`, which mentions none of `epic-wake`, Conductor or DevForce today. Holds whether
-  D1 folds or re-splits; it departs from the PRD's letter, so it's flagged in the PR.
+  of `apps/docs`, which mentions none of `epic-wake`, Conductor or DevForce today. The owner
+  confirmed it with D1: one line in `docs/contributing/`, written by FIX-1639.
 - **Three terms, one definition each.** *Wake*: something outside the flow (a webhook delivery,
   a schedule tick) starts a run through the host. *Dispatch*: a flow sends one unit of work to
   an entry, into its own session or an existing one. *Schedule tick*: your scheduler calling a
@@ -159,5 +148,10 @@ tests of the set's division.
 - **Set membership, 2026-09-29.** The owner filed FIX-1643 (subscribe and route POC) at 13:18Z
   as a child, soft-related to FIX-1641, with examples PR #2372. It was wired to block the
   closure. No decision changed.
+- **D1 answered, 2026-09-29, after merge.** The owner folded FIX-1638 and FIX-1640 into
+  FIX-1639, as recommended; both are canceled in Linear and their blocks on FIX-1642 removed.
+  This follow-up records it and drops the re-split cells. Separately, the Process guards check
+  that was red on `main` at merge time (#2359 put `spec/_projects/public-launch/` there) is being
+  fixed outside this epic.
 
-**Open: D1.**
+**Nothing open.**
