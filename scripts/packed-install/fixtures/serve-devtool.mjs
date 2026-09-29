@@ -1,27 +1,21 @@
 /**
- * Runs inside the consumer project the packed-install check builds, and does
- * what `fsdev dev` does with an installed DevTool: ask
- * `@flow-state-dev/devtool` for its client assets, serve them beside the flow
- * API, and load the page.
+ * Runs inside the packed-install consumer project. Asks the installed
+ * `@flow-state-dev/devtool` for its client assets, requires that directory to
+ * sit inside the installed package, and serves it the way `fsdev dev` does.
  *
- * Everything resolves from the installed tarballs in `node_modules`. The asset
- * directory must be inside the installed devtool package, so a copy left in the
- * repository cannot stand in for one the tarball did not carry.
- *
- * Every script and stylesheet `index.html` references is fetched and must come
- * back as that type. `serve()` answers any unknown path with `index.html` (SPA
- * fallback), so a missing asset would otherwise look like a 200.
+ * Every script and stylesheet `index.html` references must come back as that
+ * type. `serve()` answers an unknown path with `index.html` (SPA fallback), so
+ * a missing asset would otherwise look like a 200.
  *
  * Exits 0 and prints `devtool: ok` on success; anything else exits 1 with the
  * step that failed.
  */
 import { realpathSync } from "node:fs";
 import { join, sep } from "node:path";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow } from "@flow-state-dev/core";
 import { getAssetPath } from "@flow-state-dev/devtool";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
-import { z } from "zod";
 
 const fail = (step, detail) => {
   console.error(`devtool: FAIL at ${step}: ${detail}`);
@@ -38,21 +32,7 @@ const installed = realpathSync(join(process.cwd(), "node_modules", "@flow-state-
 if (!realpathSync(assetDir).startsWith(installed + sep))
   fail("getAssetPath", `${assetDir} is not inside the installed package at ${installed}`);
 
-const flow = defineFlow({
-  kind: "packed-install-devtool",
-  actions: {
-    noop: {
-      inputSchema: z.object({}),
-      block: handler({
-        name: "noop",
-        inputSchema: z.object({}),
-        outputSchema: z.object({}),
-        execute: () => ({}),
-      }),
-    },
-  },
-})();
-
+const flow = defineFlow({ kind: "packed-install-devtool", actions: {} })();
 const flowState = createFlowState({
   flows: { "packed-install-devtool": flow },
   stores: { default: { primary: inMemoryStores() } },
