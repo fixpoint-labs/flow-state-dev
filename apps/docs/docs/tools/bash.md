@@ -251,7 +251,7 @@ With the local provider, each workspace is a directory under
 
 | `scope` | One workspace per | Reach for it when |
 | --- | --- | --- |
-| `run` | request | Several agents work at once and must not see each other's half-finished files. |
+| `run` | request (not request id) | Several agents work at once and must not see each other's half-finished files. |
 | `session` *(default)* | session | A conversation's runs should build on each other. |
 | `user` | user | Work should carry across a user's sessions. |
 | `org` | org | Work is shared across everyone in an org. |
@@ -266,6 +266,16 @@ request, so without it two tenants that happen to name the same session share a
 directory of files. `user` and `org` do not carry it: those scopes are shared
 across tenants by design, and a tenant segment would split the sharing they
 exist to provide.
+
+A `run` workspace belongs to one request, and its path also carries that
+request's incarnation, a token set when the request was first recorded:
+`.fsdev/workspaces/run/<tenant>/<id>/<incarnation>/`. A retry or a resume of
+the same request lands in the same directory. A later request that happens to
+reuse the id, whether from another user or from the same one after retention
+deleted the first request, gets a new, empty directory.
+
+Directories from finished requests stay on disk. Nothing reads them again, so
+clean them up on whatever schedule suits you.
 
 `scope` and `cwd` are alternatives, not a pair. `cwd` names one directory, so a
 scope beside it would separate nothing while saying it does; setting both

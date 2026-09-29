@@ -282,9 +282,16 @@ The local provider creates a workspace directory per scope, at
 from the request and two tenants can name the same one. `user` and `org` don't:
 those scopes are shared across tenants by design.
 
+A `run` workspace belongs to one request, not to its id: its path also carries
+the request's `ctx.request.incarnation`
+(`.fsdev/workspaces/run/<tenant>/<id>/<incarnation>/`). A retry or resume of the
+same request lands in the same directory; a later request that reuses the id,
+from anyone, gets a new, empty one. Directories from finished requests stay on
+disk and are never read again, so clean them up on your own schedule.
+
 | `scope` | One workspace per | Reach for it when |
 | --- | --- | --- |
-| `"run"` | request | Several agents work at once and must not see each other's half-finished files. |
+| `"run"` | request (not request id) | Several agents work at once and must not see each other's half-finished files. |
 | `"session"` *(default)* | session | A conversation's runs should build on each other. |
 | `"user"` | user | Work should carry across a user's sessions. |
 | `"org"` | org | Work is shared across everyone in an org. |

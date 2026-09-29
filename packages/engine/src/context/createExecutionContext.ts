@@ -85,6 +85,7 @@ import {
   resolveUserStorageKey,
   resolveOrgStorageKey,
   resolveLineageId,
+  resolveRequestIncarnation,
   resolveResourceIsolation,
   resolveResourceScopeId,
   resolveSessionStorageKey,
@@ -1439,7 +1440,13 @@ export async function createExecutionContext<
     // reusing its id) keeps the last-write-wins overwrite it always had. The
     // same fence the transport host applies to its enqueue-time stub, and
     // another principal's record is refused the same way.
-    await claimRequestRecord(stores, flow, requestRecord as RequestRecord);
+    // The record as written: a same-owner hand-off carries the incarnation
+    // the store already held, and this context must run as that request.
+    requestRecord = (await claimRequestRecord(
+      stores,
+      flow,
+      requestRecord as RequestRecord
+    )) as typeof requestRecord;
   } else if (requestRecord.source === undefined) {
     // Pre-FIX-438 records read from a store that hasn't been migrated
     // default to the HTTP source. New writes always carry the field.
@@ -2490,6 +2497,10 @@ export async function createExecutionContext<
         orgId: orgRef.current?.orgId,
         tenantId: options.tenantId
       },
+      // Read from the record this context claimed or adopted, never minted
+      // here: a retry, a resume or a queued run is the same request only if
+      // it reads the same value.
+      incarnation: resolveRequestIncarnation(requestRef.current),
       get tokenUsage() {
         return computeTokenUsage();
       },

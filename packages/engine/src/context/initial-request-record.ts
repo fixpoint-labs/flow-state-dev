@@ -10,13 +10,15 @@
  * existing record as-is and skips its own write, so this stub is the record
  * used for the entire execution — it must be complete, not a placeholder.
  *
- * Given identical inputs the two call sites produce an identical record. The
+ * Given identical inputs the two call sites produce an identical record, apart
+ * from the freshly minted `incarnation` (see below). The
  * inputs are not always identical: the host stamps `startedAtMs` at enqueue
  * (vs worker-start) and carries `orgId` from the envelope rather than the
  * resolved org record. Both are record metadata only — execution-time org
  * resolution uses the separately-loaded org record — so a difference never
  * affects execution, only the record's provenance fields.
  */
+import { randomUUID } from "node:crypto";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { RequestRecord } from "../stores/types";
 
@@ -54,6 +56,12 @@ export type InitialRequestRecordInput<TState extends JsonObject = JsonObject> = 
  * patches use the `"any"` CAS verb so the starting version never blocks a later
  * write, which also keeps the builder idempotent under BullMQ's at-least-once
  * delivery (a re-run adopts the existing record rather than conflicting).
+ *
+ * Each call mints a fresh `incarnation`. That is the one value two calls with
+ * identical inputs do not share, on purpose: whichever record the store keeps
+ * decides the request's incarnation, and every context reads it from there
+ * (`claimRequestRecord` hands back the kept one to a caller that lost the
+ * create race).
  */
 export function createInitialRequestRecord<TState extends JsonObject = JsonObject>(
   input: InitialRequestRecordInput<TState>,
@@ -68,6 +76,7 @@ export function createInitialRequestRecord<TState extends JsonObject = JsonObjec
     sessionId: input.sessionId,
     tenantId: input.tenantId,
     orgId: input.orgId,
+    incarnation: `inc_${randomUUID()}`,
     source: input.source ?? "http",
     status: "in_progress",
     startedAtMs: ts,
