@@ -126,7 +126,7 @@ The switch is exhaustive over `ParsedFlowRoute["kind"]`.
 | Subject | Routes | Owner / resolver |
 |---|---|---|
 | `exempt` | `list_flows`, `capabilities`, `execute_action` | No owner check. `execute_action` resolves its own principal in the action handler. `list_flows` stays exempt: when the registry holds an owner pin it resolves the caller for each pinned instance through that instance's effective resolver (its own `authentication.resolvePrincipal`, otherwise the host's, the same precedence the doors use), and omits the instance when that resolver refuses the caller or the caller does not match its pin. A credential one instance's resolver accepts never lists another instance. Instances that share a resolver and its `requireUser` / `defaultUserId` settings are resolved once per request, at the first such instance's address. An anonymous caller sees unpinned flows only. The route does not answer 401. |
-| `session` | session CRUD, state, resources, debug-on-session | Owner is the stored session's `userId`. Flow comes from `session.flowKind`. A missing session is not an auth error — the handler 404s. The guard returns the session record it checked (`session`, `null` when it found none). The session snapshot, the session stream and the metadata edit, which go on to read or write under the session, answer 404 when their own read of it is not that record: deleted and created again since, or created after the guard found none. |
+| `session` | session CRUD, state, resources, debug-on-session | Owner is the stored session's `userId`. Flow comes from `session.flowKind`. A missing session is not an auth error — the handler 404s. Another user's session gets that same 404 from the guard (`sessionHidden`; a debug route applies its own gate first), so the answer never says the id is in use. An organization mismatch for the session's own user stays 403. The guard returns the session record it checked (`session`, `null` when it found none). The session snapshot, the session stream and the metadata edit, which go on to read or write under the session, answer 404 when their own read of it is not that record: deleted and created again since, or created after the guard found none. |
 | `request` | stream, abort, retry, continue, status, resume | Owner is the request record's `userId` (or the in-flight `activeRequests` entry when the record is not persisted yet). |
 | `flow` | `create_session` | No record yet. The authenticated caller becomes the owner. Flow comes from the URL. |
 | `user` | `user_stream`, `check_interrupted_requests` | Owner is the `userId` in the path. There is no stored record to read an organization or tenant from, so the guard compares neither and each handler scopes its own rows: `check_interrupted_requests` sweeps only entries in the caller's tenant (`tenantMatches`) and, when a principal is resolved, the caller's organization (`user_stream` answers 501 and has no rows). A test enforces this in two stages (`packages/engine/test/user-route-scoping.test.ts`). First, every route the guard classifies as `user`, and every `/users/:userId/...` path, must have an entry in the engine's user-route scoping table; a route without one fails the suite. Second, each entry says how to seed, call and observe its route, and the test runs it through the router as the owner, then as a caller from another organization, another tenant and, in a mixed app, an anonymous caller. The owner's call must see its row; any other caller seeing or changing a row fails. A route that is not built yet must answer 501; building it means replacing that pin with a real entry. |
@@ -243,8 +243,12 @@ When both are set, `authentication.requireUser` wins.
 - **Session-user mismatch.** If a request names an existing session
   whose stored `userId` does not match the resolved principal, the
   engine rejects the request (`UserBindingMismatchError`). The check
-  runs after resolution, on every path that loads a session. A
-  management-route owner mismatch is 403 from the route-auth guard.
+  runs after resolution, at admission, before the request is
+  acknowledged, and again on every path that loads a session. Over HTTP
+  it is `404 Unknown session`, the answer an unused id gets. On a
+  session-addressed management route the route-auth guard answers
+  another user's session the same way; another user's request is still
+  403 ([State and Scopes](./state-and-scopes.md#a-session-id-is-an-address-not-an-ownership)).
 
 ---
 

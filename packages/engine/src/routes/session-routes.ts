@@ -22,6 +22,7 @@ import {
   isCheckedSession,
   jsonResponse,
   loadTenantSession,
+  unknownSessionResponse,
   parseJsonBody,
   refuseUnattributedRecord
 } from "./route-utils";
@@ -266,9 +267,7 @@ export async function handleGetSession(
     ctx.tenantId
   );
   if (session === undefined) {
-    return jsonResponse(404, {
-      error: `Unknown session "${route.sessionId}"`
-    });
+    return unknownSessionResponse(route.sessionId);
   }
   const unattributed = refuseUnattributedRecord(ctx.registry, session);
   if (unattributed !== undefined) return unattributed;
@@ -431,9 +430,7 @@ export async function handleDeleteSession(
     ctx.tenantId
   );
   if (existing === undefined) {
-    return jsonResponse(404, {
-      error: `Unknown session "${route.sessionId}"`
-    });
+    return unknownSessionResponse(route.sessionId);
   }
   const unattributed = refuseUnattributedRecord(ctx.registry, existing);
   if (unattributed !== undefined) return unattributed;
@@ -462,9 +459,7 @@ export async function handlePatchSessionMetadata(
   // The owner check read the session too, and the edit is written over this
   // copy, so this copy must be the session the caller was admitted to.
   if (session === undefined || !isCheckedSession(ctx.checkedSession, session)) {
-    return jsonResponse(404, {
-      error: `Unknown session "${route.sessionId}"`
-    });
+    return unknownSessionResponse(route.sessionId);
   }
   const unattributed = refuseUnattributedRecord(ctx.registry, session);
   if (unattributed !== undefined) return unattributed;
@@ -485,7 +480,7 @@ export async function handlePatchSessionMetadata(
       // created again under the id since is another session, maybe another
       // person's, and the edit is not its to receive.
       if (reread === undefined || !isSameSession(session, reread)) {
-        return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+        return unknownSessionResponse(route.sessionId);
       }
       current = reread;
     }
@@ -527,9 +522,7 @@ export async function handleListSessionRequests(
     ctx.tenantId
   );
   if (session === undefined) {
-    return jsonResponse(404, {
-      error: `Unknown session "${route.sessionId}"`
-    });
+    return unknownSessionResponse(route.sessionId);
   }
   const unattributed = refuseUnattributedRecord(ctx.registry, session);
   if (unattributed !== undefined) return unattributed;

@@ -108,6 +108,18 @@ export async function loadTenantSession(
 }
 
 /**
+ * What a session route answers for a session the caller cannot see: one no
+ * one has created, and one another user owns. The same status and the same
+ * words for both, so the answer says nothing about whether the id is in use
+ * or whose it is. One copy, because the route guard (`route-auth.ts`), the
+ * action route and every session handler's own missing-session branch must
+ * agree character for character, or the difference is the oracle.
+ */
+export function unknownSessionResponse(sessionId: string): Response {
+  return jsonResponse(404, { error: `Unknown session "${sessionId}"` });
+}
+
+/**
  * Whether `session`, a handler's own read of the session its route addresses,
  * is the session the owner check admitted the caller to
  * (`RouteAuthResult.session`). The check found none (`null`): then no session

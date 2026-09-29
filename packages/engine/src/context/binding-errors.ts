@@ -13,6 +13,14 @@
  * session was created against. Closes a long-standing gap where the loaded
  * session record's `userId` was preserved without cross-checking the incoming
  * `options.userId`.
+ *
+ * Raised at admission, before a run is registered or acknowledged
+ * (`runAction`, and the transport host for a queued run), and again at
+ * context creation for a session created in between. The HTTP action route
+ * answers it as an unknown session. The message names the session only, never
+ * its owner: it reaches the caller as the run's error item, and the caller is
+ * the one user who must not learn whose the session is. `sessionUserId` still
+ * carries the owner for server-side code.
  */
 export class UserBindingMismatchError extends Error {
   readonly sessionId: string;
@@ -20,9 +28,7 @@ export class UserBindingMismatchError extends Error {
   readonly requestedUserId: string;
 
   constructor(sessionId: string, sessionUserId: string, requestedUserId: string) {
-    super(
-      `Session ${sessionId} is owned by user ${sessionUserId} but request supplied user ${requestedUserId}.`
-    );
+    super(`Session ${sessionId} belongs to another user and cannot be used by this caller.`);
     this.name = "UserBindingMismatchError";
     this.sessionId = sessionId;
     this.sessionUserId = sessionUserId;

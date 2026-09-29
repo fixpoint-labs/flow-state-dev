@@ -705,7 +705,7 @@ export function createSessionStreamConformanceTests(
         refusals.push(live.response.status);
       }
       // The cases are refusals, not a match on two 200s.
-      expect(refusals).toEqual([404, 404, 404, 401, 403]);
+      expect(refusals).toEqual([404, 404, 404, 401, 404]);
 
       const owner = await stream(r, "owned", { headers: { "x-verified-user": "alice" } });
       expect(owner.response.status).toBe(200);
@@ -718,7 +718,7 @@ export function createSessionStreamConformanceTests(
     it.each([
       ["deleted", undefined, 404],
       ["deleted and created again by its owner", "alice", 200],
-      ["deleted and created again by someone else", "mallory", 403]
+      ["deleted and created again by someone else", "mallory", 404]
     ] as const)(
       "ends when its session is %s, sending nothing kept after",
       async (_what, recreatedBy, reopened) => {

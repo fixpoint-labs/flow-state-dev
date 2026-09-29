@@ -61,6 +61,7 @@ import {
   handleDebugListCollectionItems,
   handleDebugGetResourceContent,
   handleDebugGetCollectionItemContent,
+  assertDebugAllowed,
   resolveDebugConfig,
   type ResolvedDebugConfig
 } from "./debug-routes";
@@ -374,7 +375,16 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         hostResolver,
         tenantId
       });
-      if (auth.denied !== undefined) return auth.denied;
+      if (auth.denied !== undefined) {
+        // A debug route gates on enablement and origin before it looks a
+        // session up, so another user's session gets that gate's answer
+        // first, as an unused id does.
+        if (auth.sessionHidden === true && route.kind.startsWith("debug_")) {
+          const gated = assertDebugAllowed(request, debugConfig);
+          if (gated !== null) return gated;
+        }
+        return auth.denied;
+      }
       const principal = auth.principal;
       const anonymousFlowIds = auth.anonymousFlowIds;
       // The caller as each instance's own doors resolve it, for the routes

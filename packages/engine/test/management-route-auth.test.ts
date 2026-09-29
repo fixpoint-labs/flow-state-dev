@@ -223,12 +223,15 @@ describe("management routes under a configured resolver", () => {
     await seedSession(stores, { id: "s1", flowKind: "secure", userId: "alice" });
 
     // Authentication alone would let this through — bob holds a valid
-    // credential. Ownership is what stops him reading alice's data.
+    // credential. Ownership is what stops him reading alice's data, and he
+    // gets what an unused id gets him: the id is an address, not a secret,
+    // so the answer must not say it is in use.
     const res = await call(router, "GET", ["sessions", "s1"], {
       headers: { "x-verified-user": "bob" }
     });
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Unknown session "s1"' });
   });
 
   it("denies an authenticated user's write to another user's resource content", async () => {
@@ -242,7 +245,8 @@ describe("management routes under a configured resolver", () => {
       { headers: { "x-verified-user": "bob" }, body: { content: "overwritten" } }
     );
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Unknown session "s1"' });
   });
 
   it("still 404s an unknown session rather than masking it as an auth error", async () => {

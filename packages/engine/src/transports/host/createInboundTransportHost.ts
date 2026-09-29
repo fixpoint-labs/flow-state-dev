@@ -26,7 +26,8 @@ import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import {
   FlowInstanceBindingMismatchError,
-  RequestOwnerMismatchError
+  RequestOwnerMismatchError,
+  UserBindingMismatchError
 } from "../../context/binding-errors";
 import { claimRequestRecord, principalOwnsRequest } from "../../context/request-principal";
 import { pinRejectsCaller, UnknownFlowError } from "../../context/instance-pin";
@@ -575,7 +576,20 @@ export function createInboundTransportHost(
         resolveSessionStorageKey(dispatchEnvelope.sessionId, dispatchEnvelope.tenantId)
       );
       // A tenant-key collision is refused later by the tenant binding; only a
-      // session this tenant can see is judged for ownership here.
+      // session this tenant can see is judged for ownership here. Another
+      // user's session first, and before the flow instance, as `runAction`
+      // judges it: the caller learns nothing of it, not even which flow holds it.
+      if (
+        session !== undefined &&
+        tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
+        session.userId !== dispatchEnvelope.userId
+      ) {
+        throw new UserBindingMismatchError(
+          dispatchEnvelope.sessionId,
+          session.userId,
+          dispatchEnvelope.userId
+        );
+      }
       if (
         session !== undefined &&
         tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
