@@ -274,7 +274,7 @@ The file is YAML frontmatter (strict-validated) over a body split into line-anch
 ### Output Behavior
 
 - **Text output** (default `z.string()` or no `outputSchema`): Streams via `content.delta` events, auto-emits `message` item
-- **Text across steps**: when the framework owns the tool loop (a model with `streamStep`, which includes the built-in AI SDK adapter and fallback groups over it), each step that writes text after earlier text opens with a blank line (`\n\n`). The break is in the streamed deltas, the `message` item and the returned value alike. A step that writes no text adds nothing. On the legacy path (a model with `stream()` only) the text is exactly what the model streams; no break is added.
+- **Text across steps**: when the framework owns the tool loop (a model with `streamStep` or `generateStep`, which includes the built-in AI SDK adapter and fallback groups over it), each step that writes text after earlier text opens with a blank line (`\n\n`). The break is in the streamed deltas, the `message` item and the returned value alike, and a text turn that runs without streaming returns the same text. A step that writes no text adds nothing. On the legacy path (a model with `stream()` only) the text is exactly what the model streams; no break is added.
 - **Structured output** (custom `outputSchema`): Uses `generate()` (no streaming), parsed and validated against schema
 - **Repair**: `repair.mode` controls schema mismatch handling: `'auto'` (retry), `'rescue'` (route to rescue), `'fail'` (immediate)
 

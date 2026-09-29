@@ -1400,6 +1400,123 @@ describe("generator owned step loop — streaming", () => {
   });
 });
 
+// Whether a turn streams is a transport choice, not a different answer. A
+// model that says something, calls a tool, then says more has written two
+// paragraphs either way, so the non-streaming loop must return the text the
+// streamed turn returns — every step's text, joined the way the stream joins
+// it — rather than only the last step's.
+describe("generator owned step loop — the same turn, streamed or not", () => {
+  /** One step of a scripted turn: optional text, optional call to `note`. */
+  type TurnStep = { text?: string; call?: string };
+
+  const note = handler({
+    name: "note",
+    inputSchema: z.object({}),
+    outputSchema: z.object({ ok: z.boolean() }),
+    execute: () => ({ ok: true }),
+  });
+
+  const stepResult = (step: TurnStep): GeneratorModelResult => ({
+    text: step.text ?? "",
+    toolCalls: step.call === undefined
+      ? undefined
+      : [{ toolCallId: step.call, toolName: "note", args: {} }],
+    finishReason: step.call === undefined ? "stop" : "tool-calls",
+  });
+
+  /** The turn as a non-streaming model: `generateStep` only. */
+  function generatingModel(turn: TurnStep[]): GeneratorModel {
+    return stepModel(turn.map((step) => () => stepResult(step))).model;
+  }
+
+  /** The same turn as a streaming model: `streamStep` only. */
+  function streamingModel(turn: TurnStep[]): GeneratorModel {
+    let calls = 0;
+    return {
+      modelId: "stream-step-model",
+      async generate() {
+        throw new Error("generate must not be called");
+      },
+      async *streamStep() {
+        const step = turn[calls++];
+        if (step === undefined) throw new Error(`no script entry for step ${calls - 1}`);
+        if (step.text !== undefined) {
+          yield { type: "text_delta", textDelta: step.text } as GeneratorModelStreamChunk;
+        }
+        if (step.call !== undefined) {
+          yield {
+            type: "tool_call_delta",
+            toolCallDelta: { toolCallId: step.call, toolName: "note", argsDelta: "{}" },
+          } as GeneratorModelStreamChunk;
+        }
+        const result = stepResult(step);
+        yield {
+          type: "finish",
+          finishReason: result.finishReason,
+          fullResult: result,
+        } as GeneratorModelStreamChunk;
+      },
+    };
+  }
+
+  /** Run the same scripted turn once streamed and once not. */
+  async function both(turn: TurnStep[]) {
+    const run = (model: GeneratorModel) =>
+      runForTest(
+        generator({ name: "same-turn-gen", model, prompt: "p", tools: [note] }),
+        {},
+        createMockContext(),
+      );
+    return { streamed: await run(streamingModel(turn)), generated: await run(generatingModel(turn)) };
+  }
+
+  it("keeps the text written before a tool call", async () => {
+    const { streamed, generated } = await both([
+      { text: "That is outside what I know.", call: "n1" },
+      { text: "I've filed this with our team." },
+    ]);
+
+    expect(streamed).toBe("That is outside what I know.\n\nI've filed this with our team.");
+    expect(generated).toBe(streamed);
+  });
+
+  it("puts one break between two texts however many tool-only steps sit between them", async () => {
+    const { streamed, generated } = await both([
+      { text: "First.", call: "n1" },
+      { call: "n2" },
+      { text: "Second." },
+    ]);
+
+    expect(streamed).toBe("First.\n\nSecond.");
+    expect(generated).toBe(streamed);
+  });
+
+  it("returns a single step's text unchanged", async () => {
+    const { streamed, generated } = await both([{ call: "n1" }, { text: "Only this." }]);
+
+    expect(streamed).toBe("Only this.");
+    expect(generated).toBe(streamed);
+  });
+
+  // A structured turn never streams, so there is no streamed text to match.
+  // Its answer is the final step's; chatter written before a tool call must
+  // not be glued onto it, or a JSON answer carried as text stops parsing.
+  it("answers a structured turn from its final step alone", async () => {
+    const block = generator({
+      name: "structured-turn-gen",
+      model: generatingModel([
+        { text: "Let me check.", call: "n1" },
+        { text: JSON.stringify({ answer: "yes" }) },
+      ]),
+      prompt: "p",
+      tools: [note],
+      outputSchema: z.object({ answer: z.string() }),
+    });
+
+    await expect(runForTest(block, {}, createMockContext())).resolves.toEqual({ answer: "yes" });
+  });
+});
+
 describe("createFallbackModel — step-method forwarding (FIX-814 PR3)", () => {
   const okStepModel = (modelId: string, text: string): GeneratorModel => ({
     modelId,
