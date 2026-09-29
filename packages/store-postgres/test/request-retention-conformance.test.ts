@@ -81,4 +81,49 @@ describe("Postgres request delete order", () => {
     expect(await store.get(requestId)).toBeUndefined();
     expect(await store.getEvents(requestId)).toEqual([]);
   });
+
+  it("a failed child delete is not reported until the other child deletes have finished", async () => {
+    const executor = pgliteExecutor(await freshPglite());
+    await initializeSchema(executor);
+    let releaseItemDelete: () => void = () => {};
+    const itemDeleteHeld = new Promise<void>((resolve) => {
+      releaseItemDelete = resolve;
+    });
+    let itemDeleteDone = false;
+    const store = createPostgresRequestStore({
+      async query(text, values) {
+        if (text.startsWith("DELETE FROM request_events")) {
+          throw new Error("event delete failed");
+        }
+        if (text.startsWith("DELETE FROM request_items")) {
+          await itemDeleteHeld;
+          const result = await executor.query(text, values);
+          itemDeleteDone = true;
+          return result;
+        }
+        return executor.query(text, values);
+      }
+    });
+
+    let settled = false;
+    const deleting = store.delete("req_delete_settle").then(
+      () => {
+        settled = true;
+      },
+      (error: unknown) => {
+        settled = true;
+        return error;
+      }
+    );
+
+    // The event delete has already failed; the item delete is still running.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(settled).toBe(false);
+
+    releaseItemDelete();
+    const error = await deleting;
+    // Reported only once nothing is left running that a retry could race.
+    expect(itemDeleteDone).toBe(true);
+    expect((error as Error).message).toBe("event delete failed");
+  });
 });

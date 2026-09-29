@@ -479,6 +479,12 @@ export class FilesystemRequestStore implements RequestStore {
   }
 
   async delete(id: string): Promise<void> {
+    // Settle event writes before the sweep. A queued write takes its batch
+    // the moment it starts, so dropping the unwritten batch alone is not
+    // enough: an append already in flight would recreate the log after the
+    // sweep, and a later request reusing the id would replay it.
+    this.pendingNewEvents.delete(id);
+    await this.eventWriteQueues.get(id)?.drain();
     // Sidecars are swept inside the per-id lock, alongside the record file.
     // Sweeping them after `delete` returned would put the marker removal
     // outside the lock, where a conditional write can slip in between and be

@@ -461,11 +461,18 @@ export function createPostgresRequestStore(
       // (the delete can be retried, and nothing is left without an owner), and
       // the id cannot be claimed again until the record is gone, by which time
       // no child cleanup is left to hit the new owner's rows.
-      await Promise.all([
+      // `allSettled`, not `all`: a fast failure must not return while a
+      // sibling delete is still running, or a retry could free the id and the
+      // straggler would then delete the next owner's rows.
+      const children = await Promise.allSettled([
         executor.query("DELETE FROM request_items WHERE request_id = $1", [id]),
         executor.query("DELETE FROM request_events WHERE request_id = $1", [id]),
         executor.query("DELETE FROM request_runonce WHERE request_id = $1", [id])
       ]);
+      const failed = children.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected"
+      );
+      if (failed !== undefined) throw failed.reason;
       await base.delete(id);
       clearItemMaps(id);
     },
