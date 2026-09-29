@@ -15,7 +15,11 @@ import {
   PrincipalResolutionError
 } from "../transports/errors";
 import { generateId } from "../utils/generate-id";
-import { FlowInstanceBindingMismatchError } from "../context/binding-errors";
+import {
+  FlowInstanceBindingMismatchError,
+  RequestOwnerMismatchError
+} from "../context/binding-errors";
+import { resolveCallerRequestId } from "../context/request-principal";
 import { UnknownFlowError } from "../context/instance-pin";
 import {
   asObject,
@@ -102,6 +106,19 @@ export async function handleExecuteAction(
     throw error;
   }
 
+  // A caller may choose its own request id, so a retry reaches the same
+  // request. The id is an address, not an ownership: one another principal
+  // already holds gets this caller its own request instead.
+  const suppliedRequestId = getString(body.requestId);
+  const requestId =
+    suppliedRequestId === undefined
+      ? generateId("req")
+      : await resolveCallerRequestId(ctx.stores, suppliedRequestId, {
+          userId: principal.userId,
+          orgId: principal.orgId,
+          tenantId
+        });
+
   const actionInput: ActionRunInput = {
     // The address — the instance's exact id — so the host resolves this same
     // instance, not whichever shares its kind.
@@ -110,7 +127,7 @@ export async function handleExecuteAction(
     input: body.input,
     userId: principal.userId,
     sessionId,
-    requestId: getString(body.requestId) ?? generateId("req"),
+    requestId,
     // Org identity comes from the resolved principal only — never from
     // `body.orgId`, which a caller controls (BP-031). Principal resolution
     // requires one, so this is always present: a verified organization, or
@@ -210,6 +227,15 @@ export async function handleExecuteAction(
     try {
       await handle.accepted;
     } catch (error) {
+      // A request id another principal took between the check above and the
+      // dispatch's write. Nothing of theirs was touched, and the same call
+      // retried resolves to this caller's own request.
+      if (error instanceof RequestOwnerMismatchError) {
+        return jsonResponse(409, {
+          error: "request-id-in-use",
+          message: `Request "${error.requestId}" cannot be used by this caller`
+        });
+      }
       // A session or request this instance does not own: refused at admission
       // with nothing written, named by which record, without disclosing who
       // does own it. Deterministic and non-retryable until the caller

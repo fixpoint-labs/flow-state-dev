@@ -98,9 +98,11 @@ import { createInitialRequestRecord } from "./initial-request-record";
 import {
   FlowInstanceBindingMismatchError,
   OrgBindingMismatchError,
+  RequestOwnerMismatchError,
   TenantBindingMismatchError,
   UserBindingMismatchError
 } from "./binding-errors";
+import { principalOwnsRequest, type RequestPrincipal } from "./request-principal";
 import { refuseInstancePin } from "./instance-pin";
 import { ownerKeyMaySeed } from "../resources/owner-private";
 import {
@@ -622,6 +624,16 @@ export async function createExecutionContext<
       refusal.detail,
       refusal.reason
     );
+  }
+  // A request id is an address: another user's record under it is never
+  // adopted, however the id reached this run.
+  const requestPrincipal: RequestPrincipal = {
+    userId,
+    orgId: options.orgId,
+    tenantId: options.tenantId
+  };
+  if (loadedRequest !== undefined && !principalOwnsRequest(loadedRequest, requestPrincipal)) {
+    throw new RequestOwnerMismatchError(requestId);
   }
 
   // Parallelize the remaining independent store lookups — user, org, and the
@@ -1436,6 +1448,9 @@ export async function createExecutionContext<
             : `a request with this id: ${refusal.detail}`,
           refusal?.reason
         );
+      }
+      if (!principalOwnsRequest(holder, requestPrincipal)) {
+        throw new RequestOwnerMismatchError(requestId);
       }
       await stores.request.set(requestRecord.id, requestRecord, "any");
     }

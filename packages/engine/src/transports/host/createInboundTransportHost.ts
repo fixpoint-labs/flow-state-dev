@@ -24,7 +24,11 @@ import {
 import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
-import { FlowInstanceBindingMismatchError } from "../../context/binding-errors";
+import {
+  FlowInstanceBindingMismatchError,
+  RequestOwnerMismatchError
+} from "../../context/binding-errors";
+import { principalOwnsRequest } from "../../context/request-principal";
 import { pinRejectsCaller, UnknownFlowError } from "../../context/instance-pin";
 import { foreignRecordRefusal, ownsRecord } from "../../context/record-owner";
 import {
@@ -601,6 +605,9 @@ export function createInboundTransportHost(
         refusal.reason
       );
     }
+    if (active !== undefined && !principalOwnsRequest(active, dispatchEnvelope)) {
+      throw new RequestOwnerMismatchError(dispatchEnvelope.requestId);
+    }
     return session;
   };
 
@@ -641,6 +648,11 @@ export function createInboundTransportHost(
             : `a request with this id: ${refusal.detail}`,
           refusal?.reason
         );
+      }
+      // The same flow instance is not enough: a request id is an address, so
+      // another user's record under it is never overwritten or re-parented.
+      if (!principalOwnsRequest(holder, dispatchEnvelope)) {
+        throw new RequestOwnerMismatchError(record.id);
       }
       await stores.request.set(record.id, record, "any");
     }
@@ -945,7 +957,10 @@ export function createInboundTransportHost(
           }
           // Only a record this dispatch wrote is its to terminate — a refused
           // admission never touched the foreign owner's.
-          if (!(error instanceof FlowInstanceBindingMismatchError)) {
+          if (
+            !(error instanceof FlowInstanceBindingMismatchError) &&
+            !(error instanceof RequestOwnerMismatchError)
+          ) {
             await terminateUnenqueuedRequest(stores, requestId);
           }
           throw error;
@@ -1123,7 +1138,10 @@ export function createInboundTransportHost(
             // entry, which would otherwise leave the sweeper nothing to reap and
             // the record stuck in_progress forever. A refused admission wrote
             // nothing and terminates nothing — the record it found is not ours.
-            if (!(error instanceof FlowInstanceBindingMismatchError)) {
+            if (
+              !(error instanceof FlowInstanceBindingMismatchError) &&
+              !(error instanceof RequestOwnerMismatchError)
+            ) {
               await terminateUnenqueuedRequest(stores, requestId);
             }
             throw error;

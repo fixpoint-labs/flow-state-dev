@@ -429,6 +429,33 @@ No endpoint on the flow API enumerates across owners. A caller reaches
 background work through the conversation that started it; there is no mode that
 returns every session on the server.
 
+### Ids you choose are addresses
+
+A client can pick its own ids. The one you'll reach for most is `requestId` on
+an action call: send the same one again, say after a dropped connection, and
+you reach the same request instead of starting a second one.
+
+```ts
+await fetch("/api/flows/support/s_123/actions/reply", {
+  method: "POST",
+  headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+  body: JSON.stringify({ requestId: "req_7f3a", input: { text: "Where's my order?" } })
+});
+```
+
+An id tells the framework where to look. It never says who owns what's there.
+If another user already has a request under `req_7f3a`, your call still
+succeeds, as your own request, under an id the response gives you in the
+`x-request-id` header and the 202 body. Their request is untouched, and sending
+`req_7f3a` again lands on that same request of yours. Reading their request's
+stream or status, or resuming it, is refused: with a resolver configured, those
+routes check the caller against the user and organization stored on the
+request, not against knowing the id.
+
+So ids don't have to be unguessable to keep users apart. They show up in
+response headers, URLs and logs, and nothing depends on them staying secret. If
+you generate them on the client, anything unique per call will do.
+
 ### What the resolver sees
 
 On these routes the resolver gets the `Request` (headers, cookies, URL) and no

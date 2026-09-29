@@ -117,3 +117,22 @@ export class FlowInstanceBindingMismatchError extends Error {
     this.reason = reason;
   }
 }
+
+/**
+ * Thrown when a dispatch reaches a request record, or an in-flight entry,
+ * that another principal owns: a different user, tenant or organization
+ * (`context/request-principal.ts`). Raised at every point a dispatch writes or
+ * adopts a request record, before it does, so a request id can never move a
+ * record from one user to another. The HTTP action route hands such a caller
+ * its own id first; this is the refusal for the race it cannot see, and for
+ * any other entry point. The message names the id only, never the owner.
+ */
+export class RequestOwnerMismatchError extends Error {
+  readonly requestId: string;
+
+  constructor(requestId: string) {
+    super(`Request ${requestId} belongs to another principal and cannot be used by this caller.`);
+    this.name = "RequestOwnerMismatchError";
+    this.requestId = requestId;
+  }
+}

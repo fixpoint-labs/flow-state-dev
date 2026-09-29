@@ -57,7 +57,11 @@ import {
   registerAbortController,
   deregisterAbortController
 } from "./abort-registry";
-import { FlowInstanceBindingMismatchError } from "../context/binding-errors";
+import {
+  FlowInstanceBindingMismatchError,
+  RequestOwnerMismatchError
+} from "../context/binding-errors";
+import { principalOwnsRequest } from "../context/request-principal";
 import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
@@ -943,6 +947,18 @@ export async function runActionInternal<
       refusal.detail,
       refusal.reason
     );
+  }
+  // And to THIS caller: a request id is an address, so another user's record
+  // under it is never adopted, heartbeated or written by this run.
+  if (
+    admittedRequest !== undefined &&
+    !principalOwnsRequest(admittedRequest, {
+      userId: options.userId,
+      orgId: options.orgId,
+      tenantId: options.tenantId
+    })
+  ) {
+    throw new RequestOwnerMismatchError(requestId);
   }
 
   await registry.register({
