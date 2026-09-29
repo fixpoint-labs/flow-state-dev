@@ -31,7 +31,8 @@ vi.mock("../src/bash/resolve-sandbox", () => ({
 /** A context carrying the identity fields the scopes key on. */
 function ctxFor(sessionId: string, requestId: string) {
   return {
-    request: { identity: { id: requestId } },
+    // The engine stamps one incarnation per request; one per id stands in here.
+    request: { identity: { id: requestId }, incarnation: `inc_${requestId}` },
     session: { identity: { id: sessionId, userId: "u1", orgId: "o1" } },
     user: { identity: { id: "u1" } },
     org: { identity: { id: "o1" } },
@@ -55,7 +56,8 @@ const NO_TENANT = "enc-none";
 // that re-derived the encoding would agree with a broken encoder as readily as
 // a working one; what these cases are about is which identity the directory
 // follows, so they check the scope, the tenant segment, and that the id it was
-// keyed on is still legible in the leaf.
+// keyed on is still legible in its segment. A `run` workspace's id segment is
+// followed by one for the request's incarnation.
 const expectWorkspace = (
   actual: string | undefined,
   scope: string,
@@ -67,9 +69,15 @@ const expectWorkspace = (
   expect(actual!.startsWith(tenant === undefined ? prefix : path.join(prefix, tenant))).toBe(
     true,
   );
-  expect(actual!.slice(actual!.lastIndexOf("/") + 1)).toMatch(
-    new RegExp(`^enc-${id.replace(/[^A-Za-z0-9_-]/g, "-")}-[0-9a-f]{12}$`),
-  );
+  const segments = actual!.split("/");
+  const legible = (value: string) =>
+    new RegExp(`^enc-${value.replace(/[^A-Za-z0-9_-]/g, "-")}-[0-9a-f]{12}$`);
+  if (scope === "run") {
+    expect(segments.at(-2)).toMatch(legible(id));
+    expect(segments.at(-1)).toMatch(legible(`inc_${id}`));
+  } else {
+    expect(segments.at(-1)).toMatch(legible(id));
+  }
 };
 
 async function runOnce(
@@ -144,8 +152,14 @@ describe("scope ids as directory names", () => {
     // Every id is encoded — there is no pass-through — so this does rename
     // existing workspaces. What it keeps is readability for whoever runs `ls`.
     const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
-    const resolved = resolveWorkspaceCwdForTest("run", { requestId: "req_x1y2", sessionId: "s" });
-    expect(resolved).toMatch(/\/\.fsdev\/workspaces\/run\/enc-none\/enc-req_x1y2-[0-9a-f]{12}$/);
+    const resolved = resolveWorkspaceCwdForTest("run", {
+      requestId: "req_x1y2",
+      requestIncarnation: "inc_9f",
+      sessionId: "s",
+    });
+    expect(resolved).toMatch(
+      /\/\.fsdev\/workspaces\/run\/enc-none\/enc-req_x1y2-[0-9a-f]{12}\/enc-inc_9f-[0-9a-f]{12}$/,
+    );
   });
 
   it("cannot be handed a name that impersonates another id's encoding", async () => {
@@ -153,7 +167,7 @@ describe("scope ids as directory names", () => {
     // id. A guard that recognises the encoded prefix catches this spelling.
     const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
     const victim = resolveWorkspaceCwdForTest("run", { requestId: "a/b", sessionId: "s" });
-    const impostorId = victim.slice(victim.lastIndexOf("/") + 1);
+    const impostorId = victim.split("/").at(-2)!; // the id's segment, before the incarnation's
     const impostor = resolveWorkspaceCwdForTest("run", { requestId: impostorId, sessionId: "s" });
     expect(impostor).not.toBe(victim);
   });
@@ -165,7 +179,7 @@ describe("scope ids as directory names", () => {
     // runs write the same files believing they are isolated.
     const { resolveWorkspaceCwdForTest } = await import("../src/bash/blocks");
     const victim = resolveWorkspaceCwdForTest("run", { requestId: "a/b", sessionId: "s" });
-    const shouted = victim.slice(victim.lastIndexOf("/") + 1).toUpperCase();
+    const shouted = victim.split("/").at(-2)!.toUpperCase();
     const impostor = resolveWorkspaceCwdForTest("run", { requestId: shouted, sessionId: "s" });
     expect(impostor.toLowerCase()).not.toBe(victim.toLowerCase());
   });
@@ -178,7 +192,7 @@ describe("scope ids as directory names", () => {
       requestId: "r".repeat(300),
       sessionId: "s",
     });
-    expect(resolved.slice(resolved.lastIndexOf("/") + 1).length).toBeLessThanOrEqual(255);
+    for (const name of resolved.split("/")) expect(name.length).toBeLessThanOrEqual(255);
   });
 
   it("separates two tenants that name the same request", async () => {
@@ -319,6 +333,23 @@ describe("scope ids as directory names", () => {
       tenantId: "b",
     });
     expect(first).not.toBe(second);
+  });
+
+  it("gives a new request under a reused id a new workspace, and the same request its own", async () => {
+    // An id is free again once retention deletes its record, and the directory
+    // is not deleted with it. The next request under that id, anyone's, has a
+    // new incarnation and so a directory of its own. A retry or a resume of
+    // the same request reads the same incarnation and lands where it left off.
+    const { resolveWorkspaceCwdForTest, resolveRegistryKeyForTest } = await import(
+      "../src/bash/blocks"
+    );
+    const first = { requestId: "req_1", sessionId: "s", tenantId: "t", requestIncarnation: "inc_a" };
+    const reused = { ...first, requestIncarnation: "inc_b" };
+
+    expect(resolveWorkspaceCwdForTest("run", reused)).not.toBe(resolveWorkspaceCwdForTest("run", first));
+    expect(resolveRegistryKeyForTest("run", reused)).not.toBe(resolveRegistryKeyForTest("run", first));
+    expect(resolveWorkspaceCwdForTest("run", { ...first })).toBe(resolveWorkspaceCwdForTest("run", first));
+    expect(resolveRegistryKeyForTest("run", { ...first })).toBe(resolveRegistryKeyForTest("run", first));
   });
 
   it("does not collapse two hostile ids onto one workspace", async () => {

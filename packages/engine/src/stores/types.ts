@@ -143,6 +143,25 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    */
   tenantId?: string;
   /**
+   * Which request this record is, among every request that has held its id.
+   *
+   * **Minted, not derived**, like {@link SessionRecord.lineageId}: a random
+   * token stamped once, when the record is first created
+   * (`createInitialRequestRecord`), and carried unchanged by every later write.
+   * The same-owner hand-off in `claimRequestRecord` keeps the stored value
+   * rather than writing its own. A request id is the caller's to choose and
+   * can be reused once retention deletes its record; the record created in its
+   * place gets a new token, so anything keyed on it (a run workspace) does not
+   * carry over. `createdAt` cannot do this job: two records can share a
+   * millisecond.
+   *
+   * Absent on records written before this field existed. Read it through
+   * `resolveRequestIncarnation` (`stores/scope-keys.ts`), which derives a
+   * stable value for those from `createdAt`, under a prefix no minted token
+   * uses (BP-030). Surfaced to blocks as `ctx.request.incarnation`.
+   */
+  incarnation?: string;
+  /**
    * Provenance of the inbound transport that produced this request.
    * Set from `InboundRequestEnvelope.source` (FIX-438). Open string —
    * documented known-set: `http` | `mcp` | `webhook` | `scheduled` |
@@ -191,6 +210,7 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
  * that are not a plain part of the record body:
  *
  * - `id` / `version` / `createdAt` — identity and CAS bookkeeping, owned by `set`.
+ * - `incarnation` — identity, written once when the record is created.
  * - `state` — has its own versioned verbs (`patchField` / `incField` / `pushToArray`).
  * - `items` — lives in a child table on the persistent adapters, written via `persistItems`.
  * - `updatedAt` — supplied as an explicit argument, mirroring the delta verbs.
@@ -205,6 +225,7 @@ export type ConditionalRequestFields = Partial<
     | "id"
     | "version"
     | "createdAt"
+    | "incarnation"
     | "updatedAt"
     | "state"
     | "items"
@@ -697,6 +718,11 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * an absent one, `{ applied: false, status: undefined }`, with nothing
    * written. A caller that checked who owns the record passes it, so the write
    * cannot land on a record that check never saw.
+   *
+   * `createdAt` is not the request's identity: two records under one id can
+   * share a millisecond, and a same-owner hand-off rewrites it. The identity
+   * is {@link RequestRecord.incarnation}; moving this fence onto it is an open
+   * follow-up.
    */
   setFieldsIfStatus(
     id: string,

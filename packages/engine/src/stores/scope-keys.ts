@@ -476,13 +476,35 @@ export function isSameSession(earlier: SessionRecord, current: SessionRecord): b
 }
 
 /**
+ * The incarnation a request record answers to: its stored token, or, for a
+ * record written before tokens were stamped, one derived from its `createdAt`
+ * (BP-030).
+ *
+ * The derived form is stable across reads of one record, and its `legacy_`
+ * prefix is one no minted token (`inc_…`) takes, so a legacy record never
+ * answers to a stamped request's value. This is the value `ctx.request.
+ * incarnation` exposes, and the one `isSameRequest` compares.
+ *
+ * @param record The stored record, or the two fields read from one.
+ */
+export function resolveRequestIncarnation(record: {
+  createdAt: number;
+  incarnation?: string | null;
+}): string {
+  return record.incarnation ?? `legacy_${record.createdAt}`;
+}
+
+/**
  * Whether `current`, read by the id an earlier read found, is still the
  * request `earlier` was: made in the same session, under the same tenant,
- * owner, organization and flow instance, at the same moment.
+ * owner, organization and flow instance, and the same incarnation.
  *
  * A request id is the caller's to choose. One that retention deleted can be
  * used again, by anyone, between a read that found it and a read by its id,
- * and the record then under the id is another request.
+ * and the record then under the id is another request. Two records that both
+ * carry a token are compared by it, since two can share a millisecond; two
+ * legacy records compare by `createdAt`, as they always did; a legacy record
+ * and a stamped one are never the same request.
  */
 export function isSameRequest(earlier: RequestRecord, current: RequestRecord): boolean {
   return (
@@ -492,6 +514,6 @@ export function isSameRequest(earlier: RequestRecord, current: RequestRecord): b
     scopeValueMatches(current.orgId, earlier.orgId) &&
     current.flowKind === earlier.flowKind &&
     scopeValueMatches(current.flowId, earlier.flowId) &&
-    current.createdAt === earlier.createdAt
+    resolveRequestIncarnation(current) === resolveRequestIncarnation(earlier)
   );
 }

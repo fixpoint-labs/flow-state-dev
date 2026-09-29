@@ -24,7 +24,7 @@
 import { createHash } from "node:crypto";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { ActiveRequestEntry, RequestRecord, StoreRegistry } from "../stores/types";
-import { tenantMatches } from "../stores/scope-keys";
+import { resolveRequestIncarnation, tenantMatches } from "../stores/scope-keys";
 import { FlowInstanceBindingMismatchError, RequestOwnerMismatchError } from "./binding-errors";
 import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 
@@ -97,17 +97,24 @@ export async function resolveCallerRequestId(
  * or acknowledges anything, and the execution context's create race.
  *
  * A lost race against the same owner (a retry reusing its id) keeps the
- * last-write-wins hand-off it always was. A record another flow instance owns
- * throws `FlowInstanceBindingMismatchError`; one another principal owns throws
+ * last-write-wins hand-off it always was, except for the holder's
+ * `incarnation`: that is the request's identity, stamped once, so the
+ * hand-off writes the holder's value rather than its own. A legacy holder's
+ * derived value is written out, since the hand-off also replaces the
+ * `createdAt` it was derived from. A record another flow instance owns throws
+ * `FlowInstanceBindingMismatchError`; one another principal owns throws
  * `RequestOwnerMismatchError`. Either way nothing is written.
+ *
+ * @returns The record as written, whose `incarnation` is the one the store
+ * kept. A caller that goes on to run the request uses this, never `record`.
  */
-export async function claimRequestRecord(
+export async function claimRequestRecord<T extends RequestRecord>(
   stores: Pick<StoreRegistry, "request">,
   flow: FlowInstance,
-  record: RequestRecord
-): Promise<void> {
+  record: T
+): Promise<T> {
   const created = await stores.request.set(record.id, record, "absent");
-  if (created.ok) return;
+  if (created.ok) return record;
   const holder = created.conflict.currentValue;
   if (holder === undefined || !ownsRecord(flow, holder)) {
     const refusal = holder === undefined ? undefined : foreignRecordRefusal(flow, holder);
@@ -124,5 +131,7 @@ export async function claimRequestRecord(
   if (!principalOwnsRequest(holder, record)) {
     throw new RequestOwnerMismatchError(record.id);
   }
-  await stores.request.set(record.id, record, "any");
+  const handedOff: T = { ...record, incarnation: resolveRequestIncarnation(holder) };
+  await stores.request.set(record.id, handedOff, "any");
+  return handedOff;
 }
