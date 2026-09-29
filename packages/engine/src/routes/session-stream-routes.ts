@@ -81,8 +81,8 @@ import { serializeSSEFrame } from "../streaming/sse";
 import { createSSEStream, type SSEStreamHandle } from "../streaming/sse-stream";
 import {
   isCheckedSession,
-  jsonResponse,
   loadTenantSession,
+  unknownSessionResponse,
   refuseUnattributedRecord,
   sessionRequestScope,
   snapshotItemsOf,
@@ -198,7 +198,7 @@ export async function handleSessionStream(
     !isCheckedSession(ctx.checkedSession, session) ||
     (named !== null && named !== "" && Number(named) !== session.createdAt)
   ) {
-    return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+    return unknownSessionResponse(route.sessionId);
   }
   const unattributed = refuseUnattributedRecord(ctx.registry, session);
   if (unattributed !== undefined) return unattributed;

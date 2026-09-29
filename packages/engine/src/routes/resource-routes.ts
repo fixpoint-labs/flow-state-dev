@@ -27,6 +27,7 @@ import {
   extractBareTopic,
   jsonResponse,
   loadTenantSession,
+  unknownSessionResponse,
   parseJsonBody,
 } from "./route-utils";
 import {
@@ -98,7 +99,7 @@ export async function handleGetResourceContent(
     route.sessionId,
     ctx.tenantId
   );
-  if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+  if (!session) return unknownSessionResponse(route.sessionId);
 
   const owner = resolveOwnerFlow(ctx.registry, session);
   if (owner.denied !== undefined) return owner.denied;
@@ -144,7 +145,7 @@ export async function handleGetCollectionItemContent(
     route.sessionId,
     ctx.tenantId
   );
-  if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+  if (!session) return unknownSessionResponse(route.sessionId);
 
   const owner = resolveOwnerFlow(ctx.registry, session);
   if (owner.denied !== undefined) return owner.denied;
@@ -223,7 +224,7 @@ export async function handleCreateCollectionItem(
     route.sessionId,
     ctx.tenantId
   );
-  if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+  if (!session) return unknownSessionResponse(route.sessionId);
 
   const owner = resolveOwnerFlow(ctx.registry, session);
   if (owner.denied !== undefined) return owner.denied;
@@ -341,7 +342,7 @@ export async function handleUpdateResourceContent(
     route.sessionId,
     ctx.tenantId
   );
-  if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+  if (!session) return unknownSessionResponse(route.sessionId);
 
   const owner = resolveOwnerFlow(ctx.registry, session);
   if (owner.denied !== undefined) return owner.denied;
@@ -439,7 +440,7 @@ export async function handleListCollectionState(
     route.sessionId,
     ctx.tenantId
   );
-  if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+  if (!session) return unknownSessionResponse(route.sessionId);
 
   const owner = resolveOwnerFlow(ctx.registry, session);
   if (owner.denied !== undefined) return owner.denied;
@@ -562,7 +563,7 @@ export async function handleGetCollectionItemState(
     route.sessionId,
     ctx.tenantId
   );
-  if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+  if (!session) return unknownSessionResponse(route.sessionId);
 
   const owner = resolveOwnerFlow(ctx.registry, session);
   if (owner.denied !== undefined) return owner.denied;
@@ -668,7 +669,7 @@ export async function handleGetResourceManifest(
     route.sessionId,
     ctx.tenantId
   );
-  if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+  if (!session) return unknownSessionResponse(route.sessionId);
 
   const owner = resolveOwnerFlow(ctx.registry, session);
   if (owner.denied !== undefined) return owner.denied;
@@ -751,7 +752,7 @@ export async function handleDeleteCollectionItem(
     route.sessionId,
     ctx.tenantId
   );
-  if (!session) return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+  if (!session) return unknownSessionResponse(route.sessionId);
 
   const owner = resolveOwnerFlow(ctx.registry, session);
   if (owner.denied !== undefined) return owner.denied;

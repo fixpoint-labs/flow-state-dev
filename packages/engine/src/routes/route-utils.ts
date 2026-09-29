@@ -27,6 +27,8 @@ import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
+import { principalOwnsRequest } from "../context/request-principal";
+import type { ResolvedPrincipal } from "../transports/types";
 import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
 import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
@@ -105,6 +107,58 @@ export async function loadTenantSession(
   if (record === undefined) return undefined;
   if (!tenantMatches(record.tenantId, tenantId)) return undefined;
   return record;
+}
+
+/**
+ * What a session route answers for a session the caller cannot see: one no
+ * one has created, and one another user owns. The same status and the same
+ * words for both, so the answer says nothing about whether the id is in use
+ * or whose it is. One copy, because the route guard (`route-auth.ts`), the
+ * action route and every session handler's own missing-session branch must
+ * agree character for character, or the difference is the oracle.
+ */
+export function unknownSessionResponse(sessionId: string): Response {
+  return jsonResponse(404, { error: `Unknown session "${sessionId}"` });
+}
+
+/**
+ * What a request route answers for a request the caller cannot reach: one no
+ * one has created, one another user or tenant owns, and one the caller owns
+ * but may not re-enter from HTTP. The same status and words for each, for the
+ * reason `unknownSessionResponse` gives: a request id comes back in the
+ * `x-request-id` header and travels in URLs, so any difference between these
+ * answers tells a caller holding someone else's id that it is in use.
+ */
+export function unknownRequestResponse(requestId: string): Response {
+  return jsonResponse(404, { error: `Request "${requestId}" not found` });
+}
+
+/**
+ * Whether the caller may act on `record` through a request-control route
+ * (retry, continue, resume, abort). With a principal, the record must be that
+ * principal's in the caller's tenant (`principalOwnsRequest`: user, tenant,
+ * and organization when the record carries one). Without one, nothing in the
+ * app authenticates, so there is no user to compare and the tenant is the only
+ * boundary.
+ *
+ * Another user's or another tenant's request is answered as a missing one
+ * ({@link unknownRequestResponse}), and each handler asks this before any
+ * check that could tell them apart: status, flow, session or source. The
+ * request id is an address the caller may have learned from someone else's
+ * response, and these routes would otherwise re-run, continue, resume or stop
+ * that request under its owner's identity.
+ *
+ * The route guard (`route-auth.ts`) refuses another user's request before the
+ * handler runs, with the same answer. This is the handler's own check, and the
+ * only one of the two that compares the tenant.
+ */
+export function callerReachesRequest(
+  record: Pick<RequestRecord, "userId" | "orgId" | "tenantId">,
+  tenantId: string | undefined,
+  principal: ResolvedPrincipal | undefined
+): boolean {
+  if (principal === undefined) return tenantMatches(record.tenantId, tenantId);
+  return principalOwnsRequest(record, { userId: principal.userId, orgId: principal.orgId, tenantId });
 }
 
 /**

@@ -33,7 +33,7 @@ attach and resume check instead ([EVOLUTION.md](EVOLUTION.md)).
 |---|---|---|
 | "Ids you choose are addresses", above | FIX-1018, once its behaviour is verified | FIX-1018's PR |
 | The request-id section of `state-and-scopes.md` | FIX-1018 | FIX-1018's PR |
-| The session-id half of the example, and legacy session keys | FIX-1022 | Its PR; links to FIX-1018's subsection |
+| The session-id half of the example (session keys are unchanged, so there is no legacy-key note) | FIX-1022 | Its PR; links to FIX-1018's subsection |
 | A session's flow does not authorize another flow's history | FIX-1046 | Its PR; one sentence in "Addressed routes" |
 | The `external-dispatcher` row in `server/background-work.md`'s refusal table, narrowed to what a queue host still can't honour | FIX-1634 | Its `DOCS.md` |
 | `writable` on collections | Shipped with FIX-1510 | None |

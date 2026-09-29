@@ -27,7 +27,7 @@ import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { RequestStore, SessionRecord, StoreRegistry } from "../stores/types";
 import { toBareSessionId } from "../stores/scope-keys";
-import { jsonResponse, loadTenantSession } from "./route-utils";
+import { jsonResponse, loadTenantSession, unknownSessionResponse } from "./route-utils";
 import { DEFAULT_MAX_CHILD_SESSION_LIST_LIMIT } from "../runtime-config";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -367,7 +367,7 @@ export async function handleListSessionChildren(
     // Same shape the sibling session reads emit, and the same answer a parent
     // in another tenant gets — a cross-tenant probe is indistinguishable from
     // absent.
-    return jsonResponse(404, { error: `Unknown session "${route.sessionId}"` });
+    return unknownSessionResponse(route.sessionId);
   }
 
   const url = new URL(request.url);

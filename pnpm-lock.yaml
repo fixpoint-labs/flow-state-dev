@@ -1155,12 +1155,18 @@ importers:
       '@flow-state-dev/engine':
         specifier: workspace:*
         version: link:../engine
+      '@flow-state-dev/node':
+        specifier: workspace:*
+        version: link:../node
       '@flow-state-dev/orchestration':
         specifier: workspace:*
         version: link:../orchestration
       '@flow-state-dev/patterns':
         specifier: workspace:*
         version: link:../patterns
+      '@flow-state-dev/store-sqlite':
+        specifier: workspace:*
+        version: link:../store-sqlite
       '@flow-state-dev/testing':
         specifier: workspace:*
         version: link:../testing

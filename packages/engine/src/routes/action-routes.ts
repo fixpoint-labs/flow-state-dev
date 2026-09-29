@@ -15,7 +15,12 @@ import {
   PrincipalResolutionError
 } from "../transports/errors";
 import { generateId } from "../utils/generate-id";
-import { FlowInstanceBindingMismatchError } from "../context/binding-errors";
+import {
+  FlowInstanceBindingMismatchError,
+  RequestOwnerMismatchError,
+  UserBindingMismatchError
+} from "../context/binding-errors";
+import { resolveCallerRequestId } from "../context/request-principal";
 import { UnknownFlowError } from "../context/instance-pin";
 import {
   asObject,
@@ -23,7 +28,8 @@ import {
   getString,
   jsonResponse,
   parseJsonBody,
-  SSE_HEADERS
+  SSE_HEADERS,
+  unknownSessionResponse
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { InternalRouteSeams, RequestContext } from "./http-handlers";
@@ -102,6 +108,19 @@ export async function handleExecuteAction(
     throw error;
   }
 
+  // A caller may choose its own request id, so a retry reaches the same
+  // request. The id is an address, not an ownership: one another principal
+  // already holds gets this caller its own request instead.
+  const suppliedRequestId = getString(body.requestId);
+  const requestId =
+    suppliedRequestId === undefined
+      ? generateId("req")
+      : await resolveCallerRequestId(ctx.stores, suppliedRequestId, {
+          userId: principal.userId,
+          orgId: principal.orgId,
+          tenantId
+        });
+
   const actionInput: ActionRunInput = {
     // The address — the instance's exact id — so the host resolves this same
     // instance, not whichever shares its kind.
@@ -110,7 +129,7 @@ export async function handleExecuteAction(
     input: body.input,
     userId: principal.userId,
     sessionId,
-    requestId: getString(body.requestId) ?? generateId("req"),
+    requestId,
     // Org identity comes from the resolved principal only — never from
     // `body.orgId`, which a caller controls (BP-031). Principal resolution
     // requires one, so this is always present: a verified organization, or
@@ -210,6 +229,22 @@ export async function handleExecuteAction(
     try {
       await handle.accepted;
     } catch (error) {
+      // A session another user owns: refused at admission with nothing
+      // written, and answered as the session routes answer it, as an id with
+      // no session behind it. Neither the owner nor the session's existence
+      // reaches the caller.
+      if (error instanceof UserBindingMismatchError) {
+        return unknownSessionResponse(error.sessionId);
+      }
+      // A request id another principal took between the check above and the
+      // dispatch's write. Nothing of theirs was touched, and the same call
+      // retried resolves to this caller's own request.
+      if (error instanceof RequestOwnerMismatchError) {
+        return jsonResponse(409, {
+          error: "request-id-in-use",
+          message: `Request "${error.requestId}" cannot be used by this caller`
+        });
+      }
       // A session or request this instance does not own: refused at admission
       // with nothing written, named by which record, without disclosing who
       // does own it. Deterministic and non-retryable until the caller
@@ -252,7 +287,7 @@ export async function handleExecuteAction(
     });
   }
 
-  return jsonResponse(202, {
+  const accepted = jsonResponse(202, {
     status: "in_progress",
     request: {
       id: handle.requestId,
@@ -268,4 +303,8 @@ export async function handleExecuteAction(
             id: resolvedActionInput.sessionId
           }
   });
+  // The id the request runs under, as the SSE path sends it: a caller whose
+  // supplied id was already another principal's reads its own here.
+  accepted.headers.set("x-request-id", handle.requestId);
+  return accepted;
 }
