@@ -368,4 +368,54 @@ describe("applyRetentionPolicy", () => {
       expect(result.deletedRequestIds).toEqual(["req_no_complete"]);
     });
   });
+
+  // A request's record turns `completed` before its run has persisted the
+  // terminal event and left the active registry. A sibling's retention pass in
+  // that window must not free the id: the run's last event would then land
+  // under it, and the id's next owner would replay it.
+  describe("a request whose run has not finished", () => {
+    it("is not evicted, so its last event cannot land under a freed id", async () => {
+      const stores = await setupStores([
+        makeRequest("req_finishing", SESSION_ID, { startedAtMs: 100, completedAtMs: 200, itemCount: 5 }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 300, completedAtMs: 400, itemCount: 5 }),
+      ]);
+      // Still running: record says completed, terminal event not yet written.
+      await stores.activeRequests.register({
+        requestId: "req_finishing",
+        flowKind: "test-flow",
+        actionName: "run",
+        sessionId: SESSION_ID,
+        userId: "user1",
+        startedAt: 100,
+        lastHeartbeatAt: 200
+      });
+
+      const result = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5 }, 500
+      );
+
+      // The run then writes its terminal event.
+      stores.request.persistEvents("req_finishing", [
+        { stream: "request", type: "request.completed", requestId: "req_finishing", sequence_number: 9, status: "completed", ts: 210 }
+      ]);
+      await stores.request.flushEvents("req_finishing");
+
+      expect(result.deletedRequestIds).toEqual([]);
+      // The event belongs to a request that still exists, not to a freed id.
+      expect(await stores.request.get("req_finishing")).toBeDefined();
+    });
+
+    it("is evicted by the next pass once its run has left the active registry", async () => {
+      const stores = await setupStores([
+        makeRequest("req_finishing", SESSION_ID, { startedAtMs: 100, completedAtMs: 200, itemCount: 5 }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 300, completedAtMs: 400, itemCount: 5 }),
+      ]);
+
+      const result = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5 }, 500
+      );
+
+      expect(result.deletedRequestIds).toEqual(["req_finishing"]);
+    });
+  });
 });

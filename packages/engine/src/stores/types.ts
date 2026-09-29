@@ -598,6 +598,17 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
     value: RequestRecord,
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<RequestRecord>>;
+  /**
+   * Delete the request and everything stored under its id: the record, its
+   * items, its stream events and its runOnce results. Request ids can be
+   * caller-supplied, so a later request may take a deleted id, and anything
+   * left under it would be replayed to that request's owner.
+   *
+   * Remove the record last, and only after every child delete has finished
+   * and succeeded: a failure then leaves a retryable delete, and nothing is
+   * left without an owner. Wait out event and item writes already in flight
+   * for the id, so none of them lands after the delete.
+   */
   delete(id: string): Promise<void>;
   list(options?: RequestListOptions): Promise<RequestRecord[]>;
 

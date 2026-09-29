@@ -169,8 +169,10 @@ All `RequestStore` providers persist items and events through separate methods (
 Because events are operationally independent from items, they can be:
 
 - Stored on a different backend (append-only log, time-series DB, observability pipeline)
-- Retained with a different policy (e.g., capped collection, age-based pruning)
+- Pruned earlier than the items they describe (e.g., capped collection, age-based pruning)
 - Disabled entirely in production without affecting app behavior
+
+Their lifetime is bounded by the request's, though. `RequestStore.delete(id)` must remove every child stored under that id, events and runOnce results included, before it removes the record. Request ids can be caller-supplied, so session retention frees an id that a later request, possibly another user's, may take. Any events left under it would replay into that request's stream. For the same reason, retention does not evict a request whose run is still in the active registry, because the run's terminal event is written after its record turns `completed`.
 
 This separation means observability-only item types (like `state_snapshot`) should use `transient: true` — they flow through the event stream for live and replay consumption without bloating the persisted item record.
 

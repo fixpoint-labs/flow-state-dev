@@ -60,9 +60,19 @@ export async function applyRetentionPolicy(
     // `countItems`, so item payloads stay out of the retention read (FIX-685).
   });
 
+  // A request's record turns `completed` before its run has finished writing:
+  // the terminal event and `onFinished` follow, and the run leaves the active
+  // registry last. Deleting it in that window would free the id with the
+  // run's last writes still to land under it, where the id's next owner
+  // would replay them. Skip anything still registered; a later pass takes it.
+  // One registry read, bounded by in-flight work rather than session history.
+  const stillRunning = new Set(
+    (await stores.activeRequests.listAll()).map((entry) => entry.requestId)
+  );
+
   // Exclude current request, sort oldest-first by completion time
   const sorted = requests
-    .filter((r) => r.id !== currentRequestId)
+    .filter((r) => r.id !== currentRequestId && !stillRunning.has(r.id))
     .sort(
       (a, b) =>
         (a.completedAtMs ?? a.startedAtMs) - (b.completedAtMs ?? b.startedAtMs)
