@@ -1459,14 +1459,41 @@ describe("generator owned step loop — the same turn, streamed or not", () => {
     };
   }
 
-  /** Run the same scripted turn once streamed and once not. */
+  /**
+   * Run the same scripted turn once streamed and once not. Each run's
+   * returned value must equal the text of the `message` item a client
+   * reads, so the two answers agree on both surfaces.
+   */
   async function both(turn: TurnStep[]) {
-    const run = (model: GeneratorModel) =>
-      runForTest(
-        generator({ name: "same-turn-gen", model, prompt: "p", tools: [note] }),
+    const run = async (model: GeneratorModel) => {
+      const emitted: Array<{ type: string; item?: Record<string, unknown> }> = [];
+      const ctx = createMockContext({
+        response: {
+          emit: (event: unknown) => {
+            emitted.push(event as never);
+          },
+          getItems: () => emitted.filter((e) => e.item).map((e) => e.item),
+        } as never,
+      } as never);
+      const output = await runForTest(
+        generator({
+          name: "same-turn-gen",
+          model,
+          prompt: "p",
+          tools: [note],
+          itemVisibility: { client: true, history: true },
+        }),
         {},
-        createMockContext(),
+        ctx,
       );
+      const done = emitted.filter((e) => e.type === "item.done" && e.item?.type === "message");
+      expect(done).toHaveLength(1);
+      const message = (done[0]!.item!.content as Array<{ text?: string }>)
+        .map((part) => part.text ?? "")
+        .join("");
+      expect(message).toBe(output);
+      return output;
+    };
     return { streamed: await run(streamingModel(turn)), generated: await run(generatingModel(turn)) };
   }
 

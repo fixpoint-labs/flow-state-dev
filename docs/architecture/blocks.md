@@ -274,7 +274,13 @@ The file is YAML frontmatter (strict-validated) over a body split into line-anch
 ### Output Behavior
 
 - **Text output** (default `z.string()` or no `outputSchema`): Streams via `content.delta` events, auto-emits `message` item
-- **Text across steps**: when the framework owns the tool loop (a model with `streamStep` or `generateStep`, which includes the built-in AI SDK adapter and fallback groups over it), each step that writes text after earlier text opens with a blank line (`\n\n`). The break is in the streamed deltas, the `message` item and the returned value alike, and a text turn that runs without streaming returns the same text. A step that writes no text adds nothing. A turn that resumes after a suspension is the exception: the steps recorded before the suspension seed the model's conversation but are not replayed into the output, so its text starts at the step it resumed on. On the legacy path (a model with `stream()` only) the text is exactly what the model streams; no break is added.
+- **Text across steps**: whether a step's text is set apart from earlier text depends on which path runs the turn. A text turn with tools or `itemVisibility` streams when the model has `streamStep` or `stream()`; any other turn runs without streaming.
+  - **Streaming with `streamStep`** (the built-in AI SDK adapter and fallback groups over it): the framework owns the tool loop, and each step that writes text after earlier text opens with a blank line (`\n\n`). The break is in the streamed deltas, the `message` item and the returned value alike.
+  - **Not streaming, with `generateStep`**: the framework owns the loop here too, and a text turn returns the same joined text, in the `message` item and the returned value.
+  - **Streaming with `stream()` but no `streamStep`**: the legacy path. The text is exactly what the model streams, and no break is added. This holds even when the model also has `generateStep`, because `generateStep` only runs a turn that does not stream.
+  - **Not streaming, without `generateStep`**: the legacy `generate({ maxSteps })` path returns the model's text as it comes.
+
+  On both framework-owned paths, a step that writes no text adds nothing. A turn that resumes after a suspension is the exception: the steps recorded before the suspension seed the model's conversation but are not replayed into the output, so its text starts at the step it resumed on.
 - **Structured output** (custom `outputSchema`): Uses `generate()` (no streaming), parsed and validated against schema
 - **Repair**: `repair.mode` controls schema mismatch handling: `'auto'` (retry), `'rescue'` (route to rescue), `'fail'` (immediate)
 
