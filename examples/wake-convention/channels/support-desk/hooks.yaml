@@ -1,0 +1,4 @@
+# Leftover. Not a catalog id.
+on:
+  - leftover: poke
+    reason: Layer 2 channel poke. Not a registered transport event.

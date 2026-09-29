@@ -1,0 +1,5 @@
+# Seat-local clock. Special file when a phrase is not enough.
+# Proposed. Does not compile to defineFlow({ schedules }).
+every: 4 hours
+run: sweep
+session: new
