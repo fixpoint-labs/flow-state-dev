@@ -574,8 +574,9 @@ export async function createExecutionContext<
   // content/resource-state `scopeId`, so two tenants sharing a session id never
   // collide. The bare `sessionId` is preserved for the public identity
   // (`ctx.session.identity.id`), emitted events, and the request record's
-  // (bare) `sessionId` field; request history isolates by the `tenantId` filter
-  // instead of a namespaced field.
+  // (bare) `sessionId` field; request history isolates by the session's
+  // request scope (`sessionRequestScope`, tenant included) instead of a
+  // namespaced field.
   const sessionKey = resolveSessionStorageKey(sessionId, options.tenantId);
 
   // Storage keys — namespaced by the resolved INSTANCE id when the flow opts
@@ -651,14 +652,7 @@ export async function createExecutionContext<
     // `orderBy:"startedAtMs"` makes the windowed selection robust to
     // out-of-order metadata writes. `items` reconstruct cross-turn history.
     stores.request.list({
-      // The session's reads and its history share one filter: tenant (always
-      // passed, possibly undefined, so it exact-matches and never crosses into
-      // another tenant's requests for the same bare id), owner, organization
-      // and flow. A session stored before admission bound runs to its flow and
-      // owner can hold another flow's, a peer instance's or another user's
-      // run; none is this run's history. With no session yet, the scope is the
-      // record this run is about to create, and any other the checks below
-      // would adopt must match it or be refused.
+      // The same filter as the session's reads; see `sessionRequestScope`.
       ...sessionRequestScope(
         sessionId,
         loadedSession ?? { userId, orgId: options.orgId, flowKind: flow.kind, flowId: flow.id },

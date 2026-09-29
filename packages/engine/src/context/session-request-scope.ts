@@ -2,8 +2,8 @@
  * The one filter for which stored requests belong to a session.
  *
  * Shared by every reader of a session's request history: the session's
- * snapshot and stream routes, and the cross-turn history a run in the session
- * hands its model (`createExecutionContext`). One definition, so a request a
+ * request listing, snapshot and stream routes, and the cross-turn history a
+ * run in the session hands its model (`createExecutionContext`). One definition, so a request a
  * session's reads leave out can never reach a model through the history load.
  */
 import type { SessionRecord } from "../stores/types";
@@ -27,6 +27,10 @@ import type { SessionRecord } from "../stores/types";
  * written before that check can hold one, and neither a read of the session
  * nor a run in it may use its items. A legacy session with no owning instance
  * keeps the kind filter alone, as the listing does.
+ *
+ * A session not yet persisted (a run's first turn) is scoped by the record the
+ * run is about to create, which always carries `flowId`, so its first history
+ * load is exact-owner even where a legacy session of the same kind is kind-only.
  *
  * @param sessionId The bare session id, as request records carry it.
  * @param session The session's owner facts: its own record, already read for

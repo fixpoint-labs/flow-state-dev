@@ -137,8 +137,9 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   /**
    * Bare tenant id this request ran under (FIX-682). `sessionId` stays bare;
    * isolation of cross-turn history comes from filtering `request.list` by
-   * (`sessionId`, `tenantId`) rather than from namespacing the `sessionId`
-   * field — which keeps request recovery a clean pass-through. Undefined for
+   * the session's request scope (`sessionRequestScope`: `sessionId`,
+   * `tenantId`, owner, organization and flow) rather than from namespacing the
+   * `sessionId` field — which keeps request recovery a clean pass-through. Undefined for
    * single-tenant requests.
    */
   tenantId?: string;

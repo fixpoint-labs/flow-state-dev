@@ -437,9 +437,8 @@ state with items, and its stream show only requests that flow ran, so passing a
 session's check never gets a caller another flow's requests or items. The
 conversation history a new run in the session gives its model comes from the
 same requests, so a model never sees another flow's or another user's turns
-either. The
-sessions it started are listed as the children route lists them, in its
-stream too, including work handed to another flow.
+either. The sessions it started are listed as the children route lists them,
+in its stream too, including work handed to another flow.
 
 No endpoint on the flow API enumerates across owners. A caller reaches
 background work through the conversation that started it; there is no mode that
