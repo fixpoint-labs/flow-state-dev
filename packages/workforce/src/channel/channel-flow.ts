@@ -1201,18 +1201,17 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   // The qualifier is not injective (`eng.feature.work` and `eng_feature.work`
   // both give `eng_feature_work`), and one actions map holds every board's
   // actions. Merged, the later board's would silently replace the earlier's and
-  // settle its rows on the wrong ledger, so two such boards are refused here.
-  const boardBySuffix = new Map<string, string>();
+  // settle its rows on the wrong ledger. A board that did not opt in collides
+  // too: its rows would be offered the opted-in board's actions under its own
+  // suffix. So each opted-in board is checked against every board of the kind.
   for (const id of actionBoards) {
-    const clash = boardBySuffix.get(taskToolSuffix(id));
+    const clash = boardIds.find((other) => other !== id && taskToolSuffix(other) === taskToolSuffix(id));
     if (clash !== undefined) {
       throw new Error(
-        `boardActions: boards "${clash}" and "${id}" would both name their task actions ` +
-          `\`<tool>_${taskToolSuffix(id)}\`, so one would replace the other. Rename a channel ` +
-          `or a board, or turn \`boardActions\` off on one of their channels.`
+        `boardActions: boards "${clash}" and "${id}" would both answer to the task actions ` +
+          `\`<tool>_${taskToolSuffix(id)}\`. Rename a channel or a board.`
       );
     }
-    boardBySuffix.set(taskToolSuffix(id), id);
   }
   const boardTaskActions = Object.assign(
     {},

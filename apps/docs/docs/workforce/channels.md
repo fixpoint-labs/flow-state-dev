@@ -750,7 +750,7 @@ boardActions: true
 
 Each board then gains `cancelTask_support_help_escalations` and its seven siblings, beside `fileTask` and `readBoard`. The DevTool's Tasks tab offers the ones that take a `taskId` on each of the board's rows, so you can cancel, reassign or settle a row from the channel's session while you debug.
 
-The part after the tool name is the channel's id and the board's name, joined, with every character that can't go in a name turned into `_`, so two opted-in boards can end up with the same actions: `eng.feature`'s `work` and `eng_feature`'s `work` both give `eng_feature_work`. `channelInstances` refuses that roster with an error naming both boards. Rename a channel or a board to fix it.
+The part after the tool name is the channel's id and the board's name, joined, with every character that can't go in a name turned into `_`, so two boards can end up with the same name: `eng.feature`'s `work` and `eng_feature`'s `work` both give `eng_feature_work`. If either of them has opted in, `channelInstances` refuses the roster with an error naming both boards. Rename a channel or a board to fix it.
 
 It is off by default, and that's deliberate. Anyone who can reach the channel can then settle or reassign its rows, including one a seat is working on, and the roster check `fileTask` makes on `author` doesn't apply to these. Each action works only in its own channel's session, so one channel can't reach another's board through them. Turn it on for boards people are meant to work from outside a run, and for development.
 

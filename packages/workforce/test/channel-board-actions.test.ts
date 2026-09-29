@@ -496,6 +496,20 @@ describe("a channel's board task actions", () => {
     ).toThrow(/eng\.feature\.work.*eng_feature\.work|eng_feature\.work.*eng\.feature\.work/);
   });
 
+  it("refuses an opted-in board whose action names match a board that did not opt in, at bind", () => {
+    // The DevTool offers a board's actions on the rows of every board whose
+    // name gives the same suffix, so an opted-out `eng_feature.work` would be
+    // handed `eng.feature.work`'s actions. Either order is refused.
+    for (const roster of [
+      [record("eng.feature", { boards: ["work"], boardActions: true }), record("eng_feature", { boards: ["work"] })],
+      [record("eng_feature", { boards: ["work"] }), record("eng.feature", { boards: ["work"], boardActions: true })]
+    ]) {
+      expect(() => channelInstances(roster)).toThrow(
+        /eng\.feature\.work.*eng_feature\.work|eng_feature\.work.*eng\.feature\.work/
+      );
+    }
+  });
+
   it("refuses a value that is not true or false, by name, at bind", () => {
     expect(() =>
       channelInstances([record("eng.feature", { boards: ["triage"], boardActions: "yes" })])

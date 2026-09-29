@@ -1125,9 +1125,10 @@ A record declares seven keys and no others: `flow` (which kind, optional), `desc
 guide, "Routing a channel"), and `boardActions`. `boardActions: true` exposes each of the channel's
 boards' task tools as channel actions (`cancelTask_<channel>_<board>` and its seven siblings), each
 working only in its own channel's session; it is off by default, because anyone who can reach the
-channel can then settle or reassign its rows. Two opted-in boards whose action names come out the
-same, such as `eng.feature`'s `work` and `eng_feature`'s `work` (both `…_eng_feature_work`), refuse at
-`channelInstances` with an error naming both; rename a channel or a board. The list is closed and checked
+channel can then settle or reassign its rows. An opted-in board whose action names come out the
+same as any other board's, opted in or not, such as `eng.feature`'s `work` and `eng_feature`'s `work`
+(both `…_eng_feature_work`), refuses at `channelInstances` with an error naming both; rename a channel
+or a board. The list is closed and checked
 at `channelInstances`: an undeclared key, an `id:`, a `system:`, or a body alongside `instructions:`
 each refuse by name.
 
