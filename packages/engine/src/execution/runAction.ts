@@ -61,7 +61,7 @@ import {
   FlowInstanceBindingMismatchError,
   RequestOwnerMismatchError
 } from "../context/binding-errors";
-import { principalOwnsRequest } from "../context/request-principal";
+import { claimRequestRecord, principalOwnsRequest } from "../context/request-principal";
 import { createInitialRequestRecord } from "../context/initial-request-record";
 import { foreignRecordRefusal, ownsRecord } from "../context/record-owner";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
@@ -432,9 +432,17 @@ async function settleFreshRequestSetupFailure(options: {
   let settled = false;
   try {
     const current = await options.stores.request.get(options.requestId);
+    // Foreign on either owner axis: another flow instance's record, or another
+    // principal's under the same id. Neither is ever marked failed or merged.
     const foreignOrTerminal =
       current !== undefined &&
-      (isTerminalRequestStatus(current.status) || !ownsRecord(options.flow, current));
+      (isTerminalRequestStatus(current.status) ||
+        !ownsRecord(options.flow, current) ||
+        !principalOwnsRequest(current, {
+          userId: options.userId,
+          orgId: options.orgId,
+          tenantId: options.tenantId
+        }));
 
     if (!foreignOrTerminal) {
       const base =
@@ -959,6 +967,34 @@ export async function runActionInternal<
     })
   ) {
     throw new RequestOwnerMismatchError(requestId);
+  }
+  // A fresh id is claimed here, before anything is registered or
+  // acknowledged: two callers racing on one unused id both read nothing
+  // above, and only one of them may be told its request was accepted. The
+  // loser is refused now, having written nothing; the winner's
+  // `createExecutionContext` adopts this stub, as it adopts the host's
+  // enqueue-time one on the queued path.
+  if (admittedRequest === undefined) {
+    await claimRequestRecord(
+      options.stores,
+      options.flow,
+      createInitialRequestRecord(
+        {
+          requestId,
+          flowKind: options.flow.kind,
+          flowId: options.flow.id,
+          actionName: options.actionName as string,
+          userId: options.userId,
+          sessionId: options.sessionId,
+          tenantId: options.tenantId,
+          orgId: options.orgId,
+          source,
+          metadata: options.metadata,
+          input: options.input
+        },
+        Date.now()
+      )
+    );
   }
 
   await registry.register({

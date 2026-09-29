@@ -102,7 +102,11 @@ import {
   TenantBindingMismatchError,
   UserBindingMismatchError
 } from "./binding-errors";
-import { principalOwnsRequest, type RequestPrincipal } from "./request-principal";
+import {
+  claimRequestRecord,
+  principalOwnsRequest,
+  type RequestPrincipal
+} from "./request-principal";
 import { refuseInstancePin } from "./instance-pin";
 import { ownerKeyMaySeed } from "../resources/owner-private";
 import {
@@ -1433,27 +1437,9 @@ export async function createExecutionContext<
     // id may have written one since, and both must not execute. The loser is
     // refused here, before the action runs; a same-owner hand-off (a retry
     // reusing its id) keeps the last-write-wins overwrite it always had. The
-    // same fence the transport host applies to its enqueue-time stub.
-    const created = await stores.request.set(requestRecord.id, requestRecord, "absent");
-    if (!created.ok) {
-      const holder = created.conflict.currentValue;
-      if (holder === undefined || !ownsRecord(flow, holder)) {
-        const refusal = holder === undefined ? undefined : foreignRecordRefusal(flow, holder);
-        throw new FlowInstanceBindingMismatchError(
-          "request",
-          requestId,
-          flow.id,
-          refusal === undefined
-            ? "a request with this id exists and could not be read back"
-            : `a request with this id: ${refusal.detail}`,
-          refusal?.reason
-        );
-      }
-      if (!principalOwnsRequest(holder, requestPrincipal)) {
-        throw new RequestOwnerMismatchError(requestId);
-      }
-      await stores.request.set(requestRecord.id, requestRecord, "any");
-    }
+    // same fence the transport host applies to its enqueue-time stub, and
+    // another principal's record is refused the same way.
+    await claimRequestRecord(stores, flow, requestRecord as RequestRecord);
   } else if (requestRecord.source === undefined) {
     // Pre-FIX-438 records read from a store that hasn't been migrated
     // default to the HTTP source. New writes always carry the field.

@@ -10,10 +10,23 @@
  *
  * `record-owner.ts` answers the other owner question, which flow instance a
  * record belongs to. Both must agree before a dispatch touches a record.
+ *
+ * Two surfaces, two contracts, on purpose. The HTTP action route is where a
+ * caller's own id arrives, so it remaps (`resolveCallerRequestId`): reusing
+ * another principal's id gets the caller its own request. Below it,
+ * `host.dispatch`, `runAction` and the execution context never remap: they
+ * refuse a record another principal holds with `RequestOwnerMismatchError`
+ * (`claimRequestRecord`). A remap there would hand a server-side caller an id
+ * it did not ask for; a refusal is the answer every other entry point and
+ * every race gets. An HTTP caller succeeding where a direct dispatch is
+ * refused is this contract, not a gap in it.
  */
 import { createHash } from "node:crypto";
+import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { ActiveRequestEntry, RequestRecord, StoreRegistry } from "../stores/types";
 import { tenantMatches } from "../stores/scope-keys";
+import { FlowInstanceBindingMismatchError, RequestOwnerMismatchError } from "./binding-errors";
+import { foreignRecordRefusal, ownsRecord } from "./record-owner";
 
 /** The identity a dispatch runs under, as the host resolved it. */
 export type RequestPrincipal = {
@@ -68,8 +81,48 @@ export async function resolveCallerRequestId(
   suppliedId: string,
   principal: RequestPrincipal
 ): Promise<string> {
-  const holder: PrincipalOwnedRecord | ActiveRequestEntry | undefined =
-    (await stores.request.get(suppliedId)) ?? (await stores.activeRequests.get(suppliedId));
+  const [record, active] = await Promise.all([
+    stores.request.get(suppliedId),
+    stores.activeRequests.get(suppliedId)
+  ]);
+  const holder: PrincipalOwnedRecord | ActiveRequestEntry | undefined = record ?? active;
   if (holder === undefined || principalOwnsRequest(holder, principal)) return suppliedId;
   return principalRequestId(suppliedId, principal);
+}
+
+/**
+ * Write `record` create-if-absent, or take it over only from its own flow
+ * instance and principal. The one claim every writer of a fresh request
+ * record makes: the host's enqueue-time stub, `runAction` before it registers
+ * or acknowledges anything, and the execution context's create race.
+ *
+ * A lost race against the same owner (a retry reusing its id) keeps the
+ * last-write-wins hand-off it always was. A record another flow instance owns
+ * throws `FlowInstanceBindingMismatchError`; one another principal owns throws
+ * `RequestOwnerMismatchError`. Either way nothing is written.
+ */
+export async function claimRequestRecord(
+  stores: Pick<StoreRegistry, "request">,
+  flow: FlowInstance,
+  record: RequestRecord
+): Promise<void> {
+  const created = await stores.request.set(record.id, record, "absent");
+  if (created.ok) return;
+  const holder = created.conflict.currentValue;
+  if (holder === undefined || !ownsRecord(flow, holder)) {
+    const refusal = holder === undefined ? undefined : foreignRecordRefusal(flow, holder);
+    throw new FlowInstanceBindingMismatchError(
+      "request",
+      record.id,
+      flow.id,
+      refusal === undefined
+        ? "a request with this id exists and could not be read back"
+        : `a request with this id: ${refusal.detail}`,
+      refusal?.reason
+    );
+  }
+  if (!principalOwnsRequest(holder, record)) {
+    throw new RequestOwnerMismatchError(record.id);
+  }
+  await stores.request.set(record.id, record, "any");
 }

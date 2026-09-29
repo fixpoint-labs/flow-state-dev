@@ -20,6 +20,7 @@ import {
   defaultBodyUserIdPrincipalResolver,
   RequestOwnerMismatchError
 } from "../src";
+import { createInitialRequestRecord } from "../src/context/initial-request-record";
 import type { FlowDispatcher } from "../src/transports/dispatcher";
 import type { StoreRegistry } from "../src/stores/types";
 
@@ -141,6 +142,83 @@ describe("a request id another principal holds, dispatched at the host", () => {
     await expect(handle.accepted).rejects.toBeInstanceOf(RequestOwnerMismatchError);
     await handle.finished.catch(() => undefined);
     expect(await stores.request.get(REQUEST_ID)).toEqual(before);
+  });
+
+  it.each([
+    ["an in-process run", "run"],
+    ["a run queued behind its session", "runQueued"]
+  ] as const)(
+    "is claimed by one of two principals racing on an unused id, on %s",
+    async (_label, action) => {
+      const stores = createInMemoryStores();
+      const host = buildHost(stores);
+
+      const alice = dispatchAs(host, "alice", action, "alice's note");
+      const bob = dispatchAs(host, "bob", action, "bob's note");
+      const [aliceAck, bobAck] = await Promise.allSettled([alice.accepted, bob.accepted]);
+
+      // Exactly one is acknowledged; the other is refused before its ack.
+      const acked = [aliceAck, bobAck].filter((ack) => ack.status === "fulfilled");
+      expect(acked).toHaveLength(1);
+      const [winner, loser, loserAck] =
+        aliceAck.status === "fulfilled"
+          ? (["alice", bob, bobAck] as const)
+          : (["bob", alice, aliceAck] as const);
+      expect(loserAck).toMatchObject({ status: "rejected" });
+      expect((loserAck as PromiseRejectedResult).reason).toBeInstanceOf(RequestOwnerMismatchError);
+      await loser.finished.catch(() => undefined);
+
+      // The winner's run completes untouched by the loser.
+      await (winner === "alice" ? alice : bob).finished;
+      const record = await stores.request.get(REQUEST_ID);
+      expect(record).toMatchObject({ userId: winner, status: "completed" });
+      const loserText = winner === "alice" ? "bob's note" : "alice's note";
+      expect(JSON.stringify(record?.items)).not.toContain(loserText);
+    }
+  );
+
+  it("is never settled failed by a run that finds it held by another principal", async () => {
+    const stores = createInMemoryStores();
+    // Alice's request is still running, so a terminal status cannot be what
+    // keeps the settler off it.
+    const alicesRecord = createInitialRequestRecord(
+        {
+          requestId: REQUEST_ID,
+          flowKind: FLOW,
+          flowId: FLOW,
+          actionName: "run",
+          userId: "alice",
+          sessionId: "s_alice",
+          tenantId: TENANT,
+          orgId: ORG,
+          input: { text: "alice's note" }
+        },
+        Date.now()
+      );
+    // Bob's claim lands, then Alice's record replaces it before his run loads
+    // it: the one window the claim cannot close, reached on purpose.
+    const realSet = stores.request.set.bind(stores.request);
+    let claimed = false;
+    const racing: StoreRegistry = {
+      ...stores,
+      request: Object.assign(Object.create(stores.request), {
+        set: async (...args: Parameters<typeof realSet>) => {
+          const result = await realSet(...args);
+          if (!claimed && args[2] === "absent") {
+            claimed = true;
+            await realSet(REQUEST_ID, alicesRecord, "any");
+          }
+          return result;
+        }
+      })
+    };
+
+    const handle = dispatchAs(buildHost(racing), "bob", "run", "bob's note");
+    await expect(handle.finished).rejects.toBeInstanceOf(RequestOwnerMismatchError);
+
+    const after = await stores.request.get(REQUEST_ID);
+    expect(after).toMatchObject({ userId: "alice", status: "in_progress" });
+    expect(JSON.stringify(after?.items ?? [])).not.toContain("bob's note");
   });
 
   it.each([

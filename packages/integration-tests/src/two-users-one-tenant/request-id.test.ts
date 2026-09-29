@@ -70,13 +70,17 @@ async function act(
   sessionId: string,
   text: string,
   requestId?: string
-): Promise<{ status: number; requestId?: string }> {
+): Promise<{ status: number; requestId?: string; header: string | null }> {
   const response = await caller(`/notes/${sessionId}/actions/${action}`, {
     method: "POST",
     body: JSON.stringify({ input: { text }, ...(requestId === undefined ? {} : { requestId }) })
   });
   const body = (await response.json()) as { request?: { id?: string } };
-  return { status: response.status, requestId: body.request?.id };
+  return {
+    status: response.status,
+    requestId: body.request?.id,
+    header: response.headers.get("x-request-id")
+  };
 }
 
 /** Wait for `requestId` to settle as `caller` sees it, and return its status. */
@@ -116,6 +120,8 @@ describe.each([
     expect(reused.status).toBe(202);
     const bobRequestId = reused.requestId!;
     expect(bobRequestId).not.toBe(aliceRequestId);
+    // Bob learns his own id from the header, as the docs promise, not only the body.
+    expect(reused.header).toBe(bobRequestId);
     expect(await settled(bob, bobRequestId)).toBe("completed");
     const bobs = await replay(bob, bobRequestId);
     expect(bobs.status).toBe(200);

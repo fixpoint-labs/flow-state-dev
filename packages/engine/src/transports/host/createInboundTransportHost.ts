@@ -28,7 +28,7 @@ import {
   FlowInstanceBindingMismatchError,
   RequestOwnerMismatchError
 } from "../../context/binding-errors";
-import { principalOwnsRequest } from "../../context/request-principal";
+import { claimRequestRecord, principalOwnsRequest } from "../../context/request-principal";
 import { pinRejectsCaller, UnknownFlowError } from "../../context/instance-pin";
 import { foreignRecordRefusal, ownsRecord } from "../../context/record-owner";
 import {
@@ -634,28 +634,9 @@ export function createInboundTransportHost(
       { ...dispatchEnvelope, flowKind: flow.kind, flowId: flow.id },
       entry.startedAt
     );
-    const created = await stores.request.set(record.id, record, "absent");
-    if (!created.ok) {
-      const holder = created.conflict.currentValue;
-      if (holder === undefined || !ownsRecord(flow, holder)) {
-        const refusal = holder === undefined ? undefined : foreignRecordRefusal(flow, holder);
-        throw new FlowInstanceBindingMismatchError(
-          "request",
-          record.id,
-          flow.id,
-          refusal === undefined
-            ? "a request with this id exists and could not be read back"
-            : `a request with this id: ${refusal.detail}`,
-          refusal?.reason
-        );
-      }
-      // The same flow instance is not enough: a request id is an address, so
-      // another user's record under it is never overwritten or re-parented.
-      if (!principalOwnsRequest(holder, dispatchEnvelope)) {
-        throw new RequestOwnerMismatchError(record.id);
-      }
-      await stores.request.set(record.id, record, "any");
-    }
+    // Owner-fenced on both axes: another flow instance's or another user's
+    // record under this id is never overwritten or re-parented.
+    await claimRequestRecord(stores, flow, record);
     // A request under a child session moves the child's update time here,
     // where the request is first recorded as working, and not when its run
     // starts: the run can wait behind a concurrency key, or in an external

@@ -278,7 +278,7 @@ export async function handleExecuteAction(
     });
   }
 
-  return jsonResponse(202, {
+  const accepted = jsonResponse(202, {
     status: "in_progress",
     request: {
       id: handle.requestId,
@@ -294,4 +294,8 @@ export async function handleExecuteAction(
             id: resolvedActionInput.sessionId
           }
   });
+  // The id the request runs under, as the SSE path sends it: a caller whose
+  // supplied id was already another principal's reads its own here.
+  accepted.headers.set("x-request-id", handle.requestId);
+  return accepted;
 }
