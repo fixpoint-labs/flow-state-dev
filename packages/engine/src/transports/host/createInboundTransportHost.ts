@@ -27,9 +27,11 @@ import { createInitialRequestRecord } from "../../context/initial-request-record
 import {
   assertSessionAdmitted,
   FlowInstanceBindingMismatchError,
+  OrgBindingMismatchError,
   RequestOwnerMismatchError,
   UserBindingMismatchError
 } from "../../context/binding-errors";
+import { isOrgAttributed } from "../../context/org-attribution";
 import { claimRequestRecord, principalOwnsRequest } from "../../context/request-principal";
 import { pinRejectsCaller, UnknownFlowError } from "../../context/instance-pin";
 import { foreignRecordRefusal, ownsRecord } from "../../context/record-owner";
@@ -163,7 +165,7 @@ export type CreateInboundTransportHostOptions = {
 /**
  * Whether `error` is an admission refused before this dispatch wrote anything:
  * another flow instance's record, another principal's request, or another
- * user's session. The record under the id, if any, is not this dispatch's to
+ * user's or organization's session. The record under the id, if any, is not this dispatch's to
  * terminate: it belongs to someone else, or it is the caller's own earlier
  * request under an id it reused.
  */
@@ -171,7 +173,8 @@ function isRefusedAdmission(error: unknown): boolean {
   return (
     error instanceof FlowInstanceBindingMismatchError ||
     error instanceof RequestOwnerMismatchError ||
-    error instanceof UserBindingMismatchError
+    error instanceof UserBindingMismatchError ||
+    error instanceof OrgBindingMismatchError
   );
 }
 
@@ -604,6 +607,22 @@ export function createInboundTransportHost(
         userId: dispatchEnvelope.userId,
         tenantId: dispatchEnvelope.tenantId
       });
+      // The organization binding the run enforces at execution, checked here
+      // too so a request from another organization is refused before it takes
+      // a place on the session's key. An unattributed session is left to the
+      // execution-time check, which names that condition itself.
+      if (
+        session !== undefined &&
+        tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
+        isOrgAttributed(session) &&
+        session.orgId !== dispatchEnvelope.orgId
+      ) {
+        throw new OrgBindingMismatchError(
+          dispatchEnvelope.sessionId,
+          session.orgId as string,
+          dispatchEnvelope.orgId as string
+        );
+      }
     }
     const active = await stores.activeRequests.get(dispatchEnvelope.requestId);
     if (active !== undefined && !ownsRecord(flow, active)) {

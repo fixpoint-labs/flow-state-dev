@@ -61,7 +61,10 @@ export interface DispatchEnvelope {
    * host gives it back when the enqueue fails, and a failure can be ambiguous
    * (the queue accepted the job but the acknowledgement was lost), or its lease
    * can lapse. A worker must not run under a place that is no longer on the
-   * line; it takes a new place at the back instead.
+   * line. The four-call contract cannot yet tell such a place from one still
+   * waiting (`isMyTurn` answers `false` for both), so how a worker recovers an
+   * orphaned job is not settled here; it is designed with the first shared
+   * backend.
    */
   leasePlace?: LeasePlace | null;
 }

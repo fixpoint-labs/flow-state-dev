@@ -280,8 +280,13 @@ export function createConcurrencyArbiter(
   const pollForTurn = async (place: LeasePlace): Promise<void> => {
     const since = Date.now();
     for (let attempt = 0; ; attempt += 1) {
-      if (await backend.isMyTurn(place)) return;
-      const step = planQueueWait({ key: place.key, waitedMs: Date.now() - since, attempt });
+      const myTurn = await backend.isMyTurn(place);
+      const waitedMs = Date.now() - since;
+      // The first check is immediate and always honoured. A later one that
+      // lands past the budget (the check itself may have taken it there)
+      // times out rather than starting a run the budget no longer covers.
+      if (myTurn && (attempt === 0 || waitedMs < QUEUE_WAIT_TIMEOUT_MS)) return;
+      const step = planQueueWait({ key: place.key, waitedMs, attempt });
       if (step.kind === "timeout") throw step.error;
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, step.delayMs);

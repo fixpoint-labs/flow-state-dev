@@ -337,6 +337,38 @@ describe("a place this process holds on a shared backend, before it runs", () =>
   });
 });
 
+describe("a queued wait on a shared backend", () => {
+  it("does not accept a turn that comes after the wait budget", async () => {
+    // The turn arrives only once the budget has run out, as when the last
+    // re-check lands at the budget's end or `isMyTurn` itself runs past it.
+    // The documented outcome is a timeout, not a run started late.
+    vi.useFakeTimers();
+    try {
+      const { backend: shaped } = fourCallBackend();
+      const start = Date.now();
+      const backend: ConcurrencyLeaseBackend = {
+        ...shaped,
+        isMyTurn: async () => Date.now() - start >= 30_000
+      };
+      const arbiter = createConcurrencyArbiter({ backend });
+      const waiter = await arbiter.admit(
+        arbiter.resolve(queueFlow, "respond", envelope("req_1")),
+        "req_1"
+      );
+      let started = false;
+      const waited = waiter.run(async () => {
+        started = true;
+      });
+      waited.catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(35_000);
+      await expect(waited).rejects.toBeInstanceOf(ConcurrencyQueueTimeoutError);
+      expect(started).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("a backend call that throws synchronously", () => {
   it("does not escape a give-back: the run keeps its outcome, release resolves, and it is logged", async () => {
     const { backend: shaped } = fourCallBackend();

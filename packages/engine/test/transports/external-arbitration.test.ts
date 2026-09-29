@@ -614,6 +614,36 @@ describe("a run a process starts in process, over the deployment's backend", () 
     }
   );
 
+  it.each(["queue", "reject"] as const)(
+    "takes no place for the owner's request from another organization (%s)",
+    async (policy) => {
+      // Same user, same tenant, a session bound to another org: the run is
+      // refused at execution, and must not hold or queue on the key first.
+      const h = inProcessHosts(policy);
+      const ts = Date.now();
+      await h.stores.session.set(
+        "s_alice",
+        {
+          id: "s_alice",
+          state: {},
+          version: 0,
+          createdAt: ts,
+          updatedAt: ts,
+          flowKind: "in-proc",
+          userId: USER,
+          orgId: "org_other",
+          lineageId: "lin_s_alice",
+          journal: []
+        },
+        "any"
+      );
+      const crossOrg = h.a.dispatch(envelope("from another org", "req_cross_org"));
+      await expect(crossOrg.finished).rejects.toThrow();
+      expect(h.takes).not.toContain("req_cross_org");
+      expect(h.observed.runs).toEqual([]);
+    }
+  );
+
   it("settles the record of a queued run whose wait fails before its turn", async () => {
     // The backend becomes unreachable while the second run waits. The run
     // never starts, so nothing else will settle its `in_progress` record.
