@@ -28,6 +28,7 @@ import {
   type TaskWorker,
 } from "../../src/tasks";
 import { taskBoard, taskToolActions, taskToolSuffix } from "../../src/task-board";
+import { stampCurrentClaim } from "../../src/task-board/flow-policy-wiring";
 
 const TOOLS = [
   "addTask",
@@ -320,6 +321,33 @@ describe("taskToolActions — an action settles over a worker's claim (BR-25)", 
       // worker's result is refused and dropped, which is the rule.
       expect(late.output).toEqual({ outcome: "declined", reason: "terminal", status: "completed" });
       expect(await h.row(taskId)).toMatchObject({ status: "completed", output: "from the row" });
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("runs claimless even when invoked from inside a claimed worker's async scope", async () => {
+    // A worker holding a claim can dispatch a board action in-process, and the
+    // action's handler then runs in the worker's async chain. The action is
+    // still a caller's move, not the worker's: it must not present the
+    // worker's ticket, or a legal move on any other row is refused as the
+    // wrong claim.
+    const h = await host();
+    try {
+      const held = await h.file("the worker's row");
+      const other = await h.file("another row");
+      const claim = (await h.act("claimOne", {})).output as TaskClaimTicket;
+      expect(claim.taskId).toBe(held);
+
+      // Its own async context, so the stamp cannot leak into the rest of the test.
+      const settled = await new Promise<{ output?: unknown }>((resolve, reject) => {
+        setImmediate(() => {
+          stampCurrentClaim(claim);
+          h.act(`cancelTask_${h.id}`, { taskId: other, reason: "from the row" }).then(resolve, reject);
+        });
+      });
+      expect(settled.output).toEqual({ ok: true });
+      expect((await h.row(other))?.status).toBe("cancelled");
     } finally {
       await h.dispose();
     }

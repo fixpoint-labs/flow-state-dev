@@ -75,6 +75,46 @@ describe("taskActionsFor", () => {
     expect(taskActionsFor(names, schemas, "feature.work", boards)).toEqual(["answer_feature_work"]);
   });
 
+  describe("a board named only by its generated task tools", () => {
+    // `taskToolActions` always generates the whole family of eight for a
+    // board. A board this session has no rows on (a sibling Workforce channel
+    // sharing the flow kind, or a board with no tasks yet) is not listed, but
+    // its family in the flow's action list still names it, so its tools are
+    // that board's and never generic.
+    const family = (suffix: string) =>
+      ["addTask", "assignTask", "completeTask", "failTask", "blockTask", "cancelTask", "updateTask", "listTasks"].map(
+        (tool) => `${tool}_${suffix}`
+      );
+    const schemasFor = (names: string[]) =>
+      Object.fromEntries(names.map((name) => [name, name.startsWith("addTask") || name.startsWith("listTasks") ? noTaskId : takesTaskId]));
+
+    it("keeps a sibling channel's tools off this channel's rows", () => {
+      const names = [...family("eng_queue_work"), ...family("eng_other_work")];
+      const offered = taskActionsFor(names, schemasFor(names), "eng.queue.work", ["eng.queue.work"]);
+      expect(offered).toEqual([
+        "assignTask_eng_queue_work",
+        "completeTask_eng_queue_work",
+        "failTask_eng_queue_work",
+        "blockTask_eng_queue_work",
+        "cancelTask_eng_queue_work",
+        "updateTask_eng_queue_work",
+      ]);
+    });
+
+    it("keeps an unlisted board's tools off a listed board that shares its ending", () => {
+      const names = [...family("work"), ...family("feature_work")];
+      const offered = taskActionsFor(names, schemasFor(names), "work", ["work"]);
+      expect(offered.every((name) => name.endsWith("_work") && !name.endsWith("_feature_work"))).toBe(true);
+      expect(offered).toHaveLength(6);
+    });
+
+    it("still offers an app's own action on every board when no family names its ending", () => {
+      const names = [...family("issues"), "cancelTask_now"];
+      const schemas = schemasFor(names);
+      expect(taskActionsFor(names, schemas, "bugs", ["issues", "bugs"])).toEqual(["cancelTask_now"]);
+    });
+  });
+
   it("offers nothing when the flow has no schemas", () => {
     expect(taskActionsFor(["answer"], undefined, "issues", ["issues"])).toEqual([]);
   });

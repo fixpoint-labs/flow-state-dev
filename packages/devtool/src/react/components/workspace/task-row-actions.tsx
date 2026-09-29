@@ -52,7 +52,7 @@ type Submission = {
 };
 
 export function TaskRowActions({ taskId, actions, schemas, run, requests }: Props) {
-  const [picked, setPicked] = useState<string | null>(null);
+  const [pickedState, setPicked] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const nextKey = useRef(0);
@@ -73,6 +73,10 @@ export function TaskRowActions({ taskId, actions, schemas, run, requests }: Prop
     );
   }
 
+  // Only an action this row still offers counts as picked: one that has since
+  // moved to another board must not keep a form up that would send this row's
+  // id to that board's ledger.
+  const picked = pickedState !== null && actions.includes(pickedState) ? pickedState : null;
   const schema = picked === null ? undefined : schemas?.[picked];
   const locked = { taskId };
 

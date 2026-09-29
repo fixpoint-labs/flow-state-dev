@@ -102,11 +102,11 @@ vi.mock("../src/react/hooks/use-action-dispatch", () => ({
 }));
 
 /** What the watched stream has delivered; a test can hand it a partial log. */
-const streamMock = { items: [] as unknown[] };
+const streamMock = { items: [] as unknown[], streamState: null as unknown };
 
 vi.mock("../src/react/hooks/use-request-stream", () => ({
   useRequestStream: () => ({
-    streamState: null,
+    streamState: streamMock.streamState,
     // The whole point: a detached stream is `idle`, never `completed`, so the
     // terminal-status release never runs on a session switch.
     streamStatus: "idle",
@@ -197,14 +197,14 @@ vi.mock("../src/react/components/workspace/stream-view", () => ({
 // dispatches through `rowActions.run`, as an expanded row's form does.
 const rowAnswers: Array<Promise<unknown>> = [];
 /** The request groups the panel last handed the Tasks tab. */
-let lastRowRequests: Array<{ requestId: string; items: unknown[] }> = [];
+let lastRowRequests: Array<{ requestId: string; items: unknown[]; rawItems: unknown[] }> = [];
 vi.mock("../src/react/components/workspace/task-collections-view", () => ({
   TaskCollectionsView: ({
     rowActions,
   }: {
     rowActions: {
       run: (action: string, input: unknown) => Promise<unknown>;
-      requests: Array<{ requestId: string; items: unknown[] }>;
+      requests: Array<{ requestId: string; items: unknown[]; rawItems: unknown[] }>;
     };
   }) => (lastRowRequests = rowActions.requests) && <button onClick={() => rowAnswers.push(rowActions.run("cancelTask_work", { taskId: "t1" }))}>row-stub</button>,
 }));
@@ -224,6 +224,7 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     sendAnswers.length = 0;
     rowAnswers.length = 0;
     streamMock.items = [];
+    streamMock.streamState = null;
     lastRowRequests = [];
     devToolState.activeSessionId = "sess_1";
     devToolState.workspaceToken = 0;
@@ -550,6 +551,42 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     await act(async () => view.rerender(<DevToolPanel userId="u1" />));
 
     expect(lastRowRequests.find((group) => group.requestId === "req_a")?.items).toEqual(complete);
+  });
+
+  it("keeps a finished request's streamed-only traces for reading its outcome, after the stream moved on", async () => {
+    // A transient block's root trace streams but is never persisted, so the
+    // polled log of the finished request lacks it. The rendered items come
+    // from the poll; the outcome still needs the trace the stream saw.
+    sendAction
+      .mockResolvedValueOnce({ request: { id: "req_a" } })
+      .mockResolvedValueOnce({ request: { id: "req_b" } });
+    const view = await act(async () => render(<DevToolPanel userId="u1" />));
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+    });
+    const transientRoot = { id: "a_root", type: "block_trace", transient: true };
+    streamMock.streamState = { requestId: "req_a", status: "completed", rawItems: [transientRoot] };
+    await act(async () => {
+      fireEvent.click(screen.getByText("row-stub"));
+      await Promise.all(rowAnswers);
+    });
+    // B takes the stream slot.
+    streamMock.streamState = { requestId: "req_b", status: "in_progress", rawItems: [] };
+    await act(async () => {
+      fireEvent.click(screen.getByText("row-stub"));
+      await Promise.all(rowAnswers);
+    });
+
+    const polled = [{ id: "a_hook", type: "block_trace" }];
+    requestsState.requests = [
+      { id: "req_a", status: "completed", items: polled },
+      { id: "req_b", status: "in_progress", items: [] },
+    ];
+    await act(async () => view.rerender(<DevToolPanel userId="u1" />));
+
+    const groupA = lastRowRequests.find((group) => group.requestId === "req_a");
+    expect(groupA?.items).toEqual(polled);
+    expect(groupA?.rawItems).toEqual([...polled, transientRoot]);
   });
 
   it("clears dispatchedRequestId when the session changes, so live mode can follow the new one", async () => {

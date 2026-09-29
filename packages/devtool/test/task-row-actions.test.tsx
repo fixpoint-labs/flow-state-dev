@@ -18,6 +18,7 @@ import {
   type RowActions,
 } from "../src/react/components/workspace/task-collections-view";
 import type { Task, TaskStreamItem } from "../src/react/lib/task-collection-state";
+import { TaskRowActions } from "../src/react/components/workspace/task-row-actions";
 
 const parked: Task = { id: "task-a", goal: "refund", status: "parked", feedback: "needs a person" };
 
@@ -254,3 +255,22 @@ describe("running one", () => {
     expect(outcome?.getAttribute("data-outcome")).toBe("pending");
   });
 });
+
+describe("an action that stops being this row's", () => {
+  it("drops the picked action's form, and cannot run it with this row's id", async () => {
+    // A board's tools can move off this row after it was picked (a board the
+    // flow names comes into view). Its form must not stay up and submit this
+    // row's task id to another board's ledger.
+    const run = vi.fn(async () => ({ requestId: "req_1" }));
+    const props = { taskId: "task-a", schemas, run, requests: [] };
+    const { rerender } = render(<TaskRowActions {...props} actions={["answer", "cancelTask_issues"]} />);
+    await userEvent.click(screen.getByRole("button", { name: "cancelTask_issues" }));
+    expect(document.querySelector('[data-field="taskId"]')).not.toBeNull();
+
+    rerender(<TaskRowActions {...props} actions={["answer"]} />);
+    expect(document.querySelector('[data-field="taskId"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: /^run$/i })).toBeNull();
+    expect(run).not.toHaveBeenCalled();
+  });
+});
+

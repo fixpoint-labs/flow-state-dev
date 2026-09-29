@@ -455,6 +455,13 @@ function buildTaskTools(
    * action's block rather than left for the flow to declare.
    */
   uses?: readonly DefinedCapability[],
+  /**
+   * Present no worker claim, whatever async scope the tool runs in. Only
+   * {@link taskToolActions} sets it: an action is a caller's move (BR-25), and
+   * a worker that dispatches one in-process must not lend it the worker's
+   * ticket through the claim seam.
+   */
+  claimless = false,
 ) {
   const defineTool = uses === undefined ? handler : handler.withDefaults({ uses: [...uses] });
   /**
@@ -508,7 +515,7 @@ function buildTaskTools(
     if (bad) return bad;
     // Read once, so the ticket the write presented is the ticket the refusal is
     // rendered against even if the scope somehow changed mid-call.
-    const claim = currentWorkerClaim();
+    const claim = claimless ? undefined : currentWorkerClaim();
     try {
       // Typed as nullable at this boundary on purpose (BP-030): a custom
       // `TaskCollectionRef` written before the widening — or one reached through
@@ -956,7 +963,7 @@ export function taskToolActions(
     uses = [boardOrId.capability];
   }
   return Object.fromEntries(
-    buildTaskTools(resolve, undefined, taskToolSuffix(collectionId), uses).map((tool) => [
+    buildTaskTools(resolve, undefined, taskToolSuffix(collectionId), uses, true).map((tool) => [
       tool.name,
       { block: tool, description: tool.description },
     ]),

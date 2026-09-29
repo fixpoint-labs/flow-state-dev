@@ -33,15 +33,46 @@ function takesTaskId(schema: ActionInputSchema | undefined): boolean {
   return field !== undefined && field.type === "string" && field.required;
 }
 
+/** The eight task tools `taskToolActions` generates for a board, always together. */
+const TASK_TOOLS = [
+  "addTask",
+  "assignTask",
+  "completeTask",
+  "failTask",
+  "blockTask",
+  "cancelTask",
+  "updateTask",
+  "listTasks",
+] as const;
+
+/**
+ * The board suffixes the flow's own action list names: every `<suffix>` for
+ * which all eight `<tool>_<suffix>` are actions. `taskToolActions` generates
+ * the eight together, so a whole family is a board's tools even when this
+ * session has no rows on that board (a sibling Workforce channel sharing the
+ * flow kind, or a board with no tasks yet). An app's own `cancelTask_now`
+ * comes with no family, so it names no board.
+ */
+function generatedSuffixes(actions: readonly string[]): string[] {
+  const names = new Set(actions);
+  const prefix = `${TASK_TOOLS[0]}_`;
+  return actions
+    .filter((name) => name.startsWith(prefix))
+    .map((name) => name.slice(prefix.length))
+    .filter((suffix) => TASK_TOOLS.every((tool) => names.has(`${tool}_${suffix}`)));
+}
+
 /**
  * The actions a row on `collectionId` offers, in the flow's order (BR-9,
  * BR-10).
  *
- * An action whose name ends with `_<suffix>` of a listed board belongs to that
- * board alone; when several listed suffixes match (`cancelTask_feature_work`
- * ends with `_work` too), the longest wins. One whose name ends with no listed
- * board's suffix is generic and offered on every board, whatever its name
- * starts with: an app may name its own action `cancelTask_now`.
+ * The boards an action can belong to are the ones the tab lists, plus every
+ * board the flow's generated task tools name (see `generatedSuffixes`). An
+ * action whose name ends with `_<suffix>` of one of them belongs to that board
+ * alone; when several match (`cancelTask_feature_work` ends with `_work` too),
+ * the longest wins. One whose name ends with no known board's suffix is
+ * generic and offered on every board, whatever its name starts with: an app
+ * may name its own action `cancelTask_now`.
  *
  * @param actions The flow's public action names.
  * @param schemas Their input schemas, as the flow list reports them.
@@ -56,7 +87,7 @@ export function taskActionsFor(
   boardIds: readonly string[]
 ): string[] {
   const own = taskToolSuffix(collectionId);
-  const suffixes = [...new Set([collectionId, ...boardIds].map(taskToolSuffix))];
+  const suffixes = [...new Set([...[collectionId, ...boardIds].map(taskToolSuffix), ...generatedSuffixes(actions)])];
   return actions.filter((name) => {
     if (!takesTaskId(schemas?.[name])) return false;
     const owner = suffixes
