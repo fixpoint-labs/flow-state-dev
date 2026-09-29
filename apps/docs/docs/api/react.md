@@ -247,6 +247,10 @@ import { SuspensionResolverProvider } from "@flow-state-dev/react";
 </SuspensionResolverProvider>
 ```
 
+## Workforce components
+
+`FlowNavigator`, `Roster`, `BoardColumns`, `BoardList` and `SeatDetail` draw a workforce: a sidebar over your flows, instances and sessions, the seats hired in an organization, a task board as columns or as a list, and one seat's details. [Workforce components](/docs/workforce/ui) covers the navigator, the roster and the boards: what each one reads, and how to style it. `SeatDetail` is covered in the [package README](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/react/README.md#seatdetail).
+
 ## Suspensions
 
 ### `useSuspensions(session, options?)` {#usesuspensions}

@@ -13,7 +13,7 @@
  * deploys set `FSD_ENV=prod` to select the Postgres-backed profile.
  *
  * Run a flow from the CLI without the browser (from this directory):
- *   pnpm fsdev run kitchen-sink chat-agent -i '{"message":"hi","mode":"ask"}'
+ *   pnpm fsdev run chat-agent run -i '{"message":"hi","mode":"ask"}'
  */
 import { after } from "next/server";
 import path from "node:path";
