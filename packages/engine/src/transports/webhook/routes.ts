@@ -14,7 +14,8 @@ import type {
   WebhookSubscriptionConfig
 } from "@flow-state-dev/core/types";
 import type { InboundRequestEnvelope, InboundTransportHost, ResolvedPrincipal } from "../types";
-import { ConcurrencyRejectedError, PrincipalResolutionError } from "../errors";
+import { PrincipalResolutionError } from "../errors";
+import { concurrencyRefusalResponse } from "../concurrency/refusal-response";
 import {
   WEBHOOK_TRANSPORT_SOURCE,
   type WebhookProviderDefinition
@@ -216,16 +217,11 @@ export async function handleWebhook(
     handle = host.dispatch(envelope);
   } catch (err) {
     // Concurrency `reject`: a duplicate delivery for this key is already in
-    // flight (the classic webhook double-fire). Ack 200 with a benign skipped
-    // status so the provider stops redelivering, rather than a 4xx/5xx it would
-    // retry. The in-flight requestId is surfaced for correlation.
-    if (err instanceof ConcurrencyRejectedError) {
-      return jsonResponse(200, {
-        status: "skipped",
-        reason: "in_flight",
-        requestId: err.inFlightRequestId
-      });
-    }
+    // flight (the classic webhook double-fire). Acked as skipped so the
+    // provider stops redelivering — see `concurrencyRefusalResponse`, which
+    // answers the refusal arriving through `accepted` below the same way.
+    const refused = concurrencyRefusalResponse(err, "webhook");
+    if (refused !== undefined) return refused;
     return jsonResponse(503, { error: "flow_unregistered", message: errorMessage(err) });
   }
 
@@ -239,6 +235,11 @@ export async function handleWebhook(
     try {
       await handle.accepted;
     } catch (err) {
+      // A `reject` refusal from an arbiter over a shared backend (FIX-1634):
+      // nothing was recorded because nothing was admitted, and the answer is
+      // the synchronous refusal's, not a 503 the provider would retry.
+      const refused = concurrencyRefusalResponse(err, "webhook");
+      if (refused !== undefined) return refused;
       host.logger?.error?.("webhook dispatch was not durably recorded", {
         provider,
         eventType,

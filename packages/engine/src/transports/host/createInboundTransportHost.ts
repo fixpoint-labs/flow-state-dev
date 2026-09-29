@@ -50,6 +50,8 @@ import {
 } from "../errors";
 import {
   createConcurrencyArbiter,
+  isPendingAdmission,
+  type ConcurrencyAdmission,
   type ConcurrencyArbiter
 } from "../concurrency/arbiter";
 import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
@@ -130,6 +132,10 @@ export type CreateInboundTransportHostOptions = {
    * `queue`/`reject` policy is enforced ONCE rather than once per host — two
    * arbiters hold two independent keyed gates, and a request admitted by one
    * knows nothing about a key the other is holding (FIX-1077).
+   *
+   * An arbiter over a backend shared across processes
+   * (`arbitratesAcrossProcesses`) also arbitrates work this host hands to an
+   * external dispatcher (FIX-1634).
    */
   arbiter?: ConcurrencyArbiter;
 };
@@ -485,13 +491,16 @@ export function createInboundTransportHost(
     options.dispatcher ?? inProcessDispatcher;
   const isExternalDispatcher = !isInProcessDispatcher(effectiveDispatcher);
 
-  // One arbiter governs every in-process dispatch, so an action's concurrency
-  // policy is enforced once at this shared seam (FIX-837). v1 enforces only the
-  // in-process dispatcher (the default): with an external dispatcher (BullMQ)
-  // the run completes in another worker, so the policy is deferred to the
-  // durable substrate (FIX-830) rather than gating the enqueue, which would give
-  // misleading semantics (a `reject` lease freed at enqueue, not run-completion).
+  // One arbiter governs every dispatch, so an action's concurrency policy is
+  // enforced once at this shared seam (FIX-837). Work handed to an external
+  // dispatcher (BullMQ) runs in another process, so it is arbitrated only when
+  // the arbiter's keys are shared with that process: the dispatch takes its
+  // place here, the place rides the job, and the worker waits its turn and gives
+  // it back when the run ends (FIX-1634). Over a process-local arbiter it is not
+  // arbitrated at all — releasing a key at enqueue would free a `reject` lease
+  // when the job is queued rather than when the run completes.
   const arbiter = options.arbiter ?? createConcurrencyArbiter();
+  const arbitratesExternalDispatch = isExternalDispatcher && arbiter.arbitratesAcrossProcesses;
 
   /**
    * Hand a STARTED run's `finished` to the adapter's keep-alive hook, containing
@@ -711,19 +720,48 @@ export function createInboundTransportHost(
       resolvedActionCore: envelope.resolvedActionCore
     };
 
-    // Concurrency gate, resolved up front and built before any request record or
-    // live stream exists. For `reject` this synchronously claims the action's
-    // key and throws `ConcurrencyRejectedError` here when another request holds
-    // it — so a dropped caller never materializes a run. `queue` defers the
-    // kickoff behind the key (FIFO); `allow` is a passthrough preserving today's
-    // timing. Only the *start* of execution is gated — the handle (requestId,
-    // liveStream, finished) is still returned synchronously, so an SSE client
-    // gets an open stream while queued. External dispatchers run elsewhere, so
-    // they skip arbitration (no key, passthrough) — see the arbiter note above.
-    const decision = isExternalDispatcher
-      ? { policy: "allow" as const, key: undefined }
-      : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
-    const gateStart = arbiter.gate(decision, requestId);
+    // Concurrency admission, taken up front, before any request record or live
+    // stream exists. For `reject` this claims the action's key and refuses with
+    // `ConcurrencyRejectedError` when another request holds it — so a dropped
+    // caller never materializes a run. Over the in-memory default backend the
+    // refusal is thrown synchronously here; over a shared backend it arrives
+    // through `accepted`. `queue` joins the key's line (the run starts in its
+    // turn); `allow` takes nothing, preserving today's timing. Only the *start*
+    // of execution is gated — the handle (requestId, liveStream, finished) is
+    // still returned synchronously, so an SSE client gets an open stream while
+    // queued. External dispatch without a shared backend skips arbitration (no
+    // key, nothing taken) — see the arbiter note above.
+    const decision =
+      isExternalDispatcher && !arbitratesExternalDispatch
+        ? { policy: "allow" as const, key: undefined }
+        : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
+    const admission = arbiter.admit(decision, requestId);
+    // Marked handled: a pending admission is awaited below on every path, and
+    // its refusal reaches the caller through `accepted` and `finished`.
+    if (isPendingAdmission(admission)) admission.catch(() => undefined);
+    // The admission once taken, set on every path before anything is written:
+    // a failure after it gives the place back, and a failure before it (a
+    // refusal, an unreachable backend) wrote nothing to undo.
+    let held: ConcurrencyAdmission | undefined = isPendingAdmission(admission)
+      ? undefined
+      : admission;
+    /**
+     * Continue once admitted, synchronously when the admission already is — so
+     * the in-memory default keeps today's timing to the microtask.
+     */
+    const afterAdmission = <T>(next: (admitted: ConcurrencyAdmission) => T | Promise<T>): Promise<T> => {
+      if (!isPendingAdmission(admission)) {
+        try {
+          return Promise.resolve(next(admission));
+        } catch (error) {
+          return Promise.reject(error);
+        }
+      }
+      return admission.then((admitted) => {
+        held = admitted;
+        return next(admitted);
+      });
+    };
 
     // The config this dispatch runs under. Normally the host's own; a detached
     // child carries the LAUNCHING request's, because the caller may have derived
@@ -910,7 +948,7 @@ export function createInboundTransportHost(
         // starts, so flip the stub to a terminal failure rather than leaving a
         // phantom `in_progress` the client can never resolve.
         const ts = Date.now();
-        const materialized = admitOwnership(flow, dispatchEnvelope)
+        const materialized = afterAdmission(() => admitOwnership(flow, dispatchEnvelope))
           .then((admitted) =>
             materializeOwned(flow, dispatchEnvelope, admitted, {
               requestId,
@@ -930,15 +968,14 @@ export function createInboundTransportHost(
             entryOwned = true;
           })
           .catch(async (error: unknown) => {
-          // Under `reject` the arbiter claimed the key synchronously in
-          // `gate()` and only the wrapper it returned releases it — and that
-          // wrapper is invoked only once materialization succeeds. Run it here
-          // with a start that fails, so the failed dispatch does not hold the
-          // key until the process restarts. `queue` and `allow` hold nothing
-          // before `gateStart` runs, so there is nothing to give back.
-          if (decision.policy === "reject") {
-            await gateStart(() => Promise.reject(error)).catch(() => undefined);
-          }
+          // Refused or unreachable at admission: nothing was taken and nothing
+          // written, so there is nothing to give back or terminate.
+          if (held === undefined) throw error;
+          // The place was taken before these writes, and only `run` gives it
+          // back — which is reached only once materialization succeeds. Give it
+          // back here, so the failed dispatch does not hold the key until the
+          // process restarts.
+          await held.release();
           // Only a record this dispatch wrote is its to terminate — a refused
           // admission never touched the foreign owner's, nor the caller's own
           // earlier request under the id it reused.
@@ -990,7 +1027,8 @@ export function createInboundTransportHost(
                 (queuedHeartbeat as unknown as { unref: () => void }).unref();
               }
             }
-            return gateStart(async () => {
+            // Set by now: materialization runs only once admitted.
+            return held!.run(async () => {
               // `runAction` re-registers and starts its own heartbeat timer from
               // here, so the host's stewardship of the entry ends exactly here.
               stopQueuedHeartbeat();
@@ -1048,7 +1086,7 @@ export function createInboundTransportHost(
             deregisterAbortController(requestId);
           });
       } else {
-        finished = gateStart(startRun);
+        finished = afterAdmission((admitted) => admitted.run(startRun));
         // A start that never happens (the gate threw on the way in) must fail
         // acceptance rather than leave it pending forever. Once the run has
         // registered this is already settled and both arms are no-ops.
@@ -1090,10 +1128,15 @@ export function createInboundTransportHost(
       // enqueue (`effectiveDispatcher.dispatch`) is inside this promise, so an
       // enqueue failure rejects the ack (failing the POST / reverting the
       // resume) rather than landing in the detached `finished` chain after a 202
-      // already went out. The concurrency gate does not apply here — external
-      // dispatch is unarbitrated in v1 (FIX-830).
+      // already went out.
+      //
+      // Arbitrated only over a shared backend (FIX-1634): the place was taken
+      // above, before these writes, and rides the job as `leasePlace`; the
+      // worker waits its turn and gives it back when the run ends. Until the job
+      // is enqueued the place is this dispatch's, so every failure on the way
+      // gives it back. Without a shared backend nothing was taken.
       const ts = Date.now();
-      const acceptance = admitOwnership(flow, dispatchEnvelope)
+      const acceptance = afterAdmission(() => admitOwnership(flow, dispatchEnvelope))
         .then((admitted) =>
           materializeOwned(flow, dispatchEnvelope, admitted, {
             requestId,
@@ -1112,9 +1155,16 @@ export function createInboundTransportHost(
         )
         .then(() => {
           entryOwned = true;
-          return effectiveDispatcher.dispatch(dispatchEnvelope);
+          const place = held?.place;
+          return effectiveDispatcher.dispatch(
+            place === undefined ? dispatchEnvelope : { ...dispatchEnvelope, leasePlace: place }
+          );
         })
         .catch(async (error: unknown) => {
+            // Refused or unreachable at admission: nothing was taken, written
+            // or enqueued.
+            if (held === undefined) throw error;
+            await held.release();
             // Materialization or the enqueue failed: the job is not running and
             // never will. Terminate the in_progress record we may have written —
             // the record can land before the entry write fails, and a failed
@@ -1270,6 +1320,7 @@ export function createInboundTransportHost(
     },
     logger: runtimeConfig.logger,
     usesExternalDispatcher: isExternalDispatcher,
+    arbitratesExternalDispatch,
     dispatch,
     continueRequest,
     validateDispatch,

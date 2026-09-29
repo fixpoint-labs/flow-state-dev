@@ -295,6 +295,18 @@ export interface InboundTransportHost {
   readonly usesExternalDispatcher: boolean;
 
   /**
+   * Whether work this host hands to an external queue is arbitrated against
+   * the recipient's concurrency policy — true when the host's arbiter keeps its
+   * keys in a backend the worker processes share (a worker adapter's
+   * `leaseBackend`). A delivery into an existing session past an external
+   * queue is refused unless this is true.
+   *
+   * Absent reads as false: a host built before this field existed keeps the
+   * refusal.
+   */
+  readonly arbitratesExternalDispatch?: boolean;
+
+  /**
    * Dispatch an action-execution envelope. Fire-and-forget: returns a
    * synchronous `DispatchHandle` whose `liveStream` and `requestId` are
    * available immediately, while `finished` resolves when the action
