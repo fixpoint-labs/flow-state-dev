@@ -9,7 +9,7 @@ re-derives it.
 
 ```mermaid
 flowchart TD
-  I["FIX-1661"] --> D1["D1 · result kept on the request record<br/>returned by the session request list"]
+  I["FIX-1661"] --> D1["D1 · result kept on the request record<br/>listed with error always, output on request"]
   D1 -.->|"rejected"| X1["a result route<br/>a second read for one fact"]
   D1 -.->|"rejected"| X2["a final stream event<br/>the stream is what broke"]
   I --> D2["D2 · DevTool reads only the result<br/>reconstruction deleted"]
@@ -20,13 +20,13 @@ flowchart TD
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · The engine keeps each request's action result on its record, and the session's request list returns it
+## D1 · The engine keeps each request's action result on its record; the request list carries the error always and the output on request
 
 | | |
 |---|---|
 | **Instead of** | A new route that returns one request's result, or a final event on the live stream |
-| **Because** | `runAction` already hands `output` and `error` to in-process callers at the moment it writes the final status. Putting the pair in that write gives HTTP callers the same answer (tenet 5: carry the decision, don't re-derive it). The list route returns stored records as they are and the stores keep the body whole, so no route or migration (tenet 3). A stream event would bring back the one-slot stream the reconstruction broke on |
-| **Locks in** | Request history keeps each action's return value as long as the request is retained, including values stored nowhere today (a transient block, traces off). The listing grows by one value per request. `result` is a public field clients will rely on |
+| **Because** | `runAction` already hands `output` and `error` to in-process callers at the moment it writes the final status. Putting the pair in that write gives HTTP callers the same answer (tenet 5: carry the decision, don't re-derive it). The list route returns stored records as they are and the stores keep the body whole, so no route or migration (tenet 3). A stream event would bring back the one-slot stream the reconstruction broke on. The listing stays a summary, as with items: `result.output` only on `include_result_output=true`, which the row poll sets |
+| **Locks in** | Request history keeps each action's return value as long as the request is retained, including values stored nowhere today (a transient block, traces off). A default listing grows by a status-sized `result` per request; a poll that opts in ships every listed output, unbounded, each time (the DevTool row poll does). `result` and the flag are public surface clients will rely on |
 
 ![D1 trade-off: the result on the request record, chosen, beside a result route. Decides it: one place says what an action came to. Price: every action's return value is stored. Flips if an app hides outputs through transient blocks](figures/d1-result-on-record.svg)
 
@@ -43,7 +43,7 @@ the action refused or failed, not the value.
 |---|---|
 | **Instead of** | Keeping the three-source inference as a fallback for servers that don't report a result |
 | **Because** | Two readers of one fact disagree exactly in the cases that matter, and the fallback is the code twelve rounds kept finding holes in. The DevTool and the engine ship together through `fsdev dev`, so an older server is the rare case. Tenet 3: a change that supersedes a path deletes it |
-| **Locks in** | A DevTool pointed at a server from before this change shows "this server doesn't report action results" on every finished row action, never a guess. The hook filtering, reference walking and stream-log merging leave the DevTool for good |
+| **Locks in** | A finished row action with no recorded result (an older server, or history from before the upgrade) reads "no result recorded for this request", never a guess. The hook filtering, reference walking and stream-log merging leave the DevTool for good |
 
 ![D2 trade-off: read the engine's result only, chosen, beside a trace fallback. Decides it: whether two readers can disagree. Price: an older server shows not reported. Flips if new DevTools often meet old servers](figures/d2-no-fallback.svg)
 
@@ -83,17 +83,21 @@ It comes down to the worst case: a wrong guess is a refusal, not a wrong write.
 - **The field is `result: { output?, error? }`**, mirroring `ExecutionResult`'s `output` and
   `error`, so the in-process answer and the stored one use one vocabulary. `error` is stored as
   `{ code, message }`.
-- **A request that finished always has `result` when this engine wrote it**; absent means not
-  finished yet or written by an older server (BP-030). That is how D2 tells "returned nothing"
-  from "not reported".
+- **Absence is read by status** (BP-030). On `completed`, `incomplete` or `failed` it means no
+  result was recorded (older server, pre-upgrade history); on `aborted` or `interrupted` it is
+  expected; on running or suspended, not finished. A value that isn't JSON records
+  `outputNotRecorded: true`, so "returned nothing" (`{}`) never reads as either.
 - **A failed request keeps the action's answer when there was one.** A completion hook can fail
   a request after the action answered; the record carries both, as the row shows today.
 - **The engine does not learn what a refusal is.** `{ ok: false }` is the task tools' convention;
   the DevTool keeps classifying the value (tenet 4).
-- **The listing carries `result` whether or not items are asked for**, like `input` already does.
-  Leaving it out would need projection work in every store adapter.
+- **The output is listed only on request.** The list handler already opts items in with
+  `include_items`; `include_result_output` sits beside it and the handler drops `result.output`
+  (leaving `hasOutput`) when it is off. No store adapter changes.
+- **Not stored twice by intent.** Persisted items often hold the action's output already; D1
+  is for when they don't (a transient block, traces off).
 - **No change to `GET …/requests/:id/status`.** It is a liveness probe; one read path for results.
-- **The row keeps polling the list** until its request ends; only what it reads changes.
+- **The row keeps polling the list** until its request ends.
 
 ## Considered and dropped
 

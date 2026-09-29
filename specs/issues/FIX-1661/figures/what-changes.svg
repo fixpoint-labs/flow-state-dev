@@ -66,11 +66,11 @@
     <text class="t-c" x="506" y="160">status + result { output?, error? }</text>
     <path class="arrow-g" d="M700,176 L700,198"/>
     <rect class="n-box" x="492" y="200" width="416" height="36" rx="5"/>
-    <text class="t-b" x="506" y="223">session request list, polled as today</text>
+    <text class="t-b" x="506" y="223">session request list, polled with its output flag</text>
     <path class="arrow-g" d="M700,236 L700,258"/>
     <rect class="done" x="492" y="260" width="416" height="44" rx="5"/>
     <text class="t-b" x="506" y="280">row: ok · refused · failed · pending</text>
-    <text class="t-s" x="506" y="296">or "server doesn't report results"</text>
+    <text class="t-s" x="506" y="296">or "no result recorded for this request"</text>
     <text class="t-s" x="492" y="330">no stream, no traces, no reconciler</text>
   </g>
   <g id="heads">

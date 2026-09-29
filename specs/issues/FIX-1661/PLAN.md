@@ -9,15 +9,15 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `engine` · `RequestRecord` (`stores/types.ts`) | Optional `result?: { output?: unknown; error?: { code: string; message: string } }`, documented with the BP-030 absence rule. Decide whether `setFieldsIfStatus` may write it | BR-1, BR-12 |
+| S1 | `engine` · `RequestRecord` (`stores/types.ts`) | Optional `result?: { output?: unknown; outputNotRecorded?: true; error?: { code: string; message: string } }` (`hasOutput` is list-only, S5), documented with the BP-030 absence rule. Decide whether `setFieldsIfStatus` may write it | BR-1, BR-12 |
 | S2 | `engine` · one helper that builds `result` from an output and a `FlowError` | The convergence point: every final write of a request record goes through it | BR-1–BR-9 |
 | S3 | `engine` · `runActionInternal` final writes | Success and `incomplete`: `result.output`. Capture the action's output **before** the completion hooks run, so a hook that throws leaves it on the failed record (BR-4). Failure: `result.error` from the normalized error it already computes. Abort / interrupt: none. Re-suspend: none | BR-1–BR-4, BR-6, BR-7, BR-10 |
 | S4 | `engine` · the other writers of a `failed` request record | The setup-failure settle in `runAction.ts` and `terminateUnenqueuedRequest` in `createInboundTransportHost.ts`. Each passes its cause, if it has one, to S2 | BR-5 |
-| S5 | `client` · `SessionRequestSummary` | Add `result`, same shape, `== null` guard documented | BR-11, BR-12 |
-| S6 | `devtool` · `lib/task-actions.ts` `outcomeOf` | Read `status` + `result` only. Keep the refusal and declined classifiers. **Remove** root-trace merging, hook detection, reference walking, `lastErrorItemMessage`, and the `no-trace` / `not-retained` reasons; `unknown` gets one reason, `not-reported` | BR-13–BR-17, BR-21 |
-| S7 | `devtool` · `DevToolPanel.tsx` | Rows get `{ requestId, status, result }` from the polled list. **Remove** the stream-log cache (`streamRawItems`, `mergeRawItems`) if the row was its only reader; if the Stream tab needs it for transient traces, keep it and cut only the row's use. The row poll stays | BR-13, BR-18, BR-21 |
+| S5 | `engine` list handler + `client` | `session-routes.ts` reads `include_result_output` beside `include_items` and drops `result.output` (setting `hasOutput`) when off. `SessionRequestSummary` adds `result`, `== null` guard documented; `listSessionRequests` adds `includeResultOutput` | BR-11, BR-11a, BR-12 |
+| S6 | `devtool` · `lib/task-actions.ts` `outcomeOf` | Read `status` + `result` only. Keep the refusal and declined classifiers. **Remove** root-trace merging, hook detection, reference walking, `lastErrorItemMessage`, and the `no-trace` / `not-retained` reasons; `unknown` gets two reasons, `not-reported` and `output-not-recorded` | BR-13–BR-17, BR-21 |
+| S7 | `devtool` · `DevToolPanel.tsx` | Rows get `{ requestId, status, result }` from the polled list, which sets `includeResultOutput: true`. **Remove** the stream-log cache (`streamRawItems`, `mergeRawItems`) if the row was its only reader; if the Stream tab needs it for transient traces, keep it and cut only the row's use. The row poll stays | BR-13, BR-18, BR-21 |
 | S8 | `goals/devtool-workforce-visibility/reads-a-row-actions-result/` | New goal check with its own fixture host: a durable board, `taskToolActions`, and app actions shaped as the five row legs (the **api** leg reads the list response). Host flag `GOAL_CONTROL=no-result` strips `result` from list responses | goal |
-| S9 | Docs and release notes | [DOCS.md](DOCS.md). One changeset, `minor`, for `engine` and `client` (a new public field); `devtool` `patch` if it publishes | — |
+| S9 | Docs and release notes | [DOCS.md](DOCS.md). One changeset, `patch`, for `engine` and `client` (additive optional field and flag, pre-1.0); `devtool` `patch` if it publishes | — |
 
 ## Sequence
 
@@ -40,22 +40,25 @@ flowchart TD
 | ID | Runs after | Passes when |
 |---|---|---|
 | V1 | S3 | `run-action` tests: BR-1 to BR-4, BR-6 (suspend then same-request resume), BR-7, BR-9, BR-10, each asserting the stored record, not the returned value alone |
-| V2 | S4 | One test per writer (BR-5), plus a **totality check**: a test that finds every request-record write (`stores.request.set` / `patchRequestRecord`) setting a final status in `packages/engine/src` and fails on one not routed through S2. Show it red by adding an unrouted writer, then remove it |
+| V2 | S4 | One test per writer (BR-5), plus a **totality check** scoped to writes that set a terminal status (non-terminal writers such as `request-principal.ts`, `request-recovery.ts` and `abort-routes.ts` are out of scope). It fails on a terminal write not routed through S2; show it red by adding an unrouted one, then remove it. A typed settle helper (Notes from review) can replace it |
 | V3 | S1 | Store conformance: `result` round-trips on memory, filesystem, sqlite and postgres, and a record written without it lists with it absent (BR-12) |
-| V4 | S3 | Route test: the session request list carries `result` with and without `include_items` (BR-11); route table unchanged (BR-19) |
+| V4 | S5 | Route test: the default listing carries `result.error` and `hasOutput` but no `result.output`; with `include_result_output=true` it carries the output (BR-11, BR-11a), with and without `include_items`; route table unchanged (BR-19) |
+| V4a | S3 | `packages/integration-tests/src/scenarios/request-action-result.test.ts` via `testFlow`: an action that suspends lists with no `result`, and the same request's resume writes it once; a completion hook that fails after the action answered keeps both (BR-4, BR-6) |
 | V5 | S6, S7 | `outcomeOf` table for BR-13 to BR-17. A grep test that the removed helpers and reasons are gone (BR-21). The FIX-1660 regression test passes or is replaced by one for BR-18 |
 | VG | S8 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `pnpm tsx goals/devtool-workforce-visibility/reads-a-row-actions-result/run.mts` PASSES, after the same run FAILED every leg under `GOAL_CONTROL=no-result`. Today's `main` FAILS **api** |
 | V6 | all | `pnpm typecheck`, `pnpm test`; FIX-1629's `works-a-task-from-its-row` still PASSES |
 
-One check per decision: D1 is V1 + V4; D2 is V5 + the VG control. Second paths (BP-035): legacy
-record (V3), suspended and resumed (V1), a hook that fails after success (V1, VG hook-fails).
+One check per decision: D1 is V1 + V4 + V4a; D2 is V5 + the VG control. Second paths (BP-035): legacy
+record (V3), suspended and resumed (V1, V4a), a hook that fails after success (V1, VG hook-fails).
 
 ## Pinned names
 
 | Where | Name | Why pinned |
 |---|---|---|
 | Request record and `SessionRequestSummary` | `result`, with `output` and `error` inside | Public wire field; mirrors `ExecutionResult` (D1) |
-| Row outcome | `unknown` with reason `not-reported` | The one state BR-17 promises |
+| Row outcome | `unknown` with reasons `not-reported` and `output-not-recorded` | The states BR-17 and BR-17a promise |
+| List flag | `include_result_output` / `includeResultOutput` | Public query flag beside `include_items` (D1) |
+| BR-9 marker | `result.outputNotRecorded: true` | Wire state distinct from `{}` |
 
 Everything else is yours to name.
 
@@ -84,8 +87,10 @@ engine, at every final write:
 devtool, per row:
     req ← polled list entry for the row's request id
     open or absent              → pending
-    status ≠ completed          → failed(req.result?.error?.message, refusal named if output was one)
+    aborted / interrupted       → that status, plainly (no result expected)
+    failed / incomplete         → that status (req.result?.error?.message ?? "no result recorded", refusal named if output was one)
     completed, result absent    → unknown(not-reported)
+    result.outputNotRecorded    → unknown(output-not-recorded)
     otherwise                   → classify(req.result.output)   ← refused | declined | ok, unchanged
 ```
 
@@ -128,9 +133,18 @@ design; weigh each at implement time.
 - **Row poll with `includeItems: false`.** Once rows read only `status` + `result` (S6), the
   DevTool row poll may not need `includeItems: true`, which is most of today's poll cost. A
   free perf win, not required for correctness; consider it alongside S7.
-- **Oversized outputs.** D1 stores action outputs on history; BR-9 covers non-JSON values, but
-  very large JSON outputs are underspecified if that matters for your flows. Capping
-  `result.output` on the wire was listed as a product call, not a mandate.
+- **Oversized outputs.** Resolved in D1: the output is listed only on `include_result_output`.
+  Storage stays uncapped; only an opted-in poll pays for a large value.
+
+From the second-look review (PR comment 5900599873):
+
+- **Totality as a type.** `runAction.ts` already funnels terminal writes through a local
+  `patchRequestRecord` at four sites. Replace those free-form patches with
+  `settleRequestRecord(stores, id, terminal)` taking a discriminated union
+  (`completed{output} | failed{error, output?} | aborted | interrupted | suspended`), so a
+  terminal write missing its result is a compile error. The writers outside `runAction.ts`
+  (`createInboundTransportHost.ts`, the setup-failure settle) call it too. If adopted, V2's scan
+  can go.
 
 ## Follow-ups
 
