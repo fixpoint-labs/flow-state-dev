@@ -547,7 +547,7 @@ const flow = defineFlow({
 });
 ```
 
-Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted, and neither is a request whose run is still finishing (still in the active-request registry); the next pass picks it up.
+Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted. Nor is a request that finished less than twice the live-tail liveness timeout ago (`LIVE_TAIL_LIVENESS_MS`, 30s by default, so 60s), or one still in the active-request registry. A request spared this way is evicted when the session's next request completes.
 
 Retention policies operate at **request granularity** — entire old request records are removed, not individual items. For items that should never be stored at all, use `transient: true` on block definitions.
 

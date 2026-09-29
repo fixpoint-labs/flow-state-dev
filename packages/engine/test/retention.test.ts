@@ -50,6 +50,7 @@ describe("resolveRetentionPolicy", () => {
     expect(resolveRetentionPolicy({ maxItems: 100 })).toEqual({
       maxItems: 100,
       maxAgeMs: undefined,
+      terminalGraceMs: 60_000,
     });
   });
 
@@ -57,6 +58,7 @@ describe("resolveRetentionPolicy", () => {
     expect(resolveRetentionPolicy({ maxAge: "24h" })).toEqual({
       maxItems: undefined,
       maxAgeMs: 86_400_000,
+      terminalGraceMs: 60_000,
     });
   });
 
@@ -64,6 +66,7 @@ describe("resolveRetentionPolicy", () => {
     expect(resolveRetentionPolicy({ maxAge: 5000 })).toEqual({
       maxItems: undefined,
       maxAgeMs: 5000,
+      terminalGraceMs: 60_000,
     });
   });
 
@@ -71,7 +74,21 @@ describe("resolveRetentionPolicy", () => {
     expect(resolveRetentionPolicy({ maxItems: 500, maxAge: "1h" })).toEqual({
       maxItems: 500,
       maxAgeMs: 3_600_000,
+      terminalGraceMs: 60_000,
     });
+  });
+
+  // The grace window must outlast any live-tail stream still following a
+  // request that has just finished, whatever the host set its timeout to.
+  it("derives the terminal grace window from the live-tail liveness timeout", () => {
+    const previous = process.env.LIVE_TAIL_LIVENESS_MS;
+    process.env.LIVE_TAIL_LIVENESS_MS = "45000";
+    try {
+      expect(resolveRetentionPolicy({ maxItems: 1 })?.terminalGraceMs).toBe(90_000);
+    } finally {
+      if (previous === undefined) delete process.env.LIVE_TAIL_LIVENESS_MS;
+      else process.env.LIVE_TAIL_LIVENESS_MS = previous;
+    }
   });
 });
 
@@ -403,6 +420,26 @@ describe("applyRetentionPolicy", () => {
       expect(result.deletedRequestIds).toEqual([]);
       // The event belongs to a request that still exists, not to a freed id.
       expect(await stores.request.get("req_finishing")).toBeDefined();
+    });
+
+    // The active registry cannot be relied on for this: a process-local one
+    // does not see a run finishing in another process. The grace window
+    // covers that run's tail, and outlasts any stream still tailing it.
+    it("is not evicted inside the terminal grace window, even when no registry shows it running", async () => {
+      const stores = await setupStores([
+        makeRequest("req_just_done", SESSION_ID, { startedAtMs: 100, completedAtMs: 1_000, itemCount: 5 }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 1_100, completedAtMs: 1_200, itemCount: 5 }),
+      ]);
+
+      const inside = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5, terminalGraceMs: 60_000 }, 1_000 + 59_999
+      );
+      expect(inside.deletedRequestIds).toEqual([]);
+
+      const after = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5, terminalGraceMs: 60_000 }, 1_000 + 60_000
+      );
+      expect(after.deletedRequestIds).toEqual(["req_just_done"]);
     });
 
     it("is evicted by the next pass once its run has left the active registry", async () => {

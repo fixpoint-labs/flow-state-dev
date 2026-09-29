@@ -37,6 +37,8 @@ export type CreateRequestRetentionConformanceTestsOptions = {
 
 const FLOW = "retention-conformance";
 const REUSED_ID = "req_retention_reused";
+/** Live-tail liveness timeout for the case; retention's grace window is twice it. */
+const LIVENESS_MS = 50;
 
 /** Emits `count` messages carrying `secret`, so a stream shows whose run it is. */
 function buildFlow(): FlowInstance {
@@ -109,8 +111,13 @@ async function runReusedIdScenario(stores: StoreRegistry): Promise<{
     await stores.request.flushEvents(requestId);
   }
 
+  // Retention leaves a finished request alone for twice the live-tail
+  // liveness timeout. Shorten the timeout so the case can wait that out.
+  const previousLiveness = process.env.LIVE_TAIL_LIVENESS_MS;
+  process.env.LIVE_TAIL_LIVENESS_MS = String(LIVENESS_MS);
   try {
     await post("s_alice", "alice", REUSED_ID, { secret: "alice-secret", count: 5 });
+    await new Promise((resolve) => setTimeout(resolve, 3 * LIVENESS_MS));
     await post("s_alice", "alice", "req_alice_next", { secret: "alice-next", count: 1 });
     await waitFor(async () => (await stores.request.get(REUSED_ID)) === undefined);
     const leftAfterRetention = (await stores.request.getEvents(REUSED_ID)).length;
@@ -123,6 +130,8 @@ async function runReusedIdScenario(stores: StoreRegistry): Promise<{
     expect(response.status).toBe(200);
     return { leftAfterRetention, replay: await response.text() };
   } finally {
+    if (previousLiveness === undefined) delete process.env.LIVE_TAIL_LIVENESS_MS;
+    else process.env.LIVE_TAIL_LIVENESS_MS = previousLiveness;
     await disposeFlowApiRouter(router);
   }
 }

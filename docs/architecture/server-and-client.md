@@ -146,6 +146,7 @@ defineFlow({
 - Eviction is lazy (runs after each completed request). No background process.
 - Operates at **request granularity** — entire old requests are removed, not individual items.
 - The current request is never evicted. Failed requests are not eviction candidates.
+- A request is not evicted until twice the live-tail liveness timeout (`LIVE_TAIL_LIVENESS_MS`, 30s by default, so 60s) has passed since it finished, nor while it is still in the active-request registry. Its record turns terminal before its run finishes writing, and a live stream may still be following it; evicting it earlier frees a caller-supplied id while either is active. A request spared this way is evicted when the session's next request completes, so a session can sit above its limits until then.
 - For items that should never be stored, use `transient: true` on block definitions instead.
 
 ## Client Setup

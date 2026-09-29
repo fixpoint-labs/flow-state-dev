@@ -35,16 +35,7 @@ import {
   SSE_HEADERS
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
-
-/** Default cross-process liveness timeout — overridable via `LIVE_TAIL_LIVENESS_MS`. */
-const DEFAULT_LIVE_TAIL_LIVENESS_MS = 30_000;
-
-function resolveLivenessTimeoutMs(): number {
-  const raw = process.env.LIVE_TAIL_LIVENESS_MS;
-  if (raw === undefined || raw === "") return DEFAULT_LIVE_TAIL_LIVENESS_MS;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_LIVE_TAIL_LIVENESS_MS;
-}
+import { resolveLiveTailLivenessMs } from "../streaming/live-tail-liveness";
 
 type StreamRouteContext = {
   registry: FlowRegistry;
@@ -153,7 +144,7 @@ export async function handleRequestStream(
       {
         fromSequence,
         signal: request.signal,
-        livenessTimeoutMs: resolveLivenessTimeoutMs(),
+        livenessTimeoutMs: resolveLiveTailLivenessMs(),
         // While a continuation lease is held, follow through `request.suspended`
         // (the run-1 suspension being continued past) instead of ending there.
         followThroughSuspend: leaseHeld

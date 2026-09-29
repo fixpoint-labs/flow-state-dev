@@ -1,7 +1,7 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { createInMemoryStores, runAction } from "../src";
 
 describe("retention policy integration", () => {
@@ -30,7 +30,16 @@ describe("retention policy integration", () => {
 
     // Run 4 actions — each produces 1 item (the handler output).
     // With maxItems: 3, the oldest requests should be evicted.
+    // Retention spares a request for twice the live-tail liveness timeout
+    // after it finishes; shorten that and space the runs past it.
+    const previousLiveness = process.env.LIVE_TAIL_LIVENESS_MS;
+    process.env.LIVE_TAIL_LIVENESS_MS = "10";
+    onTestFinished(() => {
+      if (previousLiveness === undefined) delete process.env.LIVE_TAIL_LIVENESS_MS;
+      else process.env.LIVE_TAIL_LIVENESS_MS = previousLiveness;
+    });
     for (let i = 0; i < 4; i++) {
+      if (i > 0) await new Promise((resolve) => setTimeout(resolve, 30));
       await runAction({
     orgId: DEFAULT_ORG_ID,
         flow,
