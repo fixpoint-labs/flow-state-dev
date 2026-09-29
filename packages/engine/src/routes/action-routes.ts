@@ -14,6 +14,7 @@ import { concurrencyRefusalResponse } from "./concurrency-refusal";
 import { generateId } from "../utils/generate-id";
 import {
   FlowInstanceBindingMismatchError,
+  OrgBindingMismatchError,
   RequestOwnerMismatchError,
   UserBindingMismatchError
 } from "../context/binding-errors";
@@ -225,11 +226,11 @@ export async function handleExecuteAction(
       // nothing written, answered as the synchronous refusal above is.
       const refused = concurrencyRefusalResponse(error, "action");
       if (refused !== undefined) return refused;
-      // A session another user owns: refused at admission with nothing
-      // written, and answered as the session routes answer it, as an id with
-      // no session behind it. Neither the owner nor the session's existence
-      // reaches the caller.
-      if (error instanceof UserBindingMismatchError) {
+      // A session another user or organization owns: refused at admission
+      // with nothing written, and answered as the session routes answer it,
+      // as an id with no session behind it. Neither the owner, its
+      // organization, nor the session's existence reaches the caller.
+      if (error instanceof UserBindingMismatchError || error instanceof OrgBindingMismatchError) {
         return unknownSessionResponse(error.sessionId);
       }
       // A request id another principal took between the check above and the

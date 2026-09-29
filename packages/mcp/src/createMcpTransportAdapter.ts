@@ -36,7 +36,9 @@ import type {
 import {
   ConcurrencyQueueTimeoutError,
   ConcurrencyRejectedError,
-  PrincipalResolutionError
+  OrgBindingMismatchError,
+  PrincipalResolutionError,
+  UserBindingMismatchError
 } from "@flow-state-dev/engine";
 import {
   unstable_findResourceConfig,
@@ -460,6 +462,15 @@ async function handleToolsCall(
       return jsonRpcResponse(
         id,
         jsonRpcError(JSON_RPC_SERVER_BUSY, error.message, { retryable: true })
+      );
+    }
+    // A session another user or organization owns, refused before anything
+    // ran. Answered as an unknown session, as the HTTP action route answers
+    // it: the refusal's own message names the owner and both organizations.
+    if (error instanceof UserBindingMismatchError || error instanceof OrgBindingMismatchError) {
+      return jsonRpcResponse(
+        id,
+        jsonRpcError(JSON_RPC_INVALID_PARAMS, `Unknown session "${error.sessionId}"`)
       );
     }
     throw error;

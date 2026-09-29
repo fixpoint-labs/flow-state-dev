@@ -13,7 +13,11 @@ import {
   createMockTransportHost,
   createInboundTransportConformanceTests
 } from "@flow-state-dev/testing/conformance";
-import { ConcurrencyRejectedError } from "@flow-state-dev/engine";
+import {
+  ConcurrencyRejectedError,
+  OrgBindingMismatchError,
+  UserBindingMismatchError
+} from "@flow-state-dev/engine";
 import {
   createMcpTransportAdapter,
   MCP_TRANSPORT_SOURCE,
@@ -406,6 +410,34 @@ describe("MCP adapter — JSON-RPC dispatch", () => {
     };
     expect(json.error?.code).toBe(-32000); // JSON_RPC_SERVER_BUSY
     expect(json.error?.data?.retryable).toBe(true);
+  });
+
+  it("tools/call answers a session owned by another user or organization without naming either", async () => {
+    const adapter = createMcpTransportAdapter();
+    for (const refusal of [
+      new OrgBindingMismatchError("sess_x", "org_victim_77", "org_caller_88"),
+      new UserBindingMismatchError("sess_x", "u_victim_77", "u_caller_88")
+    ]) {
+      const host = withFlow(createMockTransportHost(), buildFlow());
+      const dispatch = host.dispatch.bind(host);
+      host.dispatch = (envelope) => {
+        const finished = Promise.reject(refusal);
+        const accepted = Promise.reject(refusal);
+        finished.catch(() => undefined);
+        accepted.catch(() => undefined);
+        return { ...dispatch(envelope), accepted, finished };
+      };
+      const response = await callAdapter(adapter, host, "POST", "billing", {
+        jsonrpc: "2.0",
+        id: 9,
+        method: "tools/call",
+        params: { name: "record_payment", arguments: { amount: 1 } }
+      });
+      const body = await response.text();
+      expect(JSON.parse(body).error?.code).toBe(-32602); // JSON_RPC_INVALID_PARAMS
+      expect(body).toContain('Unknown session \\"sess_x\\"');
+      expect(body).not.toMatch(/victim_77|caller_88/);
+    }
   });
 
   it("tools/list returns only exposed actions with descriptions and JSON schemas", async () => {
