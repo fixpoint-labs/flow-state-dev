@@ -524,6 +524,40 @@ async function patchRequestRecord(
   );
 }
 
+/** Statuses a run leaves its record in when it has finished for good. */
+const FINALIZABLE_STATUSES = ["completed", "failed", "aborted", "interrupted"] as const;
+
+/**
+ * Record that this run has finished writing under its request id, as its last
+ * write before leaving the active registry. Session retention deletes a
+ * request only once this is set.
+ *
+ * Conditional on the record still existing in a terminal status, so it never
+ * recreates a record a sibling has already deleted, and never stamps one a new
+ * run has taken back to `in_progress`. A failure is logged, not thrown: the
+ * run has succeeded or failed already, and an unstamped record is only kept
+ * longer.
+ */
+async function finalizeRequestRecord(
+  stores: StoreRegistry,
+  requestId: string,
+  logger: RuntimeLogger
+): Promise<void> {
+  const now = Date.now();
+  try {
+    await stores.request.setFieldsIfStatus(
+      requestId,
+      { finalizedAtMs: now },
+      FINALIZABLE_STATUSES,
+      now
+    );
+  } catch (err) {
+    logRuntimeEvent(logger, "warn", "[flow-state] request finalization failed", {
+      requestId, error: String(err)
+    });
+  }
+}
+
 /**
  * Union prior persisted items with this run's items by `id`, last-write-wins
  * per id, preserving order (prior items first in their original order, then
@@ -994,6 +1028,10 @@ export async function runActionInternal<
   // returning true while the controller is registered, aborted or not),
   // doubling store reads precisely when the store is already degrading.
   let abortPollInFlight = false;
+  // Set once the run has reached its terminal status. The success path keeps
+  // the timer running through `onFinished` so the heartbeat shows the run is
+  // still alive, but there is nothing left to cancel.
+  let abortPollClosed = false;
 
   /**
    * One abort-intent poll. Reads the narrow projection rather than the record —
@@ -1005,7 +1043,7 @@ export async function runActionInternal<
    * this closes.
    */
   const pollAbortIntent = async (): Promise<void> => {
-    if (deliveredAbort || abortPollInFlight) return;
+    if (deliveredAbort || abortPollInFlight || abortPollClosed) return;
     abortPollInFlight = true;
     try {
       if (!(await options.stores.request.isAbortRequested(requestId))) return;
@@ -1669,7 +1707,12 @@ export async function runActionInternal<
     (ctx as any)._replayLog = replayLog;
 
     // Point of no return: suspended / interrupted → in_progress.
-    await patchRequestRecord(options.stores, requestId, { status: "in_progress" });
+    // A run is writing under this id again, so an earlier run's finalization
+    // no longer holds.
+    await patchRequestRecord(options.stores, requestId, {
+      status: "in_progress",
+      finalizedAtMs: null
+    });
     ctx.requestRuntime.status = "in_progress";
     await response.emitRequestStatus("in_progress");
   }
@@ -2031,8 +2074,11 @@ export async function runActionInternal<
     // cancel arriving this late is the teardown window, which §9 covers.
     await drainRequestSideChainPool(ctx);
 
-    // Clear heartbeat
-    if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+    // Stop polling for cancellation: the run is past the point where one could
+    // take effect. The heartbeat itself keeps going until the record is
+    // finalized below, so the stale-request sweep does not take a slow
+    // `onFinished` for a dead run.
+    abortPollClosed = true;
 
     // Flush pending item, event, and checkpoint writes before terminal status.
     // Checkpoints are fire-and-forget at emit time but must complete before
@@ -2159,6 +2205,10 @@ export async function runActionInternal<
       output: result.output
     }, ctx, { internalSeams, logger });
     await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+
+    // The run has nothing left to write under this id.
+    stopHeartbeatTimer();
+    await finalizeRequestRecord(options.stores, requestId, logger);
 
     // Deregister abort controller and active registry
     deregisterAbortController(requestId);
@@ -2301,8 +2351,11 @@ export async function runActionInternal<
       }
     } finally {
       // Clear the heartbeat — the drain is done and the terminal write is
-      // next. Same position, relative to the record patch, as the success
-      // path's.
+      // next. The success path stops polling for cancellation at the same
+      // point but heartbeats on through `onFinished`. Here the heartbeat
+      // stops now, so a slow `onFinished` on a failed run can be swept as
+      // dead and stamped finalized early; retention never evicts a request
+      // that did not complete, so nothing is freed by it.
       stopHeartbeatTimer();
     }
 
@@ -2419,6 +2472,8 @@ export async function runActionInternal<
         error: summarizeForLog(normalized)
       });
     }
+
+    await finalizeRequestRecord(options.stores, requestId, logger);
 
     // Deregister abort controller and active registry
     deregisterAbortController(requestId);

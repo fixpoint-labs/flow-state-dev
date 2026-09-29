@@ -4,7 +4,7 @@
  * Runs lazily after each request completes (no background process).
  */
 import type { RetentionPolicy } from "@flow-state-dev/core/types";
-import type { StoreRegistry } from "../stores/types";
+import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { parseDuration } from "../utils/duration";
 import { resolveLiveTailLivenessMs } from "../streaming/live-tail-liveness";
 
@@ -18,12 +18,12 @@ export type ResolvedRetentionPolicy = {
   maxItems?: number;
   maxAgeMs?: number;
   /**
-   * How long after a request finishes it stays exempt from eviction. A
-   * request's record turns terminal before its run has finished writing, and
-   * a live-tail stream may still be following it. Deleting it earlier frees
-   * the id while either is still active, and whoever takes the id next could
-   * then receive the old run's writes, or have their own read by the old
-   * stream. `resolveRetentionPolicy` always sets it; absent means no window.
+   * How long after a request's run has finished it stays exempt from
+   * eviction, measured from `finalizedAtMs` (or, on a record from before that
+   * field, from its completion). A live-tail stream may still be following the
+   * request; deleting it earlier frees the id while that stream reads it, and
+   * whoever takes the id next could have their own run read by it.
+   * `resolveRetentionPolicy` always sets it; absent means no window.
    */
   terminalGraceMs?: number;
 };
@@ -40,8 +40,9 @@ export function resolveRetentionPolicy(
     maxItems: policy.maxItems,
     maxAgeMs: policy.maxAge !== undefined ? parseDuration(policy.maxAge) : undefined,
     // One liveness timeout for any stream still tailing the request to end,
-    // and one more to bound the run's own tail after its record turned
-    // terminal (terminal event, `onFinished`).
+    // and one more as margin: the stamp and this pass may read different
+    // clocks, and a record from before the stamp is measured from completion,
+    // before its run's own tail.
     terminalGraceMs: 2 * resolveLiveTailLivenessMs(),
   };
 }
@@ -77,26 +78,36 @@ export async function applyRetentionPolicy(
   // A request's record turns `completed` before its run has finished writing
   // (the terminal event and `onFinished` follow), and a live-tail stream may
   // still be following it. Deleting it then would free the id while either is
-  // active, so skip it until its grace window has passed. The window is what
-  // decides: a process-local registry cannot see a run finishing in another
-  // process. A request still registered here is skipped too, as a cheap
-  // extra check for a tail that outruns the window. Skipped requests are
-  // evicted by a later pass, which runs when the session's next request
-  // completes: retention is lazy, and a session nothing is written to is not
-  // growing.
+  // active, so a request is evictable only once its run has stamped
+  // `finalizedAtMs` and the grace window has passed since. Time alone cannot
+  // stand in for the stamp: `onFinished` is unbounded, and a process-local
+  // registry cannot see a run in another process. A run that dies before
+  // stamping is stamped by the stale-request sweep.
+  //
+  // - `finalizedAtMs: null` — the run has not finished: never evicted here.
+  // - absent — a record from before the stamp (BP-030): evicted once the grace
+  //   window has passed since it completed, as before.
+  //
+  // A request still in the active registry is skipped too, as a cheap extra
+  // check. Skipped requests are evicted by a later pass, which runs when the
+  // session's next request completes: retention is lazy, and a session nothing
+  // is written to is not growing.
   const graceCutoff = now - (policy.terminalGraceMs ?? 0);
   const stillRunning = new Set(
     (await stores.activeRequests.listAll()).map((entry) => entry.requestId)
   );
+  const finishedAt = (r: RequestRecord): number | undefined =>
+    r.finalizedAtMs === null
+      ? undefined
+      : (r.finalizedAtMs ?? r.completedAtMs ?? r.startedAtMs);
 
   // Exclude current request, sort oldest-first by completion time
   const sorted = requests
-    .filter(
-      (r) =>
-        r.id !== currentRequestId &&
-        !stillRunning.has(r.id) &&
-        (r.completedAtMs ?? r.startedAtMs) <= graceCutoff
-    )
+    .filter((r) => {
+      if (r.id === currentRequestId || stillRunning.has(r.id)) return false;
+      const at = finishedAt(r);
+      return at !== undefined && at <= graceCutoff;
+    })
     .sort(
       (a, b) =>
         (a.completedAtMs ?? a.startedAtMs) - (b.completedAtMs ?? b.startedAtMs)

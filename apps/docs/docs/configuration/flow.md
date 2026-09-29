@@ -156,7 +156,7 @@ The host verifies credentials. The framework applies `defaultUserId` and `requir
 | `stateSchema` | Zod object | — | Session state shape. Use `.nullable().default(null)` for fields that start empty. |
 | `client` | `{ expose?, derived? }` | private | What crosses to the browser under `clientData.session`. `expose` copies named fields verbatim. `derived` computes named projections from `{ state, resources }`. Names must not collide. |
 | `metadata` | Zod schema | — | Declares the session metadata shape (`title`, tags, and so on) for typing. Not enforced at runtime today: neither the session-metadata route nor `ctx.session.setMetadata()` parses against it, so a value outside the schema is persisted unchanged. |
-| `retention` | `{ maxItems?, maxAge? }` | unbounded | Bounds the persisted item log. `maxAge` is milliseconds or a duration string (`"7d"`). Oldest completed requests evict first. A request stays for at least a minute after it finishes (twice `LIVE_TAIL_LIVENESS_MS`), so a busy session can briefly exceed its limits. |
+| `retention` | `{ maxItems?, maxAge? }` | unbounded | Bounds the persisted item log. `maxAge` is milliseconds or a duration string (`"7d"`). Oldest completed requests evict first. A request stays until its run has finished, `onFinished` included, and for at least a minute after (twice `LIVE_TAIL_LIVENESS_MS`), so a busy session can briefly exceed its limits. |
 | `historyWindow` | `{ turns: number }` | `50` | Caps cross-turn history loaded per request. `0` or a negative number disables it. Per-call `history({ limit })` can only shrink this window. |
 | `cas` | `CASOptions` | — | Optimistic-concurrency options for this scope. |
 

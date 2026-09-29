@@ -13,7 +13,13 @@ import {
 function makeRequest(
   id: string,
   sessionId: string,
-  opts: { startedAtMs: number; completedAtMs: number; itemCount: number; status?: RequestRecord["status"] }
+  opts: {
+    startedAtMs: number;
+    completedAtMs: number;
+    itemCount: number;
+    status?: RequestRecord["status"];
+    finalizedAtMs?: number | null;
+  }
 ): RequestRecord {
   return {
     id,
@@ -24,6 +30,7 @@ function makeRequest(
     status: opts.status ?? "completed",
     startedAtMs: opts.startedAtMs,
     completedAtMs: opts.completedAtMs,
+    ...(opts.finalizedAtMs !== undefined ? { finalizedAtMs: opts.finalizedAtMs } : {}),
     state: {},
     version: 1,
     createdAt: opts.startedAtMs,
@@ -453,6 +460,43 @@ describe("applyRetentionPolicy", () => {
       );
 
       expect(result.deletedRequestIds).toEqual(["req_finishing"]);
+    });
+
+    // A record written by this version carries `finalizedAtMs: null` until
+    // its run has finished, `onFinished` included. Only the run can say that,
+    // so no amount of elapsed time makes such a record evictable.
+    it("is not evicted while its record says the run has not finished, however old", async () => {
+      const stores = await setupStores([
+        makeRequest("req_unfinished", SESSION_ID, {
+          startedAtMs: 100, completedAtMs: 200, itemCount: 5, finalizedAtMs: null
+        }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 300, completedAtMs: 400, itemCount: 5 }),
+      ]);
+
+      const result = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5, terminalGraceMs: 60_000 }, 365 * 86_400_000
+      );
+
+      expect(result.deletedRequestIds).toEqual([]);
+    });
+
+    it("is evicted once the grace window has passed since its run finished", async () => {
+      const stores = await setupStores([
+        makeRequest("req_finalized", SESSION_ID, {
+          startedAtMs: 100, completedAtMs: 1_000, itemCount: 5, finalizedAtMs: 5_000
+        }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 6_000, completedAtMs: 6_100, itemCount: 5 }),
+      ]);
+
+      const inside = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5, terminalGraceMs: 60_000 }, 5_000 + 59_999
+      );
+      expect(inside.deletedRequestIds).toEqual([]);
+
+      const after = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5, terminalGraceMs: 60_000 }, 5_000 + 60_000
+      );
+      expect(after.deletedRequestIds).toEqual(["req_finalized"]);
     });
   });
 });

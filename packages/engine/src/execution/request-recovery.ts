@@ -10,6 +10,7 @@ import type {
 } from "../stores/types";
 import { DEFAULT_QUEUED_GRACE_MS, type RuntimeConfig } from "../runtime-config";
 import { createLiveRequestStream, type LiveRequestStream } from "../streaming/live-stream";
+import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
 import { generateId } from "../utils/generate-id";
 import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./logging";
 import { runAction } from "./runAction";
@@ -115,6 +116,26 @@ export async function detectInterruptedRequests(options: {
         actionName: entry.actionName,
         sessionId: entry.sessionId
       });
+    }
+
+    // A run that reached its terminal status heartbeats until it stamps
+    // `finalizedAtMs`, so a stale entry over a terminal, unstamped record is a
+    // run that died in its last steps. Nothing is left to write under the id:
+    // stamp it here so session retention can evict it. Conditional on the
+    // status just read, so it never recreates or resurrects a record.
+    if (
+      requestRecord !== undefined &&
+      requestRecord.finalizedAtMs === null &&
+      requestRecord.status !== "in_progress" &&
+      isTerminalRequestStatus(requestRecord.status)
+    ) {
+      const now = Date.now();
+      await stores.request.setFieldsIfStatus(
+        entry.requestId,
+        { finalizedAtMs: now },
+        [requestRecord.status],
+        now
+      );
     }
 
     await stores.activeRequests.deregister(entry.requestId);

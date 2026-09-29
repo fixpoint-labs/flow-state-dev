@@ -153,6 +153,20 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   status: RequestStatus;
   startedAtMs: number;
   completedAtMs?: number;
+  /**
+   * When the request's run finished writing under this id: set as the run's
+   * last write, after `onFinished`, which follows the terminal status.
+   *
+   * - `null`: written by a version that stamps it, and the run has not
+   *   finished (it is still running, or died before stamping; the
+   *   stale-request sweep stamps a dead one).
+   * - absent: written before this field existed (BP-030), so whether the run
+   *   finished is unknown. Tell the two apart with `=== null`, never truthiness.
+   *
+   * Session retention deletes a request only once this is set, so a run's
+   * late writes cannot land under an id that has been freed and reused.
+   */
+  finalizedAtMs?: number | null;
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
   input?: unknown;

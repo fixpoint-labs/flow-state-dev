@@ -547,7 +547,7 @@ const flow = defineFlow({
 });
 ```
 
-Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted. Nor is a request that finished less than twice the live-tail liveness timeout ago (`LIVE_TAIL_LIVENESS_MS`, 30s by default, so 60s), or one still in the active-request registry. A request spared this way is evicted when the session's next request completes.
+Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted. Nor is a request whose run has not finished yet, `onFinished` included, or that finished less than twice the live-tail liveness timeout ago (`LIVE_TAIL_LIVENESS_MS`, 30s by default, so 60s), or one still in the active-request registry. A run that dies before finishing is released by the stale-request sweeper; with the sweeper disabled (`staleSweepIntervalMs: 0`) its request is kept. A request spared this way is evicted when the session's next request completes. A custom `RequestStore` must persist the record's `finalizedAtMs` field, which the run writes through `setFieldsIfStatus`.
 
 Retention policies operate at **request granularity** — entire old request records are removed, not individual items. For items that should never be stored at all, use `transient: true` on block definitions.
 
