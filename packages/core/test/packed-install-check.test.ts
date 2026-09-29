@@ -5,13 +5,20 @@
  * itself runs in CI against real tarballs; these rules are where it could go
  * quietly lenient, so they are fixed here against fixture manifests.
  */
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   classifyImport,
+  isExtensionlessDistImport,
   importSpecifiers,
-  resolvedGraph,
+  retryWithPeers,
   // @ts-expect-error — root script, plain .mjs with no type declarations.
 } from "../../../scripts/packed-install/run.mjs";
+
+const REPO = join(__dirname, "../../..");
 
 const manifest = {
   name: "@scope/pkg",
@@ -81,17 +88,123 @@ describe("classifyImport", () => {
   });
 });
 
-describe("resolvedGraph", () => {
-  it("accepts a throw from the module's own code, since ESM links the whole graph first", () => {
+describe("isExtensionlessDistImport", () => {
+  it("names the 0.1.1 defect, which the control must see", () => {
     expect(
-      resolvedGraph({ spec: "s", ok: false, name: "Error", code: null, message: "Vitest failed to access its internal state." }),
+      isExtensionlessDistImport(
+        notFound(
+          "@flow-state-dev/core",
+          "Cannot find module '/p/node_modules/@flow-state-dev/core/dist/items/predicates' imported from /p/node_modules/@flow-state-dev/core/dist/index.js",
+        ),
+      ),
     ).toBe(true);
   });
 
-  it("rejects link-time failures: a missing file or a missing named export", () => {
-    expect(resolvedGraph(notFound("s", "Cannot find module '/p/dist/x'"))).toBe(false);
+  it("does not count a missing package or a crash as the defect, so neither passes the control", () => {
     expect(
-      resolvedGraph({ spec: "s", ok: false, name: "SyntaxError", code: null, message: "does not provide an export named 'x'" }),
+      isExtensionlessDistImport(notFound("@flow-state-dev/core", "Cannot find package 'zod' imported from /p/node_modules/@flow-state-dev/core/dist/index.js")),
+    ).toBe(false);
+    expect(
+      isExtensionlessDistImport({ spec: "s", ok: false, name: "Error", code: "NOT_REACHED", message: "" }),
     ).toBe(false);
   });
+});
+
+describe("importSpecifiers with wildcard subpaths", () => {
+  it("expands a wildcard export against the files in the packed package", () => {
+    const contracts = {
+      name: "@scope/contracts",
+      publishConfig: {
+        exports: {
+          ".": { default: "./dist/index.js" },
+          "./items/*": { types: "./dist/items/*.d.ts", default: "./dist/items/*.js" },
+        },
+      },
+    };
+    const files = [
+      "dist/index.js",
+      "dist/items/content.js",
+      "dist/items/content.d.ts",
+      "dist/items/internal.js",
+      "dist/items/deep/nested.js",
+      "dist/other.js",
+    ];
+    const { specs, skipped } = importSpecifiers(contracts, files);
+    // Node's `*` matches across `/`, so a nested file is reachable too.
+    expect(specs).toEqual([
+      "@scope/contracts",
+      "@scope/contracts/items/content",
+      "@scope/contracts/items/internal",
+      "@scope/contracts/items/deep/nested",
+    ]);
+    expect(skipped).toEqual([]);
+  });
+
+  it("reports a wildcard that matches no packed file, rather than passing it silently", () => {
+    const { specs, skipped } = importSpecifiers(
+      { name: "@scope/p", publishConfig: { exports: { "./x/*": "./dist/x/*.js" } } },
+      ["dist/index.js"],
+    );
+    expect(specs).toEqual([]);
+    expect(skipped).toEqual([{ spec: "@scope/p/x/*", reason: "wildcard matches no packed file" }]);
+  });
+});
+
+/**
+ * The optional-peer retry, run for real against throwaway modules. Each module
+ * imports vitest (the one optional peer our packages declare), then does what
+ * its name says. The retry is where a lenient rule would let a broken testing
+ * entry point ship, so these run the real probe rather than a stub.
+ */
+describe("retryWithPeers", () => {
+  let dir: string;
+  const url = (name: string) => pathToFileURL(join(dir, name)).href;
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "fsd-peer-retry-"));
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "probe", private: true, type: "module" }));
+    mkdirSync(join(dir, "node_modules"));
+    symlinkSync(realpathSync(join(REPO, "node_modules", "vitest")), join(dir, "node_modules", "vitest"));
+    const header = `import { describe, expect } from "vitest";\n`;
+    writeFileSync(join(dir, "good.mjs"), `${header}export const run = () => describe("x", () => expect(1).toBe(1));\n`);
+    writeFileSync(join(dir, "type-error.mjs"), `${header}const cfg = undefined;\nexport const name = cfg.name;\n`);
+    writeFileSync(join(dir, "exits.mjs"), `${header}process.exit(0);\n`);
+    writeFileSync(join(dir, "exits-plain.mjs"), `process.exit(0);\n`);
+  });
+
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  const retry = (names: string[]) =>
+    (retryWithPeers as (d: string, m: Map<string, string>) => string[])(
+      dir,
+      new Map(names.map((n) => [url(n), "vitest@^3.0.0"])),
+    );
+
+  it("passes an entry point that loads cleanly once its peer is installed", () => {
+    expect(retry(["good.mjs"])).toEqual([]);
+  }, 60_000);
+
+  it("fails an entry point whose own top-level code throws, even with the peer installed", () => {
+    const failures = retry(["type-error.mjs"]);
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain("type-error.mjs");
+  }, 60_000);
+
+  it("fails an entry point that exits the process under the vitest probe", () => {
+    const failures = retry(["exits.mjs"]);
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain("exits.mjs");
+  }, 60_000);
+
+  it("fails an entry point the probe never reported on, as when the import crashes or hangs", () => {
+    // A peer other than vitest retries in plain Node, where exiting mid-import
+    // leaves the spec with no result at all (NOT_REACHED).
+    const spec = url("exits-plain.mjs");
+    const failures = (retryWithPeers as (d: string, m: Map<string, string>) => string[])(
+      dir,
+      new Map([[spec, "some-peer@^1.0.0"]]),
+    );
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain("NOT_REACHED");
+  }, 60_000);
 });
