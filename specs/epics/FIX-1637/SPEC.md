@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Epic · 6 issues, 2 folded into the page by [D1](DECISIONS.md#d1) · docs only, no runtime change · Framework simplification & cleanup
+Epic · one page and its closure, two children folded in by [D1](DECISIONS.md#d1), the wake POCs parked; Linear holds the membership · docs only, no runtime change · Framework simplification & cleanup
 ([project spec #2367](https://github.com/fixpoint-labs/flow-state-dev/pull/2367)) · Goal 4,
 keep the foundation honest ([`docs/objectives.md`](../../../docs/objectives.md)) ·
 [FIX-1637](https://linear.app/fixpoint-labs/issue/FIX-1637)
@@ -84,15 +84,11 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 | [FIX-1639](https://linear.app/fixpoint-labs/issue/FIX-1639) · the page | The published page: the path, the `{ id }` / `{ key }` fence, the terms block and the flow / host / ops table; drift fixes and links on the pages it leans on | The substance. By [D1](DECISIONS.md#d1) it carries all three deliverables | Backlog · spec route |
 | [FIX-1638](https://linear.app/fixpoint-labs/issue/FIX-1638) · config matrix | Nothing on its own: the flow / host / ops table is a section of FIX-1639's page | **Folded into FIX-1639** ([D1](DECISIONS.md#d1), decided) | Canceled as folded |
 | [FIX-1640](https://linear.app/fixpoint-labs/issue/FIX-1640) · terms | Nothing on its own: the terms are a section of FIX-1639's page, and the `epic-wake` line is FIX-1639's | **Folded into FIX-1639** ([D1](DECISIONS.md#d1), decided) | Canceled as folded |
-| [FIX-1641](https://linear.app/fixpoint-labs/issue/FIX-1641) · wake authoring POC | Three authoring shapes in an examples package, each compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Backlog · examples [#2369](https://github.com/fixpoint-labs/flow-state-dev/pull/2369) open, draft |
-| [FIX-1643](https://linear.app/fixpoint-labs/issue/FIX-1643) · subscribe and route POC | The host registers GitHub once, then two routing styles in an examples package: per-session subscribe, and one webhook with route rules compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. A sibling of FIX-1641, soft-related, not its child. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Backlog · examples [#2372](https://github.com/fixpoint-labs/flow-state-dev/pull/2372) open, draft |
+| [FIX-1641](https://linear.app/fixpoint-labs/issue/FIX-1641) · wake authoring POC | Three authoring shapes in an examples package, each compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Parked by the owner · examples [#2369](https://github.com/fixpoint-labs/flow-state-dev/pull/2369) · Linear holds its state |
+| [FIX-1643](https://linear.app/fixpoint-labs/issue/FIX-1643) · subscribe and route POC | The host registers GitHub once, then two routing styles in an examples package: per-session subscribe, and one webhook with route rules compiling to today's bindings | Exploration the owner filed with the Architect; evidence, not surface. A sibling of FIX-1641, soft-related, not its child. Nothing it adds ships as a framework API here ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) | Parked by the owner · examples [#2372](https://github.com/fixpoint-labs/flow-state-dev/pull/2372) · Linear holds its state |
 | [FIX-1642](https://linear.app/fixpoint-labs/issue/FIX-1642) · closure · **required** | The QA plan: the page followed as written on one `main` commit | Proves the whole ([ER-15](BUSINESS-RULES.md#the-closure)) | Backlog · blocked by every other open child; Linear holds the list |
 
-**One page, two POCs, and the closure.** The owner folded FIX-1638 and FIX-1640 into the page
-([D1](DECISIONS.md#d1)); both are canceled and no longer block the closure. The set would be
-zero only if a nav change were enough, and it isn't ([D2](DECISIONS.md#d2)). FIX-1641 was filed while this spec
-was written and FIX-1643 during its review. Both run beside the page, not before it; like every
-child each blocks the closure.
+FIX-1638 and FIX-1640 are folded into the page and canceled ([D1](DECISIONS.md#d1)).
 
 ## How the issues flow into each other
 

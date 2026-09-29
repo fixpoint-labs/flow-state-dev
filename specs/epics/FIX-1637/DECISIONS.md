@@ -28,10 +28,6 @@ flowchart TD
 | **Because** | All three describe the same five surfaces: webhook ingress, schedule dispatch, `dispatcher()`, the `{ id }` / `{ key }` policy, channels and boards. Three isolated writers produce three phrasings of one thing, the drift `polish-docs` exists to clean. The split also costs two extra spec gates and a cross-spec pass for a three-column table and three definitions |
 | **Locks in** | FIX-1639 publishes everything: the flow / host / ops table and the terms are sections of the one page. FIX-1638 and FIX-1640 are canceled as folded, and their blocks on FIX-1642 are removed. The `epic-wake` entry is one line in `docs/contributing/`, not published docs |
 
-**Decided.** The owner, in session on 2026-09-29: fold. It is the recommendation this spec put
-to the gate, so it changes no direction. Every deliverable still ships; only the ticket count
-changed.
-
 **What would change my mind:** the owner wanting the table or the terms reviewable on their own
 schedule, say for FIX-453's architecture work or a design partner. Re-splitting would reopen
 two children, not this epic.
@@ -150,8 +146,9 @@ tests of the set's division.
   closure. No decision changed.
 - **D1 answered, 2026-09-29, after merge.** The owner folded FIX-1638 and FIX-1640 into
   FIX-1639, as recommended; both are canceled in Linear and their blocks on FIX-1642 removed.
-  This follow-up records it and drops the re-split cells. Separately, the Process guards check
-  that was red on `main` at merge time (#2359 put `spec/_projects/public-launch/` there) is being
-  fixed outside this epic.
+  This follow-up records it and drops the re-split cells.
+- **POCs parked, 2026-09-29.** The owner parked the wake POCs (FIX-1641, FIX-1643, FIX-1644
+  and the FIX-1645 plan) pending a likely move out of this epic. Until that settles, Linear
+  holds their membership; the set table adds no rows for them.
 
 **Nothing open.**
