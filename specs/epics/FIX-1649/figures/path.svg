@@ -1,0 +1,82 @@
+<svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="The path as of 29 September 2026, in phases rather than dates because Cycle PM has not scheduled the build. Now is this epic spec in review, before the gate. An input lane for the refined design: the wireframes go to Claude Design with Jake at the gate and the hand-back comes back, a vertical line that gates final visuals only. An input lane for the sibling epics FIX-1650 to 1652, which nothing waits on. FIX-1655: its spec, then the token contract, neutral theme and skin fixes before the hand-back, then the App Lab theme values after it. FIX-1662: its spec, then regions, destinations and bindings before the hand-back, then its final visual pass after it. FIX-1663: its QA plan written beside the two, then its run after both merge. The critical path runs the gate, the hand-back, the two final passes and the closure run.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .flight { fill:var(--accent); stroke:none; }
+    .todo   { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .input  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; stroke-dasharray:4 3; }
+    .axis   { stroke:var(--rule); stroke-width:1; }
+    .hand   { stroke:var(--prose); stroke-width:1.4; stroke-dasharray:5 3; }
+    .now    { stroke:var(--gone); stroke-width:1.4; }
+    .crit   { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 3; }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-ln   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-in   { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; }
+    .t-s    { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-w    { fill:var(--surface); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-now  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.06em; }
+    .t-g    { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="372"/>
+
+  <text class="t-lbl" x="16" y="18">THE PATH &#8212; PHASES, NOT DATES &#183; CYCLE 2 CANDIDATE, NOT SCHEDULED</text>
+  <path class="axis" d="M200 44 L924 44"/>
+  <text class="t-now" x="206" y="36">now &#183; review</text>
+  <text class="t-s" x="292" y="36">gate</text>
+  <text class="t-s" x="420" y="36">build, in parallel</text>
+  <text class="t-in" x="610" y="36">hand-back</text>
+  <text class="t-s" x="690" y="36">final visuals</text>
+  <text class="t-s" x="806" y="36">closure run</text>
+  <path class="now" d="M280 44 L280 300"/>
+  <path class="hand" d="M640 44 L640 300"/>
+
+  <g id="design">
+    <text class="t-in" x="16" y="72">refined design &#183; input</text>
+    <rect class="input" x="296" y="58" width="336" height="22" rx="3"/>
+    <text class="t-s" x="304" y="73">wireframes &#8594; Claude Design, with Jake</text>
+  </g>
+  <g id="siblings">
+    <text class="t-in" x="16" y="108">FIX-1650&#8211;1652 &#183; input</text>
+    <text class="t-s" x="296" y="108">meaning for three destinations &#183; nothing here waits on it</text>
+  </g>
+  <g id="epic">
+    <text class="t-ln" x="16" y="144">FIX-1649 &#183; this spec</text>
+    <rect class="flight" x="206" y="130" width="70" height="22" rx="3"/>
+    <text class="t-w" x="212" y="145">in review</text>
+  </g>
+  <g id="ds">
+    <text class="t-ln" x="16" y="186">FIX-1655 &#183; design system</text>
+    <rect class="todo" x="296" y="172" width="80" height="22" rx="3"/>
+    <text class="t-s" x="304" y="187">spec</text>
+    <rect class="todo" x="384" y="172" width="248" height="22" rx="3"/>
+    <text class="t-s" x="392" y="187">contract &#183; neutral theme &#183; skin fixes</text>
+    <rect class="todo" x="648" y="172" width="130" height="22" rx="3"/>
+    <text class="t-s" x="656" y="187">App Lab theme values</text>
+  </g>
+  <g id="shell">
+    <text class="t-ln" x="16" y="228">FIX-1662 &#183; App Lab shell</text>
+    <rect class="todo" x="296" y="214" width="80" height="22" rx="3"/>
+    <text class="t-s" x="304" y="229">spec</text>
+    <rect class="todo" x="384" y="214" width="248" height="22" rx="3"/>
+    <text class="t-s" x="392" y="229">regions &#183; destinations &#183; bindings</text>
+    <rect class="todo" x="648" y="214" width="130" height="22" rx="3"/>
+    <text class="t-s" x="656" y="229">final visual pass</text>
+  </g>
+  <g id="closure">
+    <text class="t-ln" x="16" y="270">FIX-1663 &#183; closure</text>
+    <rect class="todo" x="384" y="256" width="120" height="22" rx="3"/>
+    <text class="t-s" x="392" y="271">QA plan</text>
+    <rect class="todo" x="794" y="256" width="120" height="22" rx="3"/>
+    <text class="t-s" x="802" y="271">run, one commit</text>
+  </g>
+  <path class="crit" d="M276 141 L296 69 M632 69 L648 225 M778 225 L794 267"/>
+  <text class="t-g" x="16" y="330">Critical path: gate &#8594; the hand-back &#8594; the final passes &#8594; the closure run. Structure never waits on the hand-back.</text>
+  <text class="t-s" x="16" y="350">Bars are phases, not durations; widths are not estimates. Linear and the implementation PRs hold live state.</text>
+</svg>
