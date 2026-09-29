@@ -48,7 +48,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { publishableDists } from "../add-esm-extensions.mjs";
 
@@ -80,16 +81,23 @@ function sh(cmd, args, cwd) {
 }
 
 /**
- * The import specifiers a consumer can write for one package: `name` plus
- * every concrete subpath export whose target is JavaScript. Wildcard subpaths
- * (`./items/*`) name no single file and non-JS targets (`./styles.css`) are not
- * imported by Node, so both are returned separately as `skipped`.
+ * The import specifiers a consumer can write for one package: `name`, every
+ * concrete subpath export whose target is JavaScript, and every file a wildcard
+ * subpath (`./items/*`) reaches in the packed package. Node's `*` matches any
+ * substring, `/` included, so `./items/*` → `./dist/items/*.js` also reaches
+ * `dist/items/deep/nested.js`.
+ *
+ * What goes unimported is returned as `skipped` with a reason, for the log:
+ * a non-JS target (`./styles.css`, which Node doesn't import) and a wildcard
+ * that matches no packed file, which is a public subpath with nothing behind it.
  *
  * Exported so a test can pin the rules against fixture manifests.
  *
  * @param {{ name: string, exports?: unknown, publishConfig?: { exports?: unknown } }} manifest
+ * @param {string[]} files — package-relative paths of the packed package's files
+ *   (`dist/items/content.js`), used to expand wildcard subpaths.
  */
-export function importSpecifiers(manifest) {
+export function importSpecifiers(manifest, files = []) {
   const exp = manifest.publishConfig?.exports ?? manifest.exports;
   if (exp == null || typeof exp === "string") {
     return { specs: [manifest.name], skipped: [] };
@@ -104,12 +112,43 @@ export function importSpecifiers(manifest) {
   for (const key of keys) {
     const spec = key === "." ? manifest.name : `${manifest.name}/${key.slice(2)}`;
     const target = resolveTarget(exp[key]);
-    if (key.includes("*")) skipped.push({ spec, reason: "wildcard subpath" });
-    else if (target == null || !/\.(m?js|cjs)$/.test(target))
+    if (key.includes("*") && target != null && /\.(m?js|cjs)$/.test(target)) {
+      const matched = expandWildcard(key, target, files).map((sub) => `${manifest.name}/${sub}`);
+      if (matched.length === 0) skipped.push({ spec, reason: "wildcard matches no packed file" });
+      specs.push(...matched);
+    } else if (target == null || !/\.(m?js|cjs)$/.test(target))
       skipped.push({ spec, reason: `not a JavaScript entry (${target})` });
     else specs.push(spec);
   }
   return { specs, skipped };
+}
+
+/**
+ * Subpaths (without `./`) a wildcard export reaches: every packed file matching
+ * the target pattern, with its `*` substituted back into the key.
+ */
+function expandWildcard(key, target, files) {
+  const escape = (s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+  const [before, after] = target.replace(/^\.\//, "").split("*");
+  const pattern = new RegExp(`^${escape(before)}(.+)${escape(after)}$`);
+  const out = [];
+  for (const file of files) {
+    const m = pattern.exec(file);
+    if (m) out.push(key.slice(2).replace("*", m[1]));
+  }
+  return out;
+}
+
+/** Package-relative paths of every file under `dir` (an installed package). */
+function packageFiles(dir, prefix = "") {
+  const out = [];
+  for (const e of readdirSync(join(dir, prefix), { withFileTypes: true })) {
+    const rel = prefix ? `${prefix}/${e.name}` : e.name;
+    if (e.isDirectory()) {
+      if (e.name !== "node_modules") out.push(...packageFiles(dir, rel));
+    } else out.push(rel);
+  }
+  return out;
 }
 
 /** The file Node's ESM resolver would load for one `exports` entry. */
@@ -144,21 +183,16 @@ export function classifyImport(result, manifest) {
 }
 
 /**
- * True when an import resolved and linked every static import in its graph,
- * even if evaluating it then threw.
- *
- * Node's ESM loader resolves and links the entire static graph before running
- * any of it, so a missing file, an unexported subpath or a missing named export
- * all fail before evaluation, as a `SyntaxError` or an `ERR_*` code. An error
- * with neither was thrown by the module's own code. That matters for subpaths
- * built to load inside a test runner: `@flow-state-dev/engine/testing` imports
- * `vitest`, which throws on evaluation outside a vitest run, and its packaging
- * is still sound. Used only after the owning package's optional peer is
- * installed; a root entry has to import outright.
+ * True when a failed import is the 0.1.1 defect: a relative file inside a
+ * package's `dist` that Node could not find, imported from another file in
+ * `dist`. The control passes only on this.
  */
-export function resolvedGraph(result) {
-  if (result.ok) return true;
-  return result.name !== "SyntaxError" && !String(result.code ?? "").startsWith("ERR_");
+export function isExtensionlessDistImport(result) {
+  return (
+    !result.ok &&
+    result.code === "ERR_MODULE_NOT_FOUND" &&
+    /Cannot find module '[^']*\/dist\/[^']*' imported from [^ ]*\/dist\//.test(result.message ?? "")
+  );
 }
 
 /**
@@ -193,21 +227,7 @@ export const CHECKS = [
   {
     name: "every package imports",
     run(project) {
-      const failures = [];
-      const byName = new Map(project.packages.map((p) => [p.name, p]));
-      const specs = project.packages.flatMap((p) => importSpecifiers(p.manifest).specs);
-      const needPeer = new Map(); // spec → "peer@range"
-      for (const result of importEach(project.dir, specs)) {
-        const owner = byName.get(ownerOf(result.spec));
-        const verdict = classifyImport(result, owner.manifest);
-        if (verdict === "ok") continue;
-        if (verdict === "optional-peer") {
-          const peer = /Cannot find package '([^']+)'/.exec(result.message)[1];
-          needPeer.set(result.spec, `${peer}@${owner.manifest.peerDependencies?.[peer] ?? "latest"}`);
-          continue;
-        }
-        failures.push(`${result.spec}: ${result.code ?? "error"} ${result.message}`);
-      }
+      const { failures, needPeer, specs } = importPass(project);
       // A subpath excused for a missing optional peer is not excused from
       // loading: install the peers, as a consumer of that subpath would, and
       // import those subpaths again. They must now resolve their whole graph.
@@ -215,13 +235,7 @@ export const CHECKS = [
         const peers = [...new Set(needPeer.values())];
         log(`    installing optional peer(s) ${peers.join(", ")} for ${needPeer.size} subpath(s)`);
         npmInstall(project.dir, peers);
-        for (const result of importEach(project.dir, [...needPeer.keys()])) {
-          if (resolvedGraph(result)) {
-            if (!result.ok) log(`    ${result.spec}: resolved; threw on evaluation (${result.message})`);
-            continue;
-          }
-          failures.push(`${result.spec} (with ${needPeer.get(result.spec)}): ${result.code ?? "error"} ${result.message}`);
-        }
+        failures.push(...retryWithPeers(project.dir, needPeer));
       }
       log(`    ${specs.length} entry point(s) across ${project.packages.length} package(s)`);
       return failures;
@@ -269,6 +283,109 @@ export const CHECKS = [
     },
   },
 ];
+
+/**
+ * Import again, with their optional peers now installed, the subpaths the first
+ * pass excused. Every one must now import cleanly: an evaluation error, a crash
+ * or a hang (a spec the probe never reported) is a failure.
+ *
+ * A subpath whose peer is `vitest` is imported inside a real vitest run, because
+ * that is the only place it can load: vitest throws while evaluating itself
+ * outside its runner, before the subpath's own code ever runs, so a plain Node
+ * import would prove nothing about that code. Any other peer is imported in
+ * plain Node.
+ *
+ * Exported so a test can run it against throwaway modules.
+ *
+ * @param {string} dir — the consumer project, with the peers installed.
+ * @param {Map<string, string>} needPeer — spec → `peer@range` it waited on.
+ * @returns {string[]} failures
+ */
+export function retryWithPeers(dir, needPeer) {
+  const peerOf = (spec) => {
+    const s = needPeer.get(spec);
+    return s.slice(0, s.lastIndexOf("@"));
+  };
+  const specs = [...needPeer.keys()];
+  const inVitest = specs.filter((s) => peerOf(s) === "vitest");
+  const inNode = specs.filter((s) => peerOf(s) !== "vitest");
+  const results = [...importEach(dir, inNode), ...vitestProbe(dir, inVitest)];
+  return results
+    .filter((r) => !r.ok)
+    .map((r) => `${r.spec} (with ${needPeer.get(r.spec)}): ${r.code ?? "error"} ${r.message}`);
+}
+
+/**
+ * Import each spec inside a vitest run in the consumer project, one test per
+ * spec, using the vitest the project installed. One result per spec; a spec
+ * with no test result (the run crashed or timed out) is `NOT_REACHED`.
+ */
+function vitestProbe(dir, specs) {
+  if (specs.length === 0) return [];
+  const probe = "fsd-import-probe.test.mjs";
+  const report = join(dir, "fsd-import-probe.json");
+  copyFileSync(join(FIXTURES, probe), join(dir, probe));
+  rmSync(report, { force: true });
+  const vitest = join(
+    dirname(createRequire(join(dir, "package.json")).resolve("vitest/package.json")),
+    "vitest.mjs",
+  );
+  const res = spawnSync(
+    process.execPath,
+    [vitest, "run", probe, "--root", dir, "--reporter=json", `--outputFile=${report}`],
+    {
+      cwd: dir,
+      encoding: "utf8",
+      timeout: 120_000,
+      env: { ...process.env, FSD_PROBE_SPECS: JSON.stringify(specs) },
+    },
+  );
+  let tests = [];
+  try {
+    tests = JSON.parse(readFileSync(report, "utf8")).testResults.flatMap((f) => f.assertionResults);
+  } catch {
+    // No report: the run itself failed. Every spec falls through to NOT_REACHED.
+  }
+  const detail = `${res.stderr ?? ""}${res.stdout ?? ""}`.trim().slice(-300);
+  return specs.map((spec) => {
+    const t = tests.find((a) => a.title === spec);
+    if (!t) return { spec, ok: false, code: "NOT_REACHED", message: detail };
+    if (t.status === "passed") return { spec, ok: true };
+    return { spec, ok: false, code: null, message: String(t.failureMessages?.[0] ?? t.status).split("\n")[0] };
+  });
+}
+
+/**
+ * One import pass over every entry point of every installed package. Returns
+ * the failures, the subpaths excused for a missing optional peer (for the
+ * retry), every spec imported, and the raw results. Shared by the check and
+ * the control, so both judge an import by the same rules.
+ */
+function importPass(project) {
+  const failures = [];
+  const needPeer = new Map(); // spec → "peer@range"
+  const byName = new Map(project.packages.map((p) => [p.name, p]));
+  const specs = [];
+  for (const pkg of project.packages) {
+    const files = packageFiles(join(project.dir, "node_modules", pkg.name));
+    const { specs: s, skipped } = importSpecifiers(pkg.manifest, files);
+    specs.push(...s);
+    for (const { spec, reason } of skipped) log(`    not imported: ${spec} (${reason})`);
+  }
+  const results = importEach(project.dir, specs);
+  for (const result of results) {
+    const owner = byName.get(ownerOf(result.spec));
+    const verdict = classifyImport(result, owner.manifest);
+    if (verdict === "ok") continue;
+    if (verdict === "optional-peer") {
+      const peer = /Cannot find package '([^']+)'/.exec(result.message)[1];
+      needPeer.set(result.spec, `${peer}@${owner.manifest.peerDependencies?.[peer] ?? "latest"}`);
+      continue;
+    }
+    failures.push(`${result.spec}: ${result.code ?? "error"} ${result.message}`);
+  }
+  return { failures, needPeer, specs, results };
+}
 
 /** `@scope/name/sub` → `@scope/name`. */
 function ownerOf(spec) {
@@ -420,14 +537,14 @@ function runControl(work, dir) {
   const manifest = JSON.parse(
     readFileSync(join(dir, "node_modules", CONTROL.name, "package.json"), "utf8"),
   );
-  const importCheck = CHECKS.find((c) => c.name === "every package imports");
+  // One pass, judged by the same rules as the real check.
   const project = { dir, packages: [{ name: CONTROL.name, manifest }] };
-  const specs = importSpecifiers(manifest).specs;
-  const results = importEach(dir, specs);
-  const expected = results.filter(
-    (r) => !r.ok && r.code === "ERR_MODULE_NOT_FOUND" && /\/dist\/.*imported from .*\/dist\//.test(r.message),
-  );
-  const failed = runChecks(project, [importCheck]);
+  log("\n• every package imports (control)");
+  const { failures, specs, results } = importPass(project);
+  log(`    ${specs.length} entry point(s); ${failures.length} failure(s)`);
+  for (const f of failures) log(`    ${f}`);
+  const expected = results.filter(isExtensionlessDistImport);
+  const failed = failures.length;
   if (failed > 0 && expected.length > 0) {
     log(`\n✓ control failed as it must: ${expected.length} entry point(s) hit an extensionless relative import`);
     log(`    e.g. ${expected[0].spec}: ${expected[0].message}`);
