@@ -11,13 +11,12 @@ package changes; BP-022).
 
 | ID | Where | Change | Rules |
 |---|---|---|---|
-| S1 | `apps/docs/guides/keeping-a-flow-running.md` | **Create** from [DOCS.md](DOCS.md), through `docs-writer` then `docs-editor` | BR-1–BR-18 |
+| S1 | `apps/docs/guides/keeping-a-flow-running.md` | **Create** from [DOCS.md](DOCS.md), through `docs-writer` then `docs-editor` | BR-1–BR-14, BR-18 |
 | S2 | `apps/docs/sidebarsGuides.ts` | Insert the page as a top-level item directly before the `Webhooks` category (D2) | BR-1 |
-| S3 | `apps/docs/docs/advanced/inbound-transports.md` · *Known sources* | Reword the `notification` row; keep the value in the list above it | BR-20 |
-| S4 | `apps/docs/docs/server/background-work.md` · refusal table | `external-dispatcher` row names `id` and a `{ from: true }` reply (D1) | BR-21 |
-| S5 | `background-work.md` guide, `webhooks.md`, `scheduled.md` | One link each, nothing else | BR-22 |
-| S6 | `docs/contributing/orchestration.md` · the `epic-wake` bullet | Append the one sentence in DOCS.md | BR-15 |
-| S7 | `goals/keeping-a-flow-running/follows-as-written/` | **Create** the goal check: `goal.md` + `run.mts` (the fixture leg) calling the two page-facts scripts | the goal |
+| S3 | `apps/docs/docs/advanced/inbound-transports.md` · *Known sources*, and `docs/architecture/inbound-transports.md` · the same table | Reword the `notification` row in both, same words; keep the value in the list above it | ER-9 |
+| S4 | `apps/docs/docs/server/background-work.md` · refusal table | `external-dispatcher` row names `id` and a `{ from: true }` reply from a process that enqueues (D1) | ER-9 |
+| S5 | `background-work.md` guide, `webhooks.md`, `scheduled.md` | One link each, nothing else | ER-9 |
+| S6 | `docs/contributing/orchestration.md` · the `epic-wake` bullet | Append the one sentence in DOCS.md | ER-8 |
 
 Nothing is removed. No runtime file changes (ER-6).
 
@@ -30,24 +29,24 @@ flowchart TD
   S1 --> S34["S3 and S4 · the two drift rows"]
   S1 --> S5["S5 · link lines"]
   S1 --> S6["S6 · contributor line"]
-  S2 --> S7["S7 · the goal check over the published page"]
-  S34 --> S7
 ```
 
 ## Checks
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V0 | start | `names.mts` and `fence.mts` pass on fresh `main` against DOCS.md. A failure means `main` moved: fix the draft first |
-| V1 | S1, and every later edit to the page | `PAGE=apps/docs/guides/keeping-a-flow-running.md` `names.mts` passes with zero failures and zero unclassified spans. A new span the editor added gets a classification, never a skip. Also run over S3 and S4's edited files |
-| V2 | S1 | `fence.mts` F1–F4 pass, and fail under `CONTROL=in-process`. The page's fence paragraph, table column and S4's row say what F1–F4 show |
-| V3 | S1 | `grep -rniE 'epic-wake|conductor|devforce|heartbeats?\b|FIX-[0-9]|#[0-9]{3,}|route:|subscribe|wakes:' apps/docs/guides/keeping-a-flow-running.md` prints only the one *Heartbeat* line in *Terms* (BR-15–BR-17) |
+| V0 | start | `names.mts`, `compile.mts` and `fence.mts` pass on fresh `main` against DOCS.md. A failure means `main` moved: fix the draft first |
+| V1 | S1, the final page | With `PAGE=apps/docs/guides/keeping-a-flow-running.md`: `names.mts` passes with zero failures and zero unclassified spans, and fails under `CONTROL=false-option`; a new span the editor added gets a classification, never a skip. `compile.mts` compiles every code fence, strict, against package source, and fails under `CONTROL=unminted`. For S3 and S4, a targeted check instead: each edited row in the three files matches DOCS.md's row verbatim (`grep -F`), and nothing else in those files changed |
+| V2 | S1, the final page | `fence.mts` F1–F5 pass, and fail under `CONTROL=in-process`. The page's fence paragraph, table column and S4's row say what F1–F5 show |
+| V3 | S1 | `grep -rniE 'epic-wake|conductor|devforce|heartbeats?\b|FIX-[0-9]|#[0-9]{3,}|route:|subscribe|wakes:' apps/docs/guides/keeping-a-flow-running.md` prints only the one *Heartbeat* line in *Terms* (ER-6–ER-8) |
 | V4 | S2 | `pnpm --filter @flow-state-dev/docs build` succeeds with no broken links; the page is in the guides nav above *Webhooks* |
-| V5 | S3–S6 | `git diff --stat` touches only S1–S7; S3–S5 diffs are the stated rows and lines |
-| VG | S7 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `pnpm exec tsx goals/keeping-a-flow-running/follows-as-written/run.mts` PASSES all three legs, after the same run FAILED under `GOAL_CONTROL=planted-option` on the names leg |
+| V5 | S3–S6 | `git diff --stat` touches only S1–S6; S3–S5 diffs are the stated rows and lines |
 
-Second path (BP-035): the fixture leg also runs the schedule dispatch **without** the bearer
-secret and expects `401`, and swaps Stripe for GitHub as the provider.
+V0, V1 and V2 each run once, in the implementation PR: V0 on DOCS.md before writing, V1 and V2
+on the final page. No goal check: docs only ([SPEC](SPEC.md#the-goal-and-how-well-know-its-met)).
+
+Second path (BP-035): F5 is the other topology (a `worker-only` worker), and `names.mts`'s
+`CONTROL=wrong-segment` checks a route addressed by something other than the flow's `kind`.
 
 ## Pinned names
 
@@ -56,10 +55,9 @@ secret and expects `401`, and swaps Stripe for GitHub as the provider.
 | Page file | `apps/docs/guides/keeping-a-flow-running.md` | The closure (FIX-1642) starts from it; links point at `/guides/keeping-a-flow-running` |
 | Page title and label | *Keeping a flow running* | The closure finds it in the nav by name |
 | Table anchor | `#where-each-setting-lives` | D2 gives the table an address without a second page |
-| Goal path | `goals/keeping-a-flow-running/follows-as-written/` | `SPEC.md` names it |
 
 Everything else, including section wording after the editor pass, is yours, as long as V1–V3
-stay green.
+pass.
 
 ## Guardrails
 
@@ -80,38 +78,18 @@ API changes.
 
 ## POC
 
-**[`poc/page-facts/`](poc/page-facts/README.md)** — two scripts on the spec branch.
-`names.mts` resolves every name on the draft against `main` (54 spans, 72 checks; three
-controls fail on what they plant). `fence.mts` runs the queue-host paragraph on the shipped
-runtime with an external dispatcher (F1–F4 pass; all four fail under the in-process control).
-**It moved the design:** F3 showed a `{ from: true }` reply is refused too, which the epic's
-draft lacked, and D1 follows from it. The names premise held.
-
-## Sketch · the goal check's fixture leg, illustrative
-
-```
-fixture host  ← the page's billing flow, both samples merged, one resolvePrincipal
-                branching on ctx.source (the page says to), in-memory stores
-POST webhook  → expect 202; wait; expect the recordPayment run completed
-POST schedule dispatch with bearer  → expect 202; without  → expect 401
-run an action whose block is the page's dispatcher({ key })
-              → the action's request completes BEFORE the dispatched run does
-names leg     ← names.mts with PAGE=<published page>     (GOAL_CONTROL=planted-option → CONTROL=false-option)
-fence leg     ← fence.mts
-```
+**[`poc/page-facts/`](poc/page-facts/README.md)** — three one-time checks: every name
+resolves, every code fence compiles, and the queue-host paragraph matches the runtime. What
+each showed is in the README, the one home for it. **It moved the design:** F3 and F5 showed
+where a `{ from: true }` reply is refused, which the epic's draft lacked, and D1 follows from it.
 
 ## At implement time
 
 - **Re-check the epic's amendment #2394.** If it merged with changes to D1's fold, the ER
   ownership, or the epic's `DOCS.md`, reconcile before publishing.
-- **Re-run V0 on fresh `main`.** The draft was checked at `c63ee231c`.
+- **Re-run V0 on fresh `main`.** The draft was checked at `07df7f9d0`.
 - **FIX-1634 may have moved.** If `{ id }` works on a queue host by then, the fence paragraph,
-  the table's third column and S4 change with it, and this plan's F2/F3 expectations flip.
+  the table's third column and S4 change with it, and this plan's F2/F3/F5 expectations flip
+  ([FIX-1656](https://linear.app/fixpoint-labs/issue/FIX-1656)).
 - **The sidebar may have changed.** If a *Webhooks* category no longer leads that part of
   `sidebarsGuides.ts`, keep D2's intent: top level, above the webhooks and schedules material.
-
-## Follow-ups
-
-- `names.mts` is a reusable shape: a docs page whose every code span is classified and checked.
-  If the closure or `polish-docs` wants it for other guides, lift it into a shared script. Not
-  in scope here.

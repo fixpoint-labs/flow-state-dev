@@ -10,10 +10,17 @@
  *   F2  an `{ id }` delivery is refused `external-dispatcher`, and nothing is enqueued
  *   F3  a `{ from: true }` reply from a queued run is refused the same way
  *   F4  a webhook with a `sessionId` naming an existing session is enqueued, not refused
+ *   F5  the same queued job consumed by a `worker-only` process (its own runtime, no
+ *       dispatcher installed, as a separated BullMQ worker container runs it): the
+ *       `{ from: true }` reply runs in process and is NOT refused
+ *
+ * F3 and F5 are one job, two consumers: the refusal follows the process that runs the
+ * queued job, not the queue. F3 is F5's contrast and F5 is F3's.
  *
  * Control: `CONTROL=in-process` boots the same flow with no queue. F2 and F3 must FAIL
- * (the delivery goes through), F1 and F4 must FAIL too (nothing reaches a queue), which
- * shows each check reads the dispatcher, not a constant.
+ * (the delivery goes through), F1 and F4 must FAIL too (nothing reaches a queue), and F5
+ * fails with no queued job to consume, which shows each check reads the dispatcher, not a
+ * constant.
  *
  * Run from the repo root:  pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/fence.mts
  */
@@ -100,9 +107,12 @@ const queue: FlowDispatcher = {
   close: async () => {}
 };
 
+// One store set shared by the producer and the worker-only consumer, as Redis-backed
+// stores are shared across a separated deployment's containers.
+const shared = inMemoryStores();
 const state = createFlowState({
   flows: { [KIND]: flow },
-  stores: { default: { primary: inMemoryStores() } },
+  stores: { default: { primary: shared } },
   adapters: [
     createWebhookTransportAdapter({
       providers: { test: { verify: () => true, eventType: (p) => (p as { type: string }).type } }
@@ -177,6 +187,36 @@ await settle();
 const hook = enqueued.slice(before4).find((e) => e.sessionId === "s_existing");
 check("F4 webhook with sessionId into an existing session is enqueued", res.status === 202 && hook !== undefined,
   `status=${res.status} enqueued-into-existing=${hook !== undefined}`);
+
+// F5 — the job F3 consumed, consumed instead by a worker-only process: its own
+// createFlowState over the same stores, `worker.mode: "worker-only"`, so no dispatcher.
+const workerOnly = createFlowState({
+  flows: { [KIND]: flow },
+  stores: { default: { primary: shared } },
+  worker: {
+    mode: "worker-only",
+    createDispatcher: () => { throw new Error("worker-only never builds a dispatcher"); },
+    startWorker: () => ({ close: async () => {} })
+  }
+});
+const wRuntime = await workerOnly.getRuntime();
+let f5 = "no queued job to consume";
+let f5pass = false;
+if (job !== undefined) {
+  const before5 = enqueued.length;
+  const ranBefore = ran.length;
+  const r5 = await runAction({
+    flow, actionName: job.actionName, input: job.input, userId: job.userId, sessionId: job.sessionId,
+    requestId: `${job.requestId}-worker-only`, orgId: job.orgId, source: job.source, metadata: job.metadata,
+    stores: wRuntime.stores, runtimeConfig: { ...wRuntime.runtimeConfig }
+  } as never);
+  await settle();
+  const replied = ran.slice(ranBefore).includes("s_sender:from");
+  f5pass = r5.error === undefined && replied && enqueued.length === before5;
+  f5 = `error=${r5.error?.message?.slice(0, 80) ?? "none"} reply-ran-in-sender=${replied} enqueued=${enqueued.length - before5}`;
+}
+check("F5 worker-only consumer: from:true reply runs in process, not refused", f5pass, f5);
+await workerOnly.dispose();
 
 await state.dispose();
 console.log(CONTROL ? "CONTROL=in-process (every check must FAIL)" : "external dispatcher (queue host)");

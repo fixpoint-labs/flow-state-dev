@@ -2,15 +2,16 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
-The page, drafted in full, plus four small edits elsewhere. It reconciles the epic's shared
+The page, drafted in full, plus five small edits elsewhere. It reconciles the epic's shared
 draft ([`specs/epics/FIX-1637/DOCS.md`](../../epics/FIX-1637/DOCS.md)) rather than copying it:
 the sections the epic drafted are corrected here, and the ones it left to this issue are
 written. After this spec merges, this file is the one draft; the epic's copy is history.
 
-Every name in the quoted prose and code was checked against `main` at `c63ee231c` by
+Every name in the quoted prose and code was checked against `main` at `07df7f9d0` by
 [`poc/page-facts/names.mts`](poc/page-facts/README.md). The fence paragraph was run against the
-shipped runtime by [`poc/page-facts/fence.mts`](poc/page-facts/README.md). The implementer
-re-runs both before publishing ([PLAN V1, V2](PLAN.md#checks)).
+shipped runtime by [`poc/page-facts/fence.mts`](poc/page-facts/README.md). Each code fence
+was compiled with `tsc` against package source. The implementer runs these once, on the final
+page, in the implementation PR ([PLAN V1, V2](PLAN.md#checks)).
 
 ## CREATE · `apps/docs/guides/keeping-a-flow-running.md`
 
@@ -52,6 +53,7 @@ Frontmatter: `title: Keeping a flow running`, `sidebar_label: Keeping a flow run
 >
 > export const billing = defineFlow({
 >   kind: "billing",
+>   actions: {},
 >   authentication: { defaultUserId: "system", requireUser: false },
 >   webhooks: {
 >     stripe: {
@@ -73,9 +75,10 @@ Frontmatter: `title: Keeping a flow running`, `sidebar_label: Keeping a flow run
 >   createWebhookTransportAdapter,
 >   stripeWebhookVerifier,
 > } from "@flow-state-dev/engine";
+> import { billing } from "../flows/billing";
 >
 > export const flowstate = createFlowState({
->   flows: { billing },
+>   flows: { billing: billing() },
 >   stores: { /* ... */ },
 >   adapters: [
 >     createWebhookTransportAdapter({
@@ -93,6 +96,12 @@ Frontmatter: `title: Keeping a flow running`, `sidebar_label: Keeping a flow run
 > Point Stripe at `POST /api/flows/billing/webhooks/stripe`. A delivery with a bad signature is
 > refused before any block runs. A good one gets a `202` straight away, and the run carries on
 > after the response has gone, so a slow block never makes the provider retry.
+>
+> That holds on a server that stays up. A serverless host such as Vercel freezes the function
+> once the response is sent, so give `createFlowState` a keep-alive:
+> `onBackgroundWork: (p) => after(() => p)`, with `after` from `next/server`. The same option
+> keeps schedule ticks and hand-offs running there. See
+> [Deploying to Vercel](/guides/deploying-to-vercel#4-choose-a-persistence-store).
 >
 > `sessionId` is optional. Leave it out and every event runs in a fresh session. Derive it from
 > something stable in the payload, as above, and every event for that customer lands in the
@@ -117,10 +126,11 @@ Frontmatter: `title: Keeping a flow running`, `sidebar_label: Keeping a flow run
 >
 > export const billing = defineFlow({
 >   kind: "billing",
+>   actions: {},
 >   authentication: {
 >     resolvePrincipal: createBearerSecretPrincipalResolver({
 >       secret: process.env.FSDEV_SCHEDULER_SECRET!,
->       principal: { userId: "system" },
+>       principal: { userId: "system", orgId: "acme" },
 >     }),
 >   },
 >   schedules: {
@@ -169,7 +179,7 @@ Frontmatter: `title: Keeping a flow running`, `sidebar_label: Keeping a flow run
 >   name: "reconcile-later",
 >   action: "reconcile", // billing's internal.actions.reconcile
 >   inputSchema: z.object({ invoiceId: z.string() }),
->   session: { key: (input) => input.invoiceId },
+>   session: { key: (input: { invoiceId: string }) => input.invoiceId },
 > });
 > ```
 >
@@ -195,28 +205,32 @@ Frontmatter: `title: Keeping a flow running`, `sidebar_label: Keeping a flow run
 > |---|---|---|
 > | `{ key: (input) => string }` | a session derived from the key, created on first use | Works |
 > | `{ id: (input) => string }` | a session that already exists | Refused before anything starts |
-> | `{ from: true }` | the session that dispatched this run, as a reply | Refused before anything starts |
+> | `{ from: true }` | the session that dispatched this run, as a reply | Refused when the run is on a process that hands work to the queue |
 >
 > On a host whose dispatcher hands work to an external queue, such as `bullmqWorker` in
-> `colocated` or `dispatch-only` mode, a delivery into a session that already exists throws
+> `colocated` or `dispatch-only` mode, or a custom dispatcher without `dispatchLocal`, a
+> delivery into a session that already exists throws
 > `DispatchRefusedError` with `refused: "external-dispatcher"`. Nothing is enqueued. The queue
 > can't apply the receiving session's concurrency rules, so FSD refuses rather than deliver
 > work it can't order.
 >
 > The refusal is narrow. A `{ key }` dispatch, a webhook delivery (with or without a
 > `sessionId`) and a schedule tick all run normally on that host. The refusal follows the
-> process the sending run is in: a `worker-only` process installs no dispatcher, so a run it
-> executes dispatches in process and isn't refused, and also isn't durable.
+> process the sending run is in. A reply from a run on a `colocated` worker is refused. A
+> `worker-only` worker installs no dispatcher, so a reply from a run it executes goes in
+> process and isn't refused. It also isn't retried: it runs outside the queue.
 >
 > A Workforce channel inherits the refusal on such a host. A client's post is written, but no
 > member is woken, and posting into the channel from another flow is refused the same way.
 >
-> If you're on a queue-backed host and need the result of a hand-off back in the conversation
-> that started it, don't send it back. Start the work with a `{ key }`, have it write what it
-> found somewhere both sides can read, such as a user- or org-scoped resource or a task board,
-> and read it from the conversation. The conversation can also list the runs it started with
-> `listChildSessions`. If the flow really has to deliver into an existing session, serve it from
-> a host with no queue worker, and accept that its runs aren't retried.
+> If you need a hand-off's result back in the conversation that started it, a reply works when
+> your queued runs execute on a separate `worker-only` worker, and isn't retried. On a
+> `colocated` worker it's refused. The route that works on every host, and keeps its retries, is to
+> start the work with a `{ key }`, have it write what it found somewhere both sides can read,
+> such as a user- or org-scoped resource or a task board, and read it from the conversation.
+> Your app can also list the runs a session started with the client SDK's `listChildSessions`.
+> If the flow really has to deliver into an existing session, serve it from a host with no
+> queue worker, and accept that its runs aren't retried.
 >
 > ## A channel or a board
 >
@@ -275,12 +289,16 @@ while core's `InboundSource` still lists the value and the DevTool labels it.
 
 > | `notification` | No built-in transport sends it. A custom transport may use it, and the DevTool labels those requests *Notification* |
 
+The same row in `docs/architecture/inbound-transports.md` (*Known sources* table) gets the
+same wording, so the contributor contract and the published guide agree.
+
 ## UPDATE · `apps/docs/docs/server/background-work.md` · the refusal table, `external-dispatcher` row
 
 Drift fix: the row names only an `id` delivery, and a `{ from: true }` reply is refused the
-same way ([poc/page-facts](poc/page-facts/README.md), check F3).
+same way when the run sending it is on a process that enqueues, and goes in process on a
+`worker-only` worker ([poc/page-facts](poc/page-facts/README.md), checks F3 and F5).
 
-> | `external-dispatcher` | A delivery into an existing session, by `id` or a `{ from: true }` reply, on a deployment that hands work to an external queue. A `key` dispatch is unaffected |
+> | `external-dispatcher` | A delivery into an existing session, by `id` or a `{ from: true }` reply, from a process that hands work to an external queue. A reply from a run on a `worker-only` worker goes in process. A `key` dispatch is unaffected |
 
 ## UPDATE · link lines, nothing else
 
@@ -310,9 +328,9 @@ Contributor docs, not published. Append one sentence to the bullet:
   page links it and does not repeat its table.
 - No per-cloud deployment page, no page for the table on its own, no glossary page.
 - No example from the wake authoring explorations is linked: none is merged
-  ([BR-17](BUSINESS-RULES.md#what-the-page-never-teaches)).
+  ([ER-6](../../epics/FIX-1637/BUSINESS-RULES.md)).
 
 ## Ownership
 
-FIX-1639 publishes everything above. When a queue-backed host accepts `{ id }`, FIX-1634 owns
-changing the fence paragraph, the table's third column and the refusal row.
+FIX-1639 publishes everything above. The fence rows, the fence paragraph and the refusal row
+are owned by the worker-queue epic: [EVOLUTION → Owned elsewhere](EVOLUTION.md).

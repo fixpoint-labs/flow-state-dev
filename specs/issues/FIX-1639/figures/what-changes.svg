@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 470" role="img" aria-label="What changes. One new guide page, Keeping a flow running, placed at the top level of the guides nav directly above the Webhooks, Background work and Scheduled actions sections. The page runs in order: a webhook, a schedule, work that keeps going, a new session or an existing one with the queue-host fence, a channel or a board, where each setting lives, and terms. It links the reference pages and scheduler guides without rewriting them. Beside it, one-line edits: the notification source row, the external-dispatcher refusal row, three link lines, and the epic-wake line in contributor docs. Below a fence, not built: making id work on a queue host, a Heartbeats noun, new nouns, the wake-exploration shapes, and a per-cloud deploy guide."
+<svg viewBox="0 0 940 470" role="img" aria-label="What changes. One new guide page, Keeping a flow running, placed at the top level of the guides nav directly above the Webhooks, Background work and Scheduled actions sections. The page runs in order: a webhook, a schedule, work that keeps going, a new session or an existing one with the queue-host fence, a channel or a board, where each setting lives, and terms. It links the reference pages and scheduler guides without rewriting them. Beside it, one-line edits: the notification source row in the guide and the architecture doc, the external-dispatcher refusal row, three link lines, and the epic-wake line in contributor docs. Below a fence, not built: making id work on a queue host, a Heartbeats noun, new nouns, the wake-exploration shapes, and a per-cloud deploy guide."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -47,7 +47,7 @@
     <rect class="step" x="380" y="118" width="180" height="34" rx="4"/><text class="t-n" x="392" y="139">3 · Work that keeps going</text>
     <rect class="fence-step" x="32" y="162" width="338" height="48" rx="4"/>
     <text class="t-n" x="44" y="181">4 · A new session or an existing one</text>
-    <text class="t-s" x="44" y="199">key works · id and a reply refused on a queue host</text>
+    <text class="t-s" x="44" y="199">key works · id and a colocated reply refused</text>
     <rect class="step" x="380" y="162" width="180" height="48" rx="4"/><text class="t-n" x="392" y="190">5 · A channel or a board</text>
     <rect class="step" x="32" y="220" width="300" height="34" rx="4"/><text class="t-n" x="44" y="241">Where each setting lives · flow, host, infra</text>
     <rect class="step" x="342" y="220" width="218" height="34" rx="4"/><text class="t-n" x="354" y="241">Terms · wake, dispatch, tick</text>
@@ -67,7 +67,7 @@
   <g id="edits">
     <text class="t-acc" x="596" y="232">ONE-LINE EDITS</text>
     <rect class="edit" x="596" y="240" width="328" height="80" rx="5"/>
-    <text class="t-s" x="610" y="259">notification source row · reworded, kept</text>
+    <text class="t-s" x="610" y="259">notification row · guide and architecture doc</text>
     <text class="t-s" x="610" y="276">external-dispatcher refusal row · adds a reply</text>
     <text class="t-s" x="610" y="293">three link lines to the new page</text>
     <text class="t-s" x="610" y="310">epic-wake line · contributor docs only</text>

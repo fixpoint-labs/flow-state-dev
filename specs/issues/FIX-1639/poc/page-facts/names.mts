@@ -1,5 +1,7 @@
 /**
- * FIX-1639 · poc/page-facts/names.mts — throwaway, retained as evidence.
+ * FIX-1639 · poc/page-facts/names.mts — retained as evidence. A one-time pre-merge check:
+ * the implementer runs it once, on the final page, in the implementation PR. It is not an
+ * ongoing gate, and nothing maintains its manifest after that PR merges.
  *
  * Re-derives the page's factual base from `main` instead of trusting the draft: every name a
  * reader could type from the proposed prose in ../../DOCS.md resolves to something that ships.
@@ -10,12 +12,18 @@
  *     reference page that already publishes it.
  *  3. TOTALITY: a span with no classification fails the run. A new name added to the page
  *     without a check here is a failure, not a pass.
+ *  4. ROUTE: a concrete `/api/flows/<segment>/…` route on the page names a flow the page's
+ *     code declares. The segment is the registered instance's id, which for a singleton is
+ *     its `kind`; `createFlowState` registers `Object.values(flows)`, so the map key is not
+ *     the address. Checked against the engine and core source that make it so.
  *
  * Controls, each must FAIL:
  *   CONTROL=planted       the page gains `notifyTopic`, classified as a core export
  *   CONTROL=unclassified  the page gains `madeUpOption` with no classification
  *   CONTROL=false-option  the page gains `dispatcher({ delay })`, classified as a dispatcher
  *                         option: proves the type walk rejects an option that doesn't exist
+ *   CONTROL=wrong-segment the page gains a webhook route addressed by a map key the page's
+ *                         code never declares as a kind (`payments`)
  *
  * Run from the repo root:  pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
  * After publishing:         PAGE=apps/docs/guides/keeping-a-flow-running.md pnpm exec tsx …
@@ -42,6 +50,7 @@ let quoted = PAGE
 if (CONTROL === "planted") quoted.push("Subscribe other flows with `notifyTopic`.");
 if (CONTROL === "unclassified") quoted.push("Set `madeUpOption` on the host.");
 if (CONTROL === "false-option") quoted.push("Send it later with `dispatcher({ delay })`.");
+if (CONTROL === "wrong-segment") quoted.push("Point Stripe at `POST /api/flows/payments/webhooks/stripe`.");
 
 const fences: string[] = [];
 const prose: string[] = [];
@@ -135,6 +144,18 @@ const S = (file: string, text: string): Check => () => {
   const p = join(ROOT, file);
   return existsSync(p) && readFileSync(p, "utf8").includes(text) ? null : `"${text}" not in ${file}`;
 };
+/** The route's flow segment is a `kind` the page's code declares (singleton id = kind). */
+const ROUTE = (span: string): Check => () => {
+  const seg = /\/api\/flows\/([^/]+)\//.exec(span)?.[1];
+  const kinds = new Set(fences.flatMap((f) => [...f.matchAll(/kind:\s*"([^"]+)"/g)].map((m) => m[1]!)));
+  if (seg === undefined) return `no flow segment in ${span}`;
+  if (!kinds.has(seg)) return `segment "${seg}" is not a kind the page declares (${[...kinds].join(", ")})`;
+  const why =
+    S("packages/engine/src/flowstate/createFlowState.ts", "for (const flow of Object.values(options.flows))")() ??
+    S("packages/engine/src/registry/flow-registry.ts", "this.flowsById.set(flow.id, flow)")() ??
+    S("packages/core/src/flow/defineFlow.ts", "return suppliedId ?? flowKind;")();
+  return why;
+};
 const PKG = (spec: string): Check => () => (existsSync(join(pkgDir(spec), "package.json")) ? null : `${spec} missing`);
 
 const WEBHOOKS_REF = "apps/docs/docs/server/webhooks.md";
@@ -154,8 +175,16 @@ const MANIFEST: Record<string, Check[]> = {
   DispatchRefusedError: [E("@flow-state-dev/core", "DispatchRefusedError")],
   "POST /api/flows/:flowKind/schedules/:scheduleId/dispatch": [S(SCHEDULED_REF, "POST /api/flows/:flowKind/schedules/:scheduleId/dispatch")],
   "POST /api/flows/:flowKind/webhooks/:provider": [S(WEBHOOKS_REF, "POST /api/flows/:flowKind/webhooks/:provider")],
-  "POST /api/flows/billing/schedules/monthly-invoices/dispatch": [S(SCHEDULED_REF, "/api/flows/billing/schedules/monthly-invoices/dispatch")],
-  "POST /api/flows/billing/webhooks/stripe": [S(WEBHOOKS_REF, "POST /api/flows/billing/webhooks/stripe")],
+  "POST /api/flows/billing/schedules/monthly-invoices/dispatch": [S(SCHEDULED_REF, "/api/flows/billing/schedules/monthly-invoices/dispatch"),
+    ROUTE("POST /api/flows/billing/schedules/monthly-invoices/dispatch")],
+  "POST /api/flows/billing/webhooks/stripe": [S(WEBHOOKS_REF, "POST /api/flows/billing/webhooks/stripe"),
+    ROUTE("POST /api/flows/billing/webhooks/stripe")],
+  "onBackgroundWork: (p) => after(() => p)": [P("@flow-state-dev/engine", "CreateFlowStateOptions", "onBackgroundWork"),
+    S("apps/docs/docs/server/setup.md", "onBackgroundWork: (p) => after(() => p)")],
+  after: [S("apps/docs/guides/deploying-to-vercel.md", 'import { after } from "next/server"')],
+  "next/server": [S("apps/docs/guides/deploying-to-vercel.md", 'import { after } from "next/server"')],
+  dispatchLocal: [P("@flow-state-dev/engine", "InProcessDispatcher", "dispatchLocal"),
+    S("packages/engine/src/transports/host/createInboundTransportHost.ts", '"dispatchLocal" in effectiveDispatcher')],
   adapters: [P("@flow-state-dev/engine", "CreateFlowStateOptions", "adapters")],
   "authentication.resolvePrincipal": [P("@flow-state-dev/core", "FlowDefinition", "authentication", "resolvePrincipal")],
   resolvePrincipal: [P("@flow-state-dev/core", "FlowDefinition", "authentication", "resolvePrincipal")],
@@ -206,6 +235,7 @@ const MANIFEST: Record<string, Check[]> = {
 };
 if (CONTROL === "planted") MANIFEST.notifyTopic = [E("@flow-state-dev/core", "notifyTopic")];
 if (CONTROL === "false-option") MANIFEST["dispatcher({ delay })"] = [dispatcherOpt("delay")];
+if (CONTROL === "wrong-segment") MANIFEST["POST /api/flows/payments/webhooks/stripe"] = [ROUTE("POST /api/flows/payments/webhooks/stripe")];
 
 // ── run ──────────────────────────────────────────────────────────────────────
 const failures: string[] = [];

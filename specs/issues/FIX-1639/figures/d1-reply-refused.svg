@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, what the page tells a builder on a queue-backed host. Chosen: say a reply is refused too, and steer hand-offs to a key plus data both sides read. Instead of: the epic draft's two rows and run dispatch in process for that flow. It comes down to the first row: a builder who plans to report back with a reply is warned before building, where under the draft the reply fails on the very host the section warns about. The price is the second row: the page names two refused choices, not one. Third row: the chosen route works on every host, where in process for that flow has no per-flow switch and means dropping the queue for the whole host. Locks in: fire-and-collect hand-offs on queue hosts until FIX-1634 lets a delivery through. Flips if: a reply stopped being a delivery into an existing session."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, what the page tells a builder on a queue-backed host. Chosen: say a reply is refused when the run sending it is on a process that enqueues (a colocated worker) and goes in process on a worker-only worker, and steer hand-offs to a key plus data both sides read. Instead of: the epic draft's two rows and run dispatch in process for that flow. It comes down to the first row: a builder who plans to report back with a reply is warned before building, where under the draft a reply from a colocated worker fails on the very host the section warns about. The price is the second row: the page names two refused choices, one of them conditional on the process. Third row: the chosen route works on every host, where in process for that flow has no per-flow switch and means dropping the queue for the whole host. Locks in: fire-and-collect hand-offs on colocated queue hosts until FIX-1634 lets a delivery through. Flips if: a reply stopped being a delivery into an existing session."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -42,7 +42,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Reply refused too · key + shared data</text>
+    <text class="t-h c-code" x="228" y="112">Reply refused if colocated · key + data</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Epic draft · in process for that flow</text>
@@ -56,7 +56,7 @@
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">Warned before building</text>
-    <text class="t-s" x="248" y="179">the page says a reply is refused there</text>
+    <text class="t-s" x="248" y="179">told a colocated reply is refused</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">Fails on the queue host</text>
     <text class="t-s" x="612" y="179">the draft never mentions the reply</text>
@@ -66,7 +66,7 @@
     <text class="t-lbl" x="32" y="222">HOW WIDE IT READS</text>
     <text class="mark minus" x="228" y="224">−</text>
     <text class="t-b" x="248" y="223">Two refused choices, not one</text>
-    <text class="t-s" x="248" y="241">the page names a wider gap</text>
+    <text class="t-s" x="248" y="241">one of them depends on the process</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">One refused row</text>
     <text class="t-s" x="612" y="241">shorter, and one row short</text>
@@ -87,7 +87,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Fire-and-collect hand-offs on queue hosts</text>
+    <text class="t-b" x="32" y="371">Fire-and-collect on colocated queue hosts</text>
     <text class="t-s" x="32" y="389">until FIX-1634 lets a delivery through</text>
   </g>
 
