@@ -74,8 +74,9 @@ It comes down to your screenshot: off, the board you asked about stays read-only
   visible. A refusal never shows as success.
 - **An action's settlement overrides a worker's claim.** An action has no claim ticket, so it
   settles as a coordinator does today: legal transitions only, no ownership check. The holding
-  seat's later result is refused and dropped (`terminal` once the action finished the row, `lost-claim` when a retrying `failTask`
-  returned it to pending). Clearing a stuck row is the debugging job, and
+  seat's later result is refused and dropped: `terminal` once the action finished the row; after a
+  retrying `failTask` sent it back to `pending`, `disallowed` for the seat's completion and
+  `lost-claim` for its failure. Clearing a stuck row is the debugging job, and
   refusing would need a new substrate guard. It is why channel exposure stays opt-in.
 - **Durable boards only.** A request- or sequencer-backed ledger is gone before the row's action
   runs, so `taskToolActions` refuses those backings by name, as `unparkAndDrain` does.
