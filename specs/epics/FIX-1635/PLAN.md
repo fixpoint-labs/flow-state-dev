@@ -28,7 +28,7 @@ The dependency graph is in [the spec](SPEC.md#how-the-issues-flow-into-each-othe
 | **FIX-1334** DevTool assets | direct | Leg a's job | ER-2, as a check in leg a | The closure | Small, likely a test |
 | **FIX-1634** queue delivery | spec → impl | ER-3 · FIX-1302's refusal | ER-11, Layer 1 only | The closure; later, a Workforce adopt child | Large |
 | **FIX-1628** non-streaming text | direct | FIX-1626's join rule | ER-12 | The closure | Small |
-| **FIX-1636** closure · required | spec (the QA plan) → runs until clean → PR | Every other child, merged, on one `main` commit · leg a's job · the children's HTTP suite | The suite run against installed tarballs with a real Redis, a QA report, a bug child per finding | Wrap | Large, repeats per retest |
+| **FIX-1636** closure · required | spec (the QA plan) → runs until clean → PR | Every other child, merged, on one `main` commit · leg a's job · the children's HTTP suite | The suite run against installed tarballs with a real Redis (its QA plan says where CI gets it), a QA report, a bug child per finding | Wrap | Large, repeats per retest |
 
 "Likely a test" is not a diagnosis. Each worker's **first step is reproducing the ticket's hole
 on current `main`** (ER-17): FIX-1442, FIX-999's re-entry allow-list, the ESM-extension build
