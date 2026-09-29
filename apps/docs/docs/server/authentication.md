@@ -356,7 +356,11 @@ session or request belongs to the `userId` it was created under. A caller
 holding a valid credential for a different user gets a `404` for someone
 else's session, the same answer as for an id nobody has used. Someone else's
 request gets that same `404`, whether the call reads its status or stream or
-would retry, continue, resume or abort it. The record's organization is checked as well, so one
+would retry, continue, resume or abort it. A request stream resumed from a
+cursor (`starting_after` or `Last-Event-ID`) is the one read that answers
+differently for an unused id, with an empty `200`, and someone else's request
+gets that too. Creating a session is the one write that shows an id is taken:
+it answers `409` whoever holds the id. The record's organization is checked as well, so one
 person who belongs to two organizations cannot reach the first one's session
 while acting for the second:
 
@@ -457,8 +461,9 @@ succeeds, as your own request, under an id the response gives you in the
 configured, the request routes check the caller against the user and
 organization stored on the request, not against knowing the id. Anything you
 ask of their request, its status, its stream, a retry, a resume or an abort,
-gets you the same `404` an id nobody has used gets, so the answer doesn't even
-say the id is taken.
+gets you the same answer an id nobody has used gets, so it doesn't even say the
+id is taken. That's a `404`, except for a stream you resume from a cursor,
+which answers an empty `200` either way.
 
 Session ids are addresses too, and they turn up in URLs all the time. With a
 resolver configured, if another user already has a session under the id you
