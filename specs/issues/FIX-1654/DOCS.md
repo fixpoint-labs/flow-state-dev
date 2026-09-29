@@ -51,7 +51,9 @@ Replace the last sentence of the section ("Known exceptions to settle later: …
 > The cancel route's conditional write is fenced the same way: `setFieldsIfStatus` takes the
 > incarnation the route's owner check read, and every store compares it with the stored record's,
 > so a cancel never lands on a later request under the id and never misses its own request after a
-> same-owner hand-off.
+> same-owner hand-off. The route's in-process fire checks the same incarnation: each registered
+> abort controller carries the incarnation of the request it belongs to, and a fenced fire acts only
+> on a match.
 
 ## Publication ownership
 

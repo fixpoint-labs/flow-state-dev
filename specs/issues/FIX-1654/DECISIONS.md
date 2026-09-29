@@ -44,9 +44,14 @@ opens. The other way, cancel keeps two failure modes, one of them cross-tenant.
 - **The caller passes the resolved value.** The route passes `resolveRequestIncarnation(record)`,
   so a legacy record's fence is `legacy_<createdAt>` and behaves exactly as today's (BP-030).
 - **Stores resolve the stored side the same way.** `resolveRequestIncarnation` is exported from
-  `@flow-state-dev/engine` so the SQLite and out-of-tree stores call it rather than copy it.
-  Postgres states the rule in SQL, and the conformance suite's legacy case is what holds the two
-  forms equal.
+  `@flow-state-dev/engine` for engine and out-of-tree TypeScript stores. SQLite restates the
+  one-line rule locally, because it may import only types from `engine`; Postgres states it in SQL.
+  The conformance suite's legacy cases hold all three equal.
+- **The in-process fire is fenced too** (review round 1). After the store write applies, the route
+  fires a controller in this process only if it belongs to the incarnation it fenced on. Otherwise a
+  later request under the id, started here in between, could still be stopped, and "never" would
+  be false. Keeping it as a documented exception was the alternative; fencing costs one field on
+  each controller, so it isn't worth asking about.
 - **A miss is reported as absent**, `{ applied: false, status: undefined }`, as today. The route's
   404 is unchanged.
 - **No column, no index, no migration on Postgres.** The predicate reads the locked row's body by
@@ -81,5 +86,9 @@ opens. The other way, cancel keeps two failure modes, one of them cross-tenant.
 
 - **Draft** — framed as FIX-1286's identity reaching the last `createdAt` check; a POC showed the
   fence failing both ways on `main`; the fence argument is replaced across all four stores. One PR.
+- **Review round 1** — the route's in-process fire joined the fence, because a Codex review showed
+  a fenced store write could still be followed by an unfenced fire on a later request under the id.
+  A `runAction` integration scenario joined the checks, and SQLite keeps the legacy rule local to
+  respect its type-only import boundary.
 
 **Open: none.**

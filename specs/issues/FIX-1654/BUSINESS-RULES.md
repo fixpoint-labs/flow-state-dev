@@ -15,6 +15,8 @@ for a legacy record as `legacy_<createdAt>`. The *proved by* column is the check
 | BR-3 | The caller's own retry hands the record off, rewriting `createdAt` | 202, the intent is on the caller's running request | Route case through `claimRequestRecord` · conformance, rewritten `createdAt` |
 | BR-4 | Nothing changed | 202 or 204, as today | Existing route cases |
 | BR-5 | The request finished in between | 409 with its terminal status, as today | Existing route and conformance cases |
+| BR-12 | The write landed, then the request finished and a later request under the id started in this process before the route fires the local controller | The later request's controller is not fired; the route answers 202, the intent sits on the finished record | Route case with a tagged registry · integration scenario |
+| BR-13 | The request is queued in this process, its controller registered before its record is claimed | A fenced cancel doesn't fire the untagged controller; it answers 202 and the run sees the intent when it starts. Callers that fire by id with no fence (the CLI, cascading child aborts) behave as today | Registry unit case |
 
 ## Records from before incarnations
 
@@ -39,6 +41,7 @@ Nothing new throws or refuses. A fenced miss is reported as an absent record, an
 
 ## Acceptance criteria this issue owns
 
-[The goal](SPEC.md#the-goal-and-how-well-know-its-met): BR-1 and BR-3 through the route on the
-memory store, and BR-1, BR-3 and BR-6 to BR-9 in the conformance suite on all four first-party
-stores; the route cases failed on `main` `70f777def` before this change, and the PR names it.
+[The goal](SPEC.md#the-goal-and-how-well-know-its-met): BR-1, BR-3 and BR-12 through the route on
+the memory store and in the integration scenario, and BR-1, BR-3 and BR-6 to BR-9 in the
+conformance suite on all four first-party stores; the route cases failed on `main` `70f777def`
+before this change, and the PR names it.

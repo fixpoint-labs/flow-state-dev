@@ -16,7 +16,7 @@ Improvement · `engine` + `store-sqlite` + `store-postgres` · small · 1 PR · 
 | **maintains their own request store** | Compares a timestamp | Compares the request's incarnation. Their build breaks until they do, and the shared store test says what's missing |
 
 "Cancel" is `POST …/requests/:id/abort`; the fence keeps its write on the request its owner
-check read. The cases: [BR-1 to BR-11](BUSINESS-RULES.md).
+check read. The cases: [BR-1 to BR-13](BUSINESS-RULES.md).
 
 ## The goal, and how we'll know it's met
 
@@ -47,7 +47,7 @@ Both interleaves run through the real route and real store writes; only the timi
 
 | How we verify | |
 |---|---|
-| **Goal check** | Route cases in `packages/engine/test/abort.test.ts`, plus fence cases in the request-store conformance suite that every first-party store already runs (memory, filesystem, SQLite, Postgres on PGlite) |
+| **Goal check** | Route cases in `packages/engine/test/abort.test.ts`, including the in-process fire; fence cases in the request-store conformance suite every first-party store runs (memory, filesystem, SQLite, Postgres on PGlite); a `runAction` scenario in `packages/integration-tests` |
 | **Signal** | Same-millisecond reuse: `404`, the other request unmarked. Hand-off: `202`, intent recorded. Legacy record: hit on its own derived value, miss on a neighbour's |
 | **Anti-game** | No stubbed `setFieldsIfStatus`; the hand-off is the engine's own `claimRequestRecord`; Postgres runs its SQL, not a JS copy of the rule |
 | **Control that must fail** | The [POC](PLAN.md#sketch-and-poc) on `main` `70f777def`: 202 on the other tenant's request, 404 on the owner's. The PR names that commit |
@@ -58,7 +58,8 @@ Both interleaves run through the real route and real store writes; only the timi
 ![A two-by-two grid. Columns: another tenant takes the freed id in the same millisecond; the owner's retry hands the record off. Top row, today, fenced on createdAt: the first column lands the cancel on the other tenant's request, the second answers 404 while the owner's request keeps running. Bottom row, after, fenced on the incarnation: the first misses with a 404 and nothing written, the second records the cancel on the owner's request](figures/what-changes.svg)
 
 Same route, same interleaves. Today both cells go wrong in opposite directions; the incarnation
-gets both right.
+gets both right. The route's in-process fire, which stops a run in the same process at once, is
+fenced the same way, so a later request under the id can't be stopped there either.
 
 No app code changes. A store adapter's signature does:
 
