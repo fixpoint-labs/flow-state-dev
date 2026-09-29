@@ -197,7 +197,7 @@ vi.mock("../src/react/components/workspace/stream-view", () => ({
 // dispatches through `rowActions.run`, as an expanded row's form does.
 const rowAnswers: Array<Promise<unknown>> = [];
 /** The request groups the panel last handed the Tasks tab. */
-let lastRowRequests: Array<{ requestId: string; items: unknown[]; rawItems: unknown[] }> = [];
+let lastRowRequests: Array<{ requestId: string; status?: string; items: unknown[]; rawItems: unknown[] }> = [];
 /** How many times the Tasks tab has been mounted; its open rows live in that mount's state. */
 let taskViewMounts = 0;
 vi.mock("../src/react/components/workspace/task-collections-view", async () => {
@@ -492,6 +492,43 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
         { id: "req_fast", status: "completed" },
       ];
       view.rerender(<DevToolPanel userId="u1" />);
+      requestsState.refresh.mockClear();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(requestsState.refresh).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps reading a row's request while it is suspended, and stops once it has finished", async () => {
+    // A suspended request is resumed by someone else (a person answering, a
+    // resume from another tab). Its stream has already closed, so without
+    // re-reading the list the row would say "Running…" forever.
+    sendAction.mockResolvedValueOnce({ request: { id: "req_parked" } });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    try {
+      const view = await act(async () => render(<DevToolPanel userId="u1" />));
+      await act(async () => {
+        fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByText("row-stub"));
+        await Promise.all(rowAnswers);
+      });
+
+      requestsState.requests = [{ id: "req_parked", status: "suspended" }];
+      view.rerender(<DevToolPanel userId="u1" />);
+      requestsState.refresh.mockClear();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(requestsState.refresh).toHaveBeenCalled();
+
+      requestsState.requests = [{ id: "req_parked", status: "completed" }];
+      view.rerender(<DevToolPanel userId="u1" />);
+      expect(lastRowRequests.find((group) => group.requestId === "req_parked")).toMatchObject({ status: "completed" });
       requestsState.refresh.mockClear();
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5_000);

@@ -18,6 +18,7 @@ import type { ActionInputSchema } from "@flow-state-dev/client";
 import { buildItemLookup, type ItemLookup } from "@flow-state-dev/core/items";
 import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
+import { isRequestOpen } from "./request-status";
 
 /**
  * A board's qualifier in an action name: every character outside
@@ -180,7 +181,7 @@ export function outcomeOf(
   if (root?.status === "failed") {
     return { state: "failed", message: root.error?.message ?? "The action failed." };
   }
-  if (request.status === "in_progress" || request.status === "suspended") return { state: "pending" };
+  if (isRequestOpen(request.status)) return { state: "pending" };
   if (request.status !== "completed") {
     const failedHook = [...roots].reverse().find((trace) => trace.status === "failed");
     // A request that failed before its action ran has no trace to name the

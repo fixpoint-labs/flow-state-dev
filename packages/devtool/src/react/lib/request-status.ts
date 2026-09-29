@@ -28,6 +28,15 @@ export const REQUEST_STATUS_RANK: Record<string, number> = {
 };
 
 /**
+ * Whether a request can still change on its own: running, or suspended and
+ * waiting for someone to resume it. A row reads such a request as pending and
+ * keeps re-reading it until it ends.
+ */
+export function isRequestOpen(status: string): boolean {
+  return status === "in_progress" || status === "suspended";
+}
+
+/**
  * Pick whichever of the live-stream / store status is furthest along the
  * lifecycle. Ties resolve to the stream, which is the more immediate source for
  * a request currently being watched.

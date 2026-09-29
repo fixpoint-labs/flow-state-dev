@@ -53,7 +53,7 @@ import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
 import { useDispatchRuns } from "./hooks/use-dispatch-runs";
 import { useReadFence } from "@flow-state-dev/react";
 import { flattenTaskItems } from "./lib/task-collection-state";
-import { mergeRawItems, pickFurthestStatus, snapshotSupersedesLive } from "./lib/request-status";
+import { isRequestOpen, mergeRawItems, pickFurthestStatus, snapshotSupersedesLive } from "./lib/request-status";
 
 const NAV_EXPANDED_WIDTH = 300;
 const NAV_COLLAPSED_WIDTH = 64;
@@ -609,8 +609,8 @@ function PanelContent({ className }: { className?: string }) {
   // yet). Two rows can each have a request in flight, and only the later one
   // is streamed: with Live off, nothing else would tell the earlier row its
   // request finished. The request being streamed is left out while its stream
-  // is open, since the stream's own end re-reads the list. Stops once every
-  // one has left `in_progress`.
+  // is open, since the stream's own end re-reads the list. A suspended one counts
+  // too: whoever resumes it, its stream has closed. Stops once every one has ended.
   const rowRequestRunning = useMemo(
     () =>
       [...rowRequestIds].some((id) => {
@@ -618,7 +618,7 @@ function PanelContent({ className }: { className?: string }) {
           return false;
         }
         const request = requests.find((candidate) => candidate.id === id);
-        return request === undefined || request.status === "in_progress";
+        return request === undefined || isRequestOpen(request.status);
       }),
     [rowRequestIds, requests, streamRequestId, streamStatus],
   );
