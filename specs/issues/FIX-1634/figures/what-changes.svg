@@ -1,0 +1,96 @@
+<svg viewBox="0 0 940 520" role="img" aria-label="Two panels with lanes for the web process, Redis, worker A and worker B, time running right. Today on a BullMQ host: a dispatcher into session S is refused external-dispatcher in the web process and nothing is enqueued, while two HTTP runs into S go on the queue with no key and run at the same time in worker A and worker B. After: the delivery and an HTTP run each take a place on S's key in Redis; worker A runs place 1 after checking the approved lineage; worker B picks up place 2, finds it is not its turn, gives its slot back, and runs place 2 when place 1 releases. An adapter with no cross-process arbitration still refuses the delivery by name."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A1F1D; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:none; stroke:var(--rule); stroke-width:1.2; }
+    .lane  { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .run   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .bad   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; }
+    .place { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .wait  { fill:none; stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:5 4; }
+    .link  { stroke:var(--ink-3); stroke-width:1.1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; letter-spacing:.1em; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:12px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="520"/>
+
+  <g id="today">
+    <rect class="panel" x="8" y="8" width="924" height="236" rx="6"/>
+    <text class="t-h" x="24" y="30">TODAY · A BULLMQ HOST</text>
+    <text class="t-lbl" x="620" y="30">TIME →</text>
+    <rect class="lane" x="16" y="44" width="908" height="38" rx="3"/>
+    <rect class="lane" x="16" y="88" width="908" height="38" rx="3"/>
+    <rect class="lane" x="16" y="132" width="908" height="38" rx="3"/>
+    <rect class="lane" x="16" y="176" width="908" height="38" rx="3"/>
+    <text class="t-lbl" x="26" y="67">WEB PROCESS</text>
+    <text class="t-lbl" x="26" y="111">REDIS</text>
+    <text class="t-lbl" x="26" y="155">WORKER A</text>
+    <text class="t-lbl" x="26" y="199">WORKER B</text>
+
+    <rect class="box" x="150" y="49" width="170" height="28" rx="4"/>
+    <text class="t-b" x="162" y="67">dispatcher() into S</text>
+    <rect class="bad" x="332" y="49" width="220" height="28" rx="4"/>
+    <text class="t-bad" x="344" y="67">refused · external-dispatcher</text>
+    <text class="t-s" x="344" y="104">nothing enqueued</text>
+
+    <rect class="box" x="590" y="49" width="160" height="28" rx="4"/>
+    <text class="t-b" x="602" y="67">two HTTP runs into S</text>
+    <line class="link" x1="630" y1="77" x2="630" y2="93"/>
+    <rect class="box" x="590" y="93" width="160" height="28" rx="4"/>
+    <text class="t-b" x="602" y="111">queued, no key taken</text>
+    <line class="link" x1="640" y1="121" x2="640" y2="137"/>
+    <line class="link" x1="700" y1="121" x2="700" y2="181"/>
+    <rect class="run" x="630" y="137" width="220" height="28" rx="4"/>
+    <text class="t-b" x="642" y="155">run 1 in S</text>
+    <rect class="run" x="690" y="181" width="220" height="28" rx="4"/>
+    <text class="t-b" x="702" y="199">run 2 in S</text>
+    <text class="t-bad" x="150" y="235">Runs 1 and 2 overlap in time: the session's queue policy is not applied to either</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="8" y="256" width="924" height="256" rx="6"/>
+    <text class="t-h" x="24" y="278">AFTER · THE ADAPTER ARBITRATES ACROSS PROCESSES</text>
+    <rect class="lane" x="16" y="292" width="908" height="38" rx="3"/>
+    <rect class="lane" x="16" y="336" width="908" height="38" rx="3"/>
+    <rect class="lane" x="16" y="380" width="908" height="38" rx="3"/>
+    <rect class="lane" x="16" y="424" width="908" height="38" rx="3"/>
+    <text class="t-lbl" x="26" y="315">WEB PROCESS</text>
+    <text class="t-lbl" x="26" y="359">REDIS</text>
+    <text class="t-lbl" x="26" y="403">WORKER A</text>
+    <text class="t-lbl" x="26" y="447">WORKER B</text>
+
+    <rect class="box" x="150" y="297" width="170" height="28" rx="4"/>
+    <text class="t-b" x="162" y="315">dispatcher() into S</text>
+    <rect class="box" x="332" y="297" width="150" height="28" rx="4"/>
+    <text class="t-b" x="344" y="315">HTTP run into S</text>
+    <line class="link" x1="200" y1="325" x2="200" y2="341"/>
+    <line class="link" x1="380" y1="325" x2="380" y2="341"/>
+    <rect class="place" x="150" y="341" width="170" height="28" rx="4"/>
+    <text class="t-b" x="162" y="359">S · place 1 · lineage</text>
+    <rect class="place" x="332" y="341" width="150" height="28" rx="4"/>
+    <text class="t-b" x="344" y="359">S · place 2</text>
+    <line class="link" x1="300" y1="369" x2="520" y2="394"/>
+    <line class="link" x1="460" y1="369" x2="520" y2="438"/>
+
+    <rect class="run" x="520" y="385" width="200" height="28" rx="4"/>
+    <text class="t-b" x="532" y="403">place 1 runs · lineage checked</text>
+    <rect class="wait" x="520" y="429" width="190" height="28" rx="4"/>
+    <text class="t-s" x="532" y="447">not its turn · slot given back</text>
+    <rect class="run" x="724" y="429" width="186" height="28" rx="4"/>
+    <text class="t-b" x="736" y="447">place 2 runs</text>
+    <line class="link" x1="720" y1="413" x2="724" y2="429"/>
+    <text class="t-s" x="150" y="485">A replaced recipient is dropped at the lineage check. An adapter with no cross-process arbitration</text>
+    <text class="t-s" x="150" y="501">still refuses the delivery by name: external-dispatcher, nothing enqueued.</text>
+  </g>
+</svg>

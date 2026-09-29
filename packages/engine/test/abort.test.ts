@@ -181,7 +181,89 @@ describe("handleAbortRequest", () => {
 
     expect(response.status).toBe(404);
     const body = await response.json();
-    expect(body.error).toContain("not in progress");
+    expect(body.error).toBe('Request "req_gone" not found');
+  });
+
+  it("answers another tenant's running request as an unused id, and leaves it running", async () => {
+    // Nothing authenticates here, so the tenant is the only boundary: without
+    // it, any caller holding the id could stop another tenant's run.
+    await stores.request.set("req_other_tenant", {
+      orgId: DEFAULT_ORG_ID,
+      id: "req_other_tenant",
+      tenantId: "tenant_a",
+      flowKind: "chat",
+      actionName: "run",
+      userId: "user_1",
+      status: "in_progress",
+      startedAtMs: Date.now(),
+      state: {},
+      version: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      journal: []
+    } as any, "any");
+
+    const abortAs = (requestId: string, tenantId: string) =>
+      handleAbortRequest(
+        new Request(`http://localhost/api/flows/chat/requests/${requestId}/abort`, { method: "POST" }),
+        { kind: "abort_request", flowKind: "chat", requestId },
+        { stores, tenantId }
+      );
+
+    const probed = await abortAs("req_other_tenant", "tenant_b");
+    const unused = await abortAs("req_unused", "tenant_b");
+    expect(probed.status).toBe(404);
+    expect((await probed.text()).replaceAll("req_other_tenant", "<id>")).toBe(
+      (await unused.text()).replaceAll("req_unused", "<id>")
+    );
+    expect((await stores.request.get("req_other_tenant"))?.abortRequested).not.toBe(true);
+
+    // Its own tenant still stops it.
+    expect((await abortAs("req_other_tenant", "tenant_a")).status).toBe(202);
+  });
+
+  it("does not stop a request another tenant recreated under the id after the owner check", async () => {
+    // The owner check reads the record, then the abort writes it. If the id is
+    // deleted and taken by someone else between the two, the abort must miss
+    // the new record rather than stop a run the caller was never checked for.
+    const running = (tenantId: string, createdAt: number) =>
+      ({
+        orgId: DEFAULT_ORG_ID,
+        id: "req_reused",
+        tenantId,
+        flowKind: "chat",
+        actionName: "run",
+        userId: "user_1",
+        status: "in_progress",
+        startedAtMs: createdAt,
+        state: {},
+        version: 1,
+        createdAt,
+        updatedAt: createdAt,
+        journal: []
+      }) as any;
+    await stores.request.set("req_reused", running("tenant_a", 1_000), "any");
+
+    const read = stores.request.get.bind(stores.request);
+    stores.request.get = async (id: string) => {
+      const record = await read(id);
+      // The interleave: tenant A's record is checked, then replaced.
+      await stores.request.delete(id);
+      await stores.request.set(id, running("tenant_b", 2_000), "absent");
+      return record;
+    };
+
+    const response = await handleAbortRequest(
+      new Request("http://localhost/api/flows/chat/requests/req_reused/abort", { method: "POST" }),
+      { kind: "abort_request", flowKind: "chat", requestId: "req_reused" },
+      { stores, tenantId: "tenant_a" }
+    );
+    stores.request.get = read;
+
+    expect(response.status).toBe(404);
+    const stored = await stores.request.get("req_reused");
+    expect(stored?.tenantId).toBe("tenant_b");
+    expect(stored?.abortRequested).not.toBe(true);
   });
 
   it("returns 409 when request is already completed", async () => {

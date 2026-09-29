@@ -1,0 +1,62 @@
+<svg viewBox="0 0 940 260" role="img" aria-label="A dashed vertical line is the queue, with the sending process on the left and the worker on the right. Three deliveries approach it. A delivery on an adapter that arbitrates crosses with its place and approved lineage and runs in its turn. A delivery on an adapter that cannot arbitrate stops at the line, refused external-dispatcher, nothing enqueued. A delivery whose recipient was replaced crosses, then is dropped by the worker's lineage check before it runs."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; --gone-soft:#F4E1DF; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; --gone-soft:#3A1F1D; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .run   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .bad   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.4; }
+    .fence { stroke:var(--ink-3); stroke-width:2; stroke-dasharray:6 5; }
+    .go    { stroke:var(--code); stroke-width:1.6; }
+    .stop  { stroke:var(--gone); stroke-width:1.6; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:12px; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="260"/>
+
+  <g id="fence">
+    <text class="t-lbl" x="24" y="28">SENDING PROCESS</text>
+    <text class="t-lbl" x="494" y="28">WORKER PROCESS</text>
+    <line class="fence" x1="470" y1="16" x2="470" y2="244"/>
+    <text class="t-lbl" x="430" y="252">THE QUEUE</text>
+  </g>
+
+  <g id="arbitrates">
+    <rect class="box" x="24" y="50" width="250" height="40" rx="4"/>
+    <text class="t-b" x="38" y="68">delivery · adapter arbitrates</text>
+    <text class="t-s" x="38" y="83">place and approved lineage on the job</text>
+    <line class="go" x1="274" y1="70" x2="660" y2="70"/>
+    <rect class="run" x="660" y="50" width="250" height="40" rx="4"/>
+    <text class="t-b" x="674" y="68">runs in its turn</text>
+    <text class="t-s" x="674" y="83">gives its place back at the end</text>
+  </g>
+
+  <g id="cannot-arbitrate">
+    <rect class="box" x="24" y="116" width="250" height="40" rx="4"/>
+    <text class="t-b" x="38" y="134">delivery · adapter can't arbitrate</text>
+    <text class="t-s" x="38" y="149">a dispatcher passed directly</text>
+    <line class="stop" x1="274" y1="136" x2="462" y2="136"/>
+    <line class="stop" x1="455" y1="129" x2="469" y2="143"/>
+    <line class="stop" x1="469" y1="129" x2="455" y2="143"/>
+    <text class="t-bad" x="494" y="134">refused before the queue</text>
+    <text class="t-s" x="494" y="149">external-dispatcher · nothing enqueued, nothing written</text>
+  </g>
+
+  <g id="replaced">
+    <rect class="box" x="24" y="182" width="250" height="40" rx="4"/>
+    <text class="t-b" x="38" y="200">delivery · recipient replaced</text>
+    <text class="t-s" x="38" y="215">deleted and recreated while queued</text>
+    <line class="go" x1="274" y1="202" x2="660" y2="202"/>
+    <rect class="bad" x="660" y="182" width="250" height="40" rx="4"/>
+    <text class="t-bad" x="674" y="200">lineage check · dropped</text>
+    <text class="t-s" x="674" y="215">record reconciled, place given back</text>
+  </g>
+</svg>

@@ -17,6 +17,7 @@ import {
   isCheckedSession,
   jsonResponse,
   loadTenantSession,
+  unknownSessionResponse,
   parseClientDataFilter,
   sessionRequestScope,
   snapshotItemsOf,
@@ -61,9 +62,7 @@ export async function handleGetSessionState(
   // copy, so it must be the session the caller was admitted to, not one that
   // took its id since (or arrived after the check found none).
   if (session === undefined || !isCheckedSession(ctx.checkedSession, session)) {
-    return jsonResponse(404, {
-      error: `Unknown session "${route.sessionId}"`
-    });
+    return unknownSessionResponse(route.sessionId);
   }
 
   // The stored owner's declarations, never a kind-string lookup: two copies
