@@ -671,6 +671,37 @@ export function createRequestStoreConformanceTests(
         });
       });
 
+      // The identity fence: a caller that checked who owns the record passes
+      // its `createdAt`, so the write cannot land on another request that took
+      // the id after that check.
+      it("reports a record with another createdAt as absent, and writes nothing", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_cond_fenced";
+          await seed(store, requestId);
+          const { createdAt } = (await store.get(requestId))!;
+
+          const missed = await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now(),
+            createdAt + 1
+          );
+          expect(missed).toEqual({ applied: false, status: undefined });
+          expect(await store.isAbortRequested(requestId)).toBe(false);
+
+          const hit = await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now(),
+            createdAt
+          );
+          expect(hit).toEqual({ applied: true, status: "in_progress" });
+          expect(await store.isAbortRequested(requestId)).toBe(true);
+        });
+      });
+
       it("matches any status in the predicate list", async () => {
         await withStore(async (store) => {
           const requestId = "req_cond_multi";

@@ -98,9 +98,8 @@ export async function handleResumeSuspension(
   }
 
   const originalRequest = await ctx.stores.request.get(route.requestId);
-  // Not found, owned by another instance, and owned by another tenant or user
-  // all answer the same way: the record is not this caller's to resume, and
-  // its existence is not disclosed.
+  // Not found and owned by another instance answer the same way: the record
+  // is not this address's to resume, and its existence is not disclosed.
   if (
     originalRequest === undefined ||
     !ownsRecord(flow, originalRequest) ||

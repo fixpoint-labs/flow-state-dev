@@ -42,8 +42,6 @@ export async function handleAbortRequest(
 ): Promise<Response> {
   const { requestId } = route;
 
-  // Another tenant's or another user's request answers as a missing one, and
-  // is left running.
   const record = await ctx.stores.request.get(requestId);
   if (record === undefined || !callerReachesRequest(record, ctx.tenantId, ctx.principal)) {
     return unknownRequestResponse(requestId);
@@ -52,12 +50,15 @@ export async function handleAbortRequest(
   // One atomic step: record the intent only while the request is still
   // running. A read-then-write cannot express this — the worker can commit a
   // terminal status between the two, and writing afterwards would restore an
-  // `in_progress` record over a finished one.
+  // `in_progress` record over a finished one. Fenced to the record checked
+  // above by its `createdAt`: if the id was deleted and taken by someone else
+  // since, the write misses and the caller gets the unused-id answer.
   const result = await ctx.stores.request.setFieldsIfStatus(
     requestId,
     { abortRequested: true },
     ["in_progress"],
-    Date.now()
+    Date.now(),
+    record.createdAt
   );
 
   if (result.status === undefined) {

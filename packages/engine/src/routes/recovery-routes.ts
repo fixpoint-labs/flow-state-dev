@@ -71,11 +71,6 @@ export async function handleRetryRequest(
 ): Promise<Response> {
   // Load the original request
   const originalRecord = await ctx.stores.request.get(route.requestId);
-  // A request id is an address the caller may have learned from someone
-  // else's response. Another tenant's or another user's request answers as a
-  // missing one, before anything below can tell them apart: this public
-  // re-dispatch surface would otherwise re-run it under its owner's identity
-  // with the caller's `inputOverride`.
   if (
     originalRecord === undefined ||
     !callerReachesRequest(originalRecord, ctx.tenantId, ctx.principal)
@@ -190,11 +185,6 @@ export async function handleContinueRequest(
   ctx: ContinueRouteContext
 ): Promise<Response> {
   const originalRecord = await ctx.stores.request.get(route.requestId);
-  // Another tenant's or another user's request answers as a missing one,
-  // before the session, flow and status checks below could tell them apart.
-  // Without the tenant half, the bare sessionId check below is cosmetic: a
-  // same-session-id collision across tenants would let one tenant continue
-  // another's interrupted request.
   if (
     originalRecord === undefined ||
     !callerReachesRequest(originalRecord, ctx.tenantId, ctx.principal)

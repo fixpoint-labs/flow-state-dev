@@ -376,7 +376,8 @@ export function createPostgresRequestStore(
       id: string,
       fields: ConditionalRequestFields,
       allowedStatuses: readonly RequestStatus[],
-      updatedAt: number
+      updatedAt: number,
+      expectedCreatedAt?: number
     ): Promise<ConditionalWriteResult> {
       // ONE statement, and the predicate read is a LOCKING one. `locked`
       // takes a row lock and — unlike a plain read, which is pinned to the
@@ -415,7 +416,8 @@ export function createPostgresRequestStore(
       // carry the old value back and move the indexed column BACKWARD.
       const result = await executor.query(
         `WITH locked AS (
-           SELECT id, status FROM requests WHERE id = $1 FOR UPDATE
+           SELECT id, status, (data->>'createdAt')::bigint AS created_at
+             FROM requests WHERE id = $1 FOR UPDATE
          ),
          applied AS (
            UPDATE requests r
@@ -423,19 +425,25 @@ export function createPostgresRequestStore(
                   updated_at = $3
              FROM locked l
             WHERE r.id = l.id AND l.status = ANY($4::text[])
+              AND ($5::bigint IS NULL OR l.created_at = $5::bigint)
            RETURNING r.id
          )
-         SELECT l.status AS status, EXISTS (SELECT 1 FROM applied) AS applied
+         SELECT l.status AS status, l.created_at AS created_at,
+                EXISTS (SELECT 1 FROM applied) AS applied
            FROM locked l`,
-        [id, JSON.stringify(fields), updatedAt, [...allowedStatuses]]
+        [id, JSON.stringify(fields), updatedAt, [...allowedStatuses], expectedCreatedAt ?? null]
       );
 
       // No row means no record: `rows`, not `rowCount` — a PGlite-backed
       // executor reports `affectedRows` there, which is 0 for a SELECT.
       const row = result.rows[0] as
-        | { status: RequestStatus; applied: boolean }
+        | { status: RequestStatus; created_at: string | number; applied: boolean }
         | undefined;
       if (row === undefined) return { applied: false, status: undefined };
+      // Another record under the same id is not the one the caller checked.
+      if (expectedCreatedAt !== undefined && Number(row.created_at) !== expectedCreatedAt) {
+        return { applied: false, status: undefined };
+      }
       return { applied: row.applied === true, status: row.status };
     },
 

@@ -28,6 +28,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { resolveRecordOwner, type OwnedRecord } from "../context/record-owner";
 import { principalOwnsRequest } from "../context/request-principal";
+import type { ResolvedPrincipal } from "../transports/types";
 import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
 import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
@@ -138,7 +139,14 @@ export function unknownRequestResponse(requestId: string): Response {
  * principal's in the caller's tenant (`principalOwnsRequest`: user, tenant,
  * and organization when the record carries one). Without one, nothing in the
  * app authenticates, so there is no user to compare and the tenant is the only
- * boundary. Callers answer `false` with {@link unknownRequestResponse}.
+ * boundary.
+ *
+ * Another user's or another tenant's request is answered as a missing one
+ * ({@link unknownRequestResponse}), and each handler asks this before any
+ * check that could tell them apart: status, flow, session or source. The
+ * request id is an address the caller may have learned from someone else's
+ * response, and these routes would otherwise re-run, continue, resume or stop
+ * that request under its owner's identity.
  *
  * The route guard (`route-auth.ts`) refuses another user's request before the
  * handler runs, with the same answer. This is the handler's own check, and the
@@ -147,7 +155,7 @@ export function unknownRequestResponse(requestId: string): Response {
 export function callerReachesRequest(
   record: Pick<RequestRecord, "userId" | "orgId" | "tenantId">,
   tenantId: string | undefined,
-  principal: { userId: string; orgId?: string } | undefined
+  principal: ResolvedPrincipal | undefined
 ): boolean {
   if (principal === undefined) return tenantMatches(record.tenantId, tenantId);
   return principalOwnsRequest(record, { userId: principal.userId, orgId: principal.orgId, tenantId });
