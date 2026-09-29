@@ -240,3 +240,17 @@ describe("V3 · a specialist files what needs a person", () => {
     expect(await rowsWith(app, mark, false)).toEqual([]);
   });
 });
+
+describe("support.help's escalations, worked from outside a run", () => {
+  it("offers the board's task tools as channel actions (FIX-1629 BR-21)", async () => {
+    // The channel opts in with `boardActions: true`, so the DevTool's Tasks tab
+    // can cancel, reassign or settle an escalation from its row.
+    const app = await bootApp();
+    const runtime = await app.flowstate.getRuntime();
+    const channel = runtime.registry.get("channel") as FlowInstance & { actions: Record<string, unknown> };
+    const suffix = BOARD.replace(/\./g, "_");
+    for (const tool of ["cancelTask", "updateTask", "assignTask", "completeTask", "failTask", "blockTask"]) {
+      expect(Object.keys(channel.actions)).toContain(`${tool}_${suffix}`);
+    }
+  });
+});

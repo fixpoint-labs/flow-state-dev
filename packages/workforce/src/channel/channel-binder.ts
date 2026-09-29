@@ -55,6 +55,9 @@ import type { ChannelRouting } from "./channel-route";
 const ROUTING_KEY = "routing";
 const FALLBACK_KEY = "fallback";
 
+/** The `CHANNEL.md` key that exposes a channel's boards' task tools as actions. */
+const BOARD_ACTIONS_KEY = "boardActions";
+
 /**
  * Every key a `CHANNEL.md` may declare. Closed, and checked by name.
  *
@@ -66,10 +69,13 @@ const FALLBACK_KEY = "fallback";
  * `members` is. It never carries an id — the ledger's identity is minted from
  * where the channel sits.
  *
- * `routing` is the sixth and the newest: a mapping with one subkey,
- * `fallback:`, the member who takes a post the route cannot place. Like
- * `boards`, it is built onto the kind at every boot and never written into the
- * channel's session.
+ * `routing` is the sixth: a mapping with one subkey, `fallback:`, the member
+ * who takes a post the route cannot place. Like `boards`, it is built onto the
+ * kind at every boot and never written into the channel's session.
+ *
+ * `boardActions` is the seventh and the newest: `true` exposes each of the
+ * channel's boards' eight task tools as channel actions. Boolean only, off by
+ * default, and built onto the kind the same way.
  */
 const DECLARABLE_KEYS = [
   "flow",
@@ -77,7 +83,8 @@ const DECLARABLE_KEYS = [
   "members",
   CHANNEL_BOARDS_KEY,
   INSTRUCTIONS_KEY,
-  ROUTING_KEY
+  ROUTING_KEY,
+  BOARD_ACTIONS_KEY
 ] as const;
 
 /**
@@ -322,6 +329,14 @@ function validate(
     return { problem: `declares an \`${INSTRUCTIONS_KEY}:\` that is not text` };
   }
 
+  if (Object.hasOwn(declared, BOARD_ACTIONS_KEY) && typeof declared[BOARD_ACTIONS_KEY] !== "boolean") {
+    return {
+      problem:
+        `declares a \`${BOARD_ACTIONS_KEY}:\` that is not \`true\` or \`false\`. It turns on the ` +
+        `channel's board task actions, so it is read as a switch and nothing else.`
+    };
+  }
+
   const routing = routingOf(declared);
   if (routing !== undefined && "problem" in routing) return routing;
 
@@ -524,6 +539,8 @@ export function channelInstances(
   const boardsByKind = new Map<string, string[]>();
   /** Each selected kind's routed channels: channel id → its `routing:`. */
   const routingByKind = new Map<string, Record<string, ChannelRouting>>();
+  /** Each selected kind's channels that declared `boardActions: true`. */
+  const boardActionsByKind = new Map<string, string[]>();
 
   for (const manifest of ordered) {
     const refuse = (reason: string): void => {
@@ -547,6 +564,9 @@ export function channelInstances(
     selected.add(result.kind);
     if (result.routing !== undefined) {
       routingByKind.set(result.kind, { ...routingByKind.get(result.kind), [manifest.id]: result.routing });
+    }
+    if (manifest.declared[BOARD_ACTIONS_KEY] === true) {
+      boardActionsByKind.set(result.kind, [...(boardActionsByKind.get(result.kind) ?? []), manifest.id]);
     }
 
     // Minted here rather than in `validate`, because uniqueness is a fact
@@ -595,8 +615,10 @@ export function channelInstances(
     // kind that cannot hold them. Routing likewise: only a kind built with a
     // route gets here holding any.
     if (!holdsBoards(factory)) return factory();
+    const boardActions = boardActionsByKind.get(kind);
     const withBoards = boards === undefined ? factory : factory.withBoards(boards);
-    return (routing === undefined ? withBoards : withBoards.withRouting(routing))();
+    const withRouting = routing === undefined ? withBoards : withBoards.withRouting(routing);
+    return (boardActions === undefined ? withRouting : withRouting.withBoardActions(boardActions))();
   });
 }
 

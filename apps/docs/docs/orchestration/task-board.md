@@ -643,6 +643,35 @@ A sibling or outer step can add tasks before `board.drain` runs, and the board p
 
 Each sugar call re-resolves the collection, so reads always reflect the latest state. That costs something per call on every backing. When you need several reads in a row with no writes between them, grab the ref once with `const tasks = await ctx.cap.<name>.tasks()` and read from it.
 
+## Changing tasks from outside a run
+
+Workers change tasks while a board drains. Sometimes a person needs to as well: cancel a task nobody needs, bump a priority, mark one failed. `taskToolActions` gives your flow the eight task tools a model can hold, as actions any caller of the flow can run:
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import { taskBoard, taskToolActions } from "@flow-state-dev/orchestration/task-board";
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+
+const todos = defineTaskCollection({ id: "todos", scope: "session" });
+const board = taskBoard({ name: "todos", collection: todos, workers });
+
+defineFlow({
+  kind: "ops",
+  actions: {
+    drain: { block: board.drain },
+    ...taskToolActions(board),
+  },
+});
+```
+
+The actions are named for the board's collection: `addTask_todos`, `assignTask_todos`, `completeTask_todos`, `failTask_todos`, `blockTask_todos`, `cancelTask_todos`, `updateTask_todos` and `listTasks_todos`. A character outside letters, digits, `_` and `-` becomes `_`, so a collection `eng.work` gives `cancelTask_eng_work`. Each action carries the board's capability, so the flow doesn't have to declare the collection itself.
+
+Each one runs the same checked transition a worker's would. A move the task can't make comes back as `{ ok: false, error }` and writes nothing. None of them claims a task or drains the board. Settling a task a worker is still running is allowed, as it is for a coordinator: your write lands, and the worker's own result is declined when it arrives.
+
+The board needs a collection that outlives a request, built with `defineTaskCollection`. `taskToolActions` throws for a board on any other backing, because a later action could never find its tasks.
+
+These are public actions. Anyone who can call your flow can call them, so add them only to a flow whose callers you trust with the board. The DevTool's Tasks tab offers the ones that take a `taskId` on each row.
+
 ## Collection backing
 
 A board stores its tasks in one of three places. You choose once; nothing downstream restates it.

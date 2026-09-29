@@ -690,12 +690,20 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    *
    * An empty `allowedStatuses` matches nothing, and an absent record is never
    * a match — see {@link ConditionalWriteResult} for the three outcomes.
+   *
+   * `expectedCreatedAt`, when given, fences the write to the record a caller
+   * already read: a record at `id` with a different `createdAt` is a different
+   * request (the id was deleted and taken again), and is reported exactly as
+   * an absent one, `{ applied: false, status: undefined }`, with nothing
+   * written. A caller that checked who owns the record passes it, so the write
+   * cannot land on a record that check never saw.
    */
   setFieldsIfStatus(
     id: string,
     fields: ConditionalRequestFields,
     allowedStatuses: readonly RequestStatus[],
-    updatedAt: number
+    updatedAt: number,
+    expectedCreatedAt?: number
   ): Promise<ConditionalWriteResult>;
 
   /**

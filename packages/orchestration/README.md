@@ -318,6 +318,16 @@ terminal, never refunded), and the retry budget `maxTotalRetries` (default 50 â€
 failure retries the board may authorize across every task). The creation caps take a
 positive integer or `null` (explicitly unbounded); `maxTotalRetries` takes a
 **nonnegative** integer or `null`, so `0` means "run every task once, never retry".
+
+`taskToolActions(board)` returns the eight task tools over `board` as a flow `actions`
+map, each named `<tool>_<suffix>` where `taskToolSuffix(collectionId)` turns every
+character outside `[a-zA-Z0-9_-]` into `_` (`cancelTask_todos`). Spread it into
+`defineFlow({ actions })`. Each action composes `board.capability`, so the flow need not
+declare the collection; none claims or drains; a transition the task cannot make returns
+`{ ok: false, error }` and writes nothing. It throws unless the board is on a
+`defineTaskCollection` collection. `taskToolActions(collectionId, resolve)` takes a ledger
+you resolve yourself. These are **public** actions: anyone who can call the flow can settle
+or reassign its tasks. See the docs, "Changing tasks from outside a run".
 Omission reapplies the default on all three. They apply only when the board
 constructs its own collection â€” a supplied `collection` is left alone and passing
 any of them is a construction error, so configure caps on

@@ -28,7 +28,13 @@ import {
   UnattributedOrgError,
   type OrgAttributedRecord
 } from "../context/org-attribution";
-import { jsonResponse, loadTenantSession, refuseUnattributedRecord } from "./route-utils";
+import {
+  jsonResponse,
+  loadTenantSession,
+  refuseUnattributedRecord,
+  unknownRequestResponse,
+  unknownSessionResponse
+} from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { flowAuthenticates } from "./instance-caller";
 
@@ -78,9 +84,41 @@ export type RouteAuthResult = {
    * never serves a session that took the id after the check.
    */
   session?: SessionRecord | null;
+  /**
+   * Set with `denied` when the denial is the route's not-found for a session
+   * another user owns. A route that checks something of its own before it
+   * looks a session up (the debug routes' enablement and origin gate) runs
+   * that first, so the caller gets what an unused id would get them.
+   */
+  sessionHidden?: true;
 };
 
 const ALLOWED: RouteAuthResult = {};
+
+/**
+ * The request-addressed routes that act on a request rather than read it:
+ * re-enter it (retry, continue, resume) or stop it (abort). Each answers a
+ * request the caller cannot reach with `unknownRequestResponse`, the answer
+ * its handler gives an unused id.
+ */
+const REQUEST_CONTROL_ROUTES: ReadonlySet<ParsedFlowRoute["kind"]> = new Set([
+  "retry_request",
+  "continue_request",
+  "resume_suspension",
+  "abort_request"
+]);
+
+/**
+ * The not-found a session-addressed route answers for an id with no session
+ * behind it, given for a session another user owns. The debug routes name a
+ * missing session in their own error code; every other route shares
+ * `unknownSessionResponse`.
+ */
+function hiddenSessionResponse(route: ParsedFlowRoute, sessionId: string): Response {
+  return route.kind.startsWith("debug_")
+    ? jsonResponse(404, { error: "session_not_found" })
+    : unknownSessionResponse(sessionId);
+}
 
 /**
  * What a route addresses, and therefore who owns it.
@@ -455,15 +493,40 @@ export async function authorizeManagementRoute(
     throw error;
   }
 
+  // Another user's session is not found, exactly as an id nobody has used
+  // is. A session id is an address that travels in URLs, so holding one
+  // proves nothing; a 403 here would tell the caller the id is in use. Ahead
+  // of the held refusal below: a legacy session's `migration-required` names
+  // something about the record, and is its owner's to hear, not another
+  // user's.
+  if (subject.kind === "session" && owner !== undefined && principal.userId !== owner) {
+    return {
+      denied: hiddenSessionResponse(route, subject.sessionId),
+      sessionHidden: true
+    };
+  }
+
+  // The routes that re-enter or stop a request answer another user's request
+  // as they answer an id nobody has used, for the same reason and, like the
+  // session above, ahead of the held refusal. The other request-addressed
+  // routes still answer 403 "not yours" below.
+  if (
+    subject.kind === "request" &&
+    REQUEST_CONTROL_ROUTES.has(route.kind) &&
+    owner !== undefined &&
+    principal.userId !== owner
+  ) {
+    return { denied: unknownRequestResponse(subject.requestId) };
+  }
+
   // The caller has now proven who they are, so the held refusal costs nothing
   // to give. Before the owner and organization checks: a record that cannot be
   // admitted at all is answered as such rather than as somebody else's.
   if (pendingDenial !== undefined) return { denied: pendingDenial };
 
   if (owner !== undefined && principal.userId !== owner) {
-    // Deliberately not a 404: the caller authenticated, and the record's
-    // existence is already implied by the id they hold. 403 says "not yours",
-    // which is the accurate and more debuggable answer.
+    // A request-addressed route still answers 403 "not yours"; its not-found
+    // shape is decided with the request routes, not here.
     return {
       denied: jsonResponse(403, {
         error: "Caller is not the owner of the requested resource"
