@@ -16,7 +16,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FlowInstance } from "@flow-state-dev/core";
-import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
+import {
+  createFlowApiRouter,
+  createFlowRegistry,
+  type InboundTransportAdapter
+} from "@flow-state-dev/engine";
 import { serve, type ServeHandle } from "@flow-state-dev/node";
 import { createSQLiteStores, type SQLiteStoreRegistry } from "@flow-state-dev/store-sqlite";
 
@@ -37,10 +41,22 @@ export type TwoUserServer = {
   close(): Promise<void>;
 };
 
+/** What a case may add to the server beyond its flows. */
+export type TwoUserServerOptions = {
+  /**
+   * Inbound transports mounted beside HTTP, for a case whose hole depends on
+   * which transport a request arrived on.
+   */
+  adapters?: InboundTransportAdapter[];
+};
+
 /**
  * Start a server hosting `flows`. Call `close()` in `afterEach`/`afterAll`.
  */
-export async function startTwoUserServer(flows: FlowInstance[]): Promise<TwoUserServer> {
+export async function startTwoUserServer(
+  flows: FlowInstance[],
+  options: TwoUserServerOptions = {}
+): Promise<TwoUserServer> {
   const dir = await mkdtemp(join(tmpdir(), "fsd-two-users-"));
   const stores: SQLiteStoreRegistry = createSQLiteStores({ filename: join(dir, "store.db") });
   const registry = createFlowRegistry();
@@ -48,6 +64,7 @@ export async function startTwoUserServer(flows: FlowInstance[]): Promise<TwoUser
   const router = createFlowApiRouter({
     registry,
     stores,
+    adapters: options.adapters,
     resolvePrincipal: (context) => {
       const userId = context.request?.headers.get(USER_HEADER);
       return userId == null || userId === "" ? null : { userId, orgId: ORG_ID };

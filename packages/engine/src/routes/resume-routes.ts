@@ -8,15 +8,17 @@ import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord } from "../context/record-owner";
 import type { StoreRegistry } from "../stores/types";
-import type { InboundTransportHost } from "../transports/types";
+import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import type { DurabilityProvider } from "../durability/types";
 import { isPublicReentryAllowed } from "./public-reentry";
 import { generateId } from "../utils/generate-id";
 import {
+  callerReachesRequest,
   jsonResponse,
   parseJsonBody,
   getString,
-  SSE_HEADERS
+  SSE_HEADERS,
+  unknownRequestResponse
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { InternalRouteSeams, RequestContext } from "./http-handlers";
@@ -77,6 +79,10 @@ type ResumeRouteContext = {
    * are re-enterable.
    */
   publicReentrySources?: readonly string[];
+  /** Caller's tenant (FIX-682), extracted as every other request route does. */
+  tenantId?: string;
+  /** The authenticated caller, when route-level authentication is active. */
+  principal?: ResolvedPrincipal;
   seams: InternalRouteSeams;
   requestContext: RequestContext;
 };
@@ -92,10 +98,15 @@ export async function handleResumeSuspension(
   }
 
   const originalRequest = await ctx.stores.request.get(route.requestId);
-  // Not found, and owned by another instance, answer the same way: the record
-  // is not this address's to resume, and its existence is not disclosed.
-  if (originalRequest === undefined || !ownsRecord(flow, originalRequest)) {
-    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+  // Not found, owned by another instance, and owned by another tenant or user
+  // all answer the same way: the record is not this caller's to resume, and
+  // its existence is not disclosed.
+  if (
+    originalRequest === undefined ||
+    !ownsRecord(flow, originalRequest) ||
+    !callerReachesRequest(originalRequest, ctx.tenantId, ctx.principal)
+  ) {
+    return unknownRequestResponse(route.requestId);
   }
 
   // Only a caller-facing source may be resumed here: resuming re-enters the
@@ -104,7 +115,7 @@ export async function handleResumeSuspension(
   // record, returning the same not-found shape as a missing record so a refused
   // request is indistinguishable from one that does not exist.
   if (!isPublicReentryAllowed(originalRequest.source, ctx.publicReentrySources)) {
-    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+    return unknownRequestResponse(route.requestId);
   }
 
   const provider = ctx.durabilityProvider;

@@ -32,6 +32,7 @@ import {
   jsonResponse,
   loadTenantSession,
   refuseUnattributedRecord,
+  unknownRequestResponse,
   unknownSessionResponse
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
@@ -93,6 +94,19 @@ export type RouteAuthResult = {
 };
 
 const ALLOWED: RouteAuthResult = {};
+
+/**
+ * The request-addressed routes that act on a request rather than read it:
+ * re-enter it (retry, continue, resume) or stop it (abort). Each answers a
+ * request the caller cannot reach with `unknownRequestResponse`, the answer
+ * its handler gives an unused id.
+ */
+const REQUEST_CONTROL_ROUTES: ReadonlySet<ParsedFlowRoute["kind"]> = new Set([
+  "retry_request",
+  "continue_request",
+  "resume_suspension",
+  "abort_request"
+]);
 
 /**
  * The not-found a session-addressed route answers for an id with no session
@@ -494,8 +508,12 @@ export async function authorizeManagementRoute(
         sessionHidden: true
       };
     }
-    // A request-addressed route still answers 403 "not yours"; its not-found
-    // shape is decided with the request routes, not here.
+    // The routes that re-enter or stop a request answer another user's
+    // request as they answer an id nobody has used, for the same reason. The
+    // other request-addressed routes still answer 403 "not yours".
+    if (subject.kind === "request" && REQUEST_CONTROL_ROUTES.has(route.kind)) {
+      return { denied: unknownRequestResponse(subject.requestId) };
+    }
     return {
       denied: jsonResponse(403, {
         error: "Caller is not the owner of the requested resource"

@@ -2,15 +2,20 @@
  * Abort route handler for cancelling in-flight requests.
  */
 import type { StoreRegistry } from "../stores/types";
+import type { ResolvedPrincipal } from "../transports/types";
 import {
   abortRequest,
   hasActiveAbortController
 } from "../execution/abort-registry";
-import { jsonResponse } from "./route-utils";
+import { callerReachesRequest, jsonResponse, unknownRequestResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 type AbortRouteContext = {
   stores: StoreRegistry;
+  /** Caller's tenant (FIX-682), extracted as every other request route does. */
+  tenantId?: string;
+  /** The authenticated caller, when route-level authentication is active. */
+  principal?: ResolvedPrincipal;
 };
 
 /**
@@ -28,7 +33,7 @@ type AbortRouteContext = {
  *
  * Returns 204 when the in-memory controller was fired here, 202 when the
  * intent was recorded for the running process to pick up, 404 if the request
- * doesn't exist, 409 if it's already terminal.
+ * doesn't exist or is not the caller's, 409 if it's already terminal.
  */
 export async function handleAbortRequest(
   _request: Request,
@@ -36,6 +41,13 @@ export async function handleAbortRequest(
   ctx: AbortRouteContext
 ): Promise<Response> {
   const { requestId } = route;
+
+  // Another tenant's or another user's request answers as a missing one, and
+  // is left running.
+  const record = await ctx.stores.request.get(requestId);
+  if (record === undefined || !callerReachesRequest(record, ctx.tenantId, ctx.principal)) {
+    return unknownRequestResponse(requestId);
+  }
 
   // One atomic step: record the intent only while the request is still
   // running. A read-then-write cannot express this — the worker can commit a
@@ -49,9 +61,7 @@ export async function handleAbortRequest(
   );
 
   if (result.status === undefined) {
-    return jsonResponse(404, {
-      error: `Request "${requestId}" is not in progress`
-    });
+    return unknownRequestResponse(requestId);
   }
 
   if (!result.applied) {

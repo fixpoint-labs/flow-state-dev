@@ -354,8 +354,9 @@ The framework resolves a principal through your hook on each of those
 requests, then checks that the principal owns what the URL addressed. A
 session or request belongs to the `userId` it was created under. A caller
 holding a valid credential for a different user gets a `404` for someone
-else's session, the same answer as for an id nobody has used, and a `403` for
-someone else's request. The record's organization is checked as well, so one
+else's session, the same answer as for an id nobody has used. Someone else's
+request gets that same `404` when the call would retry, continue, resume or
+abort it, and a `403` when it reads the request's status or stream. The record's organization is checked as well, so one
 person who belongs to two organizations cannot reach the first one's session
 while acting for the second:
 

@@ -10,7 +10,13 @@ import {
   detectInterruptedRequests,
   retryRequest
 } from "../execution/request-recovery";
-import { jsonResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
+import {
+  callerReachesRequest,
+  jsonResponse,
+  parseJsonBody,
+  SSE_HEADERS,
+  unknownRequestResponse
+} from "./route-utils";
 import { generateId } from "../utils/generate-id";
 import { tenantMatches } from "../stores/scope-keys";
 import { isPublicReentryAllowed } from "./public-reentry";
@@ -65,18 +71,16 @@ export async function handleRetryRequest(
 ): Promise<Response> {
   // Load the original request
   const originalRecord = await ctx.stores.request.get(route.requestId);
-  if (originalRecord === undefined) {
-    return jsonResponse(404, {
-      error: `Request "${route.requestId}" not found`
-    });
-  }
-
-  // A caller-supplied requestId must belong to the caller's own tenant (FIX-682) —
-  // otherwise this public re-dispatch surface lets one tenant re-run another
-  // tenant's request. Same not-found shape as a missing record, matching the
-  // webhook-source check below.
-  if (!tenantMatches(originalRecord.tenantId, ctx.tenantId)) {
-    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+  // A request id is an address the caller may have learned from someone
+  // else's response. Another tenant's or another user's request answers as a
+  // missing one, before anything below can tell them apart: this public
+  // re-dispatch surface would otherwise re-run it under its owner's identity
+  // with the caller's `inputOverride`.
+  if (
+    originalRecord === undefined ||
+    !callerReachesRequest(originalRecord, ctx.tenantId, ctx.principal)
+  ) {
+    return unknownRequestResponse(route.requestId);
   }
 
   // Only allow retrying interrupted or failed requests
@@ -111,7 +115,7 @@ export async function handleRetryRequest(
   // — its handler is reachable only behind signature verification. Return the
   // same not-found shape as a missing record so they're indistinguishable here.
   if (!isPublicReentryAllowed(originalRecord.source, ctx.runtimeConfig.publicReentrySources)) {
-    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+    return unknownRequestResponse(route.requestId);
   }
 
   // Parse optional input override
@@ -186,16 +190,16 @@ export async function handleContinueRequest(
   ctx: ContinueRouteContext
 ): Promise<Response> {
   const originalRecord = await ctx.stores.request.get(route.requestId);
-  if (originalRecord === undefined) {
-    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
-  }
-
-  // A caller-supplied requestId must belong to the caller's own tenant (FIX-682) —
-  // otherwise the bare sessionId check below is cosmetic and a same-session-id
-  // collision across tenants lets one tenant continue another tenant's
-  // interrupted request. Same not-found shape as a missing record.
-  if (!tenantMatches(originalRecord.tenantId, ctx.tenantId)) {
-    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+  // Another tenant's or another user's request answers as a missing one,
+  // before the session, flow and status checks below could tell them apart.
+  // Without the tenant half, the bare sessionId check below is cosmetic: a
+  // same-session-id collision across tenants would let one tenant continue
+  // another's interrupted request.
+  if (
+    originalRecord === undefined ||
+    !callerReachesRequest(originalRecord, ctx.tenantId, ctx.principal)
+  ) {
+    return unknownRequestResponse(route.requestId);
   }
 
   const continueFlow = ctx.registry.get(route.flowKind);
@@ -208,7 +212,7 @@ export async function handleContinueRequest(
   // Same allow-list as `handleRetryRequest` — see `public-reentry.ts`. Treat a
   // source that is not caller-facing as not found.
   if (!isPublicReentryAllowed(originalRecord.source, ctx.runtimeConfig.publicReentrySources)) {
-    return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
+    return unknownRequestResponse(route.requestId);
   }
 
   // A dynamic schedule's action core is produced at dispatch time by a

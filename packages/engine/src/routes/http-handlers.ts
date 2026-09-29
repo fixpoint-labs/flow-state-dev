@@ -544,7 +544,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           runtimeConfig,
-          tenantId
+          tenantId,
+          principal
         });
       }
 
@@ -554,13 +555,16 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           runtimeConfig,
-          tenantId
+          tenantId,
+          principal
         });
       }
 
       if (route.kind === "abort_request") {
         return await handleAbortRequest(request, route, {
-          stores
+          stores,
+          tenantId,
+          principal
         });
       }
 
@@ -571,6 +575,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           stores,
           durabilityProvider: runtimeConfig.durabilityProvider,
           publicReentrySources: runtimeConfig.publicReentrySources,
+          tenantId,
+          principal,
           seams,
           requestContext
         });
