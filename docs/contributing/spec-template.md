@@ -333,8 +333,9 @@ section is what stops that. It has four parts, in order, and none is optional.
    - **Anti-game** — what a hollow pass would look like, and therefore what the check must not
      assert on.
    - **Control that must fail** — a named `GOAL_CONTROL`, or today's `main` when the feature is
-     absent there, and the leg it must fail. The implementation PR shows this FAIL before the
-     PASS counts. A check nobody has seen fail has verified nothing (BP-003).
+     absent there, and the signal it must fail, by name — not only its leg, which goes red on
+     any of its assertions. The implementation PR shows this FAIL before the PASS counts. A
+     check nobody has seen fail has verified nothing (BP-003).
 
 **When no goal check applies** (a pure refactor, docs only), the goal and *is it the right
 goal?* still apply. Replace the figure and table with one line on what proves the goal instead,
@@ -391,7 +392,7 @@ check" is a statement with a reason, never a blank.
 > | **Signal** | The assembled transcript equals the uninterrupted run: zero duplicate items, zero missing items |
 > | **Input** | A recorded prompt with a long answer. A different prompt, or a drop at a different item, must pass too |
 > | **Anti-game** | Don't assert on the seam's filter output or on a mocked stream. Both pass while the client still double-renders |
-> | **Control that must fail** | `GOAL_CONTROL=ignore-cursor`, and today's `main`. Both must FAIL on the duplicates leg, and the PR shows it before the PASS |
+> | **Control that must fail** | `GOAL_CONTROL=ignore-cursor`, and today's `main`. Both must FAIL on *zero duplicate items*, and the PR shows it before the PASS |
 >
 > ## What changes
 >
