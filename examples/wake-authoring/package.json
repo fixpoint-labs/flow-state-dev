@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Side-by-side authoring shapes for inbound wakes (FIX-1637). Examples only — not a new product.",
+  "description": "Side-by-side authoring shapes for inbound wakes (FIX-1641, under FIX-1637). Examples only — not a new product.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root .",

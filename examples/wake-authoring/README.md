@@ -1,8 +1,10 @@
 # Wake authoring — three shapes, one dispatch door
 
+[FIX-1641](https://linear.app/fixpoint-labs/issue/FIX-1641/poc-wake-authoring-shapes-worker-md-vs-flow-config) — authoring-shape POC under parent epic [FIX-1637](https://linear.app/fixpoint-labs/issue/FIX-1637/epic-keeping-flows-alive-247). Not a product track. Soft-related only to [FIX-1634](https://linear.app/fixpoint-labs/issue/FIX-1634) (BullMQ `session: { id }` fence); that work stays elsewhere.
+
 A worker author should be able to see **when they run** and **what runs** without hunting host mounts. Today that answer is split: cron lives on `schedules.static`, GitHub lives on `webhooks[provider].on`, and a channel poke is a different layer entirely.
 
-This example puts those three arrivals on one inbox-watch scenario and authors them three ways. Each L1 shape compiles to the bindings that already exist. Nothing here is a Heartbeats product, a second dispatch bus, or runtime work for [FIX-1634](https://linear.app/fixpoint-labs/issue/FIX-1634).
+This example puts those three arrivals on one inbox-watch scenario and authors them three ways. Each L1 shape compiles to the bindings that already exist. Nothing here is a Heartbeats product, a second dispatch bus, or runtime work for FIX-1634.
 
 **The question it turns on:** where should a worker author write “every 15 minutes, and when GitHub opens an issue”? On the flow, in the worker file, or under a `wakes:` alias?
 
@@ -16,7 +18,7 @@ This example puts those three arrivals on one inbox-watch scenario and authors t
 
 The cron string is display/validation. FSD does not run the clock.
 
-A scheduled dispatch always starts a **new** session (`sessionId` is undefined on that transport). Webhook `sessionId` is find-or-create. Delivering into an existing session from a BullMQ `dispatcher({ session: { id } })` is the [FIX-1634](https://linear.app/fixpoint-labs/issue/FIX-1634) fence — not solved here.
+A scheduled dispatch always starts a **new** session (`sessionId` is undefined on that transport). Webhook `sessionId` is find-or-create. Delivering into an existing session from a BullMQ `dispatcher({ session: { id } })` is the [FIX-1634](https://linear.app/fixpoint-labs/issue/FIX-1634) fence — pointer only, not this POC.
 
 `epic-wake` (`.agents/workflows/epic-wake.js`) is Lab / former Conductor tooling, now DevForce. It is not a customer wake.
 
@@ -55,12 +57,12 @@ pnpm fsdev run inbox-watch-alias record -i '{"provider":"github","repo":"acme/ap
 | GitHub / Slack / Stripe | L1 inbound transport | Host verify → webhook binding → `host.dispatch` |
 | Channel post | L2 Workforce | `CHANNEL.md` members → `onChannelPost` / `wakeMemberSeats` |
 | `dispatcher({ session: { key } })` | L1 delivery | Child / adopt session |
-| `dispatcher({ session: { id } })` on BullMQ | L1 delivery, fenced | FIX-1634 — do not invent a workaround noun here |
+| `dispatcher({ session: { id } })` on BullMQ | L1 delivery, fenced | FIX-1634 — soft-related pointer only; do not implement here |
 
 YAML cannot hold `input` / `when` / `sessionId` functions. Variant 2 therefore needs a **named mapper catalog** (`action: opened`, `session: issue`, `event: issues`). That catalog is the compile step, not a new bus. An unknown event becomes a leftover, not a guessed handler.
 
 ### What I would take forward
 
-Teach variant 1 in the FIX-1637 guide. Keep variant 2 as evidence that a worker-file `wakes:` list is readable **and** that hire cannot apply it without a kind-level compile (or a new hire merge). Offer variant 3 only if the guide wants one heading for “inbound arrivals.” Do not mint a Heartbeats noun. Do not reopen Relay.
+Teach variant 1 in the FIX-1637 guide (sibling FIX-1639). Keep variant 2 as evidence that a worker-file `wakes:` list is readable **and** that hire cannot apply it without a kind-level compile (or a new hire merge). Offer variant 3 only if the guide wants one heading for “inbound arrivals.” Do not mint a Heartbeats noun. Do not reopen Relay.
 
-Experimental example for FIX-1637, not production code. Review direction, not polish.
+Experimental example for FIX-1641, not production code. Review direction, not polish.
