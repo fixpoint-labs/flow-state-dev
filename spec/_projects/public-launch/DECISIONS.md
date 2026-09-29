@@ -32,7 +32,9 @@ an error. Kitchen-sink polish (FIX-1631 to FIX-1633), parked escalations (FIX-15
 anything visible at launch as a gate, which makes the list grow without an end.
 
 **Costs** some visible rough edges will ship. Accepted. Those edges belong to the docs, brand and
-demo bar, which has a quality bar but not a veto.
+demo bar. That epic does gate the cut, but only on the two launch checks it owns: a first flow
+built from the docs alone, and the showcase paths running on the public deploy. Polish past those
+two checks is its quality bar, and it has no veto there.
 
 ### PD-3 · Issues keep their own project homes, and the launch uses what has shipped by the cut
 
@@ -40,7 +42,8 @@ demo bar, which has a quality bar but not a veto.
 
 A child nested under a launch epic stays in its own Linear project. Nesting shows which issues an
 epic depends on. It does not move ownership. Feature projects (Memory, Workforce, orchestration)
-ship on their own schedule, and the launch takes whatever has landed by the cut. Rejected: pulling
+ship on their own schedule, and the launch takes whatever has landed by the cut. Framework
+simplification is the one exception (*decided once*, below). Rejected: pulling
 feature work into this project to make it launch-ready.
 
 **Costs** a launch epic cannot speed up another project's issue by owning it. Accepted.
@@ -49,8 +52,13 @@ feature work into this project to make it launch-ready.
 
 - **The launch is cut by readiness, not by a date.** The go-live question is whether the framework
   is actually ready, not what the calendar says. This comes from the project's original content.
-- **Framework simplification ships first.** The launch ships the simplified surface. Where the must-finish
-  line sits inside that project is still unanswered ([Plan](PLAN.md)).
+- **Framework simplification ships first.** The launch ships the simplified surface. It is the
+  only substrate project the launch waits for. Every other one ships what it has by the cut (PD-3).
+  Where the must-finish line sits inside that project is still unanswered ([Plan](PLAN.md)).
+- **Regression harnesses and docs search are not launch checks.** The original content made
+  tier 2 and 3 testing (FIX-488, FIX-489, FIX-214) a sixth check and put hybrid search (FIX-107)
+  in the docs bar. Harnesses guard releases after launch, and search is docs quality (PD-2). This
+  is the stand-up's reading, not an owner lock: Jake can add either back.
 - **Fixing a trust-boundary hole never reopens optional org.** Each auth child closes the hole
   it names under the principal-owned model (FIX-1442). This binds FIX-1635's children and any
   later epic that touches caller identity.
@@ -69,6 +77,10 @@ bump.
 post. It also makes every public API shape a launch gate, which widens FIX-1635 from known defects
 to a full API review before the doors open. With 0.x the launch comes sooner and the gate list
 stays as it is, but some teams will wait for 1.0 before they build on it.
+
+![Open fork: 0.x, recommended, beside 1.0. Decides it: FIX-1635 covers known defects under 0.x, and a full API review as well under 1.0. Price of 0.x: some teams wait for 1.0. Flips if someone needs a stability promise on day one](figures/open-launch-version.svg)
+
+It comes down to FIX-1635's scope: 1.0 turns a defect list into a full API review.
 
 **My recommendation.** Launch as 0.x, say so plainly in the announcement, and make 1.0 its own
 milestone after the first cohort has used the API. Hard gates can then stay a defect list (PD-2).

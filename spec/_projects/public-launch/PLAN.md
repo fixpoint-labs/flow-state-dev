@@ -7,23 +7,22 @@ each hands the next, and what is deliberately not next. Each epic's own plan own
 
 ## The arc — as of 2026-09-29
 
-![The arc from August to November 2026. The first hour has an open in-flight bar from Aug 20 to the now line on Sep 29. Hard gates has a lane marked filed Sep 29 and no bar. The docs, brand and demo bar and the launch cut have empty dashed lanes.](figures/arc.svg)
+![The arc from August to November 2026. The first hour has an open in-flight bar from Aug 20 to the now line on Sep 29. Hard gates has a lane marked objective in review since Sep 29 and no bar. The docs, brand and demo bar and the launch cut have empty dashed lanes.](figures/arc.svg)
 
-The first hour is the only bar, and it has been open for six weeks. Hard gates starts when its
-objective is approved. Nothing gets a bar until then.
+The first hour is the only bar, and it has been open for six weeks. Hard gates' objective went up
+for review on Sep 29, and its bar starts when that objective is approved.
 
 | Epic | Consumes | Releases |
 |---|---|---|
 | **first hour** · FIX-1161 | Packages that import from npm (PR-1). The npm names and release credential its own children claim (FIX-1162, FIX-1186) | `fsdev init`, the scaffolding command, and the consumer authoring pack. That is the stranger's install path the launch cut announces |
 | **hard gates** · FIX-1635 | The principal-owned identity model (FIX-1442). The BullMQ host as it stands, for the seed child FIX-1634 | No open launch-blocking defect, and published packages that load (PR-1) |
-| **docs, brand and demo bar** · *not filed* | The docs the first hour writes for its own commands | FIX-550 docs sweep, FIX-551 brand pass, FIX-601 docs IA. One story across site, READMEs and demo |
+| **docs, brand and demo bar** · *not filed* | The docs the first hour writes for its own commands | FIX-550 docs sweep, FIX-551 brand pass, FIX-601 docs IA. One story across site, READMEs and demo. Launch checks 3 and 5 passing (PD-2) |
 | **the launch cut** · *not filed* | All three above, plus the surface framework simplification ships | FIX-1187 the attended first publish, FIX-1192 the changeset repair, the go-live and the announcement |
 
-**Issues in the project with no epic.** FIX-1187, FIX-1192, FIX-550, FIX-551 and FIX-601 are
-assigned to placeholders above. FIX-1188, FIX-1189, FIX-1190, FIX-1196 and FIX-1280 are individual
-defects that aren't hard gates under PD-2 unless Jake adds them. FIX-360, FIX-420, FIX-489 and
-FIX-214 are the original content's demo polish and testing items. They wait for the docs, brand
-and demo bar or the launch cut to claim them.
+**Issues in the project with no epic.** The launch cut claims FIX-1187 and FIX-1192. The docs,
+brand and demo bar claims FIX-550, FIX-551 and FIX-601. Everything else waits in the
+[Linear project](https://linear.app/fixpoint-labs/project/public-launch-2b35a5858733) until an
+epic claims it, and none of it is a hard gate unless Jake adds it (PD-2).
 
 ## What is deliberately not next
 
