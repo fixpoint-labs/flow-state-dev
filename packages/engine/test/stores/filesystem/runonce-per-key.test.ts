@@ -114,7 +114,7 @@ describe("FilesystemRequestStore — runOnce per-key files", () => {
     await store.setRunOnceResult("r1", "a", 1);
 
     const filesAfterA = (await readdir(rootDir)).filter((f) =>
-      f.includes(".runonce.")
+      f.endsWith(".runonce")
     );
     // A per-key file carries the key in its name, distinguishing it from the
     // legacy single `<id>.runonce.json` map.
@@ -127,7 +127,7 @@ describe("FilesystemRequestStore — runOnce per-key files", () => {
     await store.setRunOnceResult("r1", "b", 2);
 
     const filesAfterB = (await readdir(rootDir)).filter((f) =>
-      f.includes(".runonce.")
+      f.endsWith(".runonce")
     );
     expect(filesAfterB.length).toBe(2);
     // "a"'s file content is byte-identical (size unchanged); the write of "b"
@@ -168,5 +168,77 @@ describe("FilesystemRequestStore — runOnce per-key files", () => {
       found: true,
       value: "keep"
     });
+  });
+});
+
+describe("FilesystemRequestStore — per-key files from the older layout", () => {
+  // Older versions named per-key files `<id>.runonce.<key>.json`. Results a
+  // request stored before an upgrade must still be found after it, and still
+  // go when the request is deleted.
+  const writeLegacyKeyFile = (name: string, value: unknown) =>
+    writeFile(path.join(rootDir, name), JSON.stringify(value), "utf8");
+
+  it("reads a result stored in the older per-key layout", async () => {
+    await writeLegacyKeyFile("req_old.runonce.step.json", { owner: "old" });
+    const store = createFilesystemRequestStore({ rootDir });
+
+    expect(await store.getRunOnceResult("req_old", "step")).toEqual({
+      found: true,
+      value: { owner: "old" }
+    });
+  });
+
+  it("delete removes the request's older per-key files", async () => {
+    await writeLegacyKeyFile("req_old.runonce.step.json", { owner: "old" });
+    const store = createFilesystemRequestStore({ rootDir });
+
+    await store.delete("req_old");
+
+    expect(await readdir(rootDir)).toEqual([]);
+    expect(await store.getRunOnceResult("req_old", "step")).toEqual({ found: false });
+  });
+
+  it("delete leaves an older per-key file a longer id could have written", async () => {
+    // `foo.runonce.bar.runonce.step.json` is ("foo", "bar.runonce.step") or
+    // ("foo.runonce.bar", "step"). Deleting "foo" cannot tell which, so the
+    // file stays; deleting "foo.runonce.bar" removes it.
+    await writeLegacyKeyFile("foo.runonce.bar.runonce.step.json", { owner: "bar" });
+    const store = createFilesystemRequestStore({ rootDir });
+
+    await store.delete("foo");
+    expect(await store.getRunOnceResult("foo.runonce.bar", "step")).toEqual({
+      found: true,
+      value: { owner: "bar" }
+    });
+
+    await store.delete("foo.runonce.bar");
+    expect(await readdir(rootDir)).toEqual([]);
+  });
+
+  it("delete leaves another request's record that looks like an older per-key file", async () => {
+    // The record of request "foo.runonce.bar" is `foo.runonce.bar.json`, which
+    // is also the older per-key name for ("foo", "bar").
+    const store = createFilesystemRequestStore({ rootDir });
+    await store.set(
+      "foo.runonce.bar",
+      {
+        id: "foo.runonce.bar",
+        flowKind: "test",
+        actionName: "run",
+        userId: "u1",
+        source: "http",
+        status: "completed",
+        startedAtMs: 1,
+        state: {},
+        version: 0,
+        createdAt: 1,
+        updatedAt: 1
+      },
+      "any"
+    );
+
+    await store.delete("foo");
+
+    expect((await store.get("foo.runonce.bar"))?.id).toBe("foo.runonce.bar");
   });
 });

@@ -90,8 +90,10 @@ export async function deleteRecord(rootDir: string, id: string): Promise<void> {
 /**
  * Sidecar files the request store writes alongside the primary record:
  * the append-only NDJSON event log (`.events.json`) and runOnce result
- * files (`.runonce.json` legacy single-map, `.runonce.<key>.json` per-key).
- * `listRecords` must skip these — they are not record documents and the
+ * files (`.runonce.json` legacy single-map, `.runonce.<key>.json` per-key in
+ * the layout older versions wrote). Per-key files written today are named
+ * `<id>@<key>.runonce` and never end in `.json`, so the listing never reaches
+ * them. `listRecords` must skip these — they are not record documents and the
  * NDJSON event log is not even valid standalone JSON.
  *
  * This suffix match is a heuristic: `encodeURIComponent` does not escape `.`,

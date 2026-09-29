@@ -544,6 +544,30 @@ export function createRequestStoreConformanceTests(
         expect(kept.map((e) => e.sequence_number)).toEqual([1]);
       });
     });
+
+    it("delete leaves the runOnce results of an id that merely starts with it", async () => {
+      // Request ids are caller-supplied. Deleting "foo" must not reach a
+      // result stored for "foo.runonce.bar": losing it would let that
+      // request's step run a second time.
+      await withStore(async (store) => {
+        await store.set("foo", makeRecord("foo", "completed", []), "any");
+        await store.set(
+          "foo.runonce.bar",
+          makeRecord("foo.runonce.bar", "completed", []),
+          "any"
+        );
+        await store.setRunOnceResult("foo", "step", { owner: "foo" });
+        await store.setRunOnceResult("foo.runonce.bar", "step", { owner: "bar" });
+
+        await store.delete("foo");
+
+        expect(await store.getRunOnceResult("foo.runonce.bar", "step")).toEqual({
+          found: true,
+          value: { owner: "bar" }
+        });
+        expect(await store.getRunOnceResult("foo", "step")).toEqual({ found: false });
+      });
+    });
   });
 
   describe(`${name} (RequestStore abort-intent conformance)`, () => {
