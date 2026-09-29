@@ -29,13 +29,19 @@ is a wish.
   with no epic holding it and nobody scheduled to run it.
 - Introduce **Agent, Team, Channel, MessageBoard or TeamFlow as a Layer 1 type**. This is the
   standing instance of PR-1 and it is carried in the invent-kill of every epic body under this
-  project, W2 through FIX-1455. It is listed by name because a prohibition every epic restates
+  project, W2 through FIX-1592. It is listed by name because a prohibition every epic restates
   privately is one the next epic can miss.
 - Stand up a **parallel plane beside boards and seats** for a job they already do — a second
   human-in-the-loop work plane outside them (a person answers through a **flow action** on a row an
   agent owns and parked), a per-app config store beside the shipped persistence, or a seat
   assembled through `@flow-state-dev/patterns` factories rather than hired as a kind. Each is a
   second of something PD-1 says there is one of.
+- **Name a Workforce concept in Layer 1.** Core, engine, client and react say *session*,
+  *request* and *child run*, never *seat*, *roster*, *hire* or *channel*, in comments and test
+  data too. A Layer 1 change a Workforce need drives is made in Layer 1's own words. It is the
+  owner's ruling behind FIX-1549, generalized by FIX-1575. FIX-1592 held it as its ER-8 while its
+  live view changed engine, client and react, and FIX-1627 fixed the one slip. Checked in
+  package-boundary review, like PR-2.
 - Add a **`FlowNavigator` slot** without the owner. Row actions go in `leafToolbar`, content under
   an open leaf in `leafDetail`, and that exception was the owner's (FIX-1561 D1)
   ([Decisions](DECISIONS.md) → *decided once*).
@@ -45,7 +51,9 @@ is a wish.
 Both have wrapped, W5 and then the kitchen-sink rebuild. The kitchen-sink rebuild shipped a manager seat that hires (FIX-1527) and an org and seat path in
 its rail (FIX-1500) with no local fence; where it had to touch access, FIX-1563 changed only **who
 the caller is** and left reaching the seat to the pin ([Decisions](DECISIONS.md) → *decided once*).
-No epic is running now, so PR-7 binds whichever comes next.
+The support desk ran after them and opened no door of its own: its route chooses only among
+members whose seat the caller can reach, the wake's own test, and its D8 took the manager seat off
+the page. No epic is running now, so PR-7 binds whichever comes next.
 
 ---
 
