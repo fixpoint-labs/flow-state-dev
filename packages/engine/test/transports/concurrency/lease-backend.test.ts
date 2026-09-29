@@ -304,6 +304,91 @@ describe("a place the arbiter runs over a shared backend", () => {
   });
 });
 
+describe("a place this process holds on a shared backend, before it runs", () => {
+  it("is renewed from the moment it is taken until it is handed to a job", async () => {
+    // Between the take and the run (the dispatch's record writes, a slow
+    // enqueue) the place is this process's, and nobody else renews it.
+    vi.useFakeTimers();
+    try {
+      const { backend: shaped } = fourCallBackend();
+      const renewed: string[] = [];
+      const backend: ConcurrencyLeaseBackend = {
+        ...shaped,
+        renew: async (place) => {
+          renewed.push(place.ticket);
+        }
+      };
+      const arbiter = createConcurrencyArbiter({ backend });
+      const admission = await arbiter.admit(
+        arbiter.resolve(queueFlow, "respond", envelope("req_1")),
+        "req_1"
+      );
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(renewed.length).toBeGreaterThanOrEqual(3);
+
+      admission.handOff();
+      const atHandOff = renewed.length;
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(renewed.length).toBe(atHandOff);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("a backend call that throws synchronously", () => {
+  it("does not escape a give-back: the run keeps its outcome, release resolves, and it is logged", async () => {
+    const { backend: shaped } = fourCallBackend();
+    const backend: ConcurrencyLeaseBackend = {
+      ...shaped,
+      giveBack: () => {
+        throw new Error("connection closed");
+      }
+    };
+    const warn = vi.fn();
+    const arbiter = createConcurrencyArbiter({ backend, logger: { warn } });
+
+    const ran = await arbiter.admit(
+      arbiter.resolve(rejectFlow, "respond", envelope("req_1")),
+      "req_1"
+    );
+    await expect(ran.run(async () => "done")).resolves.toBe("done");
+
+    const unrun = await arbiter.admit(
+      arbiter.resolve(rejectFlow, "respond", { ...envelope("req_2"), sessionId: "s_2" }),
+      "req_2"
+    );
+    await expect(unrun.release()).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not escape the renewal timer", async () => {
+    vi.useFakeTimers();
+    try {
+      const { backend: shaped } = fourCallBackend();
+      const backend: ConcurrencyLeaseBackend = {
+        ...shaped,
+        renew: () => {
+          throw new Error("connection closed");
+        }
+      };
+      const arbiter = createConcurrencyArbiter({ backend });
+      const admission = await arbiter.admit(
+        arbiter.resolve(rejectFlow, "respond", envelope("req_1")),
+        "req_1"
+      );
+      let release!: () => void;
+      const run = admission.run(() => new Promise<string>((r) => (release = () => r("done"))));
+      await vi.advanceTimersByTimeAsync(10_000);
+      release();
+      await expect(run).resolves.toBe("done");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("whether an arbiter arbitrates across processes", () => {
   it("is true only when a backend was supplied", () => {
     expect(createConcurrencyArbiter().arbitratesAcrossProcesses).toBe(false);

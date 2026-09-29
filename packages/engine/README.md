@@ -290,7 +290,7 @@ A backend implements four calls and holds no policy:
 | `take({ key, requestId, ifEmpty? })` | Appends a place to the key's line, or with `ifEmpty` (the `reject` policy) claims only a free key and otherwise answers `{ heldBy }`. Not idempotent |
 | `isMyTurn(place)` | True when the place is first on its key |
 | `giveBack(place)` | Removes the place and wakes the next waiter. Idempotent |
-| `renew(place)` | Extends a place whose lease expires. Called every 2 seconds for a running place, and on each turn check for a waiting one |
+| `renew(place)` | Extends a place whose lease expires. Called every 2 seconds for as long as the process holds the place, until it gives it back or enqueues its job |
 
 Any call may throw when the backend is unreachable; the dispatch is then
 refused rather than run unarbitrated. Over a supplied backend a `reject`

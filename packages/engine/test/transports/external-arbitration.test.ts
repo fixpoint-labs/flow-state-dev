@@ -12,7 +12,7 @@
  * The backend is adapter-shaped — only its four public calls, answered
  * asynchronously — so the arbiter takes the path a Redis backend would.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import type { ConcurrencyConfig } from "@flow-state-dev/core";
@@ -105,6 +105,8 @@ function testWorker(options: {
   backend?: ConcurrencyLeaseBackend;
   enqueued: DispatchEnvelope[];
   failEnqueue?: () => boolean;
+  /** Hold every enqueue until this settles: a slow queue acknowledgement. */
+  enqueueAck?: Promise<void>;
 }): WorkerAdapter {
   return {
     mode: "dispatch-only",
@@ -113,6 +115,7 @@ function testWorker(options: {
       return {
         async dispatch(envelope) {
           if (options.failEnqueue?.() === true) throw new Error("queue unavailable");
+          await options.enqueueAck;
           options.enqueued.push(envelope);
           const finished = runJob(runtime, options.backend, envelope);
           finished.catch(() => undefined);
@@ -371,6 +374,46 @@ describe("the place a dispatch takes before the queue", () => {
       expect(enqueued).toEqual([]);
       expect("place" in (await inner.take({ key: "s_alice", requestId: "probe", ifEmpty: true }))).toBe(true);
     } finally {
+      await web.state.dispose();
+    }
+  });
+
+  it("is renewed while the enqueue is pending, and left to the job once it is enqueued", async () => {
+    // A slow queue acknowledgement holds the place in this process. Nobody
+    // else renews it then; once the job is enqueued its worker does.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const observed: Observed = { runs: [] };
+    const { flow, releaseAll } = queueFlow("ext-slow-enqueue", observed, "queue");
+    const renewed: string[] = [];
+    const shaped = adapterShaped();
+    const backend: ConcurrencyLeaseBackend = {
+      ...shaped,
+      renew: async (place) => {
+        renewed.push(place.ticket);
+      }
+    };
+    let ack!: () => void;
+    const enqueueAck = new Promise<void>((r) => (ack = r));
+    const enqueued: DispatchEnvelope[] = [];
+    const web = await processOf(flow, inMemoryStores(), testWorker({ backend, enqueued, enqueueAck }));
+    try {
+      const posted = postAction(web.router, "ext-slow-enqueue", "hold", {
+        userId: USER,
+        sessionId: "s_alice",
+        input: { note: "a" }
+      });
+      await settle();
+      vi.advanceTimersByTime(10_000);
+      expect(renewed.length).toBeGreaterThanOrEqual(3);
+
+      ack();
+      expect((await posted).status).toBe(202);
+      const atEnqueue = renewed.length;
+      vi.advanceTimersByTime(10_000);
+      expect(renewed.length).toBe(atEnqueue);
+    } finally {
+      vi.useRealTimers();
+      releaseAll();
       await web.state.dispose();
     }
   });

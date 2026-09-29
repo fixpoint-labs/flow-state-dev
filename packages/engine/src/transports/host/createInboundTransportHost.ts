@@ -1186,12 +1186,16 @@ export function createInboundTransportHost(
               queuedAt: ts
             }))
           )
-          .then(() => {
+          .then(async () => {
             entryOwned = true;
             const place = held?.place;
-            return effectiveDispatcher.dispatch(
+            const handle = await effectiveDispatcher.dispatch(
               place === undefined ? dispatchEnvelope : { ...dispatchEnvelope, leasePlace: place }
             );
+            // Enqueued: the place is the job's now, and its worker renews it.
+            // Until here this process held it, and the admission renewed it.
+            held?.handOff();
+            return handle;
           })
           // Materialization or the enqueue failed: the job is not running and
           // never will. The record can land before the entry write fails, and a

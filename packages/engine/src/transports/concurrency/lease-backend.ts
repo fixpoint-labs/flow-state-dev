@@ -76,11 +76,11 @@ export interface ConcurrencyLeaseBackend {
   giveBack(place: LeasePlace): Promise<void>;
   /**
    * Extend the place's lease, for a backend whose places expire. The engine's
-   * arbiter calls it every 2 seconds for a place it is running, and once per
-   * turn check (between `isMyTurn` and the next sleep, at most 2 seconds
-   * apart) for a place waiting its turn. A lease a few times longer than 2
-   * seconds survives one missed renewal. It is called on every waiting tick,
-   * so a backend for which renewal is a round trip should make it cheap.
+   * arbiter calls it every 2 seconds for as long as its process holds the
+   * place: from `take`, through the dispatch's writes, its wait for a turn and
+   * its run, until it gives the place back or hands it to a job (whose worker
+   * then renews it). A lease a few times longer than 2 seconds survives one
+   * missed renewal.
    */
   renew(place: LeasePlace): Promise<void>;
 }
