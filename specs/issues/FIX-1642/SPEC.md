@@ -83,11 +83,11 @@ reader who can't see the code, on one commit, with the fence run on real Redis. 
 epic wraps on a page nobody has built from, or waits on a bar nobody asked for.
 
 1. **[D1](DECISIONS.md#d1) · The page is followed by a fresh agent that can see only the served
-   docs site, not by the worker who knows the code.** If wrong: a page with a gap passes because
-   the reader filled it from memory.
+   docs site, not by the worker who knows the code.** If wrong: an agent run and a transcript
+   audit per full run, spent on a check the worker could have done.
 2. **[D2](DECISIONS.md#d2) · The name scan stays in CI after the wrap; the Redis and reader run
-   stays a by-hand goal, once per `main` commit.** If wrong: a rename turns unrelated PRs red,
-   or the page quietly rots.
+   stays a by-hand goal, once per `main` commit.** If wrong: PRs that rename a name the page
+   uses turn red and must touch the docs.
 
 **Open: none.** Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).
