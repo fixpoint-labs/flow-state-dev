@@ -5,7 +5,7 @@ file and see **who is listening** and **how a delivery picks a session**.
 #2369 showed compile/authoring shapes. #2370 showed where the clock lives
 on disk. This tree is the same GitHub desk as **subscribe / route**.
 
-[FIX-1641](https://linear.app/fixpoint-labs/issue/FIX-1641/poc-wake-authoring-shapes-worker-md-vs-flow-config) under [FIX-1637](https://linear.app/fixpoint-labs/issue/FIX-1637/epic-keeping-flows-alive-247). Sibling to #2369 and #2370, not a replacement. Not a product pick.
+[FIX-1643](https://linear.app/fixpoint-labs/issue/FIX-1643/poc-register-providerstransports-workerchannel-subscribe-route-rules) under [FIX-1637](https://linear.app/fixpoint-labs/issue/FIX-1637/epic-keeping-flows-alive-247). Soft-related sibling to [FIX-1641](https://linear.app/fixpoint-labs/issue/FIX-1641/poc-wake-authoring-shapes-worker-md-vs-flow-config) (#2369 / #2370), not a child of it. Explore — not locked. Not a product pick.
 
 **The open question:** once the host has registered GitHub, does each session subscribe to a pull request, or does one webhook fan in and route by rules?
 
@@ -81,8 +81,8 @@ pnpm fsdev run github-desk recordIssue -i '{"provider":"github","kind":"issue","
 
 ## What this is not
 
-- Not the #2369 compile sugar (`wakes:` alias, WORKER.md `wakes:` list).
-- Not a remake of #2370 A/B. Those stay the locus-of-the-clock trees. This is who subscribes after the host registered GitHub.
+- Not the FIX-1641 / #2369 compile sugar (`wakes:` alias, WORKER.md `wakes:` list).
+- Not a remake of #2370 A/B. Those stay the FIX-1641 locus-of-the-clock trees. This ticket is who subscribes after the host registered GitHub.
 - Not a Heartbeats product.
 - Not FIX-1634 runtime work.
 - Not FIX-441 NotificationFlow. The hop is `dispatcher`.

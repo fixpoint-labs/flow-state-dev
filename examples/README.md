@@ -8,7 +8,7 @@ One exception: a lab that finishes its incubation can be preserved here as a **f
 |-----------|---------|
 | `hello-chat/` | Minimal chat flow — generator + handler + sequencer in ~50 lines. The best starting point. |
 | `knowledge-base/` | A complete personal knowledge wiki: OKF import/export, a concept-CRUD capability, and a secured MCP server. Frozen reference app — grew up in [`labs/`](../labs/), preserved here as a standalone example. Its successor is [`labs/knowledge-hub`](../labs/knowledge-hub). |
-| `wake-subscribe/` | Explore: register GitHub once at the host, then subscribe per session or fan-in with route rules (FIX-1641 / FIX-1637). Not a product. |
+| `wake-subscribe/` | Explore: register GitHub once at the host, then subscribe per session or fan-in with route rules (FIX-1643 / FIX-1637). Not a product. |
 
 Trading Desk now lives at https://github.com/fixpoint-labs/trading-desk. The knowledge base made the reverse trip: it finished incubating in `labs/` and landed here as a frozen reference.
 

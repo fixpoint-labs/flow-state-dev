@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Host-register GitHub once; workers subscribe or route (FIX-1641 / FIX-1637). Explore only — not a product.",
+  "description": "Host-register GitHub once; workers subscribe or route (FIX-1643 / FIX-1637). Explore only — not a product.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root .",
