@@ -1,0 +1,24 @@
+# names.mts on main c63ee231c, run 2026-09-29
+
+$ CONTROL= pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
+page names vs main
+fences=4 spans=54 checks passed=72 failed=0
+exit 0
+
+$ CONTROL=planted pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
+CONTROL=planted (must FAIL)
+fences=4 spans=55 checks passed=72 failed=1
+FAIL  span  `notifyTopic`: notifyTopic is not exported by @flow-state-dev/core
+exit 1
+
+$ CONTROL=unclassified pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
+CONTROL=unclassified (must FAIL)
+fences=4 spans=55 checks passed=72 failed=1
+FAIL  TOTALITY  `madeUpOption` is on the page and nothing checks it
+exit 1
+
+$ CONTROL=false-option pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
+CONTROL=false-option (must FAIL)
+fences=4 spans=55 checks passed=72 failed=1
+FAIL  span  `dispatcher({ delay })`: @flow-state-dev/core dispatcher.(0).delay does not resolve
+exit 1
