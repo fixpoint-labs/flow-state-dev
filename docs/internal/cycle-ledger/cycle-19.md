@@ -153,7 +153,7 @@ other places still carry the old unit. Five of those six were added after the mo
 
 ## The recommended upstream fix — converge the control unit where it is set
 
-This is not a new rule and not a BP. It changes seven phrases in four files so that the places
+This is not a new rule and not a BP. It changes eleven phrases in seven files so that the places
 where a control is declared, run and reported name the same unit as the place where it is graded:
 
 | File | Now | Proposed |
@@ -165,8 +165,12 @@ where a control is declared, run and reported name the same unit as the place wh
 | `goals/README.md` · *Prefer a named control* | *"with the legs it must fail — "Must FAIL, and must name legs (d)/(e) rather than leg 0" — because a control that fails the wrong leg is itself a check that cannot fail"* | *"with the assertions it must fail, by name (`a:working`, not leg a) — a leg goes red on any of its assertions, so a control that fails the wrong one is itself a check that cannot fail"* |
 | `.agents/skills/issue-implement/SKILL.md` · Step 8 | *"confirm it FAILS on the leg the spec says"* | *"confirm it FAILS on the signal the spec names, not just on its leg"* |
 | `.agents/skills/issue-implement/SKILL.md` · PR body item 4 | *"the control's FAIL (command and the leg it named)"* | *"the control's FAIL (command and the assertions it named)"* |
+| `.agents/skills/issue-spec/SKILL.md` · the blind goal reviewer's walk | *"For each leg:"* | *"For each leg's signal:"* |
+| `goals/_template/goal.md` · *Controls* field | *"and the legs it must fail"* | *"and the assertions it must fail, by name"* |
+| `.agents/skills/review/SKILL.md` · completeness lens | *"failed on the leg the spec says"* | *"failed on the signal the spec names, not just on its leg"* |
+| `.agents/skills/agent-mailbox/SKILL.md` · the `fsd-qa` browser hand-off | *"the control's FAIL"* | *"the control's FAIL with the assertions it named"* |
 
-The spec surfaces, and Step 8, which reads the spec, say *signal*. That is the word the template
+The last four rows were found in this PR's review, on paths the first pass missed: the template a new goal is copied from, the reviewer that grades completeness, and the browser hand-off. The spec surfaces, and Step 8 and the completeness lens, which read the spec, say *signal*. That is the word the template
 already uses for a check's pass condition, and a spec is written before the check's assertions
 have names. The goal and PR-body surfaces say *assertion*, because by then they do.
 
@@ -182,7 +186,7 @@ purpose: an epic names which leg its closure must break, and the closure's own s
 `spec-template.md`, names the signal. **What would change my mind:** the next plan's control rows
 name signals, and its implementation still grades by leg on the first head. Then the gap is at
 grading, and the fix is a shared grading helper in `goals/lib`, not wording. **What being wrong costs:**
-seven phrases, easily reverted, and one more name per control row for a spec author to write.
+eleven phrases, easily reverted, and one more name per control row for a spec author to write.
 
 **What it would not have caught:** row 5, the smoke that was not blind. The plan already required
 a blind reader, so that was a run that missed its own requirement, not a gap in the grounding.

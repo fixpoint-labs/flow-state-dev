@@ -461,7 +461,7 @@ against what is being built, which is the undersell this check exists to catch. 
   and rejected* is actually what the goal says.
 - **Is *not done if* complete?** Name any state that would look done and isn't and is missing,
   or say the list is complete.
-- **Would the check fail if the goal were not met?** For each leg: what would a hollow
+- **Would the check fail if the goal were not met?** For each leg's signal: what would a hollow
   implementation (the mocked path, the easy input, a downstream workaround) make it report?
   Does *anti-game* forbid that, and does the named control degrade exactly the behaviour the
   goal depends on, on the signal that proves it, not merely on its leg?
