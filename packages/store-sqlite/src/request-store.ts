@@ -397,7 +397,8 @@ export function createSQLiteRequestStore(
       fields: ConditionalRequestFields,
       allowedStatuses: readonly RequestStatus[],
       updatedAt: number,
-      expectedCreatedAt?: number
+      expectedCreatedAt?: number,
+      expectedIncarnation?: string
     ): Promise<ConditionalWriteResult> {
       // One transaction, and it must be IMMEDIATE. A plain better-sqlite3
       // transaction is DEFERRED: it takes only a read lock at the first
@@ -418,6 +419,14 @@ export function createSQLiteRequestStore(
         const record = JSON.parse(row.data) as RequestRecord;
         // Another record under the same id is not the one the caller checked.
         if (expectedCreatedAt !== undefined && record.createdAt !== expectedCreatedAt) {
+          return { applied: false, status: undefined };
+        }
+        // The engine's incarnation rule: the stored token, else one derived
+        // from `createdAt` for a record written before tokens (BP-030).
+        if (
+          expectedIncarnation !== undefined &&
+          (record.incarnation ?? `legacy_${record.createdAt}`) !== expectedIncarnation
+        ) {
           return { applied: false, status: undefined };
         }
         if (!allowedStatuses.includes(row.status)) {

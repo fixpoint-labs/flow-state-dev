@@ -11,6 +11,7 @@ import type {
 import { DEFAULT_QUEUED_GRACE_MS, type RuntimeConfig } from "../runtime-config";
 import { createLiveRequestStream, type LiveRequestStream } from "../streaming/live-stream";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
+import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { generateId } from "../utils/generate-id";
 import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./logging";
 import { runAction } from "./runAction";
@@ -122,8 +123,10 @@ export async function detectInterruptedRequests(options: {
     // `finalizedAtMs`, so a stale entry over a terminal, unstamped record is a
     // run that died in its last steps. Nothing is left to write under the id:
     // stamp it here so session retention can evict it. Conditional on the
-    // record just read (its status and `createdAt`), so it never recreates a
-    // record or stamps another request that has since taken the id.
+    // record just read (its status and incarnation), so it never recreates a
+    // record or stamps another request that has since taken the id. The same
+    // path repairs a run whose own stamp failed: it stays registered with its
+    // heartbeat stopped until this sweep stamps it.
     if (
       requestRecord !== undefined &&
       requestRecord.finalizedAtMs === null &&
@@ -136,7 +139,8 @@ export async function detectInterruptedRequests(options: {
         { finalizedAtMs: now },
         [requestRecord.status],
         now,
-        requestRecord.createdAt
+        undefined,
+        resolveRequestIncarnation(requestRecord)
       );
     }
 

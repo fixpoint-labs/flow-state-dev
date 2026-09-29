@@ -7,6 +7,7 @@ import type { RetentionPolicy } from "@flow-state-dev/core/types";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { parseDuration } from "../utils/duration";
 import { resolveLiveTailLivenessMs } from "../streaming/live-tail-liveness";
+import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
 
 const RETENTION_COUNT_BATCH_SIZE = 16;
 
@@ -26,24 +27,45 @@ export type ResolvedRetentionPolicy = {
    * `resolveRetentionPolicy` always sets it; absent means no window.
    */
   terminalGraceMs?: number;
+  /**
+   * The rollout-safety bound: how long after completion a record with no
+   * `finalizedAtMs` field at all stays exempt. Such a record was written by a
+   * version that never stamps, so nothing says when its run stopped writing;
+   * during a rolling deploy that run may still be in `onFinished` on an old
+   * instance. It is held for the stale-request threshold (the point at which a
+   * run with no heartbeat counts as dead) or `maxAge`, whichever is larger,
+   * plus `terminalGraceMs`. `resolveRetentionPolicy` always sets it; absent
+   * means `terminalGraceMs` alone.
+   */
+  legacyGraceMs?: number;
 };
 
 /**
  * Converts a user-facing RetentionPolicy config into numeric milliseconds.
  */
 export function resolveRetentionPolicy(
-  policy: RetentionPolicy | undefined
+  policy: RetentionPolicy | undefined,
+  options: {
+    /** The host's stale-request threshold; the larger of it and the default is used. */
+    staleThresholdMs?: number;
+  } = {}
 ): ResolvedRetentionPolicy | undefined {
   if (policy === undefined) return undefined;
   if (policy.maxItems === undefined && policy.maxAge === undefined) return undefined;
+  const maxAgeMs = policy.maxAge !== undefined ? parseDuration(policy.maxAge) : undefined;
+  // One liveness timeout for any stream still tailing the request to end,
+  // and one more as margin: the stamp and this pass may read different
+  // clocks.
+  const terminalGraceMs = 2 * resolveLiveTailLivenessMs();
+  const staleThresholdMs = Math.max(
+    options.staleThresholdMs ?? 0,
+    DEFAULT_STALE_SWEEP_THRESHOLD_MS
+  );
   return {
     maxItems: policy.maxItems,
-    maxAgeMs: policy.maxAge !== undefined ? parseDuration(policy.maxAge) : undefined,
-    // One liveness timeout for any stream still tailing the request to end,
-    // and one more as margin: the stamp and this pass may read different
-    // clocks, and a record from before the stamp is measured from completion,
-    // before its run's own tail.
-    terminalGraceMs: 2 * resolveLiveTailLivenessMs(),
+    maxAgeMs,
+    terminalGraceMs,
+    legacyGraceMs: Math.max(staleThresholdMs, maxAgeMs ?? 0) + terminalGraceMs,
   };
 }
 
@@ -85,28 +107,33 @@ export async function applyRetentionPolicy(
   // stamping is stamped by the stale-request sweep.
   //
   // - `finalizedAtMs: null` — the run has not finished: never evicted here.
-  // - absent — a record from before the stamp (BP-030): evicted once the grace
-  //   window has passed since it completed, as before.
+  // - absent — written by a version that never stamps (BP-030). During a
+  //   rolling deploy its run may still be writing on an old instance, so it is
+  //   held for `legacyGraceMs` after completion (the rollout-safety bound, see
+  //   `ResolvedRetentionPolicy`), never for the short grace window alone.
   //
   // A request still in the active registry is skipped too, as a cheap extra
   // check. Skipped requests are evicted by a later pass, which runs when the
   // session's next request completes: retention is lazy, and a session nothing
   // is written to is not growing.
   const graceCutoff = now - (policy.terminalGraceMs ?? 0);
+  const legacyCutoff = now - (policy.legacyGraceMs ?? policy.terminalGraceMs ?? 0);
   const stillRunning = new Set(
     (await stores.activeRequests.listAll()).map((entry) => entry.requestId)
   );
-  const finishedAt = (r: RequestRecord): number | undefined =>
-    r.finalizedAtMs === null
-      ? undefined
-      : (r.finalizedAtMs ?? r.completedAtMs ?? r.startedAtMs);
+  const isEvictable = (r: RequestRecord): boolean => {
+    if (r.finalizedAtMs === null) return false;
+    if (r.finalizedAtMs === undefined) {
+      return (r.completedAtMs ?? r.startedAtMs) <= legacyCutoff;
+    }
+    return r.finalizedAtMs <= graceCutoff;
+  };
 
   // Exclude current request, sort oldest-first by completion time
   const sorted = requests
     .filter((r) => {
       if (r.id === currentRequestId || stillRunning.has(r.id)) return false;
-      const at = finishedAt(r);
-      return at !== undefined && at <= graceCutoff;
+      return isEvictable(r);
     })
     .sort(
       (a, b) =>

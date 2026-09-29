@@ -21,10 +21,10 @@ import {
   withRequestSourceDefault,
   withStoredAbortRequested
 } from "../shared";
-import { matchesOrgFilter, matchesTenantFilter } from "../scope-keys";
+import { matchesOrgFilter, matchesTenantFilter, resolveRequestIncarnation } from "../scope-keys";
 import { compareRequestsForListing } from "../list-order";
 import { pollEvents } from "../subscribe-helpers";
-import { appendFile, readdir, readFile, rm, stat } from "node:fs/promises";
+import { appendFile, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   createSerializedWriteQueue,
@@ -129,6 +129,12 @@ function toLegacyRunOnceKeyPath(
     `${encodeSegment(requestId)}.runonce.${encodeSegment(key)}.json`
   );
 }
+
+/**
+ * Suffix an ambiguous pre-`@` per-key runOnce file is renamed to on delete.
+ * No read path opens it, and `listRecords` collects only `.json` files.
+ */
+const QUARANTINE_SUFFIX = ".quarantined";
 
 // Module-scoped so the "warn once per corrupted file" guarantee holds across
 // reads and across store instances within the same process (mirrors the
@@ -427,7 +433,8 @@ export class FilesystemRequestStore implements RequestStore {
     fields: ConditionalRequestFields,
     allowedStatuses: readonly RequestStatus[],
     updatedAt: number,
-    expectedCreatedAt?: number
+    expectedCreatedAt?: number,
+    expectedIncarnation?: string
   ): Promise<ConditionalWriteResult> {
     const { abortRequested, ...recordFields } = fields;
     let found: RequestStatus | undefined;
@@ -443,7 +450,11 @@ export class FilesystemRequestStore implements RequestStore {
     await this.store.update(id, async (current) => {
       found = current.status;
       // Another record under the same id is not the one the caller checked.
-      if (expectedCreatedAt !== undefined && current.createdAt !== expectedCreatedAt) {
+      if (
+        (expectedCreatedAt !== undefined && current.createdAt !== expectedCreatedAt) ||
+        (expectedIncarnation !== undefined &&
+          resolveRequestIncarnation(current) !== expectedIncarnation)
+      ) {
         otherRecord = true;
         return current;
       }
@@ -549,9 +560,8 @@ export class FilesystemRequestStore implements RequestStore {
    * Per-key files are matched by prefix. In the current layout the prefix ends
    * at the first `@`, which no encoded id contains, so it matches this id's
    * files and no other's. Older per-key files carry no such boundary (see
-   * {@link toLegacyRunOnceKeyPath}), so one is removed only when it cannot
-   * belong to anything else: no longer id could have written it, and it is
-   * not another request's record.
+   * {@link toLegacyRunOnceKeyPath}); see {@link classifyLegacyRunOnceKeyFile}
+   * for which are removed, which are quarantined, and which are left.
    */
   private async deleteSidecars(id: string): Promise<void> {
     const exact = new Set([
@@ -578,57 +588,75 @@ export class FilesystemRequestStore implements RequestStore {
       entries.map(async (name) => {
         const isPerKeyRunOnce =
           name.startsWith(keyPrefix) && name.endsWith(".runonce");
-        if (
-          exact.has(name) ||
-          isPerKeyRunOnce ||
-          (await this.isOwnLegacyRunOnceKeyFile(name, legacyKeyPrefixes))
-        ) {
-          await rm(path.join(this.rootDir, name), { force: true });
+        const filePath = path.join(this.rootDir, name);
+        if (exact.has(name) || isPerKeyRunOnce) {
+          await rm(filePath, { force: true });
+          return;
+        }
+        const legacy = await this.classifyLegacyRunOnceKeyFile(name, legacyKeyPrefixes);
+        if (legacy === "remove") {
+          await rm(filePath, { force: true });
+        } else if (legacy === "quarantine") {
+          await rename(filePath, `${filePath}${QUARANTINE_SUFFIX}`).catch((err) => {
+            if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+          });
         }
       })
     );
   }
 
   /**
-   * Whether `name` is a per-key runOnce file in the pre-`@` layout that
-   * belongs to the request whose prefixes are given, and to nothing else.
+   * What deleting the request whose prefixes are given does to `name`, when it
+   * may be a per-key runOnce file in the pre-`@` layout.
    *
-   * The name is `<id>.runonce.<key>.json` with `.` unescaped. If the part
-   * after the prefix still contains `.runonce.`, a longer id could have
-   * written the same name, so the file is left alone: keeping an old result
-   * costs a stale file, while removing another request's result would let its
-   * step run again. The same name is also the record file of the request whose
-   * id is the whole name, so a file that reads back as that record is left too.
+   * The name is `<id>.runonce.<key>.json` with `.` unescaped, and the same name
+   * is also the record file of the request whose id is the whole name. So:
+   *
+   * - `"keep"`: not such a file, or it reads back as that other request's
+   *   record.
+   * - `"remove"`: `.runonce.` appears once, so this id and this key are the
+   *   only way to read the name.
+   * - `"quarantine"`: `.runonce.` appears more than once, so another id could
+   *   have written the same name (`foo.runonce.bar.runonce.step.json` is both
+   *   ("foo", "bar.runonce.step") and ("foo.runonce.bar", "step")). Left where
+   *   it is, the next request to take this id could read another request's
+   *   result as its own; removed, it could be another live request's. It is
+   *   renamed out of every read path instead, which cannot hand a result to
+   *   the wrong request. The price, only for such ids and only for results
+   *   stored before the upgrade, is that the other request may run that step
+   *   again.
    */
-  private async isOwnLegacyRunOnceKeyFile(
+  private async classifyLegacyRunOnceKeyFile(
     name: string,
     prefixes: readonly string[]
-  ): Promise<boolean> {
-    if (!name.endsWith(".json")) return false;
+  ): Promise<"keep" | "remove" | "quarantine"> {
+    if (!name.endsWith(".json")) return "keep";
     const prefix = prefixes.find((candidate) => name.startsWith(candidate));
-    if (prefix === undefined) return false;
+    if (prefix === undefined) return "keep";
     const keyPart = name.slice(prefix.length, -".json".length);
-    if (keyPart.length === 0 || keyPart.includes(".runonce.")) return false;
+    if (keyPart.length === 0) return "keep";
     let content: string;
     try {
       content = await readFile(path.join(this.rootDir, name), "utf8");
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return "keep";
       throw err;
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);
     } catch {
-      // Unparseable is not a record; it is ours to remove.
-      return true;
+      parsed = undefined;
     }
     const recordId = safeDecode(name.slice(0, -".json".length));
-    return !(
+    if (
       typeof parsed === "object" &&
       parsed !== null &&
       (parsed as { id?: unknown }).id === recordId
-    );
+    ) {
+      return "keep";
+    }
+    return name.split(".runonce.").length > 2 ? "quarantine" : "remove";
   }
 
   async list(options?: RequestListOptions): Promise<RequestRecord[]> {

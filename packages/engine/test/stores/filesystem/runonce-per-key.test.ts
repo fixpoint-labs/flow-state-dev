@@ -198,21 +198,32 @@ describe("FilesystemRequestStore — per-key files from the older layout", () =>
     expect(await store.getRunOnceResult("req_old", "step")).toEqual({ found: false });
   });
 
-  it("delete leaves an older per-key file a longer id could have written", async () => {
+  it("delete quarantines an older per-key file another id could have written, so the id's next owner cannot read it", async () => {
     // `foo.runonce.bar.runonce.step.json` is ("foo", "bar.runonce.step") or
-    // ("foo.runonce.bar", "step"). Deleting "foo" cannot tell which, so the
-    // file stays; deleting "foo.runonce.bar" removes it.
-    await writeLegacyKeyFile("foo.runonce.bar.runonce.step.json", { owner: "bar" });
+    // ("foo.runonce.bar", "step"). Deleting "foo" frees the id; left readable,
+    // the next request to take "foo" would get this result as its own, and it
+    // may be the previous "foo"'s. Removed, it may be a live
+    // "foo.runonce.bar"'s. So it is moved out of every read path: the worst
+    // case is that "foo.runonce.bar" runs that step again, never that a result
+    // reaches a request it does not belong to.
+    await writeLegacyKeyFile("foo.runonce.bar.runonce.step.json", { owner: "previous foo" });
     const store = createFilesystemRequestStore({ rootDir });
 
     await store.delete("foo");
-    expect(await store.getRunOnceResult("foo.runonce.bar", "step")).toEqual({
-      found: true,
-      value: { owner: "bar" }
-    });
+
+    expect(await store.getRunOnceResult("foo", "bar.runonce.step")).toEqual({ found: false });
+    expect(await store.getRunOnceResult("foo.runonce.bar", "step")).toEqual({ found: false });
+    expect(await readdir(rootDir)).toEqual(["foo.runonce.bar.runonce.step.json.quarantined"]);
+  });
+
+  it("delete of the longer id quarantines the same ambiguous file too", async () => {
+    await writeLegacyKeyFile("foo.runonce.bar.runonce.step.json", { owner: "foo?" });
+    const store = createFilesystemRequestStore({ rootDir });
 
     await store.delete("foo.runonce.bar");
-    expect(await readdir(rootDir)).toEqual([]);
+
+    expect(await store.getRunOnceResult("foo.runonce.bar", "step")).toEqual({ found: false });
+    expect(await store.getRunOnceResult("foo", "bar.runonce.step")).toEqual({ found: false });
   });
 
   it("delete leaves another request's record that looks like an older per-key file", async () => {

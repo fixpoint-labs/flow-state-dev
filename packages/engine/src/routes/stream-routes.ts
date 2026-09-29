@@ -12,7 +12,7 @@ import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord } from "../context/record-owner";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
-import { resolveSessionStorageKey } from "../stores/scope-keys";
+import { resolveRequestIncarnation, resolveSessionStorageKey } from "../stores/scope-keys";
 import {
   createClientEventFilter,
   filterClientEvents
@@ -227,6 +227,18 @@ export async function handleRequestStream(
     route.requestId,
     cursor.sequenceNumber
   );
+  // The ownership check above read one record; the events were read after
+  // it. Retention can delete that request in between and another caller can
+  // take the id, so these may be the new request's events. Replay only if
+  // the record under the id is still the one that was checked; otherwise
+  // answer as for a request that is gone.
+  const recheck = await ctx.stores.request.get(route.requestId);
+  if (
+    recheck === undefined ||
+    resolveRequestIncarnation(recheck) !== resolveRequestIncarnation(requestRecord)
+  ) {
+    return unknownRequestStreamResponse(request, route, ctx.registry);
+  }
   if (replaySource.length === 0 && cursor.sequenceNumber === undefined) {
     replaySource = buildReplayEvents(requestRecord, session);
   }

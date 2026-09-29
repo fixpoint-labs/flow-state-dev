@@ -9,7 +9,7 @@
  * finishing run keeps its heartbeat going until it stamps, so a slow
  * `onFinished` is never mistaken for a dead run.
  */
-import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createInMemoryStores, runAction } from "../src";
@@ -97,9 +97,10 @@ describe("request finalization", () => {
     expect(await stores.request.get("req_deleted_in_tail")).toBeUndefined();
   });
 
-  it("does not stamp another request that took the id while onFinished was running", async () => {
+  it("does not stamp another request that took the id while onFinished was running, even in the same millisecond", async () => {
     // Stamping the newcomer would tell retention its run had finished while
-    // it may still be writing.
+    // it may still be writing. Two requests can be created in one
+    // millisecond, so only the incarnation tells them apart.
     const stores = createInMemoryStores();
     const flow = makeFlow(async ({ requestId }) => {
       const mine = await stores.request.get(requestId);
@@ -110,7 +111,8 @@ describe("request finalization", () => {
         {
           ...mine,
           userId: "someone-else",
-          createdAt: mine.createdAt + 1,
+          createdAt: mine.createdAt,
+          incarnation: "inc_newcomer",
           finalizedAtMs: null
         },
         "any"
@@ -122,6 +124,143 @@ describe("request finalization", () => {
     const newcomer = await stores.request.get("req_taken_in_tail");
     expect(newcomer?.userId).toBe("someone-else");
     expect(newcomer?.finalizedAtMs).toBeNull();
+  });
+
+  it("stamps only after .sideChain() work queued by onFinished has settled", async () => {
+    // Work an `onFinished` sequencer fans out is still this run writing under
+    // the id. Stamping before it settles would let retention free the id while
+    // that work can still write into whoever takes it next.
+    const stores = createInMemoryStores();
+    const seenBySideChain: Observed[] = [];
+    const flow = defineFlow({
+      kind: "finalization-sidechain-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.number() }),
+          block: handler({
+            name: "echo",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.object({ value: z.number() }),
+            execute: (input) => input
+          })
+        }
+      },
+      request: {
+        onFinished: sequencer({ name: "finished-seq" })
+          .sideChain(handler({
+            name: "finished-background",
+            inputSchema: z.any(),
+            outputSchema: z.any(),
+            execute: async (input: { requestId: string }) => {
+              await new Promise((resolve) => setTimeout(resolve, 60));
+              const record = await stores.request.get(input.requestId);
+              seenBySideChain.push({
+                finalizedAtMs: record === undefined ? "no record" : record.finalizedAtMs
+              });
+              return null;
+            }
+          }))
+          .step(handler({
+            name: "finished-body",
+            inputSchema: z.any(),
+            outputSchema: z.any(),
+            execute: () => null
+          }))
+      }
+    })();
+
+    await run(stores, flow as unknown as ReturnType<typeof makeFlow>, "req_finish_sidechain");
+
+    expect(seenBySideChain).toEqual([{ finalizedAtMs: null }]);
+    expect(typeof (await stores.request.get("req_finish_sidechain"))?.finalizedAtMs).toBe("number");
+  });
+
+  it("stamps a run that stopped on its token budget (incomplete)", async () => {
+    // `incomplete` is terminal: nothing resumes it. Left unstamped, retention
+    // would keep it forever.
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "finalization-budget-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.number() }),
+          block: generator({
+            name: "budget-generator",
+            model: "openai/gpt-5-mini",
+            prompt: () => "prompt",
+            user: () => "hello"
+          }),
+          tokenBudget: { maxTotalTokens: 5, onExceeded: "stop" }
+        }
+      }
+    })();
+
+    await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: { value: 1 },
+      requestId: "req_budget_stamp",
+      userId: "user1",
+      sessionId: "sess_finalization",
+      stores,
+      runtimeConfig: {
+        modelResolver: () => ({
+          modelId: "openai/gpt-5-mini",
+          async generate() {
+            return { text: "ok", usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 } };
+          }
+        })
+      }
+    });
+
+    const after = await stores.request.get("req_budget_stamp");
+    expect(after?.status).toBe("incomplete");
+    expect(typeof after?.finalizedAtMs).toBe("number");
+  });
+
+  it("retries a stamp the store failed to write", async () => {
+    const stores = createInMemoryStores();
+    const conditional = stores.request.setFieldsIfStatus.bind(stores.request);
+    let stampAttempts = 0;
+    stores.request.setFieldsIfStatus = async (...args) => {
+      if (args[1].finalizedAtMs !== undefined && ++stampAttempts === 1) {
+        throw new Error("store briefly unavailable");
+      }
+      return conditional(...args);
+    };
+
+    await run(stores, makeFlow(async () => {}), "req_stamp_retry");
+
+    expect(stampAttempts).toBe(2);
+    expect(typeof (await stores.request.get("req_stamp_retry"))?.finalizedAtMs).toBe("number");
+  });
+
+  it("leaves a run whose stamp kept failing for the stale-request sweep to stamp", async () => {
+    // The record must not stay unstamped forever. The run stays registered,
+    // heartbeat stopped, which is exactly what the sweep looks for.
+    const stores = createInMemoryStores();
+    const conditional = stores.request.setFieldsIfStatus.bind(stores.request);
+    let storeDown = true;
+    stores.request.setFieldsIfStatus = async (...args) => {
+      if (storeDown && args[1].finalizedAtMs !== undefined) {
+        throw new Error("store unavailable");
+      }
+      return conditional(...args);
+    };
+
+    await run(stores, makeFlow(async () => {}), "req_stamp_down");
+
+    expect((await stores.request.get("req_stamp_down"))?.finalizedAtMs).toBeNull();
+    expect(await stores.activeRequests.get("req_stamp_down")).toBeDefined();
+
+    storeDown = false;
+    await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+
+    const after = await stores.request.get("req_stamp_down");
+    expect(after?.status).toBe("completed");
+    expect(typeof after?.finalizedAtMs).toBe("number");
+    expect(await stores.activeRequests.get("req_stamp_down")).toBeUndefined();
   });
 
   it("keeps heartbeating while onFinished runs, so a slow finish is not taken for a dead run", async () => {

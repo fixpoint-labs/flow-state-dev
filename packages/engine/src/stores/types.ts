@@ -746,15 +746,20 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    *
    * `createdAt` is not the request's identity: two records under one id can
    * share a millisecond, and a same-owner hand-off rewrites it. The identity
-   * is {@link RequestRecord.incarnation}; moving this fence onto it is an open
-   * follow-up.
+   * is {@link RequestRecord.incarnation}.
+   *
+   * `expectedIncarnation`, when given, fences the same way on that identity:
+   * the record's stored `incarnation`, or `legacy_<createdAt>` for a record
+   * written before incarnations were stamped (BP-030). A mismatch is reported
+   * as an absent record. Both fences may be given; each must hold.
    */
   setFieldsIfStatus(
     id: string,
     fields: ConditionalRequestFields,
     allowedStatuses: readonly RequestStatus[],
     updatedAt: number,
-    expectedCreatedAt?: number
+    expectedCreatedAt?: number,
+    expectedIncarnation?: string
   ): Promise<ConditionalWriteResult>;
 
   /**

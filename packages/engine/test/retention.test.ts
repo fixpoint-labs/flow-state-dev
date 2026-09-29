@@ -58,6 +58,7 @@ describe("resolveRetentionPolicy", () => {
       maxItems: 100,
       maxAgeMs: undefined,
       terminalGraceMs: 60_000,
+      legacyGraceMs: 120_000,
     });
   });
 
@@ -66,6 +67,7 @@ describe("resolveRetentionPolicy", () => {
       maxItems: undefined,
       maxAgeMs: 86_400_000,
       terminalGraceMs: 60_000,
+      legacyGraceMs: 86_460_000,
     });
   });
 
@@ -74,6 +76,7 @@ describe("resolveRetentionPolicy", () => {
       maxItems: undefined,
       maxAgeMs: 5000,
       terminalGraceMs: 60_000,
+      legacyGraceMs: 120_000,
     });
   });
 
@@ -82,7 +85,19 @@ describe("resolveRetentionPolicy", () => {
       maxItems: 500,
       maxAgeMs: 3_600_000,
       terminalGraceMs: 60_000,
+      legacyGraceMs: 3_660_000,
     });
+  });
+
+  // A record from a version that never stamps is held for the stale-request
+  // threshold the host actually uses, when it is longer than the default.
+  it("takes the host's stale threshold into the rollout-safety bound when it is longer", () => {
+    expect(
+      resolveRetentionPolicy({ maxItems: 1 }, { staleThresholdMs: 300_000 })?.legacyGraceMs
+    ).toBe(360_000);
+    expect(
+      resolveRetentionPolicy({ maxItems: 1 }, { staleThresholdMs: 1_000 })?.legacyGraceMs
+    ).toBe(120_000);
   });
 
   // The grace window must outlast any live-tail stream still following a
@@ -478,6 +493,34 @@ describe("applyRetentionPolicy", () => {
       );
 
       expect(result.deletedRequestIds).toEqual([]);
+    });
+
+    // The rollout-safety rule. A record with no `finalizedAtMs` at all was
+    // written by a version that never stamps, so during a rolling deploy its
+    // run may still be in `onFinished` on an old instance, invisible to this
+    // one's registry. The short grace window is not enough: it is held until
+    // a run with no heartbeat would count as dead (or `maxAge`, if larger).
+    it("holds a record from a version that never stamps for the rollout-safety bound, not the grace window", async () => {
+      const policy = resolveRetentionPolicy({ maxItems: 5 })!;
+      const stores = await setupStores([
+        makeRequest("req_old_version", SESSION_ID, { startedAtMs: 100, completedAtMs: 1_000, itemCount: 5 }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 1_100, completedAtMs: 1_200, itemCount: 5 }),
+      ]);
+
+      const pastGrace = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, policy, 1_000 + policy.terminalGraceMs! + 1
+      );
+      expect(pastGrace.deletedRequestIds).toEqual([]);
+
+      const justInside = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, policy, 1_000 + policy.legacyGraceMs! - 1
+      );
+      expect(justInside.deletedRequestIds).toEqual([]);
+
+      const atBound = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, policy, 1_000 + policy.legacyGraceMs!
+      );
+      expect(atBound.deletedRequestIds).toEqual(["req_old_version"]);
     });
 
     it("is evicted once the grace window has passed since its run finished", async () => {

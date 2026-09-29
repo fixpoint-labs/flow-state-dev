@@ -21,7 +21,13 @@ import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResume
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "../context/createExecutionContext";
-import { isSameSession, resolveLineageId, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
+import {
+  isSameSession,
+  resolveLineageId,
+  resolveRequestIncarnation,
+  resolveSessionStorageKey,
+  tenantMatches
+} from "../stores/scope-keys";
 import { canSpeak, canSpeakStream, getRequestSideChainPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
@@ -512,12 +518,15 @@ async function settleFreshRequestSetupFailure(options: {
 /**
  * Applies a partial request-record update when a record exists.
  * Strips ephemeral content from items before writing to the store.
+ *
+ * @returns The incarnation of the record written, or `undefined` when there
+ *   was none to patch.
  */
 async function patchRequestRecord(
   stores: StoreRegistry,
   requestId: string,
   patch: Partial<RequestRecord>
-): Promise<number | undefined> {
+): Promise<string | undefined> {
   const current = await stores.request.get(requestId);
   if (current === undefined) {
     return undefined;
@@ -535,46 +544,88 @@ async function patchRequestRecord(
     { ...current, ...sanitized, updatedAt: Date.now() },
     "any"
   );
-  return current.createdAt;
+  return resolveRequestIncarnation(current);
 }
 
-/** Statuses a run leaves its record in when it has finished for good. */
-const FINALIZABLE_STATUSES = ["completed", "failed", "aborted", "interrupted"] as const;
+/**
+ * Wait out item and event writes still queued under `requestId` before the
+ * finalization stamp. Past the terminal status, so a failed write is logged
+ * rather than thrown: it changes nothing about how the run ended, and it is
+ * no longer pending either way.
+ */
+async function settlePendingWrites(
+  stores: StoreRegistry,
+  requestId: string,
+  logger: RuntimeLogger
+): Promise<void> {
+  try {
+    await stores.request.flushItems(requestId);
+    await stores.request.flushEvents(requestId);
+  } catch (err) {
+    logRuntimeEvent(logger, "warn", "[flow-state] late write failed before finalization", {
+      requestId, error: String(err)
+    });
+  }
+}
+
+/**
+ * Statuses a run leaves its record in when it has finished for good: every
+ * terminal status except `suspended`, whose run resumes under the same id.
+ */
+const FINALIZABLE_STATUSES = ["completed", "failed", "incomplete", "aborted", "interrupted"] as const;
+
+/** Attempts at the finalization stamp before leaving it to the stale sweep. */
+const FINALIZE_ATTEMPTS = 3;
 
 /**
  * Record that this run has finished writing under its request id, as its last
  * write before leaving the active registry. Session retention deletes a
  * request only once this is set.
  *
- * Conditional on this run's own record (`recordCreatedAt`, the `createdAt`
+ * Conditional on this run's own record (`recordIncarnation`, the incarnation
  * of the record its terminal patch wrote) still existing in a terminal
  * status. So it never recreates a record a sibling has already deleted, never
- * stamps a new request that has since taken the id, and never stamps one a
- * new run has taken back to `in_progress`. With no terminal record to fence
- * on there is nothing to stamp. A failure is logged, not thrown: the run has
- * succeeded or failed already, and an unstamped record is only kept longer.
+ * stamps a new request that has since taken the id (even one created in the
+ * same millisecond), and never stamps one a new run has taken back to
+ * `in_progress`. With no terminal record to fence on there is nothing to
+ * stamp.
+ *
+ * A store error is retried, then reported by returning `false`, never thrown:
+ * the run has succeeded or failed already. The caller then leaves the run in
+ * the active registry, where its heartbeat has stopped, so the stale-request
+ * sweep finds it and stamps it. Until then the record is only kept longer.
+ *
+ * @returns `false` when every attempt threw; `true` otherwise.
  */
 async function finalizeRequestRecord(
   stores: StoreRegistry,
   requestId: string,
-  recordCreatedAt: number | undefined,
+  recordIncarnation: string | undefined,
   logger: RuntimeLogger
-): Promise<void> {
-  if (recordCreatedAt === undefined) return;
-  const now = Date.now();
-  try {
-    await stores.request.setFieldsIfStatus(
-      requestId,
-      { finalizedAtMs: now },
-      FINALIZABLE_STATUSES,
-      now,
-      recordCreatedAt
-    );
-  } catch (err) {
-    logRuntimeEvent(logger, "warn", "[flow-state] request finalization failed", {
-      requestId, error: String(err)
-    });
+): Promise<boolean> {
+  if (recordIncarnation === undefined) return true;
+  for (let attempt = 1; attempt <= FINALIZE_ATTEMPTS; attempt++) {
+    const now = Date.now();
+    try {
+      await stores.request.setFieldsIfStatus(
+        requestId,
+        { finalizedAtMs: now },
+        FINALIZABLE_STATUSES,
+        now,
+        undefined,
+        recordIncarnation
+      );
+      return true;
+    } catch (err) {
+      logRuntimeEvent(logger, "warn", "[flow-state] request finalization failed", {
+        requestId, attempt, error: String(err)
+      });
+      if (attempt < FINALIZE_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+      }
+    }
   }
+  return false;
 }
 
 /**
@@ -888,7 +939,9 @@ export async function runActionInternal<
   }
 
   const logger = options.runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER;
-  const resolvedRetention = resolveRetentionPolicy(options.flow.session?.retention);
+  const resolvedRetention = resolveRetentionPolicy(options.flow.session?.retention, {
+    staleThresholdMs: options.runtimeConfig.requestHost?.staleThresholdMs
+  });
 
   response.setLogCallback((eventType, detail) => {
     logRuntimeEvent(logger, "debug", `[flow-state] ${eventType}`, {
@@ -1085,9 +1138,9 @@ export async function runActionInternal<
   // the timer running through `onFinished` so the heartbeat shows the run is
   // still alive, but there is nothing left to cancel.
   let abortPollClosed = false;
-  // `createdAt` of the record this run's terminal patch wrote, so the final
+  // Incarnation of the record this run's terminal patch wrote, so the final
   // `finalizedAtMs` stamp lands on that record and no other.
-  let terminalRecordCreatedAt: number | undefined;
+  let terminalRecordIncarnation: string | undefined;
 
   /**
    * One abort-intent poll. Reads the narrow projection rather than the record —
@@ -2147,7 +2200,7 @@ export async function runActionInternal<
 
     const completedAt = Date.now();
     const items = itemsToPersist();
-    terminalRecordCreatedAt = await patchRequestRecord(options.stores, requestId, {
+    terminalRecordIncarnation = await patchRequestRecord(options.stores, requestId, {
       status: terminalStatus,
       completedAtMs: completedAt,
       items
@@ -2262,17 +2315,28 @@ export async function runActionInternal<
     }, ctx, { internalSeams, logger });
     await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
+    // `.sideChain()` work queued by `onFinished` is still this run writing
+    // under the id; wait for it, as for `onCompleted`'s above, and for any
+    // item or event writes it and `onFinished` left pending.
+    await drainRequestSideChainPool(ctx);
+    await settlePendingWrites(options.stores, requestId, logger);
+
     // The run has nothing left to write under this id.
     stopHeartbeatTimer();
-    await finalizeRequestRecord(options.stores, requestId, terminalRecordCreatedAt, logger);
+    const finalized = await finalizeRequestRecord(
+      options.stores, requestId, terminalRecordIncarnation, logger
+    );
 
-    // Deregister abort controller and active registry
+    // Deregister abort controller and active registry. An unstamped run stays
+    // registered, heartbeat stopped, for the stale-request sweep to stamp.
     deregisterAbortController(requestId);
-    await registry.deregister(requestId).catch((err) => {
-      logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
-        requestId, error: String(err)
+    if (finalized) {
+      await registry.deregister(requestId).catch((err) => {
+        logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
+          requestId, error: String(err)
+        });
       });
-    });
+    }
     if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
     return {
@@ -2424,7 +2488,7 @@ export async function runActionInternal<
         await flushTraces();
 
         const abortedAt = Date.now();
-        terminalRecordCreatedAt = await patchRequestRecord(options.stores, requestId, {
+        terminalRecordIncarnation = await patchRequestRecord(options.stores, requestId, {
           status: "aborted",
           abortedAt,
           items: itemsToPersist()
@@ -2456,7 +2520,7 @@ export async function runActionInternal<
         await flushCheckpoints();
         await flushTraces();
 
-        terminalRecordCreatedAt = await patchRequestRecord(options.stores, requestId, {
+        terminalRecordIncarnation = await patchRequestRecord(options.stores, requestId, {
           status: "interrupted",
           interruptedAt: Date.now(),
           items: itemsToPersist()
@@ -2490,7 +2554,7 @@ export async function runActionInternal<
       await flushTraces();
 
       const failedAt = Date.now();
-      terminalRecordCreatedAt = await patchRequestRecord(options.stores, requestId, {
+      terminalRecordIncarnation = await patchRequestRecord(options.stores, requestId, {
         status: "failed",
         failedAtMs: failedAt,
         items: itemsToPersist()
@@ -2529,15 +2593,26 @@ export async function runActionInternal<
       });
     }
 
-    await finalizeRequestRecord(options.stores, requestId, terminalRecordCreatedAt, logger);
+    // `.sideChain()` work queued by `onErrored`/`onFinished` is still this
+    // run writing under the id, as are the item and event writes they left
+    // pending.
+    await drainRequestSideChainPool(ctx);
+    await settlePendingWrites(options.stores, requestId, logger);
 
-    // Deregister abort controller and active registry
+    const finalized = await finalizeRequestRecord(
+      options.stores, requestId, terminalRecordIncarnation, logger
+    );
+
+    // Deregister abort controller and active registry. An unstamped run stays
+    // registered, heartbeat stopped, for the stale-request sweep to stamp.
     deregisterAbortController(requestId);
-    await registry.deregister(requestId).catch((err) => {
-      logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
-        requestId, error: String(err)
+    if (finalized) {
+      await registry.deregister(requestId).catch((err) => {
+        logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
+          requestId, error: String(err)
+        });
       });
-    });
+    }
     if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
     return {

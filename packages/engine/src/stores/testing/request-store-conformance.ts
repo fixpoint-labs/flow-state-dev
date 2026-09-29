@@ -794,6 +794,58 @@ export function createRequestStoreConformanceTests(
         });
       });
 
+      // The same fence on the request's identity. Two records under one id can
+      // share a millisecond, so only the incarnation tells them apart.
+      it("reports a record with another incarnation as absent, even in the same millisecond", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_cond_incarnation";
+          const record = { ...makeRecord(requestId, "completed", []), incarnation: "inc_now" };
+          await store.set(requestId, record, "any");
+
+          const missed = await store.setFieldsIfStatus(
+            requestId,
+            { finalizedAtMs: 1 },
+            ["completed"],
+            Date.now(),
+            record.createdAt,
+            "inc_before"
+          );
+          expect(missed).toEqual({ applied: false, status: undefined });
+          expect((await store.get(requestId))?.finalizedAtMs).toBeUndefined();
+
+          const hit = await store.setFieldsIfStatus(
+            requestId,
+            { finalizedAtMs: 1 },
+            ["completed"],
+            Date.now(),
+            undefined,
+            "inc_now"
+          );
+          expect(hit).toEqual({ applied: true, status: "completed" });
+          expect((await store.get(requestId))?.finalizedAtMs).toBe(1);
+        });
+      });
+
+      // A record written before incarnations were stamped answers to the one
+      // derived from its `createdAt` (BP-030).
+      it("fences a record with no stored incarnation on legacy_<createdAt>", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_cond_incarnation_legacy";
+          await seed(store, requestId, "completed");
+          const { createdAt } = (await store.get(requestId))!;
+
+          const missed = await store.setFieldsIfStatus(
+            requestId, { finalizedAtMs: 1 }, ["completed"], Date.now(), undefined, "inc_other"
+          );
+          expect(missed).toEqual({ applied: false, status: undefined });
+
+          const hit = await store.setFieldsIfStatus(
+            requestId, { finalizedAtMs: 1 }, ["completed"], Date.now(), undefined, `legacy_${createdAt}`
+          );
+          expect(hit).toEqual({ applied: true, status: "completed" });
+        });
+      });
+
       it("matches any status in the predicate list", async () => {
         await withStore(async (store) => {
           const requestId = "req_cond_multi";
