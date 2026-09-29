@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, what keeps two users apart once a request id is freed. Chosen: name the run workspace for its request, by when the request began. Instead of: closing on FIX-1018 alone, or keeping freed ids reserved in the engine. It comes down to the first row: when Bob reuses an id retention freed, the chosen option gives him an empty workspace, FIX-1018 alone gives him Alice's files, and reserving the id hands him his own id. The price is the second row: one public field and a one-time rename of run directories, against no change at all, or a marker per deleted request in every store kept forever. The third row: later request-keyed state must follow the same rule under the chosen option, is exposed under FIX-1018 alone, and is covered automatically by the engine option. Locks in: a request handle that says when its request began. Flips if: the engine starts reserving freed ids for its own reasons."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, what keeps two users apart once a request id is freed. Chosen: name the run workspace for its request's incarnation, a random token stamped once when the request is first recorded. Instead of: closing on FIX-1018 alone, or keeping freed ids reserved in the engine. It comes down to the first row: when Bob reuses an id retention freed, the chosen option gives him an empty workspace, FIX-1018 alone gives him Alice's files, and reserving the id hands him his own id. The price is the second row: one public field and a one-time rename of run directories, against no change at all, or a marker per deleted request in every store kept forever. The third row: later request-keyed state must follow the same rule under the chosen option, is exposed under FIX-1018 alone, and is covered automatically by the engine option. Locks in: a request handle that exposes its incarnation. Flips if: the engine starts reserving freed ids for its own reasons."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -99,7 +99,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">A request handle that says when its request began</text>
+    <text class="t-b" x="32" y="371">A request handle that exposes its incarnation</text>
     <text class="t-s" x="32" y="389">public from this release; the rule binds later request-keyed state</text>
   </g>
 

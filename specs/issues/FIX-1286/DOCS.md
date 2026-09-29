@@ -12,24 +12,26 @@ to publish; this draft links to it and does not restate it.
 Add a line to the first code block, after `ctx.request.identity`:
 
 ```ts
-ctx.request.createdAt // when this request was first recorded, in epoch milliseconds
+ctx.request.incarnation // stamped once when this request is first recorded
 ```
 
 Then, after the paragraph on `ScopeIdentity`'s optional fields:
 
 > A request id can be chosen by the caller, and once a request's record is gone (session
-> retention deletes old ones) the same id can name a new request. `ctx.request.createdAt` tells
-> them apart. It is set once, when the request is first recorded, and a retry or a resume of
-> that request reads the same value. If you key anything of your own on a request id, such as
-> a scratch directory or a cache that outlives the request, key it on `createdAt` as well.
+> retention deletes old ones) the same id can name a new request. `ctx.request.incarnation`
+> tells them apart. It is a random token set once, when the request is first recorded, and a
+> retry or a resume of that request reads the same value. If you key anything of your own on a
+> request id, such as a scratch directory or a cache that outlives the request, key it on
+> `incarnation` as well.
 
 ## UPDATE · `apps/docs/docs/tools/bash.md` · "Where the workspace lives"
 
 Change the `run` row's *One workspace per* cell from `request` to `request (not request id)`, and
 add after the paragraph on tenant segments:
 
-> A `run` workspace belongs to one request, and its path also carries when that request began:
-> `.fsdev/workspaces/run/<tenant>/<id>/<started>/`. A retry or a resume of the same request
+> A `run` workspace belongs to one request, and its path also carries that request's
+> incarnation, a token set when the request was first recorded:
+> `.fsdev/workspaces/run/<tenant>/<id>/<incarnation>/`. A retry or a resume of the same request
 > lands in the same directory. A later request that happens to reuse the id, whether from
 > another user or from the same one after retention deleted the first request, gets a new,
 > empty directory.

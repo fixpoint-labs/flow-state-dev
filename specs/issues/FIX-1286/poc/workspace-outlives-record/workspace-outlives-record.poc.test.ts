@@ -24,13 +24,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { createBashBlocks, releaseBashSandbox } from "@flow-state-dev/tools/bash";
+// `run.sh` copies this file into the two-users suite's directory, so the
+// harness is a sibling and `tools` (not an integration-tests dependency) is
+// reached by path, from its entry point.
+import { createBashBlocks, releaseBashSandbox } from "../../../tools/src/bash/index";
 import { z } from "zod";
-import {
-  startTwoUserServer,
-  waitFor,
-  type TwoUserServer
-} from "../../../../../packages/integration-tests/src/two-users-one-tenant/harness";
+import { startTwoUserServer, waitFor, type TwoUserServer } from "./harness";
 
 const provider = { type: "local", scope: "run" } as const;
 const { bashCommand } = createBashBlocks({ provider });
@@ -128,11 +127,14 @@ describe("FIX-1286 · Bob reuses Alice's request id in a run-scoped workspace", 
 
     const a = await run(alice, "s_alice", `echo ${SECRET} > note.txt && cat note.txt`);
     expect(a.text).toContain(SECRET);
-    await new Promise((r) => setTimeout(r, 20));
-    // Alice's next request in the same session completes, and retention
-    // evicts her first one. Her record is gone; her directory is not.
-    await run(alice, "s_alice", "true");
-    const gone = await alice(`/scratch/requests/${a.id}/status`);
+    // Real retention, over HTTP: each later request Alice completes in the
+    // session evicts her older completed ones. Poll until her first id is
+    // gone, rather than trusting a sleep. Her record goes; her directory stays.
+    const gone = await waitFor(async () => {
+      await run(alice, "s_alice", "true");
+      const status = await alice(`/scratch/requests/${a.id}/status`);
+      return status.status === 404 ? status : undefined;
+    }, `retention to delete ${a.id}`);
     console.log(`[EVICTED] alice's first record after retention: HTTP ${gone.status}`);
     expect(gone.status).toBe(404);
 

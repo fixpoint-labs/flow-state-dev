@@ -18,13 +18,14 @@ one action is the bash tool with `{ type: "local", scope: "run" }`, session rete
 and the documented `releaseBashSandbox` cleanup on `request.onFinished`.
 
 1. **LIVE.** Alice writes `note.txt` under request id X. Bob sends X as his own `requestId`.
-2. **EVICTED.** Alice writes `note.txt` under X, then a second request in her session completes,
-   so retention deletes X's record (her `GET …/requests/X/status` is a 404). Bob sends X.
+2. **EVICTED.** Alice writes `note.txt` under X, then keeps completing requests in her session
+   until retention has deleted X's record: her `GET …/requests/X/status` is polled until it is a
+   404, never slept on. Bob sends X.
 
 Bob's command tags its own output (`BOB_SAW:…`), so a hit is his run reading the file, not an
 item of Alice's that a replay carried.
 
-## What it showed · 2026-09-29, on FIX-1018's head `71f036a03`
+## What it showed · 2026-09-29, on FIX-1018's head `71f036a03`, re-run in review round 1
 
 ```
 [LIVE]    alice=req_…4b7d754d7ab44 bob=req_ec1922…  bob-read-secret=false bob-ran=true
@@ -44,15 +45,18 @@ The EVICTED assertions pin today's leak, which is the point of the POC. The regr
 
 ## Run it
 
-On FIX-1018's head until #2377 merges, then on `main`:
+On FIX-1018's head until #2377 merges, then on `main`, from the repository root:
 
 ```bash
 git checkout origin/fix/fix-1018                                   # or main, after #2377
 git checkout origin/spec/FIX-1286 -- specs/issues/FIX-1286/poc     # until this spec merges
 pnpm install
-cd packages/integration-tests
-npx vitest run --config ../../specs/issues/FIX-1286/poc/workspace-outlives-record/vitest.config.mts
+bash specs/issues/FIX-1286/poc/workspace-outlives-record/run.sh
 ```
+
+`run.sh` copies the case into the two-users-one-tenant suite's directory, where its harness and
+the `@flow-state-dev/*` packages resolve and which the integration-tests vitest config already
+includes, runs it, and removes the copy on exit. There is no POC-specific vitest config.
 
 Both cases pass today, which records the leak. After FIX-1286's fix, the EVICTED case fails on
 `expect(leaked).toBe(true)`: that red is the fix working.
