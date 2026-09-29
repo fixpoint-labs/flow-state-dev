@@ -146,7 +146,7 @@ An open row lists the flow's actions that take a `taskId`. Pick one and its form
 
 If the task can't move that way, say you cancel a task that already finished, the action refuses and the row shows why in the action's own words. Nothing is written. The row reads that answer from the request's trace, so with trace observability off it can only tell you the action was sent.
 
-The DevTool changes tasks only through your flow's actions. There is no way to edit a task's record directly, so every change goes through the same checks a worker's would. If a row says the flow has no actions that take a `taskId`, see [changing tasks from outside a run](/docs/orchestration/task-board#changing-tasks-from-outside-a-run).
+The DevTool changes tasks only through your flow's actions. There is no way to edit a task's record directly, so every change is a transition the task can legally make. The action doesn't claim the task. It acts as a coordinator would, so it can settle a task a worker is still running: your change lands, and the worker's result is dropped when it arrives. If a row says the flow has no actions that take a `taskId`, see [changing tasks from outside a run](/docs/orchestration/task-board#changing-tasks-from-outside-a-run).
 
 A row shows the changes made in the session you're looking at. When a worker hands a task off to a run of its own, the row here shows the handoff and the row's dispatch-run link opens the run where the task finished.
 

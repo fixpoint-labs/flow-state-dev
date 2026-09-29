@@ -183,7 +183,10 @@ export function outcomeOf(
   if (request.status === "in_progress" || request.status === "suspended") return { state: "pending" };
   if (request.status !== "completed") {
     const failedHook = [...roots].reverse().find((trace) => trace.status === "failed");
-    const message = failedHook?.error?.message ?? `The request ended ${request.status}.`;
+    // A request that failed before its action ran has no trace to name the
+    // cause; the runtime records it as a failed `error` item instead.
+    const message =
+      failedHook?.error?.message ?? lastErrorItemMessage(request.rawItems ?? []) ?? `The request ended ${request.status}.`;
     const answer = root?.status === "completed" ? classifyAnswer(root, lookup) : undefined;
     return {
       state: "failed",
@@ -192,6 +195,15 @@ export function outcomeOf(
   }
   if (root?.status !== "completed") return { state: "unknown", reason: "no-trace" };
   return classifyAnswer(root, lookup);
+}
+
+/** The message of the latest failed `error` item in a request's log, if any. */
+function lastErrorItemMessage(rawItems: readonly unknown[]): string | undefined {
+  for (let i = rawItems.length - 1; i >= 0; i--) {
+    const item = rawItems[i] as { type?: unknown; status?: unknown; message?: unknown } | null;
+    if (item?.type === "error" && item.status === "failed" && typeof item.message === "string") return item.message;
+  }
+  return undefined;
 }
 
 /** What a completed action root answered: a refusal, success, or a hole where the answer was. */

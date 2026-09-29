@@ -316,11 +316,27 @@ describe("taskToolActions — an action settles over a worker's claim (BR-25)", 
       expect(settled.output).toEqual({ ok: true });
 
       const late = await h.act("settleAsWorker", { taskId, claim });
-      // Declined as `terminal`, not `lost-claim`: the substrate reports the
-      // row being settled ahead of the claim going stale. Either way the
-      // worker's result is refused and dropped, which is the rule.
+      // The action finished the row, so the worker's result is declined as
+      // `terminal`: the substrate checks a settled row before a stale claim.
       expect(late.output).toEqual({ outcome: "declined", reason: "terminal", status: "completed" });
       expect(await h.row(taskId)).toMatchObject({ status: "completed", output: "from the row" });
+    } finally {
+      await h.dispose();
+    }
+  });
+
+  it("refuses to block a row a worker holds, so every settlement over a claim finishes the row", async () => {
+    // Why the worker's result above declines as `terminal` and never as
+    // `lost-claim`: of BR-25's four verbs, only the terminal ones are legal
+    // on an in-progress row.
+    const h = await host();
+    try {
+      const taskId = await h.file();
+      const claim = (await h.act("claimOne", {})).output as TaskClaimTicket;
+      const blocked = await h.act(`blockTask_${h.id}`, { taskId, reason: "waiting on a person" });
+      expect(blocked.output).toMatchObject({ ok: false, error: expect.stringMatching(/^illegal_status_transition/) });
+      expect((await h.row(taskId))?.status).toBe("in_progress");
+      expect((await h.act("settleAsWorker", { taskId, claim })).output).toEqual({ outcome: "recorded" });
     } finally {
       await h.dispose();
     }

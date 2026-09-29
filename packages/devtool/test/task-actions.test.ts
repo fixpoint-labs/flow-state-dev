@@ -320,6 +320,19 @@ describe("outcomeOf", () => {
     });
   });
 
+  it("BR-15 · shows why a request failed before its action ran, from the request's error item", () => {
+    // A request that fails during setup has no root trace; the runtime records
+    // the cause as an `error` item. The row shows that cause, not just "failed".
+    const errorItem = (message: string) => ({ type: "error", status: "failed", requestId: "r1", message });
+    const failedEarly = [{ requestId: "r1", status: "failed", rawItems: [errorItem("stale"), errorItem("Unknown board: eng.work")] }];
+    expect(outcomeOf(failedEarly, "r1")).toEqual({ state: "failed", message: "Unknown board: eng.work" });
+    // With no error item either, the request's own status is all there is.
+    expect(outcomeOf([{ requestId: "r1", status: "failed", rawItems: [] }], "r1")).toEqual({
+      state: "failed",
+      message: "The request ended failed.",
+    });
+  });
+
   it("says the outcome isn't visible when a referenced output was not retained", () => {
     const refRoot = { type: "block_trace", status: "completed", provenance: {}, output: { kind: "ref", sourceItemId: "gone" } };
     expect(outcomeOf(request([refRoot]), "r1")).toEqual({ state: "unknown", reason: "not-retained" });
