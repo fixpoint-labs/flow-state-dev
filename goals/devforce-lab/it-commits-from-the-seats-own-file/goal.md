@@ -51,3 +51,4 @@ re-proving it would make this check expensive to re-run a year from now.
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-09-17 | 4d7a5749f | — | NOT RUN | Written and type-checked on a machine with no signed-in coding harness. The plumbing it shares with the gate — the tree, the hire, the board, the hand-off, the prompt builder and the prompt-recording tap — is green under the sibling check; the harness leg itself is unrun. |
+| 2026-09-30 | a1b122eb1 | Claude Code (Agent SDK) | PASS | First real-harness run. Branch `conductor/t0/<user>/eng.feature.work/greeting-module--implement` is 1 commit ahead; the prompt carried all 4 held-out tokens. |
