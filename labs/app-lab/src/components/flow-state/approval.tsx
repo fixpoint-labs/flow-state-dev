@@ -42,9 +42,9 @@ export function Approval({ item }: { item: SuspensionItem }) {
     const status = approval.resolvedStatus;
     const tone =
       status === "approved"
-        ? "border-green-500/30 bg-green-500/10 text-green-600"
+        ? "border-success/30 bg-success/10 text-success"
         : status === "rejected"
-          ? "border-red-500/30 bg-red-500/10 text-red-600"
+          ? "border-destructive/30 bg-destructive/10 text-destructive"
           : "border-border bg-muted text-muted-foreground";
     const Icon =
       status === "approved" ? CheckIcon : status === "rejected" ? XIcon : MinusIcon;
@@ -80,7 +80,7 @@ export function Approval({ item }: { item: SuspensionItem }) {
       ) : null}
 
       {approval.error !== null ? (
-        <p className="mb-2.5 text-xs text-red-500">{approval.error}</p>
+        <p className="mb-2.5 text-xs text-destructive">{approval.error}</p>
       ) : null}
 
       <div className="flex gap-2">
@@ -88,7 +88,7 @@ export function Approval({ item }: { item: SuspensionItem }) {
           type="button"
           disabled={!approval.canApprove || approval.isResolving}
           onClick={approval.approve}
-          className="rounded-lg bg-green-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-green-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-success px-4 py-1.5 text-sm font-semibold text-success-foreground transition-colors hover:bg-success/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
           {approval.pendingAction === "approve" ? "Approving…" : "Approve"}
         </button>
@@ -96,7 +96,7 @@ export function Approval({ item }: { item: SuspensionItem }) {
           type="button"
           disabled={!approval.canReject || approval.isResolving}
           onClick={approval.reject}
-          className="rounded-lg bg-red-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-destructive px-4 py-1.5 text-sm font-semibold text-destructive-foreground transition-colors hover:bg-destructive/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
           {approval.pendingAction === "reject" ? "Rejecting…" : "Reject"}
         </button>
