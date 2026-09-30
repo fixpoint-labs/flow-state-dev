@@ -16,7 +16,7 @@ work.
 | BR-4 | The gate refuses the dispatch: no row, other attempt, recreated row, not `in_progress`, other seat, or a lapsed lease someone else took | No link is written. The row is exactly as it was | CI, one case per arm |
 | BR-5 | The link write is declined (the claim moved between the gate's read and its write) | The attempt stops as a stale claim (`stale-task-claim`); the worker never runs; the link is unchanged | CI |
 | BR-6 | The link write throws (the store fails) | The attempt stops before the worker runs, like any gate failure. The row stays claimed and is recovered by the board's existing lapse path, within its abandonment bound | CI |
-| BR-7 | A lapsed lease is taken back at the gate | The link names the attempt that took it back. Whether it rides the renewal write or follows it is the implementer's; either way it lands before the worker runs | CI |
+| BR-7 | A lapsed lease is taken back at the gate | The link names the attempt that took it back. Whether it rides the renewal write or follows it is the implementer's; either way it lands before the worker runs. If it rides the renewal write, which emits no `task-change`, the link must still reach the change stream (BR-15): the combined write emits `run_linked`, or a follow-up write does | CI |
 | BR-8 | A worker runs inline, not handed off | No link is written, and the claim still clears any old one | CI |
 
 ## Who can write it
