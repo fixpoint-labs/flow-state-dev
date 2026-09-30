@@ -43,7 +43,7 @@ import. Then a tree alone opens, and the config becomes optional.
 |---|---|
 | **Instead of** | Every workstream surface showing an empty state until FIX-1651 ships |
 | **Because** | FIX-1651's signed composition is "feature workstream = channel session + workstream boards", and FIX-1650 names "workstream-as-channel+flow". Both are shipped today: a `CHANNEL.md` with its members, its transcript, and the boards its `boards:` line attaches. Drawing them is reading what ships, not inventing a model (ER-5); leaving them empty would leave App Lab with nothing to use until two more epics land |
-| **Locks in** | A workstream's address is its channel's id, and its Stream, Board and Brief are the channel's transcript, attached boards and charter. Progress, Results, task states and projects stay named empty states until their owner ships them. With no projects, the PROJECTS tree lists the Lab's workstreams directly, as the design says |
+| **Locks in** | A workstream's address is its channel's id, and its Stream, Board and Brief are the channel's transcript (with its member seats' pending asks beside it), attached boards and charter. Progress, Results, task states and projects stay named empty states until their owner ships them. With no projects, the PROJECTS tree lists the Lab's workstreams directly, as the design says |
 
 ![D2: what is a workstream before FIX-1651 ships? A declared channel and its boards, chosen, beside an empty state everywhere. Decides it: what a person can do on day one. Price: addresses keyed on the channel id](figures/d2-channel-workstream.svg)
 
@@ -82,6 +82,11 @@ It comes down to review size: one PR of two levels and two destinations is past 
   person can list**, drawn by the shipped approval and question renderers the stream uses, so one
   ask has one look. The session listing never widens past the caller, so another member's asks
   are not listed, and a parked row with no suspension is not an ask; both are FIX-1652's.
+- **A workstream's Stream also draws its member seats' pending asks**, beside the transcript,
+  with Inbox's card and resume ([BR-18](BUSINESS-RULES.md#workstreams-and-posting)). An ask lives
+  in the seat's session, not the channel's, and nothing shipped moves one into the other, so the
+  epic's "leaves Inbox and its card in the workstream's stream together" needs the Stream to read
+  where Inbox reads. It is App Lab reading what S3 already loads; no Core or Engine change.
 - **A post without `@` goes through the channel's own post action.** `@worker` goes through
   FIX-1664's named session write (ER-15); until FIX-1664 merges it is disabled with a line.
 - **The task route and the right panel's slot are pinned here** ([PLAN](PLAN.md#pinned-names));
@@ -106,5 +111,13 @@ It comes down to review size: one PR of two levels and two destinations is past 
 - **Review round 1**: Inbox narrowed to the asks in the seat sessions the person can list, because
   the shipped listing never widens past the caller and an org-wide read is rejected here; parked
   rows without a suspension left out of Inbox, matching the Inbox decision (ER-5).
+- **Amendment after merge** (epic decision): the Stream draws its member seats' pending asks
+  beside the transcript. As merged, BR-18 (Stream = the channel's transcript), BR-24 (Inbox =
+  seat sessions) and BR-26 (answered in both places together) could not all hold for an ask in a
+  seat's session, which is where the DevForce EM raises it
+  ([FIX-1666](https://linear.app/fixpoint-labs/issue/FIX-1666), PR #2437). The epic's journey and
+  FIX-1663's a1 need the card in the Stream. BR-18, BR-26, S3, S7, S10 and V7 amended. That seat is
+  woken by a keyed dispatch, so its session is a dispatch run: S3's listing includes dispatch runs
+  (BR-24) and V7 runs through the channel-notify path.
 
 **Open: none.**

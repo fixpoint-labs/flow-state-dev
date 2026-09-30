@@ -41,7 +41,7 @@ reconciled against the running app before it is published.
 >
 > | Surface | Shows today | Filled in by |
 > |---|---|---|
-> | Workstreams | Your tree's channels: the transcript, the boards the channel's `boards:` line attaches, and its charter | The eng workstream kit adds progress and results |
+> | Workstreams | Your tree's channels: the transcript, with any approval or question a worker on the channel is waiting on in the worker sessions you can see (the same limit as Inbox), the boards the channel's `boards:` line attaches, and its charter | The eng workstream kit adds progress and results |
 > | Projects | Your workstreams, listed directly | Org primitives |
 > | A worker's harness | A dash | Attention and inspect |
 > | Inbox | Pending approvals and questions in the worker sessions you can see | Attention and inspect |
