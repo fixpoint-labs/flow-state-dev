@@ -103,7 +103,11 @@ If you're on React you don't need this — `useSession` and `useRequestStream` w
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient({ baseUrl: "/api" });
+// Requests go to the same origin by default. Pass `baseUrl` only when the API
+// is on another origin, e.g. `createSessionClient({ baseUrl: "https://api.example.com" })`.
+// Request paths already start with `/api/flows`, so a path such as `"/api"`
+// doubles the prefix and every call 404s.
+const sessions = createSessionClient();
 
 // State snapshot with clientData and items
 const snapshot = await sessions.getSessionState("sess_1", {
@@ -137,7 +141,7 @@ Where a flow's sessions are filed depends on how the flow was declared, so `sess
 import { createClient, sessionQueryFor } from "@flow-state-dev/client";
 
 const userId = "user_42";
-const flows = await createClient({ flowKind: "chat", userId, baseUrl: "/api" }).listFlows();
+const flows = await createClient({ flowKind: "chat", userId }).listFlows();
 
 // `sessions` is the session client created above.
 const rows = await sessions.listSessions({
@@ -221,7 +225,7 @@ the flow is wired up.
 ```ts
 import { createRecoveryClient } from "@flow-state-dev/client";
 
-const recovery = createRecoveryClient({ baseUrl: "/api" });
+const recovery = createRecoveryClient();
 
 // Sweep stale active-request entries for one user. Marks any in_progress
 // records whose heartbeat went stale as `interrupted` and returns the
