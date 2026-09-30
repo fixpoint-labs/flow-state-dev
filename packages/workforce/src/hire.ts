@@ -53,6 +53,7 @@ import {
   type WorkerManifest
 } from "./manifest";
 import { AGENT_KIND, defineAgentWorkerFlow } from "./agent-worker-flow";
+import { readDeclaredFlow } from "./declared-flow";
 import {
   SEAT_RESOURCES_KEY,
   parseSeatResources,
@@ -567,15 +568,12 @@ export function hireWorkforce(
     // used to refuse an absent `flow:` and a whitespace-only one alike. Only
     // an ABSENT key now resolves to the built-in.
     //
-    // `hasOwn` rather than a bare read of `.flow`: a `flow:` key parsed from a
-    // file with no value (or `~`, or `null`) arrives as an own property
-    // holding `null` — present, not absent — and reading it as "omitted"
-    // would silently hire the built-in for a file that named the key. Only a
-    // record with no `flow` key at all gets the default.
-    const hasFlowKey = Object.hasOwn(manifest.declared, "flow");
-    const declaredKind = manifest.declared.flow;
+    // Which case the `flow:` is in is `readDeclaredFlow`'s call, shared with
+    // the channel door (its doc carries why a key holding `null` is present,
+    // not absent). The sentences stay here: they are this door's words.
+    const declaredFlow = readDeclaredFlow(manifest.declared, AGENT_KIND);
 
-    if (hasFlowKey && typeof declaredKind === "string" && declaredKind.trim().length === 0) {
+    if ("refused" in declaredFlow && declaredFlow.refused === "blank") {
       // A whitespace-only value keeps refusing, because whitespace is a typo or a
       // YAML artefact rather than an expression of intent, and reading it as "use
       // the default" would paper over a mistake in the one step whose whole story
@@ -585,21 +583,21 @@ export function hireWorkforce(
       continue;
     }
 
-    if (hasFlowKey && typeof declaredKind !== "string") {
+    if ("refused" in declaredFlow) {
       // The same class of refusal as the empty-string case above, for a
       // present `flow:` whose value isn't a string at all — `flow:`/`flow: ~`
       // /`flow: null` from a file, or `{ flow: 42 }` from a hand-built
       // manifest. Silently defaulting here is the weakened refusal C2
       // forbids, worded for what was actually declared instead of a blank.
       refuse(
-        `declares \`flow:\` as ${JSON.stringify(declaredKind)}, which names no flow kind. ` +
+        `declares \`flow:\` as ${JSON.stringify(declaredFlow.value)}, which names no flow kind. ` +
           "Remove the key to hire the built-in `agent` kind, or name a kind you passed"
       );
       continue;
     }
 
-    // Absent (no `flow` key at all) means the built-in.
-    const kind = hasFlowKey ? (declaredKind as string) : AGENT_KIND;
+    // Absent (no `flow` key at all) has already resolved to the built-in.
+    const kind = declaredFlow.kind;
 
     // `hasOwn` rather than a bare lookup: a record's `flow` is author-supplied,
     // and `kinds["constructor"]` would otherwise resolve off the prototype and

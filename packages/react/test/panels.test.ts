@@ -75,6 +75,20 @@ function pagedSource(items: Array<{ topic: string; clientData: unknown }>, pageS
   return { listCollectionItems };
 }
 
+/**
+ * A transport that never stops handing back a `nextCursor` — one row per page,
+ * forever. The misbehaving source the panels' page ceiling exists for.
+ */
+function endlessSource(row: (n: number) => { topic: string; clientData: unknown }) {
+  let n = 0;
+  return {
+    listCollectionItems: vi.fn(async () => {
+      const item = row(n++);
+      return { items: [item], nextCursor: item.topic };
+    })
+  };
+}
+
 const seat = (seatId: string, flow = "agent") => ({
   topic: seatId,
   clientData: { seatId, flow, instructions: null }
@@ -211,6 +225,41 @@ describe("Roster", () => {
     );
     // Two requests: the first page and the one the cursor points to.
     expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
+  });
+
+  it("errors rather than render a partial roster when the page ceiling is hit with rows left", async () => {
+    // `limit={1}` is a valid page size, so 1,001 seats need 1,001 pages — one
+    // past the ceiling. Rendering the first 1,000 as the roster would drop a
+    // seat with nothing on screen to say so.
+    const seats = Array.from({ length: 1001 }, (_, i) => seat(`seat-${String(i).padStart(4, "0")}`));
+    const source = pagedSource(seats);
+    render(
+      createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster", limit: 1 })
+    );
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(screen.getByText(/more still to read/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByText("seat-0000")).toBeNull();
+    expect(document.querySelector("[data-roster-seats]")).toBeNull();
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(1000);
+  });
+
+  it("renders a roster that ends exactly on the last page the ceiling allows", async () => {
+    // The other side of the boundary: 1,000 pages whose last carries no
+    // cursor is a complete read, not a truncated one.
+    const seats = Array.from({ length: 1000 }, (_, i) => seat(`seat-${String(i).padStart(4, "0")}`));
+    const source = pagedSource(seats);
+    render(
+      createElement(Roster, { sessionId: "s1", resourceClient: source, collectionRef: "roster", limit: 1 })
+    );
+
+    await waitFor(() => expect(screen.getByText("seat-0999")).toBeTruthy());
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(document.querySelector("[data-roster-seats]")?.getAttribute("data-roster-seats")).toBe(
+      "1000"
+    );
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(1000);
   });
 });
 
@@ -369,4 +418,15 @@ describe("BoardColumns", () => {
       expect(text).not.toMatch(/worker-9|expiresAt|boom|write ?log/i);
     }
   );
+
+  it("errors rather than render a partial board when the cursor never runs out", async () => {
+    const source = endlessSource((n) => card(`t-${n}`, "pending", { title: `task ${n}` }));
+    render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", resourceClient: source }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(screen.getByText(/more still to read/)).toBeTruthy();
+    expect(document.querySelectorAll("[data-task-id]").length).toBe(0);
+    // Stops at the ceiling rather than reading forever.
+    expect(source.listCollectionItems).toHaveBeenCalledTimes(1000);
+  });
 });
