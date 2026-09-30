@@ -14,6 +14,10 @@ pnpm add @flow-state-dev/client
 import { createClient } from "@flow-state-dev/client";
 
 const client = createClient({ flowKind: "my-app", userId: "user_1" });
+// `baseUrl` is where the FlowState routes are mounted, minus `/api/flows` (the
+// client adds that). In a browser on the same origin with no base path, leave it
+// off. In Node or another server runtime, pass an absolute URL, plus any base path:
+//   createClient({ flowKind: "my-app", userId: "user_1", baseUrl: "http://localhost:3000" })
 // `flowKind` binds the client to one flow instance (a kind, or a collection
 // member's own id). Sessions it starts are recorded as that instance's, and
 // returned records carry `flowId`, the owner a retry or continuation re-enters.
@@ -33,6 +37,9 @@ Subscribe to a request's SSE stream with typed event handlers:
 ```ts
 import { createSSEClient } from "@flow-state-dev/client";
 
+// `url` is the full route, `/api/flows/...` included; the client only puts `baseUrl`
+// (origin plus any base path) in front of it and appends nothing. In a browser on the same origin with no base path, omit `baseUrl`. In Node a relative
+// path can't be fetched, so add baseUrl: "http://localhost:3000" (plus any base path).
 const stream = createSSEClient({
   url: `/api/flows/my-app/requests/${requestId}/stream`,
   onItemAdded: (event) => {
@@ -103,7 +110,9 @@ If you're on React you don't need this — `useSession` and `useRequestStream` w
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient({ baseUrl: "/api" });
+// Browser, same origin, no base path: no `baseUrl`. In Node, pass an absolute
+// URL such as { baseUrl: "http://localhost:3000" }, plus any base path.
+const sessions = createSessionClient();
 
 // State snapshot with clientData and items
 const snapshot = await sessions.getSessionState("sess_1", {
@@ -137,7 +146,7 @@ Where a flow's sessions are filed depends on how the flow was declared, so `sess
 import { createClient, sessionQueryFor } from "@flow-state-dev/client";
 
 const userId = "user_42";
-const flows = await createClient({ flowKind: "chat", userId, baseUrl: "/api" }).listFlows();
+const flows = await createClient({ flowKind: "chat", userId }).listFlows();
 
 // `sessions` is the session client created above.
 const rows = await sessions.listSessions({
@@ -221,7 +230,9 @@ the flow is wired up.
 ```ts
 import { createRecoveryClient } from "@flow-state-dev/client";
 
-const recovery = createRecoveryClient({ baseUrl: "/api" });
+// Browser, same origin, no base path: no `baseUrl`. From Node, pass an absolute
+// URL, plus any base path.
+const recovery = createRecoveryClient();
 
 // Sweep stale active-request entries for one user. Marks any in_progress
 // records whose heartbeat went stale as `interrupted` and returns the
@@ -335,4 +346,5 @@ pnpm --filter @flow-state-dev/client test
 ## Architecture reference
 
 - [Client](https://flow-state.dev/docs/client/overview) — Routes, transport, React hooks contract
+- [Client options](https://flow-state.dev/docs/configuration/client#choosing-baseurl) — `createClient` and `FlowProvider` options, including what to pass as `baseUrl` in the browser vs. Node
 - [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, SSE protocol, resume semantics
