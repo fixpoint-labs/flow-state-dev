@@ -413,8 +413,9 @@ function parseJsonLoose(text: string): unknown {
  * Core's `attemptDefaultRepair` covers `{ output }` unwrap and the simple
  * string→JSON.parse case, but is bypassed entirely once `repairOutput` is set
  * (see `applyRepairPolicy` in core's generator), so the simple legs are
- * re-implemented here. Unrecoverable strings degrade to an empty envelope so
- * a single bad consolidation cycle doesn't crash the background `.sideChain()`.
+ * re-implemented here. A string is parsed once and then takes that same path.
+ * Unparseable text, and an object with none of the expected keys, come back
+ * unchanged: an empty envelope means the model found nothing.
  */
 function buildEnvelopeRepair<TKeys extends string>(
   arrayKeys: readonly TKeys[],
@@ -424,23 +425,19 @@ function buildEnvelopeRepair<TKeys extends string>(
     Object.fromEntries(arrayKeys.map((k) => [k, []]))
 
   return (candidate: unknown) => {
-    if (Array.isArray(candidate)) {
-      return { ...empty(), [primaryKey]: candidate }
+    const value =
+      typeof candidate === 'string' ? parseJsonLoose(candidate) ?? candidate : candidate
+
+    if (Array.isArray(value)) {
+      return { ...empty(), [primaryKey]: value }
     }
 
-    if (typeof candidate === 'string') {
-      const parsed = parseJsonLoose(candidate)
-      if (Array.isArray(parsed)) return { ...empty(), [primaryKey]: parsed }
-      if (parsed && typeof parsed === 'object') return parsed
-      console.warn(
-        `[memory] consolidation/prune output unrecoverable; falling back to empty envelope (${candidate.length} chars)`,
-      )
-      return empty()
-    }
-
-    if (candidate && typeof candidate === 'object') {
-      const obj = candidate as Record<string, unknown>
+    if (value && typeof value === 'object') {
+      const obj = value as Record<string, unknown>
       if ('output' in obj) return obj.output
+      // No expected key means there is nothing to patch. Filling every key
+      // with `[]` would look like a genuine empty result.
+      if (!arrayKeys.some((key) => key in obj)) return obj
       const patched: Record<string, unknown> = { ...obj }
       let touched = false
       for (const key of arrayKeys) {

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, win32 } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
+import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 import { defineCapability, isAbortLike } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -2539,11 +2540,10 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     // device names that cannot be directories at all. Both passed the old
     // grammar. The encoded alphabet contains no dot and no letter outside
     // [0-9a-f], so neither is expressible.
-    const RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
     for (const value of HOSTILE) {
       const seg = segment(value);
       expect(seg.endsWith(".")).toBe(false);
-      expect(RESERVED.test(seg)).toBe(false);
+      expect(isWindowsReservedName(seg)).toBe(false);
       expect(seg).toMatch(/^[0-9a-f]*$/);
     }
     // And the two that aliased are distinct, under Win32 semantics specifically.
