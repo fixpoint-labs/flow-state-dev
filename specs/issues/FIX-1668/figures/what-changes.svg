@@ -1,0 +1,88 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Before and after for a handed-off task. Today: the board's claim, in the conversation that drained it, records that conversation's session on the task as claimedBy, kept server-side; the run itself happens in another session the task never names, so a reader can only guess it from the run's display topic. After: the claim clears the task's run link; the claim gate, inside the run's own session, writes the run's session, request and attempt onto the task as run; the task carries it to the change stream, the browser read and the model read, while claimedBy stays server-side."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .n-priv{ fill:var(--surface); stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .n-read{ fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .ln-new{ stroke:var(--code); stroke-width:1.8; fill:none; }
+    .ln-q  { stroke:var(--gone); stroke-width:1.3; fill:none; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-c   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .ah    { fill:var(--ink-3); }
+    .ah-new{ fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="440" height="368" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY</text>
+    <rect class="n-box" x="32" y="54" width="190" height="56" rx="5"/>
+    <text class="t-lbl" x="44" y="72">CONVERSATION A</text>
+    <text class="t-b" x="44" y="92">board claims the task</text>
+    <rect class="n-box" x="250" y="54" width="190" height="56" rx="5"/>
+    <text class="t-lbl" x="262" y="72">RUN SESSION</text>
+    <text class="t-b" x="262" y="92">worker does the work</text>
+    <path class="ln" d="M222 82 H244"/><path class="ah" d="M250 82 l-7 -4 v8 z"/>
+    <text class="t-s" x="226" y="128">hands off</text>
+    <rect class="n-box" x="32" y="152" width="408" height="92" rx="5"/>
+    <text class="t-lbl" x="44" y="172">TASK ROW</text>
+    <text class="t-c" x="44" y="194">claimedBy: { session A, request }</text>
+    <text class="t-s" x="44" y="212">where the claim was made, not the run</text>
+    <text class="t-s" x="44" y="230">server-only: never leaves the server</text>
+    <path class="ln" d="M127 110 V146"/><path class="ah" d="M127 152 l-4 -7 h8 z"/>
+    <rect class="n-priv" x="32" y="272" width="408" height="96" rx="5"/>
+    <text class="t-lbl" x="44" y="292">A READER</text>
+    <text class="t-b" x="44" y="314">guesses the run from its display topic</text>
+    <text class="t-g" x="44" y="334">a second drain from conversation B makes</text>
+    <text class="t-g" x="44" y="350">another run with the same topic</text>
+    <path class="ln-q" d="M345 110 V266"/>
+    <text class="t-g" x="352" y="262">?</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="484" y="16" width="440" height="368" rx="6"/>
+    <text class="t-lbl" x="500" y="38">AFTER</text>
+    <rect class="n-box" x="500" y="54" width="190" height="56" rx="5"/>
+    <text class="t-lbl" x="512" y="72">CONVERSATION A OR B</text>
+    <text class="t-b" x="512" y="92">claim clears the link</text>
+    <rect class="n-new" x="718" y="54" width="190" height="56" rx="5"/>
+    <text class="t-lbl" x="730" y="72">RUN SESSION · CLAIM GATE</text>
+    <text class="t-b" x="730" y="92">writes link, then works</text>
+    <path class="ln" d="M690 82 H712"/><path class="ah" d="M718 82 l-7 -4 v8 z"/>
+    <rect class="n-box" x="500" y="152" width="408" height="92" rx="5"/>
+    <text class="t-lbl" x="512" y="172">TASK ROW</text>
+    <text class="t-c" x="512" y="194">run: { sessionId, requestId, attempt }</text>
+    <text class="t-s" x="512" y="212">the run that took this attempt, kept until the next claim</text>
+    <text class="t-s" x="512" y="230">claimedBy: unchanged, still server-only</text>
+    <path class="ln" d="M595 110 V146"/><path class="ah" d="M595 152 l-4 -7 h8 z"/>
+    <path class="ln-new" d="M813 110 V146"/><path class="ah-new" d="M813 152 l-4 -7 h8 z"/>
+    <text class="t-c" x="820" y="134">fenced write</text>
+    <rect class="n-read" x="500" y="272" width="124" height="96" rx="5"/>
+    <text class="t-lbl" x="510" y="292">CHANGE STREAM</text>
+    <text class="t-s" x="510" y="314">task-change</text>
+    <text class="t-s" x="510" y="330">run_linked</text>
+    <rect class="n-read" x="642" y="272" width="124" height="96" rx="5"/>
+    <text class="t-lbl" x="652" y="292">BROWSER READ</text>
+    <text class="t-s" x="652" y="314">a channel</text>
+    <text class="t-s" x="652" y="330">board's rows</text>
+    <rect class="n-read" x="784" y="272" width="124" height="96" rx="5"/>
+    <text class="t-lbl" x="794" y="292">MODEL READ</text>
+    <text class="t-s" x="794" y="314">readBoard</text>
+    <text class="t-s" x="794" y="330">each row</text>
+    <path class="ln" d="M562 244 V266"/><path class="ln" d="M704 244 V266"/><path class="ln" d="M846 244 V266"/>
+  </g>
+</svg>
