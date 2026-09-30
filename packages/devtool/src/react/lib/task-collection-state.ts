@@ -76,6 +76,7 @@ export type TaskChangeKind =
   | "metadata_changed"
   | "priority_changed"
   | "assignee_changed"
+  | "run_linked"
   | (string & {});
 
 /** Mirror of `Task` from `@flow-state-dev/orchestration`. Wire-shape only. */

@@ -2,6 +2,8 @@
 
 App Lab is a browser app for looking into a running Lab: a set of Workforce seats and channels served from one `fsdev.config.mts`. You point it at a Lab's config and it shows what that Lab holds. That covers the teams and their seats, the workstreams, each channel's board, the asks waiting on you, and each channel's transcript, which you can post to.
 
+A task shows one worker's run as it happens, and lets you stop it. The panel on the right follows along, with the team and its tasks at a workstream and the task's details at a task.
+
 It knows nothing about any particular Lab. Every name on screen is read from the Lab while it runs, so the same App Lab opens any Lab whose config default-exports a `FlowState`.
 
 It is research software. Several screens are drawn as placeholders that name what will fill them. They're listed under [What isn't here yet](#what-isnt-here-yet).
@@ -23,6 +25,7 @@ It prints the address, `http://127.0.0.1:4300` by default. One process serves th
 | `--port <n>` | `4300` | `0` picks a free port. |
 | `--host <host>` | `127.0.0.1` | A non-loopback host is refused unless the Lab authenticates requests. |
 | `--assets <dir>` | `dist/` | Serve a different build of the pages. |
+| `--devtool <url>` | none | Where the devtool runs, for a task's *Open trace* link. Must be an `http(s)` address. Without it the link is off and says how to turn it on. |
 
 The process runs from the directory you started it in, so a Lab's relative paths, such as a SQLite file, land where they would under `fsdev dev`.
 
@@ -48,19 +51,47 @@ Set `VITE_LAB_URL` to proxy to a Lab on another address.
 - **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
 - **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream.
 - **A workstream.** One channel and the boards attached to it. It has four tabs: Stream (the transcript, the composer, and its members' asks), Board (five columns: QUEUED, RUNNING, NEEDS YOU, IN REVIEW, DONE), Brief (the channel's charter) and Results. The right panel lists the channel's members with their status, and its rows by column.
-- **A task.** The row as its board holds it, with the task screen's tabs.
+- **A task.** One task's run, live, with Interrupt. See [A task](#a-task).
 
 A post appears in the transcript only once the channel has kept it. Until then the composer keeps your draft and says it's posting. If the post is refused, the draft stays and the reason is shown.
 
 Each section loads on its own. If one read fails, that section says what the Lab answered and offers Retry, and the rest of the screen still draws.
+
+## A task
+
+Open a task from Tasks or from a card on a board. The Session tab is that task's own run: every step the worker takes, the tool calls and edits as they happen, and earlier attempts above them when they ran in the same place. It isn't the worker's chat, so what you read is what the task did. If the worker keeps one session for several tasks, the tab shows only this task's steps and says the session is shared. A task handed off a moment ago shows its run once the run starts. The screen checks for it every 2 seconds for up to a minute, then offers Retry.
+
+**Interrupt** stops the run (Esc does the same while the Session has focus). The screen says *interrupted* once the run has actually stopped. What happens to the task afterwards, whether it's retried or left, is up to the board, not App Lab.
+
+The panel on the right shows who is on it and when it started. If the harness records its plan and the files it touched, as Claude Code does, they're listed. Otherwise the panel says so. *Open trace* opens the devtool for the full detail. Tell App Lab where it runs:
+
+```bash
+pnpm --filter @flow-state-dev/app-lab start --config <your config> --devtool http://localhost:4000
+```
+
+The run's session id sits beside the link. The devtool doesn't open a session from its address yet, so paste it there.
+
+### Not there yet
+
+| On the task screen | Shows today | Filled in by |
+|---|---|---|
+| Typing to the worker, and also posting it to the workstream | A disabled composer | Not planned yet. It needs a way to add your message to a running coding run |
+| Hand off, reassign, Open PR | Disabled | The eng workstream kit |
+| Diff and Checks | An empty tab saying so | The eng workstream kit |
+| Acceptance criteria, who reviews | An empty section | The eng workstream kit |
+| Which harness, tokens and cost | An empty field saying so | Attention and inspect |
+| A harness that records no plan | A line saying so | Attention and inspect |
+| A task's context and input, on Brief | A line saying so | Not planned yet. The board doesn't publish them to a browser |
+
+A board that hands work off keeps each task on the worker it was given to, which is why reassigning is off rather than refused.
 
 ## What isn't here yet
 
 Each of these is drawn as a named empty state or a disabled control:
 
 - **Projects.** The project level's tabs, and a project's own workstreams.
-- **The task screen.** Its Session, Diff, Checks and Brief tabs, and the right panel's task inspector.
-- **Addressing one seat.** A line starting with `@` can't be sent yet.
+- **Parts of the task screen.** Listed under [A task](#not-there-yet).
+- **Addressing one worker.** A line starting with `@` can't be sent. A coding worker takes no message while it runs, so for now a line goes to the whole channel.
 - **Worker detail.** A seat's harness, and the NOW, TIME and COST columns on Tasks.
 - **IN REVIEW.** The column is drawn empty, because no row status means "in review" yet.
 
@@ -75,4 +106,10 @@ The tests serve a real Lab in-process (`test/fixtures/ask-lab`) and compare what
 
 ```bash
 PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/app-lab/it-opens-a-lab/run.mts
+```
+
+A second goal check opens tasks on a Lab whose runs hold until stopped. It watches each run live in Chromium, interrupts it, and compares the screen with the run's stored session and request:
+
+```bash
+PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/app-lab/it-shows-and-stops-a-task-run/run.mts
 ```

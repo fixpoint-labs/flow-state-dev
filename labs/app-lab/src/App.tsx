@@ -19,14 +19,20 @@ import { Inbox } from "./surfaces/Inbox";
 import { JumpTo } from "./surfaces/JumpTo";
 import { ProjectView } from "./surfaces/Project";
 import { Sidebar } from "./surfaces/Sidebar";
-import { TaskFrame, TaskPanel } from "./surfaces/TaskFrame";
+import { TaskProvider } from "./lib/task";
+import { TaskFrame } from "./surfaces/TaskFrame";
+import { TaskInspector } from "./surfaces/TaskInspector";
 import { Tasks } from "./surfaces/Tasks";
 import { findWorkstream, WorkstreamPanel, WorkstreamView } from "./surfaces/Workstream";
 
-export function App({ clients, gaps = GAPS }: { clients: LabClients; gaps?: Gaps }) {
+/**
+ * @param devtoolUrl The devtool App Lab was started with (`--devtool`), for a
+ *   task's trace link. Absent: the link is off and says how to turn it on.
+ */
+export function App({ clients, gaps = GAPS, devtoolUrl }: { clients: LabClients; gaps?: Gaps; devtoolUrl?: string }) {
   return (
     <LabProvider clients={clients}>
-      <Shell gaps={gaps} />
+      <Shell gaps={gaps} devtoolUrl={devtoolUrl} />
     </LabProvider>
   );
 }
@@ -50,7 +56,7 @@ function Refusal({ failure }: { failure: Failure }) {
   );
 }
 
-function Shell({ gaps }: { gaps: Gaps }) {
+function Shell({ gaps, devtoolUrl }: { gaps: Gaps; devtoolUrl: string | undefined }) {
   const { snapshot } = useLab();
   const route = useRoute();
   const [jumping, setJumping] = useState(false);
@@ -71,13 +77,31 @@ function Shell({ gaps }: { gaps: Gaps }) {
   }
   if (snapshot.refused !== undefined) return <Refusal failure={snapshot.refused} />;
 
-  return (
-    <div className="flex h-screen min-h-0" data-testid="shell">
-      <Sidebar route={route} gaps={gaps} onJump={() => setJumping(true)} />
+  const levels = (
+    <>
       <main className="min-w-0 flex-1 overflow-hidden" data-testid="centre" data-level={route.level}>
         <Centre snapshot={snapshot} route={route} gaps={gaps} />
       </main>
       <Panel snapshot={snapshot} route={route} gaps={gaps} />
+    </>
+  );
+  return (
+    <div className="flex h-screen min-h-0" data-testid="shell">
+      <Sidebar route={route} gaps={gaps} onJump={() => setJumping(true)} />
+      {route.level === "task" ? (
+        // The task screen and its inspector read one row and one run.
+        <TaskProvider
+          key={`${route.boardRef}/${route.taskId}`}
+          snapshot={snapshot}
+          boardRef={route.boardRef}
+          taskId={route.taskId}
+          devtoolUrl={devtoolUrl}
+        >
+          {levels}
+        </TaskProvider>
+      ) : (
+        levels
+      )}
       {jumping ? <JumpTo snapshot={snapshot} gaps={gaps} onClose={() => setJumping(false)} /> : null}
     </div>
   );
@@ -90,7 +114,7 @@ function Centre({ snapshot, route, gaps }: { snapshot: LoadedSnapshot; route: Ro
     case "tasks":
       return <Tasks snapshot={snapshot} by={route.by} gaps={gaps} />;
     case "task":
-      return <TaskFrame snapshot={snapshot} boardRef={route.boardRef} taskId={route.taskId} tab={route.tab} gaps={gaps} />;
+      return <TaskFrame tab={route.tab} gaps={gaps} />;
     case "resource":
       return <ResourceView sessionId={route.sessionId} resourceRef={route.ref} />;
     case "project":
@@ -115,7 +139,7 @@ function Panel({ snapshot, route, gaps }: { snapshot: LoadedSnapshot; route: Rou
     const workstream = findWorkstream(snapshot, route.channelId);
     if (workstream !== undefined) content = <WorkstreamPanel snapshot={snapshot} workstream={workstream} gaps={gaps} />;
   } else if (route.level === "task") {
-    content = <TaskPanel gaps={gaps} />;
+    content = <TaskInspector snapshot={snapshot} gaps={gaps} />;
   }
   if (content === null) return null;
   return (

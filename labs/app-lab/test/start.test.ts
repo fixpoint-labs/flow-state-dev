@@ -5,6 +5,9 @@
  * loader's own message (BR-2).
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -18,10 +21,10 @@ afterEach(() => {
 });
 
 /** Run the start script from the repo root, the way `pnpm --filter … start` does. */
-function start(config: string, host = "127.0.0.1") {
+function start(config: string, extra: string[] = [], host = "127.0.0.1") {
   const child = spawn(
     process.execPath,
-    ["--import", "tsx", "bin/start.mts", "--config", config, "--port", "0", "--host", host, "--assets", assets],
+    ["--import", "tsx", "bin/start.mts", "--config", config, "--port", "0", "--host", host, "--assets", assets, ...extra],
     { cwd: pkg, env: { ...process.env, INIT_CWD: repo }, stdio: ["ignore", "pipe", "pipe"] },
   );
   running.push(child);
@@ -46,7 +49,7 @@ function start(config: string, host = "127.0.0.1") {
   });
   // A test that expects the refusal never awaits this; keep its rejection handled.
   listening.catch(() => undefined);
-  return { listening, exited, output: () => output };
+  return { child, listening, exited, output: () => output };
 }
 
 describe("the start command", () => {
@@ -60,6 +63,36 @@ describe("the start command", () => {
     expect(sessions.status).toBe(200);
   }, 90_000);
 
+  it("writes --devtool into the served pages for the trace link, and leaves it out without the flag (BR-23)", async () => {
+    const withFlag = start("goals/multi-seat-collab/lab/fsdev.config.mts", ["--devtool", "http://127.0.0.1:4000"]);
+    const page = await (await fetch(`${await withFlag.listening}/tasks`)).text();
+    expect(page).toContain('<meta name="app-lab-devtool" content="http://127.0.0.1:4000/">');
+    expect(page).toContain("app-lab-test-pages");
+
+    const without = start("goals/multi-seat-collab/lab/fsdev.config.mts");
+    expect(await (await fetch(`${await without.listening}/tasks`)).text()).not.toContain("app-lab-devtool");
+
+    const refused = start("goals/multi-seat-collab/lab/fsdev.config.mts", ["--devtool", "javascript:alert(1)"]);
+    expect(await refused.exited).not.toBe(0);
+    expect(refused.output()).toMatch(/--devtool must be an http\(s\) address/);
+  }, 120_000);
+
+  it("removes the --devtool copy of the pages when it stops, and makes none when the Lab doesn't load", async () => {
+    const copies = () => new Set(readdirSync(tmpdir()).filter((d) => d.startsWith("app-lab-pages-")));
+    const before = copies();
+    const app = start("goals/multi-seat-collab/lab/fsdev.config.mts", ["--devtool", "http://127.0.0.1:4000"]);
+    await app.listening;
+    const made = [...copies()].filter((d) => !before.has(d));
+    expect(made).toHaveLength(1);
+    app.child.kill("SIGTERM");
+    await app.exited;
+    expect(existsSync(join(tmpdir(), made[0]!))).toBe(false);
+
+    const unloaded = start("labs/app-lab/test/fixtures/missing/fsdev.config.mts", ["--devtool", "http://127.0.0.1:4000"]);
+    expect(await unloaded.exited).not.toBe(0);
+    expect([...copies()].filter((d) => !before.has(d))).toEqual([]);
+  }, 120_000);
+
   it("hands the page the Lab's bearer on a loopback host, and refuses a network host outright", async () => {
     const config = "goals/devforce-lab/lab/fsdev.config.mts";
     const loopback = await start(config).listening;
@@ -69,7 +102,7 @@ describe("the start command", () => {
 
     // A network bind would hand the token to a page served off-machine; the
     // start command refuses before it listens, so no page is ever served.
-    const network = start(config, "0.0.0.0");
+    const network = start(config, [], "0.0.0.0");
     const code = await network.exited;
     expect(code).not.toBe(0);
     expect(network.output()).toMatch(/won't serve 0\.0\.0\.0: this Lab hands its page a bearer token/);

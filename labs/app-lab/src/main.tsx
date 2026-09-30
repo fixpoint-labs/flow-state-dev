@@ -4,13 +4,13 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { createLabClients, readConnection } from "./lib/connection";
+import { createLabClients, readConnection, readDevtoolUrl } from "./lib/connection";
 import "./styles.css";
 
 const clients = createLabClients(readConnection());
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App clients={clients} />
+    <App clients={clients} devtoolUrl={readDevtoolUrl()} />
   </StrictMode>,
 );

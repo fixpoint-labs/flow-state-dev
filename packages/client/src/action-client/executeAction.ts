@@ -8,6 +8,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { buildFlowApiUrl, requestJson, resolveFetch } from "../internal/http";
 import {
+  ClientHttpError,
   type ClientFetch,
   type ExecuteActionRequestBody,
   type ExecuteActionResponse,
@@ -184,8 +185,11 @@ export function createClient(options: CreateClientOptions): Client {
     const response = await fetcher(url, { method: "POST" });
     if (!response.ok && response.status !== 204) {
       const body = await response.text().catch(() => "");
-      throw new Error(
-        `Abort request failed (${response.status}): ${body}`.trim()
+      // A `ClientHttpError`, so a caller reads the refusal's status (409:
+      // already finished, 403: not yours) instead of parsing the message.
+      throw new ClientHttpError(
+        `Abort request failed (${response.status}): ${body}`.trim(),
+        { status: response.status, body }
       );
     }
   };

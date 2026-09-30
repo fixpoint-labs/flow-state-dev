@@ -26,9 +26,15 @@
  *   --port <n>        default 4300; 0 picks a free port
  *   --host <host>     default 127.0.0.1
  *   --assets <dir>    serve a different build of App Lab's pages (default: this package's dist/)
+ *   --devtool <url>   where the devtool runs, for a task's trace link. The
+ *                     pages are copied to a temp directory with the address
+ *                     written into index.html, once the Lab has loaded, and
+ *                     the copy is removed when the process stops. The build
+ *                     itself is untouched.
  */
-import { existsSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { declaredDevtoolConfig, loadFsdevConfig } from "@flow-state-dev/fsdev";
@@ -40,7 +46,15 @@ const DEFAULT_ASSETS = fileURLToPath(new URL("../dist", import.meta.url));
 /** Exit code for a config or argument problem; matches the CLI's. */
 const EXIT_CONFIG_ERROR = 3;
 
+/** The copy of the pages `--devtool` writes its address into; removed whenever the process ends. */
+let scratch: string | undefined;
+function removeScratch(): void {
+  if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
+  scratch = undefined;
+}
+
 function fail(message: string, code = EXIT_CONFIG_ERROR): never {
+  removeScratch();
   process.stderr.write(`${message}\n`);
   process.exit(code);
 }
@@ -51,6 +65,7 @@ const { values } = parseArgs({
     port: { type: "string", default: "4300" },
     host: { type: "string", default: "127.0.0.1" },
     assets: { type: "string" },
+    devtool: { type: "string" },
   },
   strict: true,
 });
@@ -64,10 +79,43 @@ if (values.config === undefined) {
 const port = /^\d+$/.test(values.port!) ? Number(values.port) : NaN;
 if (!Number.isInteger(port) || port > 65535) fail(`Invalid port: ${values.port}`);
 
-const assets = values.assets === undefined ? DEFAULT_ASSETS : from(values.assets);
-if (!existsSync(resolve(assets, "index.html"))) {
-  fail(`App Lab's pages are not built at ${assets}. Run: pnpm --filter @flow-state-dev/app-lab build`);
+const built = values.assets === undefined ? DEFAULT_ASSETS : from(values.assets);
+if (!existsSync(resolve(built, "index.html"))) {
+  fail(`App Lab's pages are not built at ${built}. Run: pnpm --filter @flow-state-dev/app-lab build`);
 }
+
+/** The meta tag the page reads the devtool address from (`readDevtoolUrl`). */
+const DEVTOOL_META = "app-lab-devtool";
+
+/** The `--devtool` address, checked before anything loads. */
+function devtoolAddress(devtool: string): URL {
+  let url: URL;
+  try {
+    url = new URL(devtool);
+  } catch {
+    return fail(`Invalid --devtool address: ${devtool}`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") fail(`--devtool must be an http(s) address: ${devtool}`);
+  return url;
+}
+
+/**
+ * The pages with the devtool address written in: a copy in a temp directory,
+ * made only once the Lab is ready to be served, and removed on shutdown or on
+ * any failure after it.
+ */
+function pagesWithDevtool(url: URL): string {
+  scratch = mkdtempSync(join(tmpdir(), "app-lab-pages-"));
+  cpSync(built, scratch, { recursive: true });
+  const index = join(scratch, "index.html");
+  const attr = url.href.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const html = readFileSync(index, "utf8");
+  const tag = `<meta name="${DEVTOOL_META}" content="${attr}">`;
+  writeFileSync(index, /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${tag}</head>`) : `${tag}${html}`);
+  return scratch;
+}
+
+const devtoolUrl = values.devtool === undefined ? undefined : devtoolAddress(values.devtool);
 
 // Process-global: nothing else in this package may assume the package directory as cwd.
 process.chdir(invokedFrom);
@@ -104,6 +152,8 @@ try {
   fail(error instanceof Error ? error.message : String(error));
 }
 
+const assets = devtoolUrl === undefined ? built : pagesWithDevtool(devtoolUrl);
+
 const handle = await serve(flowState, {
   host,
   port,
@@ -121,6 +171,7 @@ const shutdown = async () => {
   if (shuttingDown) return;
   shuttingDown = true;
   await handle.close();
+  removeScratch();
   process.exit(0);
 };
 process.on("SIGINT", () => void shutdown());
