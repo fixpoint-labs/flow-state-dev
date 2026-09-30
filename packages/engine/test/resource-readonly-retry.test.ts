@@ -2,6 +2,11 @@
  * FIX-1265: a writable:false refusal is a configuration error. Retrying it
  * re-runs the whole block and replays every side effect already performed.
  *
+ * FIX-1519: a resource collection's writable:false refusal is the same
+ * refusal, so a retry-configured block does not re-run on it either. The
+ * error shape on each collection refusal path is pinned in
+ * context/resource-registry.spec.ts.
+ *
  * Both halves are required: the refusal is not retried *and* a genuinely
  * retryable failure on the same persist/write path still is. Tests configure
  * maxAttempts > 1 — under the default (no policy / maxAttempts = 1) no retry
@@ -9,7 +14,12 @@
  */
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
-import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
+import {
+  defineFlow,
+  defineResource,
+  defineResourceCollection,
+  handler
+} from "@flow-state-dev/core";
 import { z } from "zod";
 import type { JsonObject, ResourceConfig } from "@flow-state-dev/core/types";
 import {
@@ -96,6 +106,7 @@ describe("writable:false refusals are not retried (FIX-1265)", () => {
 
     expect(attempts).toBe(1);
     expect(thrown).toBeInstanceOf(FlowError);
+    expect((thrown as FlowError).code).toBe("resource_read_only");
     expect((thrown as FlowError).retryable).toBe(false);
     expect(isRetryableError(thrown as Error, RETRY_POLICY)).toBe(false);
   });
@@ -139,6 +150,7 @@ describe("writable:false refusals are not retried (FIX-1265)", () => {
 
     expect(attempts).toBe(1);
     expect(thrown).toBeInstanceOf(FlowError);
+    expect((thrown as FlowError).code).toBe("resource_read_only");
     expect((thrown as FlowError).retryable).toBe(false);
     expect(isRetryableError(thrown as Error, RETRY_POLICY)).toBe(false);
   });
@@ -250,6 +262,58 @@ describe("writable:false refusals are not retried (FIX-1265)", () => {
 
     expect(attempts).toBe(1);
     expect(result.error).toBeInstanceOf(FlowError);
+    expect(result.error?.retryable).toBe(false);
+  });
+});
+
+describe("collection writable:false refusals are not retried", () => {
+  it("does not re-execute a retry-configured block that hits a read-only collection write", async () => {
+    let attempts = 0;
+    const flow = defineFlow({
+      kind: "readonly-collection-retry-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: handler({
+            name: "write-readonly-collection",
+            inputSchema: z.object({}),
+            outputSchema: z.object({ ok: z.boolean() }),
+            retry: { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0 },
+            execute: async (_input, ctx) => {
+              attempts += 1;
+              // Creating a new key stays open on a read-only collection;
+              // overwriting the instance it just made is the refused write.
+              const doc = await ctx.resources.items.getOrCreate("doc1", { v: 1 });
+              await doc.patchState({ v: 2 });
+              return { ok: true };
+            }
+          })
+        }
+      },
+      resources: {
+        items: defineResourceCollection({
+          scope: "session",
+          pattern: "items/*",
+          stateSchema: z.object({ v: z.number() }),
+          writable: false
+        })
+      }
+    })();
+
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "user_readonly_collection_retry",
+      sessionId: "sess_readonly_collection_retry",
+      stores: createInMemoryStores(),
+      runtimeConfig: {}
+    });
+
+    expect(attempts).toBe(1);
+    expect(result.error).toBeInstanceOf(FlowError);
+    expect(result.error?.code).toBe("resource_read_only");
     expect(result.error?.retryable).toBe(false);
   });
 });

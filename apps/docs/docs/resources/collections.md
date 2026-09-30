@@ -348,15 +348,15 @@ const updateNotes = handler({
     const ref = await ctx.resources.notes.get("onboarding");
 
     await ref.patchState({ title: "Onboarding" });
-    // throws Error: Resource "notes/onboarding" is read-only
+    // throws FlowError: Resource "notes/onboarding" is read-only
 
     await ref.writeContent("# Onboarding");
-    // throws Error: Resource "notes/onboarding" content is read-only
+    // throws FlowError: Resource "notes/onboarding" content is read-only
   },
 });
 ```
 
-State writes throw `Error` with message `Resource "<storageKey>" is read-only`. Content writes throw `Resource "<storageKey>" content is read-only`. `storageKey` is the resolved instance key, for example `notes/onboarding`.
+A refused write throws a `FlowError` with code `resource_read_only` and `retryable: false`, the same error a single resource throws, so a block with a retry policy doesn't run again. State writes use the message `Resource "<storageKey>" is read-only`. Content writes use `Resource "<storageKey>" content is read-only`. `storageKey` is the resolved instance key, for example `notes/onboarding`.
 
 `create` of a key that does not exist succeeds, including `create(key, initial, { replace: true })` when the key is missing. `getOrCreate` of a missing key creates; of an existing key it returns the instance and does not write. `upsert` of a missing key creates.
 
