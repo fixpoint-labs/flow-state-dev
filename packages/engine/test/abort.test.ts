@@ -2732,4 +2732,148 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     expect(record?.incarnation).toBe(adopted.incarnation);
     expect(record?.status).toBe("aborted");
   });
+
+  // The catch-up read after a re-tag answers for whatever holds the id at that
+  // moment. A cancel recorded on a request that took the id since is not this
+  // run's, and must not stop it.
+  it("does not stop the run for a cancel recorded on a request that took the id since", async () => {
+    const stores = createInMemoryStores();
+    const requestId = "req_adopted_then_reused";
+    const seen: { aborted?: boolean } = {};
+    const flow = defineFlow({
+      kind: "adopt-fence-reused",
+      request: { heartbeatIntervalMs: 0 },
+      actions: {
+        run: {
+          inputSchema: z.unknown(),
+          block: handler({
+            name: "observe",
+            inputSchema: z.unknown(),
+            outputSchema: z.string(),
+            execute: async (_input: unknown, ctx) => {
+              seen.aborted = ctx.signal.aborted;
+              return "ran";
+            }
+          })
+        }
+      }
+    })({ id: "adopt-fence-reused" });
+
+    const adopted = createInitialRequestRecord(
+      {
+        requestId,
+        flowKind: "adopt-fence-reused",
+        flowId: "adopt-fence-reused",
+        actionName: "run",
+        userId: "u_adopt",
+        orgId: DEFAULT_ORG_ID
+      },
+      Date.now()
+    );
+    await stores.request.set(requestId, adopted, "absent");
+
+    // Admission read an earlier request under the id, so the run re-tags.
+    const get = stores.request.get.bind(stores.request);
+    let first = true;
+    stores.request.get = async (id: string) => {
+      const record = await get(id);
+      if (first && id === requestId && record !== undefined) {
+        first = false;
+        return { ...record, incarnation: "inc_admitted_earlier" };
+      }
+      return record;
+    };
+    // Before the catch-up read lands, the adopted request's record goes and a
+    // later request takes the id, and someone cancels that later request.
+    const isAbortRequested = stores.request.isAbortRequested.bind(stores.request);
+    let swapped = false;
+    stores.request.isAbortRequested = async (id: string) => {
+      if (!swapped && id === requestId) {
+        swapped = true;
+        await stores.request.delete(requestId);
+        await stores.request.set(requestId, { ...adopted, incarnation: "inc_later_request" }, "absent");
+        await stores.request.setFieldsIfStatus(
+          requestId,
+          { abortRequested: true },
+          ["in_progress"],
+          Date.now(),
+          "inc_later_request"
+        );
+      }
+      return isAbortRequested(id);
+    };
+
+    await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_adopt",
+      orgId: DEFAULT_ORG_ID,
+      stores,
+      runtimeConfig: {}
+    });
+    stores.request.get = get;
+    stores.request.isAbortRequested = isAbortRequested;
+
+    expect(swapped).toBe(true);
+    expect(seen.aborted).toBe(false);
+  });
+
+  // The heartbeat's intent poll reads by id too, so it has the same question to
+  // answer: a cancel recorded on a request that took the id is not this run's.
+  it("does not let the heartbeat poll deliver a later request's cancel", async () => {
+    const stores = createInMemoryStores();
+    const requestId = "req_poll_reused";
+    const seen: { aborted?: boolean } = {};
+    const flow = defineFlow({
+      kind: "poll-fence",
+      request: { heartbeatIntervalMs: 10 },
+      actions: {
+        run: {
+          inputSchema: z.unknown(),
+          block: handler({
+            name: "park",
+            inputSchema: z.unknown(),
+            outputSchema: z.string(),
+            execute: async (_input: unknown, ctx) => {
+              // The run's record goes and a later request takes the id, and
+              // someone cancels that later request.
+              const mine = (await stores.request.get(requestId))!;
+              await stores.request.delete(requestId);
+              await stores.request.set(
+                requestId,
+                { ...mine, incarnation: "inc_later_request" },
+                "absent"
+              );
+              await stores.request.setFieldsIfStatus(
+                requestId,
+                { abortRequested: true },
+                ["in_progress"],
+                Date.now(),
+                "inc_later_request"
+              );
+              // Several poll ticks.
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              seen.aborted = ctx.signal.aborted;
+              return "ran";
+            }
+          })
+        }
+      }
+    })({ id: "poll-fence" });
+
+    await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_poll",
+      orgId: DEFAULT_ORG_ID,
+      stores,
+      runtimeConfig: {}
+    });
+
+    expect(seen.aborted).toBe(false);
+  });
 });

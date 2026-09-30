@@ -1004,6 +1004,24 @@ export async function runActionInternal<
         )
       ))
   );
+  // The incarnation this run executes as: admission's, until the execution
+  // context adopts the record and says otherwise (see the re-tag below).
+  let currentIncarnation = runIncarnation;
+  /**
+   * Whether a cancel is recorded on the request this run executes as. The flag
+   * is read first, as the O(1) `isAbortRequested`, and only when it is set is
+   * the record read, to check it is still this run's request and not a later
+   * one that took the id. The common path stays one narrow read.
+   */
+  const abortRecordedForThisRun = async (): Promise<boolean> => {
+    if (!(await options.stores.request.isAbortRequested(requestId))) return false;
+    const record = await options.stores.request.get(requestId);
+    return (
+      record !== undefined &&
+      record.abortRequested === true &&
+      resolveRequestIncarnation(record) === currentIncarnation
+    );
+  };
 
   await registry.register({
     requestId,
@@ -1068,10 +1086,10 @@ export async function runActionInternal<
     if (deliveredAbort || abortPollInFlight) return;
     abortPollInFlight = true;
     try {
-      if (!(await options.stores.request.isAbortRequested(requestId))) return;
+      if (!(await abortRecordedForThisRun())) return;
       // Returns false when no controller is registered yet. Not a delivery, so
       // the latch stays unset and the next tick retries.
-      if (!abortRequest(requestId)) return;
+      if (!abortRequest(requestId, currentIncarnation)) return;
       deliveredAbort = true;
       logRuntimeEvent(logger, "info", "[flow-state] [abort] cross-process abort delivered", {
         requestId
@@ -1637,9 +1655,10 @@ export async function runActionInternal<
     // one this run executes as, so a cancel fenced on it fires here. A cancel
     // of that request recorded while the tag was still the earlier one missed
     // the controller, so read the stored intent once and deliver it.
-    if (ctx.request.incarnation !== runIncarnation) {
-      tagAbortController(requestId, abortController, ctx.request.incarnation);
-      if (await options.stores.request.isAbortRequested(requestId).catch(() => false)) {
+    if (ctx.request.incarnation !== currentIncarnation) {
+      currentIncarnation = ctx.request.incarnation;
+      tagAbortController(requestId, abortController, currentIncarnation);
+      if (await abortRecordedForThisRun().catch(() => false)) {
         abortController.abort();
       }
     }
@@ -2283,7 +2302,10 @@ export async function runActionInternal<
       ? await options.stores.request.get(requestId).catch(() => undefined)
       : undefined;
     let wasIntentionalAbort =
-      signalAborted && (deliveredAbort || classificationRecord?.abortRequested === true);
+      signalAborted &&
+      (deliveredAbort ||
+        (classificationRecord?.abortRequested === true &&
+          resolveRequestIncarnation(classificationRecord) === currentIncarnation));
 
     // The failure path's normalized error is needed for the client-visible
     // error item, which is emitted before the drain so a caller hears the
@@ -2359,10 +2381,11 @@ export async function runActionInternal<
       //     controller, while a stop accepted on another instance only sets the
       //     durable flag and reaches us through the heartbeat's abort poll —
       //     which is running precisely because the heartbeat outlives the drain.
-      //     `isAbortRequested`, not `get()`: this asks one boolean, and the
-      //     interface requires it be O(1) in item count, where `get()`
+      //     `isAbortRequested` first, not `get()`: this asks one boolean, and
+      //     the interface requires it be O(1) in item count, where `get()`
       //     materializes the whole item history to answer it on the persistent
-      //     adapters. A store failure resolves to `false`, which keeps the
+      //     adapters. Only a set flag pays for the `get()` that checks it is
+      //     this run's request. A store failure resolves to `false`, which keeps the
       //     branch already chosen — the same direction the classification read
       //     above fails in. (That read stays on `get()` deliberately: it is the
       //     call that absorbs a transient failure before `patchRequestRecord`,
@@ -2370,7 +2393,7 @@ export async function runActionInternal<
       if (!wasIntentionalAbort) {
         wasIntentionalAbort =
           deliveredAbort ||
-          (await options.stores.request.isAbortRequested(requestId).catch(() => false));
+          (await abortRecordedForThisRun().catch(() => false));
       }
     } finally {
       // Clear the heartbeat — the drain is done and the terminal write is
