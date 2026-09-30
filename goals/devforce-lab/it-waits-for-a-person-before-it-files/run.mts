@@ -42,10 +42,17 @@ import { fileURLToPath } from "node:url";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { loadFixture, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { LAB_TREE, openLab, type Lab, type OpenLabOptions } from "../lab/host.mts";
+import {
+  LAB_ORG_ID,
+  LAB_TREE,
+  LAB_USER_ID,
+  openLab,
+  type Lab,
+  type OpenLabOptions,
+} from "../lab/host.mts";
 import { harnessStub, type StubRun } from "../lab/harness-stub.mts";
 import { BASE_REF, commitAll, createScratchRepo } from "../lab/scratch-repo.mts";
-import { RAISE_ASK_STEP, seatSessionId } from "../lab/ask.mts";
+import { RAISE_ASK_STEP, raiseAsk, seatSessionId } from "../lab/ask.mts";
 import { ASK_ENTRY } from "../lab/seat-config.mts";
 
 stripIntentOverrides();
@@ -453,6 +460,102 @@ await runGoal(async () => {
     }
     evidence.push("approving after another door filed the row left one row, and the EM said it already existed");
   }
+
+  // ---- 8 · AR-5 — two raises at once over one store ----------------------
+  {
+    // The step needs a durable flow state, which only an open with the ask
+    // builds: open with one for a throwaway feature, then race two raises for
+    // another, the way two hosts over one store would.
+    const { lab } = await open("ask-race", inMemoryStores(), {
+      ask: { issue: "race-warmup", goal: "warm up the store" },
+    });
+    try {
+      const other = { issue: `${feature.issue}-race`, goal: feature.goal };
+      const both = await Promise.all(
+        [0, 1].map(() =>
+          raiseAsk({
+            state: lab.state,
+            emSeat: lab.seats[fixture.coordinatorSeat]!,
+            feature: other,
+            principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+          }),
+        ),
+      );
+      const raised = both.filter((r) => r.raised).length;
+      if (raised !== 1) note("8", `two concurrent raises raised ${raised} ask(s), wanted 1`);
+      const seen = await inbox(lab);
+      const forOther = seen.pending.filter((p) => p.message.includes(other.issue)).length;
+      if (forOther !== 1) note("8", `after two concurrent raises ${forOther} ask(s) for it are pending, wanted 1`);
+    } finally {
+      await lab.dispose();
+    }
+    evidence.push("two raises racing over one store raised exactly one ask");
+  }
+
+  // ---- 9 · AR-6 — a store that refuses a read fails the open, naming the step
+  {
+    const base = inMemoryStores();
+    const refusing = {
+      capabilities: ["primary"],
+      async resolve() {
+        const registry = (await base.resolve()) as Record<string, any>;
+        const resourceState = new Proxy(registry.resourceState, {
+          get(target, prop) {
+            if (prop === "get") {
+              return async () => {
+                throw new Error("resource state is unavailable");
+              };
+            }
+            const value = Reflect.get(target, prop);
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        });
+        return { ...registry, resourceState };
+      },
+    };
+    let refused: string | undefined;
+    try {
+      const { lab } = await open("ask-store-refuses", refusing);
+      await lab.dispose();
+    } catch (error) {
+      refused = error instanceof Error ? error.message : String(error);
+    }
+    if (refused === undefined) note("9", "an open over a store that refuses reads succeeded");
+    else if (!refused.startsWith(`${RAISE_ASK_STEP}:`)) {
+      note("9", `a store refusal escaped without naming the step: ${refused}`);
+    }
+    evidence.push("a store that refused a read failed the open, naming the step");
+  }
+
+  // ---- 10 · AR-5 — an ask nobody decided does not hold the feature -------
+  for (const status of ["interrupted", "aborted"] as const) {
+    const stores = inMemoryStores();
+    const registry = (await stores.resolve()) as Record<string, any>;
+    const first = await open(`ask-${status}-1`, stores);
+    const firstId = first.lab.ask?.raised === true ? first.lab.ask.requestId : undefined;
+    await first.lab.dispose();
+    if (firstId === undefined) {
+      note("10", `no first ask to mark ${status}`);
+      continue;
+    }
+    // What a crash before the gate, or an explicit abort, leaves behind.
+    const record = await registry.request.get(firstId);
+    await registry.request.set(firstId, { ...record, status }, record.version);
+
+    const second = await open(`ask-${status}-2`, stores);
+    try {
+      if (second.lab.ask?.raised !== true) {
+        note("10", `after the first ask was ${status}, a reopen raised nothing: ${JSON.stringify(second.lab.ask)}`);
+      }
+      const seen = await inbox(second.lab);
+      if (seen.pending.length !== 1) {
+        note("10", `after the first ask was ${status}, ${seen.pending.length} ask(s) are pending, wanted 1`);
+      }
+    } finally {
+      await second.lab.dispose();
+    }
+  }
+  evidence.push("an ask left interrupted or aborted did not stop a reopen from asking again");
 
   return { failures, evidence: evidence.join("; ") };
 });

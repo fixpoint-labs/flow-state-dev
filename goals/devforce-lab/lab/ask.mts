@@ -13,16 +13,33 @@
  * `human_approval`. The answer is not this module's business: it arrives
  * through the engine's resume route, the one App Lab's Inbox uses.
  *
- * **Once per feature, per store.** A second call finds the earlier ask in the
- * seat's session, pending or answered, or a row another door already filed,
- * and raises nothing. A denied feature stays denied until the store is fresh:
- * asking again on every restart would put back in a person's Inbox an ask they
- * already declined. The guard reads the request history the engine keeps, so a
- * Deny needs no record of its own.
+ * **Once per feature, per store, claimed atomically.** Before it runs anything
+ * the step writes a claim for the feature with the resource-state store's
+ * create-if-absent write, naming the request id it is about to start. Two hosts
+ * raising at once over one store both try that write, and exactly one wins; the
+ * other raises nothing. A later call reads the claim and the request it names:
+ *
+ * - pending (`suspended`), being acted on (`in_progress`) or answered
+ *   (`completed`, which an ask only reaches through Approve or Deny) — nothing
+ *   is raised. A denied feature stays denied until the store is fresh: asking
+ *   again on every restart would put back in a person's Inbox an ask they
+ *   already declined. The Deny is read off the request, not recorded twice.
+ * - `failed`, `interrupted`, `aborted` or `incomplete` — no person ever decided
+ *   it, so the claim is taken over (a compare-and-set on its version, so two
+ *   hosts cannot both take it) and a fresh ask is raised.
+ *
+ * A row another door already filed also means nothing is raised.
+ *
+ * **Known limit.** A claim whose request was never recorded reads as "in
+ * flight" and raises nothing. That is the window between the claim and the
+ * request's first write; a failure there that this step sees releases the
+ * claim, but a process killed inside it leaves the feature claimed until the
+ * store is fresh.
  *
  * **It throws rather than reporting.** A host that asked for the ask and got
  * none would show an empty Inbox, which the closure could not tell from a shell
- * that failed to read one. Every refusal names this step.
+ * that failed to read one. Every refusal, including a store that rejects a
+ * read, names this step.
  */
 
 import { runAction, type FlowState } from "@flow-state-dev/engine";
@@ -34,6 +51,18 @@ import { ASK_ENTRY } from "./seat-config.mts";
 
 /** The step's name, as every refusal spells it. */
 export const RAISE_ASK_STEP = "raiseAsk";
+
+/**
+ * Where a feature's claim lives in the person's resource state. Outside the
+ * ledger's prefix, so enumerating the board's rows never sees it.
+ */
+export const ASK_CLAIM_PREFIX = "devforce-lab-asks/";
+
+/**
+ * Request statuses that mean a person has the ask, or has answered it. Any
+ * other status means nobody decided, and a fresh ask may take the claim over.
+ */
+const HELD_STATUSES: ReadonlySet<string> = new Set(["suspended", "in_progress", "completed"]);
 
 /** The feature a person is asked to approve. */
 export interface AskFeature {
@@ -68,16 +97,25 @@ export function seatSessionId(seatId: string): string {
   return `s_${seatId.replace(/\./g, "_")}`;
 }
 
+/** One wording for whatever an error turns out to be. */
+function messageOf(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return String(error);
+}
+
 /**
  * Raise the ask once, in the EM seat's own session, and return once it is
  * pending.
  *
  * @param options The flow state, the EM seat, the feature and the person.
  * @returns `raised: true` with the request id, or `raised: false` naming the
- *   earlier ask or row that made a second one wrong.
- * @throws If durable execution is off, the seat has no asking door, or the
- *   request ended in anything but a pending suspension. Every message starts
- *   with {@link RAISE_ASK_STEP}.
+ *   claim, request or row that made another ask wrong.
+ * @throws If durable execution is off, the seat has no asking door, a store
+ *   refuses, or the request ended in anything but a pending suspension. Every
+ *   message starts with {@link RAISE_ASK_STEP}.
  */
 export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult> {
   const { state, emSeat, feature, principal } = options;
@@ -85,36 +123,70 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
   const refuse = (why: string): never => {
     throw new Error(`${RAISE_ASK_STEP}: the ask for "${feature.issue}" was not raised — ${why}`);
   };
+  /** Run one store call, turning its rejection into a refusal that names this step. */
+  const guarded = async <T,>(what: string, call: () => Promise<T>): Promise<T> => {
+    try {
+      return await call();
+    } catch (error) {
+      return refuse(`${what} failed: ${messageOf(error)}`);
+    }
+  };
+  const skip = (reason: string): RaiseAskResult => ({ raised: false, sessionId, reason });
 
-  const runtime = await state.getRuntime();
+  const runtime = await guarded("opening the runtime", () => state.getRuntime());
   if (runtime.runtimeConfig.durabilityProvider === undefined) {
     refuse("the flow state has no durable execution, so there is nothing for the answer to resume");
   }
   if ((emSeat as { actions?: Record<string, unknown> }).actions?.[ASK_ENTRY] === undefined) {
     refuse(`seat "${emSeat.id}" has no "${ASK_ENTRY}" action`);
   }
+  const { stores } = runtime;
 
-  // Once per feature. Any ask for this issue that is not a failed run counts,
-  // whatever its answer: pending, approved or denied.
-  const earlier = await runtime.stores.request.list({ sessionId, userId: principal.userId });
-  const asked = earlier.find(
-    (request) =>
-      request.actionName === ASK_ENTRY &&
-      (request.input as { issue?: unknown } | undefined)?.issue === feature.issue &&
-      request.status !== "failed",
-  );
-  if (asked !== undefined) {
-    return {
-      raised: false,
-      sessionId,
-      reason: `request ${asked.id} already asked about "${feature.issue}" (${asked.status})`,
-    };
-  }
   const taskId = harnessTaskId(feature.issue, PHASE);
-  const row = await runtime.stores.resourceState.get("user", principal.userId, `${LEDGER_ID}/${taskId}`);
-  if (row !== undefined) {
-    return { raised: false, sessionId, reason: `row ${taskId} is already on the board` };
+  const row = await guarded("reading the board", () =>
+    stores.resourceState.get("user", principal.userId, `${LEDGER_ID}/${taskId}`),
+  );
+  if (row !== undefined) return skip(`row ${taskId} is already on the board`);
+
+  // ---- the claim: create-if-absent, or take over an undecided one ---------
+  const claimKey = `${ASK_CLAIM_PREFIX}${feature.issue}`;
+  const requestId = `req_ask_${globalThis.crypto.randomUUID()}`;
+  const existing = await guarded("reading the claim", () =>
+    stores.resourceState.get("user", principal.userId, claimKey),
+  );
+  let expected: number = 0;
+  if (existing !== undefined) {
+    const heldBy = String((existing.state as { requestId?: unknown }).requestId);
+    const earlier = await guarded("reading the earlier ask", () => stores.request.get(heldBy));
+    if (earlier === undefined) return skip(`request ${heldBy} holds the claim and is still starting`);
+    if (HELD_STATUSES.has(earlier.status)) {
+      return skip(`request ${heldBy} already asked about "${feature.issue}" (${earlier.status})`);
+    }
+    // Nobody decided it: take the claim over, on its version.
+    expected = existing.version;
   }
+  const claimed = await guarded("claiming the feature", () =>
+    stores.resourceState.set(
+      "user",
+      principal.userId,
+      claimKey,
+      { requestId, issue: feature.issue, claimedAt: Date.now() },
+      expected,
+    ),
+  );
+  if (!claimed.ok) {
+    const winner = (claimed.conflict.currentValue as { requestId?: unknown } | undefined)?.requestId;
+    return skip(`another raise claimed "${feature.issue}" first (request ${String(winner)})`);
+  }
+
+  /** Give the claim back, so a failure this step saw does not hold the feature. */
+  const release = async (): Promise<void> => {
+    try {
+      await stores.resourceState.delete("user", principal.userId, claimKey, claimed.version);
+    } catch {
+      // The refusal below is the failure worth reporting.
+    }
+  };
 
   let result: { requestId?: string; error?: unknown };
   try {
@@ -128,27 +200,25 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
       userId: principal.userId,
       orgId: principal.orgId,
       sessionId,
-      stores: runtime.stores,
+      requestId,
+      stores,
       runtimeConfig: { ...runtime.runtimeConfig },
     } as never)) as { requestId?: string; error?: unknown };
   } catch (error) {
-    return refuse(error instanceof Error ? error.message : String(error));
+    await release();
+    return refuse(messageOf(error));
   }
-  if (result.error !== undefined) {
-    refuse(
-      typeof result.error === "object" && result.error !== null && "message" in result.error
-        ? String((result.error as { message: unknown }).message)
-        : String(result.error),
-    );
-  }
+  if (result.error !== undefined) refuse(messageOf(result.error));
 
   // Graded on what the store recorded rather than on what came back: a
   // pending ask is a fact about the request a person's Inbox reads.
-  const request =
-    result.requestId === undefined ? undefined : await runtime.stores.request.get(result.requestId);
-  if (request === undefined) return refuse("no request was recorded in the seat's session");
+  const request = await guarded("reading the new ask", () => stores.request.get(requestId));
+  if (request === undefined) {
+    await release();
+    return refuse("no request was recorded in the seat's session");
+  }
   if (request.status !== "suspended") {
     return refuse(`the request ended "${request.status}" instead of waiting on a person`);
   }
-  return { raised: true, requestId: request.id, sessionId };
+  return { raised: true, requestId, sessionId };
 }

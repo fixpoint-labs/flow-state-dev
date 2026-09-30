@@ -42,6 +42,7 @@ import {
   createFlowState,
   PrincipalResolutionError,
   runAction,
+  type FlowState,
   type PrincipalResolver,
 } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -301,6 +302,11 @@ export interface Lab {
    * What raising the ask did on this open. Absent when `ask` was not asked for.
    */
   ask?: RaiseAskResult;
+  /**
+   * The flow state the seats are registered in: what a host hands `raiseAsk`
+   * when it calls the step itself.
+   */
+  state: FlowState;
   /**
    * Send one request through the lab's HTTP door, as a person's client would.
    *
@@ -728,6 +734,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     },
 
     ...(ask === undefined ? {} : { ask }),
+    state,
     door,
 
     dispose: () => state.dispose(),
