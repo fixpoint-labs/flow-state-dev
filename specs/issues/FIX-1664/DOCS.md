@@ -45,7 +45,7 @@ below, which differ from the epic's draft because the composer and Hand off don'
 >
 > | On the task screen | Shows today | Filled in by |
 > |---|---|---|
-> | Typing to the worker | A disabled composer | A way to add your message to a running coding run |
+> | Typing to the worker | A disabled composer | A way to add your message to a running coding run, once one is built |
 > | Hand off, reassign, Open PR | Disabled | The eng workstream kit |
 > | Diff and Checks | An empty tab saying so | The eng workstream kit |
 > | Acceptance criteria, who reviews | An empty section | The eng workstream kit |
@@ -55,8 +55,9 @@ below, which differ from the epic's draft because the composer and Hand off don'
 > A board that hands work off keeps each task on the worker it was given to, which is why
 > reassigning is off rather than refused.
 
-The table mirrors the [gap registry](BUSINESS-RULES.md#gap-registry), which is canonical; the
-first row's *Filled in by* follows the open fork there.
+The table mirrors the [gap registry](BUSINESS-RULES.md#gap-registry), which is canonical. The
+first row follows the open fork there: if the operation is left out of the first cut, its
+*Filled in by* says it isn't planned yet.
 
 ## Voice watch-outs for the publisher
 

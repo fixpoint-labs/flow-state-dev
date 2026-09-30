@@ -60,7 +60,7 @@ is answered, this table changes and the rest follows.
 
 | Gap on the task screen | Day one | Owner | Rules |
 |---|---|---|---|
-| Typing to the worker, and *also post to the workstream* | Disabled composer | The operation from [the open fork](DECISIONS.md#open) if filed, else FIX-1652 | BR-16 |
+| Typing to the worker, and *also post to the workstream* | Disabled composer | A child of FIX-1649 if [the open fork](DECISIONS.md#open) files it, else not in the first cut | BR-16 |
 | Hand off, reassign, Open PR | Disabled | FIX-1651 | BR-15 |
 | Diff, Checks | Empty tab, no count | FIX-1651 | BR-17 |
 | Acceptance criteria, *review by* | Empty section | FIX-1651 | BR-21, BR-24 |

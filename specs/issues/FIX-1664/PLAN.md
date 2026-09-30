@@ -9,14 +9,14 @@ frame's route, panel slot, shared reads and registry copies, and the link on the
 
 ## The task-run link
 
-**A dependency, filed as its own child of FIX-1649, not built here** (D1; the epic's split
+**A dependency, filed as [FIX-1668](https://linear.app/fixpoint-labs/issue/FIX-1668), a child of FIX-1649, not built here** (D1; the epic's split
 trigger: a level that needs a read nothing ships splits it out). It is small and lives in
 `@flow-state-dev/orchestration`, the Layer 2 substrate that owns the row and the claim gate.
 Nothing in Core or Engine changes (ER-7).
 
 | | |
 |---|---|
-| **What it adds** | When a handed-off attempt passes the board's claim gate in its run session, the gate stamps the row with that attempt's run: the session id, the request id, and the attempt number. The next attempt replaces it |
+| **What it adds** | When a handed-off attempt passes the board's claim gate in its run session, the gate stamps the row with that attempt's run: the session id, the request id, and the attempt number. The next attempt replaces it. FIX-1664 looks things up by two of them: the session (the Session tab) and the request (Interrupt, and the recorded plan and files). The attempt is informational, shown in the header, and never used to find anything |
 | **Why there** | The gate runs in the run's own session for every handed-off attempt, whatever the seat's session policy and whichever conversation drained the board, so it is the one writer that knows the answer rather than rebuilding it |
 | **Its rules** | Server-written only, absent from the fields a caller or model can set, like `claimedBy`. Client-visible, unlike `claimedBy`: it names a session, and reading that session still passes the server's owner check (BR-9, BP-031). Optional and `== null`-guarded, so rows stored before it read as *no run linked* (BP-030, BR-3). Written inside a write the gate already makes where one fits, never a second write that can fail after the run starts |
 | **What FIX-1664 needs from it** | The field on the row FIX-1662's board read returns, and its three values. The name is that issue's to choose |
@@ -94,6 +94,7 @@ Everything else is yours to name.
 | Every gap's copy is a prop at the surface, naming its owner from the [gap registry](BUSINESS-RULES.md#gap-registry) | The sibling fills it later without touching the surface (ER-5), and one table changes when it does |
 | At most one live stream, and only while the Session tab is open; the inspector's recorded collections load once per open | A Lab with many running tasks must not open a stream per row, and a person reading Brief pays nothing for the Session |
 | No paging through a listing to find something; a truncated answer shows *more than shown* with Retry | A silent wrong answer is worse than a named partial one |
+| The run is resolved once per open task and held; a tab switch never re-reads it. It changes only when the row does | A re-read or poll per tab change costs a request each time and can redraw the screen against a different attempt mid-read |
 | No FSD package changes; a part that won't take the skin goes to FIX-1655 | ER-2, ER-6 |
 
 ## Docs
@@ -161,7 +162,6 @@ Below the spec-review bar; for the implementer. From Cursor's review of PR #2428
   closure needs them apart.
 - Tier the BRs as core (BR-5, BR-6, BR-11, BR-14 and the goal) and edge (BR-8 to BR-10, BR-12,
   BR-13) when writing tests, so the watch-and-stop path is proved first.
-- Hold the resolved run for the open task; don't re-read it on a tab switch.
 - *Blocks* (BR-22) from one board read, never one read per dependency.
 - Elapsed time (BR-4) from the row and a clock, not a polling loop.
 - Mirror kitchen-sink's `background-work-panel` for the Session body and `picked-session-panel`'s
