@@ -226,6 +226,24 @@ describe("FilesystemRequestStore — per-key files from the older layout", () =>
     expect(await store.getRunOnceResult("foo", "bar.runonce.step")).toEqual({ found: false });
   });
 
+  it("never hands a result shaped like a record to the id's next owner", async () => {
+    // A stored result is arbitrary JSON, so ("foo", "bar") can hold one that
+    // reads back exactly like the record of request "foo.runonce.bar" (whose
+    // record file has the same name). Nothing tells the two apart, so delete
+    // leaves the file (it may be that request's record) and the read path
+    // refuses to serve it as a result, to anyone.
+    await writeLegacyKeyFile("foo.runonce.bar.json", {
+      id: "foo.runonce.bar",
+      secret: "previous foo's result"
+    });
+    const store = createFilesystemRequestStore({ rootDir });
+
+    await store.delete("foo");
+
+    // A new request takes the id "foo" and asks for the same key.
+    expect(await store.getRunOnceResult("foo", "bar")).toEqual({ found: false });
+  });
+
   it("delete leaves another request's record that looks like an older per-key file", async () => {
     // The record of request "foo.runonce.bar" is `foo.runonce.bar.json`, which
     // is also the older per-key name for ("foo", "bar").

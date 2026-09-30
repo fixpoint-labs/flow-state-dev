@@ -266,22 +266,28 @@ The full request execution sequence:
 5. Create request scope
 6. Emit user message item (if userMessage defined)
 7. Fire request.onStarted
-8. Execute action root block
+8. Execute action root block, then wait for its .sideChain() work
    ├─ Success path:
    │   ├─ Fire action.onCompleted
    │   ├─ Fire request.onCompleted
+   │   ├─ Wait for .sideChain() work those hooks queued
+   │   ├─ Persist the terminal record, emit the terminal stream status
+   │   ├─ Apply session retention (completed requests only)
    │   └─ Fire request.onFinished
    └─ Error path:
+       ├─ Persist the terminal record, emit the terminal stream status
        ├─ Fire action.onErrored
        ├─ Fire request.onErrored
        └─ Fire request.onFinished
-9. Persist state, emit terminal stream status
+9. Wait for .sideChain() work the terminal hooks queued, then stamp the
+   record's finalizedAtMs (its last write) and leave the active registry
 ```
 
 **Guarantees:**
 - `onCompleted` fires only on terminal success
 - `onErrored` fires only on terminal failure
-- `onFinished` fires always
+- `onFinished` fires always, after the terminal record is persisted and the terminal stream status is emitted
+- `finalizedAtMs` is written only after `onFinished` and any `.sideChain()` work it queued have settled; session retention frees a request's id only after that
 - `onStepErrored` fires for non-terminal step/side-chain failures (visibility hook)
 - A setup failure after the request has been accepted (`onRegistered`) settles a **fresh** request as `failed` with an `error` item. The HTTP 202 path awaits acceptance, not `finished`; leaving the row `in_progress` (or never writing one) is a silent hang. The failed record is written before `request.failed` is published, and the write leaves a row this run does not own untouched. Replay continuations still stay `suspended` / `interrupted` so they remain re-attemptable. Request observers (`onErrored` / `onFinished`) do not run on this path — there is no execution context yet.
 

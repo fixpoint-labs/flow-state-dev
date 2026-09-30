@@ -167,9 +167,9 @@ When an action is invoked, the framework executes this sequence:
 7. Emit user message item (if `userMessage` defined)
 8. Fire `request.onStarted`
 9. Execute action root block via `block.run(input, ctx)`
-10. Fire action + request completion/error hooks
+10. On success, fire action + request `onCompleted`, then persist the terminal record and emit the terminal stream status. On failure, persist and emit first, then fire action + request `onErrored`
 11. Fire `request.onFinished`
-12. Persist state and emit terminal stream status
+12. Wait for `.sideChain()` work the hooks queued, then stamp the record's `finalizedAtMs` as its last write (see [Streaming](./streaming.md))
 
 Retry, continue and resume re-enter the instance recorded as the request's owner, and interrupted-request recovery groups entries by owner; the `:flowKind` path segment on those routes must equal it.
 

@@ -105,6 +105,23 @@ function safeDecode(name: string): string | undefined {
   }
 }
 
+/**
+ * Whether `parsed`, read from the file `name`, reads back as the record of the
+ * request whose id is the whole name (`<enc(id)>.json`).
+ *
+ * A pre-`@` per-key runOnce file can carry that same name, and a stored result
+ * is arbitrary JSON, so no field can tell a record from a result shaped like
+ * one. Such a file is therefore treated as possibly a record everywhere: never
+ * deleted with another request, and never served as a runOnce result.
+ */
+function readsBackAsRecordFile(name: string, parsed: unknown): boolean {
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    (parsed as { id?: unknown }).id === safeDecode(name.slice(0, -".json".length))
+  );
+}
+
 /** File-name prefix every per-key runOnce file of `requestId` starts with. */
 function runOnceKeyPrefix(requestId: string): string {
   return `${encodeSegment(requestId)}@`;
@@ -648,14 +665,7 @@ export class FilesystemRequestStore implements RequestStore {
     } catch {
       parsed = undefined;
     }
-    const recordId = safeDecode(name.slice(0, -".json".length));
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      (parsed as { id?: unknown }).id === recordId
-    ) {
-      return "keep";
-    }
+    if (readsBackAsRecordFile(name, parsed)) return "keep";
     return name.split(".runonce.").length > 2 ? "quarantine" : "remove";
   }
 
@@ -853,12 +863,18 @@ export class FilesystemRequestStore implements RequestStore {
     // Lazy fallbacks for files written by older versions, which are read-only
     // after upgrade — never rewritten. First the per-key file in the layout
     // before the `@` boundary, then the single-map file before that.
+    //
+    // An older per-key file that reads back as the record whose id is its
+    // whole name is not served: it may be that request's record, which delete
+    // leaves in place, and serving it could hand a previous owner's result to
+    // whoever takes this id next. A genuine result of that shape costs one
+    // re-run of its step.
+    const legacyKeyPath = toLegacyRunOnceKeyPath(this.rootDir, requestId, key);
     try {
-      const raw = await readFile(
-        toLegacyRunOnceKeyPath(this.rootDir, requestId, key),
-        "utf8"
-      );
-      return { found: true, value: JSON.parse(raw) as unknown };
+      const value = JSON.parse(await readFile(legacyKeyPath, "utf8")) as unknown;
+      if (!readsBackAsRecordFile(path.basename(legacyKeyPath), value)) {
+        return { found: true, value };
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
