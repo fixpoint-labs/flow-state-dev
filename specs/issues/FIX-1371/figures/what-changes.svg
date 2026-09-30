@@ -1,0 +1,74 @@
+<svg viewBox="0 0 940 340" role="img" aria-label="Two rows, today and after. Today the worker door checks a record's flow key with its own copy of the rule, and the three channel paths (building instances, opening sessions, writing the inventory) check it with a second copy through the channel's kind reader; nothing keeps the two copies equal. After, the worker door and the channel's kind reader both call one rule, which says whether the key is absent, blank, not a string, or a kind name. Each door keeps its own default kind, agent or channel, and its own refusal sentences, so nothing an author reads changes."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-in  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-gone{ fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-ok  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .ah    { fill:var(--ink-3); }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-c   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-g   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="340"/>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY · THE RULE, WRITTEN TWICE</text>
+    <rect class="n-in" x="16" y="36" width="252" height="30" rx="5"/>
+    <text class="t-c" x="30" y="55">hiring a worker roster</text>
+    <rect class="n-in" x="16" y="96" width="252" height="46" rx="5"/>
+    <text class="t-c" x="30" y="114">the three channel paths</text>
+    <text class="t-s" x="30" y="131">instances · sessions · inventory</text>
+
+    <path class="ln" d="M268 51 H330"/><path class="ah" d="M330 47 l8 4 -8 4z"/>
+    <path class="ln" d="M268 119 H330"/><path class="ah" d="M330 115 l8 4 -8 4z"/>
+
+    <rect class="n-gone" x="340" y="32" width="290" height="46" rx="5"/>
+    <text class="t-lbl" x="354" y="50">COPY 1 · INLINE IN THE HIRE STEP</text>
+    <text class="t-s" x="354" y="68">absent → agent · else refuse or name</text>
+    <rect class="n-gone" x="340" y="96" width="290" height="46" rx="5"/>
+    <text class="t-lbl" x="354" y="114">COPY 2 · THE CHANNEL KIND READER</text>
+    <text class="t-s" x="354" y="132">absent → channel · else refuse or name</text>
+
+    <text class="t-x" x="652" y="80">edit one copy, the other</text>
+    <text class="t-x" x="652" y="96">stays as it was, and</text>
+    <text class="t-x" x="652" y="112">every test still passes</text>
+  </g>
+
+  <line class="rule" x1="16" y1="164" x2="924" y2="164"/>
+
+  <g id="after">
+    <text class="t-lbl" x="16" y="188">AFTER · ONE RULE, EACH DOOR ITS OWN WORDS</text>
+    <rect class="n-in" x="16" y="202" width="252" height="30" rx="5"/>
+    <text class="t-c" x="30" y="221">hiring a worker roster</text>
+    <rect class="n-in" x="16" y="262" width="252" height="46" rx="5"/>
+    <text class="t-c" x="30" y="280">the three channel paths</text>
+    <text class="t-s" x="30" y="297">via the channel kind reader</text>
+
+    <path class="ln" d="M268 217 H300 V245 H330"/><path class="ah" d="M330 241 l8 4 -8 4z"/>
+    <path class="ln" d="M268 285 H300 V265 H330"/><path class="ah" d="M330 261 l8 4 -8 4z"/>
+
+    <rect class="n-ok" x="340" y="214" width="290" height="82" rx="5"/>
+    <text class="t-lbl" x="354" y="232">THE ONE RULE · NEITHER DOOR OWNS IT</text>
+    <text class="t-b" x="354" y="252">which case is this flow key?</text>
+    <text class="t-s" x="354" y="270">absent → the door's default</text>
+    <text class="t-s" x="354" y="286">blank · not a string · a kind name</text>
+
+    <text class="t-g" x="652" y="238">each door keeps its default</text>
+    <text class="t-g" x="652" y="254">and its refusal sentences,</text>
+    <text class="t-g" x="652" y="270">word for word</text>
+  </g>
+</svg>
