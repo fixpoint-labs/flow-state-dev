@@ -535,10 +535,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
    * for the session route binds what that route binds, which is the lab's own
    * org, and is the only reason an `orgId` is written at all.
    *
-   * Shaped after `goals/manager-queue-lab/lab/host.mts`, which is the current
-   * reference. `goals/pentest-lab/lab/host.mts` still carries an `omitOrgWrap`
-   * control and a header describing FIX-1412 as open; both are Done, and that
-   * file reads as current practice without being it.
+   * Shaped after `goals/manager-queue-lab/lab/host.mts`. The reference for how
+   * a lab gives `openChannels` the right org is `goals/pentest-lab/lab/host.mts`:
+   * a host `resolvePrincipal`, with channels opened through the real session
+   * routes.
    */
   const sessionClient = {
     createSession: async (create: {
