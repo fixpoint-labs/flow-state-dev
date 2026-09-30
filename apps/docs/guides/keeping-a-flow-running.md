@@ -14,8 +14,8 @@ started it has returned.
 ## Waking a flow from outside
 
 A flow can't start itself. Something outside it has to call your server, and your host turns
-that call into a run. That call is a *wake*. It usually comes from a service sending a webhook or a
-scheduler firing on a clock.
+that call into a run, a [*wake*](#terms). It usually comes from a service sending a webhook or
+a scheduler firing on a clock.
 
 ### A webhook
 
@@ -86,11 +86,12 @@ something stable in the payload, as above, and every event for that customer lan
 same session, so its state builds up. `when` is an optional predicate on the event: return
 `false` and that delivery runs nothing, which narrows a coarse event type to the ones you want.
 
-The example's `authentication` is the standard one for a webhook. The provider's signature is
-what authenticates a delivery, so the flow needs no resolver, and every event runs as the
-`system` user. With no resolver, those runs belong to the reserved default organization,
-`DEFAULT_ORG_ID`; an app that serves several organizations adds a `resolvePrincipal` that
-returns one.
+The provider's signature verifies each delivery. With no resolver, as in the example, every
+event runs as the `system` user and the flow is on the development setup: its management and
+session endpoints stay open, the endpoints that list across flows hand its rows to any caller,
+and `fsdev serve` won't bind a non-loopback host. In production, give the flow, or the host, a
+`resolvePrincipal` that returns your organization for webhook deliveries, as in
+[Stripe webhook with HMAC signature](/docs/server/authentication#stripe-webhook-with-hmac-signature).
 
 Read next: [Webhook receivers](/docs/server/webhooks) for provider definitions, retries and
 idempotency, and the [Stripe](/guides/webhooks-stripe), [GitHub](/guides/webhooks-github) and
@@ -145,9 +146,8 @@ To take webhooks and schedules in one flow, keep one `resolvePrincipal` and bran
 on its own refuses every webhook delivery with a `401`.
 
 Schedules you create while the app runs, like a reminder a user sets, come from
-`schedules.resolve` instead of `schedules.static`. That is also how you do something later:
-store a schedule for the time you want, and the tick runs it. `dispatcher()` has no delay
-option.
+`schedules.resolve` instead of `schedules.static`. To run something later, store a schedule
+for the time you want, and the tick runs it. `dispatcher()` has no delay option.
 
 Read next: [Scheduled actions](/docs/server/scheduled), then the guide for your scheduler:
 [Vercel Cron](/guides/scheduled-vercel-cron), [Cloud Scheduler](/guides/scheduled-cloud-scheduler),
@@ -198,22 +198,27 @@ What's allowed depends on whether the process hands work to a queue. With `bullm
 `mode` sets that: `colocated`, the default, enqueues work and runs it in the same process;
 `dispatch-only` enqueues and leaves the running to a separate worker; `worker-only` is that
 separate worker, which runs queued jobs and enqueues nothing. See
-[Separated workers](/guides/background-jobs-bullmq#4-separated-workers).
+[Separated workers](/guides/background-jobs-bullmq#4-separated-workers). A custom `dispatcher` on
+`createFlowState` with no `dispatchLocal` method hands work to an external queue too, so the
+refusals below apply to it as well.
 
-| `session` | Runs in | With `bullmqWorker` |
+| `session` | Runs in | With a queue |
 |---|---|---|
 | `{ key: (input) => string }` | a session derived from the key, created on first use | Works |
 | `{ id: (input) => string }` | a session that already exists | Refused from a process that hands work to the queue. From a `worker-only` worker it runs in process, without retries |
 | `{ from: true }` | the session that dispatched this run, as a reply | Refused from a process that hands work to the queue. From a `worker-only` worker it runs in process, without retries |
 
 Refused means the dispatch throws `DispatchRefusedError` with `refused: "external-dispatcher"`
-in `colocated` or `dispatch-only` mode, before anything is enqueued. A `{ key }` dispatch, a
-webhook delivery (with or without a `sessionId`) and a schedule tick run normally there.
+in `colocated` or `dispatch-only` mode, or under a custom external dispatcher, before anything
+is enqueued. A `{ key }` dispatch, a webhook delivery (with or without a `sessionId`) and a
+schedule tick run normally there.
 
 If you use Workforce, its channels are sessions that already exist, so the same rule reaches
-them. On a host that hands work to a queue, a client's post into a channel succeeds and its
-line appears, but no member is woken and nothing answers. A post into the channel from another flow is refused with
-`external-dispatcher`. See [Channels](/docs/workforce/channels#where-posting-from-another-flow-works-and-where-it-doesnt).
+them. When the run handling a client's post is on a process that hands work to the queue, such
+as a `colocated` worker, the post is written and its line appears, but no member is woken and
+nothing answers. A post from another flow, made on such a process, is refused with
+`external-dispatcher`. See
+[Channels](/docs/workforce/channels#where-posting-from-another-flow-works-and-where-it-doesnt).
 
 To get a hand-off's result back into the conversation that started it on any host, with
 retries, start the work with a `{ key }`, have it write what it found somewhere both sides can
@@ -256,10 +261,8 @@ no resolver takes its `userId` from the request body, which is for local develop
 **Wake.** Something outside the flow starts a run through your host: a webhook delivery, a
 schedule tick, or a custom inbound transport.
 
-**Dispatch.** A flow sends one unit of work to an entry through a `dispatcher()` block, to run
-in a session of its own or in one that already exists. A schedule's dispatch endpoint,
-`POST /api/flows/:flowKind/schedules/:scheduleId/dispatch`, is a different thing: your
-scheduler calling it is a wake.
+**Dispatch.** A flow sends one unit of work to an entry through a `dispatcher()` block. A
+schedule's dispatch endpoint is a different thing: your scheduler calling it is a wake.
 
 **Schedule tick.** Your scheduler calling a schedule's dispatch endpoint. FSD doesn't run a
 clock; it answers the call.
