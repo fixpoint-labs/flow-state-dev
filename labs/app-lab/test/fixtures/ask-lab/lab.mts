@@ -35,11 +35,12 @@ import {
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ASKER_KIND, defineAskerFlow } from "./asker.mts";
 
 /** The tree this Lab reads. */
-export const ASK_LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
+export const ASK_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
 
 /** The one person this Lab runs as. */
 export const ASK_LAB_USER_ID = "u_ask_lab";

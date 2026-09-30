@@ -22,7 +22,7 @@ export function openRows(snapshot: LoadedSnapshot): BoardRow[] {
  * Whether a row is held by a seat.
  *
  * A row names an `assignee`, which is a routing key a board's workers answer
- * to, not a seat address: a board may say `builder` for the seat `eng.builder`.
+ * to, not a seat address: a board may name `<name>` for the seat `<team>.<name>`.
  * So a row is the seat's when its assignee is the seat's id or the seat's own
  * name. Which seat actually claimed the row is not published to a browser.
  */

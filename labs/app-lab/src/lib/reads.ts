@@ -457,7 +457,7 @@ export function createLabReader(clients: LabClients): LabReader {
         }
         const seatIds = new Set(inventory.value.seats.map((s) => s.id));
         const seatKinds = new Set(inventory.value.seats.map((s) => s.kind).filter((k): k is string => k !== null));
-        const seatSessions = sessions.flatMap((s) =>
+        const seatSessions = sessions.flatMap((s): Array<{ session: SessionSummary; seatId: string | null }> =>
           s.flowId != null
             ? seatIds.has(s.flowId)
               ? [{ session: s, seatId: s.flowId }]
