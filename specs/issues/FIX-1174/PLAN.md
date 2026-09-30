@@ -42,7 +42,7 @@ flowchart TD
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V0 | before S1 | `bash specs/issues/FIX-1174/poc/reference-scan/scan.sh` **FAILS** on the branch point (20 live files at spec time) — the control that must fail |
+| V0 | before S1 | `bash specs/issues/FIX-1174/poc/reference-scan/scan.sh` **FAILS** on the branch point (re-derive the count at implement time; it drifts) — the control that must fail |
 | V1 | S3 | `/cli`'s barrel exports exactly the resolver seam and the shared re-exports; no removed name resolves |
 | V2 | S4–S8 | The scan **PASSES** (0 live files), and `scan.sh --control` **FAILS** listing exactly the planted file |
 | V3 | S2 S3 | `pnpm --filter @flow-state-dev/claude-code test` and `… typecheck` green (the typecheck includes `tsconfig.test-d.json`) |
@@ -93,3 +93,13 @@ outside `packages/claude-code` are docs, the sidebar and one core comment.
 - `src/cli/resolve-cli.ts` now has no consumer in the package and its header still describes
   "the dispatch block". Whether the seam stays, and how it is described, belongs to whoever owns
   the headless path. Flag to the coordinator; not in scope (fenced).
+
+## Notes from review
+
+Recorded verbatim for the implementer to weigh against real code; not folded into the design.
+
+- **cursor[bot], review summary:** "BR-1 through BR-10 and V0 through V7 largely restate the goal in `SPEC.md`; one check table in `PLAN.md` may be enough for implementers. Five linked docs plus three SVGs is template-heavy for a deletion issue but internally consistent."
+- **cursor[bot], PLAN.md (V2 / scan):** "If this script is wired to CI: per-file `grep` is slow at repo scale; one `git grep -E` plus the history filter preserves semantics and is much cheaper."
+- **cursor[bot], PLAN.md (Follow-ups):** "After removal, `/cli` is mostly a fenced resolver seam with stale dispatch wording. If implement-time search still finds zero importers, re-ask whether keeping `/cli` earns anything vs deleting the subpath in a follow-up."
+- **PR comment (second look), finding 1:** "After this PR, `/cli` exists only to export `defaultResolveClaudeCli` / `defaultClaudeCliExec` — a spawn-based resolver with **no consumer in the repo** … **Recommendation:** ask whoever fenced it (PLAN → Follow-ups) *now*, before merge, whether the seam ships to the headless owner's branch instead of staying on `main`. If the answer is \"keep\", fine, but record it in DECISIONS as a decision (D3), not only a fence … **What would change my mind:** a concrete, scheduled headless PR that imports it." *(Triage: already in DECISIONS → Settled as a coordinator fence, with "remove the whole `/cli` subpath" under what lost; raised to the coordinator as the follow-up above.)*
+- **PR comment (second look), smaller notes:** "`shared/` still exports `RemoteAgentTaskHandle`/`RemoteAgentSource`/`RemoteAgentStatus` (re-exported from the root and `/sdk`). After removal the only producer of a *remote* handle is gone. Not this PR's job, but say in the PR whether that envelope is intentionally kept as the headless path's contract, otherwise it's the next dead-surface cleanup." · "S3 keeps \"the shared-envelope re-exports\" on `/cli`. Root and `/sdk` already export them; on an entry reduced to the resolver seam they're redundant. Consider dropping them with the rest (only matters if the seam stays)." · "D1's evidence (\"~440 downloads/month, can't separate `/cli` from `/sdk`\") is weak in either direction. The changeset text is the only notice, so make sure it says the `/sdk` agent isn't a drop-in (already in SPEC; confirm it lands in the fragment)." · "BP-035 second path: … Also grep `apps/kitchen-sink` and `goals/` for `claude-code/cli` type-only or dynamic imports; `git ls-files` scanning covers it, but confirm the scan's name list includes `ClaudeCliNotFoundError`/`ClaudeRemoteDispatchError` (they're in the barrel)." *(The scan's pattern does include both error names.)*

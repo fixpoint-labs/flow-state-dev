@@ -27,17 +27,25 @@ is_history() {
     docs/internal/archive/*) return 0 ;;
     specs/*) return 0 ;;
     .changeset/*) return 0 ;;
-    # The one sanctioned live mention: the redirect that keeps the old URL alive.
-    apps/docs/docusaurus.config.ts) return 0 ;;
   esac
   return 1
 }
 
+# The one sanctioned live mention: the redirect's `from:` line that keeps the old
+# URL alive. Only that line is allowed; any other hit in the config is live.
+sanctioned_line() {
+  [[ "$1" == apps/docs/docusaurus.config.ts ]] || return 1
+  grep -qE '^[0-9]+:[[:space:]]*from:[[:space:]]*"/docs/tools/claude-code-cli"' <<<"$2"
+}
+
 files=$(git ls-files)
 if [[ "${1:-}" == "--control" ]]; then
-  planted="packages/core/src/__fix1174_control__.ts"
+  # Planted in a scratch dir at the repo root: outside every history path and
+  # outside any package, so it proves an unlisted live mention fails the scan.
+  plant_dir=$(mktemp -d "$ROOT/.fix1174-control.XXXXXX")
+  planted="${plant_dir#"$ROOT"/}/plant.ts"
   echo 'import { claudeRemoteDispatch } from "@flow-state-dev/claude-code/cli";' > "$planted"
-  trap 'rm -f "$planted"' EXIT
+  trap 'rm -rf "$plant_dir"' EXIT
   files=$(printf '%s\n%s\n' "$files" "$planted")
 fi
 
@@ -46,6 +54,11 @@ while IFS= read -r f; do
   [[ -f "$f" ]] || continue
   total=$((total + 1))
   hits=$(grep -nIE "$PATTERN" "$f" 2>/dev/null || true)
+  if [[ -n "$hits" ]]; then
+    kept=""
+    while IFS= read -r h; do sanctioned_line "$f" "$h" || kept+="$h"$'\n'; done <<<"$hits"
+    hits="${kept%$'\n'}"
+  fi
   [[ -z "$hits" ]] && continue
   if is_history "$f"; then history=$((history + 1)); else
     live=$((live + 1)); out+="$f"$'\n'"$(sed 's/^/    /' <<<"$hits")"$'\n'

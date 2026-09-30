@@ -27,7 +27,7 @@ nothing that uses the package breaks.**
 | **The real need** | Less unused surface for maintainers, and the docs stop pointing readers at a path that is going away ([FIX-1174](https://linear.app/fixpoint-labs/issue/FIX-1174)) |
 | **Smaller, and rejected** | "Delete the source files." Leaves the README, four docs pages, the sidebar and two doc comments describing a path that no longer exists, which is the half a reader actually sees |
 | **Bigger, and not this issue's** | Reshaping the package around a headless path. That path is not on `main` (it lived on a pull request that closed unmerged), and the fence leaves the resolver seam alone |
-| **Not done if** | The package suite is green but a dependent was never typechecked · the docs build passes only because the broken-link check was relaxed · a live mention of the path survives in a README or doc comment |
+| **Not done if** | The package suite is green but a dependent was never typechecked · the docs build passes only because the broken-link check was relaxed · a live mention of the path survives in a README or doc comment (the fenced resolver seam's own header is the one known exception; see DECISIONS → Settled) |
 
 **No goal check applies:** this is a removal, with no new behaviour to exercise on a real path.
 What proves the goal instead is the reference scan retained with this spec
