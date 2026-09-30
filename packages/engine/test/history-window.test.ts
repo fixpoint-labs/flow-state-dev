@@ -38,6 +38,8 @@ function completedTurn(sessionId: string, n: number): RequestRecord {
   return {
     id,
     flowKind: "win-flow",
+    flowId: "win-flow",
+    orgId: DEFAULT_ORG_ID,
     actionName: "run",
     userId: "u1",
     sessionId,
@@ -83,6 +85,11 @@ describe("history windowing (Slice C)", () => {
 
     expect(listSpy).toHaveBeenCalledWith({
       sessionId: "sess_w",
+      tenantId: undefined,
+      userId: "u1",
+      orgId: DEFAULT_ORG_ID,
+      flowKind: "win-flow",
+      flowId: "win-flow",
       status: "completed",
       limit: 50,
       orderBy: "startedAtMs",
