@@ -26,6 +26,7 @@ import type {
   Skill,
   SkillState,
 } from "@flow-state-dev/core";
+import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 import {
   parseFrontmatterYaml,
   parseInlineMapping,
@@ -55,25 +56,6 @@ export const MAX_COMPATIBILITY_LENGTH = 500;
 
 /** Names disallowed as skill names (reserved by the framework). */
 const RESERVED_NAMES = new Set(["_meta", ""]);
-
-/**
- * Windows device names, refused as skill names: a folder with one of these
- * names loads on macOS and Linux, and then the repository cannot be checked
- * out on Windows. Numbered devices run 1–9 — `com0` and `lpt0` are ordinary
- * names there.
- *
- * A local copy of the list in `workforce`'s `validateSegment` and `engine`'s
- * filesystem store; `orchestration` can depend on neither. FIX-1428 owns
- * collapsing the copies into one.
- */
-const DOS_DEVICE_NAMES: ReadonlySet<string> = new Set([
-  "con",
-  "prn",
-  "aux",
-  "nul",
-  ...Array.from({ length: 9 }, (_, n) => `com${n + 1}`),
-  ...Array.from({ length: 9 }, (_, n) => `lpt${n + 1}`),
-]);
 
 /**
  * Pattern a valid skill name must match: lowercase `a-z`/`0-9` runs joined by
@@ -180,14 +162,18 @@ export function validateSkillName(name: string): void {
   if (RESERVED_NAMES.has(name)) {
     throw new Error(`Skill name "${name}" is reserved`);
   }
-  if (DOS_DEVICE_NAMES.has(name)) {
-    throw new Error(`Skill name "${name}" is a reserved device name on Windows`);
-  }
   if (!NAME_PATTERN.test(name)) {
     throw new Error(
       `Skill name "${name}" must be lowercase letters, digits, and single hyphens ` +
         `(not at the start or end)`,
     );
+  }
+  // A skill folder named after a Windows device loads on macOS and Linux, and
+  // then the repository cannot be checked out on Windows. The list is the
+  // shared one, which folds case; it runs after the pattern so `CON` keeps
+  // the lowercase message and only a lowercase device name reaches this one.
+  if (isWindowsReservedName(name)) {
+    throw new Error(`Skill name "${name}" is a reserved device name on Windows`);
   }
 }
 
