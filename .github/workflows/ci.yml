@@ -177,6 +177,11 @@ jobs:
       - name: No removed model-string syntax
         run: node scripts/validate-model-strings.mjs
 
+      # Unconditional too: a second copy of the Windows reserved device-name
+      # list drifts wherever it lands. The script header owns the rules.
+      - name: One Windows reserved-name list
+        run: node scripts/validate-reserved-names.mjs
+
       # Same shape and the same reason as the step above: a doc teaching the
       # superseded isolation coordinate is as wrong on main as on a PR. Wired
       # here rather than left beside the branch that wrote it — an unrun guard
