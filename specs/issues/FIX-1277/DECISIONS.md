@@ -23,16 +23,16 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Letting the two SQL stores import it from `@flow-state-dev/engine` at runtime |
-| **Because** | A store may import the engine for types only; that is a package-boundary rule, and lifting it would load the whole engine runtime into every store. Contracts is already under every store through core, has no dependencies, and the rule needs none (tenet 2: sharpen what exists, add nothing beside it) |
-| **Locks in** | The rule is public API of a published package. Changing what it accepts becomes a contracts release, and an outside adapter that imported it gets the change on upgrade. The architect's fence for this desk leaned this way; this card records the call |
+| **Because** | The engine route loads the whole engine runtime into every store for four small functions. For `store-sqlite` it is also against a rule: the package-boundary check lets it import the engine for types only. `store-postgres` has no entry in that check yet and already value-imports the engine once (its in-memory trace store), so there the bar is intent, not a rule; FIX-1278 is adding the entry. Contracts is already under every store through core, has no dependencies, and the rule needs none (tenet 2: sharpen what exists, add nothing beside it) |
+| **Locks in** | The rule is public API of a published package. Changing what it accepts becomes a contracts release, and an outside adapter that imported it gets the change on upgrade. `cloneValue` becomes a contracts export too; it is already public through `core/helpers`, so no new surface. The architect's fence for this desk leaned this way; this card records the call |
 
 ![D1, where the version rule lives. Chosen: contracts, a public helper. Instead of: the engine, imported at runtime by the stores. It comes down to what a store has to load: nothing new with contracts, the whole engine runtime otherwise. The price is visibility: contracts makes the rule public, the engine keeps it internal. Locks in the rule as public API of a published package. Flips if the rule ever needs something contracts can't depend on](figures/d1-contracts-home.svg)
 
 It comes down to what a store has to load: the engine route pulls its whole runtime into every store.
 
 **What would change my mind:** the rule needing something contracts can't depend on, such as a
-core type or the deep-copy helper. It doesn't today: the copy stays in the engine
-([Decided, not asked](#decided-not-asked)).
+core type. It doesn't today. The one helper it uses, the deep copy, imports nothing and moves
+with it ([Decided, not asked](#decided-not-asked)).
 
 <a name="open"></a>
 ## Open · Should the SQL write statements keep their own compare?
@@ -67,12 +67,16 @@ It comes down to concurrent writes: moving the compare changes how every SQL wri
 ## Decided, not asked
 
 - **Which semantics win: none had to.** The [census](poc/copy-census/check.mjs) finds every
-  copy identical. The one difference, the engine deep-copying a conflict's value, is intentional.
-  Nothing observable changes.
+  copy identical. The one difference, the engine deep-copying a conflict's value, becomes what
+  every store does. Nothing observable changes: the SQL stores build a conflict from a row parsed
+  for that one query, so a copy of it is indistinguishable from the original.
 - **The conflict report moves too**, not only the three guards the issue names: it restates the
   same "a deleted row reports no value" rule.
-- **The deep copy stays in the engine**, before it calls the shared builder. Only the in-memory
-  store needs it, and it needs a core helper contracts can't import.
+- **The deep copy moves with the builder.** `cloneValue` imports nothing, so it follows
+  `deepEqual`, `mapLimit` and the string-case helpers from core into contracts, leaving a
+  re-export shim in `core/helpers`. The builder copies, and the engine keeps no wrapper around it.
+  The SQL stores pay one small clone on an already-failed write. (Round 1 of review: the earlier
+  draft kept the copy in the engine on the belief that the helper couldn't move. It can.)
 - **The in-code compare (`checkWriteVersion`) stays in the engine.** It has one copy already.
 - **The version type moves with the rule**; the engine re-exports it and the row and conflict
   types under their current names.
@@ -100,3 +104,8 @@ It comes down to concurrent writes: moving the compare changes how every SQL wri
 - **Draft** — framed as removing duplication without changing behaviour; the rule moves to
   contracts and every store calls it; the compare inside the SQL statements stays, and whether it
   should is the one open question. One PR.
+- **Review round 1** — the deep-copy helper turned out to have no imports, so it moves to
+  contracts with the builder and the engine wrapper goes (the one change of approach). D1's
+  reason corrected: the type-only rule binds `store-sqlite` only. The census is name-based, so its
+  `--after` mode also probes for the guards' error text, and the Plan now says it complements the
+  conformance suite rather than standing in for it. The open question is unchanged.

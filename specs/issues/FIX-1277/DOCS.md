@@ -11,8 +11,9 @@ One package README gains the new public helpers.
 ## UPDATE · `packages/contracts/README.md` · the "Pure helpers" bullet
 
 - **Pure helpers** (`@flow-state-dev/contracts/helpers`) — `deepEqual` /
-  `looseDeepEqual`, `mapLimit` (bounded-concurrency map), `toError`
-  (unknown-throw coercion), the string-case utilities `camelToKebab` /
+  `looseDeepEqual`, `cloneValue` (structural deep copy), `mapLimit`
+  (bounded-concurrency map), `toError` (unknown-throw coercion), the
+  string-case utilities `camelToKebab` /
   `normalizeTagName`, and the resource-state version rule every
   `ResourceStateStore` adapter shares: `assertSetExpectedVersion` and
   `assertDeleteExpectedVersion` refuse a version the verb can't act on by

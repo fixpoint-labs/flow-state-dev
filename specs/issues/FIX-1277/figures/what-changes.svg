@@ -75,7 +75,7 @@
       <rect class="pkg" x="486" y="48" width="140" height="210" rx="5"/>
       <text class="t-b" x="498" y="70">engine</text>
       <text class="t-code" x="498" y="104">calls it</text>
-      <text class="t-s" x="498" y="122">keeps its deep copy</text>
+      <text class="t-s" x="498" y="122">keeps its in-code check</text>
     </g>
     <g id="a-pg">
       <rect class="pkg" x="636" y="48" width="140" height="210" rx="5"/>

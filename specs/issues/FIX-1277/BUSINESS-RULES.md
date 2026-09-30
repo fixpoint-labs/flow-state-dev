@@ -28,7 +28,7 @@ SQLite.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-9 | The source is searched for a definition of the guards or the conflict report | Exactly one, in contracts | Census, `--after` |
+| BR-9 | The source is searched for a definition of the guards or the conflict report | Exactly one in-code definition, in contracts. The compare inside each SQL write statement stays a restatement ([Open](DECISIONS.md#open)), kept honest by conformance and by no SQL line changing (BR-13) | Census, `--after` (names and the guards' error text) |
 | BR-10 | Contracts is built | It still imports nothing | `contracts-zero-dep.spec.ts` |
 | BR-11 | A store package imports the rule | The package-boundary check passes | `scripts/validate-package-boundaries.mjs` |
 | BR-12 | Code imports `ExpectedVersion`, `ResourceStateRow` or `ResourceStateConflict` from `@flow-state-dev/engine` | It still compiles | `pnpm typecheck` |
@@ -42,4 +42,5 @@ error); a lost race stays a returned conflict. Neither retries inside the store.
 ## Acceptance criteria this issue owns
 
 The conformance suite, with the new characterization case, is green on all four stores before
-and after; the census passes in `--after` mode where it fails on `main`; no SQL line changed.
+and after; no SQL line changed; the census passes in `--after` mode where it fails on `main`. The
+first two prove behaviour; the census proves structure only.

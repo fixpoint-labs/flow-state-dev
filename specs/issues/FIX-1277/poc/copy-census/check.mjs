@@ -1,8 +1,12 @@
 #!/usr/bin/env node
-// FIX-1277 spec evidence, throwaway. Re-derives the spec's factual base:
-// where the resource-store version-check rule is DEFINED, and whether the
-// copies still agree. Every non-test source file under packages/*/src is
-// scanned (totality), so a copy nobody listed fails the run.
+// FIX-1277 spec evidence, retained with the spec. Default mode re-derives the
+// spec's factual base: where the resource-store version-check rule is DEFINED,
+// and whether the copies still agree. `--after` is the implementation's
+// structural gate (PLAN V3): exactly one defining file, in contracts. It finds
+// copies by name and by the guards' error text; it proves structure, not
+// behaviour, and complements the conformance suite (V0/V2) and the SQL diff
+// check (V6) rather than replacing them. Every non-test source file under
+// packages/*/src is scanned (totality), so a copy nobody listed fails the run.
 //
 // Run from the repo root:
 //   node specs/issues/FIX-1277/poc/copy-census/check.mjs            # today: 3 copies, bodies agree
@@ -27,6 +31,12 @@ const BEFORE = [
 // The one documented, intentional difference: the engine copy deep-copies the
 // conflict's currentValue (the in-memory adapter hands in its retained row).
 const KNOWN = [[/cloneValue\((row\.state)\)/g, "$1"]];
+// The guards' error text is pinned byte for byte (PLAN guardrails), so a
+// renamed copy of a guard still carries it. `--after` counts the files that do.
+const MESSAGES = [
+  'must be a non-negative integer or "any"',
+  'is not supported by ResourceStateStore.delete'
+];
 
 const mode = process.argv.includes("--after") ? "after" : "before";
 const control = process.argv.includes("--control");
@@ -100,6 +110,10 @@ function check(files, expectMode) {
   } else {
     if (found.length !== 1 || !found[0].startsWith("packages/contracts/src/")) {
       failures.push(`expected exactly one defining file under packages/contracts/src, found: ${found.join(", ") || "none"}`);
+    }
+    const carriers = Object.keys(files).filter((f) => MESSAGES.some((m) => files[f].includes(m))).sort();
+    if (carriers.length !== 1 || !carriers[0].startsWith("packages/contracts/src/")) {
+      failures.push(`expected the guards' error text in exactly one file under packages/contracts/src, found: ${carriers.join(", ") || "none"}`);
     }
   }
   return { failures, found };

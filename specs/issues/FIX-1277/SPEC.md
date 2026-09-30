@@ -29,14 +29,18 @@ every store (memory, filesystem, Postgres, SQLite) calls it with no change anyon
 | **Smaller, and shipping** | Everything except the compare *inside* each SQL write statement. That compare has to stay in the statement to stay atomic, so it stays a restatement, pinned by the shared suite. This is [the open question](DECISIONS.md#open), and it is the hardest sign-off line |
 | **Smaller, and rejected** | Keep the copies and lean on the shared suite. The suite only catches the cases it lists, and every edit still needs remembering three times |
 | **Bigger, and not this issue's** | The same duplication on the scope-store side. The issue names it a follow-up |
-| **Not done if** | A copy survives in any package · an error's class or text changes on any store · `@flow-state-dev/engine` stops exporting the row, conflict or version types · the suite is green but never ran against Postgres or SQLite |
+| **Not done if** | An in-code copy survives in any package · an error's class or text changes on any store · `@flow-state-dev/engine` stops exporting the row, conflict or version types · the suite is green but never ran against Postgres or SQLite |
+
+**What ships:** one in-code implementation of the guards and the conflict report. The compare
+inside each SQL write statement is not part of it and stays as it is.
 
 **No goal check applies:** this is a behaviour-preserving refactor, so there is no new outcome
 for a goal check to observe. Three things prove it instead. The resource-store conformance suite
 passes on all four stores before and after. A new characterization case pins the error class and
 exact text for every refused version on all four, and it passes on `main` *before* the move. The
 [census](poc/copy-census/check.mjs) passes in `--after` mode, and it fails on today's `main`
-(three defining files). That failure is the control.
+(three defining files). That failure is the control. The census finds copies by name and by the
+guards' error text, so it proves structure, not behaviour; the suite proves behaviour.
 
 ## What changes
 
