@@ -171,6 +171,8 @@ When an action is invoked, the framework executes this sequence:
 11. Fire `request.onFinished`
 12. Wait for `.sideChain()` work the hooks queued, then stamp the record's `finalizedAtMs` as its last write (see [Streaming](./streaming.md))
 
+Steps 10–12 apply to a request that finishes. A run that calls `ctx.suspend()` ends as `suspended` instead: it fires no `onCompleted`, `onErrored` or `onFinished`, drains no terminal-hook work and writes no `finalizedAtMs`, because the id stays resumable. Session retention evicts only completed requests, so it keeps a suspended one.
+
 Retry, continue and resume re-enter the instance recorded as the request's owner, and interrupted-request recovery groups entries by owner; the `:flowKind` path segment on those routes must equal it.
 
 ## Resources and Client Data
