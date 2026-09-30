@@ -14,6 +14,6 @@
     "registry/components/tool-grouping.ts",
     "registry/components/task-plan-state.ts"
   ],
-  "exclude": ["registry/**/*.tsx"],
+  "exclude": ["registry/**/*.tsx", "test/render/**"],
   "references": [{ "path": "../contracts" }, { "path": "../core" }]
 }

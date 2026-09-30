@@ -86,22 +86,22 @@ const DEFAULT_STATUS_CONFIG: Record<string, StatusConfig> = {
   },
   in_progress: {
     icon: Loader2Icon,
-    iconClassName: "text-blue-500 animate-spin",
+    iconClassName: "text-info animate-spin",
     label: "In progress",
   },
   blocked: {
     icon: PauseCircleIcon,
-    iconClassName: "text-amber-500",
+    iconClassName: "text-warning",
     label: "Blocked",
   },
   parked: {
     icon: EyeIcon,
-    iconClassName: "text-cyan-500",
+    iconClassName: "text-attention",
     label: "Parked",
   },
   completed: {
     icon: CheckCircle2Icon,
-    iconClassName: "text-green-500",
+    iconClassName: "text-success",
     goalClassName: "text-muted-foreground line-through",
     label: "Completed",
   },
@@ -429,15 +429,20 @@ function TaskPlanHeader({
   );
 }
 
+/**
+ * A board's phase. Every phase here is agents at work, so none takes
+ * `attention` (a person must act). Each keeps the hue it had before tokens:
+ * planning and replanning on `warning`'s amber, active on `info`. Reviewing
+ * was cyan, which no token carries, so it takes `info`, the nearest.
+ */
 function boardStatusToneClass(status: string): string {
   switch (status) {
     case "active":
-      return "text-blue-500";
+    case "reviewing":
+      return "text-info";
     case "planning":
     case "replanning":
-      return "text-amber-500";
-    case "reviewing":
-      return "text-cyan-500";
+      return "text-warning";
     default:
       return "text-muted-foreground";
   }
@@ -546,7 +551,7 @@ function TaskPlanRow({
 
   const assigneeBadge =
     task.assignee !== undefined ? (
-      <span className="ml-1 shrink-0 rounded bg-muted px-1 text-[10px] font-medium text-muted-foreground/80">
+      <span className="ml-1 shrink-0 rounded-sm bg-muted px-1 text-[10px] font-medium text-muted-foreground/80">
         {task.assignee}
       </span>
     ) : null;
@@ -554,7 +559,7 @@ function TaskPlanRow({
   const retryBadge =
     entry.kind === "retried" ||
     (typeof task.attempts === "number" && task.attempts > 1) ? (
-      <span className="ml-1 inline-flex shrink-0 items-center gap-0.5 text-[10px] text-amber-500">
+      <span className="ml-1 inline-flex shrink-0 items-center gap-0.5 text-[10px] text-warning">
         <RotateCcwIcon className="h-2.5 w-2.5" aria-hidden="true" />
         {task.attempts ?? 1}
       </span>
@@ -621,7 +626,7 @@ function TaskPlanRow({
         </p>
       )}
       {showFeedback && (
-        <p className="mt-0.5 whitespace-pre-wrap text-[11px] leading-snug text-amber-500/80">
+        <p className="mt-0.5 whitespace-pre-wrap text-[11px] leading-snug text-warning/80">
           {task.feedback}
         </p>
       )}
@@ -739,8 +744,8 @@ function TaskOutput({ text }: { text: string }) {
       className={cn(
         "prose-none text-xs leading-snug text-muted-foreground",
         "[&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:my-0.5",
-        "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px]",
-        "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-muted [&_pre]:p-2",
+        "[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px]",
+        "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded-sm [&_pre]:bg-muted [&_pre]:p-2",
         "[&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-2 [&_blockquote]:italic"
       )}
     >

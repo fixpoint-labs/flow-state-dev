@@ -34,7 +34,7 @@ export function Question({
         value={typeof form.value === "string" ? form.value : ""}
         rows={3}
         onChange={(e) => form.setValue(e.target.value)}
-        className="w-full rounded-md border bg-background p-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+        className="w-full rounded-md border bg-background p-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         placeholder="Type your answer…"
       />
       <SuspensionErrorLine error={form.error} />

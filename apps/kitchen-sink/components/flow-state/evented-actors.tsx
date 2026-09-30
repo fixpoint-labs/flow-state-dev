@@ -246,7 +246,7 @@ export function EventedActors({ item }: { item: ContainerItem }) {
         <span className="text-sm font-medium">Evented Actors</span>
         <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
           {isFinished ? (
-            <CheckCircle2Icon className="h-3 w-3 text-emerald-500" />
+            <CheckCircle2Icon className="h-3 w-3 text-success" />
           ) : (
             <Loader2Icon className="h-3 w-3 animate-spin" />
           )}
@@ -360,9 +360,9 @@ function Step({
       <div className="flex items-center gap-1.5">
         <div className="shrink-0">
           {status === "complete" ? (
-            <CheckCircle2Icon className="h-4 w-4 text-emerald-500" />
+            <CheckCircle2Icon className="h-4 w-4 text-success" />
           ) : status === "active" ? (
-            <Loader2Icon className="h-4 w-4 animate-spin text-blue-500" />
+            <Loader2Icon className="h-4 w-4 animate-spin text-info" />
           ) : (
             <CircleIcon className="h-4 w-4 text-muted-foreground/30" />
           )}
@@ -373,7 +373,7 @@ function Step({
             status === "complete"
               ? "text-foreground/70"
               : status === "active"
-                ? "text-blue-500"
+                ? "text-info"
                 : "text-muted-foreground/40"
           )}
           aria-hidden="true"
@@ -384,7 +384,7 @@ function Step({
             status === "complete"
               ? "text-foreground/80"
               : status === "active"
-                ? "text-blue-500"
+                ? "text-info"
                 : "text-muted-foreground/40"
           )}
         >
@@ -498,8 +498,8 @@ function EntryMarkdown({ text }: { text: string }) {
       className={cn(
         "prose-none text-xs leading-snug text-muted-foreground",
         "[&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:my-0.5",
-        "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px]",
-        "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-muted [&_pre]:p-2",
+        "[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px]",
+        "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded-sm [&_pre]:bg-muted [&_pre]:p-2",
         "[&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-2 [&_blockquote]:italic"
       )}
     >

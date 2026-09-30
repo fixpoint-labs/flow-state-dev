@@ -22,6 +22,14 @@
   --color-border: hsl(240 5.9% 90%);
   --color-input: hsl(240 5.9% 90%);
   --color-ring: hsl(240 5.9% 10%);
+  --color-success: hsl(142 76% 36%);
+  --color-success-foreground: hsl(0 0% 98%);
+  --color-warning: hsl(32 95% 44%);
+  --color-warning-foreground: hsl(0 0% 98%);
+  --color-info: hsl(217 91% 60%);
+  --color-info-foreground: hsl(0 0% 98%);
+  --color-attention: hsl(41 96% 40%);
+  --color-attention-foreground: hsl(240 10% 3.9%);
   --radius: 0.625rem;
 }
 
@@ -45,6 +53,14 @@
   --color-border: hsl(240 3.7% 15.9%);
   --color-input: hsl(240 3.7% 15.9%);
   --color-ring: hsl(240 4.9% 83.9%);
+  --color-success: hsl(142 69% 58%);
+  --color-success-foreground: hsl(240 10% 3.9%);
+  --color-warning: hsl(43 96% 56%);
+  --color-warning-foreground: hsl(240 10% 3.9%);
+  --color-info: hsl(213 94% 68%);
+  --color-info-foreground: hsl(240 10% 3.9%);
+  --color-attention: hsl(48 96% 53%);
+  --color-attention-foreground: hsl(240 10% 3.9%);
 }
 
 @layer base {

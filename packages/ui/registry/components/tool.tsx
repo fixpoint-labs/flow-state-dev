@@ -88,10 +88,10 @@ const statusIcons: Record<ToolState, ReactNode> = {
   pending: <CircleIcon className="size-4" />,
   streaming: <ClockIcon className="size-4 animate-pulse" />,
   running: <ClockIcon className="size-4 animate-pulse" />,
-  awaiting: <ClockIcon className="size-4 text-yellow-600 dark:text-yellow-400" />,
-  completed: <CheckCircleIcon className="size-4 text-green-600 dark:text-green-400" />,
-  error: <XCircleIcon className="size-4 text-red-600 dark:text-red-400" />,
-  denied: <XCircleIcon className="size-4 text-orange-600 dark:text-orange-400" />,
+  awaiting: <ClockIcon className="size-4 text-attention" />,
+  completed: <CheckCircleIcon className="size-4 text-success" />,
+  error: <XCircleIcon className="size-4 text-destructive" />,
+  denied: <XCircleIcon className="size-4 text-warning" />,
 };
 
 export const getStatusBadge = (state: ToolState) => (
@@ -285,10 +285,10 @@ const groupStateIndicator: Record<ToolState, ReactNode> = {
   pending: <CircleIcon className="size-4 text-muted-foreground" />,
   streaming: <ClockIcon className="size-4 animate-pulse text-muted-foreground" />,
   running: <ClockIcon className="size-4 animate-pulse text-muted-foreground" />,
-  awaiting: <ClockIcon className="size-4 text-yellow-600 dark:text-yellow-400" />,
-  completed: <CheckCircleIcon className="size-4 text-green-600 dark:text-green-400" />,
-  error: <XCircleIcon className="size-4 text-red-600 dark:text-red-400" />,
-  denied: <XCircleIcon className="size-4 text-orange-600 dark:text-orange-400" />,
+  awaiting: <ClockIcon className="size-4 text-attention" />,
+  completed: <CheckCircleIcon className="size-4 text-success" />,
+  error: <XCircleIcon className="size-4 text-destructive" />,
+  denied: <XCircleIcon className="size-4 text-warning" />,
 };
 
 export type ToolGroupProps = {

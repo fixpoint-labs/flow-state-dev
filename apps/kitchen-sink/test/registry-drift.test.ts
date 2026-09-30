@@ -49,10 +49,10 @@
  * under `components/flow-state/` must have a same-path source in the
  * registry, unless it's named in `APP_ONLY_FILES` with a reason.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { compareRegistryCopies } from "../../../packages/ui/scripts/registry-drift";
 
 /**
  * Files under `components/flow-state/` with no registry source, kept
@@ -64,71 +64,34 @@ import { describe, expect, it } from "vitest";
 const APP_ONLY_FILES: Record<string, string> = {};
 
 const testDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(testDir, "../../..");
-const registrySourceDir = join(repoRoot, "packages/ui/registry/components");
-const kitchenSinkTargetDir = join(repoRoot, "apps/kitchen-sink/components/flow-state");
+const kitchenSinkTargetDir = join(testDir, "../components/flow-state");
 
-/** Every file under `dir`, recursively, as paths relative to `dir`. */
-function walk(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      out.push(...walk(full).map((f) => join(entry, f)));
-    } else {
-      out.push(entry);
-    }
-  }
-  return out;
-}
-
-/** Registry source files this app is expected to have installed a copy of. */
-function comparableSourceFiles(): string[] {
-  return walk(registrySourceDir)
-    .filter((f) => !f.endsWith(".stories.tsx"))
-    .filter((f) => !f.startsWith("generative/"))
-    .sort();
-}
+/**
+ * The comparison lives beside the registry, so any app that installs copies
+ * runs the same one over its own folder. What stays here is this app's scope:
+ * the two `generative/` components it never installed.
+ */
+const drift = () =>
+  compareRegistryCopies({
+    targetDir: kitchenSinkTargetDir,
+    notInstalled: (file) => file.startsWith("generative/"),
+    appOnly: APP_ONLY_FILES,
+  });
 
 describe("kitchen-sink registry drift (FIX-1477 V8)", () => {
   it("has every registry component byte-identical to its installed kitchen-sink copy", () => {
-    const files = comparableSourceFiles();
+    const { compared, mismatches } = drift();
 
     // 36 of the registry's component-directory files (all non-`.stories.tsx`
     // files outside `generative/`) are installed here. If that count moves,
     // this test's scope moved with it and needs re-reading before trusting a
     // green result.
-    expect(files.length).toBe(36);
-
-    const mismatches: string[] = [];
-    for (const file of files) {
-      const sourcePath = join(registrySourceDir, file);
-      const targetPath = join(kitchenSinkTargetDir, file);
-      const source = readFileSync(sourcePath, "utf8");
-      let target: string;
-      try {
-        target = readFileSync(targetPath, "utf8");
-      } catch {
-        mismatches.push(`${file} (not installed in kitchen-sink)`);
-        continue;
-      }
-      if (source !== target) {
-        mismatches.push(file);
-      }
-    }
+    expect(compared.length).toBe(36);
 
     expect(mismatches).toEqual([]);
   });
 
   it("has no installed file that lacks a registry source (the symmetric direction)", () => {
-    const targetFiles = walk(kitchenSinkTargetDir).sort();
-
-    const forks = targetFiles.filter(
-      (file) =>
-        !(file in APP_ONLY_FILES) &&
-        !existsSync(join(registrySourceDir, file))
-    );
-
-    expect(forks).toEqual([]);
+    expect(drift().forks).toEqual([]);
   });
 });
