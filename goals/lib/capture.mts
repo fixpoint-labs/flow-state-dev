@@ -16,7 +16,9 @@
  * keeping the last snapshot, once, for everyone.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { intentFreeEnv } from "./env.mts";
 
 /** The `{ command, events, result }` document `fsdev run --capture` writes. */
@@ -66,7 +68,11 @@ export interface RunFsdevOptions {
   app: string;
   flow: string;
   action: string;
-  /** Serialized to JSON for `-i`. Omit for actions taking no input (sends `{}`). */
+  /**
+   * Serialized to JSON and handed over as `--input-file`. Omit for actions
+   * taking no input (sends `{}`). Any string survives, quotes and newlines
+   * included; see {@link runFsdev}.
+   */
   input?: unknown;
   /** `--model`. Omit to let the app's intent ladder decide (and record what ran). */
   model?: string;
@@ -108,10 +114,20 @@ export interface RunFsdevOptions {
  * clean refusal at a gate is a PASS for `gate-non-equity`), so the caller
  * decides what it means. This replaces five near-identical local `fsdev()`
  * wrappers that each re-derived the exit code from the thrown error.
+ *
+ * The input goes through a temp file, never inline `-i '<json>'`: pnpm re-quotes
+ * the args into a shell command line for the app's `fsdev` script, and that
+ * relay does not round-trip every string on every pnpm version (the pinned one
+ * doubles each backslash, so a `"` in the input fails `JSON.parse`). A path has
+ * nothing to corrupt. `goals/scripts/check-run-fsdev-input.mts` guards this.
  */
 export function runFsdev(options: RunFsdevOptions): number {
+  const inputDir = mkdtempSync(join(tmpdir(), "fsdev-input-"));
+  const inputFile = join(inputDir, "input.json");
+  writeFileSync(inputFile, JSON.stringify(options.input ?? {}));
+
   const args = ["fsdev", "run", options.flow, options.action];
-  args.push("-i", JSON.stringify(options.input ?? {}));
+  args.push("--input-file", inputFile);
   if (options.model !== undefined) args.push("--model", options.model);
   if (options.session !== undefined) args.push("--session", options.session);
   if (options.capture !== undefined) args.push("--capture", options.capture);
@@ -132,6 +148,8 @@ export function runFsdev(options: RunFsdevOptions): number {
   } catch (err) {
     const status = (err as { status?: number }).status;
     return typeof status === "number" ? status : 1;
+  } finally {
+    rmSync(inputDir, { recursive: true, force: true });
   }
 }
 

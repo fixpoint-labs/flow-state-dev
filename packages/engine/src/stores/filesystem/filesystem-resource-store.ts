@@ -13,10 +13,10 @@
  */
 import { link, lstat, mkdir, readdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 import type { StorageScopeType } from "../types";
 import {
   collectRecords,
-  isWindowsReservedName,
   keyToRelativePath
 } from "./resource-path";
 

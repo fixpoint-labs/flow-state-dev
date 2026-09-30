@@ -164,7 +164,7 @@ export const { GET, POST, DELETE } = createFlowApiRouter({ registry });
 // React: one provider wraps the whole session lifecycle
 function App() {
   return (
-    <FlowProvider flowKind="research-assistant" userId="user_1" baseUrl="/api">
+    <FlowProvider flowKind="research-assistant" userId="user_1">
       <ResearchApp />
     </FlowProvider>
   );
