@@ -1,0 +1,54 @@
+<svg viewBox="0 0 940 300" role="img" aria-label="A two-by-two grid for one cancel. Columns are the two things that can happen between the cancel route's owner check and its write: another tenant's request takes the freed id in the same millisecond, or the owner's own retry hands the record off. Top row, today, fenced on createdAt: in the first column both records share a createdAt, so the cancel is recorded on the other tenant's request and stops it; in the second the hand-off rewrote createdAt, so the owner is told 404 while the request keeps running. Bottom row, after, fenced on the incarnation: the first misses with a 404 and nothing written, and the second records the cancel on the owner's request with a 202."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --code:#2C7C69; --code-soft:#DCEDE7; --gone:#A9544F; --gone-soft:#F4E2E0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --code:#5DBBA1; --code-soft:#14302A; --gone:#DE8A84; --gone-soft:#3A2220; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .bad   { fill:var(--gone-soft); stroke:var(--gone); stroke-width:1.6; }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-col { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="300"/>
+
+  <g id="columns">
+    <text class="t-lbl" x="232" y="26">BETWEEN THE CHECK AND THE WRITE</text>
+    <text class="t-col" x="232" y="48">Another tenant takes the id, same ms</text>
+    <text class="t-s" x="232" y="64">two requests, one createdAt</text>
+    <text class="t-col" x="588" y="48">The owner's retry hands it off</text>
+    <text class="t-s" x="588" y="64">one request, createdAt rewritten</text>
+  </g>
+
+  <g id="today">
+    <rect class="lane" x="16" y="78" width="908" height="98" rx="6"/>
+    <text class="t-lbl" x="32" y="102">TODAY</text>
+    <text class="t-s" x="32" y="120">fenced on</text>
+    <text class="t-s" x="32" y="136">createdAt</text>
+    <rect class="bad" x="232" y="92" width="340" height="70" rx="5"/>
+    <text class="t-bad" x="248" y="118">202 · lands on theirs</text>
+    <text class="t-s" x="248" y="138">the other tenant's run is stopped</text>
+    <rect class="bad" x="588" y="92" width="320" height="70" rx="5"/>
+    <text class="t-bad" x="604" y="118">404 · "no such request"</text>
+    <text class="t-s" x="604" y="138">while the owner's run keeps going</text>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="16" y="188" width="908" height="98" rx="6"/>
+    <text class="t-lbl" x="32" y="212">AFTER</text>
+    <text class="t-s" x="32" y="230">fenced on the</text>
+    <text class="t-s" x="32" y="246">incarnation</text>
+    <rect class="ok" x="232" y="202" width="340" height="70" rx="5"/>
+    <text class="t-ok" x="248" y="228">404 · misses</text>
+    <text class="t-s" x="248" y="248">nothing written, their run goes on</text>
+    <rect class="ok" x="588" y="202" width="320" height="70" rx="5"/>
+    <text class="t-ok" x="604" y="228">202 · recorded</text>
+    <text class="t-s" x="604" y="248">on the owner's own request</text>
+  </g>
+</svg>
