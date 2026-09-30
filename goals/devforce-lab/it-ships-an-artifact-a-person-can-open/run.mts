@@ -85,8 +85,7 @@ import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { RUN_STAMP, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../lab/host.mts";
-import { LEDGER_ID } from "../lab/board.mts";
+import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../lab/host.mts";
 import { PHASE } from "../lab/phase.mts";
 import { createNotifyLog, type NotifyLog } from "../lab/notify.mts";
 import { ACCEPTANCE_MODULE, runAcceptance } from "../lab/acceptance.mts";
@@ -122,7 +121,14 @@ const POST_LINE = `${ISSUE}: Add a greeting module to the repository.`;
 
 /** The row the EM files in answer, derived exactly as the manager derives it. */
 const TASK_ID = harnessTaskId(ISSUE, PHASE);
-const ROW_KEY = `${LEDGER_ID}/${TASK_ID}`;
+
+/**
+ * The row's storage key: the channel board's minted id, then the row id.
+ * The id is read off the lab, which read it off the tree.
+ */
+function rowKey(lab: Lab): string {
+  return `${lab.board.id}/${TASK_ID}`;
+}
 
 
 /** The branch prefix the manager cuts work on. */
@@ -769,12 +775,14 @@ await runGoal(async () => {
   /** Filled in once the run has been published, so the legs after `dispose` can read them. */
   let branch: string | undefined;
   let channelId = "";
+  let ledgerKey = "";
 
   try {
     if (lab.post === undefined || lab.transcript === undefined || lab.channelId === undefined) {
       return { failures: ["the lab opened no channel, so there is no door to post through"], evidence: "" };
     }
     channelId = lab.channelId;
+    ledgerKey = rowKey(lab);
 
     // ---- BR-9, first: the board does not start itself -------------------
     if ((await lab.row(TASK_ID)) !== undefined) {
@@ -810,7 +818,7 @@ await runGoal(async () => {
     // member, would leave the expected row exactly where it was and stay green.
     const allRows = await lab.rows();
     const rowKeys = Object.keys(allRows);
-    if (rowKeys.length !== 1 || rowKeys[0] !== ROW_KEY) {
+    if (rowKeys.length !== 1 || rowKeys[0] !== rowKey(lab)) {
       failures.push(
         `the board holds ${rowKeys.length} row(s) [${rowKeys.join(", ")}]; BR-7 says one post ` +
           `files exactly one row, addressed to the coder assignee`,
@@ -1039,7 +1047,7 @@ await runGoal(async () => {
   // connection, which is a weaker claim than BR-11 makes.
   const freshRead = spawnSync(
     "pnpm",
-    ["tsx", REREAD, STORE_FILE, LAB_USER_ID, ROW_KEY, channelId],
+    ["tsx", REREAD, STORE_FILE, LAB_USER_ID, LAB_ORG_ID, ledgerKey, channelId],
     { encoding: "utf8", timeout: 120_000 },
   );
   if (freshRead.status !== 0) {

@@ -48,7 +48,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run } from "./exec";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, isAskMarkerPath } from "./ask";
 import { identityFromCommonDir } from "./guards";
-import { DERIVED_IDENTITY, OWNED_SEGMENT } from "./identity";
+import { DERIVED_IDENTITY, LOCK_SUFFIX, OWNED_SEGMENT } from "./identity";
 
 /** Where checkouts and their lock files live, and what they are cut from. */
 export interface WorkspaceConfig {
@@ -208,11 +208,12 @@ export function assertDerivedIdentity(label: string, value: string): string {
   // Folded for the same reason `assertSafeSegment` is: this value becomes a
   // path component too, and an identity built elsewhere must not be the one
   // that reintroduces case into the derivation.
-  if (!DERIVED_IDENTITY.test(value)) {
+  if (!DERIVED_IDENTITY.test(value) || LOCK_SUFFIX.test(value)) {
     throw new Error(
       `[harness-manager] ${label} "${value}" is not a usable identity segment — ` +
-        `letters and digits, separated by \`-\` or \`_\`. No dots (a git ref may not ` +
-        `end in "." or ".lock"), and nothing that could climb out of a directory.`,
+        `letters and digits, separated by \`-\`, \`_\` or a single \`.\`. No leading, ` +
+        `trailing or repeated dot and no ".lock" ending (a git ref refuses each), and ` +
+        `nothing that could climb out of a directory.`,
     );
   }
   return canonicalSegment(value);

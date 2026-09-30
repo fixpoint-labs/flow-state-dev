@@ -135,6 +135,10 @@ describe("served setup failure (FIX-1511)", () => {
       typeof item.message === "string" &&
       item.message.includes("FSDEV_DEFAULT_MODEL must be a")
     )).toBe(true);
+    // The failed record carries its cause as the action result, in the same
+    // write as the status (FIX-1661), so a client listing requests reads why.
+    expect(record?.result?.error?.message).toContain("FSDEV_DEFAULT_MODEL must be a");
+    expect(record?.result).not.toHaveProperty("output");
   });
 
   it("refuses a caller who does not own the session before anything is acknowledged or written", async () => {

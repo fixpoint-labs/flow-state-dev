@@ -74,6 +74,19 @@ describe("declaring a board", () => {
     }
   });
 
+  it("refuses a board named `lock` in any case, in the rule's own words", () => {
+    // `lock` would mint `eng.a.lock`, and git refuses a branch part ending in
+    // `.lock`: a board no coding run could ever work.
+    for (const reserved of ["lock", "LOCK", "Lock"]) {
+      expect(() => channelInstances([record("eng.a", { boards: [reserved] })])).toThrow(
+        /declares board "[lL][oO][cC][kK]", and the board name is reserved\. a board name is a plain local name/
+      );
+      expect(() => channelBoard("eng.a", reserved)).toThrow(/not `lock` in any case/);
+    }
+    // A name that only contains it is an ordinary name.
+    expect(() => channelInstances([record("eng.a", { boards: ["locks", "unlock"] })])).not.toThrow();
+  });
+
   it("refuses one channel that declares the same board name twice, naming the minted id", () => {
     // Named for what it checks. The cross-channel arm of the same guard is NOT
     // exercised here and cannot be from a roster this package builds: channel

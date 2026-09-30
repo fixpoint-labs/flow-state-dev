@@ -72,13 +72,13 @@ export function snapshotSupersedesLive(
 }
 
 /**
- * A finished request's raw log for reading its outcome: the polled log, plus
- * any item only its stream saw.
+ * A finished request's raw log for the trace views: the polled log, plus any
+ * item only its stream saw.
  *
- * A transient block's traces (an action's root among them, when its block is
- * transient) stream live and are never persisted, so the polled log lacks
- * them. The polled entry wins for an item both carry; stream-only items are
- * appended in the order the stream saw them.
+ * A transient block's traces stream live and are never persisted, so the
+ * polled log lacks them. The polled entry wins for an item both carry;
+ * stream-only items are appended in the order the stream saw them. A Tasks
+ * row never reads this: its answer is the request's recorded result.
  *
  * @param polled The request's polled raw log.
  * @param streamed What a stream delivered for the same request, if any.

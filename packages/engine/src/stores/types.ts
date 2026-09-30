@@ -226,6 +226,57 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    */
   abortRequested?: boolean;
   abortedAt?: number;
+  /**
+   * What the action came to, written in the same record write as the final
+   * status (FIX-1661). Built only by `buildRequestActionResult`
+   * (`execution/request-action-result.ts`), so every writer of a final status
+   * fills it the same way.
+   *
+   * Read absence by status (BP-030; guard with `== null`):
+   *
+   * - `completed`, `incomplete` or `failed` with no `result` — no result was
+   *   recorded: a record written before this field existed.
+   * - `aborted` or `interrupted` — never carries one; the status says it.
+   * - `in_progress` or `suspended` — not finished yet.
+   *
+   * The engine stores the value; it never interprets it (a refusal convention
+   * such as `{ ok: false }` belongs to whoever reads it).
+   */
+  result?: RequestActionResult;
+};
+
+/**
+ * A request's action result, as its record stores it (FIX-1661).
+ *
+ * Carries the same keys as `ExecutionResult`'s `output` and `error`. The
+ * values can differ: the record stores a JSON copy of the output (a `Date`
+ * becomes its ISO string, an object key whose value is `undefined` is left
+ * out), while an in-process caller of `runAction` receives the live value. An
+ * output JSON would otherwise change (`NaN`, `±Infinity`, a function or symbol,
+ * an `undefined` array slot, a `Map`, `Set` or `Error`) is not stored at all:
+ * `outputNotRecorded`.
+ *
+ * | Request ended | `result` |
+ * |---|---|
+ * | `completed` / `incomplete` | `{ output }`; `{}` when the action returned nothing |
+ * | `failed` | `{ error }`, plus `output` when the action answered before a completion hook failed the request; `{}` when the writer had no cause |
+ * | any of those, output not storable as JSON | `outputNotRecorded: true` in place of `output` |
+ * | `aborted` / `interrupted` / `suspended` | absent |
+ */
+export type RequestActionResult = {
+  /** The action block's own return value, stored as JSON. */
+  output?: unknown;
+  /**
+   * The action returned a value that cannot be stored as JSON (a `BigInt`, a
+   * cycle), one JSON would silently change (`NaN`, `±Infinity`, a function or
+   * symbol, an `undefined` array slot, a `Map`, `Set`, `Error` or other
+   * built-in container).
+   * The status still landed; only the value was dropped.
+   * Distinct from `{}`, which means the action returned nothing.
+   */
+  outputNotRecorded?: true;
+  /** Why the request failed, normalized as `FlowError`'s `code` and `message`. */
+  error?: { code: string; message: string };
 };
 
 /**
@@ -239,6 +290,8 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
  * - `state` — has its own versioned verbs (`patchField` / `incField` / `pushToArray`).
  * - `items` — lives in a child table on the persistent adapters, written via `persistItems`.
  * - `updatedAt` — supplied as an explicit argument, mirroring the delta verbs.
+ * - `result` — written only with the final status, in that same write
+ *   (FIX-1661), never on its own.
  * - `status` and the indexed access-path fields (`flowKind`, `flowId`, `userId`,
  *   `sessionId`, `orgId`, `tenantId`) — denormalized into columns by the SQL adapters. `status`
  *   is additionally what the predicate reads, and a verb that both predicates on
@@ -254,6 +307,7 @@ export type ConditionalRequestFields = Partial<
     | "updatedAt"
     | "state"
     | "items"
+    | "result"
     | "status"
     | "flowKind"
     | "flowId"

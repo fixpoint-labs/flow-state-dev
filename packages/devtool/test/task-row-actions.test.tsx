@@ -49,25 +49,9 @@ const schemas: Record<string, ActionInputSchema> = {
   cancelTask_issues: withTaskId,
 };
 
-/** One request as the panel's request groups carry it. */
-function request(requestId: string, status: string, rawItems: unknown[]) {
-  return { requestId, status, rawItems } as RowActions["requests"][number];
-}
-
-/** The root trace of a request, carrying the handler's output inline. */
-function rootTrace(requestId: string, output: unknown, status = "completed", error?: string) {
-  return {
-    id: `${requestId}_trace`,
-    type: "block_trace",
-    requestId,
-    blockName: "cancelTask_issues",
-    blockKind: "handler",
-    blockInstanceId: `${requestId}:root:0`,
-    status,
-    provenance: { blockName: "cancelTask_issues", blockInstanceId: `${requestId}:root:0`, phase: "main" },
-    ...(output === undefined ? {} : { output: { kind: "inline", value: output } }),
-    ...(error === undefined ? {} : { error: { message: error } }),
-  };
+/** One request as the session's request list reports it: status and recorded result. */
+function request(requestId: string, status: string, result?: RowActions["requests"][number]["result"]) {
+  return { requestId, status, ...(result === undefined ? {} : { result }) } as RowActions["requests"][number];
 }
 
 function Harness(props: Partial<RowActions> & { names?: string[] }) {
@@ -151,14 +135,14 @@ describe("running one", () => {
   }
 
   it("BR-14 · reports success when the tool answered ok", async () => {
-    const outcome = await submitted([request("req_1", "completed", [rootTrace("req_1", { ok: true })])]);
+    const outcome = await submitted([request("req_1", "completed", { output: { ok: true } })]);
     expect(outcome?.getAttribute("data-outcome")).toBe("ok");
   });
 
   it("BR-15 · reports a refusal returned as a value, in the tool's words, never as success", async () => {
     const error = 'terminal_task_write_declined: task "task-a" is cancelled, which is terminal.';
     const outcome = await submitted([
-      request("req_1", "completed", [rootTrace("req_1", { ok: false, error, taskId: "task-a" })]),
+      request("req_1", "completed", { output: { ok: false, error, taskId: "task-a" } }),
     ]);
     expect(outcome?.getAttribute("data-outcome")).toBe("refused");
     expect(outcome?.textContent).toContain(error);
@@ -166,16 +150,28 @@ describe("running one", () => {
 
   it("BR-15 · reports a failed request with its error", async () => {
     const outcome = await submitted([
-      request("req_1", "failed", [rootTrace("req_1", undefined, "failed", "board-not-declared: not this channel")]),
+      request("req_1", "failed", { error: { code: "execution_error", message: "board-not-declared: not this channel" } }),
     ]);
     expect(outcome?.getAttribute("data-outcome")).toBe("failed");
     expect(outcome?.textContent).toContain("board-not-declared");
   });
 
-  it("BR-15 · says the outcome is not visible when the request left no trace", async () => {
-    const outcome = await submitted([request("req_1", "completed", [])]);
+  it("shows what the action returned when it answered ok", async () => {
+    const outcome = await submitted([request("req_1", "completed", { output: { ok: true, taskId: "task-a" } })]);
+    expect(outcome?.getAttribute("data-outcome")).toBe("ok");
+    expect(outcome?.textContent).toContain('{"ok":true,"taskId":"task-a"}');
+  });
+
+  it("says no result was recorded for a finished request that has none, never done or refused", async () => {
+    const outcome = await submitted([request("req_1", "completed")]);
     expect(outcome?.getAttribute("data-outcome")).toBe("unknown");
-    expect(outcome?.textContent).toMatch(/isn't visible/i);
+    expect(outcome?.textContent).toBe("No result recorded for this request.");
+  });
+
+  it("says a return value that could not be recorded is unknown", async () => {
+    const outcome = await submitted([request("req_1", "completed", { outputNotRecorded: true })]);
+    expect(outcome?.getAttribute("data-outcome")).toBe("unknown");
+    expect(outcome?.textContent).toBe("Finished, but its return value couldn't be recorded.");
   });
 
   it("BR-15 · shows a dispatch that threw, and keeps the form filled for a retry", async () => {
@@ -194,7 +190,7 @@ describe("running one", () => {
       .fn<RowActions["run"]>()
       .mockResolvedValueOnce({ requestId: "req_1" })
       .mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
-    const answered = [request("req_1", "completed", [rootTrace("req_1", { ok: true })])];
+    const answered = [request("req_1", "completed", { output: { ok: true } })];
     const { rerender } = render(<Harness run={run} requests={answered} />);
     await open();
     await userEvent.click(within(row()).getByRole("button", { name: "cancelTask_issues" }));
@@ -205,8 +201,8 @@ describe("running one", () => {
     expect(row().querySelector("[data-outcome]")?.getAttribute("data-outcome")).toBe("pending");
 
     release({ requestId: "req_2" });
-    const refused = rootTrace("req_2", { ok: false, error: "terminal_task_write_declined" });
-    rerender(<Harness run={run} requests={[...answered, request("req_2", "completed", [refused])]} />);
+    const refused = { output: { ok: false, error: "terminal_task_write_declined" } };
+    rerender(<Harness run={run} requests={[...answered, request("req_2", "completed", refused)]} />);
     await screen.findByText(/Refused: terminal_task_write_declined/);
   });
 
@@ -231,8 +227,8 @@ describe("running one", () => {
       <Harness
         run={run}
         requests={[
-          request("req_1", "completed", [rootTrace("req_1", { ok: true })]),
-          request("req_2", "completed", [rootTrace("req_2", { ok: false, error: "task is cancelled" })]),
+          request("req_1", "completed", { output: { ok: true } }),
+          request("req_2", "completed", { output: { ok: false, error: "task is cancelled" } }),
         ]}
       />
     );
@@ -249,8 +245,8 @@ describe("running one", () => {
 
   it("reads only the request it sent, not an older one on the same session", async () => {
     const outcome = await submitted([
-      request("req_old", "completed", [rootTrace("req_old", { ok: true })]),
-      request("req_1", "in_progress", []),
+      request("req_old", "completed", { output: { ok: true } }),
+      request("req_1", "in_progress"),
     ]);
     expect(outcome?.getAttribute("data-outcome")).toBe("pending");
   });

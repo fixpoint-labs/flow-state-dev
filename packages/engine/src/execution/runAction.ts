@@ -43,6 +43,7 @@ import { normalizeError, displayCause } from "../errors/normalize-error";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
 import { executeBlock } from "./executeBlock";
+import { recordOutput, settledRecordFields, type RecordedOutput, type RequestSettlement } from "./request-action-result";
 import { getResponseItems, getResponseItemCount } from "./internal/response";
 import {
   applyNormalizedErrorSeam,
@@ -482,7 +483,7 @@ async function settleFreshRequestSetupFailure(options: {
       );
       const failed: RequestRecord = {
         ...base,
-        status: "failed",
+        ...settledRecordFields({ status: "failed", error: normalized }),
         failedAtMs: now,
         updatedAt: now,
         items
@@ -523,14 +524,53 @@ async function settleFreshRequestSetupFailure(options: {
   return writtenIncarnation;
 }
 
+/** Record fields a patch may carry beside the status and the result. */
+type RequestRecordFields = Omit<Partial<RequestRecord>, "status" | "result">;
+
+/**
+ * Applies a partial request-record update that does not end the request.
+ *
+ * Typed so it cannot write a final status: ending a request goes through
+ * {@link settleRequestRecord}, which writes the action's result in the same
+ * write (FIX-1661).
+ */
+async function patchRequestRecord(
+  stores: StoreRegistry,
+  requestId: string,
+  patch: RequestRecordFields & { status?: "in_progress" }
+): Promise<string | undefined> {
+  return writeRequestRecordPatch(stores, requestId, patch);
+}
+
+/**
+ * Ends a request's record: its status and the action result built from
+ * `settlement` land in one write, so a poller never sees a final status
+ * without its result (FIX-1661). A suspension goes through here too, and
+ * clears any result a prior write left.
+ */
+async function settleRequestRecord(
+  stores: StoreRegistry,
+  requestId: string,
+  settlement: RequestSettlement,
+  fields: RequestRecordFields
+): Promise<string | undefined> {
+  return writeRequestRecordPatch(stores, requestId, {
+    ...fields,
+    ...settledRecordFields(settlement)
+  });
+}
+
 /**
  * Applies a partial request-record update when a record exists.
  * Strips ephemeral content from items before writing to the store.
  *
+ * Internal: call {@link patchRequestRecord} or {@link settleRequestRecord},
+ * whose types keep a final status from landing without its result.
+ *
  * @returns The incarnation of the record written, or `undefined` when there
  *   was none to patch.
  */
-async function patchRequestRecord(
+async function writeRequestRecordPatch(
   stores: StoreRegistry,
   requestId: string,
   patch: Partial<RequestRecord>
@@ -2056,6 +2096,12 @@ async function runActionAttempt<
     throw startupError;
   }
 
+  // What the action block returned, once it has. Set before the completion
+  // hooks run, so a hook that fails the request leaves it on the record.
+  // `recorded` is the record's snapshot, taken then too, so a hook that
+  // mutates the returned object cannot change the recorded answer.
+  let actionAnswer: { output: unknown; recorded: RecordedOutput } | undefined;
+
   try {
     // Re-throw deferred parse error now that we have ctx for error handling.
     if (parseError !== undefined) {
@@ -2161,8 +2207,7 @@ async function runActionAttempt<
         await flushCheckpoints();
         await flushTraces();
 
-        await patchRequestRecord(options.stores, requestId, {
-          status: "suspended",
+        await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: itemsToPersist()
         });
         ctx.requestRuntime.status = "suspended";
@@ -2220,6 +2265,10 @@ async function runActionAttempt<
     if (result.error !== undefined) {
       throw result.error;
     }
+    // The action has answered. Anything that fails the request from here on
+    // (a completion hook, the token budget) keeps this answer on the failed
+    // record beside its own error (FIX-1661).
+    actionAnswer = { output: result.output, recorded: recordOutput(result.output) };
 
     const tokenBudget = getActionTokenBudget(action);
     let terminalStatus: "completed" | "incomplete" = "completed";
@@ -2354,14 +2403,18 @@ async function runActionAttempt<
 
     const completedAt = Date.now();
     const items = itemsToPersist();
-    terminalRecordIncarnation = await patchRequestRecord(options.stores, requestId, {
-      status: terminalStatus,
-      completedAtMs: completedAt,
-      items,
-      // The timer runs on through `onFinished` until the stamp, so a stale
-      // entry from here means the run died in its tail. Not with heartbeats off.
-      heartbeatsUntilFinalized: heartbeatIntervalMs > 0
-    });
+    terminalRecordIncarnation = await settleRequestRecord(
+      options.stores,
+      requestId,
+      { status: terminalStatus, recorded: actionAnswer.recorded },
+      {
+        completedAtMs: completedAt,
+        items,
+        // The timer runs on through `onFinished` until the stamp, so a stale
+        // entry from here means the run died in its tail. Not with heartbeats off.
+        heartbeatsUntilFinalized: heartbeatIntervalMs > 0
+      }
+    );
 
     ctx.requestRuntime.status = terminalStatus;
     ctx.requestRuntime.completedAtMs = completedAt;
@@ -2655,8 +2708,7 @@ async function runActionAttempt<
         await flushTraces();
 
         const abortedAt = Date.now();
-        terminalRecordIncarnation = await patchRequestRecord(options.stores, requestId, {
-          status: "aborted",
+        terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "aborted" }, {
           abortedAt,
           items: itemsToPersist(),
           // The heartbeat stopped before this write (see the `finally` above).
@@ -2689,8 +2741,7 @@ async function runActionAttempt<
         await flushCheckpoints();
         await flushTraces();
 
-        terminalRecordIncarnation = await patchRequestRecord(options.stores, requestId, {
-          status: "interrupted",
+        terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "interrupted" }, {
           interruptedAt: Date.now(),
           items: itemsToPersist(),
           heartbeatsUntilFinalized: false
@@ -2724,12 +2775,12 @@ async function runActionAttempt<
       await flushTraces();
 
       const failedAt = Date.now();
-      terminalRecordIncarnation = await patchRequestRecord(options.stores, requestId, {
-        status: "failed",
-        failedAtMs: failedAt,
-        items: itemsToPersist(),
-        heartbeatsUntilFinalized: false
-      });
+      terminalRecordIncarnation = await settleRequestRecord(
+        options.stores,
+        requestId,
+        { status: "failed", error: normalized, answered: actionAnswer?.recorded },
+        { failedAtMs: failedAt, items: itemsToPersist(), heartbeatsUntilFinalized: false }
+      );
 
       ctx.requestRuntime.status = "failed";
       ctx.requestRuntime.failedAtMs = failedAt;
@@ -2791,7 +2842,9 @@ async function runActionAttempt<
     if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
     return {
-      output: undefined,
+      // The action's answer when it gave one before the request failed, as the
+      // record stores it (FIX-1661); none for an abort or a disconnect.
+      output: signalAborted || wasIntentionalAbort ? undefined : actionAnswer?.output,
       // Merged prior ∪ re-entry items in replay mode (FIX-811); identical to
       // `response.getItems()` on a normal run.
       items: itemsToPersist(),

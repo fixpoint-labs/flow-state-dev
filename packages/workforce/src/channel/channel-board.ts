@@ -84,8 +84,18 @@ export function channelBoardId(channelId: string, boardName: string): string {
 /** The rule, written once, so every door refuses a bad name in the same words. */
 const BOARD_NAME_RULE =
   "a board name is a plain local name — not empty, no whitespace, no `.`, `/`, `*`, `[` or " +
-  "`]`, and not a JavaScript prototype member. The ledger's id is minted " +
-  "`<channelId>.<name>`, so a name carrying a `.` would address another channel's board.";
+  "`]`, not `lock` in any case, and not a JavaScript prototype member. The ledger's id is " +
+  "minted `<channelId>.<name>`, so a name carrying a `.` would address another channel's " +
+  "board, and `lock` would mint an id ending in `.lock`, which no git branch may carry — a " +
+  "board a coding run works has to name one.";
+
+/**
+ * Board names reserved in any case. `lock` mints `<channelId>.lock`, and git
+ * refuses a ref component ending in `.lock`, so a coding run on that board
+ * could never cut its branch. Refused here so every board a channel can hold
+ * is one a coding run can work.
+ */
+const RESERVED_NAMES = new Set(["lock"]);
 
 /** Names that would shadow or corrupt an object the id becomes a key on. */
 const UNSAFE_NAMES = new Set(["__proto__", "prototype", "constructor"]);
@@ -102,6 +112,9 @@ export function channelBoardNameProblem(name: unknown): string | undefined {
   }
   if (/[\s./*[\]]/.test(name)) {
     return `is not a usable board name. ${BOARD_NAME_RULE}`;
+  }
+  if (RESERVED_NAMES.has(name.toLowerCase())) {
+    return `is reserved. ${BOARD_NAME_RULE}`;
   }
   if (UNSAFE_NAMES.has(name) || name in Object.prototype) {
     return `collides with a JavaScript object prototype member. ${BOARD_NAME_RULE}`;

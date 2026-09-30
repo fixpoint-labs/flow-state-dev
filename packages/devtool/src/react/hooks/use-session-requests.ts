@@ -71,9 +71,11 @@ export function useSessionRequests(sessionId: string | null) {
           });
       }
       // Request full item logs so requests that completed before this view
-      // opened still render their trace tree (FIX-733).
+      // opened still render their trace tree (FIX-733), and each request's
+      // action output, which a Tasks-tab row reads its answer from (FIX-1661).
       const result = await sessionClient.listSessionRequests(sessionId, {
-        includeItems: true
+        includeItems: true,
+        includeResultOutput: true
       });
       if (!stillCurrent()) return;
       setRequests(result);

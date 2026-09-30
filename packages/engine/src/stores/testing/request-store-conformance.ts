@@ -681,6 +681,41 @@ export function createRequestStoreConformanceTests(
     });
   });
 
+  describe(`${name} (RequestStore action-result conformance)`, () => {
+    // The action's result rides the final status write (FIX-1661), and the
+    // session request list is where a client reads it. An adapter that kept
+    // only its indexed columns, or dropped a nested value, would leave every
+    // finished request reading as "no result recorded".
+    it("carries a record's result through set, get and list", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_result_conformance";
+        const record = makeRecord(requestId, "in_progress", []);
+        const result = {
+          output: { ok: false, error: "task is cancelled", nested: [1, { deep: null }] },
+          error: { code: "execution_error", message: "hook failed" }
+        };
+        await store.set(requestId, record, "absent");
+        await store.set(requestId, { ...record, status: "failed", updatedAt: record.updatedAt + 1, result }, "any");
+
+        expect((await store.get(requestId))?.result).toEqual(result);
+        const listed = await store.list({ userId: "u_conformance" });
+        expect(listed.find((r) => r.id === requestId)?.result).toEqual(result);
+      });
+    });
+
+    it("lists a record written without a result with the field absent", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_result_legacy_conformance";
+        const record = makeRecord(requestId, "completed", []);
+        await store.set(requestId, record, "absent");
+
+        expect((await store.get(requestId))?.result == null).toBe(true);
+        const listed = await store.list({ userId: "u_conformance" });
+        expect(listed.find((r) => r.id === requestId)?.result == null).toBe(true);
+      });
+    });
+  });
+
   describe(`${name} (RequestStore abort-intent conformance)`, () => {
     /** Seed an `in_progress` record with no abort intent. */
     async function seed(
