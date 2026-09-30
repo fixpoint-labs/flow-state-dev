@@ -90,8 +90,10 @@ export async function deleteRecord(rootDir: string, id: string): Promise<void> {
 /**
  * Sidecar files the request store writes alongside the primary record:
  * the append-only NDJSON event log (`.events.json`) and runOnce result
- * files (`.runonce.json` legacy single-map, `.runonce.<key>.json` per-key).
- * `listRecords` must skip these — they are not record documents and the
+ * files (`.runonce.json` legacy single-map, `.runonce.<key>.json` per-key in
+ * the layout older versions wrote). Per-key files written today are named
+ * `<id>@<key>.runonce` and never end in `.json`, so the listing never reaches
+ * them. `listRecords` must skip these — they are not record documents and the
  * NDJSON event log is not even valid standalone JSON.
  *
  * This suffix match is a heuristic: `encodeURIComponent` does not escape `.`,
@@ -260,11 +262,14 @@ export type FilesystemRecordStore<
    * that write then puts the record straight back, so a delete that reported
    * success leaves the record on disk.
    *
-   * `alsoDelete` runs inside the same lock, immediately after the record file
-   * is removed. It is the delete-side counterpart of `update`'s async merge:
-   * a store with sidecar files (the request store's abort marker, event log
-   * and runOnce results) uses it to sweep them in the same serialized step, so
-   * no concurrent writer can observe the record and its sidecars disagreeing.
+   * `alsoDelete` runs inside the same lock, immediately before the record
+   * file is removed. It is the delete-side counterpart of `update`'s async
+   * merge: a store with sidecar files (the request store's abort marker, event
+   * log and runOnce results) uses it to sweep them in the same serialized
+   * step, so no concurrent writer can observe the record and its sidecars
+   * disagreeing. The record goes last because it is what makes the id taken:
+   * if the sweep throws, the record stays, the id cannot be claimed over the
+   * data left behind, and the delete can be retried.
    */
   delete(id: string, alsoDelete?: () => Promise<void>): Promise<void>;
   list(options?: TListOptions): Promise<TRecord[]>;
@@ -539,10 +544,10 @@ export function createFilesystemRecordStore<
 
     delete: (id: string, alsoDelete?: () => Promise<void>): Promise<void> =>
       withLock(id, async () => {
-        await deleteRecord(rootDir, id);
         if (alsoDelete !== undefined) {
           await alsoDelete();
         }
+        await deleteRecord(rootDir, id);
       }),
 
     list: async (listOptions?: TListOptions): Promise<TRecord[]> => {

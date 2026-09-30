@@ -4,8 +4,10 @@
  * Runs lazily after each request completes (no background process).
  */
 import type { RetentionPolicy } from "@flow-state-dev/core/types";
-import type { StoreRegistry } from "../stores/types";
+import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { parseDuration } from "../utils/duration";
+import { resolveLiveTailLivenessMs } from "../streaming/live-tail-liveness";
+import { DEFAULT_STALE_SWEEP_THRESHOLD_MS } from "../runtime-config";
 
 const RETENTION_COUNT_BATCH_SIZE = 16;
 
@@ -16,19 +18,54 @@ const RETENTION_COUNT_BATCH_SIZE = 16;
 export type ResolvedRetentionPolicy = {
   maxItems?: number;
   maxAgeMs?: number;
+  /**
+   * How long after a request's run has finished it stays exempt from
+   * eviction, measured from `finalizedAtMs` (or, on a record from before that
+   * field, from its completion). A live-tail stream may still be following the
+   * request; deleting it earlier frees the id while that stream reads it, and
+   * whoever takes the id next could have their own run read by it.
+   * `resolveRetentionPolicy` always sets it; absent means no window.
+   */
+  terminalGraceMs?: number;
+  /**
+   * The rollout-safety bound: how long after completion a record with no
+   * `finalizedAtMs` field at all stays exempt. Such a record was written by a
+   * version that never stamps, so nothing says when its run stopped writing;
+   * during a rolling deploy that run may still be in `onFinished` on an old
+   * instance. It is held for the stale-request threshold (the point at which a
+   * run with no heartbeat counts as dead) or `maxAge`, whichever is larger,
+   * plus `terminalGraceMs`. `resolveRetentionPolicy` always sets it; absent
+   * means `terminalGraceMs` alone.
+   */
+  legacyGraceMs?: number;
 };
 
 /**
  * Converts a user-facing RetentionPolicy config into numeric milliseconds.
  */
 export function resolveRetentionPolicy(
-  policy: RetentionPolicy | undefined
+  policy: RetentionPolicy | undefined,
+  options: {
+    /** The host's stale-request threshold; the larger of it and the default is used. */
+    staleThresholdMs?: number;
+  } = {}
 ): ResolvedRetentionPolicy | undefined {
   if (policy === undefined) return undefined;
   if (policy.maxItems === undefined && policy.maxAge === undefined) return undefined;
+  const maxAgeMs = policy.maxAge !== undefined ? parseDuration(policy.maxAge) : undefined;
+  // One liveness timeout for any stream still tailing the request to end,
+  // and one more as margin: the stamp and this pass may read different
+  // clocks.
+  const terminalGraceMs = 2 * resolveLiveTailLivenessMs();
+  const staleThresholdMs = Math.max(
+    options.staleThresholdMs ?? 0,
+    DEFAULT_STALE_SWEEP_THRESHOLD_MS
+  );
   return {
     maxItems: policy.maxItems,
-    maxAgeMs: policy.maxAge !== undefined ? parseDuration(policy.maxAge) : undefined,
+    maxAgeMs,
+    terminalGraceMs,
+    legacyGraceMs: Math.max(staleThresholdMs, maxAgeMs ?? 0) + terminalGraceMs,
   };
 }
 
@@ -60,9 +97,50 @@ export async function applyRetentionPolicy(
     // `countItems`, so item payloads stay out of the retention read (FIX-685).
   });
 
+  // A request's record turns `completed` before its run has finished writing
+  // (the terminal event and `onFinished` follow), and a live-tail stream may
+  // still be following it. Deleting it then would free the id while either is
+  // active, so a request is evictable only once its run has stamped
+  // `finalizedAtMs` and the grace window has passed since. Time alone cannot
+  // stand in for the stamp: `onFinished` is unbounded, and a process-local
+  // registry cannot see a run in another process. A run that dies before
+  // stamping is stamped by the stale-request sweep if it was heartbeating
+  // through its tail; otherwise its record is kept.
+  //
+  // - `finalizedAtMs: null` — the run has not finished: never evicted here.
+  // - absent — written by a version that never stamps (BP-030). During a
+  //   rolling deploy its run may still be writing on an old instance, so it is
+  //   held for `legacyGraceMs` after completion (the rollout-safety bound, see
+  //   `ResolvedRetentionPolicy`), never for the short grace window alone.
+  //
+  // A request still in the active registry is skipped too, as a cheap extra
+  // check. Skipped requests are evicted by a later pass, which runs when the
+  // session's next request completes: retention is lazy, and a session nothing
+  // is written to is not growing.
+  //
+  // Only the deletion of a protected request waits. Its items are still
+  // history the session holds, so they count toward `maxItems` below, and
+  // evictable history makes room for them.
+  const graceCutoff = now - (policy.terminalGraceMs ?? 0);
+  const legacyCutoff = now - (policy.legacyGraceMs ?? policy.terminalGraceMs ?? 0);
+  const stillRunning = new Set(
+    (await stores.activeRequests.listAll()).map((entry) => entry.requestId)
+  );
+  const isEvictable = (r: RequestRecord): boolean => {
+    if (r.finalizedAtMs === null) return false;
+    if (r.finalizedAtMs === undefined) {
+      return (r.completedAtMs ?? r.startedAtMs) <= legacyCutoff;
+    }
+    return r.finalizedAtMs <= graceCutoff;
+  };
+
   // Exclude current request, sort oldest-first by completion time
-  const sorted = requests
-    .filter((r) => r.id !== currentRequestId)
+  const history = requests.filter((r) => r.id !== currentRequestId);
+  const isProtected = (r: RequestRecord): boolean =>
+    stillRunning.has(r.id) || !isEvictable(r);
+  const protectedIds = history.filter(isProtected).map((r) => r.id);
+  const sorted = history
+    .filter((r) => !isProtected(r))
     .sort(
       (a, b) =>
         (a.completedAtMs ?? a.startedAtMs) - (b.completedAtMs ?? b.startedAtMs)
@@ -93,10 +171,14 @@ export async function applyRetentionPolicy(
   if (policy.maxItems !== undefined) {
     const maxItems = policy.maxItems;
     // Count in bounded batches so attacker-grown histories cannot enqueue an
-    // unbounded burst of database work. The current request is always kept;
-    // count it too.
+    // unbounded burst of database work. The current request and protected
+    // requests are always kept; count them too.
     const newestFirst = [...remaining].reverse();
-    const requestIds = [currentRequestId, ...newestFirst.map((req) => req.id)];
+    const requestIds = [
+      currentRequestId,
+      ...protectedIds,
+      ...newestFirst.map((req) => req.id)
+    ];
     const counts: number[] = [];
     for (let i = 0; i < requestIds.length; i += RETENTION_COUNT_BATCH_SIZE) {
       counts.push(
@@ -107,10 +189,11 @@ export async function applyRetentionPolicy(
         ))
       );
     }
-    const [currentCount = 0, ...historyCounts] = counts;
+    const keptCounts = counts.slice(0, 1 + protectedIds.length);
+    const historyCounts = counts.slice(1 + protectedIds.length);
 
     // Walk newest-first, accumulating items until budget is exceeded
-    let totalItems = currentCount;
+    let totalItems = keptCounts.reduce((sum, n) => sum + n, 0);
     const keep = new Set<string>();
     newestFirst.forEach((req, i) => {
       const reqItemCount = historyCounts[i] ?? 0;

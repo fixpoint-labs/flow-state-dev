@@ -570,6 +570,53 @@ describe("createFlowApiRouter", () => {
     expect(request?.orgId).toBe(DEFAULT_ORG_ID);
   });
 
+  it("serves a resource's declared content before any run has written it", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    // A document: its body is declared on the definition and never written.
+    const guide = defineResource({
+      scope: "org",
+      stateSchema: z.object({}).passthrough(),
+      default: {},
+      content: "Guide body",
+      client: { content: { read: true } }
+    });
+    const flow = defineFlow({
+      kind: "declared-content-route",
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: handler({
+            name: "declared-content-route-run",
+            inputSchema: z.object({}),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: async () => ({ ok: true })
+          })
+        }
+      },
+      resources: { guide }
+    })({ id: "declared-content-route" });
+    registry.register(flow);
+    const router = createFlowApiRouter({ registry, stores });
+
+    const executeResponse = await router.POST(
+      new Request("http://localhost/api/flows/declared-content-route/sess_declared/actions/run", {
+        method: "POST",
+        body: JSON.stringify({ userId: "user_declared", input: {} })
+      }),
+      { params: { path: ["declared-content-route", "sess_declared", "actions", "run"] } }
+    );
+    expect(executeResponse.status).toBe(202);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const contentResponse = await router.GET(
+      new Request("http://localhost/api/flows/sessions/sess_declared/resources/guide/content"),
+      { params: { path: ["sessions", "sess_declared", "resources", "guide", "content"] } }
+    );
+    expect(contentResponse.status).toBe(200);
+    expect(await contentResponse.json()).toEqual({ ref: "guide", content: "Guide body" });
+  });
+
   it("loads isolated user resources in resource content routes", async () => {
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();

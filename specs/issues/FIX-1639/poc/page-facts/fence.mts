@@ -14,8 +14,13 @@
  *       dispatcher installed, as a separated BullMQ worker container runs it): the
  *       `{ from: true }` reply runs in process and is NOT refused
  *
+ *   F6  an `{ id }` delivery made by a run on that `worker-only` process goes in process and
+ *       is NOT refused (added in the implementation PR, when the page's session table
+ *       stated it for `{ id }` as well as for a reply)
+ *
  * F3 and F5 are one job, two consumers: the refusal follows the process that runs the
- * queued job, not the queue. F3 is F5's contrast and F5 is F3's.
+ * queued job, not the queue. F3 is F5's contrast and F5 is F3's. F6 pairs with F2 the
+ * same way: it passes only when F2 was refused on the producer.
  *
  * Control: `CONTROL=in-process` boots the same flow with no queue. F2 and F3 must FAIL
  * (the delivery goes through), F1 and F4 must FAIL too (nothing reaches a queue), and F5
@@ -216,6 +221,21 @@ if (job !== undefined) {
   f5 = `error=${r5.error?.message?.slice(0, 80) ?? "none"} reply-ran-in-sender=${replied} enqueued=${enqueued.length - before5}`;
 }
 check("F5 worker-only consumer: from:true reply runs in process, not refused", f5pass, f5);
+
+// F6 — the `{ id }` delivery F2 refused, made instead by a run on the worker-only process.
+// Paired with F2: it passes only if the producer refused the same delivery.
+const f2refused = results.find(([id]) => id.startsWith("F2"))?.[1] === true;
+const before6 = enqueued.length;
+const ranBefore6 = ran.length;
+const r6 = await runAction({
+  flow, actionName: "deliver", input: { to: "s_existing" }, userId: USER, sessionId: "s_sender",
+  orgId: DEFAULT_ORG_ID, stores: wRuntime.stores, runtimeConfig: { ...wRuntime.runtimeConfig }
+} as never);
+await settle();
+const delivered = ran.slice(ranBefore6).includes("s_existing:id");
+check("F6 worker-only process: id delivery runs in process, not refused (paired with F2)",
+  f2refused && r6.error === undefined && delivered && enqueued.length === before6,
+  `F2-refused=${f2refused} error=${r6.error?.message?.slice(0, 80) ?? "none"} delivered=${delivered} enqueued=${enqueued.length - before6}`);
 await workerOnly.dispose();
 
 await state.dispose();

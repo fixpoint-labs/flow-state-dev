@@ -197,6 +197,8 @@ Read next: **[Dispatched work](/docs/server/background-work)** for the HTTP surf
 
 **A scheduled action is a fresh run with no caller**, not the continuation of an earlier one. A cron fires the action, the framework builds a request for it, and the same streaming and recovery machinery applies. See [Scheduled actions](/docs/server/scheduled).
 
+**Starting a flow from outside it** — a webhook, a schedule, another flow — and where each setting lives are on [Keeping a flow running](/guides/keeping-a-flow-running).
+
 ## Watching any of it
 
 Whichever path the work takes, the thing you observe is a request — for a side chain, the request it runs inside; for the other two, one of their own. Every run has an id, a lifecycle status, and an item log, and the same tools read all three.

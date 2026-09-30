@@ -529,7 +529,7 @@ its view. A seat woken in an unrouted channel, or talked to directly, gets no li
 - One model per channel kind. Two channels on the same kind route with the same model.
 - A change to `routing:` waits for the next start.
 - It needs dispatch in the same process, or queue workers that share a lease backend. Behind a
-  dispatcher that hands work to an external queue without one, such as BullMQ today, a post is
+  dispatcher that hands work to an external queue without one, a post is
   written but no member is picked or woken, and nothing answers. See
   [Where posting from another flow works](#where-posting-from-another-flow-works-and-where-it-doesnt).
 

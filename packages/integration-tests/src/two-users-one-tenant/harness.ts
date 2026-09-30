@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { onTestFinished } from "vitest";
 import type { FlowInstance } from "@flow-state-dev/core";
 import {
   createFlowApiRouter,
@@ -303,4 +304,27 @@ export async function waitFor<T>(
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
     await new Promise((r) => setTimeout(r, 25));
   }
+}
+
+/** The live-tail liveness timeout a retention case runs with, in ms. */
+const SHORT_LIVENESS_MS = 20;
+
+/**
+ * Shorten, for the current test, how long retention spares a finished
+ * request: until its run has finished and twice the live-tail liveness
+ * timeout has passed (60s by default). A case that waits for a real eviction
+ * calls this first. The server runs in this process, so it reads the same
+ * environment. Restored when the test finishes.
+ *
+ * Returns a wait that outlasts the shortened window, for a case that must
+ * complete its evicting request only after the earlier one has left it.
+ */
+export function shortenRetentionGrace(): () => Promise<void> {
+  const previous = process.env.LIVE_TAIL_LIVENESS_MS;
+  process.env.LIVE_TAIL_LIVENESS_MS = String(SHORT_LIVENESS_MS);
+  onTestFinished(() => {
+    if (previous === undefined) delete process.env.LIVE_TAIL_LIVENESS_MS;
+    else process.env.LIVE_TAIL_LIVENESS_MS = previous;
+  });
+  return () => new Promise((resolve) => setTimeout(resolve, 10 * SHORT_LIVENESS_MS));
 }

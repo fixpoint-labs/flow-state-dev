@@ -1372,7 +1372,7 @@ who was never woken.
 
 Routing works where dispatch runs in process, or where queue workers share a lease backend
 (`WorkerAdapter.leaseBackend`). Behind a dispatcher that hands work to an external queue without
-one, such as BullMQ today, a post is written but its notify block never runs, so no member is
+one, a post is written but its notify block never runs, so no member is
 picked or woken and nothing answers.
 
 ### Registering your own kind

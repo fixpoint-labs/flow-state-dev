@@ -265,6 +265,12 @@ export function createSQLiteRequestStore(
   const deleteItemsStmt = db.prepare(
     "DELETE FROM request_items WHERE request_id = ?"
   );
+  const deleteEventsStmt = db.prepare(
+    "DELETE FROM request_events WHERE request_id = ?"
+  );
+  const deleteRunOnceStmt = db.prepare(
+    "DELETE FROM request_runonce WHERE request_id = ?"
+  );
 
   const insertEventStmt = db.prepare(
     "INSERT OR REPLACE INTO request_events (request_id, sequence_number, event_data) VALUES (?, ?, ?)"
@@ -440,6 +446,13 @@ export function createSQLiteRequestStore(
       // no in-flight async write to await — only the queued microtask.)
       clearItemMaps(id);
       deleteItemsStmt.run(id);
+      // Events and runOnce results go with the record: ids are
+      // caller-supplied, so a later request may take this one, and a replay
+      // of it must not surface this run's events. Dropping the unwritten
+      // batch makes a queued `persistEvents` microtask a no-op, as above.
+      pendingNewEvents.delete(id);
+      deleteEventsStmt.run(id);
+      deleteRunOnceStmt.run(id);
       await base.delete(id);
     },
 

@@ -13,6 +13,7 @@ import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
 import { normalizeError } from "../errors/normalize-error";
 import { settledRecordFields, type RequestSettlement } from "./request-action-result";
+import { hasLiveRequestAttempt } from "./request-attempts";
 
 /** How an unstarted request ends: failed, with its cause, or aborted. */
 export type UnstartedRequestEnding = { status: "failed"; cause: unknown } | { status: "aborted" };
@@ -58,6 +59,9 @@ export async function settleUnstartedRequest(
         ...record,
         ...settledRecordFields(settlement),
         ...(ending.status === "failed" ? { failedAtMs: now } : {}),
+        // No run is writing under the id, so the record is finished as it is
+        // written; left unstamped, retention would keep it forever.
+        ...(hasLiveRequestAttempt(stores.request, requestId) ? {} : { finalizedAtMs: now }),
         updatedAt: now
       },
       "any"

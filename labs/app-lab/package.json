@@ -1,0 +1,44 @@
+{
+  "name": "@flow-state-dev/app-lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The app a Workforce Lab is used through: point it at a Lab's fsdev config and work its Inbox, tasks, workstreams and teams in one browser tab.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "tsx bin/start.mts",
+    "typecheck": "node ../../scripts/typecheck.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@flow-state-dev/client": "workspace:*",
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/devtool": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/fsdev": "workspace:*",
+    "@flow-state-dev/node": "workspace:*",
+    "@flow-state-dev/react": "workspace:*",
+    "@flow-state-dev/workforce": "workspace:*",
+    "lucide-react": "^0.575.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@flow-state-dev/orchestration": "workspace:*",
+    "@tailwindcss/postcss": "^4.1.12",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.0",
+    "happy-dom": "^20.8.3",
+    "tailwindcss": "^4.1.12",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.3",
+    "vitest": "^3.2.4",
+    "zod": "^3.25.76"
+  }
+}
