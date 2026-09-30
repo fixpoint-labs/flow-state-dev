@@ -91,14 +91,21 @@ run time exactly as it would through the HTTP layer.
 produced, a `durationMs`, an `error` when the run failed, and the `requestId` —
 the id of the run, for correlating logs or attaching a stream.
 
-The same `output` and `error` are stored on the request's record, as `result`,
-when the run ends. A client that dispatched the action over HTTP reads them from
-[`listSessionRequests`](/docs/api/client#sessionslistsessionrequestssessionid-options)
-without waiting on the stream (pass `includeResultOutput: true` for the output).
+`output` and `error` can both be set. When the action returns and a completion
+hook such as `onCompleted` then throws, the run fails with the hook's error, and
+`output` still holds what the action returned.
 
-Stored means kept for as long as the request is. That includes the output of an
-action whose block is marked `transient`, which keeps the block's traces out of
-storage but not the action's return value.
+The same `output` and `error` are saved to the request's record in your
+`stores`, as `result`, when the run ends. A client can read them later from [`listSessionRequests`](/docs/api/client#sessionslistsessionrequestssessionid-options)
+without attaching a stream; pass `includeResultOutput: true` to get the output.
+The record keeps a JSON copy of the output, so a `Date` is stored as its ISO
+string. A value that doesn't survive a JSON round trip, such as a `BigInt` or
+`NaN`, or one over 64 KiB, isn't stored. Aborted and interrupted runs save no
+result.
+
+The output is saved for an action whose block is marked `transient` too:
+`transient` keeps the block's trace items out of storage, not the action's
+return value.
 
 To fire-and-forget, don't await: drop the `await` and let the run proceed. The
 run is durable either way — items and events persist to the `stores` you passed.

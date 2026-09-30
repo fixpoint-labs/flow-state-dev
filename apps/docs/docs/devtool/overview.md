@@ -144,7 +144,16 @@ A note is not an error. A failure with no retries left writes the task's `error`
 
 An open row lists the flow's actions that take a `taskId`. Pick one and its form opens in the row with the task's id filled in and locked. Run it and the DevTool sends the action the same way the action bar would, in the session you're looking at. The row updates when the task changes.
 
-If the task can't move that way, say you cancel a task that already finished, the action refuses and the row shows why in the action's own words. Nothing is written. The row reads the answer from what the server recorded for that request, so it's the same whether you watched the request run or started another one meanwhile. When no result was recorded for a request, as with an older server or history from before an upgrade, the row says so instead of guessing.
+If the task can't move that way, say you cancel a task that already finished, the action refuses and the row shows why in the action's own words. Nothing is written. The row shows the request's outcome:
+
+| The row reads | When |
+|---|---|
+| `Running…` | The request hasn't finished. |
+| `Done`, with the return value | The request completed. |
+| `Refused:` and the reason | The request completed, and the action returned `{ ok: false }` or `{ outcome: "declined" }`. |
+| `Failed:` and the error | The request ended any other way. |
+| `No result recorded for this request.` | The request completed but has no saved result, as with history written by an older server. |
+| `Finished, but its return value couldn't be recorded.` | The return value wasn't saved: JSON can't hold it, or it was over 64 KiB. See [`listSessionRequests`](/docs/api/client#sessionslistsessionrequestssessionid-options). |
 
 The DevTool changes tasks only through your flow's actions. There is no way to edit a task's record directly, so every change is a transition the task can legally make. The action doesn't claim the task. It acts as a coordinator would, so it can settle a task a worker is still running: your change lands, and the worker's result is dropped when it arrives. If a row says the flow has no actions that take a `taskId`, see [changing tasks from outside a run](/docs/orchestration/task-board#changing-tasks-from-outside-a-run).
 

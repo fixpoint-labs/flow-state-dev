@@ -135,31 +135,38 @@ Full walkthrough: [Client > Overview](/docs/client/overview#dispatched-runs).
 
 ### `sessions.listSessionRequests(sessionId, options?)`
 
-List the requests a session has run. Each entry is a summary of one request: its action, its status, its timings, and what the action came to.
+List the requests a session has run. Each entry is a `SessionRequestSummary`: the action name, the status, the timings, and, once the request has ended, a `result` saying what the action came to.
 
 ```ts
 const requests = await sessions.listSessionRequests("sess_1", { includeResultOutput: true });
 
 for (const req of requests) {
-  if (req.result == null) continue; // not finished, or no result recorded
-  if (req.result.error) console.log(req.actionName, "failed:", req.result.error.message);
-  else console.log(req.actionName, "returned", req.result.output);
+  const { result } = req;
+  if (result == null) continue; // still running, aborted, or no result recorded
+  if (result.error) console.log(req.actionName, "failed:", result.error.message);
+  else if (result.outputNotRecorded) console.log(req.actionName, "finished, output not recorded");
+  else console.log(req.actionName, "returned", result.output);
 }
 ```
 
-`result` is filled in when the request ends:
+| Option | Type | Notes |
+|--------|------|-------|
+| `status` | `RequestStatus` | Only requests with this status. |
+| `limit` / `offset` | `number` | Paging. |
+| `includeItems` | `boolean` | Add each request's item log as `items`. |
+| `includeResultOutput` | `boolean` | Add the action's return value as `result.output`. |
 
-| Request ended | `result` |
+Without `includeResultOutput`, `result` carries `error` and a `hasOutput` flag but not the value itself.
+
+| Request status | `result` |
 |---|---|
-| `completed` or `incomplete` | `{ output }`, the value the action returned. `{}` when it returned nothing. |
-| `failed` | `{ error: { code, message } }`. If the action had already answered when a completion hook failed the request, `output` is there too. |
-| `aborted` or `interrupted`, or still running or suspended | absent |
+| `completed` or `incomplete` | `{ hasOutput: true }`, plus `output` with `includeResultOutput`. `{ hasOutput: false }` when the action returned nothing. |
+| `failed` | `{ error: { code, message }, hasOutput: false }`. When the action had returned before a completion hook failed the request, `hasOutput` is `true` and `output` is there with `includeResultOutput`. |
+| `in_progress`, `suspended`, `aborted` or `interrupted` | absent |
 
-The output is stored as JSON. A value JSON can't hold, such as a `BigInt` or an object that refers to itself, is recorded as `{ outputNotRecorded: true }` instead, and the request keeps the status it earned.
+`output` is a JSON copy of what the action returned, so a `Date` is stored as its ISO string and an object key set to `undefined` is left out. A value that doesn't survive a JSON round trip (a `BigInt`, an object that refers to itself, `NaN` or `Infinity`, a function or symbol, an `undefined` array slot) isn't stored, and neither is one over 64 KiB as JSON. Those requests carry `outputNotRecorded: true` and `hasOutput: false` in place of the output, and their status is unaffected.
 
-A request recorded by a server version that didn't store results has no `result` either, so check it with `== null` rather than reading `status` alone.
-
-The summaries leave out each request's item log and the action's return value. Pass `includeItems: true` for the log and `includeResultOutput: true` for `result.output`. Without it, `result` still carries `error` and a `hasOutput` flag, so you can tell a failure from a success without shipping every output on each call.
+A finished request written by a server version that didn't store results has no `result`. Check `result == null` rather than inferring the outcome from `status`.
 
 ## SSE Clients
 
