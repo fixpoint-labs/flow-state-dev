@@ -1243,13 +1243,14 @@ channel's board refuses the same way. `read` gains a `boards` key listing the lo
 holding none omits it and declares neither action.
 
 `readBoard` returns a declared projection of each row, not the whole record: the board's own facts,
-without the execution coordinates (`claimedBy`, the lease) or the substrate's write provenance.
-`channelBoardRowSchema` is that shape.
+without the claim's execution coordinates (`claimedBy`, the lease) or the substrate's write
+provenance. The one coordinate it does carry is `run`, the handed-off run working the task, so a
+reader can open that run. `channelBoardRowSchema` is that shape.
 
 A board's ledger is readable directly by a browser, which is what lets a UI draw the board as
 columns without going through an action. The ledger is org-scoped, so that read resolves against the
 organization the reading session belongs to. What crosses is `id`, `title`, `goal`, `status`,
-`assignee`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`,
+`assignee`, `run`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`,
 `updatedAt`, `startedAt` and `completedAt`.
 
 The channel owns the ledger and runs nothing. A seat that claims rows resolves the same declaration
@@ -1967,7 +1968,7 @@ the root exports, and reaches no Node built-in.
 | `channelBoardTaskTools(board)` | Capability granting a seat all eight task tools over one channel board, board-qualified by name. List it in the seat kind's `uses`; it declares the ledger too. |
 | `channelBoardIds(manifests)` | Every minted id across a roster, sorted and deduped — what `hireWorkforce`'s `channelBoards` takes. |
 | `ChannelBoardCollection` | A `DefinedTaskCollection` carrying its minted `id`. |
-| `channelBoardRowSchema` | One row as `readBoard` publishes it: the board's facts, without execution coordinates or write provenance. |
+| `channelBoardRowSchema` | One row as `readBoard` publishes it: the board's facts and the `run` working the task, without the claim's coordinates (`claimedBy`, the lease) or write provenance. |
 | `channelFileTaskInputSchema` / `channelFileTaskOutputSchema` / `channelReadBoardInputSchema` / `channelReadBoardOutputSchema` | The `fileTask` and `readBoard` contracts. |
 | `ChannelPostRefusedError` | A post refused on the channel's own terms; `reason` is `channel-not-bound` or `author-not-a-member`. |
 | `channelPostInputSchema` / `channelReadOutputSchema` / `channelNotifyInputSchema` | The post, read and notify contracts. |

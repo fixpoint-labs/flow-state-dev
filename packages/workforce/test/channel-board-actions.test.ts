@@ -289,6 +289,36 @@ describe("reading", () => {
     }
   });
 
+  it("hands back `run`, the run working the row, beside the redacted claim (FIX-1668)", async () => {
+    const lab = await host([record("eng.feature", { boards: ["triage"] })]);
+    try {
+      const filed = await lab.act("eng.feature", "fileTask", {
+        board: "triage",
+        goal: "one",
+        assignee: "coder"
+      });
+      const { taskId } = filed.output as { taskId: string };
+      const run = { sessionId: "s_run_session", requestId: "req_run_request", attempt: 1 };
+
+      // A handed-off row as its run leaves it: the claim's coordinate and the
+      // run's link, side by side. One is published, the other is not.
+      await lab.stamp("eng.feature.triage", taskId, {
+        status: "in_progress",
+        attempts: 1,
+        claimedBy: { sessionId: "s_private_claiming_session", requestId: "req_private_claim" },
+        run
+      });
+
+      const read = await lab.act("eng.feature", "readBoard", { board: "triage" });
+      const out = read.output as { tasks: Array<Record<string, unknown>> };
+      expect(out.tasks[0]!.run).toEqual(run);
+      expect("claimedBy" in out.tasks[0]!).toBe(false);
+      expect(JSON.stringify(out)).not.toContain("s_private_claiming_session");
+    } finally {
+      await lab.dispose();
+    }
+  });
+
   it("never hands back `claimedBy`, which is where the work ran and not a caller's to read", async () => {
     const lab = await host([record("eng.feature", { boards: ["triage"] })]);
     try {

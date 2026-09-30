@@ -710,7 +710,7 @@ import { BoardList } from "@flow-state-dev/react";
 
 Every task filed through `fileTask` shows up on the list. Status changes a worker makes while draining the board show only after something else makes the list read again, such as a remount. See [A board as a list](./ui.md#a-board-as-a-list).
 
-Board ledgers are organization-scoped, so the read resolves against the organization the reading session belongs to. What crosses is `id`, `title`, `goal`, `status`, `assignee`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`, `updatedAt`, `startedAt` and `completedAt`.
+Board ledgers are organization-scoped, so the read resolves against the organization the reading session belongs to. What crosses is `id`, `title`, `goal`, `status`, `assignee`, `run`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`, `updatedAt`, `startedAt` and `completedAt`. `run` names the run a seat is working the row in, or last worked it in, so a board view can open it. See [Which run is working a task](../orchestration/task-board.md#which-run-is-working-a-task).
 
 ### Working the rows
 
