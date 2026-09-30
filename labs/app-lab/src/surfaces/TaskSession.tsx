@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { ItemRenderer } from "@flow-state-dev/react";
+import { buildItemRenderStream, ItemRenderer, useFlowContext } from "@flow-state-dev/react";
 import { EmptyState, SectionFailure } from "../components/ui";
 import { readStatus } from "../lib/columns";
 import { useLab } from "../lib/lab-data";
@@ -119,10 +119,16 @@ function RunItems({ run }: { run: OpenRun }) {
     };
   }, [clients, run, attempt, reportStatus]);
 
-  const shown = useMemo(
-    () => (stored === undefined ? undefined : taskItems(stored.items, task.boardRef, task.taskId)),
-    [stored, task.boardRef, task.taskId],
-  );
+  // This task's items, then the same render filters `ItemsRenderer` applies:
+  // a keyed snapshot shows its latest version only, and a container with its
+  // own renderer draws the items it owns.
+  const { renderers } = useFlowContext();
+  const shown = useMemo(() => {
+    if (stored === undefined) return undefined;
+    const mine = taskItems(stored.items, task.boardRef, task.taskId);
+    const items = buildItemRenderStream(mine.items, renderers).flatMap((segment) => (segment.kind === "item" ? [segment.item] : segment.items));
+    return { items, shared: mine.shared };
+  }, [stored, task.boardRef, task.taskId, renderers]);
 
   if (failure !== undefined) {
     return (

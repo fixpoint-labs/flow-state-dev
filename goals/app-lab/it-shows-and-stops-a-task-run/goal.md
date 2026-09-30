@@ -42,3 +42,7 @@
 | 2026-09-30 | e8f4c7276+wip | n/a | FAIL (control `optimistic-interrupt`, expected) | Only **the request reads aborted first**, on both held rows: the view read *interrupted* while the record read `in_progress`. |
 | 2026-09-30 | after merging `main` and FIX-1662's review round | n/a | PASS | Drainer's flow: 4 items drawn and stored, then aborted. Own flow: 8 items, then aborted. Finished: 3 items. |
 | 2026-09-30 | after merging `main` and FIX-1662's review round | n/a | FAIL (control `board-flow`, expected) | Same as before: only the own-flow row, at **items equal the run session's** (404 through the drainer's flow), plus its inspector and Interrupt. |
+| 2026-09-30 | review round 2 (render filters, next attempt, board failure) | n/a | PASS | The run now also writes a keyed progress snapshot twice. Drainer's flow: 5 items drawn and stored, then aborted. Own flow: 9 items, then aborted. Finished: 4 items. The snapshot's versions share one id, so the stored count and the drawn count agree without extra filtering. |
+| 2026-09-30 | review round 2 | n/a | FAIL (control `optimistic-interrupt`, expected) | Only **the request reads aborted first**, on both held rows. |
+| 2026-09-30 | review round 2 | n/a | FAIL (control `worker-session`, expected) | **items equal the run session's** on all three rows (nothing drawn), and **live** on both held rows. |
+| 2026-09-30 | review round 2 | n/a | FAIL (control `board-flow`, expected) | Only the own-flow row: 404 through the drainer's flow, empty inspector, no Interrupt. |

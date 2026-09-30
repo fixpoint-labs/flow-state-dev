@@ -6,8 +6,12 @@
  * **The row.** From the snapshot, then from one board's re-read. While the row
  * is not on the board yet, or is `in_progress` with no run linked, it is
  * re-read every 2 s, at most 30 times (BR-3): the run writes its link as it
- * starts, and nothing pushes that to a view following another session. A row
- * in any other status is not re-read. Retry starts one more window.
+ * starts, and nothing pushes that to a view following another session. Once
+ * the linked run settles on a row still queued or running, it is re-read the
+ * same way, in a fresh window, until the row links the next attempt; the
+ * screen then follows that run. A row in any other state is not re-read.
+ * Retry reads the board once, now, and starts one more window. A board whose
+ * read failed shows that failure, never "no such task".
  *
  * **The run.** Bound to the session and request the row's link names, and the
  * flow that session records as its owner. The flow is read once per open, and
@@ -84,6 +88,12 @@ function awaitingLink(row: BoardRow | undefined): boolean {
   return row === undefined || (readStatus(row.status) === "in_progress" && row.run === null);
 }
 
+/** A row the board may still hand to a run: queued or running, not finished, parked or failed. */
+function isOpen(row: BoardRow): boolean {
+  const status = readStatus(row.status);
+  return status === "pending" || status === "in_progress";
+}
+
 /** Hold one open task. */
 export function TaskProvider({
   snapshot,
@@ -112,34 +122,27 @@ export function TaskProvider({
   const row = boardRows.find((r) => r.id === taskId);
   // A board the Lab doesn't attach is named at once, with no read (BR-2). A
   // task missing from a board it does attach may have just been filed, so it
-  // gets the same bounded re-read as a row waiting for its link.
+  // gets the same bounded re-read as a row waiting for its link. A board whose
+  // read failed is neither: the screen shows that failure, with Retry, rather
+  // than calling the task missing.
   const channelBoards = snapshot.boards[channelOf(boardRef)];
-  const boardKnown = channelBoards?.ok === true && channelBoards.value.refs.includes(boardRef);
+  const [boardRead, setBoardRead] = useState(false);
+  const boardKnown = boardRead || (channelBoards?.ok === true && channelBoards.value.refs.includes(boardRef));
+  const boardFailure = rowFailure ?? (!boardRead && channelBoards?.ok === false ? channelBoards.failure : undefined);
 
-  // BR-3's bounded re-read. A failed re-read stops it and shows Retry.
-  const waiting = boardKnown && awaitingLink(row) && rowFailure === undefined && reads < REREAD_AT_MOST;
-  useEffect(() => {
-    if (!waiting) return;
-    const timer = setTimeout(() => {
+  /** One read of this task's board. Every read, polled or not, lands its rows or its failure the same way. */
+  const readBoardNow = useCallback(
+    () =>
       reader
         .readBoard(channelOf(boardRef), boardRef)
         .then((rows) => {
           setBoardRows(rows);
+          setBoardRead(true);
           setRowFailure(undefined);
         })
-        .catch((error: unknown) => setRowFailure(describeFailure(error)))
-        .finally(() => setReads((n) => n + 1));
-    }, REREAD_EVERY_MS);
-    return () => clearTimeout(timer);
-  }, [waiting, reads, reader, boardRef]);
-
-  /** One read of the board, when the run's request settles, so the row shows what the board did next. */
-  const readRowOnce = useCallback(() => {
-    reader
-      .readBoard(channelOf(boardRef), boardRef)
-      .then(setBoardRows)
-      .catch((error: unknown) => setRowFailure(describeFailure(error)));
-  }, [reader, boardRef]);
+        .catch((error: unknown) => setRowFailure(describeFailure(error))),
+    [reader, boardRef],
+  );
 
   // ---- the run: the link's session and request, and the flow its session names.
   const link = row?.run ?? null;
@@ -201,6 +204,24 @@ export function TaskProvider({
 
   const currentStatus = status !== undefined && "status" in status && status.requestId === link?.requestId ? status.status : undefined;
 
+  // BR-3's bounded re-read: while the row has no run linked yet, or while the
+  // run it links has settled on a row the board may still hand on, until the
+  // row links the next attempt (a retry or a reclaim writes a new link). Each
+  // settled link starts a fresh window. A failed re-read stops it and shows Retry.
+  const linkSettled = currentStatus !== undefined && currentStatus !== "in_progress";
+  useEffect(() => {
+    if (linkSettled) setReads(0);
+  }, [linkSettled, link?.requestId]);
+  const awaitingNextRun = row !== undefined && row.run !== null && linkSettled && isOpen(row);
+  const waiting = boardKnown && (awaitingLink(row) || awaitingNextRun) && boardFailure === undefined && reads < REREAD_AT_MOST;
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setTimeout(() => {
+      void readBoardNow().finally(() => setReads((n) => n + 1));
+    }, REREAD_EVERY_MS);
+    return () => clearTimeout(timer);
+  }, [waiting, reads, readBoardNow]);
+
   const settledOnce = useRef<string | null>(null);
   const reportStatus = useCallback(
     (next: string) => {
@@ -212,10 +233,11 @@ export function TaskProvider({
       );
       if (next !== "in_progress" && settledOnce.current !== openRun.requestId) {
         settledOnce.current = openRun.requestId;
-        readRowOnce();
+        // Read the row once now, to show what the board did next.
+        void readBoardNow();
       }
     },
-    [openRun, readRowOnce],
+    [openRun, readBoardNow],
   );
 
   // ---- Interrupt: the one write this screen makes.
@@ -247,12 +269,13 @@ export function TaskProvider({
     taskId,
     row,
     boardRows,
-    rowFailure,
+    rowFailure: boardFailure,
     waiting,
-    gaveUp: boardKnown && awaitingLink(row) && rowFailure === undefined && reads >= REREAD_AT_MOST,
+    gaveUp: boardKnown && awaitingLink(row) && boardFailure === undefined && reads >= REREAD_AT_MOST,
+    // A read now, then a fresh re-read window if the row is still waiting.
     retryRow: () => {
-      setRowFailure(undefined);
       setReads(0);
+      void readBoardNow();
     },
     run,
     retryRun: () => setRetries((n) => n + 1),

@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import { EmptyState, SectionFailure, Tabs } from "../components/ui";
 import { columnFor, readStatus } from "../lib/columns";
-import { waited } from "../lib/derive";
+import { rosterOf, seatFor, waited } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { channelOf, useTask } from "../lib/task";
@@ -36,8 +36,10 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
     );
   }
 
-  const seats = snapshot !== undefined && snapshot.refused === undefined && snapshot.inventory.ok ? snapshot.inventory.value.seats : [];
-  const worker = row?.assignee == null ? null : (seats.find((s) => s.id === row.assignee || s.name === row.assignee)?.id ?? row.assignee);
+  // The same resolver the inspector and Tasks use, so a name two teams share
+  // resolves to the seat in this row's channel, or to no seat at all.
+  const seat = row === undefined || snapshot === undefined || snapshot.refused !== undefined ? undefined : seatFor(rosterOf(snapshot), row);
+  const worker = row?.assignee == null ? null : (seat?.id ?? row.assignee);
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="task-frame" data-board-ref={boardRef} data-task-id={taskId}>
@@ -59,7 +61,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
         </p>
         {task.rowFailure === undefined ? null : (
           <div className="mt-2">
-            <SectionFailure what="This task's board" failure={task.rowFailure} onRetry={task.retryRow} />
+            <SectionFailure what="This task's board" failure={task.rowFailure} onRetry={task.retryRow} testId="task-board-failure" />
           </div>
         )}
         <Actions gaps={gaps} />
