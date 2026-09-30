@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { ActionInputSchema } from "@flow-state-dev/client";
-import { outcomeOf, taskActionsFor, taskToolSuffix } from "../src/react/lib/task-actions";
+import { outcomeOf, taskActionsFor, taskToolSuffix, type RequestOutcomeSource } from "../src/react/lib/task-actions";
 
 const takesTaskId: ActionInputSchema = {
   type: "object",
@@ -129,212 +129,114 @@ describe("taskToolSuffix (mirrors orchestration's rule)", () => {
 });
 
 describe("outcomeOf", () => {
-  const root = (status: string, value?: unknown) => ({
-    type: "block_trace",
-    status,
-    provenance: {},
-    ...(value === undefined ? {} : { output: { kind: "inline", value } }),
-  });
-  const request = (rawItems: unknown[]) => [{ requestId: "r1", status: "completed", rawItems }];
+  // The row reads what the engine recorded for its request: the status and
+  // the stored action result from the session's request list. Nothing else.
+  const listed = (status: string, result?: RequestOutcomeSource["result"]) => [
+    { requestId: "r1", status, ...(result === undefined ? {} : { result }) },
+  ];
+  const refusal = { ok: false, error: "task is cancelled, which is terminal" };
 
-  it("reads a guarded verb's refusal as a refusal", () => {
-    expect(outcomeOf(request([root("completed", { ok: false, error: "task is terminal" })]), "r1")).toEqual({
+  it("is pending until the request is listed, and while it runs or is suspended (BR-13)", () => {
+    expect(outcomeOf([], "r1")).toEqual({ state: "pending" });
+    expect(outcomeOf(listed("in_progress"), "r1")).toEqual({ state: "pending" });
+    expect(outcomeOf(listed("suspended"), "r1")).toEqual({ state: "pending" });
+    // Another request's record says nothing about this one.
+    expect(outcomeOf([{ requestId: "r2", status: "completed", result: { output: refusal } }], "r1")).toEqual({
+      state: "pending",
+    });
+  });
+
+  it("reads a guarded verb's refusal as a refusal, in its own words (BR-14)", () => {
+    expect(outcomeOf(listed("completed", { output: refusal }), "r1")).toEqual({
       state: "refused",
-      message: "task is terminal",
+      message: "task is cancelled, which is terminal",
     });
   });
 
-  it("reads a declined task write as a refusal, not a success", () => {
-    // An app action such as `answer` returns the ledger's write outcome. A
-    // declined one wrote nothing, so the row must not say it worked.
-    const declined = { outcome: "declined", reason: "terminal", status: "completed" };
-    expect(outcomeOf(request([root("completed", declined)]), "r1")).toEqual({
-      state: "refused",
-      message: "Declined (terminal): the task is completed.",
-    });
-    expect(outcomeOf(request([root("completed", { outcome: "recorded" })]), "r1")).toEqual({
-      state: "ok",
-      output: { outcome: "recorded" },
-    });
-  });
-
-  it("reads the root trace's final state, not its in-progress entry", () => {
-    // The raw log keeps the root's `in_progress` trace ahead of its completed one.
-    const items = [root("in_progress"), root("completed", { ok: false, error: "no such task" })];
-    expect(outcomeOf(request(items), "r1")).toEqual({ state: "refused", message: "no such task" });
-    const failed = [root("in_progress"), { ...root("failed"), error: { message: "boom" } }];
-    expect(outcomeOf(request(failed), "r1")).toEqual({ state: "failed", message: "boom" });
-  });
-
-  describe("with request lifecycle hooks", () => {
-    // `runAction` runs the flow's and the action's lifecycle hooks (onStarted,
-    // onCompleted, onErrored, onFinished) as root blocks of the same request,
-    // before and after the action itself, and every one of them receives
-    // `{ requestId, actionName }`. The action's own trace has to be picked out
-    // of them: a hook's result is not the action's answer.
-    let seq = 0;
-    const trace = (status: string, input: unknown, output?: unknown, error?: string, id = `t${seq++}`) => ({
-      id,
-      type: "block_trace",
-      status,
-      provenance: {},
-      input: { source: { kind: "inline", value: input } },
-      ...(output === undefined ? {} : { output: { kind: "inline", value: output } }),
-      ...(error === undefined ? {} : { error: { message: error } }),
-    });
-    const hookInput = { requestId: "r1", actionName: "cancelTask_issues" };
-    const actionInput = { taskId: "task-a" };
-    const withStatus = (status: string, rawItems: unknown[]) => [{ requestId: "r1", status, rawItems }];
-
-    it("reads a refusal from the action, not from an onCompleted hook that ran after it", () => {
-      const items = [
-        trace("completed", hookInput), // onStarted
-        trace("completed", actionInput, { ok: false, error: "task is terminal" }),
-        trace("completed", { ...hookInput, output: { ok: false } }), // onCompleted
-        trace("completed", { ...hookInput, status: "completed" }), // onFinished
-      ];
-      expect(outcomeOf(request(items), "r1")).toEqual({ state: "refused", message: "task is terminal" });
-    });
-
-    it("reads a failed action as failed, not from the onErrored hook that ran after it", () => {
-      const items = [
-        trace("failed", actionInput, undefined, "no such task"),
-        trace("completed", hookInput, "logged"), // onErrored
-        trace("completed", hookInput), // onFinished
-      ];
-      expect(outcomeOf(withStatus("failed", items), "r1")).toEqual({ state: "failed", message: "no such task" });
-    });
-
-    it("tells a hook apart by its final entry, when its first entry carries no input yet", () => {
-      const hookStart = { id: "hook", type: "block_trace", status: "in_progress", provenance: {} };
-      const items = [
-        trace("completed", actionInput, { ok: false, error: "task is terminal" }),
-        hookStart,
-        { ...trace("completed", hookInput), id: "hook" },
-      ];
-      expect(outcomeOf(request(items), "r1")).toEqual({ state: "refused", message: "task is terminal" });
-    });
-
-    it("reads a request a hook failed after the action refused as failed, and keeps the refusal's words", () => {
-      // The request's own verdict comes first (BR-15): it failed. The action's
-      // refusal is still worth reading, so it rides along.
-      const items = [
-        trace("completed", actionInput, { ok: false, error: "task is terminal" }),
-        trace("failed", hookInput, undefined, "onCompleted threw"),
-      ];
-      expect(outcomeOf(withStatus("failed", items), "r1")).toEqual({
-        state: "failed",
-        message: "onCompleted threw (the action itself refused: task is terminal)",
-      });
-    });
-
-    it("waits for the request to finish before reading an answer its hooks could still overturn", () => {
-      const items = [trace("completed", actionInput, { ok: true })];
-      expect(outcomeOf(withStatus("in_progress", items), "r1")).toEqual({ state: "pending" });
-    });
-
-    it("reads a request that failed in a hook after the action answered ok as failed, never as success", () => {
-      const items = [
-        trace("completed", actionInput, { ok: true }),
-        trace("failed", hookInput, undefined, "onCompleted threw"),
-      ];
-      expect(outcomeOf(withStatus("failed", items), "r1")).toEqual({ state: "failed", message: "onCompleted threw" });
-    });
-  });
-
-  it("resolves a root output held by reference before reading it", () => {
-    // A sequencer-backed action re-emits its last step's output as a `ref` to
-    // that step's trace, or a `structure` of refs. The refusal lives behind
-    // the reference, and must not read as success.
-    const child = {
-      id: "t-child",
-      type: "block_trace",
-      status: "completed",
-      provenance: { parentBlockInstanceId: "root" },
-      output: { kind: "inline", value: { ok: false, error: "task is terminal" } },
-    };
-    const refRoot = { type: "block_trace", status: "completed", provenance: {}, output: { kind: "ref", sourceItemId: "t-child" } };
-    expect(outcomeOf(request([child, refRoot]), "r1")).toEqual({ state: "refused", message: "task is terminal" });
-
-    const structureRoot = {
-      type: "block_trace",
-      status: "completed",
-      provenance: {},
-      output: {
-        kind: "structure",
-        shape: {
-          container: "object",
-          entries: { ok: { kind: "inline", value: false }, error: { kind: "ref", sourceItemId: "t-msg" } },
-        },
-      },
-    };
-    const message = { id: "t-msg", type: "message", content: [{ type: "output_text", text: "no such task" }] };
-    expect(outcomeOf(request([message, structureRoot]), "r1")).toEqual({ state: "refused", message: "no such task" });
-  });
-
-  it("says the outcome isn't visible when a reference nested inside a structure was not retained", () => {
-    // `{ ok: false, error: <evicted ref> }` resolves to `{ ok: false, error:
-    // undefined }`. Read as it stands, that is not a refusal and would say
-    // "Done". Any unresolved reference, at any depth, means the result can't
-    // be told.
-    const structureRoot = (entries: Record<string, unknown>) => ({
-      type: "block_trace",
-      status: "completed",
-      provenance: {},
-      output: { kind: "structure", shape: { container: "object", entries } },
-    });
-    const nested = structureRoot({ ok: { kind: "inline", value: false }, error: { kind: "ref", sourceItemId: "gone" } });
-    expect(outcomeOf(request([nested]), "r1")).toEqual({ state: "unknown", reason: "not-retained" });
-    const inArray = {
-      type: "block_trace",
-      status: "completed",
-      provenance: {},
-      output: { kind: "structure", shape: { container: "array", entries: [{ kind: "ref", sourceItemId: "gone" }] } },
-    };
-    expect(outcomeOf(request([inArray]), "r1")).toEqual({ state: "unknown", reason: "not-retained" });
-    // A ref to a trace that finished without an output, one hop down.
-    const emptyChild = { id: "t-empty", type: "block_trace", status: "completed", provenance: { parentBlockInstanceId: "root" } };
-    const viaChild = structureRoot({ result: { kind: "ref", sourceItemId: "t-empty" } });
-    expect(outcomeOf(request([emptyChild, viaChild]), "r1")).toEqual({ state: "unknown", reason: "not-retained" });
-  });
-
-  it("reads ok:false as a refusal whatever the error looks like", () => {
-    expect(outcomeOf(request([root("completed", { ok: false })]), "r1")).toEqual({
+  it("reads ok:false as a refusal whatever the error looks like (BR-14)", () => {
+    expect(outcomeOf(listed("completed", { output: { ok: false } }), "r1")).toEqual({
       state: "refused",
       message: "The action refused, without a reason.",
     });
-    expect(outcomeOf(request([root("completed", { ok: false, error: { message: "locked" } })]), "r1")).toEqual({
+    expect(outcomeOf(listed("completed", { output: { ok: false, error: { message: "locked" } } }), "r1")).toEqual({
       state: "refused",
       message: "locked",
     });
-    expect(outcomeOf(request([root("completed", { ok: false, error: { code: 7 } })]), "r1")).toEqual({
+    expect(outcomeOf(listed("completed", { output: { ok: false, error: { code: 7 } } }), "r1")).toEqual({
       state: "refused",
       message: '{"code":7}',
     });
   });
 
-  it("reads a declined write as a refusal even without a reason or status", () => {
-    expect(outcomeOf(request([root("completed", { outcome: "declined" })]), "r1")).toEqual({
+  it("reads a declined task write as a refusal, not a success (BR-14)", () => {
+    // An app action such as `answer` returns the ledger's write outcome. A
+    // declined one wrote nothing, so the row must not say it worked.
+    const declined = { outcome: "declined", reason: "terminal", status: "completed" };
+    expect(outcomeOf(listed("completed", { output: declined }), "r1")).toEqual({
+      state: "refused",
+      message: "Declined (terminal): the task is completed.",
+    });
+    expect(outcomeOf(listed("completed", { output: { outcome: "declined" } }), "r1")).toEqual({
       state: "refused",
       message: "Declined: the write did not land.",
     });
   });
 
-  it("BR-15 · shows why a request failed before its action ran, from the request's error item", () => {
-    // A request that fails during setup has no root trace; the runtime records
-    // the cause as an `error` item. The row shows that cause, not just "failed".
-    const errorItem = (message: string) => ({ type: "error", status: "failed", requestId: "r1", message });
-    const failedEarly = [{ requestId: "r1", status: "failed", rawItems: [errorItem("stale"), errorItem("Unknown board: eng.work")] }];
-    expect(outcomeOf(failedEarly, "r1")).toEqual({ state: "failed", message: "Unknown board: eng.work" });
-    // With no error item either, the request's own status is all there is.
-    expect(outcomeOf([{ requestId: "r1", status: "failed", rawItems: [] }], "r1")).toEqual({
+  it("reads any other output as done, showing it (BR-15)", () => {
+    expect(outcomeOf(listed("completed", { output: { outcome: "recorded" } }), "r1")).toEqual({
+      state: "ok",
+      output: { outcome: "recorded" },
+    });
+    // An action that returned nothing is done, with nothing to show.
+    expect(outcomeOf(listed("completed", {}), "r1")).toEqual({ state: "ok", output: undefined });
+  });
+
+  it("decides a request that ended in anything but completed by its status first (BR-16)", () => {
+    const hookError = { code: "execution_error", message: "notification hook failed" };
+    expect(outcomeOf(listed("failed", { error: hookError }), "r1")).toEqual({
       state: "failed",
-      message: "The request ended failed.",
+      message: "notification hook failed",
+    });
+    // A hook failed the request after the action refused: failed, with the refusal named.
+    expect(outcomeOf(listed("failed", { error: hookError, output: refusal }), "r1")).toEqual({
+      state: "failed",
+      message: "notification hook failed (the action itself refused: task is cancelled, which is terminal)",
+    });
+    // A hook failed it after the action answered ok: failed, never done.
+    expect(outcomeOf(listed("failed", { error: hookError, output: { ok: true } }), "r1")).toEqual({
+      state: "failed",
+      message: "notification hook failed",
+    });
+    expect(outcomeOf(listed("incomplete", { output: { partial: true } }), "r1")).toEqual({
+      state: "failed",
+      message: "The request ended incomplete.",
+    });
+    // No result on a failed request: the status, and that nothing was recorded.
+    expect(outcomeOf(listed("failed"), "r1")).toEqual({
+      state: "failed",
+      message: "The request ended failed. No result recorded for this request.",
+    });
+    // Aborted and interrupted carry no result by design; that is not "not recorded".
+    expect(outcomeOf(listed("aborted"), "r1")).toEqual({ state: "failed", message: "The request ended aborted." });
+    expect(outcomeOf(listed("interrupted"), "r1")).toEqual({
+      state: "failed",
+      message: "The request ended interrupted.",
     });
   });
 
-  it("says the outcome isn't visible when a referenced output was not retained", () => {
-    const refRoot = { type: "block_trace", status: "completed", provenance: {}, output: { kind: "ref", sourceItemId: "gone" } };
-    expect(outcomeOf(request([refRoot]), "r1")).toEqual({ state: "unknown", reason: "not-retained" });
+  it("never guesses a finished request with no recorded result: not done, not refused (BR-17)", () => {
+    expect(outcomeOf(listed("completed"), "r1")).toEqual({ state: "unknown", reason: "not-reported" });
+    // A store that hands an absent field back as null reads the same (BP-030).
+    expect(outcomeOf([{ requestId: "r1", status: "completed", result: null }], "r1")).toEqual({
+      state: "unknown",
+      reason: "not-reported",
+    });
+  });
+
+  it("says a return value that could not be recorded is unknown (BR-17a)", () => {
+    expect(outcomeOf(listed("completed", { outputNotRecorded: true }), "r1")).toEqual({
+      state: "unknown",
+      reason: "output-not-recorded",
+    });
   });
 });

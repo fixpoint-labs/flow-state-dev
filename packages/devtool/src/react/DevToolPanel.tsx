@@ -53,7 +53,7 @@ import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
 import { useDispatchRuns } from "./hooks/use-dispatch-runs";
 import { useReadFence } from "@flow-state-dev/react";
 import { flattenTaskItems } from "./lib/task-collection-state";
-import { isRequestOpen, mergeRawItems, pickFurthestStatus, snapshotSupersedesLive } from "./lib/request-status";
+import { isRequestOpen, pickFurthestStatus, snapshotSupersedesLive } from "./lib/request-status";
 
 const NAV_EXPANDED_WIDTH = 300;
 const NAV_COLLAPSED_WIDTH = 64;
@@ -188,11 +188,6 @@ function PanelContent({ className }: { className?: string }) {
   // Raw (uncollapsed) counterpart of `liveItems`, populated only by the
   // per-row Continue action (FIX-865) — see `handleContinueItems` below.
   const [liveRawItems, setLiveRawItems] = useState<Map<string, OutputItem[]>>(new Map());
-  // The last raw log each streamed request's stream delivered, kept after the
-  // stream moves on. Read only once a request has finished, to add the traces
-  // its polled log lacks (a transient block's are never persisted), so a
-  // Tasks-tab row can still read its outcome (FIX-1629).
-  const [streamRawItems, setStreamRawItems] = useState<Map<string, OutputItem[]>>(new Map());
   // The requests Tasks-tab rows dispatched in this workspace (FIX-1629). Only
   // one request is streamed at a time, so a row whose request is not the
   // streamed one learns it finished only from a re-read of the list; see the
@@ -238,7 +233,6 @@ function PanelContent({ className }: { className?: string }) {
     setDispatchedRequestId(null);
     setLiveItems(new Map());
     setLiveRawItems(new Map());
-    setStreamRawItems(new Map());
     setRowRequestIds(new Set());
     clearReplay();
   }
@@ -371,17 +365,6 @@ function PanelContent({ className }: { className?: string }) {
   }, [liveMode, activeRequestId, dispatchedRequestId, replayState.requestId]);
 
   useEffect(() => {
-    if (streamState === null || streamState.rawItems.length === 0) return;
-    const { requestId, rawItems } = streamState;
-    setStreamRawItems((prev) => {
-      if (prev.get(requestId) === rawItems) return prev;
-      const next = new Map(prev);
-      next.set(requestId, rawItems);
-      return next;
-    });
-  }, [streamState]);
-
-  useEffect(() => {
     if (streamRequestId && streamItems.length > 0) {
       setLiveItems((prev) => {
         const next = new Map(prev);
@@ -431,12 +414,8 @@ function PanelContent({ className }: { className?: string }) {
         // per-row Continue action's own stream (`liveRawItems`) takes
         // priority; for the watched main-stream request, fall back to the
         // live `streamState.rawItems` (trace-inclusive) before the polled list.
-        // A finished request's polled log, plus what only a stream saw of it.
         rawItems: settled
-          ? mergeRawItems(
-              req.items!,
-              liveRawItems.get(req.id) ?? streamFor(req.id)?.rawItems ?? streamRawItems.get(req.id),
-            )
+          ? req.items!
           : (liveRawItems.get(req.id) ?? streamFor(req.id)?.rawItems ?? req.items ?? []),
         source: req.source,
         metadata: req.metadata,
@@ -453,7 +432,7 @@ function PanelContent({ className }: { className?: string }) {
       });
     }
     return groups;
-  }, [requests, liveItems, liveRawItems, streamRawItems, activeRequestId, lastResponse, streamState, streamStatus, streamRequestId]);
+  }, [requests, liveItems, liveRawItems, activeRequestId, lastResponse, streamState, streamStatus, streamRequestId]);
 
   // The flat item stream the Tasks tab and the block tree fold. Derived here
   // rather than in the JSX because `flatMap` returns a NEW array on every
@@ -582,8 +561,10 @@ function PanelContent({ className }: { className?: string }) {
   );
 
   // The Tasks tab changes a task only through the viewed flow's own actions,
-  // on this same dispatch path, and reads each outcome from the session's
-  // requests (FIX-1629).
+  // on this same dispatch path (FIX-1629), and reads each outcome from what
+  // the engine recorded for the request: its status and action result on the
+  // polled list (FIX-1661). Never from the stream, which holds one request at
+  // a time, or from traces, which a transient block never keeps.
   const runRowAction = useCallback(
     async (action: string, input: unknown): Promise<RowDispatch> => {
       const answer = await handleSendAction(action, input);
@@ -595,14 +576,18 @@ function PanelContent({ className }: { className?: string }) {
     },
     [handleSendAction],
   );
+  const rowOutcomeSources = useMemo(
+    () => requests.map((req) => ({ requestId: req.id, status: req.status, result: req.result })),
+    [requests],
+  );
   const rowActions = useMemo<RowActions>(
     () => ({
       names: activeFlow?.actions ?? [],
       schemas: activeFlow?.actionSchemas,
       run: runRowAction,
-      requests: requestGroups,
+      requests: rowOutcomeSources,
     }),
-    [activeFlow?.actions, activeFlow?.actionSchemas, runRowAction, requestGroups],
+    [activeFlow?.actions, activeFlow?.actionSchemas, runRowAction, rowOutcomeSources],
   );
 
   // Re-read the list while any row's request is still running (or not listed

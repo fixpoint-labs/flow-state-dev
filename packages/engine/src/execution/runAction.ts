@@ -37,6 +37,7 @@ import { normalizeError, displayCause } from "../errors/normalize-error";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
 import { executeBlock } from "./executeBlock";
+import { buildRequestActionResult, type RequestSettlement } from "./request-action-result";
 import { getResponseItems, getResponseItemCount } from "./internal/response";
 import {
   applyNormalizedErrorSeam,
@@ -476,7 +477,8 @@ async function settleFreshRequestSetupFailure(options: {
           status: "failed",
           failedAtMs: now,
           updatedAt: now,
-          items
+          items,
+          result: buildRequestActionResult({ status: "failed", error: normalized })
         },
         current === undefined ? "absent" : "any"
       );
@@ -509,11 +511,48 @@ async function settleFreshRequestSetupFailure(options: {
   });
 }
 
+/** Record fields a patch may carry beside the status and the result. */
+type RequestRecordFields = Omit<Partial<RequestRecord>, "status" | "result">;
+
+/**
+ * Applies a partial request-record update that does not end the request.
+ *
+ * Typed so it cannot write a final status: ending a request goes through
+ * {@link settleRequestRecord}, which writes the action's result in the same
+ * write (FIX-1661).
+ */
+async function patchRequestRecord(
+  stores: StoreRegistry,
+  requestId: string,
+  patch: RequestRecordFields & { status?: "in_progress" }
+): Promise<void> {
+  await writeRequestRecordPatch(stores, requestId, patch);
+}
+
+/**
+ * Ends a request's record: its status and the action result built from
+ * `settlement` land in one write, so a poller never sees a final status
+ * without its result (FIX-1661). A suspension goes through here too, and
+ * clears any result a prior write left.
+ */
+async function settleRequestRecord(
+  stores: StoreRegistry,
+  requestId: string,
+  settlement: RequestSettlement,
+  fields: RequestRecordFields
+): Promise<void> {
+  await writeRequestRecordPatch(stores, requestId, {
+    ...fields,
+    status: settlement.status,
+    result: buildRequestActionResult(settlement)
+  });
+}
+
 /**
  * Applies a partial request-record update when a record exists.
  * Strips ephemeral content from items before writing to the store.
  */
-async function patchRequestRecord(
+async function writeRequestRecordPatch(
   stores: StoreRegistry,
   requestId: string,
   patch: Partial<RequestRecord>
@@ -1799,6 +1838,10 @@ export async function runActionInternal<
     throw startupError;
   }
 
+  // What the action block returned, once it has. Set before the completion
+  // hooks run, so a hook that fails the request leaves it on the record.
+  let actionAnswer: { output: unknown } | undefined;
+
   try {
     // Re-throw deferred parse error now that we have ctx for error handling.
     if (parseError !== undefined) {
@@ -1904,8 +1947,7 @@ export async function runActionInternal<
         await flushCheckpoints();
         await flushTraces();
 
-        await patchRequestRecord(options.stores, requestId, {
-          status: "suspended",
+        await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: itemsToPersist()
         });
         ctx.requestRuntime.status = "suspended";
@@ -1961,6 +2003,10 @@ export async function runActionInternal<
     if (result.error !== undefined) {
       throw result.error;
     }
+    // The action has answered. Anything that fails the request from here on
+    // (a completion hook, the token budget) keeps this answer on the failed
+    // record beside its own error (FIX-1661).
+    actionAnswer = { output: result.output };
 
     const tokenBudget = getActionTokenBudget(action);
     let terminalStatus: "completed" | "incomplete" = "completed";
@@ -2092,11 +2138,12 @@ export async function runActionInternal<
 
     const completedAt = Date.now();
     const items = itemsToPersist();
-    await patchRequestRecord(options.stores, requestId, {
-      status: terminalStatus,
-      completedAtMs: completedAt,
-      items
-    });
+    await settleRequestRecord(
+      options.stores,
+      requestId,
+      { status: terminalStatus, output: result.output },
+      { completedAtMs: completedAt, items }
+    );
 
     ctx.requestRuntime.status = terminalStatus;
     ctx.requestRuntime.completedAtMs = completedAt;
@@ -2362,8 +2409,7 @@ export async function runActionInternal<
         await flushTraces();
 
         const abortedAt = Date.now();
-        await patchRequestRecord(options.stores, requestId, {
-          status: "aborted",
+        await settleRequestRecord(options.stores, requestId, { status: "aborted" }, {
           abortedAt,
           items: itemsToPersist()
         });
@@ -2394,8 +2440,7 @@ export async function runActionInternal<
         await flushCheckpoints();
         await flushTraces();
 
-        await patchRequestRecord(options.stores, requestId, {
-          status: "interrupted",
+        await settleRequestRecord(options.stores, requestId, { status: "interrupted" }, {
           interruptedAt: Date.now(),
           items: itemsToPersist()
         });
@@ -2428,11 +2473,12 @@ export async function runActionInternal<
       await flushTraces();
 
       const failedAt = Date.now();
-      await patchRequestRecord(options.stores, requestId, {
-        status: "failed",
-        failedAtMs: failedAt,
-        items: itemsToPersist()
-      });
+      await settleRequestRecord(
+        options.stores,
+        requestId,
+        { status: "failed", error: normalized, answered: actionAnswer },
+        { failedAtMs: failedAt, items: itemsToPersist() }
+      );
 
       ctx.requestRuntime.status = "failed";
       ctx.requestRuntime.failedAtMs = failedAt;
@@ -2477,7 +2523,9 @@ export async function runActionInternal<
     if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
     return {
-      output: undefined,
+      // The action's answer when it gave one before the request failed, as the
+      // record stores it (FIX-1661); none for an abort or a disconnect.
+      output: signalAborted || wasIntentionalAbort ? undefined : actionAnswer?.output,
       // Merged prior ∪ re-entry items in replay mode (FIX-811); identical to
       // `response.getItems()` on a normal run.
       items: itemsToPersist(),

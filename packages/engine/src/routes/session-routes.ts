@@ -4,7 +4,7 @@
 import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { SessionParentage, SessionRecord, StoreRegistry } from "../stores/types";
+import type { RequestActionResult, RequestRecord, SessionParentage, SessionRecord, StoreRegistry } from "../stores/types";
 import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
@@ -532,6 +532,10 @@ export async function handleListSessionRequests(
   // surfaces (the DevTool) opt in with `include_items=true` to back-fill the
   // item tree for requests that completed before the view was opened (FIX-733).
   const includeItems = getBooleanFlag(url.searchParams.get("include_items"));
+  // The action's output is left out the same way (FIX-1661): every entry says
+  // whether it failed and whether it answered, and a caller that reads the
+  // answers (the DevTool's row poll) asks for them.
+  const includeResultOutput = getBooleanFlag(url.searchParams.get("include_result_output"));
   const requests = await ctx.stores.request.list({
     // Request records keep a bare sessionId; isolate by the tenant filter
     // (always present, possibly undefined) so history never crosses tenants.
@@ -564,6 +568,26 @@ export async function handleListSessionRequests(
   });
 
   return jsonResponse(200, {
-    requests
+    requests: requests.map((record) => withListedResult(record, includeResultOutput))
   });
 }
+
+/**
+ * A request as the session list sends it: its stored `result` plus
+ * `hasOutput`, with `result.output` only when the caller asked for it. A
+ * record with no `result` (unfinished, or written before results were
+ * stored) is sent as it is.
+ */
+function withListedResult(
+  record: RequestRecord,
+  includeOutput: boolean
+): RequestRecord | (Omit<RequestRecord, "result"> & { result: ListedRequestActionResult }) {
+  const result = record.result;
+  if (result == null) return record;
+  const hasOutput = Object.prototype.hasOwnProperty.call(result, "output");
+  const { output: _output, ...summary } = result;
+  return { ...record, result: { ...(includeOutput ? result : summary), hasOutput } };
+}
+
+/** A stored action result as the session list sends it. */
+type ListedRequestActionResult = RequestActionResult & { hasOutput: boolean };

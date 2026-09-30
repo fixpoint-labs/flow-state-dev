@@ -77,6 +77,7 @@ export type {
   OrgListOptions,
   OrgRecord,
   OrgStore,
+  RequestActionResult,
   RequestListOptions,
   RequestRecord,
   RequestStatus,

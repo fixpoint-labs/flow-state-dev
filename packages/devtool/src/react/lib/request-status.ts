@@ -70,22 +70,3 @@ export function snapshotSupersedesLive(
   if (storeItems === undefined || storeItems.length === 0) return false;
   return REQUEST_STATUS_RANK[storeStatus] === 2;
 }
-
-/**
- * A finished request's raw log for reading its outcome: the polled log, plus
- * any item only its stream saw.
- *
- * A transient block's traces (an action's root among them, when its block is
- * transient) stream live and are never persisted, so the polled log lacks
- * them. The polled entry wins for an item both carry; stream-only items are
- * appended in the order the stream saw them.
- *
- * @param polled The request's polled raw log.
- * @param streamed What a stream delivered for the same request, if any.
- */
-export function mergeRawItems<T extends { id: string }>(polled: T[], streamed: readonly T[] | undefined): T[] {
-  if (streamed === undefined || streamed.length === 0) return polled;
-  const seen = new Set(polled.map((item) => item.id));
-  const extra = streamed.filter((item) => !seen.has(item.id));
-  return extra.length === 0 ? polled : [...polled, ...extra];
-}
