@@ -122,7 +122,7 @@ A refusal at run time throws `DispatchRefusedError`, with `code:
 | `key-occupied` | The `key` derived a session id already held by a record that is not this conversation's run |
 | `no-dispatch-operation` | This process runs requests but was not set up to dispatch one |
 | `dispatch-rejected` | The entry's `concurrency` policy is `reject` and its key is held |
-| `external-dispatcher` | An `id` delivery on a deployment that hands work to an external queue. A `key` dispatch is unaffected |
+| `external-dispatcher` | A delivery into an existing session, by `id` or a `{ from: true }` reply, from a process that hands work to an external queue. A reply from a run on a `worker-only` worker goes in process. A `key` dispatch is unaffected |
 
 Every refusal is decided before anything starts, so a `.rescue()` on the
 dispatcher can branch on `refused` knowing no run has started. A `key` or

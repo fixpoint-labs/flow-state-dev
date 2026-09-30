@@ -31,6 +31,7 @@ const sidebars: SidebarsConfig = {
     "writing-ui-stories",
     "choosing-patterns-with-benchmarks",
     "routing-errors-to-sentry",
+    "keeping-a-flow-running",
     {
       type: "category",
       label: "Webhooks",
