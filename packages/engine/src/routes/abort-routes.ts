@@ -2,11 +2,9 @@
  * Abort route handler for cancelling in-flight requests.
  */
 import type { StoreRegistry } from "../stores/types";
+import { resolveRequestIncarnation } from "../stores/scope-keys";
 import type { ResolvedPrincipal } from "../transports/types";
-import {
-  abortRequest,
-  hasActiveAbortController
-} from "../execution/abort-registry";
+import { abortRequest } from "../execution/abort-registry";
 import { callerReachesRequest, jsonResponse, unknownRequestResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -29,7 +27,8 @@ type AbortRouteContext = {
  * a cancel issued anywhere stops a run anywhere. Delivery is bounded by the
  * flow's `heartbeatIntervalMs` and needs a request store shared across
  * processes; with `heartbeatIntervalMs: 0` there is no tick and therefore no
- * delivery.
+ * delivery to a running request, only the one check each run makes as it
+ * starts.
  *
  * Returns 204 when the in-memory controller was fired here, 202 when the
  * intent was recorded for the running process to pick up, 404 if the request
@@ -47,18 +46,23 @@ export async function handleAbortRequest(
     return unknownRequestResponse(requestId);
   }
 
+  // The request the owner check above read. Everything below acts on it and
+  // on nothing else that later takes the id.
+  const incarnation = resolveRequestIncarnation(record);
+
   // One atomic step: record the intent only while the request is still
   // running. A read-then-write cannot express this — the worker can commit a
   // terminal status between the two, and writing afterwards would restore an
-  // `in_progress` record over a finished one. Fenced to the record checked
-  // above by its `createdAt`: if the id was deleted and taken by someone else
-  // since, the write misses and the caller gets the unused-id answer.
+  // `in_progress` record over a finished one. Fenced to the checked request by
+  // its incarnation: if the id was deleted and taken by someone else since,
+  // the write misses and the caller gets the unused-id answer; if the owner's
+  // own retry handed the record off, the incarnation held and the write lands.
   const result = await ctx.stores.request.setFieldsIfStatus(
     requestId,
     { abortRequested: true },
     ["in_progress"],
     Date.now(),
-    record.createdAt
+    incarnation
   );
 
   if (result.status === undefined) {
@@ -71,9 +75,10 @@ export async function handleAbortRequest(
     });
   }
 
-  // Fire the in-memory controller if this is the same instance.
-  if (hasActiveAbortController(requestId)) {
-    abortRequest(requestId);
+  // Fire the in-memory controller if the checked request runs in this
+  // process. A controller of a later request under the id is not it; that
+  // request never received the intent, so it is left running.
+  if (abortRequest(requestId, incarnation)) {
     return new Response(null, { status: 204 });
   }
 
