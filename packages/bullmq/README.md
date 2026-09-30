@@ -59,7 +59,19 @@ worker: bullmqWorker({ connection: redisUrl, mode: "worker-only" })
 
 A `worker-only` process installs no dispatcher and typically never serves the router. Call `flowstate.ready()` to start consuming.
 
-Options: `connection`, `mode`, `retry`, `concurrency` (default 2), `lockDuration` (default 300000 — LLM calls are slow), `prefix`, `queueName`, `channelPrefix`. The adapter also exposes `queue` and `runtime` for admin consoles and direct `enqueueAction` use.
+Options: `connection`, `mode`, `retry`, `concurrency` (default 2), `lockDuration` (default 300000 — LLM calls are slow), `prefix`, `queueName`, `channelPrefix`, `leaseMs` (default 10000; see below). The adapter also exposes `queue` and `runtime` for admin consoles and direct `enqueueAction` use.
+
+## Concurrency across workers
+
+`bullmqWorker` enforces each entry's `concurrency` policy across the whole deployment, using the same Redis as the queue. Two `queue` runs into one session run one after the other even when they land in different worker containers, in the order they were accepted, and a `reject` duplicate gets a 409 naming the run in flight. A worker never blocks a slot waiting: a job whose turn hasn't come goes back on the queue as a delayed job, which BullMQ doesn't count as an attempt. A retried job keeps its place, and when a run finishes the next job in line is started straight away.
+
+A delivery into an existing session (`dispatcher()` with `session: { id }`) runs here, under the recipient's policy. Declare `concurrency: "allow"` on an entry that should run in parallel.
+
+Each place in line has a lease, `leaseMs` long, that the worker holding it keeps renewing. If a worker dies, the session's key frees once the lease runs out. If a worker can't reach Redis to renew the place its running job holds, it stops that run at half the lease, before another worker can take the key, and the request ends `interrupted`. A job whose place was dropped while its worker was gone lines up again at the back when it runs.
+
+When you upgrade, roll out workers before the processes that enqueue. A job enqueued by the new release and picked up by a worker from the release before runs once without the policy, and its session can then wait up to `leaseMs` before the next run starts.
+
+The lines live on `createRedisLeaseBackend`, which `bullmqWorker` builds for you. It is exported for the lower-level composition below: pass it to the engine as `leaseBackend` on your `WorkerAdapter` and to `createFlowWorker` in its deps.
 
 ## Limits
 
@@ -255,7 +267,7 @@ The kitchen-sink app includes a working integration at `/api/admin/queues` (requ
 
 | Entry point                        | What it provides                                              |
 | ---------------------------------- | ------------------------------------------------------------- |
-| `@flow-state-dev/bullmq`          | Runtime, dispatcher, stream bridge, schedule index, connection utilities |
+| `@flow-state-dev/bullmq`          | Runtime, dispatcher, stream bridge, Redis lease backend, schedule index, connection utilities |
 | `@flow-state-dev/bullmq/worker`   | `createFlowWorker` (worker-only deploys)                      |
 | `@flow-state-dev/bullmq/schedules`| Static schedule registration, schedule dispatch worker        |
 

@@ -129,4 +129,12 @@ Over HTTP, a `reject` instead returns `409` carrying the in-flight `requestId`, 
 
 ## Limits
 
-By default the arbiter keeps its lines in the running process, so it serializes requests that run in that process. If you route execution to external workers (a queue-backed dispatcher), the run happens elsewhere, and the policy is enforced there only when the queue adapter supplies a lease backend that every process shares. Without one, runs on external workers aren't arbitrated.
+On a single server with no queue, the policy is enforced in memory, in the process that runs the request.
+
+On a queue-backed deployment such as `bullmqWorker`, the policy is enforced across every process of the deployment: the web process and each worker. A run takes its place on the key when it is accepted, and waits for its turn in whichever worker picks it up. A worker never spends one of its slots waiting. A run whose turn hasn't come goes back on the queue and is checked again shortly. Runs start in the order they were accepted. The wait budget is the same as on one server, and it counts only time spent waiting for the key, not time spent queued behind unrelated work.
+
+A place on the key has a lease, which the worker running the job keeps renewing. If that worker dies, the key frees once the lease runs out (ten seconds by default), and the next run starts. If the worker is alive but can't reach Redis to renew, it stops the run at half the lease, so the run has ended before anyone else can take the key. A stopped run ends `interrupted`. If Redis can't be reached when a run needs a place, the run is not started and the caller is told why. It never runs without the policy.
+
+Several web servers that each run requests in process, with no queue between them, each keep their own keys. Run that shape as a single instance, or put a queue in front of it.
+
+A dispatcher you pass directly, rather than through a `worker` adapter, applies no policy to the work it hands off, and a [delivery into an existing session](../server/background-work.md#starting-a-job-from-a-flow) is refused on it.
