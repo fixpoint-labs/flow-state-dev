@@ -221,14 +221,23 @@ export function TaskProvider({
   // ---- Interrupt: the one write this screen makes.
   const [interrupt, setInterrupt] = useState<InterruptState>({ kind: "idle" });
   useEffect(() => setInterrupt({ kind: "idle" }), [openRun?.requestId]);
+  // Aborted when the task screen closes, so an Interrupt's wait for the record stops with it.
+  const mounted = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    mounted.current = controller;
+    return () => controller.abort();
+  }, []);
   const requestInterrupt = useCallback(async () => {
     if (openRun === undefined || interrupt.kind === "pending") return;
+    const signal = mounted.current?.signal;
     setInterrupt({ kind: "pending" });
     try {
-      const outcome = await interruptRun(clients, openRun);
+      const outcome = await interruptRun(clients, openRun, signal === undefined ? {} : { signal });
       reportStatus(outcome.kind === "aborted" ? "aborted" : outcome.status);
       setInterrupt({ kind: "idle" });
     } catch (error) {
+      if (signal?.aborted === true) return;
       setInterrupt({ kind: "refused", message: error instanceof Error ? error.message : String(error) });
     }
   }, [clients, openRun, interrupt.kind, reportStatus]);

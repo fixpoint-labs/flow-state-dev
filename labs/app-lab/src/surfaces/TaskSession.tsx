@@ -142,10 +142,7 @@ function RunItems({ run }: { run: OpenRun }) {
       ) : null}
       {stored?.truncated === true ? (
         <p className="px-4 pt-3 text-xs text-muted-foreground" data-testid="session-truncated">
-          More than shown: this session holds more steps than one read returns.{" "}
-          <button type="button" className="underline" onClick={() => setAttempt((n) => n + 1)}>
-            Retry
-          </button>
+          More than shown: this session holds more steps than one read returns.
         </p>
       ) : null}
       <ol className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-4" data-testid="session-items">

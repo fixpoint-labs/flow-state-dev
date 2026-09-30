@@ -96,8 +96,6 @@ export type BoardRow = {
   labels: string[];
   /** The ids of the rows on the same board this one waits on. */
   deps: string[];
-  attempts: number | null;
-  maxAttempts: number | null;
   /**
    * The run the board's gate linked to this row, or `null`: never claimed,
    * claimed but not yet started, or stored before the link existed.
@@ -265,10 +263,6 @@ function toRunLink(value: unknown): RunLink | null {
   return { sessionId, requestId, attempt };
 }
 
-function count(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
@@ -286,8 +280,6 @@ export function toBoardRow(boardRef: string, channelId: string, topic: string, d
     priority: field(data, "priority") == null ? null : String(field(data, "priority")),
     labels: strings(field(data, "labels")),
     deps: strings(field(data, "deps")),
-    attempts: count(field(data, "attempts")),
-    maxAttempts: count(field(data, "maxAttempts")),
     run: toRunLink(field(data, "run")),
     error: field(data, "error") == null ? null : String(field(data, "error")),
     createdAt: time(field(data, "createdAt")),

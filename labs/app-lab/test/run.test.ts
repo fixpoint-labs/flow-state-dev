@@ -18,8 +18,10 @@ import {
   readRunStatus,
   readSessionItems,
   resolveRunFlow,
+  RunReadError,
   taskItems,
 } from "../src/lib/run";
+import { ClientHttpError } from "@flow-state-dev/client";
 import { openRunLab, RUN_LAB_USER_ID } from "../../../goals/app-lab/it-shows-and-stops-a-task-run/lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -167,5 +169,45 @@ describe("Interrupt (V3; BR-11, BR-12, BR-14)", () => {
     const row = await eventually(async () => (await rows()).find((r) => r.id === short.taskId && r.status === "completed"), "a finished row", 20_000);
     const flowId = await resolveRunFlow(clients, row.run!.sessionId);
     expect(await interruptRun(clients, { flowId, requestId: row.run!.requestId })).toEqual({ kind: "finished", status: "completed" });
+  });
+
+  /** Clients whose abort is refused with `refusal`, and whose record reads `status`. */
+  function refusing(refusal: ClientHttpError, status: string): { clients: LabClients; statusReads: () => number } {
+    let reads = 0;
+    const actions = {
+      abortRequest: async () => {
+        throw refusal;
+      },
+      getRequestStatus: async () => {
+        reads += 1;
+        return { status };
+      },
+    };
+    return { clients: { actions: () => actions } as unknown as LabClients, statusReads: () => reads };
+  }
+
+  it("tells an already-finished abort from a refusal by the answer's status, not its wording (BR-12, BR-13)", async () => {
+    // Worded without "(409)": the status alone says the request was already terminal.
+    const finished = refusing(new ClientHttpError("already terminal", { status: 409, body: "" }), "completed");
+    expect(await interruptRun(finished.clients, { flowId: "f", requestId: "r" })).toEqual({ kind: "finished", status: "completed" });
+
+    // Worded with "(409)" but refused: still a refusal, carrying its status.
+    const refused = refusing(new ClientHttpError("not yours (409)", { status: 403, body: "" }), "in_progress");
+    const error = await interruptRun(refused.clients, { flowId: "f", requestId: "r" }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RunReadError);
+    expect((error as RunReadError).failure.httpStatus).toBe(403);
+    expect(refused.statusReads()).toBe(0);
+  });
+
+  it("stops waiting on the record once the screen that asked has closed", async () => {
+    const running = refusing(new ClientHttpError("already terminal", { status: 409, body: "" }), "in_progress");
+    const closed = new AbortController();
+    const waiting = interruptRun(running.clients, { flowId: "f", requestId: "r" }, { pollMs: 10, timeoutMs: 60_000, signal: closed.signal });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    closed.abort();
+    await expect(waiting).rejects.toBeInstanceOf(RunReadError);
+    const readsAtClose = running.statusReads();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(running.statusReads()).toBe(readsAtClose);
   });
 });

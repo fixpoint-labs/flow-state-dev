@@ -5,6 +5,9 @@
  * loader's own message (BR-2).
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -46,7 +49,7 @@ function start(config: string, extra: string[] = [], host = "127.0.0.1") {
   });
   // A test that expects the refusal never awaits this; keep its rejection handled.
   listening.catch(() => undefined);
-  return { listening, exited, output: () => output };
+  return { child, listening, exited, output: () => output };
 }
 
 describe("the start command", () => {
@@ -72,6 +75,22 @@ describe("the start command", () => {
     const refused = start("goals/multi-seat-collab/lab/fsdev.config.mts", ["--devtool", "javascript:alert(1)"]);
     expect(await refused.exited).not.toBe(0);
     expect(refused.output()).toMatch(/--devtool must be an http\(s\) address/);
+  }, 120_000);
+
+  it("removes the --devtool copy of the pages when it stops, and makes none when the Lab doesn't load", async () => {
+    const copies = () => new Set(readdirSync(tmpdir()).filter((d) => d.startsWith("app-lab-pages-")));
+    const before = copies();
+    const app = start("goals/multi-seat-collab/lab/fsdev.config.mts", ["--devtool", "http://127.0.0.1:4000"]);
+    await app.listening;
+    const made = [...copies()].filter((d) => !before.has(d));
+    expect(made).toHaveLength(1);
+    app.child.kill("SIGTERM");
+    await app.exited;
+    expect(existsSync(join(tmpdir(), made[0]!))).toBe(false);
+
+    const unloaded = start("labs/app-lab/test/fixtures/missing/fsdev.config.mts", ["--devtool", "http://127.0.0.1:4000"]);
+    expect(await unloaded.exited).not.toBe(0);
+    expect([...copies()].filter((d) => !before.has(d))).toEqual([]);
   }, 120_000);
 
   it("hands the page the Lab's bearer on a loopback host, and refuses a network host outright", async () => {

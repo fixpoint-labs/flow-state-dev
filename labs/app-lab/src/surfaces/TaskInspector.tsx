@@ -148,14 +148,7 @@ function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
     );
   }
   const more = (truncated: boolean) =>
-    truncated ? (
-      <p className="text-xs text-muted-foreground">
-        More than shown.{" "}
-        <button type="button" className="underline" onClick={() => setAttempt((n) => n + 1)}>
-          Retry
-        </button>
-      </p>
-    ) : null;
+    truncated ? <p className="text-xs text-muted-foreground">More than shown: the run recorded more than one read returns.</p> : null;
   return (
     <>
       <Section title="PLAN" testId="inspector-plan">

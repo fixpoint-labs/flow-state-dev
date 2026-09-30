@@ -159,17 +159,19 @@ export type InterruptOutcome =
 export async function interruptRun(
   clients: LabClients,
   run: Pick<OpenRun, "flowId" | "requestId">,
-  options: { timeoutMs?: number; pollMs?: number } = {},
+  options: { timeoutMs?: number; pollMs?: number; signal?: AbortSignal } = {},
 ): Promise<InterruptOutcome> {
   const actions = clients.actions(run.flowId);
   try {
     await actions.abortRequest(run.requestId);
   } catch (error) {
     // 409: the request was already terminal. Anything else is a refusal.
-    if (!/\(409\)/.test(error instanceof Error ? error.message : "")) fail(error);
+    if (describeFailure(error).httpStatus !== 409) fail(error);
   }
   const until = Date.now() + (options.timeoutMs ?? SETTLE_TIMEOUT_MS);
   for (;;) {
+    // The screen that asked has gone: stop reading on its behalf.
+    if (options.signal?.aborted === true) throw new RunReadError({ message: "The screen closed before the run's record settled." });
     const status = await readRunStatus(clients, run);
     if (status === "aborted") return { kind: "aborted" };
     if (status !== "in_progress") return { kind: "finished", status };
