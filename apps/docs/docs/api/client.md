@@ -20,7 +20,8 @@ import { createClient } from "@flow-state-dev/client";
 const client = createClient({
   flowKind: "my-app",
   userId: "devuser",
-  // baseUrl: "https://api.example.com",  // another origin and/or your app's base path; never /api/flows
+  // baseUrl: omit in a browser on the same origin; in Node pass an absolute origin
+  // such as "http://localhost:3000". Never /api/flows. See /docs/configuration/client#choosing-baseurl
 });
 
 const { requestId } = await client.sendAction("chat", { message: "Hello!" });

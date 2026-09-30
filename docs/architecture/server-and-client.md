@@ -177,7 +177,10 @@ await typedClient.actions.chat({ message: "Hello!" });
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient(); // same origin; `baseUrl` takes an origin and/or base path, never `/api/flows`
+// Browser, same origin: no `baseUrl`. In Node, pass an absolute origin
+// ("http://localhost:3000"). Never `/api/flows`. Canonical rule:
+// apps/docs/docs/configuration/client.md → "Choosing baseUrl".
+const sessions = createSessionClient();
 
 const list = await sessions.listSessions({ flowKind: "my-app" });
 const detail = await sessions.getSession(sessionId);
@@ -197,7 +200,7 @@ work runs in a child session is declared by the flow author — the client has
 no way to request it.
 
 ```ts
-// Same-origin: the client's paths are already absolute from the root.
+// Browser, same origin (see the Session Client note above for Node).
 const sessions = createSessionClient();
 
 const children = await sessions.listChildSessions(parentSessionId, {

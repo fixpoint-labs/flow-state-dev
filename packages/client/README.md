@@ -14,6 +14,10 @@ pnpm add @flow-state-dev/client
 import { createClient } from "@flow-state-dev/client";
 
 const client = createClient({ flowKind: "my-app", userId: "user_1" });
+// In a browser on the same origin as the API, leave `baseUrl` off. In Node or
+// another server runtime, pass an absolute origin:
+//   createClient({ flowKind: "my-app", userId: "user_1", baseUrl: "http://localhost:3000" })
+// Never pass the `/api` or `/api/flows` route prefix.
 // `flowKind` binds the client to one flow instance (a kind, or a collection
 // member's own id). Sessions it starts are recorded as that instance's, and
 // returned records carry `flowId`, the owner a retry or continuation re-enters.
@@ -103,9 +107,9 @@ If you're on React you don't need this — `useSession` and `useRequestStream` w
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-// Same origin by default. `baseUrl` takes an origin and/or the app's base path,
-// never the `/api` or `/api/flows` route prefix. See Client options.
-const sessions = createSessionClient(/* { baseUrl: "https://api.example.com" } */);
+// Browser, same origin: no `baseUrl`. In Node, pass an absolute origin such as
+// { baseUrl: "http://localhost:3000" }. Never the `/api` or `/api/flows` prefix.
+const sessions = createSessionClient();
 
 // State snapshot with clientData and items
 const snapshot = await sessions.getSessionState("sess_1", {
@@ -223,6 +227,7 @@ the flow is wired up.
 ```ts
 import { createRecoveryClient } from "@flow-state-dev/client";
 
+// Browser, same origin: no `baseUrl`. From Node, pass an absolute origin.
 const recovery = createRecoveryClient();
 
 // Sweep stale active-request entries for one user. Marks any in_progress
@@ -337,5 +342,5 @@ pnpm --filter @flow-state-dev/client test
 ## Architecture reference
 
 - [Client](https://flow-state.dev/docs/client/overview) — Routes, transport, React hooks contract
-- [Client options](https://flow-state.dev/docs/configuration/client) — `createClient` and `FlowProvider` options, including when to set `baseUrl`
+- [Client options](https://flow-state.dev/docs/configuration/client#choosing-baseurl) — `createClient` and `FlowProvider` options, including what to pass as `baseUrl` in the browser vs. Node
 - [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, SSE protocol, resume semantics
