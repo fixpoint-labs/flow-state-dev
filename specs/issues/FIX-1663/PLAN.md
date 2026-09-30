@@ -23,8 +23,8 @@ Where a merged spec renames something below, the merged spec wins.
 ```mermaid
 flowchart TD
   M["QR-1 and QR-2 hold · pick the commit"] --> B["build App Lab · then the no-theme build"]
-  B --> A["leg a · DevForce · real model"]
-  B --> P0["b0 · write the pentest config from the README"]
+  B --> A["leg a · DevForce · real model on a4"]
+  B --> P0["b0 · a README-only writer writes the pentest config"]
   P0 --> L2["leg b · pentest · keyless"]
   B --> C["leg c · no-theme build · light then dark · static check"]
   A --> K["controls · each on its own build or start"]
@@ -45,11 +45,11 @@ its shipped routes, never with App Lab's own state.
 
 | ID | Passes when |
 |---|---|
-| a1 | **The Inbox journey.** A DevForce seat raises an ask (through [D1](DECISIONS.md#d1)'s first child). From App Lab's first screen: Inbox shows it with its kind and workstream; select it; the detail pane shows the same card the workstream's stream shows; **Approve & run**. The ask leaves Inbox and its stream card changes together, and the seat's session shows the resume |
+| a1 | **The Inbox journey.** A DevForce seat raises an ask through [D1](DECISIONS.md#d1)'s first child's deterministic path; no model decides to ask. From App Lab's first screen: Inbox shows it with its kind and workstream; select it; the detail pane shows the same card the workstream's stream shows; **Approve & run**. The ask leaves Inbox and its stream card changes together, and the seat's session shows the resume |
 | a2 | **The task journey.** A row on the DevForce feature board (through D1's second child). From Tasks, then again from the workstream's Board: open the task; its Session tab shows the seat's live harness session, and the task inspector sits in the right panel with the devtool trace link. Opening the link lands on that run's trace |
 | a3 | **Every surface ([epic ER-1](../../epics/FIX-1649/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).** The org switcher, Jump to (finding a workstream, a worker, a task and a declared resource), Inbox, Tasks, PROJECTS with the feature workstream, TEAMS with `eng` and its three workers; every tab at the project, workstream and task levels; the right panel at a workstream and at a task. Each is reached by clicking from the first screen, is `aria-selected` or in view, and shows store rows or its named empty state. TEAMS lists exactly the store's seats |
-| a4 | **The `@worker` turn.** In the feature workstream's composer, `@coder` plus a fresh token. The token is in `eng.coder`'s session as a person's turn before the stream shows it as delivered, and the seat answers in that session |
-| b0 | **Open the pentest Lab from the README.** With the specs closed, write S2 by following App Lab's README; list every step taken the README does not say, and every line that differs from DevForce's config other than for the tree. Start App Lab over it with the README's command |
+| a4 | **The `@worker` turn.** In the feature workstream's composer, `@coder` plus a fresh token. The token is in `eng.coder`'s session as a person's turn before the stream shows it as delivered, and the seat answers in that session. The answer is the one step graded on the real model |
+| b0 | **Open the pentest Lab from the README.** An isolated sub-agent that sees only App Lab's README and `goals/pentest-lab/lab/` (not these specs, not DevForce's config) writes S2 and returns it with every step it had to guess. The closure worker then lists every line that differs from DevForce's config other than for the tree. Start App Lab over it with the README's command |
 | b | **Leg b.** The same reach as a3 on the pentest tree: TEAMS lists `pentest` and `audit` with exactly the store's seats, the `findings` workstream opens with every tab, and its composer's post is in the channel's stored transcript before the stream shows it. `git diff` of `labs/app-lab` against the commit is empty, and no file there names a pentest seat, team or channel. Opening either Lab with no org is refused with a message, not an empty app |
 | c | **Leg c.** On the no-theme build, for each theme pass (light, then `.dark`): visit every surface a3 reaches, and read the computed colour, background, border and font of every swept part against every value the design-system package's App Lab theme declares (both variants, normalised). Zero matches. Then FIX-1655's static check over `packages/**` finds none |
 
@@ -71,11 +71,11 @@ App Lab is absent, and that is its expected red.
 | Today's `main` | App Lab | a · b | c's static half | Epic goal |
 | `hardcoded-accent` | The tool card's token: App Lab's accent as a literal, in App Lab's copy (S3) | c, naming the tool card | a · b | Epic goal; name shared with FIX-1655 |
 | `GOAL_CONTROL=static-names` | Reading the tree: DevForce's names compiled in | b, at TEAMS, naming a pentest seat | a · c | FIX-1662 |
-| `GOAL_CONTROL=optimistic-post` | The send: the composer draws the line without posting | a4, at the turn in the session | a1 to a3 · b's reach · c | FIX-1662 |
+| `GOAL_CONTROL=optimistic-post` | The send: the composer draws the line without posting | a4, at the turn in the session · b's post step, at the stored transcript | a1 to a3 · b's reach · c | FIX-1662 |
 | FIX-1664's control(s) | As its merged spec names | As its merged spec names, mapped onto a2 or a4 | The rest | FIX-1664 |
 
-`optimistic-post` also reddens b's post step; that is the same signal on the second tree, and is
-reported, not counted against the control.
+`optimistic-post` removes the send on both trees, so its signal is the pair: a4 and b's post
+step fail together. Either failing alone, or anything else reddening, is a finding.
 
 ## Part 2 · the teams the legs don't walk
 
@@ -145,6 +145,24 @@ No reader-facing change. [DOCS.md](DOCS.md) says what the run follows.
   `goals/devforce-lab/lab/workforce/teams/eng/channels/feature/CHANNEL.md` (no board at that commit).
 - Build once for the legs; one extra build per scratch patch; restart the server per `GOAL_CONTROL`.
 - Leg a needs a key and a model that can run the DevForce `coder` kind; the report names both.
+
+## Notes from review
+
+- "QR-11–QR-16 restate PLAN parts 1–4 almost verbatim. Consider dropping this table and linking to `PLAN.md` check IDs for execution, keeping BUSINESS-RULES for when a run may start (QR-1–4), environment (QR-5–10), and findings/PR (QR-17–23)." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2426#discussion_r4140117590))
+- "Recommend stating explicitly that S1 is the contract (`goal.md` + verdict log) while Parts 2–4 are invoked via subprocess (`pnpm tsx goals/.../run.mts`) from a thin driver — especially P3.1–P3.2 so closure does not duplicate a3 navigation and static/drift checks." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2426#discussion_r4140117596))
+- "J4 overlaps a3 surface reach + ER-5. If the intent is only 'sibling surfaces open with named empties,' consider narrowing to address resolution + copy on one fresh load rather than full tab parity with a3." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2426#discussion_r4140117598))
+- "P3.3 re-runs full `pnpm typecheck` and `pnpm test` after QR-1 already requires CI green on `main`. Consider 'CI passed on pinned SHA' as the default proof line, with optional local re-run. Child goal subprocesses should share a cached App Lab build artifact to avoid N+1 production builds." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2426#discussion_r4140117601))
+- "Leg c: avoid nested loops over every swept element × every declared theme value. Collect normalized computed styles once per pass and fail if any value ∈ theme set. Reuse one navigation module for a3 surfaces across legs a, b, and c." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2426#discussion_r4140117603))
+- "Clarify QR-8: rebuild only when the tree changes (no-theme, `hardcoded-accent`, pre–FIX-1662 `main`); restart server for env-only controls." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2426#discussion_r4140117605))
+- "Consider folding Part 2 into 'reported journeys' without new automated legs, or cross-linking to child checks so implementers do not build a second full browser suite." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2426#discussion_r4140117609))
+- "The two blocking children mean most of Parts 1–4 cannot run until they merge — you could shorten narrative that assumes a first full run before D1 lands, since QR-1 already blocks that." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2426#discussion_r4140117613))
+- "Leg c: pick one primary source of truth (runtime install list + epic-pinned chrome/devtool, with child goal owning the static half via subprocess)." · "Part 4 could be an explicit 'cite failing P3.x / a3 / ER-*' appendix instead of a second execution pass." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2426#pullrequestreview-5360626912))
+- "The real added value [of leg c] is that it runs on App Lab's actual sweep with the theme removed, which FIX-1655's host page doesn't do. Say so explicitly, and consider dropping the part-4 'Token names' row unless FIX-1655's static check demonstrably doesn't cover `labs/app-lab/`." — second-look ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/2426#issuecomment-5902591536))
+- "S1's lifted page helpers would be a third copy; `goals/lib` exists for shared goal-check code. Hoist them, or import rather than copy, keeping FIX-1662's and FIX-1664's checks green." — second-look ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/2426#issuecomment-5902591536))
+- "Allow an explicitly non-authoritative dry run of a1–a4/b/J4 once FIX-1662 and FIX-1664 merge, before the hand-back. Findings file normally, but no report or PR comes out of it; leg c and part 4's visuals row wait for the hand-back." — second-look ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/2426#issuecomment-5902591536))
+
+These are inputs, not instructions. Adopt, adapt, or discard; you owe no justification for
+discarding one.
 
 ## Follow-ups
 

@@ -34,7 +34,7 @@ team's journey and every child's own check pass on that commit.**
 
 ```mermaid
 flowchart LR
-  M["one main commit · every child merged · final hand-back linked"] --> A["leg a · DevForce tree · real model"]
+  M["one main commit · every child merged · final hand-back linked"] --> A["leg a · DevForce tree · real model on a4"]
   M --> B["leg b · pentest tree · opened from the README"]
   M --> C["leg c · App Lab built with no theme · light and dark"]
   A -->|"both journeys · every surface · the turn in the session"| P["PASS · the epic's goal is met"]
@@ -52,7 +52,7 @@ exactly one leg at its own signal.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/app-lab/a-lab-is-worked-through-one-skinned-shell/`, real Chromium on a production build of the one commit, legs a to c then the controls. Verdict in the closure PR |
-| **Model** | Leg a on a real model under a real org, as the epic's input says. Legs b and c keyless, on each Lab's scripted harness |
+| **Model** | Leg a under a real org with a real model set, as the epic's input says. Only a4, the seat answering in its session, rests on the model; a1 to a3 raise their ask and board row through D1's children's deterministic paths. Legs b and c keyless, on each Lab's scripted harness |
 | **Signal** | Per leg in [PLAN.md → Checks](PLAN.md#checks): a1 the Inbox journey, a2 the task journey, a3 every surface of [ER-1](../../epics/FIX-1649/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), a4 the `@worker` turn · b the same reach on the pentest tree, and no org refused · c computed styles on every swept part, in light and dark, against every value the App Lab theme declares, plus the static check over `packages/` |
 | **Input** | `goals/devforce-lab/lab/` for leg a; `goals/pentest-lab/lab/` for leg b, which App Lab has never been tested against. Kitchen-sink's tree stands in for neither |
 | **Anti-game** | No assertion on a child's own output, App Lab's own state or a mocked server. Rows read by id against the store. No App Lab code names either tree. Leg c's no-theme build removes only the theme import, and the diff is in the report. A swept part leg c never rendered is a finding |
@@ -89,7 +89,8 @@ fixtures that never met a real Lab, or waits on a bar nobody asked for.
    that block this issue.** If wrong: two small children the epic didn't plan, or a first run
    that fails on gaps we already knew about.
 2. **[D2](DECISIONS.md#d2) · The closure writes the pentest Lab's host config, by following App
-   Lab's README and nothing else; a step the README doesn't say is a finding.** If wrong: the
+   Lab's README and nothing else, through a writer that sees only the README and the pentest
+   tree; a step it had to guess is a finding.** If wrong: the
    check that proves "no shell code" wrote the one file a Lab author needs, and could hide what
    the README leaves out.
 

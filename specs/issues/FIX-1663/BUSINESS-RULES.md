@@ -20,10 +20,10 @@ or report line that shows the rule held.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | QR-5 | A leg runs | Against a production build of App Lab from that commit, built by the run, in real Chromium | The build step |
-| QR-6 | Leg a runs | On a real model, a key set, under a real org. Legs b and c set no key; each fails if one is | The report names the model; the key assertion |
+| QR-6 | Leg a runs | Under a real org with a key and a real model set; a1 to a3 raise their ask and board row through D1's children's deterministic paths, and only a4's answer rests on the model. Legs b and c set no key; each fails if one is | The report names the model; the key assertion |
 | QR-7 | Leg c runs | On a second build of the same commit with only the theme import removed, in light and then dark | The patch, in the report |
 | QR-8 | A control runs | On its own build or server start. Today's `main` is the commit before FIX-1662's first merge | The report names each build's SHA and patch |
-| QR-9 | A real-model step shows no ask, no turn or no answer within its window | A finding, never flake; not retried | Report |
+| QR-9 | a4's answer does not arrive in the seat's session within its window | A finding, never flake; not retried | Report |
 | QR-10 | Any other check fails | A finding | Report |
 
 ## The plan
@@ -31,7 +31,7 @@ or report line that shows the rule held.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | QR-11 | Part 1 runs | Legs a, b and c pass, and each control fails the leg [Controls](PLAN.md#controls) names, at its signal | a1 to a4, b, c |
-| QR-12 | Leg b's Lab is opened | By following App Lab's README only; each step it does not say is a finding ([D2](DECISIONS.md#d2)) | b0 in the report |
+| QR-12 | Leg b's Lab is opened | By an isolated writer that sees only App Lab's README and the pentest tree; each step it had to guess is a finding ([D2](DECISIONS.md#d2)) | b0 in the report |
 | QR-13 | Leg c renders | Every swept part appears on the page at least once in each theme pass; one that never does is a finding | c's sweep table |
 | QR-14 | Part 2 runs | Each team journey passes | J3, J4 |
 | QR-15 | Part 3 runs | Every child's check passes with its controls failing, and the goal labs' own checks stay green | P3.1 to P3.3 |
