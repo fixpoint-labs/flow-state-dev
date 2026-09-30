@@ -13,7 +13,8 @@
  *
  * Binds loopback by default. A non-loopback `--host` runs the same guard
  * `fsdev serve` does, which refuses a Lab that would answer on the framework's
- * unauthenticated default principal.
+ * unauthenticated default principal, and is refused outright for a Lab that
+ * hands its page a bearer token: that token only ever goes to a loopback page.
  *
  * Paths are resolved from the directory the command was typed in
  * (`INIT_CWD`, which pnpm sets for a filtered script), and the process runs
@@ -30,9 +31,8 @@ import { existsSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import type { DevToolConnectionConfig } from "@flow-state-dev/engine";
-import { loadFsdevConfig } from "@flow-state-dev/fsdev";
-import { assertNetworkBindIsAuthenticated, serve } from "@flow-state-dev/node";
+import { declaredDevtoolConfig, loadFsdevConfig } from "@flow-state-dev/fsdev";
+import { assertNetworkBindIsAuthenticated, isLoopbackHost, serve } from "@flow-state-dev/node";
 
 /** App Lab's own build output. */
 const DEFAULT_ASSETS = fileURLToPath(new URL("../dist", import.meta.url));
@@ -69,6 +69,7 @@ if (!existsSync(resolve(assets, "index.html"))) {
   fail(`App Lab's pages are not built at ${assets}. Run: pnpm --filter @flow-state-dev/app-lab build`);
 }
 
+// Process-global: nothing else in this package may assume the package directory as cwd.
 process.chdir(invokedFrom);
 
 let loaded: Awaited<ReturnType<typeof loadFsdevConfig>>;
@@ -82,21 +83,26 @@ if (loaded === undefined) fail(`No fsdev config at ${values.config}.`);
 const flowState = loaded.flowState;
 
 const host = values.host!;
+
+// The same connection config `fsdev dev` hands the DevTool page: which user the
+// Lab runs as, and its bearer token if it declares one. `serve()` injects it on
+// a loopback host only, so on any other host the page would open without the
+// credential the Lab requires. Refuse that up front rather than serve a page
+// that can't read the Lab.
+const devtoolConfig = declaredDevtoolConfig(flowState);
+if ((devtoolConfig?.bearerToken?.trim().length ?? 0) > 0 && !isLoopbackHost(host)) {
+  await flowState.dispose().catch(() => {});
+  fail(
+    `App Lab won't serve ${host}: this Lab hands its page a bearer token, and that token is only ever given to a page on a loopback host. Bind --host 127.0.0.1.`,
+  );
+}
+
 try {
   await assertNetworkBindIsAuthenticated(flowState, { host });
 } catch (error) {
   await flowState.dispose().catch(() => {});
   fail(error instanceof Error ? error.message : String(error));
 }
-
-// The same connection config `fsdev dev` hands the DevTool page: which user the
-// Lab runs as, and its bearer token if it declares one. `serve()` injects it on
-// a loopback host only.
-const declared = flowState.meta.devtool;
-const devtoolConfig: DevToolConnectionConfig | undefined =
-  (declared?.userId?.trim().length ?? 0) > 0 || (declared?.bearerToken?.trim().length ?? 0) > 0
-    ? declared
-    : undefined;
 
 const handle = await serve(flowState, {
   host,

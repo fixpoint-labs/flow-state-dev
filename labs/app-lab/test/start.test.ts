@@ -18,10 +18,10 @@ afterEach(() => {
 });
 
 /** Run the start script from the repo root, the way `pnpm --filter … start` does. */
-function start(config: string) {
+function start(config: string, host = "127.0.0.1") {
   const child = spawn(
     process.execPath,
-    ["--import", "tsx", "bin/start.mts", "--config", config, "--port", "0", "--assets", assets],
+    ["--import", "tsx", "bin/start.mts", "--config", config, "--port", "0", "--host", host, "--assets", assets],
     { cwd: pkg, env: { ...process.env, INIT_CWD: repo }, stdio: ["ignore", "pipe", "pipe"] },
   );
   running.push(child);
@@ -59,6 +59,22 @@ describe("the start command", () => {
     const sessions = await fetch(`${origin}/api/flows/sessions?userId=${encodeURIComponent("u_multi_seat_collab")}`);
     expect(sessions.status).toBe(200);
   }, 90_000);
+
+  it("hands the page the Lab's bearer on a loopback host, and refuses a network host outright", async () => {
+    const config = "goals/devforce-lab/lab/fsdev.config.mts";
+    const loopback = await start(config).listening;
+    const local = await (await fetch(`${loopback}/inbox`)).text();
+    expect(local).toContain("__FSD_DEVTOOL_CONFIG__");
+    expect(local).toContain("bearerToken");
+
+    // A network bind would hand the token to a page served off-machine; the
+    // start command refuses before it listens, so no page is ever served.
+    const network = start(config, "0.0.0.0");
+    const code = await network.exited;
+    expect(code).not.toBe(0);
+    expect(network.output()).toMatch(/won't serve 0\.0\.0\.0: this Lab hands its page a bearer token/);
+    expect(network.output()).not.toMatch(/App Lab: http/);
+  }, 120_000);
 
   it("refuses a config path with nothing at it, with the loader's message", async () => {
     const app = start("labs/app-lab/test/fixtures/missing/fsdev.config.mts");

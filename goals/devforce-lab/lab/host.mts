@@ -5,7 +5,8 @@
  *
  * What `openLab` does, in order, and nothing else: read the tree, resolve the
  * feature channel's board, build the two kinds on it, hire, register, open the
- * declared channels when asked, hand back the handles. Every convention file it
+ * declared channels when asked (and their organization's inventory, when that
+ * is asked too), hand back the handles. Every convention file it
  * reads is found by walking from one root; no file is named in this code.
  *
  * **The board belongs to the channel.** The feature channel's `CHANNEL.md`
@@ -63,8 +64,10 @@ import {
   defineChannelFlow,
   hireWorkforce,
   openChannels,
+  openInventory,
   resourcesFromDocs,
   type ChannelTranscriptLine,
+  type InventoryActionRequest,
 } from "@flow-state-dev/workforce";
 import {
   readDeclaredRoster,
@@ -213,6 +216,22 @@ export interface OpenLabOptions {
    * ask could not be raised.
    */
   ask?: AskFeature;
+  /**
+   * Open the organization's seat and channel inventory after the channels, the
+   * collections App Lab's TEAMS and PROJECTS read. Needs `channels`: the
+   * inventory's writer is the channel kind, built with `inventory: true`.
+   *
+   * **Absent means absent**: the channel kind is built without the writer and
+   * nothing is registered, as the other checks have always run.
+   */
+  inventory?: boolean;
+  /**
+   * Hand a page the lab's user and verified bearer through the `devtool`
+   * connection config, which the host injects on a loopback bind only. For a
+   * long-lived server a browser reads (App Lab, the DevTool). Absent for the
+   * checks, which read in-process.
+   */
+  devtool?: boolean;
 
   // ---- controls, each the red state of one claim -------------------------
 
@@ -455,10 +474,16 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // composed rather than restated. The built-in kind is replaced wholesale with
   // one carrying this lab's notify slot, because a slot cannot be added to a
   // kind after it is built.
+  if (options.inventory === true && options.channels === undefined) {
+    throw new Error("openLab: `inventory` needs `channels`, whose kind writes the inventory");
+  }
   const channelKind =
     options.channels === undefined
       ? undefined
-      : defineChannelFlow({ notify: labNotify(options.channels) as never });
+      : defineChannelFlow({
+          notify: labNotify(options.channels) as never,
+          ...(options.inventory === true ? { inventory: true } : {}),
+        });
   const instances =
     channelKind === undefined
       ? []
@@ -478,6 +503,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
     // Only when the ask is: the other checks run without it, as before.
     ...(options.ask === undefined ? {} : { durable: true }),
+    ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),
   } as never);
 
   const runtime = await state.getRuntime();
@@ -570,6 +596,38 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   if (channelKind !== undefined) {
     await openChannels(roster.channels, { client: sessionClient, userId: LAB_USER_ID });
+  }
+
+  // The inventory, in-process, under the lab's organization, once the channel
+  // sessions it registers from exist. A problem fails the open, naming it.
+  if (options.inventory === true) {
+    const flows: Record<string, unknown> = {
+      ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
+      ...seats,
+    };
+    const run = async (request: InventoryActionRequest): Promise<unknown> => {
+      const result = (await runAction({
+        flow: flows[request.flowKind],
+        actionName: request.action,
+        input: request.input,
+        userId: request.userId,
+        orgId: request.orgId,
+        sessionId: request.sessionId,
+        source: request.source,
+        stores: runtime.stores,
+        runtimeConfig: runtime.runtimeConfig,
+      } as never)) as { error?: unknown };
+      if (result?.error !== undefined) throw new Error(messageOf(result.error));
+      return result;
+    };
+    const opened = await openInventory(
+      { seats: hired.map((seat) => ({ id: seat.id, kind: seat.kind })), channels: roster.channels },
+      { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+    );
+    if (opened.problems.length > 0) {
+      await state.dispose();
+      throw new Error(`openLab: the inventory did not open: ${opened.problems.join("; ")}`);
+    }
   }
 
   const channelInstance = instances.find((instance) => instance.kind === CHANNEL_KIND);
