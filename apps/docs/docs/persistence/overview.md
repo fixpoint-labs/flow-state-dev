@@ -323,6 +323,25 @@ Omitting `parentage` narrows to `"top-level"`, which is the reverse of how an om
 - SQLite runs one shared poll loop per request, fanned out to every subscriber and woken in-process by the write path; the filesystem store polls `getEvents(requestId, fromSequence)`.
 - Postgres uses `LISTEN/NOTIFY` on a dedicated client. See `@flow-state-dev/store-postgres` for details.
 
+Request ids can be chosen by the caller, so while a stream is open its request can be deleted and a different request, possibly another user's, can take the same id. `options.isStillAuthorized` guards against that. Whatever mechanism your store uses, call it after every read that returned events and before yielding any of them. If it resolves `false` or throws, yield none of that batch and end the iterator. `isBatchStillAuthorized(options)` from `@flow-state-dev/engine` does the call and treats a throw as `false`, and `pollEvents` already applies it for you.
+
+```ts
+async function* subscribeToEvents(requestId, options) {
+  let lastSeen = options.fromSequence;
+  while (!options.signal?.aborted) {
+    const batch = await readEventsAfter(requestId, lastSeen);
+    if (batch.length > 0) {
+      if (!(await isBatchStillAuthorized(options))) return;
+      for (const event of batch) {
+        yield event;
+        lastSeen = event.sequence_number;
+      }
+    }
+    await waitForMoreEvents(requestId, options.signal);
+  }
+}
+```
+
 ### Incremental items storage
 
 Backed adapters store items incrementally rather than inside the request record's JSONB column. The SQLite and Postgres adapters write one row per item into a dedicated child table (`request_items`); the filesystem store appends items and events to an append-only log instead. `RequestStore.persistItems` and `get` keep the same shape either way, so a flow author sees no difference. An operator does — see [Persistence cost model](/docs/server/setup#persistence-cost-model) for how each backend stores its data.
@@ -333,7 +352,7 @@ Backed adapters store items incrementally rather than inside the request record'
 
 See the [`@flow-state-dev/store-postgres` README](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/store-postgres/README.md#items-storage) for the schema, the optional storage-reclamation steps (`pg_repack`), and the rollback constraints.
 
-`getEvents` accepts an optional `fromSequence` for cursor reads — omitting it returns the full log (used by completed-request replay). A custom store that doesn't need cross-process tail can implement `subscribeToEvents` as an iterator that yields the catch-up via `getEvents` and then ends; clients fall back to bulk replay for completed requests.
+`getEvents` accepts an optional `fromSequence` for cursor reads — omitting it returns the full log (used by completed-request replay). A custom store that doesn't need cross-process tail can implement `subscribeToEvents` as an iterator that yields the catch-up via `getEvents` and then ends; clients fall back to bulk replay for completed requests. The catch-up read still calls `isStillAuthorized` before yielding, like any other read.
 
 The exact interface may evolve. Check the `@flow-state-dev/engine` package source for the current contract.
 

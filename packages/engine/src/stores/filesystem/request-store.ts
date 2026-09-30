@@ -581,11 +581,14 @@ export class FilesystemRequestStore implements RequestStore {
    * for which are removed, which are quarantined, and which are left.
    */
   private async deleteSidecars(id: string): Promise<void> {
-    const exact = new Set([
+    // `<id>.events.json` and `<id>.runonce.json` are also the record files of
+    // the requests whose ids are `<id>.events` and `<id>.runonce`. Such a file
+    // that reads back as that record is left; see `isRecordFile`.
+    const exactJson = new Set([
       path.basename(toEventsPath(this.rootDir, id)),
-      path.basename(toRunOncePath(this.rootDir, id)),
-      path.basename(toAbortMarkerPath(this.rootDir, id))
+      path.basename(toRunOncePath(this.rootDir, id))
     ]);
+    const abortMarker = path.basename(toAbortMarkerPath(this.rootDir, id));
     const keyPrefix = runOnceKeyPrefix(id);
     // The events/single-map paths encode the id with `encodeURIComponent`;
     // per-key files use `encodeSegment` (which also escapes `:`). Both agree
@@ -601,13 +604,19 @@ export class FilesystemRequestStore implements RequestStore {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
       throw err;
     }
-    await Promise.all(
+    // Every removal settles before a failure is reported, so no straggler
+    // from this attempt is still running when the caller retries.
+    const results = await Promise.allSettled(
       entries.map(async (name) => {
         const isPerKeyRunOnce =
           name.startsWith(keyPrefix) && name.endsWith(".runonce");
         const filePath = path.join(this.rootDir, name);
-        if (exact.has(name) || isPerKeyRunOnce) {
+        if (name === abortMarker || isPerKeyRunOnce) {
           await rm(filePath, { force: true });
+          return;
+        }
+        if (exactJson.has(name)) {
+          if (!(await this.isRecordFile(name))) await rm(filePath, { force: true });
           return;
         }
         const legacy = await this.classifyLegacyRunOnceKeyFile(name, legacyKeyPrefixes);
@@ -620,6 +629,30 @@ export class FilesystemRequestStore implements RequestStore {
         }
       })
     );
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected"
+    );
+    if (failure !== undefined) throw failure.reason;
+  }
+
+  /**
+   * Whether the file `name` reads back as the record of the request whose id
+   * is the whole name (see {@link readsBackAsRecordFile}). A missing or
+   * unparseable file does not.
+   */
+  private async isRecordFile(name: string): Promise<boolean> {
+    let content: string;
+    try {
+      content = await readFile(path.join(this.rootDir, name), "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw err;
+    }
+    try {
+      return readsBackAsRecordFile(name, JSON.parse(content) as unknown);
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -652,20 +685,7 @@ export class FilesystemRequestStore implements RequestStore {
     if (prefix === undefined) return "keep";
     const keyPart = name.slice(prefix.length, -".json".length);
     if (keyPart.length === 0) return "keep";
-    let content: string;
-    try {
-      content = await readFile(path.join(this.rootDir, name), "utf8");
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return "keep";
-      throw err;
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      parsed = undefined;
-    }
-    if (readsBackAsRecordFile(name, parsed)) return "keep";
+    if (await this.isRecordFile(name)) return "keep";
     return name.split(".runonce.").length > 2 ? "quarantine" : "remove";
   }
 
@@ -889,6 +909,9 @@ export class FilesystemRequestStore implements RequestStore {
       }
       throw error;
     }
+    // The single-map name is also the record file of request `<id>.runonce`;
+    // that record is never read as this request's results.
+    if (readsBackAsRecordFile(path.basename(legacyPath), map)) return { found: false };
     if (!Object.prototype.hasOwnProperty.call(map, key)) return { found: false };
     return { found: true, value: map[key] };
   }

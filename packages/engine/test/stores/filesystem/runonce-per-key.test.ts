@@ -7,7 +7,7 @@
  * cross-key isolation under concurrency, and lazy read-only fallback to a
  * legacy single-map file written by an older version.
  */
-import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -269,5 +269,104 @@ describe("FilesystemRequestStore — per-key files from the older layout", () =>
     await store.delete("foo");
 
     expect((await store.get("foo.runonce.bar"))?.id).toBe("foo.runonce.bar");
+  });
+});
+
+// A request's event log and single-map runOnce file are named
+// `<id>.events.json` and `<id>.runonce.json`, which are also the record files
+// of the requests whose ids are `<id>.events` and `<id>.runonce`. Deleting
+// one request must never delete, or read, another's record.
+describe("FilesystemRequestStore — sidecar names shared with another request's record", () => {
+  const recordFor = (id: string) => ({
+    id,
+    flowKind: "test",
+    actionName: "run",
+    userId: "u1",
+    source: "http" as const,
+    status: "completed" as const,
+    startedAtMs: 1,
+    state: {},
+    version: 0,
+    createdAt: 1,
+    updatedAt: 1
+  });
+
+  it("delete of foo leaves the record of request foo.runonce", async () => {
+    const store = createFilesystemRequestStore({ rootDir });
+    await store.set("foo", recordFor("foo"), "any");
+    await store.set("foo.runonce", recordFor("foo.runonce"), "any");
+
+    await store.delete("foo");
+
+    expect(await store.get("foo")).toBeUndefined();
+    expect((await store.get("foo.runonce"))?.id).toBe("foo.runonce");
+  });
+
+  it("never reads another request's record as foo's single-map runOnce results", async () => {
+    const store = createFilesystemRequestStore({ rootDir });
+    await store.set("foo.runonce", recordFor("foo.runonce"), "any");
+
+    // A request that takes the id foo asks for a key the record happens to have.
+    expect(await store.getRunOnceResult("foo", "status")).toEqual({ found: false });
+  });
+
+  it("delete of foo leaves the record of request foo.events", async () => {
+    const store = createFilesystemRequestStore({ rootDir });
+    await store.set("foo", recordFor("foo"), "any");
+    await store.set("foo.events", recordFor("foo.events"), "any");
+
+    await store.delete("foo");
+
+    expect((await store.get("foo.events"))?.id).toBe("foo.events");
+  });
+
+  it("still removes foo's own single-map runOnce file", async () => {
+    await writeFile(
+      path.join(rootDir, "foo.runonce.json"),
+      JSON.stringify({ step: "foo's result" }),
+      "utf8"
+    );
+    const store = createFilesystemRequestStore({ rootDir });
+
+    await store.delete("foo");
+
+    expect(await readdir(rootDir)).toEqual([]);
+  });
+});
+
+// The record is what makes an id taken. While any of its children remain,
+// the record must remain too, so a failed delete leaves the id unclaimable
+// and can be retried, rather than freeing it over stale data.
+describe("FilesystemRequestStore — delete removes the record last", () => {
+  it("keeps the record when a sidecar cannot be removed, and a retry completes", async () => {
+    const store = createFilesystemRequestStore({ rootDir });
+    await store.set(
+      "req_stuck",
+      {
+        id: "req_stuck",
+        flowKind: "test",
+        actionName: "run",
+        userId: "u1",
+        source: "http",
+        status: "completed",
+        startedAtMs: 1,
+        state: {},
+        version: 0,
+        createdAt: 1,
+        updatedAt: 1
+      },
+      "any"
+    );
+    // A non-empty directory where the event log goes: removing it throws.
+    const eventsPath = path.join(rootDir, "req_stuck.events.json");
+    await mkdir(eventsPath);
+    await writeFile(path.join(eventsPath, "x"), "x", "utf8");
+
+    await expect(store.delete("req_stuck")).rejects.toThrow();
+    expect((await store.get("req_stuck"))?.id).toBe("req_stuck");
+
+    await rm(eventsPath, { recursive: true, force: true });
+    await store.delete("req_stuck");
+    expect(await store.get("req_stuck")).toBeUndefined();
   });
 });

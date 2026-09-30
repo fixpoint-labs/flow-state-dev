@@ -77,9 +77,9 @@ The request is not reported finished until its background work has settled — w
 
 That matters most on ephemeral hosts (Vercel, Next.js `after()`, Lambda), where the platform is free to freeze the container the moment the request returns. A task still running at that point can be cut off with a write half-applied. Because the request holds itself open until the pool settles, a `.sideChain()` task that captures memory or writes a summary gets to finish even on a turn the user cancelled.
 
-Two gaps are worth knowing about.
+Two timing details are worth knowing about.
 
-`onFinished` and `onErrored` run *after* the terminal record is written, so background work they queue is not covered — it lands in a pool nothing is waiting on. If one of those hooks needs to do durable work, do it inline in the hook rather than dispatching it with `.sideChain()`. `onCompleted` is different: it runs before the request is finalized, so work it queues is drained like any other.
+`onFinished` and `onErrored` run *after* the request's final event has gone out on the stream. Background work they queue is still waited on: the run drains it before it counts as finished, and the request's id is not freed for reuse until it settles. But the client has already seen the request end by then, and its stream may have closed. If the client needs to see a task's effect when the request ends, queue it from `onCompleted` instead, which runs before the final event.
 
 **Suspension is not an ending, and does not wait.** A request that suspends at a gate closes its stream with background work still in flight, by design — see [Suspension does not wait for background work](#suspension-does-not-wait-for-background-work) below. The guarantee above is about a request *finishing*; a suspended request has not finished, it is paused.
 
