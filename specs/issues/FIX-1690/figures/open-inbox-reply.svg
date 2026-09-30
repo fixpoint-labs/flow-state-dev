@@ -1,0 +1,97 @@
+<svg viewBox="0 0 940 424" role="img" aria-label="Open fork: DevForce&#x27;s only asking worker, its scripted EM, can&#x27;t take a message, so where is Inbox&#x27;s reply proven? Recommended: a fixture seat that takes messages, in this issue&#x27;s goal check. Alternative: give DevForce&#x27;s EM a door. It comes down to the first row: with the fixture, delivered means heard; a door on the scripted EM would store a line nothing reads. The price is the second row: DevForce shows the reply box disabled with its line. Third row: the closure&#x27;s Part 4 run line is amended by a follow-up PR, instead of running unchanged. Locks in: a reply goes only where a kind can hear it. Flips if: DevForce&#x27;s EM is meant to converse, which needs a model and a real door."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="424"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">OPEN · THE FORK</text>
+    <text class="t-q" x="32" y="52">DevForce&#x27;s only asking worker can&#x27;t take a message. Where is Inbox&#x27;s reply proven?</text>
+  </g>
+  <g id="options">
+    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <text class="t-h c-code" x="228" y="112">A fixture seat that takes messages</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">ALTERNATIVE</text>
+    <text class="t-h c-lost" x="592" y="112">A door on DevForce&#x27;s EM</text>
+  </g>
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">DELIVERED</text>
+    <text class="t-lbl" x="32" y="169">MEANS HEARD</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Yes</text>
+    <text class="t-s" x="248" y="179">the fixture&#x27;s kind reads what it takes</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">No</text>
+    <text class="t-s" x="612" y="179">the scripted EM has nothing that reads a line</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="228">SEEN IN</text>
+    <text class="t-lbl" x="32" y="241">DEVFORCE</text>
+    <text class="mark minus" x="228" y="230">−</text>
+    <text class="t-b" x="248" y="229">Disabled, with its line</text>
+    <text class="t-s" x="248" y="247">the EM takes no message</text>
+    <text class="mark plus" x="592" y="230">+</text>
+    <text class="t-b" x="612" y="229">A working reply box</text>
+    <text class="t-s" x="612" y="247">the closure passes as written</text>
+    <line class="row" x1="16" y1="260" x2="924" y2="260"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="286">CLOSURE</text>
+    <text class="t-lbl" x="32" y="299">WORDING</text>
+    <text class="mark minus" x="228" y="288">−</text>
+    <text class="t-b" x="248" y="287">Part 4&#x27;s run line amended</text>
+    <text class="t-s" x="248" y="305">a follow-up PR on FIX-1663</text>
+    <text class="mark plus" x="592" y="288">+</text>
+    <text class="t-b" x="612" y="287">Unchanged</text>
+    <text class="t-s" x="612" y="305">Part 4 runs on DevForce</text>
+    <line class="row" x1="16" y1="318" x2="924" y2="318"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="334" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="355">LOCKS IN</text>
+    <text class="t-b" x="32" y="375">A reply goes only where a kind can hear it</text>
+    <text class="t-s" x="32" y="393">a kind without a door shows why</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="334" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="355">FLIPS IF</text>
+    <text class="t-b" x="494" y="375">DevForce&#x27;s EM is meant to converse</text>
+    <text class="t-s" x="494" y="393">then it needs a model and a real door</text>
+  </g>
+</svg>
