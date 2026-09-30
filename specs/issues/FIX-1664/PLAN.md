@@ -94,7 +94,7 @@ Everything else is yours to name.
 | Every gap's copy is a prop at the surface, naming its owner from the [gap registry](BUSINESS-RULES.md#gap-registry) | The sibling fills it later without touching the surface (ER-5), and one table changes when it does |
 | At most one live stream, and only while the Session tab is open; the inspector's recorded collections load once per open | A Lab with many running tasks must not open a stream per row, and a person reading Brief pays nothing for the Session |
 | No paging through a listing to find something; a truncated answer shows *more than shown* with Retry | A silent wrong answer is worse than a named partial one |
-| The run is resolved once per open task and held; a tab switch never re-reads it. It changes only when the row does | A re-read or poll per tab change costs a request each time and can redraw the screen against a different attempt mid-read |
+| The run is resolved once per open task and held: bound to the session and request in the row's link, and updated whenever the shared board read delivers a new row. It is never frozen at first paint, and a tab switch never re-reads it | Correctness. A re-read on a tab switch goes looking for the run again instead of reading the row, and can land the screen's tabs on different attempts partway through a read. The row is the only thing that says the run changed |
 | No FSD package changes; a part that won't take the skin goes to FIX-1655 | ER-2, ER-6 |
 
 ## Docs
