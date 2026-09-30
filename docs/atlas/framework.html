@@ -246,15 +246,15 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 <header class="masthead">
   <p class="eyebrow">Architecture inventory</p>
   <h1>Everything in the framework, and how it fits</h1>
-  <p class="standfirst">A complete map of <code>@flow-state-dev</code>: 27 packages, four ways to decide what runs next, and six orthogonal systems underneath all of them. Sections 02&ndash;04 are how the pieces fit into one thing; the rest is the inventory of what each piece is.</p>
+  <p class="standfirst">A complete map of <code>@flow-state-dev</code>: 30 packages, four ways to decide what runs next, and six orthogonal systems underneath all of them. Sections 02&ndash;04 are how the pieces fit into one thing; the rest is the inventory of what each piece is.</p>
   <div class="stats">
-    <div class="stat"><b>27</b><span>packages</span></div>
-    <div class="stat"><b>~179k</b><span>lines of src</span></div>
+    <div class="stat"><b>30</b><span>packages</span></div>
+    <div class="stat"><b>~242k</b><span>lines of src</span></div>
     <div class="stat"><b>7,655</b><span>tests</span></div>
     <div class="stat"><b>4</b><span>block kinds</span></div>
     <div class="stat"><b>24</b><span>sequencer ops</span></div>
     <div class="stat"><b>17</b><span>item types</span></div>
-    <div class="stat"><b>23</b><span>deprecations</span></div>
+    <div class="stat"><b>7</b><span>deprecations</span></div>
   </div>
 </header>
 
@@ -755,45 +755,49 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
 <section id="packages">
   <div class="sec-head"><span class="sec-num">05</span><h2>Package inventory</h2></div>
-  <p class="lede">Twenty-seven workspace packages in eight tiers. Line counts are all of <code>src/</code> including tests, measured on this branch — they are a rough mass indicator, not a quality signal.</p>
+  <p class="lede">Thirty workspace packages in eight tiers. <strong>Measured at <code>main</code> <code>67a3bb9b</code> (2026-09-30)</strong>: LOC and Files count every <code>.ts</code> / <code>.tsx</code> file under <code>packages/*/src</code>, tests included; workspace deps are the package's <code>dependencies</code> plus <code>peerDependencies</code>. The numbers are a rough mass indicator, not a quality signal, and they drift from the day they are taken &mdash; re-measure against a newer commit rather than trusting them past it.</p>
 
   <div class="tw">
   <table>
     <thead><tr><th>Package</th><th>Tier</th><th class="num">LOC</th><th class="num">Files</th><th>What it owns</th><th>Workspace deps</th></tr></thead>
     <tbody>
-      <tr><td><code>contracts</code></td><td>Foundation</td><td class="num">2,350</td><td class="num">19</td><td>Item taxonomy, pure item helpers, leaf types, block-instance-id. Zero dependencies of any kind.</td><td>—</td></tr>
-      <tr><td><code>core</code></td><td>Foundation</td><td class="num">34,054</td><td class="num">160</td><td>The five block builders, <code>defineFlow</code>, capabilities, resources, items, prompt assembly, model resolution, 11 utility factories, the graph layer.</td><td>contracts</td></tr>
-      <tr><td><code>engine</code></td><td>Runtime</td><td class="num">42,218</td><td class="num">167</td><td>Block dispatch, retry, rescue, side chains, scopes and CAS, stores, SSE streaming, HTTP routes, transports, durability, recovery, voice pipeline.</td><td>core</td></tr>
-      <tr><td><code>orchestration</code></td><td>Composition</td><td class="num">20,347</td><td class="num">89</td><td>Task schema + state machine, <code>TaskCollection</code>, five dispatchers, the task-board primitive, goal-seek loop, flow policy, and the whole skills runtime.</td><td>core</td></tr>
-      <tr><td><code>patterns</code></td><td>Composition</td><td class="num">8,058</td><td class="num">54</td><td>Eight named multi-agent shapes composed over the task board, plus a benchmark adapter registry.</td><td>core, orchestration</td></tr>
-      <tr><td><code>memory</code></td><td>Composition</td><td class="num">7,825</td><td class="num">32</td><td>Four memory tiers (working / episodic / semantic / digest), consolidation, hygiene janitor, recall tools, one composed capability.</td><td>core</td></tr>
-      <tr><td><code>tools</code></td><td>Composition</td><td class="num">7,170</td><td class="num">53</td><td>Search (7 providers), fetch (3), crawl (2), sandboxed bash (5 adapters), MCP client manager.</td><td>core</td></tr>
-      <tr><td><code>workforce</code></td><td>Composition</td><td class="num">6,635</td><td class="num">28</td><td>The seat factory (<code>hireWorkforce</code>), the built-in <code>agent</code> worker kind, the <code>WORKER.md</code> / resource / channel loaders, resource-map codegen, and personas. No Agent factory. The L2 product story (teams / seats / channels) is convention &mdash; see &sect;04 and the <a href="workforce.html">Workforce atlas</a>.</td><td>core, orchestration</td></tr>
-      <tr><td><code>@thought-fabric/core</code></td><td>Composition</td><td class="num">3,931</td><td class="num">17</td><td>Cognitive primitives: attention (salience, relevance), identity (constitution, perspective), metacognition (bias detection).</td><td>core</td></tr>
+      <tr><td><code>contracts</code></td><td>Foundation</td><td class="num">2,614</td><td class="num">22</td><td>Item taxonomy, pure item helpers, leaf types, block-instance-id. Zero dependencies of any kind.</td><td>—</td></tr>
+      <tr><td><code>core</code></td><td>Foundation</td><td class="num">38,977</td><td class="num">178</td><td>The five block builders, <code>defineFlow</code>, capabilities, resources, items, prompt assembly, model resolution, 11 utility factories, the graph layer.</td><td>contracts</td></tr>
+      <tr><td><code>engine</code></td><td>Runtime</td><td class="num">52,999</td><td class="num">183</td><td>Block dispatch, retry, rescue, side chains, scopes and CAS, stores, SSE streaming, HTTP routes, transports, durability, recovery, voice pipeline.</td><td>core</td></tr>
+      <tr><td><code>orchestration</code></td><td>Composition</td><td class="num">24,847</td><td class="num">107</td><td>Task schema + state machine, <code>TaskCollection</code>, five dispatchers, the task-board primitive, goal-seek loop, flow policy, and the whole skills runtime.</td><td>core</td></tr>
+      <tr><td><code>patterns</code></td><td>Composition</td><td class="num">7,962</td><td class="num">53</td><td>Eight named multi-agent shapes composed over the task board, plus a benchmark adapter registry.</td><td>core, orchestration</td></tr>
+      <tr><td><code>memory</code></td><td>Composition</td><td class="num">8,079</td><td class="num">33</td><td>Four memory tiers (working / episodic / semantic / digest), consolidation, hygiene janitor, recall tools, one composed capability.</td><td>core</td></tr>
+      <tr><td><code>tools</code></td><td>Composition</td><td class="num">7,554</td><td class="num">52</td><td>Search (7 providers), fetch (3), crawl (2), sandboxed bash (5 adapters), MCP client manager.</td><td>core, workspace</td></tr>
+      <tr><td><code>workforce</code></td><td>Composition</td><td class="num">17,557</td><td class="num">63</td><td>The seat factory (<code>hireWorkforce</code>), the built-in <code>agent</code> worker kind, the <code>WORKER.md</code> / resource / channel loaders, resource-map codegen, and personas. No Agent factory. The L2 product story (teams / seats / channels) is convention &mdash; see &sect;04 and the <a href="workforce.html">Workforce atlas</a>.</td><td>core, orchestration</td></tr>
+      <tr><td><code>harness-manager</code></td><td>Composition</td><td class="num">5,341</td><td class="num">11</td><td>A task-board worker that turns a row into a supervised coding run: its own checkout, a verdict read before the row settles, a question channel, and the coding harness as a slot.</td><td>core, orchestration</td></tr>
+      <tr><td><code>workspace</code></td><td>Composition</td><td class="num">1,287</td><td class="num">8</td><td>File projection between resource collections and a directory an agent works in: mounts, hydrate, flush, and a baseline that makes a contested write loud.</td><td>core</td></tr>
+      <tr><td><code>@thought-fabric/core</code></td><td>Composition</td><td class="num">3,902</td><td class="num">17</td><td>Cognitive primitives: attention (salience, relevance), identity (constitution, perspective), metacognition (bias detection).</td><td>core</td></tr>
       <tr><td><code>ui</code></td><td>Composition</td><td class="num">387</td><td class="num">10</td><td>Generative component registry — link-card, info-card.</td><td>contracts, core</td></tr>
-      <tr><td><code>store-sqlite</code></td><td>Persistence</td><td class="num">3,301</td><td class="num">16</td><td>SQLite-backed implementation of the store registry.</td><td>core, engine</td></tr>
-      <tr><td><code>store-postgres</code></td><td>Persistence</td><td class="num">3,662</td><td class="num">16</td><td>PostgreSQL-backed implementation of the store registry.</td><td>core, engine</td></tr>
-      <tr><td><code>mcp</code></td><td>Transport</td><td class="num">947</td><td class="num">6</td><td>MCP server adapter — actions as MCP tools. Workforce MCP door is held until W3 conventions and a Lab Proof run — see <a href="workforce.html#vision">Workforce atlas &#167;03</a> / <a href="workforce.html#mcp">&#167;15</a>.</td><td>core, engine</td></tr>
-      <tr><td><code>scheduled</code></td><td>Transport</td><td class="num">1,097</td><td class="num">11</td><td>Cron and dynamic schedules, idempotency cache, overlap policy.</td><td>core, engine</td></tr>
+      <tr><td><code>store-sqlite</code></td><td>Persistence</td><td class="num">3,584</td><td class="num">16</td><td>SQLite-backed implementation of the store registry.</td><td>core, engine, scheduled</td></tr>
+      <tr><td><code>store-postgres</code></td><td>Persistence</td><td class="num">4,003</td><td class="num">16</td><td>PostgreSQL-backed implementation of the store registry.</td><td>core, engine, scheduled</td></tr>
+      <tr><td><code>mcp</code></td><td>Transport</td><td class="num">964</td><td class="num">6</td><td>MCP server adapter — actions as MCP tools. Workforce MCP door is held until W3 conventions and a Lab Proof run — see <a href="workforce.html#vision">Workforce atlas &#167;03</a> / <a href="workforce.html#mcp">&#167;15</a>.</td><td>core, engine</td></tr>
+      <tr><td><code>scheduled</code></td><td>Transport</td><td class="num">1,388</td><td class="num">11</td><td>Cron and dynamic schedules, idempotency cache, overlap policy.</td><td>core, engine</td></tr>
       <tr><td><code>voice-openai</code></td><td>Transport</td><td class="num">473</td><td class="num">5</td><td>OpenAI TTS / transcription provider behind the framework's voice contract.</td><td>core</td></tr>
-      <tr><td><code>claude-code</code></td><td>Transport</td><td class="num">2,418</td><td class="num">20</td><td>Dispatches cloud coding tasks via the local <code>claude</code> CLI; ships both a CLI and an SDK capability.</td><td>core</td></tr>
+      <tr><td><code>claude-code</code></td><td>Transport</td><td class="num">5,662</td><td class="num">23</td><td>Dispatches cloud coding tasks via the local <code>claude</code> CLI; ships both a CLI and an SDK capability.</td><td>core, workspace</td></tr>
+      <tr><td><code>codex</code></td><td>Transport</td><td class="num">1,816</td><td class="num">9</td><td>Runs OpenAI&rsquo;s Codex agent as a block through the Codex SDK, returning core&rsquo;s neutral harness handle.</td><td>core</td></tr>
+      <tr><td><code>cursor</code></td><td>Transport</td><td class="num">2,066</td><td class="num">9</td><td>Runs Cursor&rsquo;s coding agent as a block through the Cursor SDK local runtime, returning core&rsquo;s neutral harness handle.</td><td>core</td></tr>
       <tr><td><code>node</code></td><td>Host</td><td class="num">731</td><td class="num">6</td><td>Long-lived Node HTTP host in one call.</td><td>engine</td></tr>
       <tr><td><code>next</code></td><td>Host</td><td class="num">61</td><td class="num">2</td><td>Next.js catch-all route adapter. The thinnest package in the repo.</td><td>engine</td></tr>
-      <tr><td><code>vercel</code></td><td>Host</td><td class="num">739</td><td class="num">9</td><td>SSE shaping, heartbeats, runtime config for Vercel's execution model.</td><td>engine, store-postgres</td></tr>
-      <tr><td><code>bullmq</code></td><td>Host</td><td class="num">1,098</td><td class="num">11</td><td>Durable background jobs, native cron, full-flow worker dispatch. The only topology where dispatched work is durable.</td><td>core, engine</td></tr>
-      <tr><td><code>client</code></td><td>Consumer</td><td class="num">3,632</td><td class="num">12</td><td>Isomorphic API client: actions, sessions, SSE stream store, resources, recovery, transcription.</td><td>contracts, core</td></tr>
-      <tr><td><code>react</code></td><td>Consumer</td><td class="num">7,160</td><td class="num">37</td><td>15 hooks, item and suspension renderers, renderer registry, voice components. No transport logic.</td><td>client, contracts, core</td></tr>
-      <tr><td><code>devtool</code></td><td>Consumer</td><td class="num">11,626</td><td class="num">87</td><td>Pre-built inspector assets served by <code>fsdev dev</code>. Built from <code>apps/devtool</code>.</td><td>client, core</td></tr>
-      <tr><td><code>cli</code></td><td>Consumer</td><td class="num">3,909</td><td class="num">27</td><td>The <code>fsdev</code> binary: run, chat, dev, serve, block, benchmark, list, add, ui.</td><td>core, engine, node, store-sqlite, testing</td></tr>
-      <tr><td><code>testing</code></td><td>Proving</td><td class="num">4,464</td><td class="num">29</td><td>Harnesses, mocks, snapshot helpers, transport conformance, eval and benchmark runners.</td><td>core, engine</td></tr>
-      <tr><td><code>integration-tests</code></td><td>Proving</td><td class="num">5,711</td><td class="num">34</td><td>27 tier-1 end-to-end flow scenarios, private to the workspace.</td><td>core, engine, testing, patterns, orchestration</td></tr>
+      <tr><td><code>vercel</code></td><td>Host</td><td class="num">696</td><td class="num">7</td><td>SSE shaping, heartbeats, runtime config for Vercel's execution model.</td><td>engine, scheduled, store-postgres</td></tr>
+      <tr><td><code>bullmq</code></td><td>Host</td><td class="num">1,154</td><td class="num">11</td><td>Durable background jobs, native cron, full-flow worker dispatch. The only topology where dispatched work is durable.</td><td>core, engine, scheduled</td></tr>
+      <tr><td><code>client</code></td><td>Consumer</td><td class="num">4,086</td><td class="num">13</td><td>Isomorphic API client: actions, sessions, SSE stream store, resources, recovery, transcription.</td><td>contracts, core</td></tr>
+      <tr><td><code>react</code></td><td>Consumer</td><td class="num">10,485</td><td class="num">54</td><td>15 hooks, item and suspension renderers, renderer registry, voice components. No transport logic.</td><td>client, contracts, core</td></tr>
+      <tr><td><code>devtool</code></td><td>Consumer</td><td class="num">13,803</td><td class="num">90</td><td>Pre-built inspector assets served by <code>fsdev dev</code>. Built from <code>apps/devtool</code>.</td><td>client, core, react</td></tr>
+      <tr><td><code>cli</code></td><td>Consumer</td><td class="num">4,968</td><td class="num">31</td><td>The <code>fsdev</code> binary: run, chat, dev, serve, block, benchmark, list, add, ui.</td><td>core, devtool, engine, node, store-sqlite, testing, workforce</td></tr>
+      <tr><td><code>testing</code></td><td>Proving</td><td class="num">4,887</td><td class="num">32</td><td>Harnesses, mocks, snapshot helpers, transport conformance, eval and benchmark runners.</td><td>core, engine</td></tr>
+      <tr><td><code>integration-tests</code></td><td>Proving</td><td class="num">9,977</td><td class="num">49</td><td>27 tier-1 end-to-end flow scenarios, private to the workspace.</td><td>claude-code, core, engine, node, orchestration, patterns, store-sqlite, testing, tools</td></tr>
     </tbody>
   </table>
   </div>
 
   <div class="note">
     <span class="lbl">Mass distribution</span>
-    <p><code>core</code> and <code>engine</code> together are 76k lines — 43% of all source in the repo. <code>orchestration</code> at 20k is the third centre of gravity, and it holds two arguably separate things (the task substrate and the skills runtime) behind one package.</p>
+    <p><code>core</code> and <code>engine</code> together are 92k lines — 38% of the 242k in <code>packages/*/src</code>. <code>orchestration</code> at 25k is the third centre of gravity, and it holds two arguably separate things (the task substrate and the skills runtime) behind one package.</p>
   </div>
 </section>
 
@@ -1979,24 +1983,26 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <div class="sec-head"><span class="sec-num">26</span><h2>The removal ledger</h2></div>
   <p class="lede">Two kinds of entry: surface already <strong>marked</strong> <code>@deprecated</code> in the code, and surface <strong>proposed</strong> for removal, reduction, or extraction but not yet marked. The first is a cleanup list. The second is a set of boundary decisions.</p>
 
-  <h3>Already marked — 23 deprecations across 6 packages</h3>
-  <p>Every one names its replacement, so none of these is a research task. Twenty-five of the twenty-seven packages are <code>public</code>; only <code>integration-tests</code> and <code>ui</code> are <code>private</code> today, which means everything below is currently published surface.</p>
+  <h3>Already marked — 7 deprecations across 3 packages</h3>
+  <p>Measured at <code>main</code> <code>67a3bb9b</code> (2026-09-30) by grepping <code>@deprecated</code> in non-test <code>.ts</code> / <code>.tsx</code> under <code>packages/*/src</code>. Every one names its replacement, so none of these is a research task. Twenty-seven of the thirty packages are <code>public</code>; only <code>integration-tests</code>, <code>ui</code>, and <code>@thought-fabric/core</code> are <code>private</code> today, which means everything below is currently published surface.</p>
 
   <div class="tw"><table>
     <thead><tr><th>Package</th><th class="num">Marks</th><th>What is deprecated</th><th>Replacement</th></tr></thead>
     <tbody>
-      <tr><td><code>patterns</code></td><td class="num">7</td><td><code>shared/legacy-plan-types.ts</code> — <code>BasePlan</code>, <code>BasePlanTask</code>, the plan/task collection aliases, <code>PlanMeta</code>, <code>PlanTaskUpdate</code></td><td><code>Task</code> / <code>TaskCollection</code> from <code>orchestration</code>; the <code>task-board-meta</code> and <code>task-change</code> component shapes</td></tr>
-      <tr><td><code>core</code></td><td class="num">6</td><td><code>clientData</code> on session/user/org config (×3), the collection-key helper, a <code>ResourceRef</code> alias, a generator tool-type alias</td><td><code>client.derived</code>; <code>resolveCollectionKey</code>; <code>ResourceRef</code>; <code>GeneratorTool</code></td></tr>
-      <tr><td><code>react</code></td><td class="num">4</td><td>The module-singleton <code>FlowContext</code> (×3, flagged unsafe) and a <code>CollectionItem</code> back-compat shape</td><td><code>&lt;FlowProvider&gt;</code> and <code>useFlowContext()</code> inside its tree</td></tr>
-      <tr><td><code>contracts</code></td><td class="num">3</td><td>The removed <code>context</code> item type (×2) and an <code>ItemVisibility</code> alias</td><td>Generator context slots; <code>ItemVisibility</code></td></tr>
-      <tr><td><code>vercel</code></td><td class="num">2</td><td>The heartbeat re-export shim and its config option</td><td>SSE heartbeat injection now lives in <code>engine</code></td></tr>
-      <tr><td><code>memory</code></td><td class="num">1</td><td>The LLM filter strategy</td><td>Superseded when the prepare gate split into per-source pools</td></tr>
+      <tr><td><code>claude-code</code></td><td class="num">4</td><td>The <code>RemoteAgent*</code> aliases in <code>shared/</code>: <code>remoteAgentTaskHandleSchema</code>, <code>RemoteAgentTaskHandle</code>, <code>RemoteAgentSource</code>, <code>RemoteAgentStatus</code></td><td><code>harnessRunEnvelopeSchema</code>, <code>HarnessRunEnvelope</code>, <code>HarnessSource</code>, <code>HarnessRunStatus</code> from <code>core</code></td></tr>
+      <tr><td><code>workforce</code></td><td class="num">2</td><td>The removed <code>agents</code> and <code>catalog</code> options on the workforce capability, typed as their own error message</td><td><code>roster</code> + <code>inventory</code>; a catalog through <code>defineAgentWorkerFlow({ catalog })</code></td></tr>
+      <tr><td><code>core</code></td><td class="num">1</td><td>The removed <code>dynamic</code> option on resource config, typed <code>never</code></td><td>Drop it; collections are declared with <code>defineResourceCollection</code></td></tr>
     </tbody>
   </table></div>
 
   <div class="note">
+    <span class="lbl">Removed since the earlier list</span>
+    <p>An earlier version of this table listed 23 marks across 6 packages. The largest cluster is gone, not pending: <code>patterns</code>' <code>shared/legacy-plan-types.ts</code> (<code>BasePlan</code>, <code>BasePlanTask</code>, <code>PlanMeta</code>, <code>PlanTaskUpdate</code>), <code>react</code>'s <code>CollectionItem</code> back-compat shape, and <code>vercel</code>'s heartbeat re-export shim were deleted in <code>3c6aa682</code> (2026-08-22), and none of those identifiers is findable under <code>packages</code>, <code>labs</code>, <code>apps</code>, or <code>examples</code>. The remaining earlier rows (<code>core</code>, <code>react</code>'s <code>FlowContext</code> singleton, <code>contracts</code>, <code>memory</code>) no longer carry an <code>@deprecated</code> mark at this commit; this table does not re-audit what became of each.</p>
+  </div>
+
+  <div class="note">
     <span class="lbl">The pattern in the list</span>
-    <p>Four of the six clusters are <strong>old-and-new side by side</strong> — a superseding change that landed without deleting what it replaced. That is the exact shape tenet 3 names: <em>a change that supersedes a path deletes it in the same change</em>. The <code>patterns</code> cluster is the largest and the clearest: seven aliases pointing at a substrate that has been canonical since the task-board migration.</p>
+    <p>Two shapes remain, and they are opposites. The <code>claude-code</code> aliases are <strong>old-and-new side by side</strong> &mdash; a superseding change that landed without deleting what it replaced, the shape tenet 3 names: <em>a change that supersedes a path deletes it in the same change</em>. The <code>workforce</code> and <code>core</code> marks are the deliberate kind: a removed option kept as an unassignable type so a caller still passing it gets a loud error instead of silence (BP-030).</p>
   </div>
 
   <h3>Proposed — the boundary moves</h3>
