@@ -435,7 +435,7 @@ async function adoptLapsedLease(
  * Fenced by the claim ticket, so a claim that moved between the gate's read and
  * this write is refused inside the write rather than overwritten. A link that
  * commits stays even if the gate fails after it: it names the run the attempt
- * entered, whose request then reads failed, and only the next claim clears it.
+ * entered, whose request carries the error, and only the next claim clears it.
  *
  * @throws {StaleTaskClaimError} when the write is declined, or when a
  *   hand-written collection answers with no verdict — neither says this run

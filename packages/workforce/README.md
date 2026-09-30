@@ -1243,13 +1243,14 @@ channel's board refuses the same way. `read` gains a `boards` key listing the lo
 holding none omits it and declares neither action.
 
 `readBoard` returns a declared projection of each row, not the whole record: the board's own facts,
-without the execution coordinates (`claimedBy`, the lease) or the substrate's write provenance.
-`channelBoardRowSchema` is that shape.
+without the claim's execution coordinates (`claimedBy`, the lease) or the substrate's write
+provenance. The one coordinate it does carry is `run`, the handed-off run working the task, so a
+reader can open that run. `channelBoardRowSchema` is that shape.
 
 A board's ledger is readable directly by a browser, which is what lets a UI draw the board as
 columns without going through an action. The ledger is org-scoped, so that read resolves against the
 organization the reading session belongs to. What crosses is `id`, `title`, `goal`, `status`,
-`assignee`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`,
+`assignee`, `run`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`,
 `updatedAt`, `startedAt` and `completedAt`.
 
 The channel owns the ledger and runs nothing. A seat that claims rows resolves the same declaration
