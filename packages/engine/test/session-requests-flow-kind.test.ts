@@ -102,7 +102,7 @@ async function seedRequest(
   id: string,
   sessionId: string,
   flowKind: string,
-  extra: { text?: string; flowId?: string; orgId?: string } = {}
+  extra: { text?: string; flowId?: string; orgId?: string; userId?: string } = {}
 ): Promise<void> {
   const { text, flowId } = extra;
   const record: RequestRecord = {
@@ -128,7 +128,7 @@ async function seedRequest(
           ]
         }),
     actionName: "run",
-    userId: "alice",
+    userId: extra.userId ?? "alice",
     orgId: extra.orgId ?? orgOf(flowKind),
     sessionId,
     source: "http",
@@ -202,6 +202,28 @@ describe("session-requests listing conjoins the session's flow kind", () => {
       { params: { path: ["sessions", "sess", "requests"] } }
     );
     const { requests } = (await authorized.json()) as { requests: RequestRecord[] };
+    expect(requests.map((r) => r.id)).toEqual(["req_ours"]);
+  });
+});
+
+/**
+ * The listing reads a session's requests under the same scope as its snapshot
+ * and stream, and as the history a run in it loads: its owner and organization
+ * too, not only its flow. A request row under the session's id from another
+ * user or organization is one admission refused, or one an earlier session
+ * under the same id left behind; it is not this session's to list.
+ */
+describe("session-requests listing keeps to the session's owner and organization", () => {
+  it("withholds another user's and another organization's request under the session's id", async () => {
+    const { router, stores } = build();
+    await seedSession(stores, "sess", "open");
+    await seedRequest(stores, "req_ours", "sess", "open");
+    await seedRequest(stores, "req_bob", "sess", "open", { userId: "bob" });
+    await seedRequest(stores, "req_other_org", "sess", "open", { orgId: "org_other" });
+
+    const res = await listRequests(router, "sess", "?include_items=true");
+    expect(res.status).toBe(200);
+    const { requests } = (await res.json()) as { requests: RequestRecord[] };
     expect(requests.map((r) => r.id)).toEqual(["req_ours"]);
   });
 });

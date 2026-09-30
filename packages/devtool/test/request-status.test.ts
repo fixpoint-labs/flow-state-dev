@@ -64,10 +64,9 @@ describe("snapshotSupersedesLive", () => {
 });
 
 describe("mergeRawItems", () => {
-  // A transient trace (an action's root among them, for a transient block)
-  // streams live but is never persisted, so the polled log of a finished
-  // request lacks it. Replacing the stream's log with the polled one would
-  // lose the one trace a row's outcome is read from.
+  // A transient trace streams live but is never persisted, so the polled log
+  // of a finished request lacks it. Replacing the stream's log with the polled
+  // one would drop an observed block from the Stream and Trace tabs.
   it("keeps the polled log and adds what only the stream saw", () => {
     const polled = [{ id: "a", v: "polled" }, { id: "b" }];
     const streamed = [{ id: "a", v: "stream" }, { id: "t", transient: true }];

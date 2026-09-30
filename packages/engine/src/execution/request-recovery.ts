@@ -12,6 +12,7 @@ import { DEFAULT_QUEUED_GRACE_MS, type RuntimeConfig } from "../runtime-config";
 import { createLiveRequestStream, type LiveRequestStream } from "../streaming/live-stream";
 import { generateId } from "../utils/generate-id";
 import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./logging";
+import { settledRecordFields } from "./request-action-result";
 import { runAction } from "./runAction";
 import { resolveRecordOwner } from "../context/record-owner";
 
@@ -102,7 +103,9 @@ export async function detectInterruptedRequests(options: {
         entry.requestId,
         {
           ...requestRecord,
-          status: "interrupted",
+          // The same settlement every other final-status writer uses; an
+          // interrupted request carries no result.
+          ...settledRecordFields({ status: "interrupted" }),
           interruptedAt: Date.now(),
           updatedAt: Date.now()
         },

@@ -430,6 +430,7 @@ const PROSE_PUBLISHED: ReadonlyArray<{ shape: string; why: string }> = [
  */
 const NOT_AN_EXTENSION: ReadonlyArray<{ token: string; why: string }> = [
   { token: ".tap", why: "the `.tap()` step method, written in backticks beside `.md` and `.ts`" },
+  { token: ".lock", why: "git's reserved ref suffix, named where the board-name rule reserves `lock` — no file the walk reads" },
 ];
 
 /** The page that publishes the package convention. */

@@ -150,6 +150,24 @@ describe("createSessionClient", () => {
     );
   });
 
+  it("asks for each request's action output only with includeResultOutput", async () => {
+    // The list carries `result.error` and `hasOutput` either way; the output
+    // itself is opt-in, so a caller that polls pays for it only on request.
+    const fetcher = vi.fn<ClientFetch>(async () =>
+      createJsonResponse({
+        requests: [{ ...REQUESTS[0], result: { output: { ok: false, error: "no" }, hasOutput: true } }]
+      })
+    );
+    const client = createSessionClient({ fetcher });
+
+    const [listed] = await client.listSessionRequests("sess_1", { includeItems: true, includeResultOutput: true });
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "/api/flows/sessions/sess_1/requests?include_items=true&include_result_output=true"
+    );
+    expect(listed?.result).toEqual({ output: { ok: false, error: "no" }, hasOutput: true });
+  });
+
   it("lists debug suspensions with status filter and parses the response", async () => {
     const suspensions = [
       {

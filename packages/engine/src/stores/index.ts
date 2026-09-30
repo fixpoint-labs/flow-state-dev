@@ -58,6 +58,7 @@ export type {
   OrgStore,
   PersistErrorHandler,
   PersistErrorInfo,
+  RequestActionResult,
   RequestListOptions,
   RequestRecord,
   RequestStatus,
@@ -80,7 +81,8 @@ export type {
 
 export {
   resolveUserStorageKey,
-  resolveOrgStorageKey
+  resolveOrgStorageKey,
+  resolveRequestIncarnation
 } from "./scope-keys";
 export type { IsolationFlow } from "./scope-keys";
 
