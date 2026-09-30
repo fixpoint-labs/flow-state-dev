@@ -1,15 +1,15 @@
 /**
- * Jump to (⌘K): find a workstream, a worker or a task by name, from the one
- * snapshot, and go there (BR-10). The Lab's declared documents are listed
- * when the Lab serves any to the browser; the goal Labs serve none, so the
- * group says so.
+ * Jump to (⌘K): find a workstream, a worker, a task or a declared document by
+ * name, from the one snapshot, and go there (BR-10). A document opens
+ * read-only. A Lab that serves no document to the browser gets a line saying
+ * so, and a failed read of them says what the Lab answered.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { allRows, type LoadedSnapshot } from "../lib/derive";
 import { navigate, type Route } from "../lib/routes";
 import type { Gaps } from "../gaps";
 
-type Entry = { group: "Workstreams" | "Workers" | "Tasks"; label: string; hint: string; to: Route };
+type Entry = { group: "Workstreams" | "Workers" | "Tasks" | "Resources"; label: string; hint: string; to: Route };
 
 /** The most results drawn per group. */
 const PER_GROUP = 8;
@@ -26,12 +26,13 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
       ...workstreams.map((w): Entry => ({ group: "Workstreams", label: w.id, hint: `${w.members.length} members`, to: { level: "workstream", channelId: w.id, tab: "stream" } })),
       ...seats.map((s): Entry => ({ group: "Workers", label: s.id, hint: s.kind ?? "", to: { level: "tasks", by: "worker" } })),
       ...allRows(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
+      ...(snapshot.resources.ok ? snapshot.resources.value : []).map((d): Entry => ({ group: "Resources", label: d.ref, hint: "read-only", to: { level: "resource", sessionId: d.sessionId, ref: d.ref } })),
     ];
   }, [snapshot]);
 
   const needle = query.trim().toLowerCase();
   const found = index.filter((e) => needle === "" || e.label.toLowerCase().includes(needle));
-  const groups = (["Workstreams", "Workers", "Tasks"] as const).map((g) => [g, found.filter((e) => e.group === g).slice(0, PER_GROUP)] as const);
+  const groups = (["Workstreams", "Workers", "Tasks", "Resources"] as const).map((g) => [g, found.filter((e) => e.group === g).slice(0, PER_GROUP)] as const);
 
   const go = (entry: Entry) => {
     navigate(entry.to);
@@ -72,12 +73,15 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
               ))}
             </section>
           ))}
-          <section>
-            <p className="px-2 py-1 text-[11px] font-semibold tracking-wider text-muted-foreground">RESOURCES</p>
+          {!snapshot.resources.ok ? (
+            <p className="px-2 py-1 text-xs text-muted-foreground" data-testid="jump-resources-failure">
+              The Lab's documents did not load: {snapshot.resources.failure.message}
+            </p>
+          ) : snapshot.resources.value.length === 0 ? (
             <p className="px-2 py-1 text-xs text-muted-foreground" data-testid="jump-resources-gap">
               {gaps.resources}
             </p>
-          </section>
+          ) : null}
         </div>
       </div>
     </div>

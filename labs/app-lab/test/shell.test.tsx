@@ -121,3 +121,29 @@ describe("the composer (V6)", () => {
     expect(screen.getByTestId("composer-status").textContent).toMatch(/FIX-1664/);
   });
 });
+
+describe("Jump to a declared document (BR-10)", () => {
+  it("finds the Lab's document by name and opens it read-only, with the file's body", async () => {
+    const lab = await serveLab((await openAskLab()).flowState);
+    served.push(lab);
+    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    // A seat session, before the page boots, makes a flow that serves the document listable.
+    await clients.actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+
+    const jump = await screen.findByTestId("jump-to");
+    act(() => fireEvent.click(jump));
+    act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "runbook" } }));
+    const [result, ...rest] = await screen.findAllByTestId("jump-result");
+    expect(rest).toEqual([]);
+    expect(result!.textContent).toMatch(/runbook.*read-only/);
+    act(() => fireEvent.click(result!));
+
+    const view = await screen.findByTestId("resource");
+    expect((await within(view).findByTestId("resource-content")).textContent).toContain("RUNBOOK-DOC-7F3A1");
+    // Read-only: the page offers nothing to type into or save with.
+    expect(view.querySelector("textarea, input, [contenteditable=true]")).toBeNull();
+    expect(within(view).queryAllByRole("button")).toEqual([]);
+  });
+});

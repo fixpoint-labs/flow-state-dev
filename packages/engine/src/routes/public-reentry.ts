@@ -49,8 +49,12 @@ import {
  *   have a caller-facing re-entry. A dispatched session IS reachable from
  *   outside — by a `public` dispatch to it, which is an ordinary
  *   caller-addressed request — so nothing is lost by refusing here.
+ *
+ * Exported so a client that can't call {@link isPublicReentryAllowed} (a
+ * browser app deciding whether to offer an answer) can pin its own copy to
+ * this set in a test. A host's `publicReentrySources` extends it at runtime.
  */
-const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
+export const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
   "http",
   "mcp",
   "scheduled"

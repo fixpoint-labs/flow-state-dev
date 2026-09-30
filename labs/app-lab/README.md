@@ -44,6 +44,7 @@ Set `VITE_LAB_URL` to proxy to a Lab on another address.
 ## What you see
 
 - **Sidebar.** The organization, Jump to (⌘K), Inbox and Tasks with their counts, PROJECTS (the workstreams, until projects exist), and TEAMS: each team in the Lab's seat inventory, with exactly its seats.
+- **Jump to (⌘K).** Finds workstreams, seats, tasks and the Lab's declared documents. A document opens read-only. Only documents whose frontmatter lets a browser read them (`client: { content: { read: true } }`) are listed, and only once a session whose flow serves them exists.
 - **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
 - **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream.
 - **A workstream.** One channel and the boards attached to it. It has four tabs: Stream (the transcript, the composer, and its members' asks), Board (five columns: QUEUED, RUNNING, NEEDS YOU, IN REVIEW, DONE), Brief (the channel's charter) and Results. The right panel lists the channel's members with their status, and its rows by column.
@@ -62,7 +63,6 @@ Each of these is drawn as a named empty state or a disabled control:
 - **Addressing one seat.** A line starting with `@` can't be sent yet.
 - **Worker detail.** A seat's harness, and the NOW, TIME and COST columns on Tasks.
 - **IN REVIEW.** The column is drawn empty, because no row status means "in review" yet.
-- **Resources.** Jump to finds workstreams, seats and tasks. It doesn't list a Lab's documents yet, and says so.
 
 ## Tests
 

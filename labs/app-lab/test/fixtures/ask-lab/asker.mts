@@ -54,10 +54,16 @@ const fromPost = handler({
 const onChannelPost = sequencer({ name: "asker-on-post", inputSchema: postSchema }).step(fromPost).step(gate);
 const ask = sequencer({ name: "asker-ask", inputSchema: askSchema }).step(gate);
 
-/** Build the kind `hireWorkforce` mints one copy of per `asker` record. */
-export function defineAskerFlow() {
+/**
+ * Build the kind `hireWorkforce` mints one copy of per `asker` record.
+ *
+ * @param resources The tree's declared documents, as `resourcesFromDocs`
+ *   built them, so a document that opts in to browser reads is served.
+ */
+export function defineAskerFlow(resources: Record<string, unknown> = {}) {
   return defineFlow({
     kind: ASKER_KIND,
+    resources,
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     actions: {

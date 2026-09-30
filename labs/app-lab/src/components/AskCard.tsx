@@ -18,6 +18,11 @@ import { SuspensionCard } from "./flow-state/suspension-card";
 import { useLab } from "../lib/lab-data";
 import type { Ask } from "../lib/reads";
 
+/**
+ * The registry's cards read their resolution from the session's items. An ask
+ * here is pending by construction (`deriveSuspensions` dropped the resolved
+ * ones), so the cards are given no items rather than the transcript.
+ */
 const NO_ITEMS: OutputItem[] = [];
 
 export function AskCard({ ask }: { ask: Ask }) {

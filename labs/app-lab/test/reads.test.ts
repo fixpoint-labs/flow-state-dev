@@ -5,11 +5,13 @@
  * ordinary Lab config whose seats suspend on a stock approval, woken the way a
  * real Lab wakes them, by a channel post through the framework's member wake.
  */
+import { PUBLIC_REENTRY_SOURCES } from "@flow-state-dev/engine";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLabClients } from "../src/lib/connection";
 import {
   createLabReader,
   DISPATCHED_RUN_UNANSWERABLE,
+  REOPENED_SOURCES,
   UNOWNED_SESSION_UNANSWERABLE,
   type LabSnapshot,
 } from "../src/lib/reads";
@@ -197,6 +199,38 @@ describe("asks through the channel-notify path (V7)", () => {
     }
   });
 
+  it("offers an answer only on the sources the engine reopens: its own allow-list, pinned here", () => {
+    // App Lab can't import the engine in a browser, so it keeps a copy. A
+    // source added to or removed from the engine's list turns this red.
+    expect([...REOPENED_SOURCES].sort()).toEqual([...PUBLIC_REENTRY_SOURCES].sort());
+  });
+
+  it("a person's ask whose request records no source is unanswerable, not offered (fail-closed)", async () => {
+    const { baseUrl } = await lab();
+    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    await ask(clients, "ops.loner", "no source");
+    const listRequests = clients.sessions.listSessionRequests;
+    const sourceless = {
+      ...clients,
+      sessions: {
+        ...clients.sessions,
+        listSessionRequests: async (...args: Parameters<typeof listRequests>) =>
+          (await listRequests(...args)).map(({ source: _source, ...request }) => request as typeof request & { source?: string }),
+      },
+    };
+    const asks = await eventually(async () => {
+      const s = loaded(await createLabReader(sourceless as typeof clients).read());
+      return s.asks.ok && s.asks.value.length === 1 ? s.asks.value : undefined;
+    }, "the loner's ask");
+    expect(asks[0]!.unanswerable).toBe(DISPATCHED_RUN_UNANSWERABLE);
+    // The same ask, with its source as recorded, is answerable.
+    const recorded = await eventually(async () => {
+      const s = loaded(await createLabReader(clients).read());
+      return s.asks.ok && s.asks.value.length === 1 ? s.asks.value : undefined;
+    }, "the loner's ask, as recorded");
+    expect(recorded[0]!.unanswerable).toBeNull();
+  });
+
   it("an ask in a seat that is no channel's member is in Inbox and on no Stream", async () => {
     const { baseUrl } = await lab();
     const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
@@ -260,5 +294,45 @@ describe("asks through the channel-notify path (V7)", () => {
     );
     await reader.resume(pending!, { action: "approve" });
     expect(loaded(await reader.read()).asks).toEqual({ ok: true, value: [] });
+  });
+});
+
+describe("declared documents (BR-10)", () => {
+  it("lists a document a seat's flow serves, and its content is the file's, read through that seat's session", async () => {
+    const { baseUrl } = await lab();
+    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    const reader = createLabReader(clients);
+    // No seat session yet: no listed flow serves the document, so none is found.
+    const before = loaded(await reader.read());
+    expect(before.resources).toEqual({ ok: true, value: [] });
+
+    await ask(clients, "ops.asker", "ship it");
+    const snapshot = await eventually(async () => {
+      const s = loaded(await reader.read());
+      return s.resources.ok && s.resources.value.length > 0 ? s : undefined;
+    }, "the runbook to be listed");
+    if (!snapshot.resources.ok) throw new Error("resources did not load");
+    expect(snapshot.resources.value).toHaveLength(1);
+    const [runbook] = snapshot.resources.value;
+    expect(runbook!.ref).toMatch(/runbook/);
+    const read = await clients.resources.getResourceContent(runbook!.sessionId, runbook!.ref);
+    expect(String(read.content)).toContain("RUNBOOK-DOC-7F3A1");
+  });
+
+  it("a failed manifest read fails the Resources group by name, and the listing still draws", async () => {
+    const { baseUrl } = await lab();
+    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    await ask(clients, "ops.asker", "ship it");
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.endsWith("/sessions/s_ops_asker/manifest")) {
+        return Promise.resolve(new Response(JSON.stringify({ error: "manifest unavailable" }), { status: 500 }));
+      }
+      return real(input, init);
+    });
+    const snapshot = loaded(await createLabReader(clients).read());
+    expect(snapshot.resources).toMatchObject({ ok: false, failure: { message: "manifest unavailable" } });
+    expect(snapshot.sessions.ok).toBe(true);
   });
 });

@@ -32,6 +32,8 @@
  *                    "TEAMS equals the store's seats" on multi-seat-collab.
  *   optimistic-post  the composer draws its own line and sends nothing. Must
  *                    fail at "the post is in the stored transcript".
+ *   unanswerable-asks  every ask is marked unanswerable. Must fail at "an
+ *                    answer from Inbox lands in the store" on DevForce.
  *
  * Run:      pnpm tsx goals/app-lab/it-opens-a-lab/run.mts
  * Control:  GOAL_CONTROL=static-names pnpm tsx goals/app-lab/it-opens-a-lab/run.mts
@@ -50,7 +52,7 @@ import { Scenario, type ServedLab } from "../../multi-seat-collab/lab/run-scenar
 import { readLabTree } from "../../multi-seat-collab/lab/host.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["static-names", "optimistic-post"] as const;
+const CONTROLS = ["static-names", "optimistic-post", "unanswerable-asks"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
@@ -106,6 +108,9 @@ function swapFor(control: string): { target: string; with: string } | undefined 
   }
   if (control === "optimistic-post") {
     return { target: join(APP_LAB, "src", "lib", "transcript.ts"), with: join(HERE, "controls", "optimistic-post.ts") };
+  }
+  if (control === "unanswerable-asks") {
+    return { target: join(APP_LAB, "src", "lib", "reads.ts"), with: join(HERE, "controls", "unanswerable-asks.ts") };
   }
   return undefined;
 }
@@ -198,7 +203,12 @@ function labApi(origin: string, bearer: string | undefined) {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const text = await response.text();
-    return { status: response.status, body: text.length === 0 ? null : JSON.parse(text) };
+    if (text.length === 0) return { status: response.status, body: null };
+    try {
+      return { status: response.status, body: JSON.parse(text) };
+    } catch {
+      throw new Error(`${method} ${path}: ${response.status}, and the body is not JSON: ${text.slice(0, 200)}`);
+    }
   };
   const get = async (path: string): Promise<any> => {
     const { status, body } = await call("GET", path);
@@ -540,13 +550,22 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     else if ((await drawn.count()) !== 1) fail("the post is in the stored transcript", `after a reload "${line}" is drawn ${await drawn.count()} times`);
 
     // ---- answer: an ask approved from Inbox is resumed in the store --------
+    // A Lab holding any pending ask must offer at least one to answer: pick
+    // the first whose card has an enabled Approve. None at all is a failure.
     let answered = "no ask to answer";
     if (store.asks.length > 0) {
       await open(page, served.origin, "/inbox");
-      await page.getByTestId("inbox-item").first().click();
+      const items = page.getByTestId("inbox-item");
       const approve = page.getByTestId("inbox-detail").getByRole("button", { name: "Approve" });
-      if (await approve.isDisabled()) {
-        answered = "the first ask is not answerable from App Lab";
+      let picked = false;
+      for (let i = 0; i < (await items.count()) && !picked; i += 1) {
+        await items.nth(i).click();
+        await page.getByTestId("inbox-detail").waitFor();
+        picked = (await approve.count()) > 0 && !(await approve.isDisabled());
+      }
+      if (!picked) {
+        fail("an answer from Inbox lands in the store", `${store.asks.length} ask(s) pending and App Lab offers an answer on none`);
+        answered = "no ask answerable";
       } else {
         await approve.click();
         let left = store.asks.length;
