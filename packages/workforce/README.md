@@ -1290,7 +1290,8 @@ in a seat's own folder; that refuses at hire.
 
 Pass `hireWorkforce` the roster's minted ids as `channelBoards` and it warns on stderr for any board
 no hired seat declares, naming the channel and the board. It never refuses: a channel may keep a
-board that only people read.
+board that only people read. Each warning prints once per process, so a dev server that re-runs
+the hire on every hot reload says it once, and only a board that newly goes unattended prints again.
 
 Renaming or moving a channel's folder re-keys its boards, because a board id is derived from where
 the channel sits. Rows filed under the old id stay at the old key, nothing migrates them and nothing

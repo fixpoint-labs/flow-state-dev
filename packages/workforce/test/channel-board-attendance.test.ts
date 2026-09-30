@@ -6,9 +6,9 @@
  * check is blind. What it buys is that the silence stops being silent: rows
  * still sit `pending`, but somebody is told why.
  */
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { __resetDeprecationWarningsForTests, defineFlow, handler } from "@flow-state-dev/core";
 import { channelBoard, hireWorkforce, workerConfigSchema } from "../src/index";
 import type { WorkerManifest } from "../src/manifest";
 
@@ -35,6 +35,12 @@ function seatKindHolding(boardIds: string[]) {
 function seat(id: string): WorkerManifest {
   return { id, declared: { flow: "coder" }, body: "Do the work." };
 }
+
+// The warning prints once per process per sentence, so each test starts as a
+// fresh process would.
+beforeEach(() => {
+  __resetDeprecationWarningsForTests();
+});
 
 describe("a channel folder that was renamed", () => {
   it("re-keys its boards and warns, because the seat still declares the old id", () => {
@@ -101,6 +107,34 @@ describe("a channel board nobody declared", () => {
         channelBoards: ["eng.feature.triage"]
       });
       expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("says it once per process, not once per hire, and still names a board that newly goes unattended", () => {
+    // `next dev` re-runs an app's module-scope hire on every hot reload. The
+    // board unattended at boot is still unattended after an edit, and a
+    // developer who sees the sentence fifty times cannot tell a repeat from a
+    // fresh problem. So a repeat is silent — but a DIFFERENT unattended board
+    // is a fresh problem, and must still be said.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const hire = (channelBoards: string[]) =>
+        hireWorkforce([seat("eng.coder")], {
+          kinds: { coder: seatKindHolding(["eng.feature.triage"]) as never },
+          channelBoards
+        });
+
+      hire(["eng.feature.triage", "eng.feature.review"]);
+      hire(["eng.feature.triage", "eng.feature.review"]);
+      hire(["eng.feature.triage", "eng.feature.review"]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain("eng.feature.review");
+
+      hire(["eng.feature.triage", "eng.feature.review", "eng.feature.escalations"]);
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(String(warn.mock.calls[1]?.[0])).toContain("eng.feature.escalations");
     } finally {
       warn.mockRestore();
     }

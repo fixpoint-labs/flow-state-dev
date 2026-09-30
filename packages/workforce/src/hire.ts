@@ -31,7 +31,7 @@ import type {
   SessionConfig,
   UserConfig
 } from "@flow-state-dev/core/types";
-import type { DeclaredResources } from "@flow-state-dev/core";
+import { firstInProcess, type DeclaredResources } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
 import {
   INSTRUCTIONS_KEY,
@@ -150,7 +150,8 @@ export interface HireOptions {
    * Handed over so this step can say when a channel holds a board **no flow
    * hired here declares**: the rows would sit `pending` forever with nothing
    * said, which is the one failure a declared board can produce silently. Each
-   * unattended id gets a `console.warn` naming the channel and the id.
+   * unattended id gets a `console.warn` naming the channel and the id, once per
+   * process: a later hire that finds the same board unattended says nothing.
    *
    * **A warning, never a refusal**, and the reason is in the evidence rather
    * than in a preference: a seat may legitimately live in another process, and
@@ -874,8 +875,13 @@ export function hireWorkforce(
 
   // After the refusals, deliberately: a roster that did not hire has nothing
   // to be unattended by, and a warning printed beside a fatal error is noise.
+  //
+  // Once per process per sentence: `next dev` re-runs an app's module-scope
+  // hire on every hot reload, and a board that was unattended at boot is still
+  // unattended after an edit. A board that newly goes unattended is a new
+  // sentence, so it still prints.
   for (const warning of unattendedBoardWarnings(options.channelBoards ?? [], seats)) {
-    console.warn(warning);
+    if (firstInProcess(`workforce/unattended-board/${warning}`)) console.warn(warning);
   }
 
   return seats;

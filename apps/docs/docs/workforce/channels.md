@@ -769,7 +769,7 @@ The part after the tool name is the channel's id and the board's name, joined, w
 
 It is off by default, and that's deliberate. Anyone who can reach the channel can then settle or reassign its rows, including one a seat is working on, and the roster check `fileTask` makes on `author` doesn't apply to these. Each action works only in its own channel's session, so one channel can't reach another's board through them. Turn it on for boards people are meant to work from outside a run, and for development.
 
-A board that no hired worker declares warns at hire, naming the channel and the board. Nothing is refused: a channel may keep a board that only people read.
+A board that no hired worker declares warns at hire, naming the channel and the board. Nothing is refused: a channel may keep a board that only people read. The warning prints once per server process, so a hot reload under `next dev` doesn't repeat it.
 
 A board's rows are stored at organization scope, so they sit in [the organization the channel runs in](#which-organization-a-channel-runs-in).
 
