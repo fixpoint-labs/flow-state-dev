@@ -3282,4 +3282,85 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     expect(seen.aborted).toBe(false);
     expect(record?.status).toBe("completed");
   });
+
+  // A fire with no incarnation (shutdown cancelling a detached child, a CLI
+  // stopping its own turn) means "stop whatever runs under this id". Nothing
+  // is stored for it, so the start read cannot redeliver it: it has to survive
+  // the context adopting another request.
+  it("carries an unfenced fire over to the adopted request", async () => {
+    const stores = createInMemoryStores();
+    const requestId = "req_unfenced_then_replaced";
+    const seen: { aborted?: boolean } = {};
+    let fired: boolean | undefined;
+    const flow = defineFlow({
+      kind: "unfenced-then-replace",
+      request: { heartbeatIntervalMs: 0 },
+      actions: {
+        run: {
+          inputSchema: z.unknown(),
+          block: handler({
+            name: "observe",
+            inputSchema: z.unknown(),
+            outputSchema: z.string(),
+            execute: async (_input: unknown, ctx) => {
+              seen.aborted = ctx.signal.aborted;
+              if (ctx.signal.aborted) throw new DOMException("Aborted", "AbortError");
+              return "ran";
+            }
+          })
+        }
+      }
+    })({ id: "unfenced-then-replace" });
+    const fresh = () =>
+      createInitialRequestRecord(
+        {
+          requestId,
+          flowKind: "unfenced-then-replace",
+          flowId: "unfenced-then-replace",
+          actionName: "run",
+          userId: "u_unfenced",
+          orgId: DEFAULT_ORG_ID
+        },
+        Date.now()
+      );
+
+    await stores.request.set(requestId, fresh(), "absent");
+    const later = fresh();
+
+    // Admission's read is the first; the context's is the second. Just before
+    // the context reads, an unfenced fire lands, then another request takes
+    // the id.
+    const get = stores.request.get.bind(stores.request);
+    let reads = 0;
+    stores.request.get = async (id: string) => {
+      if (id === requestId) {
+        reads += 1;
+        if (reads === 2) {
+          fired = abortRequest(requestId);
+          await stores.request.delete(requestId);
+          await stores.request.set(requestId, later, "absent");
+        }
+      }
+      return get(id);
+    };
+
+    await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_unfenced",
+      orgId: DEFAULT_ORG_ID,
+      stores,
+      runtimeConfig: {}
+    });
+    stores.request.get = get;
+
+    const record = await stores.request.get(requestId);
+    // Precondition: the fire landed on this run's controller.
+    expect(fired).toBe(true);
+    expect(record?.incarnation).toBe(later.incarnation);
+    expect(seen.aborted).toBe(true);
+    expect(record?.status).not.toBe("completed");
+  });
 });

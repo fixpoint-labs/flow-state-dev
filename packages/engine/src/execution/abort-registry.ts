@@ -23,6 +23,12 @@ interface Registered {
   controller: AbortController;
   /** The incarnation of the request this controller belongs to, once known. */
   incarnation?: string;
+  /**
+   * Set when the controller was fired by a fenced `abortRequest`, so the fire
+   * was for the request the controller was tagged with at that moment. Unset
+   * for an unfenced fire, which is for whatever runs under the id.
+   */
+  firedFenced?: boolean;
 }
 
 const controllers = new Map<string, Registered>();
@@ -76,8 +82,20 @@ export function abortRequest(requestId: string, expectedIncarnation?: string): b
   if (entry === undefined || !matches(entry, expectedIncarnation)) {
     return false;
   }
+  if (!entry.controller.signal.aborted) entry.firedFenced = expectedIncarnation !== undefined;
   entry.controller.abort();
   return true;
+}
+
+/**
+ * Whether `controller`, registered under `requestId`, was fired by a fenced
+ * `abortRequest`: a fire for one incarnation of the request, not for whatever
+ * runs under the id. False when it has not fired, was fired unfenced, or is no
+ * longer the registered controller.
+ */
+export function wasFiredFenced(requestId: string, controller: AbortController): boolean {
+  const entry = controllers.get(requestId);
+  return entry !== undefined && entry.controller === controller && entry.firedFenced === true;
 }
 
 /**

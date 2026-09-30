@@ -62,7 +62,8 @@ import {
   abortRequest,
   registerAbortController,
   deregisterAbortController,
-  tagAbortController
+  tagAbortController,
+  wasFiredFenced
 } from "./abort-registry";
 import {
   assertSessionAdmitted,
@@ -1651,13 +1652,15 @@ export async function runActionInternal<
     // The controller was tagged from admission's read, but the context reads
     // the record again and runs as whatever request holds the id now. If
     // another request took the id in between, the registered controller must
-    // answer to the one this run executes as. Re-tag it, or, if a fire for the
-    // earlier request already landed on it, replace it: that fire was not for
-    // this request. From here on, which request this run is is settled, and a
-    // fire that landed for it before now reaches the run.
+    // answer to the one this run executes as. Re-tag it, or, if a fire fenced
+    // on the earlier request already landed on it, replace it: that fire was
+    // not for this request. An unfenced fire (shutdown, a CLI stopping its own
+    // turn) was for whatever runs under the id, so it stays. From here on,
+    // which request this run is is settled, and a fire that stays reaches the
+    // run.
     if (ctx.request.incarnation !== currentIncarnation) {
       currentIncarnation = ctx.request.incarnation;
-      if (registered.signal.aborted) {
+      if (wasFiredFenced(requestId, registered)) {
         registered = registerAbortController(requestId, currentIncarnation);
         registered.signal.addEventListener("abort", forwardRegisteredAbort, { once: true });
       } else {
