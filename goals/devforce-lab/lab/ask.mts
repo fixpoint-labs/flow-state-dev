@@ -30,7 +30,7 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import { LEDGER_ID } from "./board.mts";
 import { PHASE } from "./phase.mts";
-import { ASK_ENTRY } from "./workforce/flows/workers/em.mts";
+import { ASK_ENTRY } from "./seat-config.mts";
 
 /** The step's name, as every refusal spells it. */
 export const RAISE_ASK_STEP = "raiseAsk";

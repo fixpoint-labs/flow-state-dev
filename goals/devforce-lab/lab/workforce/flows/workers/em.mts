@@ -32,6 +32,7 @@ import {
   type FeatureRow,
 } from "../../../board.mts";
 import {
+  ASK_ENTRY,
   INSPECT_ENTRY,
   readOwnFacts,
   seatSettingsSchema,
@@ -57,17 +58,6 @@ export const POST_ENTRY = "onPost";
 
 /** The action that runs the board. */
 export const DRAIN_ENTRY = "drain";
-
-/**
- * The asking door: pause on a person's approval, then file and run the board.
- *
- * A third action rather than a flag on {@link FILE_ENTRY}, for the reason the
- * post door is one: `file` is the direct door the first check drives, and a
- * flag that made it wait would change what that check proves. Durable, because
- * the answer arrives in a later HTTP request through the engine's resume route,
- * and the request has to be there to continue.
- */
-export const ASK_ENTRY = "askToFile";
 
 /**
  * What filing one feature takes.
@@ -155,17 +145,6 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   const collection = featureLedger();
   const board = coordinatorBoard({ collection, coderSeatId: options.coderSeatId });
 
-  /**
-   * File one row, addressed to the board's `coder` assignee.
-   *
-   * Deterministic, deliberately: the EM's opinion is *that it names no
-   * harness*, not that it reasons well, so giving it a model would double this
-   * lab's model surface for a claim that is structural.
-   *
-   * Idempotent per issue-phase — the row id is derived from the payload, so a
-   * second filing returns the existing row rather than charging a second coding
-   * run for one feature.
-   */
   /**
    * Put one row on the board, idempotently.
    *
@@ -353,6 +332,11 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     actions: {
       [FILE_ENTRY]: { block: fileRow, description: "File one feature as a row on the board." },
       [DRAIN_ENTRY]: { block: board.drain, description: "Run the board until it is idle." },
+      // A third action rather than a flag on `file`, for the reason the post
+      // door is one: `file` is the direct door the first check drives, and a
+      // flag that made it wait would change what that check proves. Durable,
+      // because the answer arrives in a later request through the engine's
+      // resume route, and the request has to be there to continue.
       [ASK_ENTRY]: {
         block: askToFile,
         durable: true,

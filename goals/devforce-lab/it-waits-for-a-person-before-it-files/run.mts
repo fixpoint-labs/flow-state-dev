@@ -46,7 +46,7 @@ import { LAB_TREE, openLab, type Lab, type OpenLabOptions } from "../lab/host.mt
 import { harnessStub, type StubRun } from "../lab/harness-stub.mts";
 import { BASE_REF, commitAll, createScratchRepo } from "../lab/scratch-repo.mts";
 import { RAISE_ASK_STEP, seatSessionId } from "../lab/ask.mts";
-import { ASK_ENTRY } from "../lab/workforce/flows/workers/em.mts";
+import { ASK_ENTRY } from "../lab/seat-config.mts";
 
 stripIntentOverrides();
 
