@@ -1453,7 +1453,13 @@ export async function runActionInternal<
   // controller is deregistered and the delivery has nowhere to land. The cost
   // is one narrow read on the start path, and `pollAbortIntent` swallows its
   // own failures, so this can delay a request start but can never fail one.
-  if (heartbeatTimer !== undefined) await pollAbortIntent();
+  //
+  // With heartbeats off it still runs once when this run adopts a record that
+  // was already on file (a queued stub, a record a replacement left). A cancel
+  // may have been recorded on that request before this controller existed, and
+  // a fire aimed at it could have missed an earlier controller under the id;
+  // with no ticks to come, this read is the only delivery left.
+  if (heartbeatTimer !== undefined || admittedRequest !== undefined) await pollAbortIntent();
   const composedSignal = options.signal
     ? AbortSignal.any([options.signal, abortController.signal])
     : abortController.signal;

@@ -397,16 +397,39 @@ describe("handleAbortRequest", () => {
     });
 
     it("does not fire a later request's controller in this process", async () => {
-      // The write landed on the request the check read; before the route
-      // fires locally, that request finished and a later one under the id
-      // started here. Its controller carries its own incarnation.
+      // The checked request runs here, so when the route starts, the
+      // controller under the id is its own. The write lands on it; then,
+      // before the write's promise resolves and the route fires locally, that
+      // request finishes and a later one under the id starts here with its own
+      // controller. Whatever the route decided before the write is stale by
+      // the time it fires.
       const checked = record(undefined, 1_000);
       await stores.request.set(REUSED, checked, "absent");
-      const later = registerAbortController(REUSED, "inc_later_request");
+      const own = registerAbortController(REUSED, checked.incarnation);
+      let later: AbortController | undefined;
 
-      const status = await abortWithInterleave(undefined, async () => {});
+      const write = stores.request.setFieldsIfStatus.bind(stores.request);
+      stores.request.setFieldsIfStatus = async (...args) => {
+        const result = await write(...args);
+        await stores.request.delete(REUSED);
+        await stores.request.set(
+          REUSED,
+          { ...record(undefined, 2_000), incarnation: "inc_later_request" },
+          "absent"
+        );
+        later = registerAbortController(REUSED, "inc_later_request");
+        return result;
+      };
+      let status: number;
+      try {
+        status = await abortWithInterleave(undefined, async () => {});
+      } finally {
+        stores.request.setFieldsIfStatus = write;
+      }
 
-      expect(later.signal.aborted).toBe(false);
+      expect(own.signal.aborted).toBe(false);
+      expect(later).toBeDefined();
+      expect(later!.signal.aborted).toBe(false);
       expect(status).toBe(202);
     });
 
@@ -2642,6 +2665,114 @@ describe("a queued request cancelled through the route", () => {
     expect(executed).toEqual([]);
     expect((await stores.request.get(requestId))?.status).toBe("aborted");
   });
+
+  // While the request waits at the gate, its record can go and a replacement
+  // by the same owner can take the id. The run adopts whatever holds the id
+  // when it starts, so a cancel recorded on that replacement is this run's to
+  // honor, even though the host's queued controller was tagged with the
+  // earlier incarnation and the route's fenced fire missed it. With heartbeats
+  // off nothing polls, so the start is the only place left to see it.
+  it("honors a cancel recorded on the request it adopts at the gate, with heartbeats off", async () => {
+    const stores = createInMemoryStores();
+    const executed: string[] = [];
+    let releaseHold!: () => void;
+    const hold = new Promise<void>((resolve) => {
+      releaseHold = resolve;
+    });
+    let markHolding!: () => void;
+    const holding = new Promise<void>((resolve) => {
+      markHolding = resolve;
+    });
+    const concurrency = { policy: "queue", key: "session" } as const;
+    const registry = createFlowRegistry();
+    registry.register(
+      defineFlow({
+        kind: "queued-abort-gate",
+        request: { heartbeatIntervalMs: 0 },
+        actions: {
+          hold: {
+            inputSchema: z.object({}),
+            concurrency,
+            block: handler({
+              name: "hold",
+              inputSchema: z.object({}),
+              execute: async () => {
+                markHolding();
+                await hold;
+                return {};
+              }
+            })
+          },
+          queued: {
+            inputSchema: z.object({}),
+            concurrency,
+            block: handler({
+              name: "queued",
+              inputSchema: z.object({}),
+              execute: (_input, ctx) => {
+                // A handler this short never waits on its signal, so record
+                // what the run's signal said when it got here.
+                executed.push(ctx.signal.aborted ? "started cancelled" : "started live");
+                return {};
+              }
+            })
+          }
+        }
+      })({ id: "queued-abort-gate" })
+    );
+    const host = createInboundTransportHost({
+      registry,
+      stores,
+      resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+      runtimeConfig: {}
+    });
+    const dispatch = (action: "hold" | "queued", requestId: string) =>
+      host.dispatch({
+        source: "http",
+        flowKind: "queued-abort-gate",
+        action,
+        input: {},
+        sessionId: "s_queued_gate",
+        requestId,
+        orgId: DEFAULT_ORG_ID,
+        principal: { userId: "u_queued", orgId: DEFAULT_ORG_ID }
+      });
+    const requestId = "req_queued_gate";
+
+    const holder = dispatch("hold", "req_queued_gate_holder");
+    await holding;
+    const queued = dispatch("queued", requestId);
+    for (let i = 0; i < 100 && (await stores.request.get(requestId)) === undefined; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // The queued request's record goes and a replacement by the same owner
+    // takes the id, then the replacement is cancelled.
+    const queuedRecord = (await stores.request.get(requestId))!;
+    await stores.request.delete(requestId);
+    await stores.request.set(
+      requestId,
+      { ...queuedRecord, incarnation: "inc_replacement" },
+      "absent"
+    );
+    const response = await handleAbortRequest(
+      new Request(`http://localhost/api/flows/queued-abort-gate/requests/${requestId}/abort`, {
+        method: "POST"
+      }),
+      { kind: "abort_request", flowKind: "queued-abort-gate", requestId },
+      { stores }
+    );
+    expect(response.status).toBe(202);
+
+    releaseHold();
+    await holder.finished;
+    await queued.finished.catch(() => undefined);
+
+    // The run starts with the cancel already delivered, and ends as cancelled.
+    expect(executed).toEqual(["started cancelled"]);
+    expect((await stores.request.get(requestId))?.status).toBe("aborted");
+  });
 });
 
 // The run's controller must carry the incarnation of the request the run
@@ -2774,21 +2905,21 @@ describe("a run's abort controller carries the incarnation it executes as", () =
 
     // Admission read an earlier request under the id, so the run re-tags.
     const get = stores.request.get.bind(stores.request);
-    let first = true;
+    let reads = 0;
     stores.request.get = async (id: string) => {
       const record = await get(id);
-      if (first && id === requestId && record !== undefined) {
-        first = false;
-        return { ...record, incarnation: "inc_admitted_earlier" };
-      }
+      if (id !== requestId || record === undefined) return record;
+      reads += 1;
+      if (reads === 1) return { ...record, incarnation: "inc_admitted_earlier" };
       return record;
     };
-    // Before the catch-up read lands, the adopted request's record goes and a
-    // later request takes the id, and someone cancels that later request.
+    // Before the catch-up read lands (after the context has read and adopted
+    // the record), the adopted request's record goes and a later request
+    // takes the id, and someone cancels that later request.
     const isAbortRequested = stores.request.isAbortRequested.bind(stores.request);
     let swapped = false;
     stores.request.isAbortRequested = async (id: string) => {
-      if (!swapped && id === requestId) {
+      if (!swapped && id === requestId && reads >= 2) {
         swapped = true;
         await stores.request.delete(requestId);
         await stores.request.set(requestId, { ...adopted, incarnation: "inc_later_request" }, "absent");
