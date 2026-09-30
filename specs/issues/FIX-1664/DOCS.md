@@ -23,7 +23,8 @@ below, which differ from the epic's draft because the composer and Hand off don'
 > every step the worker takes, the tool calls and edits as they happen, and earlier attempts
 > above them when they ran in the same place. It isn't the worker's chat, so what you read is
 > what this task did. If the worker keeps one session for several tasks, the tab shows only
-> this task's steps and says the session is shared.
+> this task's steps and says the session is shared. A task handed off a moment ago shows its
+> run once the run starts; the screen checks for it for up to a minute, then offers Retry.
 >
 > **Interrupt** stops the run (Esc does the same). The screen says *interrupted* once the run
 > has actually stopped. What happens to the task afterwards, whether it's retried or left, is up
