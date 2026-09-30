@@ -11,9 +11,6 @@ starts because something happened somewhere else, like a payment clearing, a clo
 nine, or another flow finishing its part, and that keeps working after the request that
 started it has returned.
 
-Each section covers one way in, shows which part goes in your flow and which on your host,
-and links the full reference for it.
-
 ## Waking a flow from outside
 
 A flow can't start itself. Something outside it has to call your server, and your host turns
@@ -71,10 +68,12 @@ export const flowstate = createFlowState({
 ```
 
 Point Stripe at `POST /api/flows/billing/webhooks/stripe`. The path names the flow by its
-id: for a single flow that's its `kind`, for a collection member its instance id, never its
-key in `flows`. A delivery with a bad signature is refused before any block runs. A good one
-gets a `202` straight away, and the run carries on after the response has gone, so a slow
-block never makes the provider retry.
+id: for a single flow that's its `kind`, for a
+[collection member](/docs/fundamentals/flows#how-an-instance-is-addressed) (one of several
+configured copies of the same flow) its instance id, never its key in `flows`. A delivery
+with a bad signature is refused before any block runs. A good one gets a `202`
+straight away, and the run carries on after the response has gone, so a slow block never
+makes the provider retry.
 
 That holds on a server that stays up. A serverless host such as Vercel freezes the function
 once the response is sent, so give `createFlowState` a keep-alive:
@@ -86,6 +85,12 @@ keeps schedule ticks and hand-offs running there. See
 something stable in the payload, as above, and every event for that customer lands in the
 same session, so its state builds up. `when` is an optional predicate on the event: return
 `false` and that delivery runs nothing, which narrows a coarse event type to the ones you want.
+
+The example's `authentication` is the standard one for a webhook. The provider's signature is
+what authenticates a delivery, so the flow needs no resolver, and every event runs as the
+`system` user. With no resolver, those runs belong to the reserved default organization,
+`DEFAULT_ORG_ID`; an app that serves several organizations adds a `resolvePrincipal` that
+returns one.
 
 Read next: [Webhook receivers](/docs/server/webhooks) for provider definitions, retries and
 idempotency, and the [Stripe](/guides/webhooks-stripe), [GitHub](/guides/webhooks-github) and
@@ -132,13 +137,17 @@ On the host, add `createScheduledTransportAdapter()` from `@flow-state-dev/sched
 `adapters`. Then point your scheduler at
 `POST /api/flows/billing/schedules/monthly-invoices/dispatch` with
 `Authorization: Bearer <the same secret>`. The endpoint answers `202` and the run continues
-after it. If one flow takes both webhooks and schedules, branch on `ctx.source` inside one
-`resolvePrincipal` rather than replacing it.
+after it.
+
+A flow that takes both webhooks and schedules keeps one `resolvePrincipal` and branches on
+`ctx.source`. The bearer resolver on its own refuses a webhook delivery with a `401`, because
+the delivery carries no bearer header. So when `ctx.source` is `"webhook"`, return your system
+principal: the adapter has already checked the provider's signature before the resolver runs.
 
 Schedules you create while the app runs, like a reminder a user sets, come from
 `schedules.resolve` instead of `schedules.static`. That is also how you do something later:
-store a schedule for the time you want, and the tick runs it. There is no delay option on a
-dispatch.
+store a schedule for the time you want, and the tick runs it. `dispatcher()` has no delay
+option.
 
 Read next: [Scheduled actions](/docs/server/scheduled), then the guide for your scheduler:
 [Vercel Cron](/guides/scheduled-vercel-cron), [Cloud Scheduler](/guides/scheduled-cloud-scheduler),
@@ -197,14 +206,14 @@ separate worker, which runs queued jobs and enqueues nothing. See
 | `{ id: (input) => string }` | a session that already exists | Refused before anything starts |
 | `{ from: true }` | the session that dispatched this run, as a reply | Refused from a process that hands work to the queue. From a `worker-only` worker it runs in process, without retries |
 
-In `colocated` or `dispatch-only` mode, a delivery into a session that already exists throws
-`DispatchRefusedError` with `refused: "external-dispatcher"`, and nothing is enqueued. A
-`{ key }` dispatch, a webhook delivery (with or without a `sessionId`) and a schedule tick run
-normally there. A run executing on a `worker-only` worker sends its reply in process: it isn't
-refused, and it isn't retried if the worker dies partway.
+Refused means the dispatch throws `DispatchRefusedError` with `refused: "external-dispatcher"`
+in `colocated` or `dispatch-only` mode, before anything is enqueued. A `{ key }` dispatch, a
+webhook delivery (with or without a `sessionId`) and a schedule tick run normally there.
 
-A Workforce channel inherits the refusal on such a host. A client's post is written, but no
-member is woken, and posting into the channel from another flow is refused the same way.
+If you use Workforce, its channels are sessions that already exist, so the same rule reaches
+them. A client's post into a channel succeeds and its line appears, but no member is woken
+and nothing answers. A post into the channel from another flow is refused with
+`external-dispatcher`. See [Channels](/docs/workforce/channels#where-posting-from-another-flow-works-and-where-it-doesnt).
 
 To get a hand-off's result back into the conversation that started it on any host, with
 retries, start the work with a `{ key }`, have it write what it found somewhere both sides can
@@ -238,8 +247,8 @@ Your infrastructure decides *when* something fires. FSD decides what runs once i
 [deployment guides](/guides/deployment) cover the infrastructure column per platform.
 
 Every row assumes a verified caller: the provider's signature for a webhook, a shared secret
-for your scheduler, your own authentication for everything else. With no resolver configured,
-FSD reads a `userId` from the request body. That is for local development only; see
+for your scheduler, your own authentication for everything else. An action call to a flow with
+no resolver takes its `userId` from the request body, which is for local development only; see
 [Authentication](/docs/server/authentication#without-a-resolver).
 
 ## Terms
@@ -247,8 +256,10 @@ FSD reads a `userId` from the request body. That is for local development only; 
 **Wake.** Something outside the flow, a webhook delivery or a schedule tick, starts a run
 through your host.
 
-**Dispatch.** A flow sends one unit of work to an entry, to run in a session of its own or
-in one that already exists.
+**Dispatch.** A flow sends one unit of work to an entry through a `dispatcher()` block, to run
+in a session of its own or in one that already exists. A schedule's dispatch endpoint,
+`POST /api/flows/:flowKind/schedules/:scheduleId/dispatch`, is a different thing: your
+scheduler calling it is a wake.
 
 **Schedule tick.** Your scheduler calling a schedule's dispatch endpoint. FSD doesn't run a
 clock; it answers the call.
