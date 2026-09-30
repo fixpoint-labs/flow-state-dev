@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 512" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Wireframe 2, the sidebar in three states side by side. Busy: NEEDS YOU with a count of two, each row naming the seat, what it asks and how long ago, and opening the ask in the centre; CHANNELS with an unread mark on one; ON SHIFT with each seat, what it is working on and a state mark for working, waiting on you or idle. Quiet: NEEDS YOU reads nothing needs you, with no count; channels as before; ON SHIFT reads no seat is working. A read that failed: each section that could not be read says so, with a retry beside it, and the other sections still show. Annotations in blue say what a click does and who owns what each section means.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg   { fill:var(--surface); }
+    .fr   { fill:var(--surface); stroke:var(--ink); stroke-width:2; }
+    .sub  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .acc  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.6; }
+    .sel  { fill:var(--surface-2); stroke:var(--ink); stroke-width:1.2; }
+    .err  { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:3 2; }
+    .note { fill:none; stroke:var(--accent); stroke-width:1; stroke-dasharray:4 3; }
+    .t-h  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:700; letter-spacing:.08em; }
+    .t-b  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-m  { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-style:italic; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-e  { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-n  { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-size:10px; font-style:italic; }
+    .t-a  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; font-weight:700; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="512"/>
+  <text class="t-h" x="16" y="18">02 · THE SIDEBAR · THREE STATES</text>
+
+  <g id="busy">
+    <text class="t-s" x="16" y="40">BUSY</text>
+    <rect class="fr" x="16" y="48" width="280" height="340"/>
+    <text class="t-h" x="28" y="72">NEEDS YOU</text>
+    <rect class="acc" x="256" y="61" width="28" height="14"/>
+    <text class="t-a" x="266" y="72">2</text>
+    <rect class="sub" x="28" y="82" width="256" height="34"/>
+    <text class="t-b" x="36" y="97">em asks: approve the merge?</text>
+    <text class="t-s" x="36" y="110"># eng.feature · 4m ago</text>
+    <rect class="sub" x="28" y="120" width="256" height="34"/>
+    <text class="t-b" x="36" y="135">coder asks: which branch?</text>
+    <text class="t-s" x="36" y="148"># eng.questions · 12m ago</text>
+    <text class="t-h" x="28" y="182">CHANNELS</text>
+    <rect class="sel" x="28" y="190" width="256" height="20"/>
+    <text class="t-b" x="36" y="204"># eng.feature</text>
+    <text class="t-b" x="36" y="228"># eng.questions</text>
+    <rect class="acc" x="266" y="219" width="10" height="10"/>
+    <text class="t-b" x="36" y="252"># eng.decisions</text>
+    <text class="t-h" x="28" y="284">ON SHIFT</text>
+    <text class="t-b" x="36" y="306">● coder</text>
+    <text class="t-s" x="118" y="306">working · a board row</text>
+    <text class="t-b" x="36" y="330">○ em</text>
+    <text class="t-s" x="118" y="330">waiting on you</text>
+    <text class="t-b" x="36" y="354">○ reviewer</text>
+    <text class="t-s" x="118" y="354">idle</text>
+  </g>
+
+  <g id="quiet">
+    <text class="t-s" x="330" y="40">QUIET</text>
+    <rect class="fr" x="330" y="48" width="280" height="340"/>
+    <text class="t-h" x="342" y="72">NEEDS YOU</text>
+    <text class="t-m" x="350" y="98">Nothing needs you.</text>
+    <text class="t-h" x="342" y="182">CHANNELS</text>
+    <text class="t-b" x="350" y="204"># eng.feature</text>
+    <text class="t-b" x="350" y="228"># eng.questions</text>
+    <text class="t-b" x="350" y="252"># eng.decisions</text>
+    <text class="t-h" x="342" y="284">ON SHIFT</text>
+    <text class="t-m" x="350" y="306">No seat is working.</text>
+    <text class="t-s" x="350" y="326">3 seats hired · all idle</text>
+  </g>
+
+  <g id="failed">
+    <text class="t-s" x="644" y="40">A READ FAILED</text>
+    <rect class="fr" x="644" y="48" width="280" height="340"/>
+    <text class="t-h" x="656" y="72">NEEDS YOU</text>
+    <rect class="err" x="656" y="82" width="256" height="34"/>
+    <text class="t-e" x="664" y="103">Couldn't read what needs you.</text>
+    <text class="t-h" x="866" y="103">RETRY</text>
+    <text class="t-h" x="656" y="182">CHANNELS</text>
+    <text class="t-b" x="664" y="204"># eng.feature</text>
+    <text class="t-b" x="664" y="228"># eng.questions</text>
+    <text class="t-b" x="664" y="252"># eng.decisions</text>
+    <text class="t-h" x="656" y="284">ON SHIFT</text>
+    <text class="t-b" x="664" y="306">● coder</text>
+    <text class="t-s" x="740" y="306">working</text>
+  </g>
+
+  <g id="notes">
+    <rect class="note" x="16" y="402" width="908" height="96"/>
+    <text class="t-n" x="28" y="420">NEEDS YOU: a row opens the ask where it lives (the stream card, or the inspector); acting on it removes the row. What counts as needing you is</text>
+    <text class="t-n" x="28" y="436">FIX-1652's (attention); until it ships, the shell lists the pending approvals and questions the seats have raised. Not a Thought Fabric attention model.</text>
+    <text class="t-n" x="28" y="452">CHANNELS: the channels the Lab's tree declares; a click opens it in the centre on the stream tab. ON SHIFT: hired seats and their state; a click selects the seat,</text>
+    <text class="t-n" x="28" y="468">and the inspector follows its current run. Each section fails on its own with its own retry; a failed read never empties a neighbouring section.</text>
+    <text class="t-n" x="28" y="484">Ochre: the NEEDS YOU count and an unread channel. Empty states are sentences, not blank space. Order of sections is fixed; their height is Claude Design's.</text>
+  </g>
+</svg>

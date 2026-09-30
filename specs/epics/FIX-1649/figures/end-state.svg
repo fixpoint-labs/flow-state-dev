@@ -1,0 +1,74 @@
+<svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. In the box: App Lab under labs, with one sidebar holding the org switcher, Jump to, Inbox and Tasks, the projects tree with workstreams, and teams with their workers; three centre levels, project, workstream and task, each with its tabs; a right panel that follows the level; named empty states where meaning has not shipped, and a Lab's tree opened under an org; built by FIX-1662, with the task level by FIX-1664. A private design-system package holding the App Lab theme in light and dark, which overrides the token set's neutral defaults and maps onto the theme contracts FSD components already have; and skin fixes made at the source of reused registry components, with App Lab's copies re-synced, never edited; both FIX-1655. Reused and skinned, not restyled: the react navigator, roster, board panels and seat detail, the ui conversation, tool call, approval and prompt components, and the devtool's full trace, one link away. Reached here, meaning from siblings: projects, workstreams and tasks, attention, from FIX-1650, 1651 and 1652. Not built, below a fence: new L1 nouns, a Heartbeats, Paperclip or Grok Bot clone, a factory or Conductor shell, kitchen-sink as the shell, the Thought Fabric attention domain, a design system per Lab, restyled copies of FSD UI.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .held  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .repl  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-non { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="372"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="24" width="560" height="212" rx="5"/>
+    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; ONE APP, ONE SKIN</text>
+    <rect class="held" x="32" y="56" width="256" height="166" rx="4"/>
+    <text class="t-b" x="44" y="80">App Lab &#183; labs/app-lab</text>
+    <text class="t-s" x="44" y="100">one sidebar &#183; three levels &#183; right panel</text>
+    <text class="t-s" x="44" y="118">Inbox, Tasks &#183; projects &#183; teams, workers</text>
+    <text class="t-s" x="44" y="136">project &#183; workstream &#183; task, tabbed</text>
+    <text class="t-s" x="44" y="154">panel follows the level open</text>
+    <text class="t-s" x="44" y="172">named empty states, never a model</text>
+    <text class="t-s" x="44" y="190">a Lab's tree, org required</text>
+    <text class="t-s" x="44" y="208">FIX-1662 &#183; task level FIX-1664</text>
+    <rect class="held" x="300" y="56" width="260" height="96" rx="4"/>
+    <text class="t-b" x="312" y="80">design system &#183; private package</text>
+    <text class="t-s" x="312" y="98">App Lab theme, light and dark</text>
+    <text class="t-s" x="312" y="113">overrides the neutral token defaults</text>
+    <text class="t-s" x="312" y="128">mapped onto the existing contracts</text>
+    <text class="t-s" x="312" y="146">FIX-1655</text>
+    <rect class="held" x="300" y="162" width="260" height="60" rx="4"/>
+    <text class="t-b" x="312" y="184">skin fixes at the source</text>
+    <text class="t-s" x="312" y="202">registry copies re-synced, never edited</text>
+    <text class="t-s" x="312" y="216">FIX-1655</text>
+  </g>
+
+  <g id="reused">
+    <rect class="comp" x="592" y="24" width="332" height="120" rx="5"/>
+    <text class="t-lbl" x="608" y="44">REUSED AND SKINNED, NOT RESTYLED</text>
+    <text class="t-b" x="608" y="68">FSD UI that already ships</text>
+    <text class="t-s" x="608" y="88">react: navigator &#183; roster &#183; board panels</text>
+    <text class="t-s" x="608" y="104">seat detail &#183; ui: conversation &#183; tool call</text>
+    <text class="t-s" x="608" y="120">approval &#183; prompt input</text>
+    <text class="t-s" x="608" y="136">devtool: the full trace, one link away</text>
+  </g>
+
+  <g id="siblings">
+    <rect class="repl" x="592" y="156" width="332" height="80" rx="5"/>
+    <text class="t-lbl" x="608" y="176">REACHED HERE, MEANING FROM SIBLINGS</text>
+    <text class="t-b" x="608" y="198">projects &#183; workstreams, tasks &#183; attention</text>
+    <text class="t-s" x="608" y="218">FIX-1650 &#183; FIX-1651 &#183; FIX-1652</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="fence" x="16" y="256" width="908" height="96" rx="5"/>
+    <text class="t-non" x="32" y="276">NOT BUILT &#8212; THE PRD'S INVENT-KILLS</text>
+    <text class="t-s" x="32" y="298">no L1 Agent, Team, Channel, MessageBoard or required Project &#183; no Workforce import in the design system</text>
+    <text class="t-s" x="32" y="316">no Heartbeats, Paperclip or Grok Bot clone &#183; no factory or Conductor shell &#183; kitchen-sink is not the shell</text>
+    <text class="t-s" x="32" y="334">no Thought Fabric attention &#183; no design system per Lab &#183; no restyled copy of FSD UI &#183; no App Lab value in FSD</text>
+  </g>
+</svg>

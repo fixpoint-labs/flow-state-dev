@@ -1,0 +1,94 @@
+<svg viewBox="0 0 940 500" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Wireframe 4, the run inspector in four states side by side. Nothing selected: a sentence saying to pick a seat or a run. Running: the seat and its kind, a running state, when it started and which turn, the current step, the tool calls so far, and a link to the full trace in the devtool. Waiting on you: the same header in a waiting state, the ask itself with approve and reject, and a note that the same ask is listed under NEEDS YOU. Finished: the verdict, how long it took, what it produced with links, and the trace link. Annotations in blue say what the inspector follows and what it reuses.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --prose:#A8761C; --prose-soft:#F3E8D2; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --prose:#D9A44B; --prose-soft:#332612; } }
+    .bg   { fill:var(--surface); }
+    .fr   { fill:var(--surface); stroke:var(--ink); stroke-width:2; }
+    .sub  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .bar  { fill:var(--rule); }
+    .acc  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.6; }
+    .tag  { fill:var(--surface-2); stroke:var(--ink); stroke-width:1.2; }
+    .note { fill:none; stroke:var(--accent); stroke-width:1; stroke-dasharray:4 3; }
+    .t-h  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:700; letter-spacing:.08em; }
+    .t-b  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-m  { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-style:italic; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-n  { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-size:10px; font-style:italic; }
+    .t-a  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; font-weight:700; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="500"/>
+  <text class="t-h" x="16" y="18">04 · THE RUN INSPECTOR · FOUR STATES</text>
+
+  <g id="none">
+    <text class="t-s" x="16" y="40">NOTHING SELECTED</text>
+    <rect class="fr" x="16" y="48" width="214" height="330"/>
+    <text class="t-h" x="28" y="70">RUN INSPECTOR</text>
+    <text class="t-m" x="28" y="100">Pick a seat or a run</text>
+    <text class="t-m" x="28" y="116">to see what it's doing.</text>
+  </g>
+
+  <g id="running">
+    <text class="t-s" x="246" y="40">RUNNING</text>
+    <rect class="fr" x="246" y="48" width="214" height="330"/>
+    <text class="t-h" x="258" y="70">RUN INSPECTOR</text>
+    <text class="t-b" x="258" y="92">coder · kind coder</text>
+    <rect class="acc" x="258" y="100" width="66" height="16"/>
+    <text class="t-a" x="265" y="112">RUNNING</text>
+    <text class="t-s" x="258" y="134">started 3m ago · turn 4</text>
+    <text class="t-h" x="258" y="160">STEP</text>
+    <rect class="bar" x="258" y="168" width="180" height="8"/>
+    <text class="t-h" x="258" y="198">TOOL CALLS</text>
+    <rect class="sub" x="258" y="206" width="190" height="22"/>
+    <text class="t-s" x="266" y="221">read file · ok</text>
+    <rect class="sub" x="258" y="232" width="190" height="22"/>
+    <text class="t-s" x="266" y="247">run tests · 12 passed</text>
+    <rect class="sub" x="258" y="258" width="190" height="22"/>
+    <text class="t-s" x="266" y="273">edit file · streaming…</text>
+    <text class="t-s" x="258" y="360">full trace in devtool ↗</text>
+  </g>
+
+  <g id="waiting">
+    <text class="t-s" x="476" y="40">WAITING ON YOU</text>
+    <rect class="fr" x="476" y="48" width="214" height="330"/>
+    <text class="t-h" x="488" y="70">RUN INSPECTOR</text>
+    <text class="t-b" x="488" y="92">em · kind em</text>
+    <rect class="tag" x="488" y="100" width="112" height="16"/>
+    <text class="t-h" x="495" y="112">WAITING ON YOU</text>
+    <rect class="sub" x="488" y="130" width="190" height="72"/>
+    <text class="t-b" x="496" y="148">Approve the merge?</text>
+    <rect class="bar" x="496" y="158" width="160" height="7"/>
+    <rect class="acc" x="496" y="176" width="58" height="16"/>
+    <text class="t-a" x="503" y="188">APPROVE</text>
+    <text class="t-s" x="566" y="188">reject</text>
+    <text class="t-s" x="488" y="224">also under NEEDS YOU</text>
+    <text class="t-s" x="488" y="360">full trace in devtool ↗</text>
+  </g>
+
+  <g id="finished">
+    <text class="t-s" x="706" y="40">FINISHED</text>
+    <rect class="fr" x="706" y="48" width="218" height="330"/>
+    <text class="t-h" x="718" y="70">RUN INSPECTOR</text>
+    <text class="t-b" x="718" y="92">coder · kind coder</text>
+    <rect class="tag" x="718" y="100" width="58" height="16"/>
+    <text class="t-h" x="725" y="112">PASSED</text>
+    <text class="t-s" x="718" y="134">took 6m · 9 turns</text>
+    <text class="t-h" x="718" y="160">PRODUCED</text>
+    <rect class="sub" x="718" y="168" width="194" height="22"/>
+    <text class="t-s" x="726" y="183">PR · add the endpoint ↗</text>
+    <text class="t-s" x="718" y="210">also under RESULTS</text>
+    <text class="t-s" x="718" y="360">full trace in devtool ↗</text>
+  </g>
+
+  <g id="notes">
+    <rect class="note" x="16" y="392" width="908" height="96"/>
+    <text class="t-n" x="28" y="410">The inspector follows the selection: a seat in ON SHIFT shows its current or last run; a stream post or board card shows the run that made it.</text>
+    <text class="t-n" x="28" y="426">It is a summary of one run, not a debugger: the full trace stays in the devtool, one link away. It shows only what shipped reads return; a field no read</text>
+    <text class="t-n" x="28" y="442">exposes is left out, not invented. An EM seat never shows harness tool calls, because it never uses a harness; its run shows its asks and dispatches.</text>
+    <text class="t-n" x="28" y="458">Harness visibility beyond this summary is FIX-1652's (attention and inspect). Ochre: a running state and the primary action; a finished verdict is ink,</text>
+    <text class="t-n" x="28" y="474">not accent. Collapsible to a thin edge on narrow screens; the breakpoints are Claude Design's.</text>
+  </g>
+</svg>

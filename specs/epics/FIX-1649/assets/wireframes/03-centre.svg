@@ -1,0 +1,107 @@
+<svg viewBox="0 0 940 640" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Wireframe 3, the centre's four surfaces for one open channel, as a two by two grid. Stream: posts by the person and by seats in order, a seat's tool call and an approval card inline, and a composer at the foot. Board: the channel's board as columns, to do, doing and done, each card a row with its title and the seat or assignee holding it. Brief: the document the work started from, read from a declared resource, with where it came from. Results: what the work produced, each result with the seat that made it, when, its verdict and a link to open it. Annotations in blue say what each surface reads from and which sibling epic owns its meaning.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --prose:#A8761C; --prose-soft:#F3E8D2; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --prose:#D9A44B; --prose-soft:#332612; } }
+    .bg   { fill:var(--surface); }
+    .fr   { fill:var(--surface); stroke:var(--ink); stroke-width:2; }
+    .sub  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .bar  { fill:var(--rule); }
+    .acc  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.6; }
+    .ln   { stroke:var(--ink); stroke-width:1; }
+    .note { fill:none; stroke:var(--accent); stroke-width:1; stroke-dasharray:4 3; }
+    .t-h  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:700; letter-spacing:.08em; }
+    .t-b  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-n  { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-size:10px; font-style:italic; }
+    .t-a  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; font-weight:700; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="640"/>
+  <text class="t-h" x="16" y="18">03 · THE CENTRE · FOUR SURFACES ON ONE OPEN CHANNEL</text>
+
+  <g id="stream">
+    <rect class="fr" x="16" y="30" width="446" height="250"/>
+    <rect class="acc" x="28" y="40" width="62" height="18"/>
+    <text class="t-h" x="36" y="53">STREAM</text>
+    <text class="t-s" x="104" y="53">board · brief · results</text>
+    <text class="t-s" x="28" y="80">person</text>
+    <rect class="bar" x="28" y="86" width="260" height="8"/>
+    <text class="t-s" x="28" y="112">em · seat</text>
+    <rect class="bar" x="28" y="118" width="360" height="8"/>
+    <text class="t-s" x="28" y="144">coder · seat</text>
+    <rect class="sub" x="28" y="150" width="300" height="22"/>
+    <text class="t-s" x="36" y="165">▸ tool · run tests · 12 passed</text>
+    <rect class="sub" x="28" y="178" width="300" height="40"/>
+    <text class="t-b" x="36" y="194">em asks: approve the merge?</text>
+    <rect class="acc" x="36" y="200" width="54" height="14"/>
+    <text class="t-a" x="42" y="211">APPROVE</text>
+    <text class="t-s" x="100" y="211">reject</text>
+    <rect class="sub" x="28" y="240" width="422" height="28"/>
+    <text class="t-s" x="36" y="258">post to # eng.feature…</text>
+  </g>
+
+  <g id="board">
+    <rect class="fr" x="478" y="30" width="446" height="250"/>
+    <text class="t-s" x="490" y="53">stream ·</text>
+    <rect class="acc" x="538" y="40" width="54" height="18"/>
+    <text class="t-h" x="546" y="53">BOARD</text>
+    <text class="t-s" x="600" y="53">· brief · results</text>
+    <text class="t-h" x="490" y="82">TO DO</text>
+    <text class="t-h" x="634" y="82">DOING</text>
+    <text class="t-h" x="778" y="82">DONE</text>
+    <rect class="sub" x="490" y="92" width="134" height="40"/>
+    <text class="t-b" x="498" y="108">write the migration</text>
+    <text class="t-s" x="498" y="124">unclaimed</text>
+    <rect class="sub" x="634" y="92" width="134" height="40"/>
+    <text class="t-b" x="642" y="108">add the endpoint</text>
+    <text class="t-s" x="642" y="124">assignee · coder</text>
+    <rect class="sub" x="778" y="92" width="134" height="40"/>
+    <text class="t-b" x="786" y="108">spec the change</text>
+    <text class="t-s" x="786" y="124">assignee · em</text>
+    <rect class="sub" x="490" y="138" width="134" height="40"/>
+    <text class="t-b" x="498" y="154">update the docs</text>
+    <text class="t-s" x="498" y="170">unclaimed</text>
+  </g>
+
+  <g id="brief">
+    <rect class="fr" x="16" y="296" width="446" height="220"/>
+    <text class="t-s" x="28" y="319">stream · board ·</text>
+    <rect class="acc" x="118" y="306" width="50" height="18"/>
+    <text class="t-h" x="126" y="319">BRIEF</text>
+    <text class="t-s" x="176" y="319">· results</text>
+    <text class="t-b" x="28" y="350">Feature brief</text>
+    <text class="t-s" x="28" y="366">from resource · feature-brief.md · updated 2h ago</text>
+    <rect class="bar" x="28" y="380" width="400" height="8"/>
+    <rect class="bar" x="28" y="394" width="380" height="8"/>
+    <rect class="bar" x="28" y="408" width="410" height="8"/>
+    <rect class="bar" x="28" y="422" width="220" height="8"/>
+    <text class="t-h" x="28" y="452">DONE WHEN</text>
+    <rect class="bar" x="28" y="462" width="300" height="8"/>
+  </g>
+
+  <g id="results">
+    <rect class="fr" x="478" y="296" width="446" height="220"/>
+    <text class="t-s" x="490" y="319">stream · board · brief ·</text>
+    <rect class="acc" x="626" y="306" width="66" height="18"/>
+    <text class="t-h" x="634" y="319">RESULTS</text>
+    <rect class="sub" x="490" y="336" width="422" height="40"/>
+    <text class="t-b" x="498" y="352">PR · add the endpoint</text>
+    <text class="t-s" x="498" y="368">coder · 20m ago · verdict passed · open ↗</text>
+    <rect class="sub" x="490" y="382" width="422" height="40"/>
+    <text class="t-b" x="498" y="398">artifact · release notes draft</text>
+    <text class="t-s" x="498" y="414">em · 1h ago · open ↗</text>
+    <text class="t-s" x="490" y="446">nothing yet reads: "No results yet. Work in this channel lands here."</text>
+  </g>
+
+  <g id="notes">
+    <rect class="note" x="16" y="530" width="908" height="98"/>
+    <text class="t-n" x="28" y="548">The four surfaces are tabs on the open channel, and the tab is part of the address, so a link opens the same view. Stream and board reuse shipped FSD UI</text>
+    <text class="t-n" x="28" y="564">(the conversation, tool and approval components; the board panels), skinned through the design system, never restyled. The stream shows seats by name.</text>
+    <text class="t-n" x="28" y="580">Brief reads the declared resource the work started from; results lists what runs produced. What a brief and a result mean for engineering work is</text>
+    <text class="t-n" x="28" y="596">FIX-1651's (eng workstream kit); the shell shows what the Lab's tree declares and the runs return, and invents no field.</text>
+    <text class="t-n" x="28" y="612">Ochre: the active tab and the primary action on an approval. Board columns follow the board's own states, not a fixed three.</text>
+  </g>
+</svg>
