@@ -21,6 +21,7 @@ import type { ExecutionResult } from "./types";
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import { createLiveRequestStream, type LiveRequestStream } from "../streaming/live-stream";
 import { runAction } from "./runAction";
+import { hasLiveRequestAttempt } from "./request-attempts";
 import { resolveRecordOwner } from "../context/record-owner";
 
 export interface ContinueRequestOptions {
@@ -185,8 +186,12 @@ export async function continueRequest(
     // or the checkpoint restore throws) `runAction` rejects without ever
     // entering its own deregister path, which would otherwise leave a live
     // active-request/heartbeat entry on a request that never went `in_progress`
-    // (FIX-811).
-    void stores.activeRequests.deregister(requestId).catch(() => {});
+    // (FIX-811). The entry is shared by every run of this id, so it stays
+    // while another run of it is still live in this process; that run
+    // deregisters when it ends.
+    if (!hasLiveRequestAttempt(stores.request, requestId)) {
+      void stores.activeRequests.deregister(requestId).catch(() => {});
+    }
   });
   // Callers that consume `liveStream` may not await `finished`; mark handled.
   void settled.catch(() => {});

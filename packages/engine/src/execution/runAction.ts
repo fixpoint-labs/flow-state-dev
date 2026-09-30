@@ -63,6 +63,7 @@ import {
   registerAbortController,
   deregisterAbortController
 } from "./abort-registry";
+import { beginRequestAttempt, type RequestAttempt } from "./request-attempts";
 import {
   assertSessionAdmitted,
   FlowInstanceBindingMismatchError,
@@ -895,12 +896,32 @@ export async function runAction<
 
 /**
  * Internal action execution entrypoint with injectable seams for instrumentation/testing.
+ *
+ * Counts the run as a live attempt of its request id for its whole duration
+ * (see `request-attempts.ts`), so a run that overlaps another of the same
+ * request leaves stamping and deregistering to whichever ends last.
  */
 export async function runActionInternal<
   TFlow extends FlowInstance = FlowInstance,
   TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string
 >(
   options: RunActionInternalOptions<TFlow, TActionName>
+): Promise<ExecutionResult> {
+  const requestId = options.requestId ?? generateId("req");
+  const attempt = beginRequestAttempt(options.stores.request, requestId);
+  try {
+    return await runActionAttempt({ ...options, requestId }, attempt);
+  } finally {
+    attempt.end();
+  }
+}
+
+async function runActionAttempt<
+  TFlow extends FlowInstance = FlowInstance,
+  TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string
+>(
+  options: RunActionInternalOptions<TFlow, TActionName>,
+  attempt: RequestAttempt
 ): Promise<ExecutionResult> {
   const startedAt = Date.now();
   const action = resolveAction(
@@ -920,7 +941,8 @@ export async function runActionInternal<
     throw new OrgRequiredError(options.flow.kind, "runAction");
   }
 
-  const requestId = options.requestId ?? generateId("req");
+  // Always set by `runActionInternal`.
+  const requestId = options.requestId as string;
   const internalSeams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
   const response = options.responseEmitter ?? createInternalResponseEmitter({
     requestId,
@@ -2036,7 +2058,9 @@ export async function runActionInternal<
         });
 
         deregisterAbortController(requestId);
-        await registry.deregister(requestId).catch(() => {});
+        // Another run of this request still live in this process keeps the
+        // shared registry entry; it deregisters when it ends.
+        if (attempt.end()) await registry.deregister(requestId).catch(() => {});
         if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
         // Release the resume lease so the request can be resumed again at the
@@ -2337,7 +2361,12 @@ export async function runActionInternal<
 
     // The run has nothing left to write under this id.
     stopHeartbeatTimer();
+    // Another run of this request still live in this process (a continuation
+    // overlapping a run the sweep took for dead) is still writing under the
+    // id: leave the stamp and the shared registry entry to whichever ends last.
+    const lastAttempt = attempt.end();
     const finalized =
+      lastAttempt &&
       writesSettled &&
       (await finalizeRequestRecord(options.stores, requestId, terminalRecordIncarnation, logger));
 
@@ -2617,7 +2646,10 @@ export async function runActionInternal<
     await drainRequestSideChainPool(ctx);
     const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
 
+    // As on the success path: only the last live attempt stamps.
+    const lastAttempt = attempt.end();
     const finalized =
+      lastAttempt &&
       writesSettled &&
       (await finalizeRequestRecord(options.stores, requestId, terminalRecordIncarnation, logger));
 
