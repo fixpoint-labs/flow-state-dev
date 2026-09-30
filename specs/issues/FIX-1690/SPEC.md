@@ -3,7 +3,7 @@
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Feature · `@flow-state-dev/core` and `engine` (one generic hook), `harness-manager`,
-`orchestration`, `workforce`, private `labs/app-lab` and `goals/devforce-lab` · large · 4 PRs ·
+`orchestration`, `workforce`, private `labs/app-lab` and `goals/devforce-lab` · large · 3 PRs ·
 epic [FIX-1649](../../epics/FIX-1649/SPEC.md) · blocks [FIX-1663](../FIX-1663/SPEC.md) a4 and
 Part 4's one-write-path row · answers [FIX-1664's open fork](../FIX-1664/DECISIONS.md#open)
 
@@ -35,7 +35,7 @@ it; the app shows it as delivered only once that session holds it.**
 flowchart LR
   L["DevForce on the scripted harness · a coder run held open"] --> A["App Lab in Chromium · task composer, then @coder"]
   A --> R["read the run session and the harness stub's own record"]
-  R -->|"line in the session before delivered shows · run stopped · next attempt resumed the same coding session with the line · attempts unchanged"| P["PASS · goal met"]
+  R -->|"line in the session before delivered shows · run stopped · next attempt resumed the same coding session with the line · retry standing unchanged"| P["PASS · goal met"]
   C1["control · the composer draws delivered without sending"] -.-> A
   C2["control · the next attempt starts a fresh coding session"] -.-> A
   R -.->|"under either control"| F["must FAIL · names the signal"]
@@ -46,7 +46,7 @@ The check reads the store and what the stub harness was handed, never App Lab's 
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/app-lab/it-sends-a-turn-into-a-seat-session/` · model n/a (the scripted stub, held open until stopped) · real Chromium · run by the implementer at completion · verdict in the last implementation PR. The real-model half is FIX-1663's a4 |
-| **Signal** | A fresh token, typed in the task composer and then as `@coder <token>` in the feature workstream: (1) the run session named by the task's link holds a user message item with the token, and the composer shows *delivered* only after it does; (2) the running attempt's request reads `aborted`; (3) the stub records a next attempt whose prompt contains the token and whose resume id equals the previous attempt's coding session id; (4) the row's `attempts` is unchanged by the turn. Inbox: on the fixture seat, a reply's token is in the ask's session; on DevForce's EM ask, the box is disabled with its line |
+| **Signal** | A fresh token, typed in the task composer and then as `@coder <token>` in the feature workstream: (1) the run session named by the task's link holds a user message item with the token, and the composer shows *delivered* only after it does; (2) the running attempt's request reads `aborted`; (3) the stub records a next attempt whose prompt contains the token and whose resume id equals the previous attempt's coding session id; (4) the row's retry standing (`attempts` minus discounted re-entries) is unchanged by the turn. Inbox: on the fixture seat, a reply's token is in the ask's session; on DevForce's EM ask, the box is disabled with its line |
 | **Input** | `goals/devforce-lab/lab/` on its scripted stub with one coder row held running; a second row on the same coder for the picker; a fixture seat whose kind takes messages and asks, under the check's own folder |
 | **Anti-game** | No assertion on App Lab state or a mocked server. The resume id and prompt come from the stub's own record on disk, not from the manager's |
 | **Control that must fail** | `GOAL_CONTROL=optimistic-turn`: the composer draws *delivered* without calling the door. Must FAIL at (1). `GOAL_CONTROL=fresh-session`: the manager's resume feed returns nothing on a turn attempt. Must FAIL at (3), naming the resume id. Today's `main` fails everything |

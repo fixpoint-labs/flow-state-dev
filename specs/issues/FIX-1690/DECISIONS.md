@@ -114,6 +114,10 @@ session. Then a Workforce action that resolves it server-side earns its place in
   change.
 - **A turn to a row that is parked on its own question, or pending with a linked run**, is kept
   in the session and folded into the next attempt. It does not unpark a question.
+- **Turns get their own collection (S4) rather than being read back from session history.** The
+  next attempt may run in another session than the one the line landed in; retention evicts old
+  requests; and a refused door leaves a user item too, so history can't tell a kept turn from a
+  refused one. The harness manager's `inbox/` keeps answers the same way.
 - **The door checks the run's owner** as the harness manager's `answer` does: the person must be
   the run's principal (BP-031).
 - **A harness that can't resume** (the cloud `claude-code/cli-remote` door reports only
@@ -138,5 +142,7 @@ session. Then a Workforce action that resolves it server-side earns its place in
 - **Draft**: framed as the operation FIX-1664's open fork left unfiled; one door per seat kind
   over Core's existing `userMessage`; a running coding run reached by stop-and-continue through
   one generic stop hook; four PRs.
+- **Review round 1** (Cursor): S3 cut to wiring over the existing `unpark`; S4 kept with its
+  reason recorded; `seat-door` folded into `lab`, three PRs.
 
 **Open: two** — [live delivery](#open-live) and [Inbox's reply on DevForce](#open-inbox).

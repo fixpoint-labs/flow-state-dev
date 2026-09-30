@@ -22,7 +22,7 @@ rules apply as written; these are the ones a turn adds. *Proved by* names the ki
 |---|---|---|---|
 | BR-7 | The task's row is `in_progress` with a linked run | The door keeps the turn durably, then stops the running request through the stop hook. The attempt ends parked *for a person's turn*, not failed | Goal check |
 | BR-8 | The next attempt starts after a turn | It resumes the previous attempt's coding session id, and its prompt is the turns kept since the last attempt, oldest first, each marked as the person's words. The checkout is the same one, edits intact | Goal check under `fresh-session` |
-| BR-9 | A turn stopped the attempt | The row's `attempts` after the next claim equals its value before the turn. A genuine failure afterwards is charged as usual | Goal check · CI |
+| BR-9 | A turn stopped the attempt | The next claim's re-entry is discounted from the task's `maxAttempts`, as an abandonment is; the board's `maxTotalRetries` is already untouched by `unpark`. A genuine failure afterwards is charged as usual | Goal check · CI |
 | BR-10 | Two turns arrive before the next attempt starts | Both are kept and both are in that attempt's prompt, in order; one stop | CI |
 | BR-11 | The run finished in the moment between the read and the stop | The stop reports *already finished*. If the row settled, the door refuses per BR-5 (*the task finished before your message reached it*); if it re-pended, the turn is kept for the next attempt | CI |
 | BR-12 | The row is `parked` on the run's own question | The turn is kept and folded into the attempt that follows the answer. It does not unpark the row; answering stays the ask's path (FIX-1671, the manager's `answer`) | CI |
