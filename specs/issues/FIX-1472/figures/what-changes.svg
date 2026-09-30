@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 430" role="img" aria-label="The two task-board recorders, before and after. Today, each recorder's column interleaves its own exits with a baseline, write and classify block, and that block appears in both columns. After, each column keeps only its own exits, in the same order as today, and both columns point at one shared write step drawn once between them. Each column still ends with its own report-then-raise-or-defer, written out where it runs. The error recorder's two containment guards stay at the top of its own column."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .exit  { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .guard { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .dup   { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .shared{ fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .link  { stroke:var(--code); stroke-width:1.4; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-d   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-c   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="430"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="16" width="436" height="350" rx="6"/>
+    <text class="t-lbl" x="32" y="40">TODAY</text>
+    <text class="t-lbl" x="32" y="72">SUCCESS RECORDER</text>
+    <text class="t-lbl" x="240" y="72">ERROR RECORDER</text>
+    <rect class="exit" x="32" y="136" width="196" height="40" rx="4"/>
+    <text class="t-b" x="44" y="160">no claim · parked → exit</text>
+    <rect class="dup" x="32" y="188" width="196" height="40" rx="4"/>
+    <text class="t-d" x="44" y="212">baseline · write · classify</text>
+    <rect class="exit" x="32" y="240" width="196" height="40" rx="4"/>
+    <text class="t-b" x="44" y="264">stop renewal · clear claim</text>
+    <rect class="exit" x="32" y="292" width="196" height="40" rx="4"/>
+    <text class="t-b" x="44" y="316">report · raise or defer</text>
+    <rect class="guard" x="240" y="84" width="196" height="40" rx="4"/>
+    <text class="t-b" x="252" y="108">two containment guards</text>
+    <rect class="exit" x="240" y="136" width="196" height="40" rx="4"/>
+    <text class="t-b" x="252" y="160">no claim · parked → skip write</text>
+    <rect class="dup" x="240" y="188" width="196" height="40" rx="4"/>
+    <text class="t-d" x="252" y="212">baseline · write · classify</text>
+    <rect class="exit" x="240" y="240" width="196" height="40" rx="4"/>
+    <text class="t-b" x="252" y="264">clear claim · stop renewal</text>
+    <rect class="exit" x="240" y="292" width="196" height="40" rx="4"/>
+    <text class="t-b" x="252" y="316">report · raise or defer</text>
+    <text class="t-s" x="252" y="352">then onError</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="478" y="16" width="446" height="350" rx="6"/>
+    <text class="t-lbl" x="494" y="40">AFTER</text>
+    <text class="t-lbl" x="494" y="72">SUCCESS</text>
+    <text class="t-lbl" x="640" y="72">SHARED · ONCE</text>
+    <text class="t-lbl" x="786" y="72">ERROR</text>
+    <rect class="exit" x="494" y="136" width="126" height="40" rx="4"/>
+    <text class="t-b" x="504" y="160">no claim · parked</text>
+    <rect class="exit" x="494" y="240" width="126" height="40" rx="4"/>
+    <text class="t-b" x="504" y="264">stop · clear</text>
+    <rect class="guard" x="782" y="84" width="130" height="40" rx="4"/>
+    <text class="t-b" x="792" y="108">two guards</text>
+    <rect class="exit" x="782" y="136" width="130" height="40" rx="4"/>
+    <text class="t-b" x="792" y="160">no claim · parked</text>
+    <rect class="exit" x="782" y="240" width="130" height="40" rx="4"/>
+    <text class="t-b" x="792" y="264">clear · stop</text>
+    <text class="t-s" x="792" y="352">then onError</text>
+    <rect class="shared" x="636" y="182" width="130" height="52" rx="5"/>
+    <text class="t-c" x="648" y="204">write step</text>
+    <text class="t-s" x="648" y="222">baseline · classify</text>
+    <rect class="exit" x="494" y="292" width="126" height="40" rx="4"/>
+    <text class="t-b" x="504" y="316">report · raise/defer</text>
+    <rect class="exit" x="782" y="292" width="130" height="40" rx="4"/>
+    <text class="t-b" x="792" y="316">report · raise/defer</text>
+    <path class="link" d="M540 208 H636"/>
+    <path class="link" d="M766 208 H860"/>
+    <text class="t-s" x="494" y="212">calls →</text>
+    <text class="t-s" x="866" y="212">← calls</text>
+  </g>
+
+  <g id="legend">
+    <rect class="dup" x="16" y="388" width="22" height="14" rx="2"/>
+    <text class="t-s" x="46" y="399">written twice today · removed</text>
+    <rect class="shared" x="236" y="388" width="22" height="14" rx="2"/>
+    <text class="t-s" x="266" y="399">shared, written once</text>
+    <rect class="exit" x="420" y="388" width="22" height="14" rx="2"/>
+    <text class="t-s" x="450" y="399">own exit · same order as today</text>
+    <rect class="guard" x="720" y="388" width="22" height="14" rx="2"/>
+    <text class="t-s" x="750" y="399">containment guards · kept</text>
+  </g>
+</svg>
