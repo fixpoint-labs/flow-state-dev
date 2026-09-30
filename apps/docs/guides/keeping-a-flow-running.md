@@ -87,9 +87,9 @@ same session, so its state builds up. `when` is an optional predicate on the eve
 `false` and that delivery runs nothing, which narrows a coarse event type to the ones you want.
 
 The provider's signature verifies each delivery. With no resolver, as in the example, every
-event runs as the `system` user and the flow is on the development setup: its management and
-session endpoints stay open, the endpoints that list across flows hand its rows to any caller,
-and `fsdev serve` won't bind a non-loopback host. In production, give the flow, or the host, a
+event runs as the `system` user, and the flow is left on the development default. Its
+management and session endpoints are open to anyone. `GET /api/flows/sessions` lists its
+sessions to any caller. And `fsdev serve` won't bind a non-loopback host. In production, give the flow, or the host, a
 `resolvePrincipal` that returns your organization for webhook deliveries, as in
 [Stripe webhook with HMAC signature](/docs/server/authentication#stripe-webhook-with-hmac-signature).
 
@@ -147,7 +147,7 @@ on its own refuses every webhook delivery with a `401`.
 
 Schedules you create while the app runs, like a reminder a user sets, come from
 `schedules.resolve` instead of `schedules.static`. To run something later, store a schedule
-for the time you want, and the tick runs it. `dispatcher()` has no delay option.
+for the time you want, and the tick runs it. A `dispatcher()` block (below) has no delay option.
 
 Read next: [Scheduled actions](/docs/server/scheduled), then the guide for your scheduler:
 [Vercel Cron](/guides/scheduled-vercel-cron), [Cloud Scheduler](/guides/scheduled-cloud-scheduler),
@@ -179,8 +179,8 @@ const reconcileLater = dispatcher({
 Add `flowKind` and the same block sends the work to another flow registered on the same
 server. That's how one flow hands work to another.
 
-A `.sideChain()` looks similar and isn't. It runs beside the request, and the request stays
-open until it settles.
+A `.sideChain()` is different: it runs beside the request, and the request stays open until
+it settles.
 
 To move the work off your web process entirely, give `createFlowState` a queue:
 `worker: bullmqWorker({ connection })` from `@flow-state-dev/bullmq`. Actions and dispatched
@@ -198,9 +198,10 @@ What's allowed depends on whether the process hands work to a queue. With `bullm
 `mode` sets that: `colocated`, the default, enqueues work and runs it in the same process;
 `dispatch-only` enqueues and leaves the running to a separate worker; `worker-only` is that
 separate worker, which runs queued jobs and enqueues nothing. See
-[Separated workers](/guides/background-jobs-bullmq#4-separated-workers). A custom `dispatcher` on
-`createFlowState` with no `dispatchLocal` method hands work to an external queue too, so the
-refusals below apply to it as well.
+[Separated workers](/guides/background-jobs-bullmq#4-separated-workers). If you replace the host's
+[`dispatcher` option](/docs/configuration/runtime#createflowstate-fields) on `createFlowState`
+(not the `dispatcher()` block) with your own that runs work in another process, the refusals
+below apply to it as well.
 
 | `session` | Runs in | With a queue |
 |---|---|---|
@@ -214,8 +215,8 @@ is enqueued. A `{ key }` dispatch, a webhook delivery (with or without a `sessio
 schedule tick run normally there.
 
 If you use Workforce, its channels are sessions that already exist, so the same rule reaches
-them. When the run handling a client's post is on a process that hands work to the queue, such
-as a `colocated` worker, the post is written and its line appears, but no member is woken and
+them. On a process that hands work to the queue, such as a `colocated` worker, a post made
+from your app is saved to the channel and shows in its transcript, but no member is woken and
 nothing answers. A post from another flow, made on such a process, is refused with
 `external-dispatcher`. See
 [Channels](/docs/workforce/channels#where-posting-from-another-flow-works-and-where-it-doesnt).
@@ -264,8 +265,7 @@ schedule tick, or a custom inbound transport.
 **Dispatch.** A flow sends one unit of work to an entry through a `dispatcher()` block. A
 schedule's dispatch endpoint is a different thing: your scheduler calling it is a wake.
 
-**Schedule tick.** Your scheduler calling a schedule's dispatch endpoint. FSD doesn't run a
-clock; it answers the call.
+**Schedule tick.** Your scheduler calling a schedule's dispatch endpoint.
 
 *Heartbeat*, on the pages linked here, means the signals that keep a live stream open while a
 request runs. It never starts a run. See
