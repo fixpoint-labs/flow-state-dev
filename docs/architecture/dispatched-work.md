@@ -503,6 +503,8 @@ admission (`setAssignee` declines `immutable-assignee`): the value cannot move
 under the predicate, and it survives a restart with no run state to rebuild.
 `claimedBy` would not do — the child never claims, so a handed-off row still
 carries the session of the parent that claimed it.
+The run's own coordinate is `run`, which the claim gate writes from inside the
+run (FIX-1668).
 
 **The missing liveness conjunct on the park exclusion is deliberate, not an
 oversight.** The routing exclusion needs one because a routed row can be
