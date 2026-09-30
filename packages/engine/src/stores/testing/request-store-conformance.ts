@@ -725,34 +725,132 @@ export function createRequestStoreConformanceTests(
         });
       });
 
-      // The identity fence: a caller that checked who owns the record passes
-      // its `createdAt`, so the write cannot land on another request that took
-      // the id after that check.
-      it("reports a record with another createdAt as absent, and writes nothing", async () => {
-        await withStore(async (store) => {
-          const requestId = "req_cond_fenced";
-          await seed(store, requestId);
-          const { createdAt } = (await store.get(requestId))!;
+      // The identity fence. A caller that checked who owns the record passes
+      // that record's incarnation, so the write lands only on the request the
+      // check read: never on another request that took the id afterwards, and
+      // never missing the checked one because a same-owner hand-off rewrote
+      // its `createdAt`. A record written before incarnations existed answers
+      // to `legacy_<createdAt>`, spelled out here rather than read from the
+      // engine's helper, so a store that states the rule in its own query
+      // language is held to the same string.
+      describe("identity fence (expectedIncarnation)", () => {
+        const stamped = (
+          requestId: string,
+          incarnation: string | null | undefined,
+          createdAt: number
+        ): RequestRecord => ({
+          ...makeRecord(requestId, "in_progress", []),
+          createdAt,
+          updatedAt: createdAt,
+          startedAtMs: createdAt,
+          ...(incarnation === undefined ? {} : { incarnation: incarnation as string })
+        });
 
-          const missed = await store.setFieldsIfStatus(
+        async function fenced(store: RequestStore, requestId: string, expected: string) {
+          return store.setFieldsIfStatus(
             requestId,
             { abortRequested: true },
             ["in_progress"],
             Date.now(),
-            createdAt + 1
+            expected
           );
-          expect(missed).toEqual({ applied: false, status: undefined });
-          expect(await store.isAbortRequested(requestId)).toBe(false);
+        }
 
-          const hit = await store.setFieldsIfStatus(
-            requestId,
-            { abortRequested: true },
-            ["in_progress"],
-            Date.now(),
-            createdAt
-          );
-          expect(hit).toEqual({ applied: true, status: "in_progress" });
-          expect(await store.isAbortRequested(requestId)).toBe(true);
+        it("reports a request with another incarnation as absent, even with the same createdAt", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_same_ms";
+            await store.set(requestId, stamped(requestId, "inc_newer", 1_000), "any");
+
+            const missed = await fenced(store, requestId, "inc_checked");
+            expect(missed).toEqual({ applied: false, status: undefined });
+            expect(await store.isAbortRequested(requestId)).toBe(false);
+          });
+        });
+
+        it("applies to the same incarnation even when createdAt was rewritten", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_handed_off";
+            // What a same-owner hand-off leaves: a new createdAt, the kept incarnation.
+            await store.set(requestId, stamped(requestId, "inc_kept", 2_000), "any");
+
+            const hit = await fenced(store, requestId, "inc_kept");
+            expect(hit).toEqual({ applied: true, status: "in_progress" });
+            expect(await store.isAbortRequested(requestId)).toBe(true);
+          });
+        });
+
+        it("fences a legacy record on legacy_<createdAt>", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_legacy";
+            await store.set(requestId, stamped(requestId, undefined, 1_000), "any");
+
+            expect(await fenced(store, requestId, "legacy_1001")).toEqual({
+              applied: false,
+              status: undefined
+            });
+            expect(await store.isAbortRequested(requestId)).toBe(false);
+            expect(await fenced(store, requestId, "legacy_1000")).toEqual({
+              applied: true,
+              status: "in_progress"
+            });
+          });
+        });
+
+        it("fences a handed-off legacy record on the value it stores, not its new createdAt", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_legacy_handed_off";
+            await store.set(requestId, stamped(requestId, "legacy_1000", 2_000), "any");
+
+            expect(await fenced(store, requestId, "legacy_2000")).toEqual({
+              applied: false,
+              status: undefined
+            });
+            expect(await fenced(store, requestId, "legacy_1000")).toEqual({
+              applied: true,
+              status: "in_progress"
+            });
+          });
+        });
+
+        it("never matches a stamped request to a legacy fence", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_stamped_vs_legacy";
+            await store.set(requestId, stamped(requestId, "inc_new", 1_000), "any");
+
+            expect(await fenced(store, requestId, "legacy_1000")).toEqual({
+              applied: false,
+              status: undefined
+            });
+            expect(await store.isAbortRequested(requestId)).toBe(false);
+          });
+        });
+
+        it("treats a null incarnation as absent", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_null";
+            await store.set(requestId, stamped(requestId, null, 1_000), "any");
+
+            expect(await fenced(store, requestId, "legacy_1000")).toEqual({
+              applied: true,
+              status: "in_progress"
+            });
+          });
+        });
+
+        it("reports the terminal status, not absence, when the incarnation matches", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_terminal";
+            await store.set(
+              requestId,
+              { ...stamped(requestId, "inc_done", 1_000), status: "completed" },
+              "any"
+            );
+
+            expect(await fenced(store, requestId, "inc_done")).toEqual({
+              applied: false,
+              status: "completed"
+            });
+          });
         });
       });
 

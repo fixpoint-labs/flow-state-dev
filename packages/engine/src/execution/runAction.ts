@@ -21,7 +21,13 @@ import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResume
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "../context/createExecutionContext";
-import { isSameSession, resolveLineageId, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
+import {
+  isSameSession,
+  resolveLineageId,
+  resolveRequestIncarnation,
+  resolveSessionStorageKey,
+  tenantMatches
+} from "../stores/scope-keys";
 import { canSpeak, canSpeakStream, getRequestSideChainPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
@@ -56,7 +62,10 @@ import { generateId } from "../utils/generate-id";
 import {
   abortRequest,
   registerAbortController,
-  deregisterAbortController
+  deregisterAbortController,
+  replaceAbortController,
+  tagAbortController,
+  wasFiredOnlyFenced
 } from "./abort-registry";
 import {
   assertSessionAdmitted,
@@ -1009,28 +1018,56 @@ export async function runActionInternal<
   // loser is refused now, having written nothing; the winner's
   // `createExecutionContext` adopts this stub, as it adopts the host's
   // enqueue-time one on the queued path.
-  if (admittedRequest === undefined) {
-    await claimRequestRecord(
-      options.stores,
-      options.flow,
-      createInitialRequestRecord(
-        {
-          requestId,
-          flowKind: options.flow.kind,
-          flowId: options.flow.id,
-          actionName: options.actionName as string,
-          userId: options.userId,
-          sessionId: options.sessionId,
-          tenantId: options.tenantId,
-          orgId: options.orgId,
-          source,
-          metadata: options.metadata,
-          input: options.input
-        },
-        Date.now()
-      )
+  //
+  // The incarnation this run answers to is the admitted record's, or the one
+  // the claim wrote (a same-owner hand-off keeps the holder's). Its abort
+  // controller carries it, so an abort fenced on another request under this
+  // id cannot fire this run.
+  const runIncarnation = resolveRequestIncarnation(
+    admittedRequest ??
+      (await claimRequestRecord(
+        options.stores,
+        options.flow,
+        createInitialRequestRecord(
+          {
+            requestId,
+            flowKind: options.flow.kind,
+            flowId: options.flow.id,
+            actionName: options.actionName as string,
+            userId: options.userId,
+            sessionId: options.sessionId,
+            tenantId: options.tenantId,
+            orgId: options.orgId,
+            source,
+            metadata: options.metadata,
+            input: options.input
+          },
+          Date.now()
+        )
+      ))
+  );
+  // The incarnation this run executes as: admission's, until the execution
+  // context adopts the record and says otherwise (see the re-tag below).
+  let currentIncarnation = runIncarnation;
+  // Until the context has adopted the record, which request this run is is not
+  // settled, so no stored cancel is delivered: one delivered for admission's
+  // request would stay on this run's controller if another request took the id.
+  let incarnationSettled = false;
+  /**
+   * Whether a cancel is recorded on the request this run executes as. The flag
+   * is read first, as the O(1) `isAbortRequested`, and only when it is set is
+   * the record read, to check it is still this run's request and not a later
+   * one that took the id. The common path stays one narrow read.
+   */
+  const abortRecordedForThisRun = async (): Promise<boolean> => {
+    if (!(await options.stores.request.isAbortRequested(requestId))) return false;
+    const record = await options.stores.request.get(requestId);
+    return (
+      record !== undefined &&
+      record.abortRequested === true &&
+      resolveRequestIncarnation(record) === currentIncarnation
     );
-  }
+  };
 
   await registry.register({
     requestId,
@@ -1092,13 +1129,13 @@ export async function runActionInternal<
    * this closes.
    */
   const pollAbortIntent = async (): Promise<void> => {
-    if (deliveredAbort || abortPollInFlight) return;
+    if (deliveredAbort || abortPollInFlight || !incarnationSettled) return;
     abortPollInFlight = true;
     try {
-      if (!(await options.stores.request.isAbortRequested(requestId))) return;
+      if (!(await abortRecordedForThisRun())) return;
       // Returns false when no controller is registered yet. Not a delivery, so
       // the latch stays unset and the next tick retries.
-      if (!abortRequest(requestId)) return;
+      if (!abortRequest(requestId, currentIncarnation)) return;
       deliveredAbort = true;
       logRuntimeEvent(logger, "info", "[flow-state] [abort] cross-process abort delivered", {
         requestId
@@ -1445,24 +1482,31 @@ export async function runActionInternal<
   // If anything above threw, the controller would never be registered.
   // If anything between here and the main try block throws, the outer
   // try/catch below cleans it up.
-  const abortController = registerAbortController(requestId);
-  // First poll (FIX-1026). Placed here rather than beside the timer because a
-  // poll before this line has no controller to fire and therefore cannot
-  // deliver — it would be a guaranteed-useless store read on every request.
-  // Here it closes the window where the cancel was recorded between admission
-  // and the run starting, without waiting a full interval. Gated on the timer
-  // so `heartbeatIntervalMs: 0` really is off.
   //
-  // AWAITED, not fired and forgotten. The read is issued either way; awaiting
-  // is what makes "a cancel recorded before the run started stops the run" a
-  // guarantee instead of a race the store's latency decides. Left unawaited, an
-  // action shorter than one `isAbortRequested` round trip runs to completion —
-  // model calls included — clears the post-drain abort check, and persists
-  // `completed` before the read that would have stopped it returns; by then the
-  // controller is deregistered and the delivery has nowhere to land. The cost
-  // is one narrow read on the start path, and `pollAbortIntent` swallows its
-  // own failures, so this can delay a request start but can never fail one.
-  if (heartbeatTimer !== undefined) await pollAbortIntent();
+  // Two controllers. `registered` is the one in the registry, which the abort
+  // endpoint and the poll fire. `abortController` is this run's own signal.
+  // A fire reaches the run only once the context has settled which request the
+  // run executes as: one that landed earlier, for a request that then lost the
+  // id to the one the context adopted, belongs to that other request and is
+  // dropped with its controller (see the settle step below).
+  //
+  // A controller handed over by the caller is kept, fires and all, unless its
+  // only fires were fenced on another request than the one admission read:
+  // those are not this run's, so it starts on a fresh one.
+  const handoff = options.abortHandoff;
+  const keepHandoff =
+    handoff !== undefined &&
+    !(handoff.incarnation !== runIncarnation && wasFiredOnlyFenced(handoff.controller));
+  let registered = registerAbortController(
+    requestId,
+    runIncarnation,
+    keepHandoff ? handoff.controller : undefined
+  );
+  const abortController = new AbortController();
+  const forwardRegisteredAbort = (): void => {
+    if (incarnationSettled) abortController.abort(registered.signal.reason);
+  };
+  registered.signal.addEventListener("abort", forwardRegisteredAbort, { once: true });
   const composedSignal = options.signal
     ? AbortSignal.any([options.signal, abortController.signal])
     : abortController.signal;
@@ -1657,6 +1701,49 @@ export async function runActionInternal<
       // `--model`). A detached child inherits it. See `effectiveRuntimeConfig`.
       effectiveRuntimeConfig: options.runtimeConfig
     });
+
+    // The controller was tagged from admission's read, but the context reads
+    // the record again and runs as whatever request holds the id now. If
+    // another request took the id in between, the registered controller must
+    // answer to the one this run executes as. Re-tag it, or, if only fires
+    // fenced on the earlier request landed on it, replace it: those were not
+    // for this request. Any unfenced fire (shutdown, a CLI stopping its own
+    // turn) was for whatever runs under the id, so it stays. From here on,
+    // which request this run is is settled, and a fire that stays reaches the
+    // run.
+    if (ctx.request.incarnation !== currentIncarnation) {
+      currentIncarnation = ctx.request.incarnation;
+      if (wasFiredOnlyFenced(registered)) {
+        registered = replaceAbortController(requestId, registered, currentIncarnation);
+        registered.signal.addEventListener("abort", forwardRegisteredAbort, { once: true });
+      } else {
+        tagAbortController(requestId, registered, currentIncarnation);
+      }
+    }
+    incarnationSettled = true;
+    if (registered.signal.aborted) forwardRegisteredAbort();
+
+    // First poll (FIX-1026), against the request this run executes as. It
+    // closes the window where the cancel was recorded between admission and
+    // the run starting, without waiting a full interval: nothing has executed
+    // yet. Earlier than here, a cancel it read could belong to a request that
+    // no longer holds the id.
+    //
+    // AWAITED, not fired and forgotten. Awaiting is what makes "a cancel
+    // recorded before the run started stops the run" a guarantee instead of a
+    // race the store's latency decides. Left unawaited, an action shorter than
+    // one `isAbortRequested` round trip runs to completion — model calls
+    // included — clears the post-drain abort check, and persists `completed`
+    // before the read that would have stopped it returns. The cost is one
+    // narrow read on the start path, and `pollAbortIntent` swallows its own
+    // failures, so this can delay a request start but can never fail one.
+    //
+    // Every run makes it, heartbeats on or off: a cancel can be recorded on
+    // this request before its controller carried the incarnation (a queued
+    // stub, a record a replacement left, a record a claim took over), and with
+    // heartbeats off this read is the only delivery there is. It is one O(1)
+    // `isAbortRequested` read per run.
+    await pollAbortIntent();
 
     // Resume mode: load the suspension record + checkpoint to restore the durable
     // sequencer's accumulator state. `resumeOf` (legacy two-request path) reads
@@ -2307,7 +2394,10 @@ export async function runActionInternal<
       ? await options.stores.request.get(requestId).catch(() => undefined)
       : undefined;
     let wasIntentionalAbort =
-      signalAborted && (deliveredAbort || classificationRecord?.abortRequested === true);
+      signalAborted &&
+      (deliveredAbort ||
+        (classificationRecord?.abortRequested === true &&
+          resolveRequestIncarnation(classificationRecord) === currentIncarnation));
 
     // The failure path's normalized error is needed for the client-visible
     // error item, which is emitted before the drain so a caller hears the
@@ -2383,10 +2473,11 @@ export async function runActionInternal<
       //     controller, while a stop accepted on another instance only sets the
       //     durable flag and reaches us through the heartbeat's abort poll —
       //     which is running precisely because the heartbeat outlives the drain.
-      //     `isAbortRequested`, not `get()`: this asks one boolean, and the
-      //     interface requires it be O(1) in item count, where `get()`
+      //     `isAbortRequested` first, not `get()`: this asks one boolean, and
+      //     the interface requires it be O(1) in item count, where `get()`
       //     materializes the whole item history to answer it on the persistent
-      //     adapters. A store failure resolves to `false`, which keeps the
+      //     adapters. Only a set flag pays for the `get()` that checks it is
+      //     this run's request. A store failure resolves to `false`, which keeps the
       //     branch already chosen — the same direction the classification read
       //     above fails in. (That read stays on `get()` deliberately: it is the
       //     call that absorbs a transient failure before `patchRequestRecord`,
@@ -2394,7 +2485,7 @@ export async function runActionInternal<
       if (!wasIntentionalAbort) {
         wasIntentionalAbort =
           deliveredAbort ||
-          (await options.stores.request.isAbortRequested(requestId).catch(() => false));
+          (await abortRecordedForThisRun().catch(() => false));
       }
     } finally {
       // Clear the heartbeat — the drain is done and the terminal write is

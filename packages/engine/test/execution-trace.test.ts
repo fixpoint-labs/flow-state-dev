@@ -404,6 +404,8 @@ describe("execution trace system", () => {
       await stores.request.set("req_prev_llm", {
         id: "req_prev_llm",
         flowKind: flow.kind,
+        flowId: flow.id,
+        orgId: DEFAULT_ORG_ID,
         actionName: "run",
         sessionId: "sess_llm",
         userId: "user_llm",

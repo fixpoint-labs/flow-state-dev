@@ -109,6 +109,7 @@ import {
   type RequestPrincipal
 } from "./request-principal";
 import { refuseInstancePin } from "./instance-pin";
+import { sessionRequestScope } from "./session-request-scope";
 import { ownerKeyMaySeed } from "../resources/owner-private";
 import {
   outputItemToSessionItem,
@@ -574,8 +575,9 @@ export async function createExecutionContext<
   // content/resource-state `scopeId`, so two tenants sharing a session id never
   // collide. The bare `sessionId` is preserved for the public identity
   // (`ctx.session.identity.id`), emitted events, and the request record's
-  // (bare) `sessionId` field; request history isolates by the `tenantId` filter
-  // instead of a namespaced field.
+  // (bare) `sessionId` field; request history isolates by the session's
+  // request scope (`sessionRequestScope`, tenant included) instead of a
+  // namespaced field.
   const sessionKey = resolveSessionStorageKey(sessionId, options.tenantId);
 
   // Storage keys — namespaced by the resolved INSTANCE id when the flow opts
@@ -651,11 +653,12 @@ export async function createExecutionContext<
     // `orderBy:"startedAtMs"` makes the windowed selection robust to
     // out-of-order metadata writes. `items` reconstruct cross-turn history.
     stores.request.list({
-      sessionId,
-      // Always pass the tenant (possibly undefined) so history exact-matches
-      // this tenant and never crosses into another tenant's requests for the
-      // same bare session id (FIX-682).
-      tenantId: options.tenantId,
+      // The same filter as the session's reads; see `sessionRequestScope`.
+      ...sessionRequestScope(
+        sessionId,
+        loadedSession ?? { userId, orgId: options.orgId, flowKind: flow.kind, flowId: flow.id },
+        options.tenantId
+      ),
       status: "completed",
       limit: historyWindowTurns,
       orderBy: "startedAtMs",

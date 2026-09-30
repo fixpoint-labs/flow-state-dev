@@ -36,6 +36,7 @@ export {
   filesystemStores,
   inMemoryStores,
   resolveOrgStorageKey,
+  resolveRequestIncarnation,
   resolveTraceMaxRequests,
   resolveUserStorageKey,
   runWithCAS,

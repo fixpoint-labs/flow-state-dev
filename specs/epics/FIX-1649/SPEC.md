@@ -32,7 +32,7 @@ opens in the same shell with no shell code of its own.**
 |---|---|
 | **The real need** | Jake's PRD: app lab, design system, and nav across projects, workstreams, chat, attention and resources. The Architect's line: Labs share one app chrome and design system without a second product shell or new L1 nouns |
 | **Smaller, and rejected** | "App Lab renders in the skin." FIX-1662 alone meets it, while a second Lab could still need its own chrome and a reused component could still carry App Lab paint in FSD |
-| **Bigger, and not this epic's** | What projects, workstreams and attention *mean* (FIX-1650, 1651, 1652) · review and GitHub wake (FIX-1653) · the DevForce Lab product itself |
+| **Bigger, and not this epic's** | What projects and workstreams (FIX-1650), what a workstream holds: its Board, Brief and Results, with tasks and their states (FIX-1651) and attention (FIX-1652) *mean* · review and GitHub wake (FIX-1653) · the DevForce Lab product itself |
 | **Not done if** | Every child is Done and the closure check hasn't run · a reused FSD component was restyled in App Lab, or a copy differs from its source · an App Lab skin value sits in an FSD package · a surface shows a model the shell invented · a Lab needs a wrapper, or opens with no org · final visuals merged before the final hand-back |
 
 ```mermaid

@@ -681,6 +681,49 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     expect(outcomeOf(lastRowRequests, "req_a")).toEqual({ state: "unknown", reason: "not-reported" });
   });
 
+  it("keeps the trace of a request that persisted nothing in the Stream tab, after the stream moved on", async () => {
+    // A transient action refused without touching the task (`{ ok: false }`)
+    // writes no item at all: its polled log is empty, and the only trace of
+    // the refusal is the root its stream saw. The Stream and Trace tabs keep
+    // showing it; the row reads the refusal from the recorded result.
+    sendAction
+      .mockResolvedValueOnce({ request: { id: "req_a" } })
+      .mockResolvedValueOnce({ request: { id: "req_b" } });
+    const view = await act(async () => render(<DevToolPanel userId="u1" />));
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+    });
+    const refusal = {
+      id: "a_root",
+      type: "block_trace",
+      transient: true,
+      output: { ok: false, error: "task is not claimable" },
+    };
+    streamMock.streamState = { requestId: "req_a", status: "completed", rawItems: [refusal] };
+    await act(async () => {
+      fireEvent.click(screen.getByText("row-stub"));
+      await Promise.all(rowAnswers);
+    });
+    // B takes the stream slot.
+    streamMock.streamState = { requestId: "req_b", status: "in_progress", rawItems: [] };
+    await act(async () => {
+      fireEvent.click(screen.getByText("row-stub"));
+      await Promise.all(rowAnswers);
+    });
+
+    requestsState.requests = [
+      { id: "req_a", status: "completed", items: [], result: { output: refusal.output } },
+      { id: "req_b", status: "in_progress", items: [] },
+    ];
+    await act(async () => view.rerender(<DevToolPanel userId="u1" />));
+    expect(outcomeOf(lastRowRequests, "req_a")).toEqual({ state: "refused", message: "task is not claimable" });
+
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Stream" }));
+    });
+    expect(lastStreamGroups.find((group) => group.requestId === "req_a")?.rawItems).toEqual([refusal]);
+  });
+
   it("does not give a just-dispatched request another request's stream log or status", async () => {
     // The stream can be on another request than the one just dispatched (a
     // replay holds the slot). A request the list has not reported yet is
