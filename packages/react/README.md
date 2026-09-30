@@ -535,7 +535,7 @@ It reads through `resourceClient` the same way `Roster` and `BoardColumns` do, a
 
 Each panel reads through a resource client. Pass your own through `resourceClient` when your API needs auth headers or a custom `fetch`, and pass a stable reference rather than an object built during render. Left out, each builds its own against the nearest `FlowProvider`'s `baseUrl`, with no auth headers.
 
-`Roster`, `BoardColumns` and `BoardList` read every page of their collection, following the list route's cursor rather than stopping at the first response. `limit` sets the size of each page fetched, not a cap on what renders — a collection larger than `limit` still renders in full. `SeatDetail` reads one item and has no `limit`.
+`Roster`, `BoardColumns` and `BoardList` read every page of their collection, following the list route's cursor rather than stopping at the first response. `limit` sets the size of each page fetched, not a cap on what renders, so a collection larger than `limit` still renders in full, up to 1,000 pages. A collection with pages left after 1,000 reads shows the error line and Retry instead of the rows read so far, because those aren't the whole list. Retry stops at the same point, so a panel that shows this error has a `limit` too small for its collection: raise it (the list route accepts up to 200). `SeatDetail` reads one item and has no `limit`.
 
 A failed read shows what failed and offers a retry. Nothing re-reads on a timer.
 
