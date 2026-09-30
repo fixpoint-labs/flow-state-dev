@@ -294,7 +294,7 @@ after, and what am I signing*, in observable behaviour with no file paths. Secti
    goal's size as much as the approach. Then the numbered decisions as one-liners linking to
    their cards, each with *If wrong:*, and the one to weigh named. **Open: none**, or the live
    forks named.
-7. **The facts line** — kind · packages · size · PR count · epic, and sibling links. Last,
+7. **The facts line** — kind · packages · size · PR count · epic; sibling links stay on the nav line. Last,
    for the reason a PR body's links line is last: a reader wants it only after deciding to go
    deeper, and above the problem it is a label they must read past
    ([`writing-for-humans.md`](writing-for-humans.md) → "The rule").

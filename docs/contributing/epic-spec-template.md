@@ -260,7 +260,7 @@ Sections, in order:
 8. **Sign off** — one-liners with no figures; the trade-offs stay beside their cards, and only
    the PR body pins them. The goal first, then the objective and the cross-cutting calls that pass the filters, each linking
    its card, each with *If wrong:*. **Open: none**, or the live forks named.
-9. **The facts line** — epic · N issues · project · the objective it serves, and the links.
+9. **The facts line** — epic · N issues · project · the objective it serves; sibling links stay on the nav line.
    Last, for the reason a PR body's links line is last: a reader wants it only after deciding
    to go deeper, and above the problem it is a label they must read past
    ([`writing-for-humans.md`](writing-for-humans.md) → "The rule").
