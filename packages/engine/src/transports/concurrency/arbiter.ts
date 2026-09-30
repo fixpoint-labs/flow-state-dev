@@ -90,8 +90,13 @@ export interface ConcurrencyAdmission {
    * Run `start` in this place's turn and give the place back when it settles.
    * A `queue` place waits for its turn first, bounded by the wait budget, and
    * fails `ConcurrencyQueueTimeoutError` past it. Call at most once.
+   *
+   * `signal` withdraws a place still waiting on a supplied backend: the wait
+   * rejects at once, `start` never runs, and the place is given back rather
+   * than renewed until its turn. On the in-memory default the caller re-reads
+   * the signal when the turn comes.
    */
-  run<T>(start: () => Promise<T>): Promise<T>;
+  run<T>(start: () => Promise<T>, signal?: AbortSignal): Promise<T>;
   /**
    * Give the place back without running, for a dispatch that failed after
    * admission. Idempotent, and a no-op once `run` has settled.
@@ -214,6 +219,16 @@ function attempt(call: () => Promise<void>): Promise<void> {
 }
 
 /**
+ * End a shared-backend wait whose requester withdrew. The admission's `run`
+ * gives the place back on the way out.
+ */
+function throwIfWithdrawn(place: LeasePlace, signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new Error(`Place "${place.ticket}" was withdrawn while waiting its turn on "${place.key}"`);
+  }
+}
+
+/**
  * Run `start`, then give the place back however it settles — including a
  * synchronous throw from `start`, so a failed kickoff never strands the key.
  * When the give-back is asynchronous (a shared backend) the run settles only
@@ -275,12 +290,15 @@ export function createConcurrencyArbiter(
   /**
    * Wait for a place's turn on a backend with no in-process wake: re-check on
    * the schedule `planQueueWait` sets. The admission's renewal timer keeps the
-   * place alive meanwhile.
+   * place alive meanwhile. An abort ends the wait at once, between checks or
+   * during the sleep, so a withdrawn place is not renewed until its turn.
    */
-  const pollForTurn = async (place: LeasePlace): Promise<void> => {
+  const pollForTurn = async (place: LeasePlace, signal?: AbortSignal): Promise<void> => {
     const since = Date.now();
     for (let attempt = 0; ; attempt += 1) {
+      throwIfWithdrawn(place, signal);
       const myTurn = await backend.isMyTurn(place);
+      throwIfWithdrawn(place, signal);
       const waitedMs = Date.now() - since;
       // The first check is immediate and always honoured. A later one that
       // lands past the budget (the check itself may have taken it there)
@@ -289,9 +307,15 @@ export function createConcurrencyArbiter(
       const step = planQueueWait({ key: place.key, waitedMs, attempt });
       if (step.kind === "timeout") throw step.error;
       await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, step.delayMs);
+        const wake = (): void => {
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", wake);
+          resolve();
+        };
+        const timer = setTimeout(wake, step.delayMs);
         // Don't keep the event loop alive solely for a queued wait.
         (timer as { unref?: () => void }).unref?.();
+        signal?.addEventListener("abort", wake, { once: true });
       });
     }
   };
@@ -355,14 +379,14 @@ export function createConcurrencyArbiter(
         ? undefined
         : inMemory !== undefined
           ? () => inMemory.waitForTurn(place, QUEUE_WAIT_TIMEOUT_MS)
-          : () => pollForTurn(place);
+          : (signal?: AbortSignal) => pollForTurn(place, signal);
 
     return {
       place,
-      run(start) {
+      run(start, signal) {
         running = true;
         if (waitForTurn === undefined) return runThenGiveBack(start, giveBack);
-        return waitForTurn().then(
+        return waitForTurn(signal).then(
           () => runThenGiveBack(start, giveBack),
           async (error: unknown) => {
             await giveBack();

@@ -36,6 +36,7 @@ import type { FlowStateRuntime } from "../../src/flowstate/types";
 import type { ExecutionResult } from "../../src/execution/types";
 import type { StoreAdapter } from "../../src/stores";
 import { createConcurrencyArbiter } from "../../src/transports/concurrency/arbiter";
+import { abortRequest } from "../../src/execution/abort-registry";
 
 const USER = "u_alice";
 
@@ -665,5 +666,49 @@ describe("a run a process starts in process, over the deployment's backend", () 
     expect((await h.stores.request.get("req_2"))?.status).toBe("failed");
     h.releaseAll();
     await first.finished;
+  });
+
+  it("gives a cancelled queued run's place back at once, not when its turn comes", async () => {
+    // Cancel is the requester withdrawing. A place still in line on the shared
+    // backend is renewed for as long as this process waits on it, so a cancel
+    // honoured only at the turn keeps the session's line, and the stub, open
+    // for as long as the run ahead of it takes.
+    const ticketOf = new Map<string, string>();
+    const givenBack: string[] = [];
+    const h = inProcessHosts("queue", (b) => ({
+      ...b,
+      take: async (input) => {
+        const result = await b.take(input);
+        if ("place" in result) ticketOf.set(input.requestId, result.place.ticket);
+        return result;
+      },
+      giveBack: async (place) => {
+        givenBack.push(place.ticket);
+        return b.giveBack(place);
+      }
+    }));
+    const first = h.a.dispatch(envelope("first", "req_1"));
+    await first.accepted;
+    await until(() => h.observed.runs.length === 1, "the first run");
+    const second = h.b.dispatch(envelope("second", "req_2"));
+    await second.accepted;
+
+    expect(abortRequest("req_2")).toBe(true);
+
+    // All of this lands while the first run still holds the session.
+    await expect(second.finished).rejects.toThrow(/cancelled before it left the concurrency queue/);
+    expect(givenBack).toContain(ticketOf.get("req_2"));
+    expect((await h.stores.request.get("req_2"))?.status).toBe("aborted");
+    expect(h.observed.runs.map((r) => r.note)).toEqual(["first"]);
+
+    // The line behind it is not held up by the cancelled place.
+    const third = h.a.dispatch(envelope("third", "req_3"));
+    await third.accepted;
+    h.releaseOne();
+    await first.finished;
+    await until(() => h.observed.runs.length === 2, "the third run");
+    h.releaseAll();
+    await third.finished;
+    expect(h.observed.runs.map((r) => r.note)).toEqual(["first", "third"]);
   });
 });

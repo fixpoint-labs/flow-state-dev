@@ -1096,7 +1096,16 @@ export function createInboundTransportHost(
                 // entirely when the decision is already made, and the signal
                 // carries it when it is made a moment later.
                 return startRun(queuedAbort.signal);
-              }).catch(async (error: unknown) => {
+                // Handed to the wait as well: on a shared backend a cancel
+                // withdraws the place now rather than at its turn, so the line
+                // behind it moves and the stub settles `aborted` below.
+              }, queuedAbort.signal).catch(async (error: unknown) => {
+                if (!started && queuedAbort.signal.aborted) {
+                  await terminateUnenqueuedRequest(stores, requestId, "aborted");
+                  throw new Error(
+                    `Request "${requestId}" was cancelled before it left the concurrency queue`
+                  );
+                }
                 // The stub is this dispatch's own by now — materialization
                 // succeeded before the gate opened — so a refusal raised by the
                 // RUN (the loser of a session create race, checked in
