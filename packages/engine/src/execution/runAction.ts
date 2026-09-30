@@ -1440,7 +1440,19 @@ export async function runActionInternal<
   // If anything above threw, the controller would never be registered.
   // If anything between here and the main try block throws, the outer
   // try/catch below cleans it up.
-  const abortController = registerAbortController(requestId, runIncarnation);
+  //
+  // Two controllers. `registered` is the one in the registry, which the abort
+  // endpoint and the poll fire. `abortController` is this run's own signal.
+  // A fire reaches the run only once the context has settled which request the
+  // run executes as: one that landed earlier, for a request that then lost the
+  // id to the one the context adopted, belongs to that other request and is
+  // dropped with its controller (see the settle step below).
+  let registered = registerAbortController(requestId, runIncarnation);
+  const abortController = new AbortController();
+  const forwardRegisteredAbort = (): void => {
+    if (incarnationSettled) abortController.abort(registered.signal.reason);
+  };
+  registered.signal.addEventListener("abort", forwardRegisteredAbort, { once: true });
   const composedSignal = options.signal
     ? AbortSignal.any([options.signal, abortController.signal])
     : abortController.signal;
@@ -1638,15 +1650,22 @@ export async function runActionInternal<
 
     // The controller was tagged from admission's read, but the context reads
     // the record again and runs as whatever request holds the id now. If
-    // another request took the id in between, re-tag the controller with the
-    // one this run executes as, so a cancel fenced on it fires here. From here
-    // on, which request this run is is settled.
-    const adoptedAnother = ctx.request.incarnation !== currentIncarnation;
-    if (adoptedAnother) {
+    // another request took the id in between, the registered controller must
+    // answer to the one this run executes as. Re-tag it, or, if a fire for the
+    // earlier request already landed on it, replace it: that fire was not for
+    // this request. From here on, which request this run is is settled, and a
+    // fire that landed for it before now reaches the run.
+    if (ctx.request.incarnation !== currentIncarnation) {
       currentIncarnation = ctx.request.incarnation;
-      tagAbortController(requestId, abortController, currentIncarnation);
+      if (registered.signal.aborted) {
+        registered = registerAbortController(requestId, currentIncarnation);
+        registered.signal.addEventListener("abort", forwardRegisteredAbort, { once: true });
+      } else {
+        tagAbortController(requestId, registered, currentIncarnation);
+      }
     }
     incarnationSettled = true;
+    if (registered.signal.aborted) forwardRegisteredAbort();
 
     // First poll (FIX-1026), against the request this run executes as. It
     // closes the window where the cancel was recorded between admission and
@@ -1663,14 +1682,12 @@ export async function runActionInternal<
     // narrow read on the start path, and `pollAbortIntent` swallows its own
     // failures, so this can delay a request start but can never fail one.
     //
-    // With heartbeats off it still runs once when this run adopts a record
-    // that was already on file (a queued stub, a record a replacement left):
-    // a cancel may have been recorded on that request before this controller
-    // carried its incarnation, and with no ticks to come this read is the only
-    // delivery left. Otherwise `heartbeatIntervalMs: 0` does no reads.
-    if (heartbeatTimer !== undefined || admittedRequest !== undefined || adoptedAnother) {
-      await pollAbortIntent();
-    }
+    // Every run makes it, heartbeats on or off: a cancel can be recorded on
+    // this request before its controller carried the incarnation (a queued
+    // stub, a record a replacement left, a record a claim took over), and with
+    // heartbeats off this read is the only delivery there is. It is one O(1)
+    // `isAbortRequested` read per run.
+    await pollAbortIntent();
 
     // Resume mode: load the suspension record + checkpoint to restore the durable
     // sequencer's accumulator state. `resumeOf` (legacy two-request path) reads

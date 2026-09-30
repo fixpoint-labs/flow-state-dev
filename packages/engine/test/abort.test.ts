@@ -3113,4 +3113,173 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     expect(seen.aborted).toBe(false);
     expect(record?.status).toBe("completed");
   });
+
+  // Admission found no record, and the owner's other run created the request
+  // and had it cancelled before this run's claim. The claim hands the record
+  // off, keeping its incarnation and its recorded cancel: this run is that
+  // request, so it starts cancelled. Heartbeats are off, so the read at start
+  // is the only delivery.
+  it("honors a cancel recorded on the record its claim takes over, with heartbeats off", async () => {
+    const stores = createInMemoryStores();
+    const requestId = "req_claimed_cancelled";
+    const seen: { aborted?: boolean } = {};
+    const flow = defineFlow({
+      kind: "claim-cancelled",
+      request: { heartbeatIntervalMs: 0 },
+      actions: {
+        run: {
+          inputSchema: z.unknown(),
+          block: handler({
+            name: "observe",
+            inputSchema: z.unknown(),
+            outputSchema: z.string(),
+            execute: async (_input: unknown, ctx) => {
+              seen.aborted = ctx.signal.aborted;
+              return "ran";
+            }
+          })
+        }
+      }
+    })({ id: "claim-cancelled" });
+
+    const holder = createInitialRequestRecord(
+      {
+        requestId,
+        flowKind: "claim-cancelled",
+        flowId: "claim-cancelled",
+        actionName: "run",
+        userId: "u_claim",
+        orgId: DEFAULT_ORG_ID
+      },
+      Date.now()
+    );
+    const set = stores.request.set.bind(stores.request);
+    let raced = false;
+    stores.request.set = async (id, record, expected) => {
+      if (!raced && id === requestId && expected === "absent") {
+        raced = true;
+        await set(requestId, holder, "absent");
+        await stores.request.setFieldsIfStatus(
+          requestId,
+          { abortRequested: true },
+          ["in_progress"],
+          Date.now(),
+          holder.incarnation
+        );
+      }
+      return set(id, record, expected);
+    };
+
+    await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_claim",
+      orgId: DEFAULT_ORG_ID,
+      stores,
+      runtimeConfig: {}
+    });
+    stores.request.set = set;
+
+    const record = await stores.request.get(requestId);
+    expect(raced).toBe(true);
+    expect(record?.incarnation).toBe(holder.incarnation);
+    expect(seen.aborted).toBe(true);
+    expect(record?.status).toBe("aborted");
+  });
+
+  // A cancel fired here for the request admission read can land while the
+  // context is being built. If another request then takes the id before the
+  // context reads the record, the run executes as that other request, which
+  // nobody cancelled: the fire must not carry over to it.
+  it("does not carry a fire aimed at the earlier request over to the adopted one", async () => {
+    const stores = createInMemoryStores();
+    const requestId = "req_fired_then_replaced";
+    const seen: { aborted?: boolean } = {};
+    let status: number | undefined;
+    const flow = defineFlow({
+      kind: "fire-then-replace",
+      request: { heartbeatIntervalMs: 0 },
+      actions: {
+        run: {
+          inputSchema: z.unknown(),
+          block: handler({
+            name: "observe",
+            inputSchema: z.unknown(),
+            outputSchema: z.string(),
+            execute: async (_input: unknown, ctx) => {
+              seen.aborted = ctx.signal.aborted;
+              return "ran";
+            }
+          })
+        }
+      }
+    })({ id: "fire-then-replace" });
+    const fresh = () =>
+      createInitialRequestRecord(
+        {
+          requestId,
+          flowKind: "fire-then-replace",
+          flowId: "fire-then-replace",
+          actionName: "run",
+          userId: "u_fire",
+          orgId: DEFAULT_ORG_ID
+        },
+        Date.now()
+      );
+
+    const earlier = fresh();
+    await stores.request.set(requestId, earlier, "absent");
+    const later = fresh();
+
+    // Admission's read is the first; the context's is the second. Just before
+    // the context reads, the earlier request is cancelled through the route
+    // (fired here), then replaced by the later one.
+    const get = stores.request.get.bind(stores.request);
+    let reads = 0;
+    let inRoute = false;
+    stores.request.get = async (id: string) => {
+      if (id === requestId && !inRoute) {
+        reads += 1;
+        if (reads === 2) {
+          inRoute = true;
+          try {
+            const response = await handleAbortRequest(
+              new Request(`http://localhost/api/flows/fire-then-replace/requests/${requestId}/abort`, {
+                method: "POST"
+              }),
+              { kind: "abort_request", flowKind: "fire-then-replace", requestId },
+              { stores }
+            );
+            status = response.status;
+          } finally {
+            inRoute = false;
+          }
+          await stores.request.delete(requestId);
+          await stores.request.set(requestId, later, "absent");
+        }
+      }
+      return get(id);
+    };
+
+    await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_fire",
+      orgId: DEFAULT_ORG_ID,
+      stores,
+      runtimeConfig: {}
+    });
+    stores.request.get = get;
+
+    const record = await stores.request.get(requestId);
+    // Precondition: the fire really landed on this run's controller.
+    expect(status).toBe(204);
+    expect(record?.incarnation).toBe(later.incarnation);
+    expect(seen.aborted).toBe(false);
+    expect(record?.status).toBe("completed");
+  });
 });
