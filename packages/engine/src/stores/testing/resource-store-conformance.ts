@@ -765,6 +765,65 @@ export function createResourceStateStoreConformanceTests(
       });
     });
 
+    it("a refused expectedVersion throws a TypeError with the same message on every adapter and every path", async () => {
+      await withStore(async (store) => {
+        await seed(store, "k", makeState(1));
+
+        // The case above pins *that* a non-version is refused. This one pins
+        // *how*: the error class and its exact text. A caller may match on
+        // either, so both are part of the contract, and every adapter has to
+        // produce them identically — including on the delete paths that answer
+        // without consulting the version (a key that never existed, a key
+        // already tombstoned), where a guard moved behind the early return
+        // would stop running without any other case noticing.
+        const numericMessage = (received: string): string =>
+          `expectedVersion must be a non-negative integer or "any", received ${received}`;
+        const deleteAbsentMessage =
+          'expectedVersion "absent" is not supported by ResourceStateStore.delete; use 0, which means "no live row" here';
+
+        const notVersions: Array<[ExpectedVersion, string]> = [
+          [-1, "-1"],
+          [-5, "-5"],
+          [1.5, "1.5"],
+          [Number.NaN, "NaN"],
+          [Number.POSITIVE_INFINITY, "Infinity"],
+          [Number.NEGATIVE_INFINITY, "-Infinity"]
+        ];
+
+        const refusal = async (write: Promise<unknown>): Promise<unknown> =>
+          write.then(
+            () => undefined,
+            (error: unknown) => error
+          );
+        const expectRefused = async (write: Promise<unknown>, message: string): Promise<void> => {
+          const error = await refusal(write);
+          expect(error).toBeInstanceOf(TypeError);
+          expect((error as TypeError).message).toBe(message);
+        };
+
+        // A live row, then the two early-answer delete paths.
+        for (const [invalid, received] of notVersions) {
+          await expectRefused(
+            store.set("session", "s1", "k", makeState(2), invalid),
+            numericMessage(received)
+          );
+          await expectRefused(store.delete("session", "s1", "k", invalid), numericMessage(received));
+          await expectRefused(
+            store.delete("session", "s1", "never", invalid),
+            numericMessage(received)
+          );
+        }
+        await expectRefused(store.delete("session", "s1", "k", "absent"), deleteAbsentMessage);
+        await expectRefused(store.delete("session", "s1", "never", "absent"), deleteAbsentMessage);
+
+        await store.delete("session", "s1", "k", 1);
+        for (const [invalid, received] of notVersions) {
+          await expectRefused(store.delete("session", "s1", "k", invalid), numericMessage(received));
+        }
+        await expectRefused(store.delete("session", "s1", "k", "absent"), deleteAbsentMessage);
+      });
+    });
+
     it("a conflict against a tombstone reports no current value, so a caller cannot mistake it for a live row", async () => {
       await withStore(async (store) => {
         await seed(store, "k", makeState(1));
