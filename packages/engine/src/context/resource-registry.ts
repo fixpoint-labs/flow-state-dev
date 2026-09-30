@@ -178,6 +178,11 @@ function refuseDelta(message: string): { ok: false; error: FlowError } {
   };
 }
 
+/** A `writable: false` refusal. One constructor so every path stays non-retryable. */
+function readOnlyRefusal(message: string): FlowError {
+  return new FlowError(message, { code: "resource_read_only", retryable: false });
+}
+
 /**
  * Read a state field as an OWN property (FIX-965's guard, applied here).
  *
@@ -1047,10 +1052,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     deferWriteError?: (error: FlowError) => void
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
     if (config.writable === false) {
-      throw new FlowError(`Resource "${name}" is read-only`, {
-        code: "resource_read_only",
-        retryable: false
-      });
+      throw readOnlyRefusal(`Resource "${name}" is read-only`);
     }
 
     return options.mutateResourceKey(
@@ -1069,10 +1071,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     deferWriteError?: (error: FlowError) => void
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
     if (nsConfig.writable === false) {
-      throw new FlowError(`Resource "${storageKey}" is read-only`, {
-        code: "resource_read_only",
-        retryable: false
-      });
+      throw readOnlyRefusal(`Resource "${storageKey}" is read-only`);
     }
 
     // `stampOrgId`: judged against the CAS basis (so a retry is judged against
@@ -1279,10 +1278,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       },
       async writeContent(content: string): Promise<void> {
         if (nsConfig.writable === false) {
-          throw new FlowError(`Resource "${storageKey}" content is read-only`, {
-            code: "resource_read_only",
-            retryable: false
-          });
+          throw readOnlyRefusal(`Resource "${storageKey}" content is read-only`);
         }
 
         await options.persistResourceContentKey(storageKey, content);
@@ -1615,10 +1611,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             );
           } catch (err) {
             if (replace && !replaceIntent && err instanceof ResourceAlreadyExistsError) {
-              throw new FlowError(`Resource "${storageKey}" is read-only`, {
-                code: "resource_read_only",
-                retryable: false
-              });
+              throw readOnlyRefusal(`Resource "${storageKey}" is read-only`);
             }
             throw err;
           }
@@ -1841,10 +1834,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             );
           }
           if (nsConfig.writable === false) {
-            throw new FlowError(`Resource "${storageKey}" is read-only`, {
-              code: "resource_read_only",
-              retryable: false
-            });
+            throw readOnlyRefusal(`Resource "${storageKey}" is read-only`);
           }
           const resources = options.readResources();
 
@@ -2176,10 +2166,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       },
       async writeContent(content: string): Promise<void> {
         if (config.writable === false) {
-          throw new FlowError(`Resource "${resourceName}" content is read-only`, {
-            code: "resource_read_only",
-            retryable: false
-          });
+          throw readOnlyRefusal(`Resource "${resourceName}" content is read-only`);
         }
 
         await options.persistResourceContentKey(storageKey, content);
