@@ -279,7 +279,8 @@ By default the arbiter keeps each key's line in the running process
 (`createInMemoryLeaseBackend()`), so a policy serializes requests that run in
 that process, and work handed to an external queue runs unarbitrated. A queue
 adapter whose runs land in several processes can supply a backend they all
-share as `leaseBackend` on its `WorkerAdapter`. The arbiter in every process
+share as `leaseBackend` on its `WorkerAdapter`; `bullmqWorker` supplies one on
+its Redis. The arbiter in every process
 then lines up on the same keys, and an external dispatch is arbitrated too: the
 host takes the run's place before enqueueing (once the caller's ownership of the
 session and request id is confirmed), and the job carries it as
@@ -290,9 +291,15 @@ A backend implements four calls and holds no policy:
 | Call | Does |
 | --- | --- |
 | `take({ key, requestId, ifEmpty? })` | Appends a place to the key's line, or with `ifEmpty` (the `reject` policy) claims only a free key and otherwise answers `{ heldBy }`. Not idempotent |
-| `isMyTurn(place)` | True when the place is first on its key |
+| `isMyTurn(place)` | True when the place is first on its key. `"missing"` when the line no longer has it (its lease ran out): the waiter takes a new place at the back |
 | `giveBack(place)` | Removes the place and wakes the next waiter. Idempotent |
-| `renew(place)` | Extends a place whose lease expires. Called every 2 seconds for as long as the process holds the place, until it gives it back or enqueues its job |
+| `renew(place)` | Extends a place whose lease expires. Called every 2 seconds (every quarter of `leaseMs` when that is shorter) for as long as the process holds the place, until it gives it back or enqueues its job. Answers `false` when the place is gone |
+
+A backend whose places expire also declares `leaseMs`, how long a place lives
+past its last renewal. A run holding its turn is then stopped when a renewal
+answers `false`, or when no renewal has landed for half of `leaseMs`, so it has
+ended before another process can take the key. The run's signal fires with
+`ConcurrencyLeaseLostError` and the request ends `interrupted`.
 
 Any call may throw when the backend is unreachable; the dispatch is then
 refused rather than run unarbitrated. Over a supplied backend a `reject`
@@ -303,8 +310,11 @@ The worker owns a job's place: it waits for `isMyTurn`, runs, and gives the
 place back. `planQueueWait({ key, waitedMs, attempt })` answers "not my turn
 yet" the way the engine does, with jittered backoff inside the 30-second queue
 budget, so a worker that waits by requeueing its job reaches the same timeout
-an in-process run would. A job whose `leasePlace` is `null` or absent runs as it
-always did.
+an in-process run would. `holdLeasePlace(backend, place, onLost)` renews the
+place while the job runs and reports it lost the way the arbiter does, and
+`settleUnstartedRequest(stores, requestId, ending)` ends a request whose run
+never started (a wait that timed out) with the same record the engine writes.
+A job whose `leasePlace` is `null` or absent runs as it always did.
 
 ## Authentication
 

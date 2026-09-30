@@ -7,6 +7,11 @@
  * The lower-level factories (`createBullmqRuntime`, `createFlowWorker`,
  * `createWorkerDispatcher`, `createRedisStreamBridge`) remain public as the
  * extension layer for custom topologies; this is the setup path.
+ *
+ * It also supplies the engine a lease backend on the same Redis
+ * (`createRedisLeaseBackend`), so a flow's `queue` / `reject` concurrency
+ * policy holds across every web and worker process of the deployment, and a
+ * delivery into an existing session is accepted rather than refused.
  */
 import type { Queue } from "bullmq";
 import type {
@@ -17,6 +22,7 @@ import type {
 import { createBullmqRuntime, type BullmqRuntime } from "./runtime";
 import { createRedisStreamBridge } from "./stream-bridge";
 import { createWorkerDispatcher } from "./dispatcher";
+import { createRedisLeaseBackend } from "./lease-backend";
 import type { BullmqConnectionOptions, RetryConfig } from "./types";
 
 export interface BullmqWorkerOptions extends BullmqConnectionOptions {
@@ -37,6 +43,13 @@ export interface BullmqWorkerOptions extends BullmqConnectionOptions {
    * worker process; call `flowstate.ready()` to start consuming).
    */
   mode?: WorkerMode;
+  /**
+   * How long a concurrency place lives past its last renewal (ms). A worker
+   * that stops renewing (it died, or lost Redis) frees the session's key
+   * within this; a running holder that cannot renew is stopped at half of
+   * it. Default 10000.
+   */
+  leaseMs?: number;
 }
 
 /**
@@ -71,11 +84,18 @@ export function bullmqWorker(options: BullmqWorkerOptions): BullmqWorkerAdapter 
     connection: options.connection,
     channelPrefix: options.channelPrefix,
   });
+  const leaseBackend = createRedisLeaseBackend({
+    connection: options.connection,
+    prefix: options.prefix,
+    queue: runtime.queue,
+    leaseMs: options.leaseMs,
+  });
 
   return {
     mode: options.mode ?? "colocated",
     queue: runtime.queue,
     runtime,
+    leaseBackend,
 
     createDispatcher: () =>
       createWorkerDispatcher({
@@ -92,6 +112,7 @@ export function bullmqWorker(options: BullmqWorkerOptions): BullmqWorkerAdapter 
         bridge,
         concurrency: options.concurrency,
         lockDuration: options.lockDuration,
+        leaseBackend,
       });
       return { close: () => worker.close() };
     },
@@ -99,6 +120,9 @@ export function bullmqWorker(options: BullmqWorkerOptions): BullmqWorkerAdapter 
     // Closes workers created via runtime.createWorker and the queue(s).
     // FlowState.dispose() closes the worker handle first; BullMQ's
     // Worker.close() is idempotent, so the double close is benign.
-    close: () => runtime.close(),
+    close: async () => {
+      await runtime.close();
+      await leaseBackend.close();
+    },
   };
 }

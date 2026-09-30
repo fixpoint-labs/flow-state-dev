@@ -4,6 +4,7 @@
  * the scheduler modules.
  */
 import type { RedisOptions } from "ioredis";
+import type { LeasePlace } from "@flow-state-dev/engine";
 
 export interface BullmqConnectionOptions {
   /** ioredis connection (URL string or options object). */
@@ -23,6 +24,20 @@ export interface FlowJobData {
   source?: string;
   metadata?: Record<string, unknown>;
   requestId?: string;
+  /**
+   * The run's place on its concurrency key, taken by the dispatching process
+   * before the enqueue. The worker runs the job only in the place's turn and
+   * gives it back when the job is done for good. Absent on a job with no
+   * arbitrated key, and on a job from a release before places existed; both
+   * run as they always did.
+   */
+  leasePlace?: LeasePlace | null;
+  /**
+   * The job's wait for its turn so far, carried across requeues: when it
+   * first checked (the wait budget counts from there, not from the enqueue)
+   * and how many checks it has made (the backoff grows with them).
+   */
+  leaseWait?: { firstCheckAt: number; attempt: number } | null;
 }
 
 export interface EnqueueOptions {

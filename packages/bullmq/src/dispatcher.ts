@@ -14,6 +14,7 @@ import type {
   StreamBridge,
 } from "@flow-state-dev/engine";
 import { toJobOptions } from "./retry";
+import { leaseJobId } from "./lease-backend";
 import type { RetryConfig } from "./types";
 
 export interface CreateWorkerDispatcherOptions {
@@ -42,9 +43,14 @@ export function createWorkerDispatcher(
       // Subscribe before enqueuing so we don't miss early events
       const subscriber = activeBridge.createSubscriber(envelope.requestId);
 
+      // A job that carries a place is enqueued under the id the place names,
+      // so the lease backend can read the job's state when the place's lease
+      // runs out, without a second write to bind the two.
+      const place = envelope.leasePlace ?? undefined;
+
       // Enqueue the job — clean up subscriber connections on failure
       try {
-        await queue.add(
+        const job = await queue.add(
           "flow-run",
           {
             flowKind: envelope.flowKind,
@@ -57,9 +63,19 @@ export function createWorkerDispatcher(
             source: envelope.source,
             metadata: envelope.metadata,
             requestId: envelope.requestId,
+            ...(place !== undefined ? { leasePlace: place } : {}),
           },
-          jobOpts
+          place !== undefined ? { ...jobOpts, jobId: leaseJobId(place) } : jobOpts
         );
+        // BullMQ answers an `add` under an id it already has with the existing
+        // job and writes nothing: a reused ticket would drop this request
+        // silently. Refused by name instead.
+        if (place !== undefined && job?.data?.requestId !== envelope.requestId) {
+          throw new Error(
+            `Job id "${leaseJobId(place)}" already belongs to request "${String(job?.data?.requestId)}"; ` +
+              `request "${envelope.requestId}" was not enqueued. Lease tickets must be unique.`
+          );
+        }
       } catch (err) {
         await subscriber.close().catch(() => {});
         throw err;

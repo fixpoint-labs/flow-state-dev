@@ -16,6 +16,9 @@ import type { Job } from "bullmq";
 
 vi.mock("@flow-state-dev/engine", () => ({
   runAction: vi.fn(),
+  holdLeasePlace: vi.fn(() => ({ stop: vi.fn() })),
+  planQueueWait: vi.fn(() => ({ kind: "wait", delayMs: 10 })),
+  settleUnstartedRequest: vi.fn().mockResolvedValue(undefined),
   // Matched by NAME in the processor's catch (cross-realm safe), so the mock
   // only has to carry the same name the real class sets.
   OrgRequiredError: class OrgRequiredError extends Error {
@@ -26,11 +29,13 @@ vi.mock("@flow-state-dev/engine", () => ({
   }
 }));
 
-import { runAction } from "@flow-state-dev/engine";
+import { holdLeasePlace, runAction, settleUnstartedRequest } from "@flow-state-dev/engine";
 import { createFlowJobProcessor, type FlowWorkerDeps } from "../src/worker";
 import type { FlowJobData } from "../src/types";
 
 const runActionMock = vi.mocked(runAction);
+const holdMock = vi.mocked(holdLeasePlace);
+const settleMock = vi.mocked(settleUnstartedRequest);
 
 function makeBridge() {
   const publisher = {
@@ -74,6 +79,8 @@ function makeJob(overrides: Record<string, unknown> = {}): Job<FlowJobData> {
 
 beforeEach(() => {
   runActionMock.mockReset();
+  settleMock.mockClear();
+  holdMock.mockClear();
 });
 
 describe("createFlowJobProcessor — terminal publish semantics", () => {
@@ -258,5 +265,110 @@ describe("createFlowJobProcessor — a job enqueued before organizations were re
     expect(runActionMock).not.toHaveBeenCalled();
     expect(publisher.publishTerminal).toHaveBeenCalledTimes(1);
     expect(publisher.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("createFlowJobProcessor — a job that holds a place on a concurrency key", () => {
+  const place = { key: "session:s_1", ticket: "t_1" };
+  const placeJob = (overrides: Record<string, unknown> = {}) =>
+    makeJob({
+      data: {
+        flowKind: "chat",
+        actionName: "send",
+        input: {},
+        userId: "u1",
+        orgId: DEFAULT_ORG_ID,
+        requestId: "req_1",
+        leasePlace: place
+      },
+      updateData: vi.fn().mockResolvedValue(undefined),
+      ...overrides
+    });
+  const backendThat = (overrides: Record<string, unknown> = {}) => ({
+    take: vi.fn(),
+    isMyTurn: vi.fn().mockResolvedValue(true),
+    renew: vi.fn().mockResolvedValue(undefined),
+    giveBack: vi.fn().mockResolvedValue(undefined),
+    ...overrides
+  });
+  const stores = () => ({
+    request: {
+      getEvents: vi.fn().mockResolvedValue([]),
+      isAbortRequested: vi.fn().mockResolvedValue(false)
+    }
+  });
+
+  it("settles the request and gives its place back when the turn check fails on the final attempt", async () => {
+    // Nothing else will end the request: no run started, so runAction never
+    // wrote a terminal record, and BullMQ will not try the job again.
+    const { bridge, publisher } = makeBridge();
+    const backend = backendThat({ renew: vi.fn().mockRejectedValue(new Error("Connection is closed.")) });
+    const processor = createFlowJobProcessor(makeDeps(bridge, { leaseBackend: backend, stores: stores() }));
+
+    await expect(processor(placeJob({ attemptsMade: 2 }))).rejects.toThrow("Connection is closed.");
+
+    expect(runActionMock).not.toHaveBeenCalled();
+    expect(settleMock).toHaveBeenCalledWith(expect.anything(), "req_1", {
+      status: "failed",
+      cause: expect.objectContaining({ message: "Connection is closed." })
+    });
+    expect(publisher.publishTerminal).toHaveBeenCalledWith({ error: { message: "Connection is closed." } });
+    expect(backend.giveBack).toHaveBeenCalledWith(place);
+  });
+
+  it("keeps the request open and the place held when the turn check fails with a retry to come", async () => {
+    const { bridge, publisher } = makeBridge();
+    const backend = backendThat({ renew: vi.fn().mockRejectedValue(new Error("Connection is closed.")) });
+    const processor = createFlowJobProcessor(makeDeps(bridge, { leaseBackend: backend, stores: stores() }));
+
+    await expect(processor(placeJob({ attemptsMade: 0 }))).rejects.toThrow("Connection is closed.");
+
+    expect(settleMock).not.toHaveBeenCalled();
+    expect(publisher.publishTerminal).not.toHaveBeenCalled();
+    expect(backend.giveBack).not.toHaveBeenCalled();
+  });
+
+  it("does not fail a run that completed when its place is lost as it finishes", async () => {
+    // The loss lands after the run's work is done: nothing is left to stop,
+    // and reporting the completed work as interrupted would be the costly way
+    // to be wrong.
+    const { bridge, publisher } = makeBridge();
+    let onLost!: (error: Error) => void;
+    const stop = vi.fn();
+    holdMock.mockImplementationOnce(((_b: unknown, _p: unknown, lost: (error: Error) => void) => {
+      onLost = lost;
+      return { stop };
+    }) as never);
+    runActionMock.mockImplementationOnce(async () => {
+      onLost(new Error("lease lost"));
+      return { output: "ok" } as never;
+    });
+    const processor = createFlowJobProcessor(
+      makeDeps(bridge, { leaseBackend: backendThat(), stores: stores() })
+    );
+
+    const result = await processor(placeJob());
+
+    expect(result).toEqual({ output: "ok" });
+    expect(publisher.publishTerminal).toHaveBeenCalledWith({ output: "ok" });
+    expect(stop).toHaveBeenCalled();
+  });
+
+  it("fails a run its lost place stopped, without a retry", async () => {
+    const { bridge } = makeBridge();
+    let onLost!: (error: Error) => void;
+    holdMock.mockImplementationOnce(((_b: unknown, _p: unknown, lost: (error: Error) => void) => {
+      onLost = lost;
+      return { stop: vi.fn() };
+    }) as never);
+    runActionMock.mockImplementationOnce(async () => {
+      onLost(new Error("lease lost"));
+      return { output: undefined, error: { message: "interrupted" } } as never;
+    });
+    const processor = createFlowJobProcessor(
+      makeDeps(bridge, { leaseBackend: backendThat(), stores: stores() })
+    );
+
+    await expect(processor(placeJob())).rejects.toBeInstanceOf(UnrecoverableError);
   });
 });

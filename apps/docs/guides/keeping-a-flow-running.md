@@ -204,23 +204,27 @@ jobs and enqueues nothing. See
 [Separated workers](/guides/background-jobs-bullmq#4-separated-workers). If you replace the host's
 [`dispatcher` option](/docs/configuration/runtime#createflowstate-fields) on `createFlowState`
 (not the `dispatcher()` block) with your own that runs work in another process, the refusals
-below apply to it as well.
+below apply to it.
 
 | `session` | Runs in | With a queue |
 |---|---|---|
 | `{ key: (input) => string }` | a session derived from the key, created on first use | Works |
-| `{ id: (input) => string }` | a session that already exists | Refused from a process that hands work to the queue. From a `worker-only` worker it runs in process, without retries |
-| `{ from: true }` | the session that dispatched this run, as a reply | Refused from a process that hands work to the queue. From a `worker-only` worker it runs in process, without retries |
+| `{ id: (input) => string }` | a session that already exists | Works with `bullmqWorker`, after whatever holds the session. Refused by a custom dispatcher. From a `worker-only` worker it runs in process, without retries |
+| `{ from: true }` | the session that dispatched this run, as a reply | Works with `bullmqWorker`, after whatever holds the session. Refused by a custom dispatcher. From a `worker-only` worker it runs in process, without retries |
 
-Refused means the dispatch throws `DispatchRefusedError` with `refused: "external-dispatcher"`
-in `colocated` or `dispatch-only` mode, or under a custom external dispatcher, before anything
-is enqueued. A `{ key }` dispatch, a webhook delivery (with or without a `sessionId`) and a
-schedule tick run normally there.
+Work into a session that already exists has to wait for that session's
+[concurrency policy](/docs/advanced/concurrency-policies), whichever process runs it.
+`bullmqWorker` applies the policy across all of its processes, so on a `colocated` or
+`dispatch-only` process an `{ id }` or `{ from: true }` dispatch is enqueued and runs in whichever
+worker picks it up, once the session is free. A custom dispatcher that runs work in another
+process can't apply it, so there the dispatch throws `DispatchRefusedError` with
+`refused: "external-dispatcher"` before anything is enqueued. A `{ key }` dispatch, a webhook
+delivery (with or without a `sessionId`) and a schedule tick run normally on either.
 
 If you use Workforce, its channels are sessions that already exist, so the same rule reaches
-them. On a process that hands work to the queue, such as a `colocated` one, a post made
-from your app is saved to the channel and shows in its transcript, but no member is woken and
-nothing answers. A post from another flow, made on such a process, is refused with
+them. On a process whose dispatcher can't apply the channel's concurrency policy across
+processes, a post made from your app is saved to the channel and shows in its transcript, but
+no member is woken and nothing answers. A post from another flow, made on such a process, is refused with
 `external-dispatcher`. See
 [Channels](/docs/workforce/channels#where-posting-from-another-flow-works-and-where-it-doesnt).
 
@@ -228,8 +232,9 @@ To get a hand-off's result back into the conversation that started it on any hos
 retries, start the work with a `{ key }`, have it write what it found somewhere both sides can
 read, such as a user- or org-scoped resource or a task board, and read it from the
 conversation. From your app, the client SDK's `listChildSessions` lists the sessions a
-conversation's hand-offs started. If the flow has to deliver into an existing session, serve it from a
-host with no queue worker, and accept that its runs aren't retried.
+conversation's hand-offs started. If the flow has to deliver into an existing session behind a
+custom dispatcher, serve it from a host with no queue worker, and accept that its runs aren't
+retried.
 
 ## A channel or a board
 
