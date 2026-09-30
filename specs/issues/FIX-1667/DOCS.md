@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
-Three destinations. No new page; the channel-board concept is already documented in
-`packages/workforce/README.md` → "Holding a board" and is unchanged. The epic's shared App Lab
+Three destinations, and one line in `packages/workforce/README.md` → "Holding a board": the
+board-name rule's list gains *and not `lock`, in any case*. No new page. The epic's shared App Lab
 narrative is FIX-1662's; nothing here touches it.
 
 ## UPDATE · `packages/harness-manager/README.md` · after "Quick start", new section
@@ -27,19 +27,23 @@ const manager = harnessManager({
 
 The manager builds each run's checkout folder and git branch from the board's id, used as is. A
 channel's board id contains dots, which the manager accepts. It refuses, when you build it, an id
-git can't use as a branch name, such as one ending in `.lock` (a channel board named `lock`).
-Two different boards never share a checkout. Board ids that worked before keep the same folders
-and branches, so an upgrade moves nobody's work.
+git can't use as a branch name, such as one ending in `.lock`; a channel can't name a board
+`lock`. Two boards whose ids differ other than in letter case never share a checkout. Board ids
+that worked before keep the same folders and branches, so an upgrade moves nobody's work.
 
-The board is kept per organization, so everyone in the organization sees its rows.
+The board is kept per organization, so everyone in the organization sees its rows. A row's
+coding run belongs to the person who started it: a drain by anyone else in the organization is
+refused, naming whose run it is, and costs the row no attempt. Their own retry picks up the same
+checkout, branch and agent session.
 
 ## UPDATE · `apps/docs/docs/orchestration/harness-manager.md` · "The checkout", after its first paragraph
 
 The board can be your own task collection or one a channel holds. A channel's board has an id
 like `eng.feature.work`; the manager accepts it as is and names the folder and branch with it. An
 id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is
-built. Two boards never end up in the same checkout, and a board whose id worked before keeps its
-folders and branches.
+built. Two boards whose ids differ other than in letter case never end up in the same checkout,
+and a board whose id worked before keeps its folders and branches. On a channel's board, a row's
+run belongs to the person who started it; another person's drain leaves it alone.
 
 ## UPDATE · `goals/devforce-lab/lab/README.md`
 

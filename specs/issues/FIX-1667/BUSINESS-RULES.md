@@ -36,9 +36,11 @@ The cases, written as rules. Each says what a person or the system does and what
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-12 | The manager runs a row on a channel's board | It derives a checkout folder, a branch and a run record from that board's id, and runs | `harness-manager` CI · the goal check |
-| BR-13 | Two different boards, one a channel's and one not, could spell the same partition (`eng.feature.work` beside `eng-feature-work`) | They never share a checkout folder or a branch: the id is used as is, never translated | `harness-manager` CI, on a pair built to collide |
+| BR-13 | Two boards whose ids differ other than in letter case, one a channel's and one not, could spell the same partition (`eng.feature.work` beside `eng-feature-work`) | They never share a checkout folder or a branch: the id is used as is, never translated. Ids that differ only in case (`Foo`, `foo`) share today and still do (BR-14) | `harness-manager` CI, on a pair built to collide |
 | BR-14 | A board id the manager accepts today | Derives byte for byte the same checkout folder and branch as before this change | `harness-manager` CI, against today's derivation recorded before the change |
-| BR-15 | A board id that could climb out of a folder or break a git ref: `..`, a leading or trailing `.`, a separator, or an id ending in `.lock` in any case (a channel's board named `lock`) | Refused when the manager is built, naming the id, before any row is claimed | `harness-manager` CI, including a channel board named `lock` and one named `LOCK` |
+| BR-15 | A board id that could climb out of a folder or break a git ref: `..`, a leading or trailing `.`, a separator, or an id ending in `.lock` in any case | Refused when the manager is built, naming the id, before any row is claimed | `harness-manager` CI, including `x.lock` and `x.LOCK` |
+| BR-16 | A channel's file declares a board named `lock`, in any case | The tree fails at load, in the board-name rule's words, before anything is hired | `workforce` CI, `lock` and `LOCK` |
+| BR-17 | A second member of the organization drains a row on a channel's board whose run another member started (a retry, a recovery, a parked row's resume) | Refused, naming whose run it is; no attempt is charged and the row keeps its status. The starter's own later drain lands in the same checkout, branch, run record and agent session ([D3](DECISIONS.md#d3)) | V1's second-member leg |
 
 ![A fence: board ids a channel mints and board ids named today both pass into the manager's derivation; an id that could climb a folder or break a ref is stopped at the fence](figures/manager-fence.svg)
 
@@ -54,9 +56,10 @@ flowchart LR
 
 ## Failure taxonomy
 
-A tree that declares a bad board name fails at load, before anything is hired, as the framework
-does today. A board the manager cannot run fails when the manager is built, before anything is hired;
-today it fails the attempt at the row, after the row is claimed. Nothing new retries.
+A tree that declares a bad board name, now including `lock`, fails at load, before anything is
+hired, as the framework does today. A board the manager cannot run fails when the manager is built, before anything is hired;
+today it fails the attempt at the row, after the row is claimed. A drain by someone other than
+the run's starter is refused without charging an attempt (BR-17). Nothing new retries.
 
 ## Acceptance criteria this issue owns
 

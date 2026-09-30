@@ -103,6 +103,10 @@ FIX-1663 already owns.
 2. **[D2](DECISIONS.md#d2) · The board is visible to the whole Lab organization, as every
    channel's board is.** Today the rows are per user. If wrong: a person in the org sees a row's
    title and status they shouldn't.
+3. **[D3](DECISIONS.md#d3) · A coding run on a shared board belongs to the person who started
+   it.** Another member's retry is refused, naming whose run it is, rather than silently starting
+   over in a new checkout. If wrong: a row waits while its starter is away, or, the other way, a
+   teammate resumes an agent session someone else's credentials opened.
 
-**Open: none.** D1 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
+**Open: none.** D1 is the one to weigh; D3 is the one that shapes a team's use. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
