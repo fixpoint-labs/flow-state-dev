@@ -114,3 +114,60 @@ describe("terminal replay of a request id taken again mid-read", () => {
     expect(await response.text()).toContain("alice's");
   });
 });
+
+// A live tail reads after awaits for as long as the request runs, so the id
+// can change hands at any read. The route hands the store a fence that holds
+// only while the id still names the request it authorized.
+describe("live tail of a request id taken again mid-stream", () => {
+  it("passes a fence that stops holding once another request takes the id", async () => {
+    const stores: StoreRegistry = createInMemoryStores();
+    await stores.request.set(
+      REQUEST_ID,
+      { ...completedRecord("alice", "inc_alice"), status: "in_progress", completedAtMs: undefined },
+      "any"
+    );
+    let fence: (() => Promise<boolean>) | undefined;
+    stores.request.subscribeToEvents = (_id, options) => {
+      fence = options.isStillAuthorized;
+      return (async function* () {})();
+    };
+
+    const response = await handleRequestStream(
+      new Request("https://x/y/stream"),
+      route,
+      { registry: stubRegistry(), stores }
+    );
+    await response.text();
+
+    expect(fence).toBeDefined();
+    expect(await fence?.()).toBe(true);
+    await stores.request.delete(REQUEST_ID);
+    await stores.request.set(REQUEST_ID, completedRecord("bob", "inc_bob"), "any");
+    expect(await fence?.()).toBe(false);
+  });
+});
+
+// With no record, the route may still replay events left behind (a request
+// whose record is gone). If a request takes the id during that read, the
+// events may be its own, which nothing has authorized.
+describe("record-less replay of a request id taken during the read", () => {
+  it("answers as for an unknown request", async () => {
+    const stores: StoreRegistry = createInMemoryStores();
+    const getEvents = stores.request.getEvents.bind(stores.request);
+    stores.request.getEvents = async (id, fromSequence) => {
+      await stores.request.set(REQUEST_ID, completedRecord("bob", "inc_bob"), "any");
+      stores.request.persistEvents(REQUEST_ID, events("bob's secret"));
+      await stores.request.flushEvents(REQUEST_ID);
+      return getEvents(id, fromSequence);
+    };
+
+    const response = await handleRequestStream(
+      new Request("https://x/y/stream"),
+      route,
+      { registry: stubRegistry(), stores }
+    );
+
+    expect(await response.text()).not.toContain("bob's secret");
+    expect(response.status).toBe(404);
+  });
+});

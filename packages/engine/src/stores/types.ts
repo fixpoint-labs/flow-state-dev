@@ -871,6 +871,17 @@ export interface SubscribeToEventsOptions {
    * stream still ends at `suspended`.
    */
   followThroughSuspend?: boolean;
+  /**
+   * The caller's fence against a request id changing hands mid-stream. Ids
+   * are caller-supplied, so between authorizing this stream and any read the
+   * iterator makes after an await, the request can be deleted and another
+   * owner's request take the id. An adapter calls this after every read that
+   * returned events and before yielding any of them; when it resolves
+   * `false` (or throws) the iterator yields none of that batch and ends, as
+   * for a request that is gone. Absent means no fence. The route passes one
+   * that compares the record's incarnation with the one it authorized.
+   */
+  isStillAuthorized?: () => Promise<boolean>;
 }
 
 export interface UserStore extends DeltaStoreOps<UserRecord> {

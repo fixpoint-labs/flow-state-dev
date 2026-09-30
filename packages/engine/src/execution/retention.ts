@@ -117,6 +117,10 @@ export async function applyRetentionPolicy(
   // check. Skipped requests are evicted by a later pass, which runs when the
   // session's next request completes: retention is lazy, and a session nothing
   // is written to is not growing.
+  //
+  // Only the deletion of a protected request waits. Its items are still
+  // history the session holds, so they count toward `maxItems` below, and
+  // evictable history makes room for them.
   const graceCutoff = now - (policy.terminalGraceMs ?? 0);
   const legacyCutoff = now - (policy.legacyGraceMs ?? policy.terminalGraceMs ?? 0);
   const stillRunning = new Set(
@@ -131,11 +135,12 @@ export async function applyRetentionPolicy(
   };
 
   // Exclude current request, sort oldest-first by completion time
-  const sorted = requests
-    .filter((r) => {
-      if (r.id === currentRequestId || stillRunning.has(r.id)) return false;
-      return isEvictable(r);
-    })
+  const history = requests.filter((r) => r.id !== currentRequestId);
+  const isProtected = (r: RequestRecord): boolean =>
+    stillRunning.has(r.id) || !isEvictable(r);
+  const protectedIds = history.filter(isProtected).map((r) => r.id);
+  const sorted = history
+    .filter((r) => !isProtected(r))
     .sort(
       (a, b) =>
         (a.completedAtMs ?? a.startedAtMs) - (b.completedAtMs ?? b.startedAtMs)
@@ -166,10 +171,14 @@ export async function applyRetentionPolicy(
   if (policy.maxItems !== undefined) {
     const maxItems = policy.maxItems;
     // Count in bounded batches so attacker-grown histories cannot enqueue an
-    // unbounded burst of database work. The current request is always kept;
-    // count it too.
+    // unbounded burst of database work. The current request and protected
+    // requests are always kept; count them too.
     const newestFirst = [...remaining].reverse();
-    const requestIds = [currentRequestId, ...newestFirst.map((req) => req.id)];
+    const requestIds = [
+      currentRequestId,
+      ...protectedIds,
+      ...newestFirst.map((req) => req.id)
+    ];
     const counts: number[] = [];
     for (let i = 0; i < requestIds.length; i += RETENTION_COUNT_BATCH_SIZE) {
       counts.push(
@@ -180,10 +189,11 @@ export async function applyRetentionPolicy(
         ))
       );
     }
-    const [currentCount = 0, ...historyCounts] = counts;
+    const keptCounts = counts.slice(0, 1 + protectedIds.length);
+    const historyCounts = counts.slice(1 + protectedIds.length);
 
     // Walk newest-first, accumulating items until budget is exceeded
-    let totalItems = currentCount;
+    let totalItems = keptCounts.reduce((sum, n) => sum + n, 0);
     const keep = new Set<string>();
     newestFirst.forEach((req, i) => {
       const reqItemCount = historyCounts[i] ?? 0;

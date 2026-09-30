@@ -122,6 +122,98 @@ export function createRequestStoreConformanceTests(
   }
 
   describe(`${name} (RequestStore subscribeToEvents conformance)`, () => {
+    // A request id is the caller's to choose. Between a stream's
+    // authorization and any read it makes after an await, the request can be
+    // deleted and the id taken by another owner. `isStillAuthorized` is how
+    // the caller fences that: a batch read after it no longer holds is never
+    // yielded, and the iterator ends.
+    describe("incarnation fence", () => {
+      const takeOver = async (store: RequestStore, requestId: string): Promise<void> => {
+        await store.delete(requestId);
+        await store.set(
+          requestId,
+          { ...makeRecord(requestId, "in_progress", []), userId: "u_bob", incarnation: "inc_bob" },
+          "any"
+        );
+        store.persistEvents(requestId, [
+          makeRequestStreamEvent(requestId, 1),
+          makeRequestStreamEvent(requestId, 2),
+          makeRequestCompletedEvent(requestId, 3)
+        ]);
+        await store.flushEvents(requestId);
+      };
+      const drain = async (
+        iter: AsyncIterableIterator<RequestStreamEvent>,
+        controller: AbortController
+      ): Promise<number[]> => {
+        const seen: number[] = [];
+        const timer = setTimeout(() => controller.abort(), liveTolerance * 3);
+        try {
+          for (;;) {
+            const next = await iter.next();
+            if (next.done) break;
+            seen.push(next.value.sequence_number);
+          }
+        } finally {
+          clearTimeout(timer);
+        }
+        return seen;
+      };
+
+      it("yields nothing when the id changed hands before the first read", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_fence_first_read";
+          await store.set(
+            requestId,
+            { ...makeRecord(requestId, "in_progress", []), incarnation: "inc_alice" },
+            "any"
+          );
+          const controller = new AbortController();
+          const iter = store.subscribeToEvents(requestId, {
+            fromSequence: 0,
+            signal: controller.signal,
+            livenessTimeoutMs: 60_000,
+            isStillAuthorized: async () =>
+              (await store.get(requestId))?.incarnation === "inc_alice"
+          });
+
+          // The iterator has not read yet: its first read is still pending.
+          await takeOver(store, requestId);
+
+          expect(await drain(iter, controller)).toEqual([]);
+        });
+      });
+
+      it("yields nothing of the new owner's after a later read", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_fence_later_read";
+          await store.set(
+            requestId,
+            { ...makeRecord(requestId, "in_progress", []), incarnation: "inc_alice" },
+            "any"
+          );
+          store.persistEvents(requestId, [makeRequestStreamEvent(requestId, 1)]);
+          await store.flushEvents(requestId);
+          const controller = new AbortController();
+          const iter = store.subscribeToEvents(requestId, {
+            fromSequence: 0,
+            signal: controller.signal,
+            livenessTimeoutMs: 60_000,
+            isStillAuthorized: async () =>
+              (await store.get(requestId))?.incarnation === "inc_alice"
+          });
+          const first = await iter.next();
+          expect(first.done ? undefined : first.value.sequence_number).toBe(1);
+
+          // Alice's request is deleted and Bob's takes the id before the
+          // stream's next read.
+          await takeOver(store, requestId);
+
+          expect(await drain(iter, controller)).toEqual([]);
+        });
+      });
+    });
+
     it("catch-up phase yields events strictly greater than fromSequence", async () => {
       await withStore(async (store) => {
         for (let i = 1; i <= 5; i += 1) {

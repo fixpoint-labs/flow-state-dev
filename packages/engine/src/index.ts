@@ -166,6 +166,7 @@ export {
   synthesizeRequestInterrupted,
   pollEvents,
   abortableSleep,
+  isBatchStillAuthorized,
   type ReadEventsFn
 } from "./stores/subscribe-helpers";
 export {

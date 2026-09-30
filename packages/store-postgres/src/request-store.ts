@@ -20,6 +20,7 @@ import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items"
 import {
   abortableSleep,
   endsRequestStream,
+  isBatchStillAuthorized,
   isTerminalRequestStatus,
   pollEvents,
   synthesizeRequestInterrupted,
@@ -706,6 +707,7 @@ async function* subscribeViaListen(
   const livenessMs = options.livenessTimeoutMs ?? DEFAULT_LIVENESS_TIMEOUT_MS;
 
   const initial = await readEvents(requestId, options.fromSequence);
+  if (initial.length > 0 && !(await isBatchStillAuthorized(options))) return;
   let lastSeen = options.fromSequence;
   for (const event of initial) {
     yield event;
@@ -750,6 +752,7 @@ async function* subscribeViaListen(
 
       // Drain anything persisted between the catch-up SELECT and LISTEN setup.
       const gap = await readEvents(requestId, lastSeen);
+      if (gap.length > 0 && !(await isBatchStillAuthorized(options))) return;
       for (const event of gap) {
         yield event;
         lastSeen = event.sequence_number;
@@ -788,6 +791,7 @@ async function* subscribeViaListen(
           dirty = false;
           const next = await readEvents(requestId, lastSeen);
           if (next.length > 0) {
+            if (!(await isBatchStillAuthorized(options))) return;
             lastTickAt = Date.now();
             for (const event of next) {
               yield event;

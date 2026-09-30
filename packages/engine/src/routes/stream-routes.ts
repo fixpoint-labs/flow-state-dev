@@ -38,6 +38,22 @@ import {
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { resolveLiveTailLivenessMs } from "../streaming/live-tail-liveness";
 
+/**
+ * Whether the record under `requestId` is still the request whose incarnation
+ * the route authorized. A request id is the caller's to choose, so once the
+ * route has checked who owns the record, any read it makes after an await may
+ * find the request deleted and the id taken by another owner. Incarnations
+ * are never reused, so a match proves the id has not changed hands since.
+ */
+async function stillHoldsIncarnation(
+  stores: StoreRegistry,
+  requestId: string,
+  incarnation: string
+): Promise<boolean> {
+  const current = await stores.request.get(requestId);
+  return current !== undefined && resolveRequestIncarnation(current) === incarnation;
+}
+
 type StreamRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
@@ -134,6 +150,7 @@ export async function handleRequestStream(
     });
 
     const fromSequence = cursor.sequenceNumber ?? 0;
+    const authorizedIncarnation = resolveRequestIncarnation(requestRecord);
     const shouldForward = includeTrace ? undefined : createClientEventFilter();
     const handle = createSSEStream({
       pingIntervalMs: sseHeartbeatMs,
@@ -148,7 +165,12 @@ export async function handleRequestStream(
         livenessTimeoutMs: resolveLiveTailLivenessMs(),
         // While a continuation lease is held, follow through `request.suspended`
         // (the run-1 suspension being continued past) instead of ending there.
-        followThroughSuspend: leaseHeld
+        followThroughSuspend: leaseHeld,
+        // Every batch the store reads after an await is yielded only while the
+        // id still holds the request authorized above; otherwise the stream
+        // ends as for a request that is gone.
+        isStillAuthorized: () =>
+          stillHoldsIncarnation(ctx.stores, route.requestId, authorizedIncarnation)
       }
     );
 
@@ -183,6 +205,12 @@ export async function handleRequestStream(
       cursor.sequenceNumber
     );
     if (events.length === 0) {
+      return unknownRequestStreamResponse(request, route, ctx.registry);
+    }
+    // No record was found before this read. If one exists now, a request
+    // took the id meanwhile and these may be its events, which nothing here
+    // has authorized; answer as for an unknown request.
+    if ((await ctx.stores.request.get(route.requestId)) !== undefined) {
       return unknownRequestStreamResponse(request, route, ctx.registry);
     }
     let replay = replayRequestEvents({
@@ -232,10 +260,12 @@ export async function handleRequestStream(
   // take the id, so these may be the new request's events. Replay only if
   // the record under the id is still the one that was checked; otherwise
   // answer as for a request that is gone.
-  const recheck = await ctx.stores.request.get(route.requestId);
   if (
-    recheck === undefined ||
-    resolveRequestIncarnation(recheck) !== resolveRequestIncarnation(requestRecord)
+    !(await stillHoldsIncarnation(
+      ctx.stores,
+      route.requestId,
+      resolveRequestIncarnation(requestRecord)
+    ))
   ) {
     return unknownRequestStreamResponse(request, route, ctx.registry);
   }

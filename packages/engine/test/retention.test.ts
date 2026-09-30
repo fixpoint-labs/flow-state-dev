@@ -523,6 +523,28 @@ describe("applyRetentionPolicy", () => {
       expect(atBound.deletedRequestIds).toEqual(["req_old_version"]);
     });
 
+    // Only deleting a protected request waits. Its items are still history
+    // the session holds, so they count toward `maxItems`, and older history
+    // is evicted to make room for them.
+    it("still counts toward maxItems, so older evictable history makes room for it", async () => {
+      const stores = await setupStores([
+        makeRequest("req_old", SESSION_ID, {
+          startedAtMs: 100, completedAtMs: 200, itemCount: 5, finalizedAtMs: 300
+        }),
+        makeRequest("req_protected", SESSION_ID, {
+          startedAtMs: 1_000, completedAtMs: 1_100, itemCount: 8, finalizedAtMs: null
+        }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 2_000, completedAtMs: 2_100, itemCount: 3 }),
+      ]);
+
+      const result = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 10, terminalGraceMs: 60_000 }, 1_000_000
+      );
+
+      expect(result.deletedRequestIds).toEqual(["req_old"]);
+      expect(await stores.request.get("req_protected")).toBeDefined();
+    });
+
     it("is evicted once the grace window has passed since its run finished", async () => {
       const stores = await setupStores([
         makeRequest("req_finalized", SESSION_ID, {
