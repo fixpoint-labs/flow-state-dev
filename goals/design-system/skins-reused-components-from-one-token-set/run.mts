@@ -52,7 +52,7 @@ import {
 import { createServer, type Server } from "node:http";
 import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
-import { extname, join, relative } from "node:path";
+import { extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { goalTmpDir, repoPath, REPO_ROOT, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
@@ -60,7 +60,6 @@ import { launchChromium } from "../../lib/playwright.mts";
 const execFileAsync = promisify(execFile);
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const UI = repoPath("packages/ui");
-const REGISTRY_SOURCES = join(UI, "registry/components");
 const DESIGN_SYSTEM = repoPath("labs/design-system");
 const CONTROL = process.env.GOAL_CONTROL;
 const BASELINE = process.env.GOAL_BASELINE;
@@ -128,7 +127,7 @@ function parseColour(value: string): { rgb: Rgb; alpha: number } | null {
       .map((n) => (n.endsWith("%") ? parseFloat(n) / 100 : n === "none" ? 0 : parseFloat(n)));
   let m: RegExpMatchArray | null;
   let rgb: Rgb;
-  let alpha = 1;
+  let alpha: number;
   if ((m = value.match(/^rgba?\(([^)]+)\)$/))) {
     const [r, g, b, a] = m[1]!.split(/[\s,/]+/).filter(Boolean).map(parseFloat);
     rgb = [r!, g!, b!];
@@ -259,12 +258,6 @@ function walk(dir: string): string[] {
 }
 
 /**
- * A host app shaped the way `shadcn init` leaves one: a components.json, an
- * `@/*` alias, and a stylesheet holding nothing but Tailwind. Its package.json
- * lists every package the host can resolve, so the CLI finds its dependencies
- * already present and installs none.
- */
-/**
  * Whether an installed copy is its registry source. Byte-identical, with one
  * allowance: the shadcn CLI drops the comments above the first statement of a
  * file that has no "use client" directive, and nothing else.
@@ -274,6 +267,12 @@ function sameAsInstalled(copy: string, source: string): boolean {
   return !/^["']use client["']/.test(source) && copy === source.replace(/^(?:\/\*[\s\S]*?\*\/\s*)+/, "");
 }
 
+/**
+ * A host app shaped the way `shadcn init` leaves one: a components.json, an
+ * `@/*` alias, and a stylesheet holding nothing but Tailwind. Its package.json
+ * lists every package the host can resolve, so the CLI finds its dependencies
+ * already present and installs none.
+ */
 function makeHost(dir: string): void {
   const ui = JSON.parse(readFileSync(join(UI, "package.json"), "utf8")) as Record<string, Record<string, string>>;
   // Every package the registry's workspace has, listed so the CLI installs
@@ -444,7 +443,15 @@ async function expand(page: import("playwright").Page): Promise<void> {
   for (const trigger of await page.locator('[data-part^="audit"] button, [data-part^="tool:item"] button').all()) {
     await trigger.click();
   }
-  await page.waitForTimeout(400);
+  // Wait until each opened part shows what it hid.
+  for (const [part, text] of [
+    ["debate:finished", "Pro made the stronger case."],
+    ["navigator", "Refund for order 118"],
+    ["audit:critical", "The sentence it saw it in."],
+    ["tool:item", /parameters/i],
+  ] as const) {
+    await page.locator(`[data-part="${part}"]`).getByText(text).first().waitFor({ state: "visible", timeout: 10_000 });
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -68,15 +68,16 @@ function walk(dir: string): string[] {
  */
 export function findThemeValues(root: string, values: readonly string[]): { walked: number; hits: string[] } {
   const files = walk(root);
+  const matchers = values.map((value) => {
+    const hex = value.startsWith("#") ? new RegExp(`${value.toLowerCase()}(?![0-9a-f])`) : null;
+    return { value, found: (text: string, lower: string) => (hex ? hex.test(lower) : text.includes(value)) };
+  });
   const hits: string[] = [];
   for (const file of files) {
     const text = readFileSync(file, "utf8");
     const lower = text.toLowerCase();
-    for (const value of values) {
-      const found = value.startsWith("#")
-        ? new RegExp(`${value}(?![0-9a-f])`).test(lower)
-        : text.includes(value);
-      if (found) hits.push(`${relative(root, file)}: ${value}`);
+    for (const { value, found } of matchers) {
+      if (found(text, lower)) hits.push(`${relative(root, file)}: ${value}`);
     }
   }
   return { walked: files.length, hits };
