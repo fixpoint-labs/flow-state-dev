@@ -51,7 +51,8 @@ const EMPTY: PanelRow<never>[] = [];
  * handing back a `nextCursor` forever rather than a limit anyone is expected
  * to reach. At the route's largest page (`STATE_LIST_MAX_LIMIT`, 200 —
  * `packages/engine/src/routes/resource-routes.ts`) this still covers 200,000
- * rows. Reaching it with a `nextCursor` still outstanding is a read failure,
+ * rows, when the collection honours the requested page size (a projected
+ * collection may treat `limit` as a hint and return smaller pages). Reaching it with a `nextCursor` still outstanding is a read failure,
  * not a result: the panel shows its error, never the pages it got as if they
  * were the whole list (BR-19, BR-21).
  */
