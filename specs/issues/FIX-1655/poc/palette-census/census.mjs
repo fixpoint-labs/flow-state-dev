@@ -4,14 +4,16 @@
  *
  * 1. Every `@flow-state-dev/ui` registry component file (stories excluded) is
  *    classified as either CLEAN (colours only through semantic tokens) or
- *    PALETTE (at least one fixed Tailwind palette class). Totality: the two
+ *    PALETTE (at least one fixed Tailwind palette class or colour literal; a
+ *    fully transparent literal such as `#0000` is not a colour). Totality: the two
  *    classes must add up to every walked file, so a file nobody listed cannot
  *    slip past.
  * 2. Every `@flow-state-dev/react` chrome file (navigator + panels) is scanned
  *    for colour literals outside a `var(--fsd-*, <fallback>)`.
  *
  * Retained spec evidence, not production code: nothing imports it and no
- * package's test root discovers it.
+ * package's test root discovers it. PLAN S5 is its productionized form and the
+ * only definition of "clean" CI runs; this file is frozen spec-time evidence.
  *
  * Run from the repo root:
  *   node specs/issues/FIX-1655/poc/palette-census/census.mjs
@@ -27,7 +29,9 @@ const EXPECTED_PALETTE_FILES = 12;
 
 const PALETTE =
   /\b(?:bg|text|border|ring|fill|stroke|from|to|via|outline|divide|decoration|shadow|accent|caret|placeholder)-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone|black|white)(?:-\d{2,3})?(?:\/\d+)?\b/g;
-const LITERAL = /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)|oklch\([^)]*\)/g;
+const LITERAL = /#[0-9a-fA-F]{3,8}(?![0-9a-fA-F])|rgba?\([^)]*\)|hsla?\([^)]*\)|oklch\([^)]*\)/g;
+// Fully transparent hex (`#0000`, `#00000000`) carries no colour a theme could change.
+const TRANSPARENT = /^#0{4}(?:0{4})?$/;
 
 function walk(dir) {
   const out = [];
@@ -54,7 +58,9 @@ const files = walk(registryDir)
 const clean = [];
 const palette = [];
 for (const f of files) {
-  const hits = [...new Set(readFileSync(f, "utf8").match(PALETTE) ?? [])];
+  const src = readFileSync(f, "utf8");
+  const literals = (src.match(LITERAL) ?? []).filter((m) => !TRANSPARENT.test(m));
+  const hits = [...new Set([...(src.match(PALETTE) ?? []), ...literals])];
   (hits.length ? palette : clean).push({ file: relative(registryDir, f), hits });
 }
 

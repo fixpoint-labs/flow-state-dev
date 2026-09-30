@@ -10,10 +10,10 @@ and [ER-6](../../epics/FIX-1649/BUSINESS-RULES.md#what-no-child-may-do).
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | Any registry component file sets a colour | Only through a named token: the existing ones, or `success`, `warning`, `info`, `attention`. No fixed palette class, no hex, no `rgb()` | CI · a census over **every** registry file, asserting the count walked |
+| BR-1 | Any registry component file sets a colour | Only through a named token: the existing ones, or `success`, `warning`, `info`, `attention`. No fixed palette class, no hex, no `rgb()`. A fully transparent value (`#0000`) is not a colour and is allowed | CI · a census over **every** registry file, asserting the count walked |
 | BR-2 | A state means a person must act: a tool call awaiting approval, a task parked for review | It uses `attention` | CI · per-state assertion on the tool card and the task plan · goal check c:attention |
 | BR-3 | A state means something is off but nobody is being asked: a blocked task, a stuck request, an audit warning, a denied tool call | It uses `warning`, never `attention` | CI · same · goal check c:attention |
-| BR-4 | A state means done or approved / running or informational / failed or rejected | `success` / `info` / `destructive` | CI |
+| BR-4 | A state means done or approved / running or informational / failed, an error, or a reject action in an approval card and its receipt | `success` / `info` / `destructive`. A denied tool call is BR-3's, not this rule's | CI |
 | BR-5 | A colour isn't a status: a folder icon, a focus outline | An existing neutral token (`muted-foreground`, `ring`), not a status token | CI · census |
 | BR-6 | A filled button sits on a status colour | Its text uses that token's `-foreground`, not `white` | CI · census |
 
@@ -21,7 +21,7 @@ and [ER-6](../../epics/FIX-1649/BUSINESS-RULES.md#what-no-child-may-do).
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-7 | An app installs a component that uses a status token | The `tokens` item comes with it, and the app's stylesheet gains every token with its light and dark default | CI · the built registry lists `tokens` as a dependency of every such component · goal check host installs this way |
+| BR-7 | An app installs a component that uses a status token | The `tokens` item comes with it, and the app's stylesheet gains every token with its light and dark default | CI · reachability: every file reading a status token ships in an item whose dependency closure includes `tokens` · goal check host installs this way |
 | BR-8 | An app loads no theme | Each status keeps today's hue: green, amber, blue, red, yellow. One shade per meaning; exact shades may shift | Goal check a:neutral · before/after screenshots in the implementation PR |
 | BR-9 | An app copied components before this change and re-adds one | It also adds `tokens`; an app that doesn't gets unstyled status colours, and the `ui` docs say so | Docs · [DOCS.md](DOCS.md) |
 | BR-10 | Kitchen-sink after the change | Byte-identical copies of the new sources, the new tokens in its stylesheet, and no App Lab value | CI · the drift check · the static check |
@@ -41,8 +41,8 @@ and [ER-6](../../epics/FIX-1649/BUSINESS-RULES.md#what-no-child-may-do).
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-16 | A value the App Lab theme declares (a colour, a font family) appears anywhere under `packages/` | The static check fails, naming file and value | CI · values read from the package · planted-value control |
-| BR-17 | A consumer's registry copy differs from its source, or a consumer folder on the list is missing | The drift check fails, naming the file or the folder | CI · planted-drift control |
-| BR-18 | App Lab lands before or after this issue | Whichever merges second adds App Lab's entry to the drift check; FIX-1663's QA plan confirms it is there | CI · closure |
+| BR-17 | Kitchen-sink's registry copy differs from its source | The drift check fails, naming the file | CI · planted-drift control |
+| BR-18 | Another consumer installs registry copies (App Lab, FIX-1662) | It runs the same comparison over its own folder, by calling the function this issue extracts; FIX-1663's QA plan confirms App Lab does | CI · closure |
 
 The fence in [what changes](SPEC.md#what-changes) is BR-16: only token names cross it, never a
 value.

@@ -25,7 +25,7 @@ colour is caught.**
 | **The real need** | The issue: *"Ship a design-system package … and make reused FSD components skin/theme-clean so App Lab is the first consumer."* The epic's [D2](../../epics/FIX-1649/DECISIONS.md#d2): one skin through the contracts FSD components already have, with skin gaps fixed at the source |
 | **Smaller, and rejected** | "The theme file exists." Hittable while 12 registry components still paint colours no theme reaches, which leaves App Lab two choices the epic forbids: edit the copies, or ship green and amber |
 | **Bigger, and not this issue's** | App Lab itself loading the package and every screen in the skin (FIX-1662, proved by the closure's leg c, FIX-1663) · final theme values, which wait for the final design hand-back ([ER-9](../../epics/FIX-1649/BUSINESS-RULES.md#how-the-set-is-run)) |
-| **Not done if** | A registry component still carries a fixed colour class · the themed page passes only because the host styled a copy · kitchen-sink changed hue with no theme loaded · an App Lab value sits anywhere under `packages/` · final values merged before the final hand-back |
+| **Not done if** | A registry component still carries a fixed colour class · the themed page passes only because the host styled a copy · kitchen-sink changed a status hue with no theme loaded (focus outlines moving to `ring` is the one accepted visible change) · a file reading a status token that no item installs · an App Lab value sits anywhere under `packages/` · final values merged before the final hand-back |
 
 ```mermaid
 flowchart LR
@@ -44,7 +44,7 @@ fail, naming the part.
 |---|---|
 | **Goal check** | `goals/design-system/skins-reused-components-from-one-token-set/` · model `n/a` · real headless browser · run by the implementer at completion · verdict in the implementation PR |
 | **Signal** | **a:neutral**: with no theme, every swept part's colour is a registry default. **b:themed**: under light and under dark, zero swept parts compute to a registry default or a fixed palette colour, and fonts and corners are the theme's. **c:attention**: under the theme, the attention colour is on every waiting-on-a-person part and on no warning part |
-| **Input** | A host page that installs the sweep with `fsdev ui add` from the local registry build and mounts the chrome with fixture data, in every state that carries a colour. The sweep is read from what the host installed, so a new component or state passes without editing the check |
+| **Input** | A host page that installs the sweep with `fsdev ui add`, through the items that ship it, from the local registry build and mounts the chrome with fixture data, in every state that carries a colour. The sweep is read from what the host installed, so a new component or state passes without editing the check |
 | **Anti-game** | No asserting on class names or source text (that is CI's job). No host CSS aimed at a component. The host's copies are byte-identical to the registry, checked first |
 | **Control that must fail** | `GOAL_CONTROL=hardcoded-accent` restores one fixed colour class in the host's copy of the tool card: **b:themed** must FAIL naming it. Today's `main` must FAIL **b:themed** on all 12 components |
 

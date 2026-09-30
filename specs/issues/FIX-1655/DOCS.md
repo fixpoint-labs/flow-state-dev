@@ -89,7 +89,7 @@ Publish the epic's paragraph and example as drafted, with one sentence appended 
 > the tokens, so they match the cards.
 >
 > Two rules the values keep. Yellow (`attention`) means only that a person must act. Corners are
-> square and nothing casts a shadow.
+> square.
 >
 > Fonts are named, not bundled: Space Grotesk for the interface, Archivo for display, IBM Plex
 > Mono for labels and ids. Load them in your app, or the system fallbacks show.

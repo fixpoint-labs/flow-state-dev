@@ -74,16 +74,20 @@ It comes down to what the epic fixed: draft is a variant no screen draws and no 
   `packages/`, so the static check (ER-3) means something; beside App Lab, so it lands without
   waiting for FIX-1662.
 - **Neutral defaults live in one registry item, `tokens`**, a registry dependency of every
-  component that uses a status token: "defaults beside the components" (ER-3) for a copy-in registry.
+  item that ships a file reading a status token: "defaults beside the components" (ER-3) for a
+  copy-in registry. Seven of the 12 files are in no item today, so each is first made
+  installable: a file another registry file imports ships in that item, a file nothing imports
+  becomes its own item ([PLAN.md](PLAN.md#how-each-of-the-12-is-installed-s2-before-any-recolour)).
 - **The App Lab theme writes the semantic tokens once and maps them onto `--fsd-nav-*` and
   `--fsd-panel-*`**, as kitchen-sink already does for the navigator (review note on the issue).
   Kitchen-sink keeps its own mapping.
 - **Non-status accents fall to existing tokens.** The file tree's blue folder and every blue
-  focus outline become `muted-foreground` and `ring`. Their look changes slightly with no theme.
-- **The drift check covers every consumer, from one place.** Kitchen-sink's check becomes one
-  check over a declared list of consumer folders (kitchen-sink: all components; App Lab: what
-  it installed). A listed folder that doesn't exist fails. Whichever of FIX-1655 and FIX-1662
-  merges second adds App Lab's entry.
+  focus outline become `muted-foreground` and `ring`. With no theme this is a visible change,
+  accepted: kitchen-sink's `ring` is near-black in light mode, so outlines go from blue to dark.
+- **The drift check stays in kitchen-sink, with its comparison extracted.** A second consumer
+  calls the function over its own folder; FIX-1662 does for App Lab. A shared consumer list
+  would move an app's test into a package for a consumer that doesn't exist yet, and break
+  `main` if merge order flipped.
 - **The static check reads its values from the package**, so a new value is covered unedited.
 - **Draft values ship in PR 1, marked draft; final values are PR 2**, after the final
   hand-back is linked on FIX-1649 (ER-9).
@@ -104,12 +108,19 @@ It comes down to what the epic fixed: draft is a variant no screen draws and no 
 - **The fix scope is 12 registry files; the navigator and panels carry no colour outside
   their custom properties.** Re-derived by `poc/palette-census/` (38 registry files walked,
   26 clean, 12 fixed-colour; 15 chrome files, 0 literals), whose planted-file control fails
-  at 13. The review note's grep that found 11 missed one.
+  at 13. The review note's grep that found 11 missed one. Colour literals count too (review
+  round 1); the only registry literal, `shimmer.tsx`'s `#0000`, is fully transparent and is
+  BR-1's exception, not a 13th file. The palette pattern already covers `black`, `white` and
+  opacity suffixes (`bg-amber-500/10`).
 
 ## How it got here
 
 - **Draft** — framed as the status colours a theme can't reach; named status tokens with an
   `attention` token apart from `warning`, defaults in one registry item, App Lab's two variants
   in a private package outside `packages/`; two PRs split at the final hand-back.
+- **Review round 1** — no D-card moved. The plan now makes seven uninstallable files installable
+  before adding `tokens`, because only five of the 12 were registry items; and the drift check
+  stays in kitchen-sink with its comparison extracted, instead of a shared consumer list ahead
+  of a second consumer.
 
 **Open: none.**
