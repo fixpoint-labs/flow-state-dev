@@ -44,7 +44,7 @@ reconciled against the running app before it is published.
 > | Workstreams | Your tree's channels: the transcript, the boards the channel's `boards:` line attaches, and its charter | The eng workstream kit adds progress and results |
 > | Projects | Your workstreams, listed directly | Org primitives |
 > | A worker's harness | A dash | Attention and inspect |
-> | Inbox | Pending approvals and questions in your workers' sessions | Attention and inspect |
+> | Inbox | Pending approvals and questions in the worker sessions you can see | Attention and inspect |
 > | Board columns and Tasks | Task statuses mapped onto QUEUED, RUNNING, NEEDS YOU and DONE; IN REVIEW stays empty | The eng workstream kit |
 >
 > A board declared only inside a worker kind's code isn't attached to a channel, so it doesn't

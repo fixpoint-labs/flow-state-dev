@@ -11,7 +11,7 @@ apply as written; these are the ones this issue adds. *Proved by* names the kind
 |---|---|---|---|
 | BR-1 | App Lab is started with a Lab's config | It serves that config's `FlowState` and its own pages from one process; the Lab's config is not edited or wrapped | CI · goal check |
 | BR-2 | The config does not load, or its default export is not a `FlowState` | App Lab refuses to start and prints the loader's own message | CI |
-| BR-3 | The Lab's server refuses a request for want of a verified organization | App Lab shows a screen that says so. No sidebar read is made | CI · goal check |
+| BR-3 | The Lab's server refuses App Lab's first read for want of a verified organization | App Lab shows a screen that says so. Nothing from the tree is drawn and no further read is made; the refusal is the only answer the shipped routes give, since none reports the principal on its own | CI · goal check |
 | BR-4 | The Lab booted without opening its inventory | TEAMS and PROJECTS show their failed-read state, naming the missing inventory, with Retry. Other sections still render | CI |
 | BR-5 | A second tree is opened | Nothing in App Lab changes. No seat, channel, board, team or kind name appears in App Lab's source | Static check · goal check under `static-names` |
 
@@ -52,10 +52,10 @@ apply as written; these are the ones this issue adds. *Proved by* names the kind
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-24 | Inbox opens | Every pending approval and question in the org's seat sessions, oldest first, with kind, task where known, workstream and wait; All, Approvals and Questions each count exactly theirs | Goal check |
+| BR-24 | Inbox opens | Every pending approval and question in the seat sessions the session listing returns to this person in this organization, oldest first, with kind, task where known, workstream and wait; All, Approvals and Questions each count exactly theirs. Asks in another member's sessions are not listed: the listing never widens past the caller, and an org-wide ask read is FIX-1652's call. Inbox says so in a line | Goal check |
 | BR-25 | An ask is selected | The detail pane uses the same renderer as the stream's card for that ask. Approve and Deny resolve it through the session's shipped resume | CI |
 | BR-26 | An ask is answered anywhere | It leaves Inbox and its stream card together, because both read the one session | Goal check |
-| BR-27 | A parked row carries a reason but no suspension | It is listed as a question; reply is disabled and names FIX-1652, since no shared answer operation ships | CI |
+| BR-27 | A parked row has no pending suspension behind it | It is not an Inbox item. It shows in Tasks under NEEDS YOU and in its worker's status (BR-8); whether a parked row is an ask is FIX-1652's call | CI |
 | BR-28 | Inbox or Tasks has nothing | A named empty state in a sentence | CI |
 
 ## Failure taxonomy

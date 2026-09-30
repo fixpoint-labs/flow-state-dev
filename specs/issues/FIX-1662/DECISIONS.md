@@ -61,7 +61,7 @@ address changes and the surfaces stay.
 | **Because** | The frame (serving, the org gate, the sidebar, the routes, the panel slot, the shared reads) is what FIX-1664 builds on and what both halves read through. After it, the workstream level and Inbox with Tasks share no file and can be reviewed apart |
 | **Locks in** | FIX-1664's build can start once the frame merges, not after the whole issue. The goal check runs once, after both halves |
 
-![D3: how many PRs? Frame first then two in parallel, chosen, beside one PR. Decides it: what one review holds. Price: one extra merge](figures/d3-three-prs.svg)
+![D3: how many PRs? Frame first then two in parallel, chosen, beside one PR. Decides it: what one review holds. Price: one extra merge](figures/d3-four-prs.svg)
 
 It comes down to review size: one PR of two levels and two destinations is past what a review holds.
 
@@ -70,15 +70,18 @@ It comes down to review size: one PR of two levels and two destinations is past 
 - **App Lab is a static app served by `@flow-state-dev/node`'s `serve()`** over the loaded config,
   as the devtool is. No Next.js: its server would be a second host beside the Lab's.
 - **The first screen is Inbox**, since it answers "what waits on me".
-- **The org gate is the Lab's own principal resolver.** A request with no verified organization
-  gets App Lab's refusal screen, never a tree.
+- **The org gate is the Lab's own principal resolver.** App Lab's first read with no verified
+  organization is refused, and App Lab shows its refusal screen, never a tree. No shipped route
+  reports the principal without a read, so the gate is that first refusal.
 - **The org switcher shows the verified organization** and lists no other until a shipped read
   lists more than one.
 - **Board columns map shipped task statuses onto the design's five** in one table
   ([BR-12](BUSINESS-RULES.md#boards-and-tasks)); FIX-1651 may replace it. IN REVIEW holds nothing
   until FIX-1651 ships a review state.
-- **Inbox, until FIX-1652, is the pending approvals and questions in seats' sessions**, drawn by
-  the shipped approval and question renderers the stream uses, so one ask has one look.
+- **Inbox, until FIX-1652, is the pending approvals and questions in the seat sessions the
+  person can list**, drawn by the shipped approval and question renderers the stream uses, so one
+  ask has one look. The session listing never widens past the caller, so another member's asks
+  are not listed, and a parked row with no suspension is not an ask; both are FIX-1652's.
 - **A post without `@` goes through the channel's own post action.** `@worker` goes through
   FIX-1664's named session write (ER-15); until FIX-1664 merges it is disabled with a line.
 - **The task route and the right panel's slot are pinned here** ([PLAN](PLAN.md#pinned-names));
@@ -94,11 +97,14 @@ It comes down to review size: one PR of two levels and two destinations is past 
 | A per-Lab `fsdev gen` step into App Lab | One App Lab build per Lab, and it still can't supply a harness or a model. `goals/` isn't an app directory `fsdev gen` renders for |
 | App Lab as a client of a separately running Lab server | Two processes and a cross-origin credential for no gain; the Lab's config is loadable in-process |
 | Reuse `FlowNavigator` as the sidebar | It groups flow kinds and sessions; the design groups projects, workstreams and teams. It stays the devtool's |
-| An org-wide ask list on the server | A new read in the engine. Session suspensions ship; FIX-1652 decides whether a list earns its place |
+| An org-wide ask list on the server | A new read in the engine, which this issue doesn't change. Session suspensions ship; FIX-1652 decides whether a list earns its place. Until then Inbox holds the person's own seat sessions' asks |
 
 ## How it got here
 
 - **Draft**: framed as the place a Lab is used; opened through the Lab's own server config, read
   at runtime; workstreams drawn over shipped channels and boards; four PRs, frame first.
+- **Review round 1**: Inbox narrowed to the asks in the seat sessions the person can list, because
+  the shipped listing never widens past the caller and an org-wide read is rejected here; parked
+  rows without a suspension left out of Inbox, matching the Inbox decision (ER-5).
 
 **Open: none.**

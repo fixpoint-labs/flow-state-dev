@@ -11,11 +11,11 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 |---|---|---|---|
 | S1 | `labs/app-lab/` · package | New private package `@flow-state-dev/app-lab`: a Vite React app shaped like `apps/devtool`, plus a start script that loads a Lab's config with `@flow-state-dev/cli`'s `loadFsdevConfig` and hands it to `@flow-state-dev/node`'s `serve(flowstate, { staticDir })`, bound to loopback unless the Lab resolves a verified principal (the `fsdev serve` guard) | BR-1 BR-2 |
 | S2 | `labs/app-lab` · the connection | Reads user and credential the way the devtool shell does; a refused or org-less principal renders the refusal screen before any read | BR-3 ER-4 |
-| S3 | `labs/app-lab` · the shared reads | One module every surface reads through: the seat and channel inventory, each channel's attached boards, sessions per seat, pending suspensions. One read per resource per refresh, shared by counts, badges and screens; per-seat reads batched | BR-4 BR-7 BR-8 BR-11 |
+| S3 | `labs/app-lab` · the shared reads | One module every surface reads through: the seat and channel inventory, each channel's attached boards, the person's listed seat sessions, their pending suspensions. One read per resource per refresh, shared by counts, badges and screens; per-seat reads batched | BR-4 BR-7 BR-8 BR-11 |
 | S4 | `labs/app-lab` · the frame | Three columns; the routes and the right panel's slot ([pinned](#pinned-names)); tab in the URL; centre tabs mounted lazily | ER-1 BR-17 |
 | S5 | `labs/app-lab` · the sidebar | Org switcher, Jump to (⌘K, incl. resources), Inbox and Tasks with counts, PROJECTS (workstreams directly while no projects ship), TEAMS with workers below each team, footer | BR-6 to BR-11 |
 | S6 | `labs/app-lab` · the project level | Route and tabs Stream, Board, Workstreams, Brief, each its named empty state (FIX-1650); team strip from the inventory | BR-9 |
-| S7 | `labs/app-lab` · the workstream level | Stream (transcript, registry cards, composer), Board (`BoardColumns` from `react` over BR-12's map), Brief (charter), Results (empty state) | BR-12 BR-13 BR-14 BR-18 to BR-22 |
+| S7 | `labs/app-lab` · the workstream level | Stream (transcript, registry cards, composer), Board (App Lab's own five-column grouping over BR-12's map; `react`'s `BoardColumns` draws one column per status and can't merge them, so it is not used for the board, and no FSD package changes), Brief (charter), Results (empty state) | BR-12 BR-13 BR-14 BR-18 to BR-22 |
 | S8 | `labs/app-lab` · the workstream panel | Progress (empty state), Team (members, BR-8), Tasks grouped by column | BR-23 |
 | S9 | `labs/app-lab` · Tasks | The list over S3's board reads, grouped by State / Worker / Stream, Queued toggle, full width | BR-15 BR-16 BR-28 |
 | S10 | `labs/app-lab` · Inbox | List and detail pane; the detail uses the stream's approval and question renderers; Approve / Deny via the session's resume; reply through the ER-15 seam | BR-24 to BR-28 |
@@ -67,7 +67,7 @@ final hand-back (ER-9) as its own PR.
 | ID | Runs after | Passes when |
 |---|---|---|
 | V1 | S1 | Starts over `goals/multi-seat-collab/lab/fsdev.config.mts`; a missing or non-`FlowState` config exits non-zero with the loader's message (BR-2) |
-| V2 | S2 | An org-less request renders the refusal and makes no inventory read (BR-3). Negative: with the gate removed, the test fails |
+| V2 | S2 | An org-less principal's first read is refused; the refusal screen renders, nothing from the tree is drawn and no further read is made (BR-3). Negative: with the gate removed, the test fails |
 | V3 | S3 | Counts, badges and screens share one read per resource; a failed read degrades only its section (BR-11). Second path: a Lab with no inventory (BR-4) |
 | V4 | S5 | TEAMS equals the store's seats per team; BR-8's three states; BR-9 with no projects |
 | V5 | S7, S9 | BR-12 for every shipped status, including the legacy `awaiting_review` read as parked; BR-13, BR-14, BR-15 |
@@ -135,3 +135,33 @@ beside another app's pages, is what `fsdev dev` does with the devtool today.
   No child owns it; raised to the epic coordinator.
 - **The pentest lab needs its host config for leg b.** Owned by FIX-1663, host only, following S12.
 - **The final visual pass** after the final hand-back (ER-9).
+
+## Notes from review
+
+Recorded for implementation, not baked into the design. Accept or decline each against the code.
+
+- **Cursor (PLAN, PR plan):** "D3's value is review-sized chunks; this row still puts **S6 (full
+  project level)** and **S11 (all registry copies + V8 byte-equal gate)** in `frame` before
+  workstream/Inbox exist. Consider deferring S11 to `workstream`/`inbox-tasks` and trimming S6 to
+  route + tab shells + empty copy props unless ER-1 forces more here — otherwise `frame` is still a
+  whole-product merge."
+- **Cursor (PLAN, S3):** "Worth one explicit contract in this plan: **refresh triggers** (boot,
+  mutation, manual Retry — not every route change) and **session read shape** (pending-ask
+  projection for Inbox list; full session only on detail). Without that, batched per-seat reads can
+  still devolve into O(seats × transcript size) per refresh." From the review body as well: default
+  to virtualized lists and one in-memory task index feeding BR-8, Tasks counts and TEAMS status;
+  TanStack Query or the devtool's client cache pattern over a one-off refresh layer.
+- **Cursor (PLAN, Removed):** "Naming four kitchen-sink files to mirror invites file-by-file drift.
+  A shorter 'shape reference' (three columns + panel slot + channel post semantics) plus **react**
+  primitives (`Roster`, `SeatDetail`, `BoardColumns`) and `workforce/browser` transcript types is
+  probably enough — implementer shouldn't re-wire `SHELL_BOARDS`-style static maps." (`BoardColumns`
+  can't draw BR-12's merged columns; see S7.)
+- **Cursor (PLAN, S5):** "`cmdk` is already in the repo (`packages/ui`, kitchen-sink) — plan could
+  nudge implementers to reuse that command palette pattern rather than a one-off search UI, with
+  index built once per S3 refresh (debounce + result cap)."
+- **Cursor (review body):** mark which checks are PR-local CI and which are goal-only, so one
+  assertion isn't built into two harnesses (e.g. the board status matrix once, navigation breadth
+  in VG).
+- **Second-look (PR comment):** "V9 restarts App Lab over a temp copy of the multi-seat-collab
+  config … Drop V9." VG's `static-names` control and V8 already cover it; V1 covers startup over
+  multi-seat-collab.
