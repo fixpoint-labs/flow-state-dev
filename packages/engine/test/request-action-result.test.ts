@@ -13,6 +13,7 @@ import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
+import { buildRequestActionResult, MAX_RECORDED_OUTPUT_BYTES } from "../src/execution/request-action-result";
 
 const answer = { ok: false, error: "task is cancelled, which is terminal" };
 
@@ -182,6 +183,76 @@ describe("the request record's action result", () => {
     const cycle = await run(oneAction({ execute: () => cyclic }), "req_cycle");
     expect(cycle.record?.status).toBe("completed");
     expect(cycle.record?.result).toEqual({ outputNotRecorded: true });
+  });
+
+  it("lands the final status with a marker when the output's toJSON throws (BR-9)", async () => {
+    const hostile = {
+      toJSON() {
+        throw new Error("not serializable");
+      }
+    };
+    expect(buildRequestActionResult({ status: "completed", output: hostile })).toEqual({ outputNotRecorded: true });
+    expect(buildRequestActionResult({ status: "failed", answered: { output: hostile } })).toEqual({
+      outputNotRecorded: true
+    });
+    // A toJSON that returns undefined stringifies to `undefined` rather than throwing.
+    expect(buildRequestActionResult({ status: "completed", output: { toJSON: () => undefined } })).toEqual({
+      outputNotRecorded: true
+    });
+  });
+
+  // Storing a value JSON would change is storing a different answer: a reader
+  // would see `null` where the action returned `NaN`, or a missing handler
+  // where it returned one. The record says so instead.
+  it("stores a marker, not a changed value, for an output JSON would alter", () => {
+    const lossy: Array<[string, unknown]> = [
+      ["NaN", { score: Number.NaN }],
+      ["Infinity", { limit: Number.POSITIVE_INFINITY }],
+      ["-Infinity", [Number.NEGATIVE_INFINITY]],
+      ["a nested function", { ok: true, retry: () => 1 }],
+      ["a bare function", () => 1],
+      ["a nested symbol", { tag: Symbol("t") }],
+      ["an undefined array slot", [1, undefined, 3]]
+    ];
+    for (const [label, output] of lossy) {
+      expect(buildRequestActionResult({ status: "completed", output }), label).toEqual({ outputNotRecorded: true });
+    }
+    // What JSON keeps faithfully is stored as JSON: a Date as its ISO string,
+    // an undefined-valued key left out (it reads back undefined either way).
+    const at = new Date("2026-09-30T00:00:00.000Z");
+    expect(
+      buildRequestActionResult({ status: "completed", output: { at, ok: false, detail: undefined } })
+    ).toEqual({ output: { at: "2026-09-30T00:00:00.000Z", ok: false } });
+  });
+
+  // A record, and every listing that carries outputs, stays bounded however
+  // much an action returns: an output over the cap keeps its status and drops
+  // its value, the same way an unstorable one does.
+  it("stores an output up to the byte cap, and a marker past it", async () => {
+    // A JSON string is its characters plus two quotes.
+    const atCap = "x".repeat(MAX_RECORDED_OUTPUT_BYTES - 2);
+    expect(buildRequestActionResult({ status: "completed", output: atCap })).toEqual({ output: atCap });
+    expect(buildRequestActionResult({ status: "completed", output: `${atCap}x` })).toEqual({
+      outputNotRecorded: true
+    });
+    // Counted in UTF-8 bytes, not characters: half as many two-byte
+    // characters is already over.
+    expect(
+      buildRequestActionResult({ status: "completed", output: "é".repeat(MAX_RECORDED_OUTPUT_BYTES / 2) })
+    ).toEqual({ outputNotRecorded: true });
+    // On a failure the error still lands next to the marker.
+    expect(
+      buildRequestActionResult({
+        status: "failed",
+        error: { code: "execution_error", message: "hook failed" },
+        answered: { output: `${atCap}x` }
+      })
+    ).toEqual({ outputNotRecorded: true, error: { code: "execution_error", message: "hook failed" } });
+
+    const { record, returned } = await run(oneAction({ execute: () => ({ blob: `${atCap}x` }) }), "req_over_cap");
+    expect(record?.status).toBe("completed");
+    expect(record?.result).toEqual({ outputNotRecorded: true });
+    expect(returned.output).toEqual({ blob: `${atCap}x` });
   });
 
   it("gives the in-process caller the same answer the record stores (BR-10)", async () => {

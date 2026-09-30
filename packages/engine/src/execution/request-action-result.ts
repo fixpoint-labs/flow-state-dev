@@ -13,6 +13,14 @@
 import type { RequestActionResult } from "../stores/types";
 
 /**
+ * The largest output a record stores, in bytes of its UTF-8 JSON. A larger
+ * one is recorded as `outputNotRecorded: true` instead, so a record, and every
+ * listing that carries outputs, stays bounded however much an action returns.
+ * An action whose answer is bigger than this is better read from its items.
+ */
+export const MAX_RECORDED_OUTPUT_BYTES = 64 * 1024;
+
+/**
  * A failure cause, as a normalized `FlowError` carries it. A missing `code`
  * is stored as `execution_error`, the code `normalizeError` infers by default.
  */
@@ -59,19 +67,52 @@ export function buildRequestActionResult(settlement: RequestSettlement): Request
 }
 
 /**
+ * The final-status half of a request record write: the status and the
+ * `result` built for it, together. Every writer of a final status spreads
+ * this into its record write, whether through `settleRequestRecord`, a CAS
+ * loop, or a whole-record `set`, so the pairing lives in one place.
+ */
+export function settledRecordFields(settlement: RequestSettlement): {
+  status: RequestSettlement["status"];
+  result: RequestActionResult | undefined;
+} {
+  return { status: settlement.status, result: buildRequestActionResult(settlement) };
+}
+
+/**
  * The output as the record stores it: a JSON copy, so every adapter holds the
  * same value and a later mutation of the live object cannot reach the record.
- * A value JSON cannot hold (a `BigInt`, a cycle, a function) is dropped with a
- * marker rather than failing the write it rides on.
+ * A value JSON cannot hold (a `BigInt`, a cycle, a throwing `toJSON`), one
+ * JSON would silently change (`NaN` or `±Infinity` read back as `null`, a
+ * function or symbol dropped, an `undefined` array slot read back as `null`),
+ * or one whose JSON is over {@link MAX_RECORDED_OUTPUT_BYTES}, is dropped with
+ * a marker rather than failing the write it rides on, or storing a different
+ * value. A `toJSON` result (a `Date`'s ISO string) is the value as stored, and
+ * an object key whose value is `undefined` is left out, which reads back the
+ * same.
  */
 function recordableOutput(output: unknown): RequestActionResult {
   if (output === undefined) return {};
   let text: string | undefined;
+  let lossy = false;
   try {
-    text = JSON.stringify(output);
+    text = JSON.stringify(output, function (this: unknown, _key: string, value: unknown) {
+      if (
+        (typeof value === "number" && !Number.isFinite(value)) ||
+        typeof value === "function" ||
+        typeof value === "symbol" ||
+        (value === undefined && Array.isArray(this))
+      ) {
+        lossy = true;
+      }
+      return value;
+    });
   } catch {
     return { outputNotRecorded: true };
   }
+  if (lossy) return { outputNotRecorded: true };
+  // A `toJSON` that returns `undefined` stringifies to `undefined`.
   if (text === undefined) return { outputNotRecorded: true };
+  if (new TextEncoder().encode(text).byteLength > MAX_RECORDED_OUTPUT_BYTES) return { outputNotRecorded: true };
   return { output: JSON.parse(text) as unknown };
 }

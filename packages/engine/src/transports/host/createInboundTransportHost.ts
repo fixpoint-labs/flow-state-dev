@@ -24,7 +24,7 @@ import {
 import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { normalizeError } from "../../errors/normalize-error";
-import { buildRequestActionResult, type RequestSettlement } from "../../execution/request-action-result";
+import { settledRecordFields, type RequestSettlement } from "../../execution/request-action-result";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import {
   assertSessionAdmitted,
@@ -191,10 +191,9 @@ async function terminateUnenqueuedRequest(
       requestId,
       {
         ...record,
-        status: ending.status,
+        ...settledRecordFields(settlement),
         ...(ending.status === "failed" ? { failedAtMs: now } : {}),
-        updatedAt: now,
-        result: buildRequestActionResult(settlement)
+        updatedAt: now
       },
       "any"
     );

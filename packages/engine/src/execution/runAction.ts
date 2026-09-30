@@ -37,7 +37,7 @@ import { normalizeError, displayCause } from "../errors/normalize-error";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
 import { executeBlock } from "./executeBlock";
-import { buildRequestActionResult, type RequestSettlement } from "./request-action-result";
+import { settledRecordFields, type RequestSettlement } from "./request-action-result";
 import { getResponseItems, getResponseItemCount } from "./internal/response";
 import {
   applyNormalizedErrorSeam,
@@ -474,11 +474,10 @@ async function settleFreshRequestSetupFailure(options: {
         options.requestId,
         {
           ...base,
-          status: "failed",
+          ...settledRecordFields({ status: "failed", error: normalized }),
           failedAtMs: now,
           updatedAt: now,
-          items,
-          result: buildRequestActionResult({ status: "failed", error: normalized })
+          items
         },
         current === undefined ? "absent" : "any"
       );
@@ -543,14 +542,16 @@ async function settleRequestRecord(
 ): Promise<void> {
   await writeRequestRecordPatch(stores, requestId, {
     ...fields,
-    status: settlement.status,
-    result: buildRequestActionResult(settlement)
+    ...settledRecordFields(settlement)
   });
 }
 
 /**
  * Applies a partial request-record update when a record exists.
  * Strips ephemeral content from items before writing to the store.
+ *
+ * Internal: call {@link patchRequestRecord} or {@link settleRequestRecord},
+ * whose types keep a final status from landing without its result.
  */
 async function writeRequestRecordPatch(
   stores: StoreRegistry,

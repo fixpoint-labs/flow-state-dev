@@ -223,14 +223,18 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
 /**
  * A request's action result, as its record stores it (FIX-1661).
  *
- * Mirrors `ExecutionResult`'s `output` and `error`, so the stored answer and
- * the one an in-process caller of `runAction` receives use one vocabulary.
+ * Carries the same keys as `ExecutionResult`'s `output` and `error`. The
+ * values can differ: the record stores a JSON copy of the output (a `Date`
+ * becomes its ISO string, an object key whose value is `undefined` is left
+ * out), while an in-process caller of `runAction` receives the live value. An
+ * output JSON would otherwise change (`NaN`, `±Infinity`, a function or symbol,
+ * an `undefined` array slot) is not stored at all: `outputNotRecorded`.
  *
  * | Request ended | `result` |
  * |---|---|
  * | `completed` / `incomplete` | `{ output }`; `{}` when the action returned nothing |
  * | `failed` | `{ error }`, plus `output` when the action answered before a completion hook failed the request; `{}` when the writer had no cause |
- * | any of those, output not storable as JSON | `outputNotRecorded: true` in place of `output` |
+ * | any of those, output not storable as JSON, or over `MAX_RECORDED_OUTPUT_BYTES` (64 KiB) as JSON | `outputNotRecorded: true` in place of `output` |
  * | `aborted` / `interrupted` / `suspended` | absent |
  */
 export type RequestActionResult = {
@@ -238,7 +242,10 @@ export type RequestActionResult = {
   output?: unknown;
   /**
    * The action returned a value that cannot be stored as JSON (a `BigInt`, a
-   * cycle, a function). The status still landed; only the value was dropped.
+   * cycle), one JSON would silently change (`NaN`, `±Infinity`, a function or
+   * symbol, an `undefined` array slot), or one whose JSON is over
+   * `MAX_RECORDED_OUTPUT_BYTES`.
+   * The status still landed; only the value was dropped.
    * Distinct from `{}`, which means the action returned nothing.
    */
   outputNotRecorded?: true;
