@@ -99,7 +99,7 @@ ships, or to the sibling that will ship it; until then, the surface shows its na
 | TEAMS, each team's workers, a worker's harness and status | Workforce as shipped: the tree's teams and seats, and the seat's run |
 | The PROJECTS tree's projects, the project level | FIX-1650 · org primitives |
 | A workstream itself: the channel, its flow, and that it exists | FIX-1650 · org primitives |
-| What sits on a workstream's board: tasks, a board row, brief, results, a task's acceptance criteria and harness plan | FIX-1651 · eng workstream kit |
+| What a workstream holds, across its Board, Brief and Results tabs: tasks, a board row, the brief, results, a task's acceptance criteria and harness plan | FIX-1651 · eng workstream kit |
 | Inbox: what counts as an ask, its kinds (approval, question, decision), what Approve and Deny do; inspect depth past what the task inspector shows | FIX-1652 · attention and inspect |
 | Tasks: a task's state and its NOW activity | FIX-1651 · eng workstream kit |
 | TIME and COST, on Tasks and the task inspector | The session and run data that already ships |
