@@ -564,5 +564,45 @@ await runGoal(async () => {
   }
   evidence.push("an ask left interrupted or aborted did not stop a reopen from asking again");
 
+  // ---- 11 · AR-5, AR-6 — an ask the run refused does not hold the feature --
+  {
+    const stores = inMemoryStores();
+    const registry = (await (stores.resolve as () => Promise<unknown>)()) as Record<string, any>;
+    // An empty goal: the asking door refuses its input, and the run returns
+    // an error rather than throwing.
+    let refused: string | undefined;
+    try {
+      const { lab } = await open("ask-refused-1", stores, { ask: { issue: feature.issue, goal: "" } });
+      await lab.dispose();
+    } catch (error) {
+      refused = error instanceof Error ? error.message : String(error);
+    }
+    if (refused === undefined || !refused.startsWith(`${RAISE_ASK_STEP}:`)) {
+      note("11", `an ask the run refused did not fail the open naming the step: ${refused}`);
+    }
+    // The failed request is what lets a later raise see nobody decided. Take
+    // it away, as a request that was never written or has since been cleaned
+    // up would: only the claim is left to decide.
+    const failed = (await registry.request.list({ sessionId: EM_SESSION })) as Array<{
+      id: string;
+      actionName: string;
+    }>;
+    for (const request of failed.filter((r) => r.actionName === ASK_ENTRY)) {
+      await registry.request.delete(request.id);
+    }
+    const second = await open("ask-refused-2", stores);
+    try {
+      if (second.lab.ask?.raised !== true) {
+        note("11", `after the run refused the ask, a reopen raised nothing: ${JSON.stringify(second.lab.ask)}`);
+      }
+      if ((await inbox(second.lab)).pending.length !== 1) {
+        note("11", "after the run refused the ask, a reopen left no pending ask");
+      }
+    } finally {
+      await second.lab.dispose();
+    }
+    evidence.push("an ask the run refused released its claim, and a reopen asked again");
+  }
+
   return { failures, evidence: evidence.join("; ") };
 });

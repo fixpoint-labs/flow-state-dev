@@ -14,7 +14,7 @@ nothing to show and "Approve & run" had nothing to run.
 It is **held-out**: leg 0 asserts that neither string appears in any of the lab's code, so a
 different valid feature still passes a correct implementation.
 
-**Signal:** ten legs (0 to 4 and 6 to 10; the control is 5), each closing named rules (`specs/issues/FIX-1666/BUSINESS-RULES.md`):
+**Signal:** eleven legs (0 to 4 and 6 to 11; the control is 5), each closing named rules (`specs/issues/FIX-1666/BUSINESS-RULES.md`):
 
 0. opened without the ask: no request in the EM's session, no row; the held-out feature is in no
    lab code; the run is keyless *(AR-1, AR-7)*;
@@ -39,7 +39,9 @@ different valid feature still passes a correct implementation.
    create-if-absent write *(AR-5)*;
 9. a store that refuses a read fails the open, naming `raiseAsk` *(AR-6)*;
 10. an ask left `interrupted` or `aborted` (nobody decided it) does not stop a reopen from asking
-    again; only a pending or answered ask holds the feature *(AR-5)*.
+    again; only a pending or answered ask holds the feature *(AR-5)*;
+11. an ask the run refused (it returned an error) fails the open naming `raiseAsk` and releases
+    its claim, so a reopen asks again even when no request record is left *(AR-5, AR-6)*.
 
 **Anti-game:** a hollow pass is an Inbox item that approves nothing, or an ask that was answered by
 a lab helper rather than by the route App Lab takes. So every read a person's client would make goes
@@ -71,5 +73,6 @@ run as before.
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-09-30 | after b212e2187 | n/a | PASS | Bugbot fix: `raiseAsk` releases its claim when the run returns an error, as well as when it throws. Leg 11 opens with an empty goal, so the run refuses it; the request record is then deleted and the lab reopened. It FAILs on the previous `ask.mts` with "a reopen raised nothing … holds the claim and is still starting", and PASSes with the fix. `no-gate` still FAILs on leg 1. The four other devforce-lab checks PASS on the same tree. |
 | 2026-09-30 | merge of main 2ce1bf7f9 | n/a | PASS | After FIX-1667 moved the board onto the feature channel. The row is now `eng.feature.work/night-mode-toggle--implement`, in org storage. Legs 8 to 10 were added for review. Two raises racing over one store raise one ask, a store that refuses a read fails the open naming `raiseAsk`, and an interrupted or aborted ask doesn't stop a reopen from asking again. Before the merge, each of the three failed on the previous `ask.mts`. `no-gate` FAILs on leg 1 "a row existed before any approval". On the same head the four other devforce-lab checks PASS: `it-wakes…`, `it-keeps…`, `it-commits…` and `it-ships…`, the last now that the reread fix is on main. |
 | 2026-09-30 | cf92e03e7 | n/a | PASS | All eight legs green, keyless. `GOAL_CONTROL=no-gate` FAILs on leg 1 "a row existed before any approval: devforce-tasks--t0--feature/night-mode-toggle--implement", and on legs 3 and 4c (a row after Deny). Same commit: `it-wakes-the-seat-a-file-declared` PASS, `it-commits-from-the-seats-own-file` PASS; `it-ships-an-artifact-a-person-can-open` FAILs on "a fresh process read 0 transcript line(s)", which fails identically on `origin/main` (1590fb9f1) without this change. |
