@@ -59,23 +59,26 @@ export function registerUiCommand(program: Command) {
     .option("--registry <url>", "Registry URL or local path", DEFAULT_REGISTRY_URL)
     .option("--cwd <dir>", "Working directory for installation", process.cwd())
     .action(async (components: string[], options: { registry: string; cwd: string }) => {
-      for (const component of components) {
-        const itemUrl = options.registry.startsWith("http")
+      const itemUrls = components.map((component) =>
+        options.registry.startsWith("http")
           ? `${options.registry}/${component}.json`
-          : resolve(options.registry, `${component}.json`);
+          : resolve(options.registry, `${component}.json`)
+      );
 
-        console.log(`Installing ${component}...`);
+      console.log(`Installing ${components.join(", ")}...`);
 
-        const result = spawnSync("npx", ["shadcn@latest", "add", itemUrl], {
-          stdio: "inherit",
-          cwd: options.cwd,
-          shell: true,
-        });
-        if ((result.status ?? 1) !== 0) {
-          console.error(`Failed to install ${component}.`);
-          process.exitCode = EXIT_EXECUTION_ERROR;
-          return;
-        }
+      // One shadcn call for every component. Called once per component, a
+      // later one that shares a dependency with an earlier one stops at an
+      // overwrite prompt for the file the earlier call just wrote.
+      const result = spawnSync("npx", ["shadcn@latest", "add", ...itemUrls], {
+        stdio: "inherit",
+        cwd: options.cwd,
+        shell: true,
+      });
+      if ((result.status ?? 1) !== 0) {
+        console.error(`Failed to install ${components.join(", ")}.`);
+        process.exitCode = EXIT_EXECUTION_ERROR;
+        return;
       }
 
       process.exitCode = EXIT_SUCCESS;

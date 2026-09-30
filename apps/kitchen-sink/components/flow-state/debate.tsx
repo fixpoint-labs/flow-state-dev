@@ -477,14 +477,14 @@ export function Debate({ item }: { item: ContainerItem }) {
           aria-hidden="true"
         />
         <ScaleIcon
-          className="h-4 w-4 shrink-0 text-rose-500"
+          className="h-4 w-4 shrink-0 text-destructive"
           aria-hidden="true"
         />
         <span className="text-sm font-medium">Moderated Debate</span>
         <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="truncate">{headerLabel}</span>
           {isFinished ? (
-            <CheckCircle2Icon className="h-3 w-3 text-emerald-500" />
+            <CheckCircle2Icon className="h-3 w-3 text-success" />
           ) : (
             <Loader2Icon className="h-3 w-3 animate-spin" />
           )}
@@ -614,9 +614,9 @@ function Step({
       <div className="flex items-center gap-1.5">
         <div className="shrink-0">
           {status === "complete" ? (
-            <CheckCircle2Icon className="h-4 w-4 text-emerald-500" />
+            <CheckCircle2Icon className="h-4 w-4 text-success" />
           ) : status === "active" ? (
-            <Loader2Icon className="h-4 w-4 animate-spin text-blue-500" />
+            <Loader2Icon className="h-4 w-4 animate-spin text-info" />
           ) : (
             <CircleIcon className="h-4 w-4 text-muted-foreground/30" />
           )}
@@ -627,7 +627,7 @@ function Step({
             status === "complete"
               ? "text-foreground/70"
               : status === "active"
-                ? "text-blue-500"
+                ? "text-info"
                 : "text-muted-foreground/40",
           )}
           aria-hidden="true"
@@ -638,7 +638,7 @@ function Step({
             status === "complete"
               ? "text-foreground/80"
               : status === "active"
-                ? "text-blue-500"
+                ? "text-info"
                 : "text-muted-foreground/40",
           )}
         >
@@ -683,7 +683,7 @@ function TurnItem({ turn }: { turn: DebateTurn }) {
         <span className="shrink-0 font-medium text-foreground/80">
           {turn.agentName}
         </span>
-        <span className="shrink-0 rounded bg-muted/60 px-1 py-px text-[10px] leading-3 text-muted-foreground">
+        <span className="shrink-0 rounded-sm bg-muted/60 px-1 py-px text-[10px] leading-3 text-muted-foreground">
           {turn.stance}
         </span>
         <span className="flex-1 truncate text-muted-foreground group-open/turn:hidden">
@@ -715,13 +715,13 @@ function PendingTurnItem({
     <div className="space-y-1">
       <div className="flex items-center gap-1.5 text-xs leading-4">
         <Loader2Icon
-          className="h-3 w-3 shrink-0 animate-spin text-blue-500"
+          className="h-3 w-3 shrink-0 animate-spin text-info"
           aria-hidden="true"
         />
         <span className="font-medium text-foreground/80">
           {pending.agentName}
         </span>
-        <span className="shrink-0 rounded bg-muted/60 px-1 py-px text-[10px] leading-3 text-muted-foreground">
+        <span className="shrink-0 rounded-sm bg-muted/60 px-1 py-px text-[10px] leading-3 text-muted-foreground">
           {pending.stance}
         </span>
         {draft.length === 0 && (
@@ -828,10 +828,10 @@ function ResearchTimeline({ calls }: { calls: ToolCall[] }) {
     }));
   }, [calls]);
   return (
-    <div className="space-y-1 rounded-md border border-blue-500/20 bg-blue-500/5 px-2 py-1.5">
+    <div className="space-y-1 rounded-md border border-info/20 bg-info/5 px-2 py-1.5">
       <div className="flex items-center gap-1.5 text-xs leading-4">
         <WrenchIcon
-          className="h-3 w-3 shrink-0 text-blue-500 dark:text-blue-400"
+          className="h-3 w-3 shrink-0 text-info"
           aria-hidden="true"
         />
         <span className="font-medium text-foreground/80">
@@ -911,10 +911,10 @@ function ResearchCallItem({ call }: { call: ToolCall }) {
 
 function VerdictItem({ verdict }: { verdict: DebateVerdict }) {
   return (
-    <div className="space-y-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2 py-2">
+    <div className="space-y-1.5 rounded-md border border-success/30 bg-success/5 px-2 py-2">
       <div className="flex items-center gap-1.5 text-xs leading-4">
         <TrophyIcon
-          className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400"
+          className="h-3 w-3 shrink-0 text-success"
           aria-hidden="true"
         />
         <span className="font-medium text-foreground/90">
@@ -954,8 +954,8 @@ function EntryMarkdown({ text }: { text: string }) {
       className={cn(
         "prose-none text-xs leading-snug text-muted-foreground",
         "[&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:my-0.5",
-        "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px]",
-        "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-muted [&_pre]:p-2",
+        "[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px]",
+        "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded-sm [&_pre]:bg-muted [&_pre]:p-2",
         "[&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-2 [&_blockquote]:italic",
       )}
     >

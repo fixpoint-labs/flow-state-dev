@@ -156,6 +156,24 @@ A navigator row's actions, whatever its `rowTrailing` and `leafToolbar` slots re
 
 You can't pin an action visible. Only a session row's label is yours to set: it shows the session's title, which you set when you [create or update the session](../client/overview.md#session-management). Put a status your users need at a glance there. A session with no title shows its id, shortened when the server generated it; hover the row for the full id. Kind and instance rows always show the kind name and the instance id. For a section-wide control, use `sectionHeader`, which is always shown.
 
+### One set of tokens for everything on screen
+
+If your app also renders the `@flow-state-dev/ui` components (messages, tool calls, approval cards), you don't need a second theme for the navigator and panels. Define your colours once as the semantic tokens those components read, then point the navigator's and panels' properties at the same tokens:
+
+```css
+.app-shell {
+  --fsd-nav-fg: var(--foreground);
+  --fsd-nav-muted-fg: var(--muted-foreground);
+  --fsd-nav-selected-bg: var(--accent);
+  --fsd-nav-selected-fg: var(--accent-foreground);
+  --fsd-nav-guide: var(--border);
+  --fsd-panel-fg: var(--foreground);
+  --fsd-panel-muted-fg: var(--muted-foreground);
+}
+```
+
+Change a token and every component follows. Nothing here needs a class override or an edit to a component you copied in; if a component ignores a token, that's a bug in the component. The `@flow-state-dev/ui` [colours and theming](../ui/overview.md#colours-and-theming) section lists the tokens, including the status ones.
+
 ## Limits
 
 These components render; they don't administer. There is no create-channel or invite control.

@@ -38,8 +38,8 @@ export function StuckRequestBanner({
 
   return (
     <div className={cn("mx-auto max-w-3xl px-3 pt-2 sm:px-4", className)}>
-      <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
-        <span className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+      <div className="flex items-center justify-between gap-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+        <span className="flex items-center gap-2 text-warning">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           Connection lost — the previous request stopped responding.
         </span>

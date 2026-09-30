@@ -4,6 +4,108 @@
   "homepage": "https://flow-state.dev/ui",
   "items": [
     {
+      "name": "tokens",
+      "title": "Tokens",
+      "type": "registry:theme",
+      "description": "Every colour token the registry's components read, light and dark: the semantic set plus the status tokens success, warning, info and attention, each with a -foreground. Neutral defaults in a base layer, so an app's own values win. Added with the first component that needs it.",
+      "dependencies": [],
+      "registryDependencies": [],
+      "cssVars": {
+        "theme": {
+          "color-background": "var(--background)",
+          "color-foreground": "var(--foreground)",
+          "color-card": "var(--card)",
+          "color-card-foreground": "var(--card-foreground)",
+          "color-popover": "var(--popover)",
+          "color-popover-foreground": "var(--popover-foreground)",
+          "color-primary": "var(--primary)",
+          "color-primary-foreground": "var(--primary-foreground)",
+          "color-secondary": "var(--secondary)",
+          "color-secondary-foreground": "var(--secondary-foreground)",
+          "color-muted": "var(--muted)",
+          "color-muted-foreground": "var(--muted-foreground)",
+          "color-accent": "var(--accent)",
+          "color-accent-foreground": "var(--accent-foreground)",
+          "color-destructive": "var(--destructive)",
+          "color-destructive-foreground": "var(--destructive-foreground)",
+          "color-border": "var(--border)",
+          "color-input": "var(--input)",
+          "color-ring": "var(--ring)",
+          "color-success": "var(--success)",
+          "color-success-foreground": "var(--success-foreground)",
+          "color-warning": "var(--warning)",
+          "color-warning-foreground": "var(--warning-foreground)",
+          "color-info": "var(--info)",
+          "color-info-foreground": "var(--info-foreground)",
+          "color-attention": "var(--attention)",
+          "color-attention-foreground": "var(--attention-foreground)"
+        }
+      },
+      "css": {
+        "@layer base": {
+          ":root": {
+            "--background": "hsl(0 0% 100%)",
+            "--foreground": "hsl(240 10% 3.9%)",
+            "--card": "hsl(0 0% 100%)",
+            "--card-foreground": "hsl(240 10% 3.9%)",
+            "--popover": "hsl(0 0% 100%)",
+            "--popover-foreground": "hsl(240 10% 3.9%)",
+            "--primary": "hsl(240 5.9% 10%)",
+            "--primary-foreground": "hsl(0 0% 98%)",
+            "--secondary": "hsl(240 4.8% 95.9%)",
+            "--secondary-foreground": "hsl(240 5.9% 10%)",
+            "--muted": "hsl(240 4.8% 95.9%)",
+            "--muted-foreground": "hsl(240 3.8% 46.1%)",
+            "--accent": "hsl(240 4.8% 95.9%)",
+            "--accent-foreground": "hsl(240 5.9% 10%)",
+            "--destructive": "hsl(0 84.2% 60.2%)",
+            "--destructive-foreground": "hsl(0 0% 98%)",
+            "--border": "hsl(240 5.9% 90%)",
+            "--input": "hsl(240 5.9% 90%)",
+            "--ring": "hsl(240 5.9% 10%)",
+            "--success": "hsl(142 76% 36%)",
+            "--success-foreground": "hsl(0 0% 98%)",
+            "--warning": "hsl(32 95% 44%)",
+            "--warning-foreground": "hsl(0 0% 98%)",
+            "--info": "hsl(217 91% 60%)",
+            "--info-foreground": "hsl(0 0% 98%)",
+            "--attention": "hsl(41 96% 40%)",
+            "--attention-foreground": "hsl(240 10% 3.9%)"
+          },
+          ".dark": {
+            "--background": "hsl(240 10% 3.9%)",
+            "--foreground": "hsl(0 0% 98%)",
+            "--card": "hsl(240 10% 3.9%)",
+            "--card-foreground": "hsl(0 0% 98%)",
+            "--popover": "hsl(240 10% 3.9%)",
+            "--popover-foreground": "hsl(0 0% 98%)",
+            "--primary": "hsl(0 0% 98%)",
+            "--primary-foreground": "hsl(240 5.9% 10%)",
+            "--secondary": "hsl(240 3.7% 15.9%)",
+            "--secondary-foreground": "hsl(0 0% 98%)",
+            "--muted": "hsl(240 3.7% 15.9%)",
+            "--muted-foreground": "hsl(240 5% 64.9%)",
+            "--accent": "hsl(240 3.7% 15.9%)",
+            "--accent-foreground": "hsl(0 0% 98%)",
+            "--destructive": "hsl(0 62.8% 30.6%)",
+            "--destructive-foreground": "hsl(0 0% 98%)",
+            "--border": "hsl(240 3.7% 15.9%)",
+            "--input": "hsl(240 3.7% 15.9%)",
+            "--ring": "hsl(240 4.9% 83.9%)",
+            "--success": "hsl(142 69% 58%)",
+            "--success-foreground": "hsl(240 10% 3.9%)",
+            "--warning": "hsl(43 96% 56%)",
+            "--warning-foreground": "hsl(240 10% 3.9%)",
+            "--info": "hsl(213 94% 68%)",
+            "--info-foreground": "hsl(240 10% 3.9%)",
+            "--attention": "hsl(48 96% 53%)",
+            "--attention-foreground": "hsl(240 10% 3.9%)"
+          }
+        }
+      },
+      "categories": ["theme"]
+    },
+    {
       "name": "conversation",
       "title": "Conversation",
       "type": "registry:component",
@@ -51,7 +153,7 @@
       "type": "registry:component",
       "description": "Rich tool invocation display with args, result, status, and Claude-Code-style grouping for consecutive calls.",
       "dependencies": ["@flow-state-dev/core", "lucide-react"],
-      "registryDependencies": ["collapsible", "badge", "code-block"],
+      "registryDependencies": ["collapsible", "badge", "code-block", "tokens"],
       "files": [
         {
           "type": "registry:component",
@@ -170,7 +272,7 @@
       "type": "registry:component",
       "description": "Section-grouped renderer for any TaskCollection. Subscribes to task-change and task-board-meta component items emitted by the unified Plan/Task substrate.",
       "dependencies": ["@flow-state-dev/core", "lucide-react"],
-      "registryDependencies": [],
+      "registryDependencies": ["session-items-context", "tokens"],
       "files": [
         {
           "type": "registry:component",
@@ -181,6 +283,11 @@
           "type": "registry:lib",
           "path": "registry/components/task-plan-state.ts",
           "target": "components/flow-state/task-plan-state.ts"
+        },
+        {
+          "type": "registry:lib",
+          "path": "registry/components/tool-summaries.ts",
+          "target": "components/flow-state/tool-summaries.ts"
         }
       ],
       "categories": ["ai", "patterns"]
@@ -191,7 +298,7 @@
       "type": "registry:component",
       "description": "Renders response-auditor findings as a compact card with severity indicators, per-analyzer scores, and evidence. Fed by the audit-annotation component item the responseAuditor pattern emits.",
       "dependencies": ["@flow-state-dev/core", "lucide-react"],
-      "registryDependencies": [],
+      "registryDependencies": ["tokens"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/audit-annotation.tsx",
@@ -219,7 +326,7 @@
       "type": "registry:component",
       "description": "Human-in-the-loop approval card for suspension items. Green Approve / red Reject while pending; collapses to a receipt once resolved. Logic comes from the useApproval hook in @flow-state-dev/react.",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "lucide-react"],
-      "registryDependencies": ["session-items-context"],
+      "registryDependencies": ["session-items-context", "tokens"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/approval.tsx",
@@ -232,13 +339,60 @@
       "title": "Chat Assistant Renderers",
       "type": "registry:component",
       "description": "Pre-wired RendererRegistry mapping all Flow State item types to their default components.",
-      "dependencies": ["@flow-state-dev/react"],
-      "registryDependencies": ["message", "reasoning", "tool", "status", "error", "approval", "audit-annotation"],
-      "files": [{
-        "type": "registry:component",
-        "path": "registry/components/chat-assistant.tsx",
-        "target": "components/flow-state/chat-assistant.tsx"
-      }],
+      "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react", "lucide-react", "react-markdown"],
+      "registryDependencies": ["message", "reasoning", "tool", "status", "error", "approval", "audit-annotation", "task-plan", "session-items-context", "shimmer", "tokens"],
+      "files": [
+        {
+          "type": "registry:component",
+          "path": "registry/components/chat-assistant.tsx",
+          "target": "components/flow-state/chat-assistant.tsx"
+        },
+        {
+          "type": "registry:component",
+          "path": "registry/components/debate.tsx",
+          "target": "components/flow-state/debate.tsx"
+        },
+        {
+          "type": "registry:component",
+          "path": "registry/components/evented-actors.tsx",
+          "target": "components/flow-state/evented-actors.tsx"
+        },
+        {
+          "type": "registry:component",
+          "path": "registry/components/routed-specialists.tsx",
+          "target": "components/flow-state/routed-specialists.tsx"
+        },
+        {
+          "type": "registry:component",
+          "path": "registry/components/suspension-card.tsx",
+          "target": "components/flow-state/suspension-card.tsx"
+        },
+        {
+          "type": "registry:component",
+          "path": "registry/components/suspension-card-shell.tsx",
+          "target": "components/flow-state/suspension-card-shell.tsx"
+        },
+        {
+          "type": "registry:lib",
+          "path": "registry/components/suspension-resolution.ts",
+          "target": "components/flow-state/suspension-resolution.ts"
+        },
+        {
+          "type": "registry:component",
+          "path": "registry/components/question.tsx",
+          "target": "components/flow-state/question.tsx"
+        },
+        {
+          "type": "registry:component",
+          "path": "registry/components/selection.tsx",
+          "target": "components/flow-state/selection.tsx"
+        },
+        {
+          "type": "registry:component",
+          "path": "registry/components/form.tsx",
+          "target": "components/flow-state/form.tsx"
+        }
+      ],
       "categories": ["ai", "framework"]
     },
     {
@@ -261,11 +415,25 @@
       "type": "registry:component",
       "description": "Groups items by request ID with streaming indicator, source display, and collapsible tool-call summaries for consecutive calls.",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react"],
-      "registryDependencies": ["sources", "streaming-indicator", "tool"],
+      "registryDependencies": ["sources", "streaming-indicator", "tool", "task-plan"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/request-group.tsx",
         "target": "components/flow-state/request-group.tsx"
+      }],
+      "categories": ["ai", "chat"]
+    },
+    {
+      "name": "stuck-request-banner",
+      "title": "Stuck Request Banner",
+      "type": "registry:component",
+      "description": "Warning banner shown when the in-flight request stops responding, with a dismiss action.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["button", "tokens"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/stuck-request-banner.tsx",
+        "target": "components/flow-state/stuck-request-banner.tsx"
       }],
       "categories": ["ai", "chat"]
     },
