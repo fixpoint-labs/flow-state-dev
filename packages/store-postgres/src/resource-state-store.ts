@@ -128,10 +128,11 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
    *
    * This mirrors `resourceStateConflict` in the engine's
    * `stores/resource-state-predicate` module, which is the reference for what a
-   * conflict reports. It is restated rather than imported because a store
-   * adapter's dependency on `@flow-state-dev/engine` is **type-only** by
-   * package boundary (`scripts/validate-package-boundaries.mjs`), and that
-   * module is runtime code. What is shared is `ResourceStateRow`, above: both
+   * conflict reports. It is restated rather than imported to match the
+   * store-sqlite copy: store-sqlite's dependency on `@flow-state-dev/engine` is
+   * **type-only** by package boundary (`scripts/validate-package-boundaries.mjs`),
+   * but this package may value-import the engine, so it could import
+   * `resourceStateConflict` directly. What is shared is `ResourceStateRow`, above: both
    * SQL adapters parse into the same shape, so the two bodies are the same
    * three lines, and the shared conformance suite pins the rule for all four
    * adapters — a semantic tweak that misses one shows up as a failing case

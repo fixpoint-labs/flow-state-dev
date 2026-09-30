@@ -37,9 +37,10 @@ export type ResourceStateConflict = {
  *
  * This is the **reference** for that rule. Memory and filesystem reach it
  * through {@link checkWriteVersion}. The two SQL adapters restate it in three
- * lines instead — a store-adapter package's dependency on the engine is
- * type-only by package boundary (`scripts/validate-package-boundaries.mjs`), so
- * they can share {@link ResourceStateRow} but not runtime code. What keeps the
+ * lines instead — store-sqlite's dependency on the engine is type-only by
+ * package boundary (`scripts/validate-package-boundaries.mjs`), so it can share
+ * {@link ResourceStateRow} but not runtime code; store-postgres may value-import
+ * the engine but keeps a matching copy. What keeps the
  * four from drifting is the shared conformance suite, which pins the rule
  * against every adapter.
  *

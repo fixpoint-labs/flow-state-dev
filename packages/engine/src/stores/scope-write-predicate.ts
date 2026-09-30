@@ -8,8 +8,9 @@
  * (memory, filesystem) decide it in one place rather than two.
  *
  * The SQL adapters restate it instead of importing it: `@flow-state-dev/store-
- * sqlite` and `store-postgres` depend on `@flow-state-dev/engine` **type-only**
- * (`scripts/validate-package-boundaries.mjs`), and their predicate has to be a
+ * sqlite` depends on `@flow-state-dev/engine` **type-only**
+ * (`scripts/validate-package-boundaries.mjs`; `store-postgres` may value-import
+ * it but keeps a matching copy), and their predicate has to be a
  * single atomic statement anyway rather than a read followed by a decision.
  * The scope-store conformance suite (`stores/testing/scope-store-conformance`)
  * is what keeps all four honest — it is the reason this arrangement is safe,
