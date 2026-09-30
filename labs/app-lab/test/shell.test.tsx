@@ -6,6 +6,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
+import { GAPS } from "../src/gaps";
 import { createLabClients } from "../src/lib/connection";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -113,11 +114,12 @@ describe("the composer (V6)", () => {
     expect(screen.queryByText("refused line", { selector: "[data-testid=transcript-line-body]" })).toBeNull();
   });
 
-  it("disables addressing a worker until its session write ships, and says so", async () => {
+  it("disables addressing a worker, which isn't built, and says so", async () => {
     await openApp("/w/ops.side/stream");
     const input = await screen.findByTestId("composer-input");
     fireEvent.change(input, { target: { value: "@someone please" } });
     expect((screen.getByTestId("composer-send") as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId("composer-status").textContent).toMatch(/FIX-1664/);
+    expect(screen.getByTestId("composer-status").textContent).toBe(GAPS.addressWorker);
+    expect(GAPS.addressWorker).toMatch(/isn't built yet/);
   });
 });

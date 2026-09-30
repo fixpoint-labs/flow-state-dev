@@ -69,6 +69,15 @@ export type Workstream = {
   members: string[];
 };
 
+/**
+ * The run working a task, or the run that last worked it: the session a
+ * handed-off attempt runs in, that attempt's request there, and the attempt
+ * number. The board's claim gate writes it from inside the run; the next claim
+ * clears it. It carries no flow: the run's flow is the one its session records
+ * as its owner.
+ */
+export type RunLink = { sessionId: string; requestId: string; attempt: number };
+
 /** One row on an attached board, with the fields a board publishes to a browser. */
 export type BoardRow = {
   /** The board's collection ref, `<channelId>.<name>`. */
@@ -76,11 +85,22 @@ export type BoardRow = {
   channelId: string;
   id: string;
   title: string;
+  /** The row's goal, as filed. */
+  goal: string | null;
   /** The status as stored (see `columns.ts` for how it is read). */
   status: string;
   assignee: string | null;
   priority: string | null;
   labels: string[];
+  /** The ids of the rows on the same board this one waits on. */
+  deps: string[];
+  attempts: number | null;
+  maxAttempts: number | null;
+  /**
+   * The run the board's gate linked to this row, or `null`: never claimed,
+   * claimed but not yet started, or stored before the link existed.
+   */
+  run: RunLink | null;
   error: string | null;
   createdAt: number | null;
   updatedAt: number | null;
@@ -216,18 +236,43 @@ export function toWorkstream(row: unknown): Workstream | undefined {
   };
 }
 
+/**
+ * A row's run link. Anything short of all three values reads as no link, so a
+ * row stored before the link existed, or a malformed one, is *no run*, never a
+ * guess (BP-030).
+ */
+export function toRunLink(value: unknown): RunLink | null {
+  const sessionId = text(field(value, "sessionId"));
+  const requestId = text(field(value, "requestId"));
+  const attempt = field(value, "attempt");
+  if (sessionId === null || requestId === null || typeof attempt !== "number") return null;
+  return { sessionId, requestId, attempt };
+}
+
+function count(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
 /** A board row, from what the board publishes. */
 export function toBoardRow(boardRef: string, channelId: string, topic: string, data: unknown): BoardRow {
-  const labels = field(data, "labels");
   return {
     boardRef,
     channelId,
     id: text(field(data, "id")) ?? topic,
     title: text(field(data, "title")) ?? text(field(data, "goal")) ?? topic,
+    goal: text(field(data, "goal")),
     status: text(field(data, "status")) ?? "pending",
     assignee: text(field(data, "assignee")),
     priority: field(data, "priority") == null ? null : String(field(data, "priority")),
-    labels: Array.isArray(labels) ? labels.filter((l): l is string => typeof l === "string") : [],
+    labels: strings(field(data, "labels")),
+    deps: strings(field(data, "deps")),
+    attempts: count(field(data, "attempts")),
+    maxAttempts: count(field(data, "maxAttempts")),
+    run: toRunLink(field(data, "run")),
     error: field(data, "error") == null ? null : String(field(data, "error")),
     createdAt: time(field(data, "createdAt")),
     updatedAt: time(field(data, "updatedAt")),

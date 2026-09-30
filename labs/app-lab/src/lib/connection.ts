@@ -52,6 +52,18 @@ export function readConnection(): Connection {
   return { userId: readUserId(), ...(bearerToken === undefined ? {} : { bearerToken }) };
 }
 
+/** The page meta the start script writes the `--devtool` address into. */
+export const DEVTOOL_META = "app-lab-devtool";
+
+/**
+ * The devtool App Lab was started with (`--devtool <url>`), or `undefined`.
+ * Only an http(s) address is taken.
+ */
+export function readDevtoolUrl(): string | undefined {
+  const value = document.querySelector<HTMLMetaElement>(`meta[name="${DEVTOOL_META}"]`)?.content.trim();
+  return value !== undefined && /^https?:\/\//.test(value) ? value : undefined;
+}
+
 /** `fetch`, with the Lab's bearer token on every request when there is one. */
 export function bearerFetcher(bearerToken: string | undefined): ClientFetch {
   if (bearerToken === undefined) return (input, init) => fetch(input, init);

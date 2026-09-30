@@ -104,6 +104,16 @@ describe("V8", () => {
     expect(literalColours(join(src, "styles.css"), `@theme {\n--x: hsl(0 0% 0%);\n/* End of token definitions. */\n.a { color: hsl(1 1% 1%); }`)).toHaveLength(1);
   });
 
+  it("makes no write from the task screen but the abort (ER-15, D2)", () => {
+    const taskFiles = ["lib/run.ts", "lib/task.tsx", "surfaces/TaskFrame.tsx", "surfaces/TaskSession.tsx", "surfaces/TaskInspector.tsx"];
+    const WRITES = /\b(sendAction|sendActionStream|resumeSuspension|postLine|createCollectionItem|updateCollectionItem|deleteCollectionItem|deleteSession|createSession|retryRequest|continueRequest)\b|method:\s*"(POST|PUT|PATCH|DELETE)"/;
+    const writes = (text: string) => text.split("\n").filter((line) => WRITES.test(line) || (/abortRequest\(/.test(line) && !/await actions\.abortRequest\(run\.requestId\)/.test(line)));
+    for (const file of taskFiles) expect(writes(readFileSync(join(src, file), "utf8")), file).toEqual([]);
+    expect(readFileSync(join(src, "lib/run.ts"), "utf8")).toContain("await actions.abortRequest(run.requestId)");
+    // Planted: a second write is caught.
+    expect(writes(`await clients.actions(f).sendAction("run", {});`)).toHaveLength(1);
+  });
+
   it("keeps every registry copy byte-equal to its source", () => {
     const copied = walk(copies);
     expect(copied.length).toBe(8);

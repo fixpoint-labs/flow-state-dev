@@ -25,9 +25,13 @@
  *   --port <n>        default 4300; 0 picks a free port
  *   --host <host>     default 127.0.0.1
  *   --assets <dir>    serve a different build of App Lab's pages (default: this package's dist/)
+ *   --devtool <url>   where the devtool runs, for a task's trace link. The
+ *                     pages are copied to a scratch directory with the address
+ *                     written into index.html; the build itself is untouched.
  */
-import { existsSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import type { DevToolConnectionConfig } from "@flow-state-dev/engine";
@@ -51,6 +55,7 @@ const { values } = parseArgs({
     port: { type: "string", default: "4300" },
     host: { type: "string", default: "127.0.0.1" },
     assets: { type: "string" },
+    devtool: { type: "string" },
   },
   strict: true,
 });
@@ -64,10 +69,34 @@ if (values.config === undefined) {
 const port = /^\d+$/.test(values.port!) ? Number(values.port) : NaN;
 if (!Number.isInteger(port) || port > 65535) fail(`Invalid port: ${values.port}`);
 
-const assets = values.assets === undefined ? DEFAULT_ASSETS : from(values.assets);
-if (!existsSync(resolve(assets, "index.html"))) {
-  fail(`App Lab's pages are not built at ${assets}. Run: pnpm --filter @flow-state-dev/app-lab build`);
+const built = values.assets === undefined ? DEFAULT_ASSETS : from(values.assets);
+if (!existsSync(resolve(built, "index.html"))) {
+  fail(`App Lab's pages are not built at ${built}. Run: pnpm --filter @flow-state-dev/app-lab build`);
 }
+
+/** The meta tag the page reads the devtool address from (`readDevtoolUrl`). */
+const DEVTOOL_META = "app-lab-devtool";
+
+/** The pages, with the devtool address written in when `--devtool` names one. */
+function pagesWithDevtool(devtool: string): string {
+  let url: URL;
+  try {
+    url = new URL(devtool);
+  } catch {
+    return fail(`Invalid --devtool address: ${devtool}`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") fail(`--devtool must be an http(s) address: ${devtool}`);
+  const copy = mkdtempSync(join(tmpdir(), "app-lab-pages-"));
+  cpSync(built, copy, { recursive: true });
+  const index = join(copy, "index.html");
+  const attr = url.href.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const html = readFileSync(index, "utf8");
+  const tag = `<meta name="${DEVTOOL_META}" content="${attr}">`;
+  writeFileSync(index, /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${tag}</head>`) : `${tag}${html}`);
+  return copy;
+}
+
+const assets = values.devtool === undefined ? built : pagesWithDevtool(values.devtool);
 
 process.chdir(invokedFrom);
 

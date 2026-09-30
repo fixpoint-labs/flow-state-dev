@@ -32,16 +32,34 @@ export const GAPS = {
   now: "What a task is doing now arrives with FIX-1651.",
   harness: "Which harness a seat runs arrives with FIX-1652.",
   cost: "A task's time and cost arrive with FIX-1651.",
-  taskScreen: {
-    title: "The task screen is not here yet",
-    body: "Its session, diff, checks and brief arrive with FIX-1664, in this frame.",
-  },
-  taskInspector: {
-    title: "No inspector yet",
-    body: "The task's inspector arrives with FIX-1664, in this panel.",
+  /**
+   * The task screen's gaps (FIX-1664's gap registry, BUSINESS-RULES.md): each
+   * names what arrives and who ships it, or says it is not planned in the
+   * first cut. When an owner ships, its entry here changes and nothing else.
+   */
+  task: {
+    composer:
+      "Not built yet: nothing sends your message into a running coding run. It is not planned in the first cut unless that operation is filed.",
+    alsoPost:
+      "Posting a task's message to its workstream too arrives with the same operation as typing to the worker, which is not planned in the first cut unless that operation is filed.",
+    handOff: "Handing a task to another worker, reassigning it and opening its PR arrive with FIX-1651.",
+    diff: {
+      title: "No diff yet",
+      body: "What a run changed arrives with FIX-1651. The edits it made show in the Session meanwhile.",
+    },
+    checks: {
+      title: "No checks yet",
+      body: "A run's checks arrive with FIX-1651.",
+    },
+    acceptance: "Acceptance criteria arrive with FIX-1651.",
+    reviewBy: "Who reviews a task arrives with FIX-1651.",
+    harness: "Which harness ran, its tokens and its cost arrive with FIX-1652. Nothing a browser can read carries them yet.",
+    recordsNoPlan: "This harness records no plan. Reading a run that records none arrives with FIX-1652.",
+    recordsNoFiles: "This harness records no file operations. Reading a run that records none arrives with FIX-1652.",
+    briefFields: "This board doesn't publish a task's context or input to a browser, so only its title and goal show here. Showing them is not planned in the first cut.",
   },
   addressWorker:
-    "Addressing a worker with @ arrives with FIX-1664's session write. Until then a line can only be posted to the whole channel.",
+    "Addressing one worker with @ isn't built yet: a coding worker takes no message while it runs. Until then a line can only be posted to the whole channel.",
   resources: "This Lab serves no documents to the browser, so there is nothing to open here yet.",
   inboxScope:
     "Inbox lists the asks in sessions you started, and in the runs those started. Asks in another member's sessions are not listed; an organization-wide view is FIX-1652's call.",

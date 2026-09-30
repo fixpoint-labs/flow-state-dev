@@ -18,10 +18,10 @@ afterEach(() => {
 });
 
 /** Run the start script from the repo root, the way `pnpm --filter … start` does. */
-function start(config: string) {
+function start(config: string, extra: string[] = []) {
   const child = spawn(
     process.execPath,
-    ["--import", "tsx", "bin/start.mts", "--config", config, "--port", "0", "--assets", assets],
+    ["--import", "tsx", "bin/start.mts", "--config", config, "--port", "0", "--assets", assets, ...extra],
     { cwd: pkg, env: { ...process.env, INIT_CWD: repo }, stdio: ["ignore", "pipe", "pipe"] },
   );
   running.push(child);
@@ -59,6 +59,20 @@ describe("the start command", () => {
     const sessions = await fetch(`${origin}/api/flows/sessions?userId=${encodeURIComponent("u_multi_seat_collab")}`);
     expect(sessions.status).toBe(200);
   }, 90_000);
+
+  it("writes --devtool into the served pages for the trace link, and leaves it out without the flag (BR-23)", async () => {
+    const withFlag = start("goals/multi-seat-collab/lab/fsdev.config.mts", ["--devtool", "http://127.0.0.1:4000"]);
+    const page = await (await fetch(`${await withFlag.listening}/tasks`)).text();
+    expect(page).toContain('<meta name="app-lab-devtool" content="http://127.0.0.1:4000/">');
+    expect(page).toContain("app-lab-test-pages");
+
+    const without = start("goals/multi-seat-collab/lab/fsdev.config.mts");
+    expect(await (await fetch(`${await without.listening}/tasks`)).text()).not.toContain("app-lab-devtool");
+
+    const refused = start("goals/multi-seat-collab/lab/fsdev.config.mts", ["--devtool", "javascript:alert(1)"]);
+    expect(await refused.exited).not.toBe(0);
+    expect(refused.output()).toMatch(/--devtool must be an http\(s\) address/);
+  }, 120_000);
 
   it("refuses a config path with nothing at it, with the loader's message", async () => {
     const app = start("labs/app-lab/test/fixtures/missing/fsdev.config.mts");
