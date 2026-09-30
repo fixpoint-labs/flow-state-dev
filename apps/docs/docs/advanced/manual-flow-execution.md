@@ -99,8 +99,8 @@ The same `output` and `error` are saved to the request's record in your
 `stores`, as `result`, when the run ends. A client can read them later from [`listSessionRequests`](/docs/api/client#sessionslistsessionrequestssessionid-options)
 without attaching a stream; pass `includeResultOutput: true` to get the output.
 The record keeps a JSON copy of the output, so a `Date` is stored as its ISO
-string. A value that doesn't survive a JSON round trip, such as a `BigInt` or
-`NaN`, or one over 64 KiB, isn't stored. Aborted and interrupted runs save no
+string. A value that doesn't survive a JSON round trip, such as a `BigInt`,
+`NaN` or a `Map`, isn't stored. Aborted and interrupted runs save no
 result.
 
 The output is saved for an action whose block is marked `transient` too:

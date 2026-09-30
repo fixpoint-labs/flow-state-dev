@@ -13,14 +13,6 @@
 import type { RequestActionResult } from "../stores/types";
 
 /**
- * The largest output a record stores, in bytes of its UTF-8 JSON. A larger
- * one is recorded as `outputNotRecorded: true` instead, so a record, and every
- * listing that carries outputs, stays bounded however much an action returns.
- * An action whose answer is bigger than this is better read from its items.
- */
-export const MAX_RECORDED_OUTPUT_BYTES = 64 * 1024;
-
-/**
  * A failure cause, as a normalized `FlowError` carries it. A missing `code`
  * is stored as `execution_error`, the code `normalizeError` infers by default.
  */
@@ -84,10 +76,11 @@ export function settledRecordFields(settlement: RequestSettlement): {
  * same value and a later mutation of the live object cannot reach the record.
  * A value JSON cannot hold (a `BigInt`, a cycle, a throwing `toJSON`), one
  * JSON would silently change (`NaN` or `±Infinity` read back as `null`, a
- * function or symbol dropped, an `undefined` array slot read back as `null`),
- * or one whose JSON is over {@link MAX_RECORDED_OUTPUT_BYTES}, is dropped with
- * a marker rather than failing the write it rides on, or storing a different
- * value. A `toJSON` result (a `Date`'s ISO string) is the value as stored, and
+ * function or symbol dropped, an `undefined` array slot read back as `null`,
+ * a `Map`, `Set`, `Error` or other built-in container read back as `{}` or a
+ * different shape), is dropped with a marker rather than failing the write it
+ * rides on, or storing a different value. Size is not capped: listings return
+ * the output only to a caller that opts in. A `toJSON` result (a `Date`'s ISO string) is the value as stored, and
  * an object key whose value is `undefined` is left out, which reads back the
  * same.
  */
@@ -101,7 +94,8 @@ function recordableOutput(output: unknown): RequestActionResult {
         (typeof value === "number" && !Number.isFinite(value)) ||
         typeof value === "function" ||
         typeof value === "symbol" ||
-        (value === undefined && Array.isArray(this))
+        (value === undefined && Array.isArray(this)) ||
+        isBuiltInContainer(value)
       ) {
         lossy = true;
       }
@@ -113,6 +107,20 @@ function recordableOutput(output: unknown): RequestActionResult {
   if (lossy) return { outputNotRecorded: true };
   // A `toJSON` that returns `undefined` stringifies to `undefined`.
   if (text === undefined) return { outputNotRecorded: true };
-  if (new TextEncoder().encode(text).byteLength > MAX_RECORDED_OUTPUT_BYTES) return { outputNotRecorded: true };
   return { output: JSON.parse(text) as unknown };
+}
+
+/**
+ * Whether `value` is an object JSON does not copy faithfully: anything that is
+ * not an array or a plain `[object Object]` (a `Map`, `Set`, `Error`, `RegExp`,
+ * typed array, promise). `JSON.stringify` writes those as `{}` or as their
+ * index keys without visiting what they hold. The replacer sees a value after
+ * its `toJSON`, so a `Date` arrives as its string, and boxed primitives
+ * serialize as their primitive, so neither is flagged. A class instance is
+ * `[object Object]` and is stored as its own enumerable fields.
+ */
+function isBuiltInContainer(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  if (value instanceof Number || value instanceof String || value instanceof Boolean) return false;
+  return Object.prototype.toString.call(value) !== "[object Object]";
 }

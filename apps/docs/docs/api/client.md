@@ -164,7 +164,7 @@ Without `includeResultOutput`, `result` carries `error` and a `hasOutput` flag b
 | `failed` | `{ error: { code, message }, hasOutput: false }`. When the action had returned before a completion hook failed the request, `hasOutput` is `true` and `output` is there with `includeResultOutput`. |
 | `in_progress`, `suspended`, `aborted` or `interrupted` | absent |
 
-`output` is a JSON copy of what the action returned, so a `Date` is stored as its ISO string and an object key set to `undefined` is left out. A value that doesn't survive a JSON round trip (a `BigInt`, an object that refers to itself, `NaN` or `Infinity`, a function or symbol, an `undefined` array slot) isn't stored, and neither is one over 64 KiB as JSON. Those requests carry `outputNotRecorded: true` and `hasOutput: false` in place of the output, and their status is unaffected.
+`output` is a JSON copy of what the action returned, so a `Date` is stored as its ISO string and an object key set to `undefined` is left out. A value that doesn't survive a JSON round trip (a `BigInt`, an object that refers to itself, `NaN` or `Infinity`, a function or symbol, an `undefined` array slot, a `Map`, `Set` or `Error`) isn't stored. Those requests carry `outputNotRecorded: true` and `hasOutput: false` in place of the output, and their status is unaffected.
 
 A finished request written by a server version that didn't store results has no `result`. Check `result == null` rather than inferring the outcome from `status`.
 

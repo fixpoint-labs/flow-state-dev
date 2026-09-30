@@ -13,7 +13,7 @@ import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
-import { buildRequestActionResult, MAX_RECORDED_OUTPUT_BYTES } from "../src/execution/request-action-result";
+import { buildRequestActionResult } from "../src/execution/request-action-result";
 
 const answer = { ok: false, error: "task is cancelled, which is terminal" };
 
@@ -212,7 +212,14 @@ describe("the request record's action result", () => {
       ["a nested function", { ok: true, retry: () => 1 }],
       ["a bare function", () => 1],
       ["a nested symbol", { tag: Symbol("t") }],
-      ["an undefined array slot", [1, undefined, 3]]
+      ["an undefined array slot", [1, undefined, 3]],
+      // Built-in containers stringify as `{}` or index keys without JSON
+      // visiting their contents, so they would store a different answer.
+      ["a Map", new Map([["a", 1]])],
+      ["a nested Set", { ids: new Set([1, 2]) }],
+      ["an Error", new Error("nope")],
+      ["a RegExp", { pattern: /x/ }],
+      ["a typed array", new Uint8Array([1, 2])]
     ];
     for (const [label, output] of lossy) {
       expect(buildRequestActionResult({ status: "completed", output }), label).toEqual({ outputNotRecorded: true });
@@ -223,36 +230,23 @@ describe("the request record's action result", () => {
     expect(
       buildRequestActionResult({ status: "completed", output: { at, ok: false, detail: undefined } })
     ).toEqual({ output: { at: "2026-09-30T00:00:00.000Z", ok: false } });
+    // A class instance's own fields and a boxed primitive survive JSON.
+    class Verdict {
+      constructor(readonly ok: boolean) {}
+    }
+    expect(
+      buildRequestActionResult({ status: "completed", output: { v: new Verdict(true), n: Object(3) } })
+    ).toEqual({ output: { v: { ok: true }, n: 3 } });
   });
 
-  // A record, and every listing that carries outputs, stays bounded however
-  // much an action returns: an output over the cap keeps its status and drops
-  // its value, the same way an unstorable one does.
-  it("stores an output up to the byte cap, and a marker past it", async () => {
-    // A JSON string is its characters plus two quotes.
-    const atCap = "x".repeat(MAX_RECORDED_OUTPUT_BYTES - 2);
-    expect(buildRequestActionResult({ status: "completed", output: atCap })).toEqual({ output: atCap });
-    expect(buildRequestActionResult({ status: "completed", output: `${atCap}x` })).toEqual({
-      outputNotRecorded: true
-    });
-    // Counted in UTF-8 bytes, not characters: half as many two-byte
-    // characters is already over.
-    expect(
-      buildRequestActionResult({ status: "completed", output: "é".repeat(MAX_RECORDED_OUTPUT_BYTES / 2) })
-    ).toEqual({ outputNotRecorded: true });
-    // On a failure the error still lands next to the marker.
-    expect(
-      buildRequestActionResult({
-        status: "failed",
-        error: { code: "execution_error", message: "hook failed" },
-        answered: { output: `${atCap}x` }
-      })
-    ).toEqual({ outputNotRecorded: true, error: { code: "execution_error", message: "hook failed" } });
-
-    const { record, returned } = await run(oneAction({ execute: () => ({ blob: `${atCap}x` }) }), "req_over_cap");
+  // Storage is uncapped by design (D1): a large answer is still the answer,
+  // and only a listing that opts into outputs pays to carry it.
+  it("stores a large output whole", async () => {
+    const blob = "é".repeat(256 * 1024);
+    const { record, returned } = await run(oneAction({ execute: () => ({ blob }) }), "req_large");
     expect(record?.status).toBe("completed");
-    expect(record?.result).toEqual({ outputNotRecorded: true });
-    expect(returned.output).toEqual({ blob: `${atCap}x` });
+    expect(record?.result).toEqual({ output: { blob } });
+    expect(returned.output).toEqual({ blob });
   });
 
   it("gives the in-process caller the same answer the record stores (BR-10)", async () => {
