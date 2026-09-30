@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="What changes. Today, top lane: the flow's session declarations are walked twice. The HTTP routes walk them in the lineage-scope module; the execution context walks them again in its own bucket builder, which also refuses conflicting prefixes. Both walks feed the already-shared tie-break (exact single, then longest prefix) and the already-shared lineage id, and end at a session or lineage address. A wrong edit to the HTTP walk reddens only HTTP tests. After, bottom lane: one session routing index walks the declarations once. The HTTP helpers and the execution context both read it; execution alone still refuses conflicting prefixes. The tie-break, lineage id and addresses are unchanged, and a wrong edit to the index reddens both paths' tests."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .lane  { fill:var(--surface-2); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .dup   { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .arrown{ stroke:var(--code); stroke-width:1.6; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .headn { fill:var(--code); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code{ fill:var(--code); }
+    .c-gone{ fill:var(--gone); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+
+  <g id="today">
+    <rect class="lane" x="16" y="14" width="908" height="158" rx="6"/>
+    <text class="t-lbl" x="32" y="34">TODAY</text>
+    <rect class="box" x="32" y="70" width="150" height="50" rx="4"/>
+    <text class="t-h" x="44" y="92">flow's session</text>
+    <text class="t-h" x="44" y="108">declarations</text>
+    <rect class="dup" x="226" y="44" width="220" height="50" rx="4"/>
+    <text class="t-h c-gone" x="238" y="65">walk #1 · HTTP routes</text>
+    <text class="t-s" x="238" y="82">lineage-scope module</text>
+    <rect class="dup" x="226" y="104" width="220" height="56" rx="4"/>
+    <text class="t-h c-gone" x="238" y="125">walk #2 · execution context</text>
+    <text class="t-s" x="238" y="141">its own bucket builder</text>
+    <text class="t-s" x="238" y="154">+ refuses conflicting prefixes</text>
+    <path class="arrow" d="M182,90 L224,72"/>
+    <path class="arrow" d="M182,100 L224,128"/>
+    <path class="arrow" d="M446,69 L500,94"/>
+    <path class="arrow" d="M446,132 L500,106"/>
+    <rect class="box" x="502" y="74" width="200" height="52" rx="4"/>
+    <text class="t-h" x="514" y="95">tie-break + lineage id</text>
+    <text class="t-s" x="514" y="112">already shared by both</text>
+    <path class="arrow" d="M702,100 L738,100"/>
+    <rect class="box" x="740" y="74" width="168" height="52" rx="4"/>
+    <text class="t-h" x="752" y="95">session or lineage</text>
+    <text class="t-s" x="752" y="112">the address</text>
+    <text class="t-s c-gone" x="502" y="152">a wrong edit to walk #1 reddens HTTP tests only</text>
+  </g>
+
+  <g id="after">
+    <rect class="lane" x="16" y="186" width="908" height="160" rx="6"/>
+    <text class="t-lbl" x="32" y="206">AFTER</text>
+    <rect class="box" x="32" y="242" width="150" height="50" rx="4"/>
+    <text class="t-h" x="44" y="264">flow's session</text>
+    <text class="t-h" x="44" y="280">declarations</text>
+    <path class="arrown" d="M182,267 L224,267"/>
+    <rect class="new" x="226" y="236" width="220" height="62" rx="4"/>
+    <text class="t-h c-code" x="238" y="258">one session routing index</text>
+    <text class="t-s" x="238" y="275">walked once, lineage-scope module</text>
+    <text class="t-s" x="238" y="289">reports conflicts, does not throw</text>
+    <path class="arrown" d="M446,258 L500,242"/>
+    <path class="arrown" d="M446,276 L500,299"/>
+    <rect class="box" x="502" y="222" width="200" height="40" rx="4"/>
+    <text class="t-h" x="514" y="247">HTTP helpers read it</text>
+    <rect class="box" x="502" y="272" width="200" height="54" rx="4"/>
+    <text class="t-h" x="514" y="293">execution reads it</text>
+    <text class="t-s" x="514" y="310">and still refuses conflicts</text>
+    <path class="arrow" d="M702,242 L738,262"/>
+    <path class="arrow" d="M702,298 L738,276"/>
+    <rect class="box" x="740" y="244" width="168" height="52" rx="4"/>
+    <text class="t-h" x="752" y="265">same tie-break</text>
+    <text class="t-s" x="752" y="282">same addresses</text>
+    <text class="t-s c-code" x="226" y="324">a wrong edit here reddens both paths</text>
+  </g>
+  <polygon class="head" points="224,72 216,72 219,79"/>
+  <polygon class="head" points="224,128 216,128 219,121"/>
+  <polygon class="head" points="500,94 492,93 495,87"/>
+  <polygon class="head" points="500,106 492,107 495,113"/>
+  <polygon class="head" points="738,100 731,96 731,104"/>
+  <polygon class="headn" points="224,267 217,263 217,271"/>
+  <polygon class="headn" points="500,242 492,241 495,248"/>
+  <polygon class="headn" points="500,299 492,300 495,293"/>
+  <polygon class="head" points="738,262 730,262 733,256"/>
+  <polygon class="head" points="738,276 730,276 733,282"/>
+</svg>
