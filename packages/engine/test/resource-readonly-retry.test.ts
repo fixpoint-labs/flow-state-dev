@@ -3,8 +3,9 @@
  * re-runs the whole block and replays every side effect already performed.
  *
  * FIX-1519: a resource collection's writable:false refusal is the same
- * refusal, so it carries the same FlowError (`resource_read_only`,
- * non-retryable) as a single resource's, on every path it refuses.
+ * refusal, so a retry-configured block does not re-run on it either. The
+ * error shape on each collection refusal path is pinned in
+ * context/resource-registry.spec.ts.
  *
  * Both halves are required: the refusal is not retried *and* a genuinely
  * retryable failure on the same persist/write path still is. Tests configure
@@ -20,15 +21,10 @@ import {
   handler
 } from "@flow-state-dev/core";
 import { z } from "zod";
-import type {
-  JsonObject,
-  ResourceCollectionConfig,
-  ResourceConfig
-} from "@flow-state-dev/core/types";
+import type { JsonObject, ResourceConfig } from "@flow-state-dev/core/types";
 import {
   FlowError,
   NetworkError,
-  ResourceAlreadyExistsError,
   createInMemoryStores,
   isRetryableError,
   retryWithPolicy,
@@ -110,6 +106,7 @@ describe("writable:false refusals are not retried (FIX-1265)", () => {
 
     expect(attempts).toBe(1);
     expect(thrown).toBeInstanceOf(FlowError);
+    expect((thrown as FlowError).code).toBe("resource_read_only");
     expect((thrown as FlowError).retryable).toBe(false);
     expect(isRetryableError(thrown as Error, RETRY_POLICY)).toBe(false);
   });
@@ -153,6 +150,7 @@ describe("writable:false refusals are not retried (FIX-1265)", () => {
 
     expect(attempts).toBe(1);
     expect(thrown).toBeInstanceOf(FlowError);
+    expect((thrown as FlowError).code).toBe("resource_read_only");
     expect((thrown as FlowError).retryable).toBe(false);
     expect(isRetryableError(thrown as Error, RETRY_POLICY)).toBe(false);
   });
@@ -268,131 +266,7 @@ describe("writable:false refusals are not retried (FIX-1265)", () => {
   });
 });
 
-function makeReadOnlyCollectionRegistry(initialState: Record<string, JsonObject>) {
-  const state: Record<string, JsonObject> = { ...initialState };
-  const content: Record<string, string> = {};
-  const items: ResourceCollectionConfig = {
-    pattern: "items/*",
-    scope: "session",
-    stateSchema: z.object({ v: z.number() }).passthrough(),
-    writable: false
-  };
-
-  const registry = createScopeResourceRegistry({
-    scope: "session",
-    scopeId: "sess_readonly_collection",
-    cellOf: () => "sess_readonly_collection",
-    configs: { items },
-    readResources: () => state,
-    readResourceContent: () => content,
-    // Honors create-if-absent the way the real CAS does: a `create` intent
-    // against a live row loses with ResourceAlreadyExistsError.
-    mutateResourceKey: async (key, mutator, opts) => {
-      const previous = state[key];
-      if (opts?.intent === "create" && previous !== undefined) {
-        throw new ResourceAlreadyExistsError(key, { value: previous, version: 1 });
-      }
-      state[key] = await mutator(previous ?? {});
-      return { committed: true, previousState: previous ?? {} };
-    },
-    deleteResourceKey: async (key) => {
-      const existed = key in state;
-      delete state[key];
-      return existed;
-    },
-    persistResourceContentKey: async (key, value) => {
-      content[key] = value;
-    },
-    deleteResourceContentKey: async (key) => {
-      delete content[key];
-    }
-  });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { collection: (registry as any).items, state, content };
-}
-
-/**
- * Runs `op` under a retry policy and returns what it threw plus how many
- * attempts ran — the observable a retry-configured block would see.
- */
-async function refusalUnderRetry(op: () => Promise<unknown>) {
-  let attempts = 0;
-  let thrown: unknown;
-  try {
-    await retryWithPolicy(async () => {
-      attempts += 1;
-      await op();
-    }, RETRY_POLICY);
-  } catch (err) {
-    thrown = err;
-  }
-  return { attempts, thrown };
-}
-
-function expectReadOnlyRefusal(
-  outcome: { attempts: number; thrown: unknown },
-  message: string
-) {
-  // Same shape as the single-resource refusal above: one attempt, a FlowError
-  // with the resource_read_only code, and the message callers match on.
-  expect(outcome.attempts).toBe(1);
-  expect(outcome.thrown).toBeInstanceOf(FlowError);
-  const err = outcome.thrown as FlowError;
-  expect(err.code).toBe("resource_read_only");
-  expect(err.retryable).toBe(false);
-  expect(err.message).toBe(message);
-  expect(isRetryableError(err, RETRY_POLICY)).toBe(false);
-}
-
-describe("collection writable:false refusals match the single-resource refusal (FIX-1519)", () => {
-  it("single-resource refusal carries resource_read_only (the shape collections must match)", async () => {
-    const registry = makeWritableRegistry({
-      configs: { doc: makeResourceConfig({ writable: false }) }
-    });
-    expectReadOnlyRefusal(
-      await refusalUnderRetry(() => registry.get("doc").patchState({ x: 1 })),
-      'Resource "doc" is read-only'
-    );
-  });
-
-  it("refuses an instance state write with a non-retryable FlowError", async () => {
-    const { collection, state } = makeReadOnlyCollectionRegistry({ "items/doc1": { v: 1 } });
-    const ref = await collection.get("doc1");
-    expectReadOnlyRefusal(
-      await refusalUnderRetry(() => ref.patchState({ v: 2 })),
-      'Resource "items/doc1" is read-only'
-    );
-    expect(state["items/doc1"]).toEqual({ v: 1 });
-  });
-
-  it("refuses an instance content write with a non-retryable FlowError", async () => {
-    const { collection, content } = makeReadOnlyCollectionRegistry({ "items/doc1": { v: 1 } });
-    const ref = await collection.get("doc1");
-    expectReadOnlyRefusal(
-      await refusalUnderRetry(() => ref.writeContent("nope")),
-      'Resource "items/doc1" content is read-only'
-    );
-    expect(content["items/doc1"]).toBeUndefined();
-  });
-
-  it("refuses create({ replace: true }) over a live instance with a non-retryable FlowError", async () => {
-    const { collection, state } = makeReadOnlyCollectionRegistry({ "items/doc1": { v: 1 } });
-    expectReadOnlyRefusal(
-      await refusalUnderRetry(() => collection.create("doc1", { v: 42 }, { replace: true })),
-      'Resource "items/doc1" is read-only'
-    );
-    expect(state["items/doc1"]).toEqual({ v: 1 });
-  });
-
-  it("refuses delete with a non-retryable FlowError", async () => {
-    const { collection, state } = makeReadOnlyCollectionRegistry({ "items/doc1": { v: 1 } });
-    expectReadOnlyRefusal(
-      await refusalUnderRetry(() => collection.delete("doc1")),
-      'Resource "items/doc1" is read-only'
-    );
-    expect(state["items/doc1"]).toEqual({ v: 1 });
-  });
-
+describe("collection writable:false refusals are not retried (FIX-1519)", () => {
   it("does not re-execute a retry-configured block that hits a read-only collection write", async () => {
     let attempts = 0;
     const flow = defineFlow({
