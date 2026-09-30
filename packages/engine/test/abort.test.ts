@@ -2643,3 +2643,93 @@ describe("a queued request cancelled through the route", () => {
     expect((await stores.request.get(requestId))?.status).toBe("aborted");
   });
 });
+
+// The run's controller must carry the incarnation of the request the run
+// actually executes as. Admission and the execution context read the record
+// separately, and a request that took the id in between is the one the context
+// adopts; a cancel fenced on that request has to reach this run. Heartbeats are
+// off, so the route's fire is the only delivery.
+describe("a run's abort controller carries the incarnation it executes as", () => {
+  it("fires for a cancel of the request the context adopted, not the one admission read", async () => {
+    const stores = createInMemoryStores();
+    const requestId = "req_adopted_later";
+    let status: number | undefined;
+    const flow = defineFlow({
+      kind: "adopt-fence",
+      request: { heartbeatIntervalMs: 0 },
+      actions: {
+        run: {
+          inputSchema: z.unknown(),
+          block: handler({
+            name: "park",
+            inputSchema: z.unknown(),
+            outputSchema: z.string(),
+            execute: async (_input: unknown, ctx) => {
+              const response = await handleAbortRequest(
+                new Request(`http://localhost/api/flows/adopt-fence/requests/${requestId}/abort`, {
+                  method: "POST"
+                }),
+                { kind: "abort_request", flowKind: "adopt-fence", requestId },
+                { stores }
+              );
+              status = response.status;
+              const aborted = await new Promise<boolean>((resolve) => {
+                if (ctx.signal.aborted) return resolve(true);
+                const timer = setTimeout(() => resolve(false), 300);
+                ctx.signal.addEventListener("abort", () => {
+                  clearTimeout(timer);
+                  resolve(true);
+                }, { once: true });
+              });
+              if (aborted) throw new DOMException("Aborted", "AbortError");
+              return "self-completed";
+            }
+          })
+        }
+      }
+    })({ id: "adopt-fence" });
+
+    // On file: the later request, which the execution context adopts.
+    const adopted = createInitialRequestRecord(
+      {
+        requestId,
+        flowKind: "adopt-fence",
+        flowId: "adopt-fence",
+        actionName: "run",
+        userId: "u_adopt",
+        orgId: DEFAULT_ORG_ID
+      },
+      Date.now()
+    );
+    await stores.request.set(requestId, adopted, "absent");
+
+    // Admission's read still saw the earlier request under the id.
+    const get = stores.request.get.bind(stores.request);
+    let first = true;
+    stores.request.get = async (id: string) => {
+      const record = await get(id);
+      if (first && id === requestId && record !== undefined) {
+        first = false;
+        return { ...record, incarnation: "inc_admitted_earlier" };
+      }
+      return record;
+    };
+
+    await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_adopt",
+      orgId: DEFAULT_ORG_ID,
+      stores,
+      runtimeConfig: {}
+    });
+    stores.request.get = get;
+
+    expect(status).toBe(204);
+    const record = await stores.request.get(requestId);
+    expect(record?.incarnation).toBe(adopted.incarnation);
+    expect(record?.status).toBe("aborted");
+  });
+});

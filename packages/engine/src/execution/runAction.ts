@@ -61,7 +61,8 @@ import { generateId } from "../utils/generate-id";
 import {
   abortRequest,
   registerAbortController,
-  deregisterAbortController
+  deregisterAbortController,
+  tagAbortController
 } from "./abort-registry";
 import {
   assertSessionAdmitted,
@@ -1629,6 +1630,19 @@ export async function runActionInternal<
       // `--model`). A detached child inherits it. See `effectiveRuntimeConfig`.
       effectiveRuntimeConfig: options.runtimeConfig
     });
+
+    // The controller was tagged from admission's read, but the context reads
+    // the record again and runs as whatever request holds the id now. If
+    // another request took the id in between, re-tag the controller with the
+    // one this run executes as, so a cancel fenced on it fires here. A cancel
+    // of that request recorded while the tag was still the earlier one missed
+    // the controller, so read the stored intent once and deliver it.
+    if (ctx.request.incarnation !== runIncarnation) {
+      tagAbortController(requestId, abortController, ctx.request.incarnation);
+      if (await options.stores.request.isAbortRequested(requestId).catch(() => false)) {
+        abortController.abort();
+      }
+    }
 
     // Resume mode: load the suspension record + checkpoint to restore the durable
     // sequencer's accumulator state. `resumeOf` (legacy two-request path) reads
