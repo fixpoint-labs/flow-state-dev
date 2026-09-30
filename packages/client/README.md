@@ -103,11 +103,8 @@ If you're on React you don't need this — `useSession` and `useRequestStream` w
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-// Requests go to the same origin by default. Pass `baseUrl` only when the API
-// is on another origin, e.g. `createSessionClient({ baseUrl: "https://api.example.com" })`.
-// Request paths already start with `/api/flows`, so a path such as `"/api"`
-// doubles the prefix and every call 404s.
-const sessions = createSessionClient();
+// Same origin by default. See Client options for `baseUrl`.
+const sessions = createSessionClient(/* { baseUrl: "https://api.example.com" } */);
 
 // State snapshot with clientData and items
 const snapshot = await sessions.getSessionState("sess_1", {
@@ -339,4 +336,5 @@ pnpm --filter @flow-state-dev/client test
 ## Architecture reference
 
 - [Client](https://flow-state.dev/docs/client/overview) — Routes, transport, React hooks contract
+- [Client options](https://flow-state.dev/docs/configuration/client) — `createClient` and `FlowProvider` options, including when to set `baseUrl`
 - [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, SSE protocol, resume semantics

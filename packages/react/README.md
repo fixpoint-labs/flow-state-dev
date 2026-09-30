@@ -73,7 +73,7 @@ Props:
 - `flowKind?: string` — Default flow instance for child hooks (a kind, or a collection member's own id)
 - `sessionId?: string` — Default session ID
 - `userId?: string` — Required for Phase 1
-- `baseUrl?: string` — Origin of the flow API, such as `https://api.example.com`. Omit it for a same-origin app; request paths already start with `/api/flows`
+- `baseUrl?: string` — Forwarded to the client; omit it for a same-origin app. See [Client options](https://flow-state.dev/docs/configuration/client)
 - `renderers?: RendererRegistry` — Custom renderers keyed by item type or component key
 - `children: ReactNode`
 

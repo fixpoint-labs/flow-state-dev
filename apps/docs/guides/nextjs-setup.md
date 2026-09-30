@@ -257,4 +257,4 @@ Put FlowProvider as high as needed. Every component that uses `useFlow`, `useSes
 
 ### Base URL for the client
 
-The client defaults to `/api/flows` when running in the browser. If your API lives elsewhere (e.g. a separate backend), configure the base URL in the client or FlowProvider. See the [Client API](/docs/api/client) for options.
+The client calls the same origin by default, and its request paths already start with `/api/flows`. If your API lives on another origin (e.g. a separate backend), pass that origin as `baseUrl` to the client or `FlowProvider`. See [Client options](/docs/configuration/client).
