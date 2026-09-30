@@ -51,7 +51,9 @@ const EMPTY: PanelRow<never>[] = [];
  * handing back a `nextCursor` forever rather than a limit anyone is expected
  * to reach. At the route's largest page (`STATE_LIST_MAX_LIMIT`, 200 —
  * `packages/engine/src/routes/resource-routes.ts`) this still covers 200,000
- * rows before it gives up and shows what it has.
+ * rows. Reaching it with a `nextCursor` still outstanding is a read failure,
+ * not a result: the panel shows its error, never the pages it got as if they
+ * were the whole list (BR-19, BR-21).
  */
 const MAX_PAGES = 1000;
 
@@ -246,10 +248,12 @@ export function usePanelRows<TClient = unknown>(
         for (const item of page.items) {
           collected.push({ topic: item.topic, clientData: item.clientData as TClient });
         }
-        if (page.nextCursor === undefined) break;
+        if (page.nextCursor === undefined) return collected;
         cursor = page.nextCursor;
       }
-      return collected;
+      throw new Error(
+        `Stopped after ${MAX_PAGES} pages with more still to read, rather than show part of the list as all of it.`
+      );
     },
     driver
   );
