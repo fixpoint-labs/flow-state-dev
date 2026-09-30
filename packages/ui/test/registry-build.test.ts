@@ -172,7 +172,8 @@ describe("registry build", () => {
     } finally {
       rmSync(out, { recursive: true, force: true });
     }
-  });
+    // Spawns the build; under a parallel test run that alone can pass 5s.
+  }, 30_000);
 
   it("index.json contains all items", () => {
     const index = JSON.parse(readFileSync(resolve(OUTPUT_DIR, "index.json"), "utf-8"));

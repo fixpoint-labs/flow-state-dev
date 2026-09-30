@@ -2,7 +2,7 @@
  * Storybook configuration for `@flow-state-dev/ui`.
  *
  * The Vite builder is extended to:
- *  - register the Tailwind v4 plugin so theme tokens declared in
+ *  - register the Tailwind v4 plugin so theme tokens imported by
  *    `preview.css` are picked up at preview time, and
  *  - alias the shadcn `@/components/ui/*` and `@/lib/utils` paths used by
  *    registry components to the preview-only stub directory under

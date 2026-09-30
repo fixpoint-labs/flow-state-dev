@@ -105,7 +105,7 @@ const boards: Array<{ name: string; means?: "attention" | "warning"; items: Outp
   { name: "task-plan:in-progress", items: f.board("b-running", "active", [task("t3", "in_progress")]) },
   { name: "task-plan:completed", items: f.board("b-done", "active", [task("t4", "completed")]) },
   { name: "task-plan:errored", items: f.board("b-error", "active", [task("t5", "errored", { error: "It threw." })]) },
-  { name: "task-plan:board-planning", means: "warning", items: f.board("b-planning", "planning", [task("t6", "pending")]) },
+  { name: "task-plan:board-planning", items: f.board("b-planning", "planning", [task("t6", "pending")]) },
   { name: "task-plan:board-replanning", means: "warning", items: f.board("b-replanning", "replanning", [task("t7", "pending")]) },
   { name: "task-plan:board-reviewing", items: f.board("b-reviewing", "reviewing", [task("t8", "pending")]) },
 ];

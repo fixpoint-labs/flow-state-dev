@@ -68,6 +68,26 @@ describe("task plan states", () => {
     expect(tokensOn(row?.querySelector("svg") ?? null)).toEqual([token]);
   });
 
+  // Planning is ordinary progress; only a plan sent back is something off.
+  it.each([
+    ["planning", "info"],
+    ["active", "info"],
+    ["reviewing", "info"],
+    ["replanning", "warning"],
+  ])("a board that is %s reads %s", (status, token) => {
+    render(
+      <SessionItemsProvider
+        value={[
+          makeBoardMeta({ collectionId: "board", meta: { status } as never }),
+          makeTaskChange({ collectionId: "board", task: makeTask({ id: "t1", goal: "a task", status: "pending" }) }),
+        ]}
+      >
+        <TaskPlan collectionId="board" />
+      </SessionItemsProvider>
+    );
+    expect(tokensOn(screen.getByText(/…$/))).toEqual([token]);
+  });
+
   it("colours a blocked task's notes as a warning, never as an ask", () => {
     render(
       <SessionItemsProvider

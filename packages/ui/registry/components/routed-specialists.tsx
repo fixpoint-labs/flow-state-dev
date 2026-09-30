@@ -49,7 +49,7 @@ export function RoutedSpecialists({ item }: { item: ContainerItem }) {
     <div className="not-prose my-2 rounded-md border bg-card p-3 text-card-foreground">
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <ClipboardListIcon className="h-3.5 w-3.5 text-success" aria-hidden="true" />
+          <ClipboardListIcon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm font-medium leading-snug">Routed Specialists</p>
         </div>
         <div className="flex items-center gap-2">

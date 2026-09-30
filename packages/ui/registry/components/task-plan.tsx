@@ -430,17 +430,17 @@ function TaskPlanHeader({
 }
 
 /**
- * A board's phase. Every phase here is agents at work, so none takes
- * `attention` (a person must act). Each keeps the hue it had before tokens:
- * planning and replanning on `warning`'s amber, active on `info`. Reviewing
- * was cyan, which no token carries, so it takes `info`, the nearest.
+ * A board's phase, coloured by what it means. Every phase here is agents at
+ * work, so none takes `attention` (a person must act). Planning, active and
+ * reviewing are ordinary progress (`info`); replanning means a review sent
+ * the plan back, which is `warning`.
  */
 function boardStatusToneClass(status: string): string {
   switch (status) {
     case "active":
+    case "planning":
     case "reviewing":
       return "text-info";
-    case "planning":
     case "replanning":
       return "text-warning";
     default:

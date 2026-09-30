@@ -6,10 +6,10 @@
  * Model-free, real browser. The path is the one an app takes:
  *
  *   1. Build the registry from this checkout and serve it over HTTP.
- *   2. Make a fresh host app and install the sweep with the shadcn CLI
- *      (what `fsdev ui add` runs), through the items that ship it, in one
- *      call. The token defaults arrive as a dependency, the way they do for
- *      any app.
+ *   2. Make a fresh host app and install the sweep with one
+ *      `fsdev ui add <every item>`, through the items that ship it. The token
+ *      defaults arrive as a dependency, the way they do for any app. A CLI
+ *      that stops to ask anything fails the run.
  *   3. Check the host's copies match the registry byte for byte, FIRST. A
  *      pass on edited copies would prove the copies, not the skin.
  *   4. Build a page rendering every swept part in every state that carries a
@@ -475,17 +475,26 @@ await runGoal(async () => {
 
     // 2. A fresh host, installed the way an app installs.
     makeHost(host);
-    // One CLI call for the whole sweep. `fsdev ui add` runs the same CLI once
-    // per item, and a later item that shares an upstream primitive with an
-    // earlier one stops at an overwrite prompt. Asynchronous on purpose: the
+    // Through `fsdev ui add`, every item in one command, the way an app adds
+    // several at once. Its stdin is closed, so a CLI that stops to ask
+    // anything fails here instead of waiting. Asynchronous on purpose: the
     // registry is served from this process, and a synchronous child would
     // block the server it is fetching from.
     try {
-      await execFileAsync("npx", ["shadcn@latest", "add", ...SWEEP_ITEMS.map((item) => `${origin}/r/${item}.json`)], {
-        cwd: host,
-        timeout: 300_000,
+      const install = execFileAsync("pnpm", ["fsdev", "ui", "add", ...SWEEP_ITEMS, "--registry", `${origin}/r`, "--cwd", host], {
+        cwd: REPO_ROOT,
+        timeout: 180_000,
         maxBuffer: 64 * 1024 * 1024,
       });
+      install.child.stdin?.end();
+      const { stdout, stderr } = await install;
+      // A closed stdin answers a prompt "no" and the command still exits 0,
+      // so the prompt itself is the failure: at a terminal it stops the user.
+      const asked = `${stdout}${stderr}`.match(/[^\n]*Would you like to[^\n?]*\?/g);
+      if (asked) {
+        const questions = [...new Set(asked.map((line) => line.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "").trim()))];
+        return { failures: [`setup: fsdev ui add stopped to ask: ${questions.join(" | ")}`], evidence: "" };
+      }
     } catch (error) {
       const e = error as { stdout?: string; stderr?: string; message: string };
       const out = `${e.stdout ?? ""}${e.stderr ?? ""}`.trim().split("\n").slice(-15).join("\n");
