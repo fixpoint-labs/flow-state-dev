@@ -7,7 +7,8 @@
  * FIX-1655's design-system package supplies App Lab's own values; when it
  * lands, this block is replaced by its one import and nothing else changes.
  */
-@import "tailwindcss";
+/* Scan only App Lab's own source, whichever directory the build runs from. */
+@import "tailwindcss" source(none);
 @source "./";
 @custom-variant dark (&:is(.dark *));
 
