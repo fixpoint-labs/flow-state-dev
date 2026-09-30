@@ -54,8 +54,11 @@ gate passed, the control failed on the mismatch, and the sibling passed. The run
  // goals/pentest-lab/lab/host.mts  (shape only)
  const state = createFlowState({
    flows, stores,
-+  // who every request in this lab is: the lab's user, in the lab's org
-+  resolvePrincipal: () => ({ userId: LAB_USER_ID, orgId: LAB_ORG_ID }),
++  // who every request in this lab is: the lab's user, in the lab's org.
++  // Left out under the no-principal-org control, which is how that control fails.
++  ...(options.omitPrincipal === true ? {} : {
++    resolvePrincipal: () => ({ userId: LAB_USER_ID, orgId: LAB_ORG_ID }),
++  }),
  });
  const client = {
    createSession: async (create) => call("POST", [create.flowKind, "sessions"], {

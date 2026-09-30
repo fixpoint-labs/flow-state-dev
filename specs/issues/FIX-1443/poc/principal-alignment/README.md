@@ -1,5 +1,9 @@
 # POC · principal alignment
 
+> **Evidence, not the landing patch.** The implementation follows [PLAN](../../PLAN.md)
+> (`omitPrincipal`, `no-principal-org`), not this patch verbatim, and drops its
+> `if (false as boolean)` branch.
+
 Tests whether the pentest lab can drop its body-`orgId` wrap and still run as `org_pentest_lab`
 by setting a host-level `resolvePrincipal`, with no framework change.
 

@@ -39,6 +39,9 @@ session through the resolver and nowhere else.
 
 - **Instead of:** deleting the control. Without it, "the resolver is what binds the org" has no
   red state (BP-003).
+- **Out of scope:** the other direction. The control proves that *leaving the resolver out*
+  fails; it doesn't prove that a resolver returning a *different* org fails. That would take a
+  second control or an org override on this one, which is more surface than this issue needs.
 
 <a name="d3"></a>
 ## D3 · Decided: BR-16's org-less probe goes to `runAction`
@@ -52,14 +55,25 @@ missing org itself, with `OrgRequiredError` at stage `"runAction"`
 no org. The half that must succeed is unchanged. The claim BR-16 names is unchanged. Only its
 evidence path moves.
 
+- **Deliberately dropped:** after this, nothing in the gate exercises "the HTTP route refuses a
+  caller with no org". That is unreachable by construction, not weakened: the router always has
+  an org. The router-side refusal is FIX-1442's to prove, and it does, in
+  `packages/engine/test/transports/host.test.ts` → "validateDispatch — the envelope carries an
+  organization", which the action route calls before dispatch.
+
 ## Engineering calls
 
 - **E1 · The resolver ignores the request.** A lab has one caller. Reading `body.userId` would
   bring back the caller-controlled input FIX-1442 removed (BP-031).
 - **E2 · Remove `omitOrgWrap` from `OpenLabOptions` and add `omitPrincipal`.** A removed key isn't
   kept as an alias. The lab is private and has one caller.
-- **E3 · Fix `devforce-lab`'s pointer.** Its host comment says the pentest lab "still carries an
-  `omitOrgWrap` control". After this change that is false (BP-034). Change that sentence only.
+- **E3 · Fix `devforce-lab`'s pointer, and name one reference.** Its host comment says the
+  pentest lab "still carries an `omitOrgWrap` control". After this change that is false (BP-034).
+  It also calls `manager-queue-lab` "the current reference" while this lab's README teaches the
+  resolver. Pick one: the pentest lab's host `resolvePrincipal` is the reference for how a lab
+  gives `openChannels` the right org, since it is the seam real apps use and it keeps the real
+  routes. The devforce comment says so and keeps "shaped after `manager-queue-lab`" as a
+  description of its own code, not as the reference. Comment only.
 
 ## Open
 

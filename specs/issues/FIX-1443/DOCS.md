@@ -50,4 +50,7 @@ from this body."
 ## 4. `goals/devforce-lab/lab/host.mts`
 
 In the session-client comment, delete the sentence that begins "`goals/pentest-lab/lab/host.mts`
-still carries an `omitOrgWrap` control". The pointer to `manager-queue-lab` as the reference stays.
+still carries an `omitOrgWrap` control", and replace "which is the current reference" so the
+comment names one reference (E3): "Shaped after `goals/manager-queue-lab/lab/host.mts`. The
+reference for how a lab gives `openChannels` the right org is `goals/pentest-lab/lab/host.mts`:
+a host `resolvePrincipal`, with channels opened through the real session routes."
