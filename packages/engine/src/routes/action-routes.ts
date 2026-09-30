@@ -9,14 +9,12 @@
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost } from "../transports/types";
-import {
-  ConcurrencyRejectedError,
-  OrgRequiredError,
-  PrincipalResolutionError
-} from "../transports/errors";
+import { OrgRequiredError, PrincipalResolutionError } from "../transports/errors";
+import { concurrencyRefusalResponse } from "./concurrency-refusal";
 import { generateId } from "../utils/generate-id";
 import {
   FlowInstanceBindingMismatchError,
+  OrgBindingMismatchError,
   RequestOwnerMismatchError,
   UserBindingMismatchError
 } from "../context/binding-errors";
@@ -198,17 +196,12 @@ export async function handleExecuteAction(
   try {
     handle = ctx.host.dispatch(dispatchEnvelope);
   } catch (error) {
-    // Concurrency `reject`: another request holds this action's key. The gate
-    // throws synchronously from `dispatch` before any record is created. 409 is
-    // retryable; surface the in-flight requestId so a client may tail the
-    // surviving request instead of retrying.
-    if (error instanceof ConcurrencyRejectedError) {
-      return jsonResponse(409, {
-        error: "ConcurrencyRejected",
-        message: error.message,
-        requestId: error.inFlightRequestId
-      });
-    }
+    // Concurrency `reject`: another request holds this action's key. The
+    // in-memory arbiter throws synchronously from `dispatch` before any record
+    // is created; one over a shared backend refuses through `accepted` below.
+    // Both answer the same way — see `concurrencyRefusalResponse`.
+    const refused = concurrencyRefusalResponse(error, "action");
+    if (refused !== undefined) return refused;
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("active stream capacity")) {
       return jsonResponse(503, { error: message });
@@ -229,11 +222,15 @@ export async function handleExecuteAction(
     try {
       await handle.accepted;
     } catch (error) {
-      // A session another user owns: refused at admission with nothing
-      // written, and answered as the session routes answer it, as an id with
-      // no session behind it. Neither the owner nor the session's existence
-      // reaches the caller.
-      if (error instanceof UserBindingMismatchError) {
+      // Concurrency `reject` over a shared backend: refused at admission with
+      // nothing written, answered as the synchronous refusal above is.
+      const refused = concurrencyRefusalResponse(error, "action");
+      if (refused !== undefined) return refused;
+      // A session another user or organization owns: refused at admission
+      // with nothing written, and answered as the session routes answer it,
+      // as an id with no session behind it. Neither the owner, its
+      // organization, nor the session's existence reaches the caller.
+      if (error instanceof UserBindingMismatchError || error instanceof OrgBindingMismatchError) {
         return unknownSessionResponse(error.sessionId);
       }
       // A request id another principal took between the check above and the

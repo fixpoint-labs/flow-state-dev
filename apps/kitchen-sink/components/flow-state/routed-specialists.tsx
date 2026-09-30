@@ -49,7 +49,7 @@ export function RoutedSpecialists({ item }: { item: ContainerItem }) {
     <div className="not-prose my-2 rounded-md border bg-card p-3 text-card-foreground">
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <ClipboardListIcon className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
+          <ClipboardListIcon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm font-medium leading-snug">Routed Specialists</p>
         </div>
         <div className="flex items-center gap-2">
@@ -61,9 +61,9 @@ export function RoutedSpecialists({ item }: { item: ContainerItem }) {
           )}
           <span className="flex items-center gap-1 shrink-0 text-xs text-muted-foreground tabular-nums">
             {isFinished ? (
-              <CheckCircle2Icon className="h-3 w-3 text-emerald-500" aria-hidden="true" />
+              <CheckCircle2Icon className="h-3 w-3 text-success" aria-hidden="true" />
             ) : (
-              <Loader2Icon className="h-3 w-3 animate-spin text-blue-500" aria-hidden="true" />
+              <Loader2Icon className="h-3 w-3 animate-spin text-info" aria-hidden="true" />
             )}
             {iteration > 0
               ? `${populatedCount}/${totalKeys} · iter ${iteration}`
@@ -98,7 +98,7 @@ function WorkspaceEntry({ label, value }: { label: string; value: unknown }) {
   if (!isLong) {
     return (
       <li className="flex items-start gap-2">
-        <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+        <span className="mt-0.5 shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
           {label}
         </span>
         <span className="text-xs leading-snug">
@@ -112,7 +112,7 @@ function WorkspaceEntry({ label, value }: { label: string; value: unknown }) {
     <li>
       <details className="group">
         <summary className="flex cursor-pointer list-none items-start gap-2">
-          <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          <span className="mt-0.5 shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
             {label}
           </span>
           <span className="flex-1 truncate text-xs leading-snug text-muted-foreground">
@@ -148,8 +148,8 @@ function EntryMarkdown({ text }: { text: string }) {
     <div className={cn(
       "prose-none text-xs leading-snug text-muted-foreground",
       "[&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:my-0.5",
-      "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px]",
-      "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-muted [&_pre]:p-2",
+      "[&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px]",
+      "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded-sm [&_pre]:bg-muted [&_pre]:p-2",
       "[&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-2 [&_blockquote]:italic",
     )}>
       <Markdown components={markdownComponents}>{text}</Markdown>

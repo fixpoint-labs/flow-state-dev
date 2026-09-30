@@ -8,6 +8,7 @@
  */
 import type { ActionCore } from "@flow-state-dev/core/types";
 import type { ExecutionResult } from "../execution/types";
+import type { LeasePlace } from "./concurrency/lease-backend";
 
 /**
  * Serializable subset of InboundRequestEnvelope — everything a remote
@@ -46,6 +47,26 @@ export interface DispatchEnvelope {
    * being non-recoverable. See `InboundRequestEnvelope.resolvedActionCore`.
    */
   resolvedActionCore?: ActionCore;
+  /**
+   * The run's place on its concurrency key, taken by the dispatching host
+   * before the job was enqueued (FIX-1634). Present only when the host
+   * arbitrates external dispatch over a backend the worker shares: the worker
+   * waits for the place's turn before running and gives it back when the job
+   * is done for good.
+   *
+   * `== null` → no place: a job from a host that does not arbitrate, or one
+   * enqueued before this field existed. It runs as it always did.
+   *
+   * The place can be gone from the line by the time the worker reads it: the
+   * host gives it back when the enqueue fails, and a failure can be ambiguous
+   * (the queue accepted the job but the acknowledgement was lost), or its lease
+   * can lapse. A worker must not run under a place that is no longer on the
+   * line. The four-call contract cannot yet tell such a place from one still
+   * waiting (`isMyTurn` answers `false` for both), so how a worker recovers an
+   * orphaned job is not settled here; it is designed with the first shared
+   * backend.
+   */
+  leasePlace?: LeasePlace | null;
 }
 
 /**

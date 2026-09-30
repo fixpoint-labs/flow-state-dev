@@ -285,14 +285,27 @@ export interface InboundTransportHost {
    * Whether this host's effective dispatcher hands work to an external queue
    * rather than running it here.
    *
-   * Exposed because a delivery into an existing session is void across that
-   * boundary and must refuse rather than under-deliver — the concurrency gate
-   * does not apply to external dispatch at all. The host already computes this
+   * Exposed because a delivery into an existing session past that boundary
+   * must refuse rather than under-deliver when the host cannot arbitrate it
+   * against the session's concurrency policy — that is, unless
+   * `arbitratesExternalDispatch` is true. The host already computes this
    * to pick its own dispatch branch; publishing it is what stops a caller
    * re-deriving it from the dispatcher and reaching a different answer than the
    * host did.
    */
   readonly usesExternalDispatcher: boolean;
+
+  /**
+   * Whether work this host hands to an external queue is arbitrated against
+   * the recipient's concurrency policy — true when the host's arbiter keeps its
+   * keys in a backend the worker processes share (a worker adapter's
+   * `leaseBackend`). A delivery into an existing session past an external
+   * queue is refused unless this is true.
+   *
+   * Absent reads as false: a host built before this field existed keeps the
+   * refusal.
+   */
+  readonly arbitratesExternalDispatch?: boolean;
 
   /**
    * Dispatch an action-execution envelope. Fire-and-forget: returns a

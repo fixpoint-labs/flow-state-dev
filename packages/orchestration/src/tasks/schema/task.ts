@@ -167,6 +167,44 @@ export const taskSchema = z.object({
     })
     .optional(),
 
+  /**
+   * Which run is working this task, or last worked it (FIX-1668) — the
+   * session a handed-off attempt executes in, that attempt's request there,
+   * and the attempt number.
+   *
+   * **Written from inside the run.** The board's claim gate writes it in the
+   * run's own session, through the claim-fenced `linkRun`, before the worker's
+   * first step. Only the run knows for certain which session it landed in:
+   * that depends on the seat's session policy and on the conversation that
+   * drained the board, so nothing outside can rebuild it. Distinct from
+   * `claimedBy`, which on a handed-off row names the *claiming* conversation.
+   *
+   * **Lifetime: until the next claim.** `applyClaimToTask` clears it in the
+   * same write that advances `attempts`; settlement, retry and abandonment
+   * leave it alone, so a finished or failed task still names the run that last
+   * worked it. It says *which* run, not *whether* work is live — read
+   * `status` and the run's request for that.
+   *
+   * **Client-visible**, unlike `claimedBy`: a UI opens the run from it. The
+   * ids grant nothing; opening the session still passes the server's owner
+   * check. The run's flow is not here: read it off the session (`flowId`),
+   * since a seat may hand off to another flow than the board's.
+   *
+   * Server-set: absent from `TaskInit` and every patch surface. **Absent on
+   * rows stored before this shipped, on inline boards, and between a claim and
+   * its run's start** — one `== null` guard, nothing inferred (BP-030).
+   */
+  run: z
+    .object({
+      /** The session the run executes in (`ctx.session.identity.id` inside the run). */
+      sessionId: z.string(),
+      /** This attempt's request in that session (`ctx.request.identity.id`). */
+      requestId: z.string(),
+      /** The attempt that started the run — equal to `attempts` while it is the latest. */
+      attempt: z.number().int().nonnegative(),
+    })
+    .optional(),
+
   input: z.unknown().optional(),
   output: z.unknown().optional(),
   error: z.string().optional(),
@@ -283,6 +321,9 @@ export type Task<TInput = unknown, TOutput = unknown> = Omit<
 export type TaskClaimIdentity = NonNullable<
   z.infer<typeof taskSchema>["claimedBy"]
 >;
+
+/** The run link a handed-off attempt writes onto its task (FIX-1668) — see {@link taskSchema}'s `run`. */
+export type TaskRunLink = NonNullable<z.infer<typeof taskSchema>["run"]>;
 
 /** One entry in {@link taskSchema}'s `writeLog` — a caller's write id and the revision it committed at. */
 export type TaskWriteReceipt = NonNullable<

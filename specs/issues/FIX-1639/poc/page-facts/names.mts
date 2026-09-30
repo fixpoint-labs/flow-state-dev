@@ -247,11 +247,13 @@ const PKG = (spec: string): Check => () => (existsSync(join(pkgDir(spec), "packa
 const WEBHOOKS_REF = "apps/docs/docs/server/webhooks.md";
 const SCHEDULED_REF = "apps/docs/docs/server/scheduled.md";
 const DISPATCH_TYPES = "packages/core/src/types/dispatch.ts";
-const bind = (k: string) => P("@flow-state-dev/core", "defineWebhookBinding", "(0)", k);
+const bind = (...k: string[]) => P("@flow-state-dev/core", "defineWebhookBinding", "(0)", ...k);
 const sched = (...k: string[]) => P("@flow-state-dev/core", "FlowDefinition", "schedules", ...k);
 const dispatcherOpt = (...k: string[]) => P("@flow-state-dev/core", "dispatcher", "(0)", ...k);
 
 /** Every span the page may contain, and what makes it true. */
+// `dispatchLocal`, `key`, `id`, `notification` and `epic-wake` are no longer on the published
+// page; they stay because the default run over the DOCS.md draft still reads them.
 const MANIFEST: Record<string, Check[]> = {
   ".sideChain()": [P("@flow-state-dev/core", "sequencer", "()", "sideChain")],
   "202": [S(WEBHOOKS_REF, "202"), S(SCHEDULED_REF, "| 202  |")],
@@ -282,6 +284,26 @@ const MANIFEST: Record<string, Check[]> = {
   input: [bind("input")],
   sessionId: [bind("sessionId")],
   when: [bind("when")],
+  // `when` returning `false` runs nothing: the predicate's return is boolean, and the
+  // reference page publishes "A falsy result skips".
+  false: [bind("when", "()"), S(WEBHOOKS_REF, "A falsy result skips")],
+  authentication: [P("@flow-state-dev/core", "FlowDefinition", "authentication")],
+  // the page's one flow: its id, which the page's code registers and its routes name
+  billing: [ROUTE("POST /api/flows/billing/webhooks/stripe"), S(WEBHOOKS_REF, 'kind: "billing"')],
+  // the webhook sample's `defaultUserId: "system"`, the user every event runs as
+  system: [P("@flow-state-dev/core", "FlowDefinition", "authentication", "defaultUserId"),
+    S(WEBHOOKS_REF, 'defaultUserId: "system"')],
+  // the custom dispatcher option on createFlowState; with no `dispatchLocal` it is external
+  dispatcher: [P("@flow-state-dev/engine", "CreateFlowStateOptions", "dispatcher"),
+    S("packages/engine/src/transports/host/createInboundTransportHost.ts", '"dispatchLocal" in effectiveDispatcher')],
+  // the cross-flow session listing, which hands a resolver-less flow's rows to any caller
+  "GET /api/flows/sessions": [S("apps/docs/docs/server/authentication.md", "`GET /api/flows/sessions`")],
+  // a network bind is refused while a served flow has no resolver
+  "fsdev serve": [S("apps/docs/docs/server/authentication.md", "`fsdev serve` refuses to\nbind a non-loopback host"),
+    S("packages/node/src/bind-guard.ts", "Refusing to bind")],
+  // a configured resolver returning null is refused 401; the signature is checked before it runs
+  "401": [S("apps/docs/docs/server/authentication.md", "refused with 401"),
+    S("packages/engine/src/transports/webhook/routes.ts", "flow + provider lookup → raw body → verify")],
   bullmqWorker: [E("@flow-state-dev/bullmq", "bullmqWorker")],
   mode: [P("@flow-state-dev/bullmq", "bullmqWorker", "(0)", "mode")],
   "worker: bullmqWorker({ connection })": [P("@flow-state-dev/engine", "CreateFlowStateOptions", "worker"),

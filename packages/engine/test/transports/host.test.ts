@@ -522,6 +522,9 @@ describe("createInboundTransportHost", () => {
       expect(record?.status).toBe("failed");
       // Its cause is the record's action result (FIX-1661).
       expect(record?.result).toEqual({ error: { code: expect.any(String), message: "enqueue failed" } });
+      // Nothing will run under the id, so the record is finished as written:
+      // unstamped, retention would keep it forever.
+      expect(typeof record?.finalizedAtMs).toBe("number");
       expect(await stores.activeRequests.get(handle.requestId)).toBeUndefined();
     });
 

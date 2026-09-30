@@ -6,7 +6,10 @@ import { User, Cpu, Wand2, Workflow } from "lucide-react";
 
 interface ClientDataBarProps {
   displayName?: string;
-  /** Concrete gateway model string the user has selected. */
+  /**
+   * Concrete gateway model string the user has selected for the assistant.
+   * Omit it on a view the assistant does not answer; the bar then names no model.
+   */
   selectedModel?: string;
   /**
    * Skills activated by `skillActivator` for the most recent turn (FIX-421).
@@ -30,7 +33,7 @@ export function ClientDataBar({
       {selectedModel && (
         <>
           <Separator orientation="vertical" className="hidden h-4 md:block" />
-          <div className="hidden items-center gap-1.5 text-muted-foreground md:flex">
+          <div className="hidden items-center gap-1.5 text-muted-foreground md:flex" data-testid="header-model">
             <Cpu className="h-3.5 w-3.5" />
             <span>{selectedModel}</span>
           </div>

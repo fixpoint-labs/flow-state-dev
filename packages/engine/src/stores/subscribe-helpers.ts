@@ -98,6 +98,22 @@ export function synthesizeRequestInterrupted(
   } as RequestStreamEvent;
 }
 
+/**
+ * Whether a batch of events just read may be yielded: the subscription's
+ * `isStillAuthorized` fence, where a throw counts as `false` (a stream that
+ * cannot prove it still belongs to its caller ends).
+ */
+export async function isBatchStillAuthorized(
+  options: Pick<SubscribeToEventsOptions, "isStillAuthorized">
+): Promise<boolean> {
+  if (options.isStillAuthorized === undefined) return true;
+  try {
+    return await options.isStillAuthorized();
+  } catch {
+    return false;
+  }
+}
+
 /** Abort-aware sleep used by polling subscription loops. */
 export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) return Promise.resolve();
@@ -134,6 +150,7 @@ export async function* pollEvents(
   const livenessMs = options.livenessTimeoutMs ?? DEFAULT_LIVENESS_TIMEOUT_MS;
 
   const initial = await readEvents(requestId, options.fromSequence);
+  if (initial.length > 0 && !(await isBatchStillAuthorized(options))) return;
   let lastSeen = options.fromSequence;
   for (const event of initial) {
     yield event;
@@ -149,6 +166,7 @@ export async function* pollEvents(
 
     const next = await readEvents(requestId, lastSeen);
     if (next.length > 0) {
+      if (!(await isBatchStillAuthorized(options))) return;
       lastTickAt = Date.now();
       for (const event of next) {
         yield event;

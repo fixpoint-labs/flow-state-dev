@@ -112,9 +112,15 @@ const skillsBinding = {
  *
  * The `activeState` here mirrors the binding's `activeState` (§4.1) so the
  * matcher and the reader agree on where runtime activations live.
+ *
+ * It gets the same `initialSkills` as the library: it runs before the
+ * generator, so the binding's lazy seeding hasn't happened yet on a fresh
+ * session's first turn, and without its own seed step every tier would scan
+ * an empty catalog.
  */
 export const skillActivatorBlock = createSkillActivator({
   activeState: { scope: "session", field: "activeSkills" },
+  initialSkills,
 });
 
 // Bash capability — tools, guidance, and runtime auto-discovery of mounted

@@ -16,6 +16,7 @@ export {
   taskSchema,
   type Task,
   type TaskClaimIdentity,
+  type TaskRunLink,
   type TaskStatus,
   type TaskWriteReceipt,
 } from "./schema/task";

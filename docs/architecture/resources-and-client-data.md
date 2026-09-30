@@ -539,6 +539,8 @@ GET /api/flows/sessions/:sessionId/resources/:ref/content          → single re
 GET /api/flows/sessions/:sessionId/resources/:ref/:topic/content   → collection item
 ```
 
+A single resource nothing has written yet returns the content its definition declares (`content` or `contentFile`), the same body a run's context starts from.
+
 ### Mutation Endpoints (Collections Only)
 
 ```

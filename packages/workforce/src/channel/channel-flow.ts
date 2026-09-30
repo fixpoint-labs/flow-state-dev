@@ -486,8 +486,14 @@ export const channelReadBoardInputSchema = z.object({ board: z.string().min(1) }
  * was itself added after the type existed. Naming what goes out inverts that:
  * a new field stays in until somebody decides otherwise.
  *
- * Left out, and why: `claimedBy`, `leaseUntil` and `leaseDurationMs` are
- * execution coordinates — where an attempt is running, not what the work is.
+ * One execution coordinate goes out: `run`, the handed-off run working the
+ * task (FIX-1668), so a reader can open that run. It names a session and a
+ * request and grants nothing — opening either still passes the server's
+ * owner check.
+ *
+ * Left out, and why: `claimedBy`, `leaseUntil` and `leaseDurationMs` are the
+ * claim's execution coordinates — where the claim was made and how long it
+ * holds, not what the work is.
  * `retryLedger`, `abandonments` and `incarnationId` are the substrate's own
  * bookkeeping. `revision`, `writeLog` and `writeLogTruncated` are write
  * provenance, answered by the substrate's own API rather than by a board read.
@@ -503,6 +509,7 @@ export const channelBoardRowSchema = taskSchema.pick({
   attempts: true,
   maxAttempts: true,
   assignee: true,
+  run: true,
   deps: true,
   priority: true,
   input: true,
@@ -786,8 +793,9 @@ const noteDeliveryRefusal = handler({
 /**
  * Absorb a refused hand-off — the fan-out request could not be started at all.
  *
- * Reached on a host whose dispatcher hands work to an external queue, where a
- * delivery into an existing session refuses `external-dispatcher` by name. The
+ * Reached on a host whose dispatcher hands work to an external queue with no
+ * shared lease backend, where a delivery into an existing session refuses
+ * `external-dispatcher` by name. The
  * post is already appended and stays appended: a client post on such a host
  * still works, and only the waking does not.
  *

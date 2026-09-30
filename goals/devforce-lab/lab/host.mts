@@ -5,7 +5,8 @@
  *
  * What `openLab` does, in order, and nothing else: read the tree, resolve the
  * feature channel's board, build the two kinds on it, hire, register, open the
- * declared channels when asked, hand back the handles. Every convention file it
+ * declared channels when asked (and their organization's inventory, when that
+ * is asked too), hand back the handles. Every convention file it
  * reads is found by walking from one root; no file is named in this code.
  *
  * **The board belongs to the channel.** The feature channel's `CHANNEL.md`
@@ -51,6 +52,7 @@ import {
   createFlowState,
   PrincipalResolutionError,
   runAction,
+  type FlowState,
   type PrincipalResolver,
 } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -62,8 +64,10 @@ import {
   defineChannelFlow,
   hireWorkforce,
   openChannels,
+  openInventory,
   resourcesFromDocs,
   type ChannelTranscriptLine,
+  type InventoryActionRequest,
 } from "@flow-state-dev/workforce";
 import {
   readDeclaredRoster,
@@ -83,6 +87,13 @@ import {
 } from "./workforce/flows/workers/em.mts";
 import type { HarnessStub } from "./harness-stub.mts";
 import { labNotify, type NotifyLog } from "./notify.mts";
+import {
+  RAISE_ASK_STEP,
+  raiseAsk,
+  seatSessionId,
+  type AskFeature,
+  type RaiseAskResult,
+} from "./ask.mts";
 
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
@@ -194,8 +205,41 @@ export interface OpenLabOptions {
    * current brief does not name. See `phase.mts`.
    */
   requireAcceptance?: boolean;
+  /**
+   * Raise the EM seat's ask on open: one pending approval, in the EM seat's
+   * own session, naming this feature (`ask.mts`).
+   *
+   * **Absent means absent**, as with `channels`: no durable execution, no
+   * request, no store write, and the other checks open exactly as they
+   * did. Present turns durable execution on, because the answer arrives later
+   * through the engine's resume route, and open fails, naming the step, if the
+   * ask could not be raised.
+   */
+  ask?: AskFeature;
+  /**
+   * Open the organization's seat and channel inventory after the channels, the
+   * collections App Lab's TEAMS and PROJECTS read. Needs `channels`: the
+   * inventory's writer is the channel kind, built with `inventory: true`.
+   *
+   * **Absent means absent**: the channel kind is built without the writer and
+   * nothing is registered, as the other checks have always run.
+   */
+  inventory?: boolean;
+  /**
+   * Hand a page the lab's user and verified bearer through the `devtool`
+   * connection config, which the host injects on a loopback bind only. For a
+   * long-lived server a browser reads (App Lab, the DevTool). Absent for the
+   * checks, which read in-process.
+   */
+  devtool?: boolean;
 
   // ---- controls, each the red state of one claim -------------------------
+
+  /**
+   * The asking door files its row before it suspends. The red state of
+   * "nothing is filed until a person approves".
+   */
+  fileBeforeAsking?: boolean;
 
   /**
    * Repoint a seat at a different file-declared document, by seat id.
@@ -322,6 +366,29 @@ export interface Lab {
     seatId: string,
     options?: { door?: "org-less" | "bearer" },
   ): Promise<{ facts?: Record<string, unknown>; error?: string }>;
+  /**
+   * What raising the ask did on this open. Absent when `ask` was not asked for.
+   */
+  ask?: RaiseAskResult;
+  /**
+   * The flow state the seats are registered in: what a host hands `raiseAsk`
+   * when it calls the step itself.
+   */
+  state: FlowState;
+  /** The ledger both kinds file onto, as `raiseAsk` takes it. */
+  ledger: FeatureLedger;
+  /**
+   * Send one request through the lab's HTTP door, as a person's client would.
+   *
+   * `path` is everything after `/api/flows/`, query string included. The lab's
+   * verified bearer is sent unless `bearer` is `false`, which is how a check
+   * shows the door refuses a caller that presented nothing.
+   */
+  door(
+    method: "GET" | "POST",
+    path: string,
+    options?: { body?: unknown; bearer?: boolean },
+  ): Promise<{ status: number; body: any }>;
   dispose(): Promise<void>;
 }
 
@@ -374,7 +441,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         };
   });
 
-  const emKind = defineEmWorkerFlow({ coderSeatId: options.coderSeatId, resources, ledger });
+  const emKind = defineEmWorkerFlow({
+    coderSeatId: options.coderSeatId,
+    resources,
+    ledger,
+    ...(options.fileBeforeAsking === true ? { fileBeforeAsking: true } : {}),
+  });
   const coderKind = defineCoderWorkerFlow({
     ledger,
     harness: options.harness,
@@ -402,10 +474,16 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // composed rather than restated. The built-in kind is replaced wholesale with
   // one carrying this lab's notify slot, because a slot cannot be added to a
   // kind after it is built.
+  if (options.inventory === true && options.channels === undefined) {
+    throw new Error("openLab: `inventory` needs `channels`, whose kind writes the inventory");
+  }
   const channelKind =
     options.channels === undefined
       ? undefined
-      : defineChannelFlow({ notify: labNotify(options.channels) as never });
+      : defineChannelFlow({
+          notify: labNotify(options.channels) as never,
+          ...(options.inventory === true ? { inventory: true } : {}),
+        });
   const instances =
     channelKind === undefined
       ? []
@@ -423,6 +501,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // not answer an unauthenticated HTTP read (FIX-1515 / BR-17).
     resolvePrincipal: resolveLabPrincipal,
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
+    // Only when the ask is: the other checks run without it, as before.
+    ...(options.ask === undefined ? {} : { durable: true }),
+    ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),
   } as never);
 
   const runtime = await state.getRuntime();
@@ -439,7 +520,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const router = await state.getRouter();
 
   /** The session the EM seat's actions run in — one per seat, stable across a run. */
-  const sessionFor = (seatId: string): string => `s_${seatId.replace(/\./g, "_")}`;
+  const sessionFor = seatSessionId;
 
   /**
    * The session client `openChannels` is handed.
@@ -517,6 +598,38 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     await openChannels(roster.channels, { client: sessionClient, userId: LAB_USER_ID });
   }
 
+  // The inventory, in-process, under the lab's organization, once the channel
+  // sessions it registers from exist. A problem fails the open, naming it.
+  if (options.inventory === true) {
+    const flows: Record<string, unknown> = {
+      ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
+      ...seats,
+    };
+    const run = async (request: InventoryActionRequest): Promise<unknown> => {
+      const result = (await runAction({
+        flow: flows[request.flowKind],
+        actionName: request.action,
+        input: request.input,
+        userId: request.userId,
+        orgId: request.orgId,
+        sessionId: request.sessionId,
+        source: request.source,
+        stores: runtime.stores,
+        runtimeConfig: runtime.runtimeConfig,
+      } as never)) as { error?: unknown };
+      if (result?.error !== undefined) throw new Error(messageOf(result.error));
+      return result;
+    };
+    const opened = await openInventory(
+      { seats: hired.map((seat) => ({ id: seat.id, kind: seat.kind })), channels: roster.channels },
+      { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+    );
+    if (opened.problems.length > 0) {
+      await state.dispose();
+      throw new Error(`openLab: the inventory did not open: ${opened.problems.join("; ")}`);
+    }
+  }
+
   const channelInstance = instances.find((instance) => instance.kind === CHANNEL_KIND);
   /** The one channel this tree declares. Its id is its session id. */
   const channelId = channel.id;
@@ -562,6 +675,60 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       // taking the run down.
       return { error: messageOf(error) };
     }
+  };
+
+  // The ask, last, once everything it runs over is registered. One EM seat is
+  // what this tree declares; a tree with none, or two, has no single seat the
+  // ask belongs to, and that is a refusal rather than a guess.
+  let ask: RaiseAskResult | undefined;
+  if (options.ask !== undefined) {
+    const emSeats = hired.filter((seat) => seat.kind === EM_KIND);
+    try {
+      if (emSeats.length !== 1) {
+        throw new Error(
+          `${RAISE_ASK_STEP}: wanted one "${EM_KIND}" seat to ask from, found ${emSeats.length}`,
+        );
+      }
+      ask = await raiseAsk({
+        state,
+        emSeat: emSeats[0]!,
+        feature: options.ask,
+        principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+        ledger,
+      });
+    } catch (error) {
+      await state.dispose();
+      throw error;
+    }
+  }
+
+  const door = async (
+    method: "GET" | "POST",
+    path: string,
+    doorOptions?: { body?: unknown; bearer?: boolean },
+  ): Promise<{ status: number; body: any }> => {
+    const url = new URL(`http://lab/api/flows/${path}`);
+    const segments = url.pathname.slice("/api/flows/".length).split("/");
+    const request = new Request(url, {
+      method,
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        ...(doorOptions?.bearer === false
+          ? {}
+          : { authorization: `Bearer ${LAB_PRINCIPAL_SECRET}` }),
+      },
+      ...(doorOptions?.body === undefined ? {} : { body: JSON.stringify(doorOptions.body) }),
+    });
+    const response = await (router as any)[method](request, { params: { path: segments } });
+    const text: string = await response.text();
+    let body: unknown = text;
+    try {
+      body = text.length > 0 ? JSON.parse(text) : undefined;
+    } catch {
+      // Not JSON; hand back the text.
+    }
+    return { status: response.status, body };
   };
 
   const act = async (
@@ -742,6 +909,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         ? { facts: (result.output ?? {}) as Record<string, unknown> }
         : { error: result.error };
     },
+
+    ...(ask === undefined ? {} : { ask }),
+    state,
+    ledger,
+    door,
 
     dispose: () => state.dispose(),
   };

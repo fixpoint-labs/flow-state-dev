@@ -20,6 +20,10 @@ npx shadcn@latest add https://ui.flow-state.dev/r/message.json
 fsdev ui list
 ```
 
+### Colours
+
+Components read colours only from tokens. `fsdev ui add tokens` (added automatically with the first component that needs it) writes the defaults into your stylesheet, including the status tokens `success`, `warning`, `info` and `attention`. Override any of them to restyle. See [colours and theming](https://flow-state.dev/docs/ui/overview#colours-and-theming).
+
 ## Components
 
 ### Components

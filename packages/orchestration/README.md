@@ -87,6 +87,15 @@ wire a backing's `onChange` to a client transport yourself, apply `toEmittedTask
 `event.task` before you publish it — a field that is server-only on one boundary is
 server-only on every one.
 
+**The run link.** A handed-off task carries `run: { sessionId, requestId, attempt }`,
+written by the board's claim gate inside the run's own session, before the worker
+starts, through a claim-fenced write (`linkRun`) that emits `task-change` of kind
+`run_linked` on the run's own session. The run's flow is its session's `flowId`, which
+may not be the board's. The next claim clears it; a settled task keeps it. It is
+client-visible, unlike `claimedBy`, and no write surface a caller reaches can set it.
+If you implement `TaskCollectionRef` yourself, implement `linkRun` too: a board that
+hands off calls it on every attempt.
+
 **How far claim safety reaches.** Both backings are compare-and-swap with retry. The
 state backings mutate through `atomicState`; the resource backing mutates through
 `ResourceRef.updateState`, which chains writes per key within one execution context
@@ -426,9 +435,9 @@ else `allow`). An explicit `concurrency` on the entry wins:
 task: { actions: { implement: { block: implementBlock, concurrency: "allow" } } },
 ```
 
-The in-process dispatcher applies that policy. On a deployment that hands
-dispatches to an external queue, the run starts in another worker and the entry's
-`concurrency` does not gate it.
+The in-process dispatcher applies that policy, and so do queue workers that share
+a lease backend. On a deployment that hands dispatches to an external queue without
+one, the run starts in another worker and the entry's `concurrency` does not gate it.
 
 Only a named seat hands off: `defaultWorker` and a uniform `workers` block have no
 seat name and so no assignee to route by.

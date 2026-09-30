@@ -121,6 +121,41 @@ test("the rail opens a channel kind into conversations and a seat kind into seat
   expect(seatReads[0]).toContain(`flowId=${encodeURIComponent(SEAT)}`);
 });
 
+/**
+ * The header's model is the assistant's own preference, and only the assistant
+ * answers with it. A channel or a seat answers through its model intents, which
+ * an `FSDEV_*` override can point anywhere, and its replies carry the model
+ * that ran. So on those views the header names no model: one it named could
+ * contradict every reply beneath it.
+ *
+ * Red state produced before this was trusted: pass the assistant's model to the
+ * header whatever is picked, and the channel assertion fails (the label is still there).
+ */
+test("the header names the assistant's model on the assistant only, never on a channel or a seat", async ({
+  page,
+  consoleErrors: _consoleErrors,
+}) => {
+  const seatSessionId = await seedSeatSession(page);
+  const headerModel = page.getByTestId("header-model");
+  await openShell(page);
+  await expect(headerModel).toBeVisible();
+  await expect(headerModel).not.toHaveText("");
+
+  const expand = async (name: string) => {
+    if ((await row(page, name).getAttribute("aria-expanded")) !== "true") await row(page, name).click();
+  };
+  await expand("channel");
+  await row(page, "support.help").click();
+  await expect(page.locator('[data-testid="picked-session"]:visible')).toBeVisible();
+  await expect(headerModel).toHaveCount(0);
+
+  await expand("agent");
+  await expand(SEAT);
+  await rail(page).locator(`[data-session-id="${seatSessionId}"]`).click();
+  await expect(page.locator('[data-testid="picked-session"]:visible')).toBeVisible();
+  await expect(headerModel).toHaveCount(0);
+});
+
 /** The assistant's kind: its row is the leaf that carries "New session". */
 const SHELL_KIND = "chat-agent";
 /** A seat name that runs past any rail. */

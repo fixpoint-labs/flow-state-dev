@@ -146,6 +146,7 @@ defineFlow({
 - Eviction is lazy (runs after each completed request). No background process.
 - Operates at **request granularity** — entire old requests are removed, not individual items.
 - The current request is never evicted. Failed requests are not eviction candidates.
+- A request is not evicted until its run has finished, `onFinished` included (a `suspended` request never finishes a run and is never evicted; retention evicts only completed requests), and twice the live-tail liveness timeout (`LIVE_TAIL_LIVENESS_MS`, 30s by default, so 60s) has passed since. Its record turns terminal before its run finishes writing, and a live stream may still be following it; evicting it earlier frees a caller-supplied id while either is active. The run marks its record `finalizedAtMs` as its last write, after `.sideChain()` work its hooks queued has settled, and retention waits for that mark rather than for a length of time, because `onFinished` has no time limit and another process's run is invisible to this one. The mark is fenced on the record's `incarnation`, so it never lands on a request that took the id since. When two runs of one request overlap (a `/continue` started after the sweep took a slow but live run for dead), only the last of them to end in this process marks the record and removes the shared active-registry entry; an overlapping run in another process is judged by its heartbeat, as the sweep already does. A run that dies before marking it, or whose late writes failed to flush, or whose mark the store refused three times, is marked by the stale-request sweep, but only when the run was heartbeating through its tail (a completed run with heartbeats on): with heartbeats off (`request.heartbeatIntervalMs: 0`) a stale entry proves nothing, so such a record is marked only by its own run, and is kept for good if that run is gone. With the sweep disabled, such a request is kept too. **Rollout safety:** a record with no `finalizedAtMs` field at all was written by a version that never marks, and during a rolling deploy its run may still be finishing on an old instance. It is kept until the stale-request threshold (60s, or the host's `staleSweepThresholdMs` if longer) or `maxAge`, whichever is larger, plus the window, has passed since it completed. A request spared this way is evicted when the session's next request completes, so a session can sit above its limits until then. Its items still count toward `maxItems` while it waits, so older history is evicted to make room for them.
 - For items that should never be stored, use `transient: true` on block definitions instead.
 
 ## Client Setup
@@ -177,7 +178,11 @@ await typedClient.actions.chat({ message: "Hello!" });
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient({ baseUrl: "/api/flows" });
+// Browser, same origin, no base path: no `baseUrl`. In Node, pass an absolute
+// URL ("http://localhost:3000", plus any base path). The client adds
+// `/api/flows` itself; don't include it. Canonical rule:
+// apps/docs/docs/configuration/client.md → "Choosing baseUrl".
+const sessions = createSessionClient();
 
 const list = await sessions.listSessions({ flowKind: "my-app" });
 const detail = await sessions.getSession(sessionId);
@@ -197,7 +202,7 @@ work runs in a child session is declared by the flow author — the client has
 no way to request it.
 
 ```ts
-// Same-origin: the client's paths are already absolute from the root.
+// Browser, same origin (see the Session Client note above for Node).
 const sessions = createSessionClient();
 
 const children = await sessions.listChildSessions(parentSessionId, {

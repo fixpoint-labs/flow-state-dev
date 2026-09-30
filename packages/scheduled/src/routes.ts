@@ -3,7 +3,7 @@
  * operations in `handleDispatch` is load-bearing: id check → flow →
  * body → idempotency → gateway auth → static-then-dynamic resolve →
  * dispatch-time validation → overlap → effective principal → input →
- * fire-and-forget dispatch.
+ * dispatch, acked once the host has accepted it.
  */
 import {
   ConcurrencyRejectedError,
@@ -240,6 +240,25 @@ export async function handleDispatch(
     }
     return jsonResponse(503, {
       error: "flow_unregistered",
+      message: err instanceof Error ? err.message : String(err)
+    });
+  }
+
+  // A host whose arbiter spans processes refuses a `reject` here, through
+  // `accepted`, rather than from `dispatch`. Either way the fire was not
+  // admitted, so it is not recorded: a retry of it must still run.
+  try {
+    await handle.accepted;
+  } catch (err) {
+    if (err instanceof ConcurrencyRejectedError) {
+      return jsonResponse(200, {
+        status: "skipped",
+        reason: "in_flight",
+        requestId: err.inFlightRequestId
+      });
+    }
+    return jsonResponse(503, {
+      error: "dispatch_failed",
       message: err instanceof Error ? err.message : String(err)
     });
   }

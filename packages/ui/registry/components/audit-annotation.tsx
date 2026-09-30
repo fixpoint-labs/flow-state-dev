@@ -48,21 +48,21 @@ const SEVERITY_ICON = {
 } as const;
 
 const SEVERITY_COLOR = {
-  info: "text-blue-500",
-  warning: "text-amber-500",
-  critical: "text-red-500",
+  info: "text-info",
+  warning: "text-warning",
+  critical: "text-destructive",
 } as const;
 
 const SEVERITY_BG = {
-  info: "bg-blue-500/10 border-blue-500/20",
-  warning: "bg-amber-500/10 border-amber-500/20",
-  critical: "bg-red-500/10 border-red-500/20",
+  info: "bg-info/10 border-info/20",
+  warning: "bg-warning/10 border-warning/20",
+  critical: "bg-destructive/10 border-destructive/20",
 } as const;
 
 const SEVERITY_BORDER = {
-  info: "border-blue-500/40",
-  warning: "border-amber-500/40",
-  critical: "border-red-500/40",
+  info: "border-info/40",
+  warning: "border-warning/40",
+  critical: "border-destructive/40",
 } as const;
 
 function highestSeverity(results: AnalyzerResult[]): "info" | "warning" | "critical" {
@@ -215,7 +215,7 @@ function AnnotationItem({ annotation }: { annotation: Annotation }) {
   return (
     <li
       className={cn(
-        "rounded border-l-2 px-2 py-1.5",
+        "rounded-sm border-l-2 px-2 py-1.5",
         SEVERITY_BORDER[annotation.severity],
       )}
     >
@@ -254,9 +254,9 @@ function ScoreGauge({ score, label }: { score: number; label: string }) {
         <div
           className={cn(
             "h-full rounded-full transition-all",
-            severity === "info" && "bg-blue-500",
-            severity === "warning" && "bg-amber-500",
-            severity === "critical" && "bg-red-500",
+            severity === "info" && "bg-info",
+            severity === "warning" && "bg-warning",
+            severity === "critical" && "bg-destructive",
           )}
           style={{ width: `${widthPercent}%` }}
         />

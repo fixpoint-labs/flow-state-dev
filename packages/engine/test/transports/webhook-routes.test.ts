@@ -23,8 +23,11 @@ import {
   createInboundTransportHost,
   createInMemoryStores,
   defaultBodyUserIdPrincipalResolver,
-  stripeWebhookVerifier
+  stripeWebhookVerifier,
+  createInMemoryLeaseBackend,
+  type FlowDispatcher
 } from "../../src";
+import { createConcurrencyArbiter } from "../../src/transports/concurrency/arbiter";
 import type { DispatchHandle } from "../../src/transports/types";
 import type { InboundRequestEnvelope, InboundTransportHost } from "../../src/transports/types";
 import type { WebhookProviderDefinition } from "../../src/transports/webhook/createWebhookTransportAdapter";
@@ -516,6 +519,78 @@ describe("handleWebhook with a real host (signed, end-to-end)", () => {
     expect(await second.json()).toMatchObject({ status: "skipped", reason: "in_flight" });
 
     release();
+  });
+
+  it("answers a double-fire refused through acceptance the same way, on a queue host (FIX-1634)", async () => {
+    // A queue host whose arbiter keeps its keys in a backend the workers share:
+    // the refusal arrives through `accepted`, not as a throw from `dispatch`.
+    // A 503 there would make the provider redeliver the duplicate.
+    const flow = defineFlow({
+      kind: "billing",
+      request: { concurrency: "reject" },
+      actions: {},
+      authentication: { defaultUserId: "system", requireUser: false },
+      webhooks: {
+        stripe: {
+          on: {
+            "invoice.paid": defineWebhookBinding<{ data: { object: { id: string; customer: string } } }>({
+              block: recordBlock,
+              input: (e) => ({ invoiceId: e.payload.data.object.id }),
+              sessionId: (e) => `customer-${e.payload.data.object.customer}`
+            })
+          }
+        }
+      }
+    })({ id: "billing" });
+    const registry = createFlowRegistry();
+    registry.register(flow);
+    const inner = createInMemoryLeaseBackend();
+    const enqueued: string[] = [];
+    const host = createInboundTransportHost({
+      registry,
+      stores: createInMemoryStores(),
+      resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+      runtimeConfig: {},
+      // A queue that never runs the job, so the first delivery's place stays held.
+      dispatcher: {
+        dispatch: async (envelope) => {
+          enqueued.push(envelope.requestId);
+          return { requestId: envelope.requestId, finished: new Promise(() => {}), abort: () => {} };
+        },
+        close: async () => {}
+      } as FlowDispatcher,
+      arbiter: createConcurrencyArbiter({
+        backend: {
+          take: (input) => inner.take(input),
+          isMyTurn: (place) => inner.isMyTurn(place),
+          giveBack: (place) => inner.giveBack(place),
+          renew: (place) => inner.renew(place)
+        }
+      })
+    });
+    const providers = { stripe: stripeWebhookVerifierProvider(SECRET) };
+    const params = { params: { flowKind: "billing", provider: "stripe" } };
+
+    const first = await handleWebhook(
+      signedStripeRequest({ type: "invoice.paid", id: "evt_1", data: { object: { id: "in_1", customer: "cus_7" } } }),
+      params,
+      host,
+      providers
+    );
+    expect(first.status).toBe(202);
+    const second = await handleWebhook(
+      signedStripeRequest({ type: "invoice.paid", id: "evt_2", data: { object: { id: "in_2", customer: "cus_7" } } }),
+      params,
+      host,
+      providers
+    );
+    expect(second.status).toBe(200);
+    expect(await second.json()).toMatchObject({
+      status: "skipped",
+      reason: "in_flight",
+      requestId: enqueued[0]
+    });
+    expect(enqueued).toHaveLength(1);
   });
 });
 

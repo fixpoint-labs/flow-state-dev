@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Epic · 12 child issues (FIX-1510 ships under FIX-1261) and a closure issue · Public Launch · Goal 4, keep the foundation honest,
+Epic · 16 child issues (12 at approval, 4 joined during delivery; FIX-1510 ships under FIX-1261) and a closure issue · Public Launch · Goal 4, keep the foundation honest,
 with Goal 3 ([`docs/objectives.md`](../../../docs/objectives.md)) ·
 [FIX-1635](https://linear.app/fixpoint-labs/issue/FIX-1635) · child set locked by the owner
 with the FSD Architect, 2026-09-29
@@ -66,7 +66,7 @@ against the installed tarballs.
 Inside the box is what any app gets from the release without writing a line. The fence is
 what keeps a hard-gates epic from turning into a redesign.
 
-## The set · as of 2026-09-29
+## The set · as of 2026-09-30
 
 A dated snapshot. Live state is Linear and the implementation PRs. Direct-route rows have no
 spec PR by design.
@@ -75,19 +75,24 @@ spec PR by design.
 |---|---|---|---|
 | [FIX-1256](https://linear.app/fixpoint-labs/issue/FIX-1256) · invalid resource write | Throws instead of resetting state | Silent data loss | direct · **Done** · [#1469](https://github.com/fixpoint-labs/flow-state-dev/pull/1469) |
 | [FIX-1261](https://linear.app/fixpoint-labs/issue/FIX-1261), remainder [FIX-1510](https://linear.app/fixpoint-labs/issue/FIX-1510) (its sub-issue) · `writable: false` on collections | Refused on every write to an existing instance, and on delete; creating a missing key stays open | A guard a neighbour bypasses | direct · **Done** · [#1470](https://github.com/fixpoint-labs/flow-state-dev/pull/1470), [#2047](https://github.com/fixpoint-labs/flow-state-dev/pull/2047) |
-| [FIX-1018](https://linear.app/fixpoint-labs/issue/FIX-1018) · request id reparenting | A caller's request id cannot reach another user's record or items | Confirmed cross-user read; first of the principal cluster ([D3](DECISIONS.md#d3)) | direct · Backlog |
-| [FIX-1286](https://linear.app/fixpoint-labs/issue/FIX-1286) · run-scoped workspace | Two users with one request id never share a sandbox | Its issue asks for a decision, not a patch | spec · Backlog · blocked by 1018 |
-| [FIX-1022](https://linear.app/fixpoint-labs/issue/FIX-1022) · session key has no principal | Another user's session id is not found | Same-tenant session read | direct · Todo |
-| [FIX-1021](https://linear.app/fixpoint-labs/issue/FIX-1021) · re-entry deny-lists | Only allow-listed sources re-enter from HTTP | Caller-chosen input under another source's privileges | direct · Todo |
-| [FIX-1046](https://linear.app/fixpoint-labs/issue/FIX-1046) · sibling-flow listing | A session's stored flow never authorizes another flow's history | Protected history readable | direct · Backlog |
-| [FIX-1328](https://linear.app/fixpoint-labs/issue/FIX-1328) · cross-flow admission | The seam admits as ingress does | A target runs without the org it requires | direct · Backlog |
-| [FIX-1431](https://linear.app/fixpoint-labs/issue/FIX-1431) · extensionless `dist` | Published packages import | The release is unusable without it | direct · Backlog |
-| [FIX-1334](https://linear.app/fixpoint-labs/issue/FIX-1334) · DevTool client assets | DevTool can't publish without them | A first publish breaks at runtime | direct · Backlog |
-| [FIX-1634](https://linear.app/fixpoint-labs/issue/FIX-1634) · queue-host delivery | Delivery into an existing session on BullMQ, Layer 1 only | Channels and escalations do nothing on a queue host | spec · Backlog · blocked by 1018 |
-| [FIX-1628](https://linear.app/fixpoint-labs/issue/FIX-1628) · non-streaming text drop | A multi-step turn keeps every step's text | Same turn, two answers | direct · Backlog |
-| [FIX-1636](https://linear.app/fixpoint-labs/issue/FIX-1636) · closure · **required** | The QA plan, run on one `main` commit | The only child that runs the release as a consumer does | spec · Backlog · blocked by every open child |
+| [FIX-1018](https://linear.app/fixpoint-labs/issue/FIX-1018) · request id reparenting | A caller's request id cannot reach another user's record or items | Confirmed cross-user read; first of the principal cluster ([D3](DECISIONS.md#d3)) | direct · **Done** · [#2377](https://github.com/fixpoint-labs/flow-state-dev/pull/2377) |
+| [FIX-1286](https://linear.app/fixpoint-labs/issue/FIX-1286) · run-scoped workspace | Two users with one request id never share a sandbox | Its issue asks for a decision, not a patch | spec [#2385](https://github.com/fixpoint-labs/flow-state-dev/pull/2385) · **Done** · [#2400](https://github.com/fixpoint-labs/flow-state-dev/pull/2400) |
+| [FIX-1022](https://linear.app/fixpoint-labs/issue/FIX-1022) · session key has no principal | Another user's session id is not found | Same-tenant session read | direct · **Done** · [#2384](https://github.com/fixpoint-labs/flow-state-dev/pull/2384) |
+| [FIX-1021](https://linear.app/fixpoint-labs/issue/FIX-1021) · re-entry deny-lists | Only allow-listed sources re-enter from HTTP | Caller-chosen input under another source's privileges | direct · **Done** · [#2387](https://github.com/fixpoint-labs/flow-state-dev/pull/2387) |
+| [FIX-1046](https://linear.app/fixpoint-labs/issue/FIX-1046) · sibling-flow listing | A session's stored flow never authorizes another flow's history | Protected history readable | direct · **Done** · [#2389](https://github.com/fixpoint-labs/flow-state-dev/pull/2389) |
+| [FIX-1328](https://linear.app/fixpoint-labs/issue/FIX-1328) · cross-flow admission | The seam admits as ingress does | A target runs without the org it requires | direct · **Done** · [#2383](https://github.com/fixpoint-labs/flow-state-dev/pull/2383) |
+| [FIX-1431](https://linear.app/fixpoint-labs/issue/FIX-1431) · extensionless `dist` | Published packages import | The release is unusable without it | direct · **Done** · [#2376](https://github.com/fixpoint-labs/flow-state-dev/pull/2376) |
+| [FIX-1334](https://linear.app/fixpoint-labs/issue/FIX-1334) · DevTool client assets | DevTool can't publish without them | A first publish breaks at runtime | direct · **Done** · [#2378](https://github.com/fixpoint-labs/flow-state-dev/pull/2378) |
+| [FIX-1634](https://linear.app/fixpoint-labs/issue/FIX-1634) · queue-host delivery | Delivery into an existing session on BullMQ, Layer 1 only | Channels and escalations do nothing on a queue host | spec [#2380](https://github.com/fixpoint-labs/flow-state-dev/pull/2380) · In Review · part A merged [#2405](https://github.com/fixpoint-labs/flow-state-dev/pull/2405); part B in progress |
+| [FIX-1628](https://linear.app/fixpoint-labs/issue/FIX-1628) · non-streaming text drop | A multi-step turn keeps every step's text | Same turn, two answers | direct · **Done** · [#2381](https://github.com/fixpoint-labs/flow-state-dev/pull/2381) |
+| *Joined during delivery* | | | |
+| [FIX-1647](https://linear.app/fixpoint-labs/issue/FIX-1647) · request delete leaves stream events | Deleting a request removes its stream events | A reused request id could replay the previous owner's events | direct · **Done** · [#2393](https://github.com/fixpoint-labs/flow-state-dev/pull/2393) |
+| [FIX-1648](https://linear.app/fixpoint-labs/issue/FIX-1648) · mixed-flow session history | A new run's history keeps to its own flow | A legacy session could feed another flow's items to the model | direct · **Done** · [#2416](https://github.com/fixpoint-labs/flow-state-dev/pull/2416) |
+| [FIX-1654](https://linear.app/fixpoint-labs/issue/FIX-1654) · abort/cancel incarnation fence | A cancel lands only on the request incarnation it was aimed at | `createdAt` stopped being identity after FIX-1286 | spec [#2415](https://github.com/fixpoint-labs/flow-state-dev/pull/2415) · **Done** · [#2430](https://github.com/fixpoint-labs/flow-state-dev/pull/2430) |
+| [FIX-1665](https://linear.app/fixpoint-labs/issue/FIX-1665) · id-reuse races across processes | The deferred id-reuse races: an atomic incarnation-conditional terminal write, a cross-process per-attempt id, filesystem sidecar namespacing, heartbeat cadence, and the handoff cancel replay | Two attempts on different processes can still share one request's identity | direct · Backlog |
+| [FIX-1636](https://linear.app/fixpoint-labs/issue/FIX-1636) · closure · **required** | The QA plan, run on one `main` commit | The only child that runs the release as a consumer does | spec · Backlog · blocked by FIX-1634; FIX-1665 does not block it in Linear |
 
-**12 children: 2 done, 10 open, plus FIX-1510 done under FIX-1261 · the closure.** Could it be smaller? The set is the owner's, locked with
+**16 children: 14 done, 2 open (FIX-1634, FIX-1665), plus FIX-1510 done under FIX-1261 · the closure.** Twelve were locked at approval; four joined during delivery. Could it be smaller? The set is the owner's, locked with
 the Architect, and this spec does not reopen it. What can shrink is the work: several tickets
 predate later passes on `main`, so each direct-route worker reproduces first, and a hole that
 is already closed closes with a test instead of a rewrite ([D2](DECISIONS.md#d2)).

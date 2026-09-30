@@ -27,7 +27,7 @@ import { matchesOrgFilter, matchesTenantFilter, resolveRequestIncarnation } from
 import { compareRequestsForListing } from "../list-order";
 import { BoundedQueue } from "../../utils/bounded-queue";
 import { StoreSubscriptionError } from "../../errors/store-subscription-error";
-import { endsRequestStream } from "../subscribe-helpers";
+import { endsRequestStream, isBatchStillAuthorized } from "../subscribe-helpers";
 
 const DEFAULT_MAX_PENDING_EVENTS = 1000;
 
@@ -38,6 +38,8 @@ export class InMemoryRequestStore implements RequestStore {
   private readonly records = new Map<string, RequestRecord>();
   private readonly eventsByRequestId = new Map<string, RequestStreamEvent[]>();
   private readonly subscribersByRequestId = new Map<string, Set<Subscriber>>();
+  /** Per request id, the live subscriptions' queue closers, run on `delete`. */
+  private readonly closersByRequestId = new Map<string, Set<() => void>>();
   private readonly runOnceByRequestId = new Map<string, Map<string, unknown>>();
 
   async get(id: string): Promise<RequestRecord | undefined> {
@@ -123,7 +125,18 @@ export class InMemoryRequestStore implements RequestStore {
   }
 
   async delete(id: string): Promise<void> {
+    // The event log and runOnce results go with the record: ids are
+    // caller-supplied, so a later request may take this one, and a replay of
+    // it must not surface this run's events.
     this.records.delete(id);
+    this.eventsByRequestId.delete(id);
+    this.runOnceByRequestId.delete(id);
+    // Live streams of this request end here, before anything can take the
+    // id: detached first, so a later request's events never reach them.
+    this.subscribersByRequestId.delete(id);
+    const closers = this.closersByRequestId.get(id);
+    this.closersByRequestId.delete(id);
+    for (const close of closers ?? []) close();
   }
 
   persistItems(_requestId: string, _items: OutputItem[]): void {
@@ -191,6 +204,13 @@ export class InMemoryRequestStore implements RequestStore {
       this.subscribersByRequestId.set(requestId, subscribers);
     }
     subscribers.add(callback);
+    const close = (): void => queue.close();
+    let closers = this.closersByRequestId.get(requestId);
+    if (closers === undefined) {
+      closers = new Set();
+      this.closersByRequestId.set(requestId, closers);
+    }
+    closers.add(close);
 
     try {
       // Catch-up. Snapshot before reading from the queue so events appended
@@ -199,6 +219,7 @@ export class InMemoryRequestStore implements RequestStore {
       // sequence guard; the live loop picks them up via getEvents below if
       // they squeezed in past the snapshot).
       const catchUp = await this.getEvents(requestId, options.fromSequence);
+      if (catchUp.length > 0 && !(await isBatchStillAuthorized(options))) return;
       for (const event of catchUp) {
         yield event;
         lastEmitted = event.sequence_number;
@@ -209,6 +230,7 @@ export class InMemoryRequestStore implements RequestStore {
       // subscriber registration — `lastEmitted` is monotonic so duplicates
       // are filtered.
       const gap = await this.getEvents(requestId, lastEmitted);
+      if (gap.length > 0 && !(await isBatchStillAuthorized(options))) return;
       for (const event of gap) {
         yield event;
         lastEmitted = event.sequence_number;
@@ -228,8 +250,14 @@ export class InMemoryRequestStore implements RequestStore {
       }
     } finally {
       subscribers.delete(callback);
-      if (subscribers.size === 0) {
+      // Only this subscription's own set: a `delete` may have detached it,
+      // and the map may now hold a later request's subscribers.
+      if (subscribers.size === 0 && this.subscribersByRequestId.get(requestId) === subscribers) {
         this.subscribersByRequestId.delete(requestId);
+      }
+      closers.delete(close);
+      if (closers.size === 0 && this.closersByRequestId.get(requestId) === closers) {
+        this.closersByRequestId.delete(requestId);
       }
       queue.close();
     }

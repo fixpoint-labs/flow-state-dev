@@ -80,10 +80,12 @@ The presets frame the board id into the key (`taskSessionKeyFor`,
 task ids coincide; a custom key is used as returned, so two dispatchers that return
 the same string share one child. A shared child serialises its rows:
 `defineFlow` defaults the entry a `per-worker` or `key` dispatcher hands off to
-`queue` concurrency, and an explicit policy on the entry wins. Only the
-in-process dispatcher enforces it: with an external dispatcher the host skips
-arbitration (`createInboundTransportHost.ts`), so rows sharing a child can
-overlap there.
+`queue` concurrency, and an explicit policy on the entry wins. The in-process
+dispatcher always enforces it. An external dispatcher enforces it only when its
+adapter supplies a shared lease backend (`WorkerAdapter.leaseBackend`): the host
+takes the run's place before enqueueing and the job carries it
+(`DispatchEnvelope.leasePlace`). Without one the host skips arbitration
+(`createInboundTransportHost.ts`), so rows sharing a child can overlap there.
 
 The child id is derived, never chosen (`deriveDispatchRunSessionId`,
 `engine/src/context/dispatch-run.ts`): tenant, principal, parent session,
@@ -503,6 +505,8 @@ admission (`setAssignee` declines `immutable-assignee`): the value cannot move
 under the predicate, and it survives a restart with no run state to rebuild.
 `claimedBy` would not do — the child never claims, so a handed-off row still
 carries the session of the parent that claimed it.
+The run's own coordinate is `run`, which the claim gate writes from inside the
+run (FIX-1668).
 
 **The missing liveness conjunct on the park exclusion is deliberate, not an
 oversight.** The routing exclusion needs one because a routed row can be

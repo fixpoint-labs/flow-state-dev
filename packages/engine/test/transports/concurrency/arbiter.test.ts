@@ -10,6 +10,7 @@ import {
   createConcurrencyArbiter,
   type ConcurrencyFlowView
 } from "../../../src/transports/concurrency/arbiter";
+import { admitAndRun } from "./admit-and-run";
 import { ConcurrencyRejectedError } from "../../../src/transports/errors";
 import type { DispatchEnvelope } from "../../../src/transports/dispatcher";
 
@@ -173,12 +174,12 @@ describe("arbiter — reject policy", () => {
     const d1 = arbiter.resolve(f, "respond", envelope({ requestId: "req_1" }));
     let release1!: () => void;
     const held = new Promise<void>((r) => (release1 = r));
-    const run1 = arbiter.gate(d1, "req_1")(() => held);
+    const run1 = admitAndRun(arbiter, d1, "req_1")(() => held);
 
     const d2 = arbiter.resolve(f, "respond", envelope({ requestId: "req_2" }));
-    expect(() => arbiter.gate(d2, "req_2")).toThrow(ConcurrencyRejectedError);
+    expect(() => admitAndRun(arbiter, d2, "req_2")).toThrow(ConcurrencyRejectedError);
     try {
-      arbiter.gate(d2, "req_2");
+      admitAndRun(arbiter, d2, "req_2");
     } catch (e) {
       expect((e as ConcurrencyRejectedError).inFlightRequestId).toBe("req_1");
       expect((e as ConcurrencyRejectedError).status).toBe(409);
@@ -188,7 +189,7 @@ describe("arbiter — reject policy", () => {
     release1();
     await run1;
     const d3 = arbiter.resolve(f, "respond", envelope({ requestId: "req_3" }));
-    expect(() => arbiter.gate(d3, "req_3")).not.toThrow();
+    expect(() => admitAndRun(arbiter, d3, "req_3")).not.toThrow();
   });
 
   it("gate for allow and queue never throws on construction", () => {
@@ -199,8 +200,8 @@ describe("arbiter — reject policy", () => {
       "respond",
       envelope()
     );
-    expect(() => arbiter.gate(allowDecision, "r1")).not.toThrow();
-    expect(() => arbiter.gate(queueDecision, "r2")).not.toThrow();
+    expect(() => admitAndRun(arbiter, allowDecision, "r1")).not.toThrow();
+    expect(() => admitAndRun(arbiter, queueDecision, "r2")).not.toThrow();
   });
 });
 
@@ -215,7 +216,7 @@ describe("arbiter — queue policy", () => {
     const dispatch = (n: number) => {
       const env = envelope({ requestId: `req_${n}` });
       const d = arbiter.resolve(f, "respond", env);
-      return arbiter.gate(d, `req_${n}`)(async () => {
+      return admitAndRun(arbiter, d, `req_${n}`)(async () => {
         active += 1;
         maxActive = Math.max(maxActive, active);
         order.push(n);
@@ -240,7 +241,7 @@ describe("arbiter — allow policy", () => {
     const dispatch = (n: number) => {
       const env = envelope({ requestId: `req_${n}` });
       const d = arbiter.resolve(f, "respond", env);
-      return arbiter.gate(d, `req_${n}`)(async () => {
+      return admitAndRun(arbiter, d, `req_${n}`)(async () => {
         active += 1;
         maxActive = Math.max(maxActive, active);
         await new Promise((r) => setTimeout(r, 5));
