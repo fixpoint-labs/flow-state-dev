@@ -23,7 +23,7 @@ export function SuspensionReceipt({
   const status = form.resolution;
   const tone =
     status === "submitted"
-      ? "border-green-500/30 bg-green-500/10 text-green-600"
+      ? "border-success/30 bg-success/10 text-success"
       : status === "skipped"
         ? "border-border bg-muted text-muted-foreground"
         : "border-border bg-muted text-muted-foreground";
@@ -49,7 +49,7 @@ export function SuspensionFooter({ form }: { form: UseSuspensionFormResult }) {
         type="button"
         disabled={!form.canSubmit}
         onClick={() => void form.submit()}
-        className="rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground transition-colors hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-lg bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground transition-colors hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
       >
         {form.isResolving ? "Submitting…" : "Submit"}
       </button>
@@ -58,7 +58,7 @@ export function SuspensionFooter({ form }: { form: UseSuspensionFormResult }) {
           type="button"
           disabled={form.isResolving}
           onClick={() => void form.skip()}
-          className="rounded-lg border px-4 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg border px-4 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
           Skip
         </button>
@@ -70,7 +70,7 @@ export function SuspensionFooter({ form }: { form: UseSuspensionFormResult }) {
 /** The error line shown when a resume call fails. */
 export function SuspensionErrorLine({ error }: { error: string | null }) {
   if (error === null) return null;
-  return <p className="mt-2.5 text-xs text-red-500">{error}</p>;
+  return <p className="mt-2.5 text-xs text-destructive">{error}</p>;
 }
 
 /** The outer card frame shared by the pending state of every non-binary card. */

@@ -73,7 +73,7 @@ Props:
 - `flowKind?: string` — Default flow instance for child hooks (a kind, or a collection member's own id)
 - `sessionId?: string` — Default session ID
 - `userId?: string` — Required for Phase 1
-- `baseUrl?: string` — API base URL
+- `baseUrl?: string` — Forwarded to the client. It is where the FlowState routes are mounted, minus `/api/flows`, which the client adds. On the same origin with no base path, omit it; behind a base path, pass it (e.g. `/portal`); for an API on another origin, pass that origin plus any prefix (e.g. `https://api.example.com/portal`). See [Choosing `baseUrl`](https://flow-state.dev/docs/configuration/client#choosing-baseurl). A nested provider inherits its parent's `baseUrl`, so pass `baseUrl=""` to reset it to same-origin.
 - `renderers?: RendererRegistry` — Custom renderers keyed by item type or component key
 - `children: ReactNode`
 
@@ -535,7 +535,7 @@ It reads through `resourceClient` the same way `Roster` and `BoardColumns` do, a
 
 Each panel reads through a resource client. Pass your own through `resourceClient` when your API needs auth headers or a custom `fetch`, and pass a stable reference rather than an object built during render. Left out, each builds its own against the nearest `FlowProvider`'s `baseUrl`, with no auth headers.
 
-`Roster`, `BoardColumns` and `BoardList` read every page of their collection, following the list route's cursor rather than stopping at the first response. `limit` sets the size of each page fetched, not a cap on what renders — a collection larger than `limit` still renders in full. `SeatDetail` reads one item and has no `limit`.
+`Roster`, `BoardColumns` and `BoardList` follow the list route's cursor for up to 1,000 pages rather than stopping at the first response. `limit` sets the size of each page fetched, not a cap on what renders. A collection with pages left after 1,000 reads shows the error line and Retry instead of the rows read so far, because those aren't the whole list. Retry stops at the same point. If your `limit` is below 200, the list route's maximum, raising it lets the panel read further, and at `limit={200}` the ceiling is about 200,000 rows. Both hold only when the collection returns the page size you ask for: a projected collection may treat `limit` as a hint and return smaller pages, so raising it may not help there. A collection larger than that isn't one these panels are meant to show. A custom `resourceClient` whose cursor never ends hits the same error at any `limit`, and the fix belongs in that client. `SeatDetail` reads one item and has no `limit`.
 
 A failed read shows what failed and offers a retry. Nothing re-reads on a timer.
 

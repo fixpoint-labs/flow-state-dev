@@ -334,6 +334,8 @@ export const MessageResponse = memo(
     <Streamdown
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+        // Streamdown's inline code has a fixed corner; this one follows --radius-sm.
+        "[&_code]:rounded-sm",
         className
       )}
       plugins={streamdownPlugins}

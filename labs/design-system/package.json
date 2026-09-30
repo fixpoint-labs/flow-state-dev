@@ -1,0 +1,20 @@
+{
+  "name": "@flow-state-dev/design-system",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Private lab: App Lab's light and dark theme, as values over the tokens FSD's components already read. No components.",
+  "exports": {
+    "./app-lab.css": "./app-lab.css"
+  },
+  "files": ["app-lab.css"],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

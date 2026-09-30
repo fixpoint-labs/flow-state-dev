@@ -20,6 +20,7 @@ Where the three top-level app folders sit:
 |-----------|---------|
 | [`app-lab/`](app-lab) | A browser app for looking into any running Lab: point its start command at a Lab's `fsdev.config.mts` and it shows that Lab's teams, workstreams, boards, the asks waiting on you, and each channel's transcript, all read from the Lab while it runs. |
 | [`conductor/`](conductor) | Incubation for Conductor (LAB-138): a row on a board becomes a supervised coding run. Something claims it, gives the run its own checkout of the repository, stays with it until it stops, reads the verdict before settling the row, and lets a failed attempt run again in the tree the last one left. One phase (`implement`), one issue at a time, two outcomes. |
+| [`design-system/`](design-system) | The light and dark theme App Lab loads over FSD's component tokens. Values only, no components; a check keeps its values out of FSD's own packages. |
 | [`knowledge-hub/`](knowledge-hub) | Incubation for the Knowledge Hub (FIX-882–884): typed capture into working-memory staging, a cron sweeper/manager that routes staged items into long-term OKF memory, and a personal workforce roster. The capture layer exists — `logActivity` into a user-scoped inbox with a deterministic mailroom pass (883/884 pending). The finished simple-wiki predecessor moved to [`examples/knowledge-base`](../examples/knowledge-base). |
 
 Trading Desk now lives at https://github.com/fixpoint-labs/trading-desk.
