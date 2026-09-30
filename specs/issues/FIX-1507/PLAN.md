@@ -43,7 +43,7 @@ flowchart TD
 | V1 | S6 | `pnpm --filter @flow-state-dev/react test` and `pnpm typecheck` pass, the devtool suite too (it renders these components). `git diff <V0 commit>..HEAD -- 'packages/react/test/**'` is empty |
 | V2 | S6 | **The control.** Remove S1's after-the-wait staleness check (write whatever resolves). BR-2's tests for a panel read **and** a navigator read go red together. Then remove the switch's early return: BR-14 goes red. Revert each. The PR shows the reds |
 | V3 | S6 | BR-20: the package's export list is identical to `main`, and no file outside `src/` imports S1 or S4 |
-| V4 | S6 | [`poc/census`](poc/census/census.mjs) reports one caller of `useReadFence` under `components/` (S1's, in the internal folder) and one `createResourceClient` under `components/panels/` (S4's), with its planted control failing |
+| V4 | S6 | [`poc/census`](poc/census/census.mjs) `--after` passes: one in-scope `useReadFence` call site, S1's, under `packages/react/src/internal/` (none left under `components/`), and one `createResourceClient` under `components/panels/` (S4's), with its planted control failing. `--after` is coupled to S1's filename (`internal/useFencedRead.ts` in its `IN` map): if you name the module differently, update the map in the same PR |
 
 The second path (BP-035) is the closed leaf and the rebuilt client: BR-14 and BR-19 are what a
 refactor breaks unnoticed, and neither has a test today.
@@ -82,6 +82,16 @@ match is classified, and fails its planted control (`node specs/issues/FIX-1507/
   keep its loop exactly as merged.
 - Re-run the census on fresh `main` first. A new copy of the recipe or the set-up since this was
   written is in scope and gets the same treatment.
+
+## Notes from review
+
+Recorded verbatim for the implementer to weigh against real code. Not folded into the design.
+
+- **Cursor (review on `ccadf674`), S0:** "reuse or extract the `deferredSource` pattern from `flow-navigator-read-fence.test.ts` rather than a third ad-hoc deferred style."
+- **Cursor (review on `ccadf674`), S1:** "lift `useFencedRead` + `describe` **verbatim** from `panels/reads.ts`; the spec's guardrails (switch before `begin()`, loader ref, effect deps) match the subtle bugs in today's leaf/flow copies."
+- **Second look (PR comment), BR-13:** "a closed leaf never calls `setHeldIdentity`, so `holdsCurrent` stays false and BR-13's \"reports loading, no error\" falls out for free. The char test should assert that state, not only \"no request\"."
+- **Second look (PR comment), evidence weight:** "The V2 control (remove the after-the-wait check, watch both a panel and a navigator test go red) is the part that proves the goal. I'd keep that and the BR-14 / BR-19 tests, which are the ones with no coverage today. The rest of the char rows can be as thin as one assertion each."
+- **Second look (PR comment), S4:** "Today every panel builds a fallback client even when the host passes one (`useMemo` runs unconditionally). The helper should keep that, since making it lazy is a change in when `createResourceClient` runs, and this PR claims none. No action, just don't \"improve\" it in passing."
 
 ## Follow-ups
 

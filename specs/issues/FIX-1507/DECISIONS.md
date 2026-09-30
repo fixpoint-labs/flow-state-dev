@@ -29,6 +29,12 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 It comes down to where a race fix lands: leaving the leaf list out leaves its hardest case behind.
 
+**The leaner alternative, priced:** keep the closed-leaf guard in the leaf list (return before
+the read starts, as today) and call the shared read with no switch. It still removes the flow
+list's copy and most of the leaf's, with no mode input on the shared primitive. It loses because
+the closed-leaf rule then stays outside the shared read, so the control that must fail (BR-14)
+tests the leaf's own code, not the one place a race fix lands.
+
 **What would change my mind:** evidence that the leaf list's rules are about to diverge further
 (a per-visit cache, say). Then a shared read with switches becomes a mode flag, and the leaf
 list is better off alone.

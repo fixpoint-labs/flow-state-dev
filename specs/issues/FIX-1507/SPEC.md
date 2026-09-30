@@ -22,8 +22,9 @@ set-up helper.
 
 ## The goal, and how we'll know it's met
 
-**A fix to how the panels and the flow navigator guard a read against late or racing responses
-is made in one place, and every panel and navigator list behaves exactly as it does today.**
+**Within `@flow-state-dev/react`, a fix to how the panels and the flow navigator guard a read
+against late or racing responses is made in one place, and every panel and navigator list
+behaves exactly as it does today.**
 
 | Is it the right goal? | |
 |---|---|
@@ -82,9 +83,13 @@ crosses the package's public edge.
   read, untouched. [FIX-1674](https://linear.app/fixpoint-labs/issue/FIX-1674) owns that loop.
 - The live board's re-read on session changes. It already plugs into the shared read and
   keeps doing so.
-- The public resource hooks (`useResource`, `useResourceCollection`, `useResourceManifest`)
-  and the developer tool's fences. They build clients and fence differently, and are not
-  copies of this recipe.
+- The public resource hooks (`useResource`, `useResourceCollection`, `useResourceManifest`).
+  They build clients and fence differently, and are not copies of this recipe.
+- The developer tool's three hand-rolled copies of the same recipe (its flow rail, session
+  requests and dispatch runs). They are copies, but the shared read is internal and
+  unexported, so the developer tool cannot call it; moving them is a separate issue, not a
+  widening of this one. The [census](poc/census/census.mjs) lists them as deliberately out, so
+  the "one place" count is visibly scoped to this package.
 
 ## Sign off
 
