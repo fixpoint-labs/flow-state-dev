@@ -87,6 +87,14 @@ It comes down to the first row: only raising on open makes the ask appear withou
   resume. The EM is a declared member of the feature channel, which is the link. That is an App
   Lab read over shipped routes; nothing moves into Core or Engine, and it is FIX-1662's to amend
   ([PLAN.md → Follow-ups](PLAN.md#follow-ups)).
+  **Which session:** the seat's own session, `s_<seat id>`, the one the lab's file and drain
+  doors already run in and whose children the lab reads as what the seat dispatched. It is
+  top-level. It is not the dispatch-run session a channel post wakes the seat in through the
+  notify dispatcher (`session: { key }`), which carries a parent and exists only once a post has
+  woken the seat. The POC shows the same shape: it dispatches the ask into a top-level session it
+  names, not through notify. Inbox lists with dispatch runs included (FIX-1662 BR-24, as amended
+  in [#2439](https://github.com/fixpoint-labs/flow-state-dev/pull/2439)), so it reads this session
+  and any dispatch run alike; leg 1 lists the same way.
 - **Run as the lab's person** (`u_devforce_lab` in `org_devforce_lab`), the identity the lab's
   door resolves. If FIX-1662's config resolves a different person, the ask follows that person.
 - **No `WORKER.md` changes.** Their tokens are held-out evidence for the first check.
@@ -103,7 +111,7 @@ It comes down to the first row: only raising on open makes the ask appear withou
 | Make `onPost` ask before filing | Changes the third check's door and its evidence |
 | Approve files the row and stops; the existing drain action starts the coder | Leaner, and needs no drain inside a resumed request. But "Approve & run" would run nothing until a second call, which is the demo gate D1 rejects. The premise it would avoid is settled below |
 | Raise the ask in the feature channel's session, so the Stream shows it as is | The shipped channel kind has no action that can suspend, so the lab would rebuild a framework kind. And the ask would then belong to the channel, not a seat: Inbox reads seat sessions and a1 names a seat |
-| Run the ask in a child session of the channel, as the post door does | Child sessions are left out of the default session listing, so Inbox would miss it, and the Stream still does not draw child sessions |
+| Run the ask in a child session of the channel, as the post door does | Inbox would see it, since it lists dispatch runs (FIX-1662 BR-24). But that session exists only once a post wakes the seat, so raising the ask would mean posting first, which D2 rejects, and the coder's run would land under the channel's run rather than under the EM's own session |
 
 ## Open / Settled
 
