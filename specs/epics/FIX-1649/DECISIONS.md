@@ -27,7 +27,7 @@ flowchart TD
 |---|---|
 | **Instead of** | FIX-1662 carrying every level, as the set did before the hand-back · one child per region or per destination |
 | **Because** | The hand-back turned four regions into three centre levels (project, workstream, task), each with four tabs, and a right panel that changes with the level. As one child that is one spec of twelve tabs and two panel modes, past what a review holds. The task level is the clean cut: it reads one harness session (its transcript, diff and checks) and carries the session writes (a turn, Interrupt, Hand off), where the project board is the workstream board in swimlanes, so those two stay together. Meaning still lives in FIX-1650, 1651 and 1652, so a child per destination would still draw a sibling's model or wait on it |
-| **Locks in** | **FIX-1662:** the frame (sidebar, Jump to, routes, the right panel's slot), the project and workstream levels, and the workstream's panel. **FIX-1664:** the task level and the task inspector, inside that frame; its spec runs beside FIX-1662's, and its build merges after FIX-1662. The split trigger still stands for anything further: a level that needs a read no shipped surface exposes splits out rather than inventing the read |
+| **Locks in** | **FIX-1662:** the frame (sidebar, Jump to, routes, the right panel's slot), the Inbox and Tasks destinations, the project and workstream levels, and the workstream's panel. **FIX-1664:** the task level and the task inspector, inside that frame; its spec runs beside FIX-1662's, and its build merges after FIX-1662. The split trigger still stands for anything further: a level that needs a read no shipped surface exposes splits out rather than inventing the read |
 
 **What would change my mind:** FIX-1664's spec finding the task level reads mostly what the
 workstream level already reads. Then it folds back into FIX-1662.
@@ -87,7 +87,7 @@ It comes down to what a Lab is: a tree needs no app of its own.
 Every rule has one owner. A *consumes* cell is a place a child must not re-decide: FIX-1662
 consumes the token set and the hand-back rule; it does not choose colours. FIX-1662 owns reach,
 so FIX-1664's tabs hang off FIX-1662's routes; FIX-1664 owns how a session is written to, so
-the workstream composer's `@worker` goes through the same operation.
+the workstream composer's `@worker` and Inbox's reply go through the same operation.
 
 **Look, and meaning, surface by surface.** The shell (FIX-1662, FIX-1664) owns where each
 surface sits, how it is reached and how it looks. What it means belongs where it already
@@ -99,13 +99,15 @@ ships, or to the sibling that will ship it; until then, the surface shows its na
 | TEAMS, each team's workers, a worker's harness and status | Workforce as shipped: the tree's teams and seats, and the seat's run |
 | The PROJECTS tree's projects, the project level | FIX-1650 · org primitives |
 | Workstreams, tasks, a board row, brief, results, a task's acceptance criteria and harness plan | FIX-1651 · eng workstream kit |
-| NEEDS YOU, and inspect depth past what the task inspector shows | FIX-1652 · attention and inspect |
+| Inbox: what counts as an ask, its kinds (approval, question, decision), what Approve and Deny do; inspect depth past what the task inspector shows | FIX-1652 · attention and inspect |
+| Tasks: a task's state and its NOW activity | FIX-1651 · eng workstream kit |
+| TIME and COST, on Tasks and the task inspector | The session and run data that already ships |
 
 ## Decided in review, recorded so no child reopens them
 
 - **The structure is the hand-back v1's, not the wireframes'** ([`assets/design/`](assets/design/DESIGN.md), Sep 30).
-  One sidebar replaces the rail and sidebar: the org switcher, Jump to (⌘K), NEEDS YOU, the
-  PROJECTS tree (a project, then its workstreams as `#channels` with progress), TEAMS, and a
+  One sidebar replaces the rail and sidebar: the org switcher, Jump to (⌘K), Inbox and Tasks
+  (which replaced v1's NEEDS YOU section: owner input, screens 04 and 05), the PROJECTS tree (a project, then its workstreams as `#channels` with progress), TEAMS, and a
   footer with the sessions live and the user. **Under TEAMS, each team lists its workers below
   it** (seat, harness, status): Jake's correction, which the screens don't draw yet. Three
   centre levels: project (Stream, Board, Workstreams, Brief; one swimlane per workstream,
@@ -114,10 +116,19 @@ ships, or to the sibling that will ship it; until then, the surface shows its na
   session, an approval with Approve & run, Show SQL and Deny, and a human message routed into a
   session) and task (Session, Diff, Checks, Brief; Interrupt, Hand off, Open PR). The wireframes
   stay as history.
-- **The five destinations are the tree and the tabs.** Projects and workstreams are the tree.
+- **The five destinations are the tree, the tabs and two fixed lists.** Projects and workstreams are the tree.
   Chat is a workstream's stream and its composer, where `@worker` sends the message into that
-  worker's session as a turn. Attention is NEEDS YOU. **Resources has no place in v1**: it is
+  worker's session as a turn. Attention is **Inbox**, and **Tasks** is added: every task in
+  flight, across streams. **Resources has no place in v1**: it is
   reached from Jump to until [design pass 2](#design-pass-2) gives it one.
+- **Inbox and Tasks are shell destinations, owned by FIX-1662; FIX-1664 keeps the task
+  screen.** Tasks lists every task across streams (group by State, Worker or Stream; queued
+  shown or hidden), and a row opens the task screen. Inbox is a list of asks beside the selected
+  one's detail pane, whose composer replies into the worker's session only through shipped
+  session operations ([ER-15](BUSINESS-RULES.md#what-no-child-may-do)). **The detail pane reuses
+  the stream's approval card rendering: one rendering per ask kind, not two**, so answering in
+  either place clears both. The shell places them; what they mean comes from
+  [the siblings](#who-owns-what), and the shell invents no data ([ER-5](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
 - **The right panel is contextual; it replaces the run inspector.** At a workstream: progress,
   the team roster (seat, harness, status, queue) and its tasks grouped by status. At a task: the
   task inspector (worker, harness, started, tokens, cost, acceptance criteria, harness plan,
@@ -137,16 +148,16 @@ ships, or to the sibling that will ship it; until then, the surface shows its na
   ([ER-9](BUSINESS-RULES.md#how-the-set-is-run)).
 - **A surface whose meaning hasn't shipped shows a named empty state**, not a hidden item, and
   an action with no shipped operation behind it is disabled and says what arrives.
-- **NEEDS YOU lists the pending approvals and questions seats have raised** until FIX-1652
+- **Inbox lists the pending approvals, questions and decisions seats have raised** until FIX-1652
   defines attention. It is not the Thought Fabric attention domain.
 - **The design-system package imports nothing from `@flow-state-dev/workforce`.** Workforce
-  words in the chrome (NEEDS YOU, TEAMS) are labels App Lab passes in.
+  words in the chrome (Inbox, NEEDS YOU, TEAMS) are labels App Lab passes in.
 
 <a name="design-pass-2"></a>
 ## Open for design pass 2 · what the hand-back v1 left undrawn
 
 Not decisions for Jake; the brief for the next Claude Design pass, with what the build does
-until it returns. Kept in step with [`assets/design/DESIGN.md`](assets/design/DESIGN.md) §7.
+until it returns. Kept in step with [`assets/design/DESIGN.md`](assets/design/DESIGN.md) §9.
 
 | Item | Until it returns |
 |---|---|
@@ -157,6 +168,9 @@ until it returns. Kept in step with [`assets/design/DESIGN.md`](assets/design/DE
 | **Empty, loading and failed states** in the v1 look | The wireframes' states: a named empty state, a per-section Retry |
 | **The right panel at a project** (v1's board has none) | The board takes the full width |
 | **Narrow screens** | Desktop width only |
+| **Tasks grouped by Worker or by Stream** (only State is drawn) | The State grouping's rows and columns, under the other key |
+| **Finished tasks in Tasks** (the screen shows what's in flight) | In-flight only; done tasks stay on the boards |
+| **Inbox with nothing waiting**, Tasks with nothing running | A named empty state in a sentence |
 
 ## What the end-state POC showed
 
@@ -177,3 +191,6 @@ and reach), and the one code seam, tokens mapped onto `--fsd-nav-*`, already wor
   at the task level, filing FIX-1664; [design pass 2](#design-pass-2) opened.
 - **Jake's answer (Sep 30)**: the open fork, one app or a chrome kit each Lab imports, became
   [D3](#d3): one app. The kit's replacement rules were removed.
+- **Owner input (Sep 30): Inbox and Tasks.** Screens 04 and 05 added two fixed destinations
+  under Jump to; Inbox replaced the NEEDS YOU section and Attention now maps to it. Both went to
+  FIX-1662; D1 to D3 unchanged.

@@ -44,8 +44,10 @@ Publisher: FIX-1662. How to open a Lab, and the run command, are its own draft.
 > place to work.
 >
 > The sidebar is where you are and what needs you: the organization, a search that jumps
-> anywhere, the approvals and questions waiting on you, your projects with their workstreams,
-> and each team with its workers and what they're doing.
+> anywhere, an Inbox of the approvals and questions waiting on you, a list of every task in
+> flight, your projects with their workstreams, and each team with its workers and what
+> they're doing. Answer an ask in the Inbox, or reply to the worker who raised it; the reply
+> goes into that worker's session.
 >
 > The middle is whatever you opened. A project shows its workstreams on one board. A
 > workstream is a channel: workers post as they go, and a message addressed to one of them

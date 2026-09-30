@@ -7,14 +7,14 @@ Epic · three issues and a closure · Workforce App Lab · Goal 1, validate thro
 · Cycle 2 candidate, not Cycle 1
 
 **The design: [`assets/design/DESIGN.md`](assets/design/DESIGN.md).** Claude Design's hand-back
-v1 (three screens, Sep 30) fixes the structure this epic builds; each screen is walked through
+v1 (five screens, Sep 30, the last two adding Inbox and Tasks) fixes the structure this epic builds; each screen is walked through
 beside the [wireframe](assets/wireframes/README.md) it replaced. It reads without the rest of this set.
 
 ## Four teams, before and after
 
 | A team that… | Today | After this epic |
 |---|---|---|
-| **uses a Lab day to day** (the owner, dogfooding) | Has kitchen-sink, a teach surface, and the devtool, a debugger. Neither is where a Lab is used | Opens App Lab: what needs them, the projects and their workstreams, the teams and their workers, and a task's live session two clicks away |
+| **uses a Lab day to day** (the owner, dogfooding) | Has kitchen-sink, a teach surface, and the devtool, a debugger. Neither is where a Lab is used | Opens App Lab: an Inbox of what waits on them, every task in flight, the projects and their workstreams, the teams and their workers, and a task's live session two clicks away |
 | **builds the next Lab** (DevForce, then CyberForce) | Would write its own chrome, and reach channels, boards and runs its own way | Opens its Workforce tree in App Lab and writes no shell code ([D3](DECISIONS.md#d3)) |
 | **reuses FSD UI in its own app** | Themes the navigator and panels through `--fsd-nav-*` and `--fsd-panel-*`; some `@flow-state-dev/ui` registry components use fixed palette colours rather than semantic tokens | One token set with neutral defaults skins every reused component; copies stay unedited |
 | **owns a sibling horizon epic** (FIX-1650, 1651, 1652) | Needs a screen before anyone can see what it means | Fills a destination the shell already reaches |
@@ -52,7 +52,7 @@ Leg c makes "not baked in" checkable; its control plants the failure it exists t
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's goal check ([FIX-1663](https://linear.app/fixpoint-labs/issue/FIX-1663)), in a browser, on one `main` commit after every other child merges ([ER-12](BUSINESS-RULES.md#how-the-set-is-run)) |
-| **Signal** | Leg a walks the design's two journeys from App Lab's first screen: **NEEDS YOU → the approval card** in its workstream's stream **→ Approve & run**, and the row leaves NEEDS YOU; **the project board → a task card → its Session**, with the task inspector beside it. Then every sidebar section, every tab at the three levels, the right panel at a workstream and at a task, and resources from Jump to are reached; a message to `@worker` in a workstream's composer arrives in that worker's session as a turn. Where FIX-1650 hasn't shipped projects, the project level passes on its named empty state and the second journey starts from the workstream's Board. Leg b: the second tree opens through FIX-1662's load path and reaches the same surfaces, with no shell code of its own. Leg c: with no App Lab theme loaded, computed styles on every swept part carry no App Lab value, and a static check finds none under `packages/` |
+| **Signal** | Leg a walks the design's two journeys from App Lab's first screen: **Inbox → an approval → Approve & run**, and it leaves Inbox and its card in the workstream's stream together; **Tasks or the project board → a task → its Session**, with the task inspector beside it. Then every sidebar section, every tab at the three levels, the right panel at a workstream and at a task, and resources from Jump to are reached; a message to `@worker` in a workstream's composer arrives in that worker's session as a turn. Where FIX-1650 hasn't shipped projects, the project level passes on its named empty state and the second journey starts from Tasks or the workstream's Board. Leg b: the second tree opens through FIX-1662's load path and reaches the same surfaces, with no shell code of its own. Leg c: with no App Lab theme loaded, computed styles on every swept part carry no App Lab value, and a static check finds none under `packages/` |
 | **Input** | The DevForce lab's tree (`goals/devforce-lab/lab/workforce/`) with a real model, under a real org; for leg b, the pentest lab's tree (`goals/pentest-lab/lab/workforce/`), the nearest to CyberForce in the repo. Kitchen-sink's tree stands in for neither |
 | **Anti-game** | No asserting on a child's own tests. No App Lab code that names the second tree. No swept part left out, and no copy out of sync with its source |
 | **Control that must fail** | One reused component given a hardcoded App Lab colour: leg c must FAIL naming it. Today's `main`: legs a and b fail |
@@ -76,7 +76,7 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
 | [FIX-1655](https://linear.app/fixpoint-labs/issue/FIX-1655) · design system | The token set's neutral defaults beside the components; a private package with the App Lab theme in light and dark, mapped onto the existing contracts; skin gaps fixed at the source; the re-sync check | The skin, and the proof it isn't paint on FSD ([D2](DECISIONS.md#d2)) | Todo · spec route (no Kind label, defaults to spec) |
-| [FIX-1662](https://linear.app/fixpoint-labs/issue/FIX-1662) · App Lab shell | `labs/app-lab` over a Lab's tree, org required: the sidebar, the routes and the right panel's slot; the project and workstream levels with their tabs and the workstream's panel; empty states for what siblings haven't shipped | The substance: where a Lab is used ([D1](DECISIONS.md#d1)) | Backlog · spec route |
+| [FIX-1662](https://linear.app/fixpoint-labs/issue/FIX-1662) · App Lab shell | `labs/app-lab` over a Lab's tree, org required: the sidebar, the routes and the right panel's slot; the Inbox and Tasks screens; the project and workstream levels with their tabs and the workstream's panel; empty states for what siblings haven't shipped | The substance: where a Lab is used ([D1](DECISIONS.md#d1)) | Backlog · spec route |
 | [FIX-1664](https://linear.app/fixpoint-labs/issue/FIX-1664) · task view | The task level inside FIX-1662's frame: Session, Diff, Checks and Brief; Interrupt, Hand off, Open PR; the composer's turn; the task inspector | Where a person watches and steers one worker ([D1](DECISIONS.md#d1)) | Backlog · spec route · blocked by FIX-1662 |
 | [FIX-1663](https://linear.app/fixpoint-labs/issue/FIX-1663) · closure · **required** | The QA plan and runs on one `main` commit | Proves the whole | Backlog · blocked by FIX-1655, FIX-1662, FIX-1664 |
 
