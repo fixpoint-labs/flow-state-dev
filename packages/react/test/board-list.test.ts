@@ -246,7 +246,7 @@ describe("BoardList · the list (V1)", () => {
     await waitFor(() => expect(rowIds()).toEqual(["t-1"]));
   });
 
-  it("errors rather than draw a partial list when the board never stops paging (FIX-1577)", async () => {
+  it("errors rather than draw a partial list when the board never stops paging", async () => {
     // A transport that hands back a `nextCursor` forever, one row per page.
     let n = 0;
     const endless = {

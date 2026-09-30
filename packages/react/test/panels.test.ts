@@ -227,7 +227,7 @@ describe("Roster", () => {
     expect(source.listCollectionItems).toHaveBeenCalledTimes(2);
   });
 
-  it("errors rather than render a partial roster when the page ceiling is hit with rows left (FIX-1577)", async () => {
+  it("errors rather than render a partial roster when the page ceiling is hit with rows left", async () => {
     // `limit={1}` is a valid page size, so 1,001 seats need 1,001 pages — one
     // past the ceiling. Rendering the first 1,000 as the roster would drop a
     // seat with nothing on screen to say so.
@@ -245,7 +245,7 @@ describe("Roster", () => {
     expect(source.listCollectionItems).toHaveBeenCalledTimes(1000);
   });
 
-  it("renders a roster that ends exactly on the last page the ceiling allows (FIX-1577)", async () => {
+  it("renders a roster that ends exactly on the last page the ceiling allows", async () => {
     // The other side of the boundary: 1,000 pages whose last carries no
     // cursor is a complete read, not a truncated one.
     const seats = Array.from({ length: 1000 }, (_, i) => seat(`seat-${String(i).padStart(4, "0")}`));
@@ -419,7 +419,7 @@ describe("BoardColumns", () => {
     }
   );
 
-  it("errors rather than render a partial board when the cursor never runs out (FIX-1577)", async () => {
+  it("errors rather than render a partial board when the cursor never runs out", async () => {
     const source = endlessSource((n) => card(`t-${n}`, "pending", { title: `task ${n}` }));
     render(createElement(BoardColumns, { sessionId: "s1", boardRef: "b", resourceClient: source }));
 
