@@ -98,15 +98,18 @@ your scheduler calls that entry's dispatch endpoint when the time comes. The cal
 checked like any other request, usually with a shared secret that the flow's
 `authentication` compares against the request.
 
-```ts title="flows/invoicing.ts"
+Below is the same `billing` flow, shown with its schedule. Its `authentication` uses a shared
+bearer secret.
+
+```ts title="flows/billing.ts"
 import {
   defineFlow,
   defineScheduleBinding,
 } from "@flow-state-dev/core";
 import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
 
-export const invoicing = defineFlow({
-  kind: "invoicing",
+export const billing = defineFlow({
+  kind: "billing",
   actions: {},
   authentication: {
     resolvePrincipal: createBearerSecretPrincipalResolver({
@@ -127,11 +130,10 @@ export const invoicing = defineFlow({
 
 On the host, add `createScheduledTransportAdapter()` from `@flow-state-dev/scheduled` to
 `adapters`. Then point your scheduler at
-`POST /api/flows/invoicing/schedules/monthly-invoices/dispatch` with
+`POST /api/flows/billing/schedules/monthly-invoices/dispatch` with
 `Authorization: Bearer <the same secret>`. The endpoint answers `202` and the run continues
-after it. This is a separate flow from `billing` above, with its own `authentication`. If one
-flow takes both webhooks and schedules, branch on `ctx.source` inside one `resolvePrincipal`
-rather than replacing it.
+after it. If one flow takes both webhooks and schedules, branch on `ctx.source` inside one
+`resolvePrincipal` rather than replacing it.
 
 Schedules you create while the app runs, like a reminder a user sets, come from
 `schedules.resolve` instead of `schedules.static`. That is also how you do something later:
