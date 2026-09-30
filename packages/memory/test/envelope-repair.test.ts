@@ -1,16 +1,7 @@
 /**
- * Consolidation and prune output repair: what a caller sees when the model's
- * output can and cannot be recovered.
- *
- * The memory generators reshape common model mis-shapes (bare arrays, prose
- * around JSON, truncated output, a missing envelope key) back into their
- * `{ [key]: [...] }` envelope. What they must never do is turn output that
- * could not be recovered into an empty envelope: `{ removals: [], merges: [] }`
- * means "the model found nothing to prune", and a failed recovery reading the
- * same way is indistinguishable from real work with nothing to record.
- *
- * These tests run the real generator repair pipeline against a scripted model
- * that returns raw text, so they exercise the path production takes.
+ * What consolidation and prune return when model output can and cannot be
+ * recovered. A scripted text model drives the real repair pipeline;
+ * `mockGenerator` skips it.
  */
 import { describe, expect, it } from 'vitest'
 import { testBlock } from '@flow-state-dev/testing'
