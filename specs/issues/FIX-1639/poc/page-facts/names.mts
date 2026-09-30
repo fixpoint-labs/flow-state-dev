@@ -247,7 +247,7 @@ const PKG = (spec: string): Check => () => (existsSync(join(pkgDir(spec), "packa
 const WEBHOOKS_REF = "apps/docs/docs/server/webhooks.md";
 const SCHEDULED_REF = "apps/docs/docs/server/scheduled.md";
 const DISPATCH_TYPES = "packages/core/src/types/dispatch.ts";
-const bind = (k: string) => P("@flow-state-dev/core", "defineWebhookBinding", "(0)", k);
+const bind = (...k: string[]) => P("@flow-state-dev/core", "defineWebhookBinding", "(0)", ...k);
 const sched = (...k: string[]) => P("@flow-state-dev/core", "FlowDefinition", "schedules", ...k);
 const dispatcherOpt = (...k: string[]) => P("@flow-state-dev/core", "dispatcher", "(0)", ...k);
 
