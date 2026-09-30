@@ -1,0 +1,81 @@
+<svg viewBox="0 0 940 344" role="img" aria-label="Two rows, today and after. Today three backing arms: sequencer, which passes any state ref, and request, which goes through an adapter, both reach one state-backed constructor with caps and a default slot of tasks or the collectionId; resource reaches its own constructor with no caps. After, two arms: state, with an optional state ref that defaults to the request, reaching the same constructor with the same two default slots and caps; resource unchanged."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-in  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-gone{ fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-ok  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .ln    { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .ah    { fill:var(--ink-3); }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-c   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-x   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+    .t-g   { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:11.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="344"/>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY · THREE ARMS</text>
+    <rect class="n-gone" x="16" y="36" width="250" height="34" rx="5"/>
+    <text class="t-c" x="30" y="52">backing: "sequencer"</text>
+    <text class="t-s" x="30" y="64">sequencer: any state ref</text>
+    <rect class="n-gone" x="16" y="78" width="250" height="34" rx="5"/>
+    <text class="t-c" x="30" y="94">backing: "request"</text>
+    <text class="t-s" x="30" y="106">via the request adapter</text>
+    <rect class="n-in" x="16" y="120" width="250" height="30" rx="5"/>
+    <text class="t-c" x="30" y="139">backing: "resource"</text>
+
+    <path class="ln" d="M266 53 H300 V70 H330"/><path class="ah" d="M330 66 l8 4 -8 4z"/>
+    <path class="ln" d="M266 95 H300 V78 H330"/><path class="ah" d="M330 74 l8 4 -8 4z"/>
+    <path class="ln" d="M266 135 H330"/><path class="ah" d="M330 131 l8 4 -8 4z"/>
+
+    <rect class="n-ok" x="340" y="44" width="300" height="68" rx="5"/>
+    <text class="t-lbl" x="354" y="62">ONE STATE-BACKED CONSTRUCTOR · CAPS</text>
+    <text class="t-s" x="354" y="80">slot: "tasks" on a passed ref</text>
+    <text class="t-s" x="354" y="96">slot: collectionId on the request</text>
+    <rect class="n-box" x="340" y="120" width="300" height="30" rx="5"/>
+    <text class="t-s" x="354" y="139">resource-backed constructor · no caps</text>
+
+    <text class="t-x" x="662" y="60">"sequencer" over a generator's</text>
+    <text class="t-x" x="662" y="76">own state: the word lies</text>
+    <text class="t-x" x="662" y="100">caps on two of three arms</text>
+  </g>
+
+  <line class="rule" x1="16" y1="176" x2="924" y2="176"/>
+
+  <g id="after">
+    <text class="t-lbl" x="16" y="200">AFTER · TWO ARMS</text>
+    <rect class="n-in" x="16" y="212" width="250" height="76" rx="5"/>
+    <text class="t-c" x="30" y="232">backing: "state"</text>
+    <text class="t-s" x="30" y="252">state: ref  → that ref</text>
+    <text class="t-s" x="30" y="268">no state   → the request</text>
+    <text class="t-s" x="30" y="282">stateKey?  caps?</text>
+    <rect class="n-in" x="16" y="298" width="250" height="30" rx="5"/>
+    <text class="t-c" x="30" y="317">backing: "resource"</text>
+
+    <path class="ln" d="M266 250 H330"/><path class="ah" d="M330 246 l8 4 -8 4z"/>
+    <path class="ln" d="M266 313 H330"/><path class="ah" d="M330 309 l8 4 -8 4z"/>
+
+    <rect class="n-ok" x="340" y="216" width="300" height="68" rx="5"/>
+    <text class="t-lbl" x="354" y="234">SAME CONSTRUCTOR · CAPS</text>
+    <text class="t-s" x="354" y="252">slot: "tasks" on a passed ref</text>
+    <text class="t-s" x="354" y="268">slot: collectionId on the request</text>
+    <rect class="n-box" x="340" y="298" width="300" height="30" rx="5"/>
+    <text class="t-s" x="354" y="317">resource-backed · unchanged</text>
+
+    <text class="t-g" x="662" y="240">the config names the state</text>
+    <text class="t-g" x="662" y="258">both default slots unchanged</text>
+    <text class="t-g" x="662" y="276">caps on the one state arm</text>
+  </g>
+</svg>
