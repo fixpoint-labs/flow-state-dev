@@ -912,7 +912,37 @@ export async function runActionInternal<
   try {
     return await runActionAttempt({ ...options, requestId }, attempt);
   } finally {
-    attempt.end();
+    // Reached with the attempt still open only when the run ended by
+    // throwing rather than through its own finalization. If it was the last
+    // live attempt and an earlier one left it the stamp, stamp now: nothing
+    // else will, and an unstamped record is never evicted.
+    if (attempt.end() && attempt.leftToStamp() !== undefined) {
+      await finalizeAfterLastAttempt(options, requestId, attempt.leftToStamp());
+    }
+  }
+}
+
+/**
+ * Stamp and deregister for the last attempt of a request when it ended by
+ * throwing. Best-effort: the run's own error is what propagates, and a
+ * record left unstamped stays registered for the stale-request sweep.
+ */
+async function finalizeAfterLastAttempt(
+  options: Pick<RunActionInternalOptions, "stores" | "runtimeConfig">,
+  requestId: string,
+  incarnation: string | undefined
+): Promise<void> {
+  const logger = options.runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER;
+  try {
+    const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
+    const finalized =
+      writesSettled &&
+      (await finalizeRequestRecord(options.stores, requestId, incarnation, logger));
+    if (finalized) await options.stores.activeRequests.deregister(requestId);
+  } catch (err) {
+    logRuntimeEvent(logger, "warn", "[flow-state] request finalization failed", {
+      requestId, error: String(err)
+    });
   }
 }
 
@@ -2365,6 +2395,7 @@ async function runActionAttempt<
     // overlapping a run the sweep took for dead) is still writing under the
     // id: leave the stamp and the shared registry entry to whichever ends last.
     const lastAttempt = attempt.end();
+    if (!lastAttempt) attempt.leaveStamp(terminalRecordIncarnation);
     const finalized =
       lastAttempt &&
       writesSettled &&
@@ -2648,6 +2679,7 @@ async function runActionAttempt<
 
     // As on the success path: only the last live attempt stamps.
     const lastAttempt = attempt.end();
+    if (!lastAttempt) attempt.leaveStamp(terminalRecordIncarnation);
     const finalized =
       lastAttempt &&
       writesSettled &&

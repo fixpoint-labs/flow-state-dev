@@ -17,7 +17,16 @@
  * process (tests, multiple engines) never hold each other's requests open.
  */
 
-const liveAttempts = new WeakMap<object, Map<string, number>>();
+type LiveRequest = {
+  count: number;
+  /**
+   * The incarnation of the terminal record an ended attempt left unstamped
+   * for a later one, if any.
+   */
+  unstampedIncarnation?: string;
+};
+
+const liveAttempts = new WeakMap<object, Map<string, LiveRequest>>();
 
 /** A started attempt. `end` is idempotent. */
 export type RequestAttempt = {
@@ -27,34 +36,53 @@ export type RequestAttempt = {
    * deregister; false when another attempt will. A second call returns false.
    */
   end(): boolean;
+  /**
+   * Hand the stamp of the terminal record written as `incarnation` to
+   * whichever attempt ends last. Called by an attempt whose `end` returned
+   * false.
+   */
+  leaveStamp(incarnation: string | undefined): void;
+  /** The incarnation an earlier attempt left for this one to stamp. */
+  leftToStamp(): string | undefined;
 };
 
 /** Record the start of a run attempt of `requestId` against `store`. */
 export function beginRequestAttempt(store: object, requestId: string): RequestAttempt {
-  let counts = liveAttempts.get(store);
-  if (counts === undefined) {
-    counts = new Map();
-    liveAttempts.set(store, counts);
+  let requests = liveAttempts.get(store);
+  if (requests === undefined) {
+    requests = new Map();
+    liveAttempts.set(store, requests);
   }
-  const map = counts;
-  map.set(requestId, (map.get(requestId) ?? 0) + 1);
+  const map = requests;
+  let live = map.get(requestId);
+  if (live === undefined) {
+    live = { count: 0 };
+    map.set(requestId, live);
+  }
+  const state = live;
+  state.count += 1;
   let ended = false;
   return {
     end(): boolean {
       if (ended) return false;
       ended = true;
-      const remaining = (map.get(requestId) ?? 1) - 1;
-      if (remaining <= 0) {
-        map.delete(requestId);
+      state.count -= 1;
+      if (state.count <= 0) {
+        if (map.get(requestId) === state) map.delete(requestId);
         return true;
       }
-      map.set(requestId, remaining);
       return false;
+    },
+    leaveStamp(incarnation: string | undefined): void {
+      if (incarnation !== undefined) state.unstampedIncarnation = incarnation;
+    },
+    leftToStamp(): string | undefined {
+      return state.unstampedIncarnation;
     }
   };
 }
 
 /** Whether any attempt of `requestId` against `store` is still live in this process. */
 export function hasLiveRequestAttempt(store: object, requestId: string): boolean {
-  return (liveAttempts.get(store)?.get(requestId) ?? 0) > 0;
+  return (liveAttempts.get(store)?.get(requestId)?.count ?? 0) > 0;
 }

@@ -140,3 +140,97 @@ describe("overlapping runs of one request", () => {
     }
   );
 });
+
+// The run that ends last is the one left to stamp. When it ends by throwing
+// (here its onStarted observer fails after the other run has already ended
+// and left the stamp to it), the id must still be stamped and deregistered,
+// or retention would keep the finished request forever.
+describe("the last overlapping run ending by throwing", () => {
+  it("still stamps the finished record and deregisters it", async () => {
+    const stores = createInMemoryStores();
+    const requestId = "req_overlap_throws";
+
+    let releaseOriginal!: () => void;
+    const originalGate = new Promise<void>((resolve) => (releaseOriginal = resolve));
+    let originalParked!: () => void;
+    const originalEntered = new Promise<void>((resolve) => (originalParked = resolve));
+    let continuationStarting!: () => void;
+    const continuationEntered = new Promise<void>((resolve) => (continuationStarting = resolve));
+    let failContinuation!: () => void;
+    const continuationGate = new Promise<void>((resolve) => (failContinuation = resolve));
+    let starts = 0;
+
+    const flow = defineFlow({
+      kind: "overlap-throw-flow",
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          block: handler({
+            name: "parked",
+            inputSchema: z.any(),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: async () => {
+              originalParked();
+              await originalGate;
+              return { ok: true };
+            }
+          })
+        }
+      },
+      request: {
+        heartbeatIntervalMs: 50,
+        onStarted: handler({
+          name: "start",
+          inputSchema: z.any(),
+          outputSchema: z.any(),
+          execute: async () => {
+            starts += 1;
+            if (starts === 2) {
+              continuationStarting();
+              await continuationGate;
+              throw new Error("continuation failed to start");
+            }
+            return null;
+          }
+        })
+      }
+    })({ id: "overlap-throw-flow" });
+    const flowRegistry = createFlowRegistry();
+    flowRegistry.register(flow as never);
+
+    const original = runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      requestId,
+      sessionId: "sess_overlap_throw",
+      userId: "user_overlap_throw",
+      input: {},
+      stores,
+      runtimeConfig: {}
+    });
+    await originalEntered;
+    await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry,
+      runtimeConfig: {}
+    });
+    await continuationEntered;
+
+    // The original ends first and leaves the stamp to the continuation.
+    releaseOriginal();
+    await original.catch(() => {});
+    expect((await stores.request.get(requestId))?.finalizedAtMs).toBeNull();
+
+    // The continuation then ends by throwing.
+    failContinuation();
+    await finished.catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const record = await stores.request.get(requestId);
+    expect(typeof record?.finalizedAtMs).toBe("number");
+    expect(await stores.activeRequests.get(requestId)).toBeUndefined();
+  });
+});
