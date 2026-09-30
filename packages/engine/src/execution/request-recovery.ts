@@ -10,6 +10,8 @@ import type {
 } from "../stores/types";
 import { DEFAULT_QUEUED_GRACE_MS, type RuntimeConfig } from "../runtime-config";
 import { createLiveRequestStream, type LiveRequestStream } from "../streaming/live-stream";
+import { isTerminalRequestStatus } from "../stores/subscribe-helpers";
+import { resolveRequestIncarnation } from "../stores/scope-keys";
 import { generateId } from "../utils/generate-id";
 import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./logging";
 import { settledRecordFields } from "./request-action-result";
@@ -118,6 +120,35 @@ export async function detectInterruptedRequests(options: {
         actionName: entry.actionName,
         sessionId: entry.sessionId
       });
+    }
+
+    // A run whose record says `heartbeatsUntilFinalized` beats from its
+    // terminal write until it stamps `finalizedAtMs`, so a stale entry over
+    // such a terminal, unstamped record is a run that died in its last steps.
+    // Any other run (heartbeats off, or a failure path) looks stale while it
+    // is alive, so staleness proves nothing and its record is left for its
+    // own run to stamp; if that run is gone, the record is never evicted.
+    // For a record this sweep may stamp, nothing is left to write under the
+    // id: stamp it here so session retention can evict it. Conditional on the
+    // record just read (its status and incarnation), so it never recreates a
+    // record or stamps another request that has since taken the id. The same
+    // path repairs a run whose own stamp failed: it stays registered with its
+    // heartbeat stopped until this sweep stamps it.
+    if (
+      requestRecord !== undefined &&
+      requestRecord.finalizedAtMs === null &&
+      requestRecord.heartbeatsUntilFinalized === true &&
+      requestRecord.status !== "in_progress" &&
+      isTerminalRequestStatus(requestRecord.status)
+    ) {
+      const now = Date.now();
+      await stores.request.setFieldsIfStatus(
+        entry.requestId,
+        { finalizedAtMs: now },
+        [requestRecord.status],
+        now,
+        resolveRequestIncarnation(requestRecord)
+      );
     }
 
     await stores.activeRequests.deregister(entry.requestId);

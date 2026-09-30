@@ -672,9 +672,13 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
           </div>
         </div>
 
+        {/* The model named here is the assistant's own preference, and only the
+            assistant answers with it. A picked channel or seat answers through
+            its model intents (an `FSDEV_*` override lands there), and each reply
+            carries the model that produced it, so the bar names none there. */}
         <ClientDataBar
           displayName={userPrefs?.displayName}
-          selectedModel={selectedModel}
+          selectedModel={picked === null ? selectedModel : undefined}
           activeSkills={modeStatus?.activeSkills}
         />
 

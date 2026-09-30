@@ -66,8 +66,8 @@ export type DispatchOperation = (spec: {
   /**
    * Whether `sessionId` is a child the seam derived (`"child"`) or a session
    * that already existed and was named by `{ id }` (`"existing"`). A delivery
-   * into an existing session is refused past an external queue boundary — see
-   * `createDispatchOperation`.
+   * into an existing session is refused past an external queue boundary the
+   * host does not arbitrate — see `createDispatchOperation`.
    */
   delivery: "child" | "existing";
   input: unknown;
@@ -125,9 +125,9 @@ export type DispatchOperation = (spec: {
    */
   | { notStarted: true; reason: string }
   /**
-   * The host hands work to an external queue, and this was a delivery into an
-   * existing session — refused before anything is enqueued, so the caller can
-   * name the refusal rather than parse the reason.
+   * The host hands work to an external queue it does not arbitrate, and this
+   * was a delivery into an existing session — refused before anything is
+   * enqueued, so the caller can name the refusal rather than parse the reason.
    */
   | { notStarted: true; reason: string; externalDispatcher: true }
 >;
@@ -156,7 +156,10 @@ export type DispatchOperationInputs = {
    * construction input — it arrives per call, from the seam, as the sending
    * request's own kind.
    */
-  host: Pick<InboundTransportHost, "dispatch" | "usesExternalDispatcher">;
+  host: Pick<
+    InboundTransportHost,
+    "dispatch" | "usesExternalDispatcher" | "arbitratesExternalDispatch"
+  >;
   /**
    * Called with the dispatched request's `finished` promise the moment the
    * dispatch is made.
@@ -187,23 +190,33 @@ export type DispatchOperationInputs = {
 export function createDispatchOperation(inputs: DispatchOperationInputs): DispatchOperation {
   return async (spec) => {
     // A delivery into an EXISTING session refuses past an external queue
-    // boundary, before anything is enqueued. Two guarantees the delivery makes
-    // are void there: the recipient's concurrency policy is not applied to
-    // external dispatch at all, and the incarnation guard runs in whichever
-    // process picks the job up, against a record this one never approved. A
-    // derived child is different — it is a fresh session whose run the queue
-    // owns, exactly like a detached start — so it goes through.
+    // boundary the host does not arbitrate, before anything is enqueued. The
+    // delivery promises the recipient's concurrency policy, and past a queue
+    // that holds only when the host's arbiter shares its keys with the worker
+    // processes — a worker adapter that supplies a lease backend (FIX-1634).
+    // Without one the policy is not applied to external dispatch at all, so the
+    // delivery refuses rather than under-delivering. The incarnation guard is
+    // not what this protects: the approved lineage rides the job, and the
+    // worker's run checks it before anything happens. A derived child is
+    // different — it is a fresh session whose run the queue owns, exactly like
+    // a detached start — so it goes through either way.
     //
     // Asked of the host HERE rather than checked at the seam, for freshness:
     // which dispatcher is effective is settled only once the worker adapter has
     // been consulted, which is after the seam's inputs are assembled. The host
     // is the one place that knows, so it is the one place asked; the seam still
     // decides the refusal code.
-    if (spec.delivery === "existing" && inputs.host.usesExternalDispatcher) {
+    if (
+      spec.delivery === "existing" &&
+      inputs.host.usesExternalDispatcher &&
+      inputs.host.arbitratesExternalDispatch !== true
+    ) {
       return {
         notStarted: true,
         externalDispatcher: true,
-        reason: "the effective dispatcher hands work to an external queue"
+        reason:
+          "the effective dispatcher hands work to an external queue, and the worker " +
+          "adapter supplies no lease backend to arbitrate it across processes"
       };
     }
 

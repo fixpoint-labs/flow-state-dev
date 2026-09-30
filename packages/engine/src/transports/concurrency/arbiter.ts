@@ -1,29 +1,37 @@
 /**
- * The concurrency arbiter (FIX-837) — policy logic layered over the keyed
- * async gate. One instance is owned by the inbound transport host and governs
- * every dispatch, so a session-scoped concurrency policy is enforced once at
- * the shared seam rather than re-implemented per transport adapter.
+ * The concurrency arbiter (FIX-837) — the one owner of concurrency policy,
+ * layered over an ordered-lease backend. One instance is shared by every host
+ * in a process, so a session-scoped concurrency policy is enforced once at the
+ * shared seam rather than re-implemented per transport adapter.
  *
- * Two pieces wire into the host, both at the shared `dispatch` seam so every
- * transport inherits the policy uniformly (the issue's stated goal):
+ * The arbiter decides; the backend only keeps the line (`lease-backend.ts`).
+ * Policy — key resolution, `reject` / `queue` / `allow`, the wait budget,
+ * naming the holder, `ConcurrencyRejectedError` — lives here and nowhere else,
+ * whichever backend is underneath.
+ *
  *   - `resolve` derives the effective policy + key for a dispatch (pure).
- *   - `gate` runs at the top of `dispatch`, before any request record or live
- *     stream is created: for `reject` it atomically claims the key and throws
- *     `ConcurrencyRejectedError` synchronously when another request holds it
- *     (so the dropped caller never materializes a run); for `queue` it defers
- *     the run start behind the key (FIFO); for `allow` it is a passthrough. The
- *     key is released when the run settles.
+ *   - `admit` takes the dispatch's place before any request record or live
+ *     stream is created: for `reject` it claims the key only if it is free and
+ *     refuses with `ConcurrencyRejectedError` otherwise (so the dropped caller
+ *     never materializes a run); for `queue` it joins the key's line; for
+ *     `allow` it takes nothing. The admission then runs the kickoff in its turn
+ *     and gives the place back when the run settles, gives it back unrun, or
+ *     hands it to a job another process runs. While this process holds a
+ *     place on a shared backend it renews it, so a place outlives the
+ *     backend's lease for as long as this process holds it.
  *
- * Acquiring and releasing the key entirely within a single `dispatch` lifecycle
- * (release in the run's terminal `finally`) means there is no cross-call handoff
- * and no leak window — unlike claiming the key at an earlier seam and releasing
- * it later, where an adapter that bails in between would strand the key.
+ * Over the in-memory default backend all of this is synchronous where it was
+ * before backends existed: a `reject` throws from `dispatch`, and a queued run
+ * is woken when the run ahead of it settles. Over an adapter-supplied backend
+ * (FIX-1634) admission is asynchronous — a `reject` refusal arrives through the
+ * dispatch's `accepted` — and a queued run re-checks its turn on the schedule
+ * `planQueueWait` sets. An unreachable backend refuses the dispatch; nothing
+ * runs unarbitrated.
  *
- * v1 enforces the policy for the in-process dispatcher only. With an external
- * dispatcher the run completes in another worker, so the host skips arbitration
- * (passing no key) and enforcement is deferred to the durable substrate
- * (FIX-830) rather than gating the enqueue, which would free a `reject` key at
- * enqueue time instead of run-completion.
+ * Without a supplied backend the arbiter holds keys in this process only, so a
+ * host whose dispatcher hands work to another process skips arbitration there
+ * (`arbitratesAcrossProcesses` is false) and the dispatch operation keeps
+ * refusing a delivery into an existing session by name.
  */
 
 import type {
@@ -32,13 +40,19 @@ import type {
   ConcurrencyKeyContext,
   ConcurrencyPolicyName
 } from "@flow-state-dev/core";
-import { createKeyedAsyncGate } from "../../utils/keyed-async-gate";
 import { resolveEntry } from "../../execution/resolve-entry";
+import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, type RuntimeLogger } from "../../execution/logging";
 import { ConcurrencyRejectedError } from "../errors";
 import type { DispatchEnvelope } from "../dispatcher";
-
-/** Default budget a `queue` request waits for the key before timing out. */
-const QUEUE_WAIT_TIMEOUT_MS = 30_000;
+import {
+  QUEUE_WAIT_TIMEOUT_MS,
+  createInMemoryLeaseBackend,
+  inMemoryInternalsOf,
+  planQueueWait,
+  type ConcurrencyLeaseBackend,
+  type LeasePlace,
+  type LeaseTakeResult
+} from "./lease-backend";
 
 /** The one field the arbiter reads off an entry. */
 type EntryPolicyView = { concurrency?: ConcurrencyConfig } | undefined;
@@ -65,6 +79,37 @@ export interface ResolvedDecision {
   key: string | undefined;
 }
 
+/**
+ * A dispatch's standing on its concurrency key, taken by `admit` before
+ * anything is written.
+ */
+export interface ConcurrencyAdmission {
+  /** The place this dispatch holds or waits in; `undefined` when nothing is arbitrated. */
+  readonly place: LeasePlace | undefined;
+  /**
+   * Run `start` in this place's turn and give the place back when it settles.
+   * A `queue` place waits for its turn first, bounded by the wait budget, and
+   * fails `ConcurrencyQueueTimeoutError` past it. Call at most once.
+   *
+   * `signal` withdraws a place still waiting on a supplied backend: the wait
+   * rejects at once, `start` never runs, and the place is given back rather
+   * than renewed until its turn. On the in-memory default the caller re-reads
+   * the signal when the turn comes.
+   */
+  run<T>(start: () => Promise<T>, signal?: AbortSignal): Promise<T>;
+  /**
+   * Give the place back without running, for a dispatch that failed after
+   * admission. Idempotent, and a no-op once `run` has settled.
+   */
+  release(): Promise<void>;
+  /**
+   * Stop holding the place in this process without giving it back: it now
+   * belongs to a job another process will run, which renews and gives it
+   * back. Call once the job is enqueued.
+   */
+  handOff(): void;
+}
+
 export interface ConcurrencyArbiter {
   /** Resolve the effective policy + key for a dispatch. Pure. */
   resolve(
@@ -73,22 +118,29 @@ export interface ConcurrencyArbiter {
     envelope: DispatchEnvelope
   ): ResolvedDecision;
   /**
-   * Build the run-start wrapper for a dispatch. Call synchronously at the top of
-   * `dispatch`, before any record/stream is created:
-   *   - `reject` → atomically claim the key; if another request holds it, THROW
-   *     `ConcurrencyRejectedError(key, inFlightRequestId)` synchronously (so no
-   *     record is created for the dropped caller). Otherwise return a wrapper
-   *     that runs the kickoff and releases the key when it settles.
-   *   - `queue` → return a wrapper that runs the kickoff behind the key (FIFO),
-   *     bounded by the wait budget.
-   *   - `allow` / no key → return a passthrough wrapper (today's timing).
-   * `requestId` is recorded as the in-flight holder so a competing `reject` can
-   * name the request a caller may tail.
+   * Take a dispatch's place on its key. Call at the top of `dispatch`, before
+   * any record/stream is created:
+   *   - `reject` → claim the key only if it is free; if another request holds
+   *     it, refuse with `ConcurrencyRejectedError(key, inFlightRequestId)` (so
+   *     no record is created for the dropped caller).
+   *   - `queue` → join the key's line, in the order admissions are taken.
+   *   - `allow` / no key → take nothing (today's timing).
+   *
+   * Synchronous over the in-memory default backend — a refusal is thrown here.
+   * Over a supplied backend it returns a promise, which rejects with the
+   * refusal or with the backend's own error when the backend is unreachable.
+   * `allow` is synchronous over any backend.
    */
-  gate(
+  admit(
     decision: ResolvedDecision,
     requestId: string
-  ): <T>(start: () => Promise<T>) => Promise<T>;
+  ): ConcurrencyAdmission | Promise<ConcurrencyAdmission>;
+  /**
+   * Whether this arbiter's keys are shared with other processes: true when a
+   * backend was supplied rather than defaulted. A host whose dispatcher runs
+   * work in another process arbitrates it only when this is true.
+   */
+  readonly arbitratesAcrossProcesses: boolean;
 }
 
 /** Tenant-namespace a raw id so identical ids in different tenants never
@@ -132,14 +184,257 @@ function resolveKey(key: ConcurrencyKey, envelope: DispatchEnvelope): string | u
   return key(ctx);
 }
 
-export function createConcurrencyArbiter(): ConcurrencyArbiter {
-  const keyedGate = createKeyedAsyncGate();
 
-  // The currently-admitted holder per key, so a `reject` can name the in-flight
-  // request the caller may tail. Set on admission, cleared on release.
-  const holders = new Map<string, string>();
+/** Whether a value returned by `admit` is still pending. */
+export function isPendingAdmission(
+  admission: ConcurrencyAdmission | Promise<ConcurrencyAdmission>
+): admission is Promise<ConcurrencyAdmission> {
+  return typeof (admission as { then?: unknown }).then === "function";
+}
+
+/**
+ * How often the arbiter renews a place this process holds on a shared
+ * backend; see `ConcurrencyLeaseBackend.renew`.
+ */
+const HOLDER_RENEW_INTERVAL_MS = 2_000;
+
+/** Nothing to hold: the run starts on the caller's own timing. */
+const UNARBITRATED: ConcurrencyAdmission = {
+  place: undefined,
+  run: (start) => start(),
+  release: async () => {},
+  handOff: () => {}
+};
+
+/**
+ * Call a backend method so that a synchronous throw (a closed connection, say)
+ * rejects like an asynchronous failure instead of escaping the caller.
+ */
+function attempt(call: () => Promise<void>): Promise<void> {
+  try {
+    return call();
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+/**
+ * End a shared-backend wait whose requester withdrew. The admission's `run`
+ * gives the place back on the way out.
+ */
+function throwIfWithdrawn(place: LeasePlace, signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new Error(`Place "${place.ticket}" was withdrawn while waiting its turn on "${place.key}"`);
+  }
+}
+
+/**
+ * Run `start`, then give the place back however it settles — including a
+ * synchronous throw from `start`, so a failed kickoff never strands the key.
+ * When the give-back is asynchronous (a shared backend) the run settles only
+ * once it lands, so a caller that sees the run end finds its key free. The
+ * give-back never rejects; the run's own outcome is what settles.
+ */
+function runThenGiveBack<T>(
+  start: () => Promise<T>,
+  giveBack: () => Promise<void> | undefined
+): Promise<T> {
+  let p: Promise<T>;
+  try {
+    p = start();
+  } catch (e) {
+    const pending = giveBack();
+    if (pending === undefined) throw e;
+    return pending.then(() => {
+      throw e;
+    });
+  }
+  return p.then(
+    (v) => {
+      const pending = giveBack();
+      return pending === undefined ? v : pending.then(() => v);
+    },
+    (e) => {
+      const pending = giveBack();
+      if (pending === undefined) throw e;
+      return pending.then(() => {
+        throw e;
+      });
+    }
+  );
+}
+
+export interface CreateConcurrencyArbiterOptions {
+  /**
+   * The ordered-lease backend to keep lines in. Supplied by a queue adapter
+   * whose runs land in several processes (`WorkerAdapter.leaseBackend`), so
+   * every process lines up on the same keys. Default: a fresh in-memory
+   * backend, private to this arbiter.
+   */
+  backend?: ConcurrencyLeaseBackend;
+  /**
+   * Where a failed give-back on a supplied backend is reported. The run's own
+   * outcome still settles; the place lapses with the backend's lease. Default:
+   * the runtime's console logger.
+   */
+  logger?: RuntimeLogger;
+}
+
+export function createConcurrencyArbiter(
+  options: CreateConcurrencyArbiterOptions = {}
+): ConcurrencyArbiter {
+  const backend = options.backend ?? createInMemoryLeaseBackend();
+  const inMemory = inMemoryInternalsOf(backend);
+  const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
+
+  /**
+   * Wait for a place's turn on a backend with no in-process wake: re-check on
+   * the schedule `planQueueWait` sets. The admission's renewal timer keeps the
+   * place alive meanwhile. An abort ends the wait at once, between checks or
+   * during the sleep, so a withdrawn place is not renewed until its turn.
+   */
+  const pollForTurn = async (place: LeasePlace, signal?: AbortSignal): Promise<void> => {
+    const since = Date.now();
+    for (let attempt = 0; ; attempt += 1) {
+      throwIfWithdrawn(place, signal);
+      const myTurn = await backend.isMyTurn(place);
+      throwIfWithdrawn(place, signal);
+      const waitedMs = Date.now() - since;
+      // The first check is immediate and always honoured. A later one that
+      // lands past the budget (the check itself may have taken it there)
+      // times out rather than starting a run the budget no longer covers.
+      if (myTurn && (attempt === 0 || waitedMs < QUEUE_WAIT_TIMEOUT_MS)) return;
+      const step = planQueueWait({ key: place.key, waitedMs, attempt });
+      if (step.kind === "timeout") throw step.error;
+      await new Promise<void>((resolve) => {
+        const wake = (): void => {
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", wake);
+          resolve();
+        };
+        const timer = setTimeout(wake, step.delayMs);
+        // Don't keep the event loop alive solely for a queued wait.
+        (timer as { unref?: () => void }).unref?.();
+        signal?.addEventListener("abort", wake, { once: true });
+        // Re-read once the listener is in place, so a cancel that fired before
+        // it was added still ends the sleep rather than waiting it out.
+        if (signal?.aborted) wake();
+      });
+    }
+  };
+
+  /** Build the admission for a place, once taken. Shared by both backends. */
+  const admissionFor = (policy: ConcurrencyPolicyName, place: LeasePlace): ConcurrencyAdmission => {
+    let running = false;
+    // On a shared backend this process renews the place for as long as it
+    // holds it: while the dispatch writes its records, while it waits its
+    // turn, and while it runs, until it gives the place back or hands it to
+    // a job. Nobody else renews it in that time, and a place whose lease
+    // lapsed would let another process's run start alongside this one.
+    // In-memory places never expire, so the default path starts no timer.
+    let renewal: ReturnType<typeof setInterval> | undefined;
+    if (inMemory === undefined) {
+      renewal = setInterval(() => {
+        attempt(() => backend.renew(place)).catch(() => undefined);
+      }, HOLDER_RENEW_INTERVAL_MS);
+      // Don't keep the event loop alive solely to renew a lease.
+      (renewal as { unref?: () => void }).unref?.();
+    }
+    const stopRenewing = (): void => {
+      if (renewal !== undefined) clearInterval(renewal);
+      renewal = undefined;
+    };
+    // Undefined until given back; then the give-back itself, which never
+    // rejects, so `release()` and a settling run share one round trip.
+    let givenBack: Promise<void> | undefined;
+    /**
+     * Give the place back. Synchronous in memory (returns `undefined`), so the
+     * next waiter is woken before the run settles, as it always was. On a
+     * supplied backend it is awaited; a failure is logged, not thrown: the
+     * place lapses with the backend's lease, and the run's outcome is what the
+     * caller needs.
+     */
+    const giveBack = (): Promise<void> | undefined => {
+      if (inMemory !== undefined) {
+        inMemory.giveBack(place);
+        return undefined;
+      }
+      stopRenewing();
+      givenBack ??= attempt(() => backend.giveBack(place)).catch((error: unknown) => {
+        // Best effort, like the give-back itself: a logger that throws must
+        // not turn this into a rejection the run or `release()` would carry.
+        try {
+          logRuntimeEvent(
+            logger,
+            "warn",
+            "[flow-state] could not give a concurrency place back; it stays held until the lease backend expires it",
+            {
+              key: place.key,
+              ticket: place.ticket,
+              error: error instanceof Error ? error.message : String(error)
+            }
+          );
+        } catch {
+          // Nowhere left to report it.
+        }
+      });
+      return givenBack;
+    };
+
+    // `reject` claimed a free key: it is this place's turn already. Every other
+    // arbitrated policy waits in line as `queue` does.
+    const waitForTurn =
+      policy === "reject"
+        ? undefined
+        : inMemory !== undefined
+          ? () => inMemory.waitForTurn(place, QUEUE_WAIT_TIMEOUT_MS)
+          : (signal?: AbortSignal) => pollForTurn(place, signal);
+
+    return {
+      place,
+      run(start, signal) {
+        running = true;
+        if (waitForTurn === undefined) return runThenGiveBack(start, giveBack);
+        return waitForTurn(signal).then(
+          () => runThenGiveBack(start, giveBack),
+          async (error: unknown) => {
+            await giveBack();
+            throw error;
+          }
+        );
+      },
+      async release() {
+        if (!running) await giveBack();
+      },
+      handOff() {
+        stopRenewing();
+      }
+    };
+  };
+
+  /** Turn `take`'s answer into an admission, or the `reject` refusal. */
+  const admitted = (
+    policy: ConcurrencyPolicyName,
+    key: string,
+    result: LeaseTakeResult
+  ): ConcurrencyAdmission => {
+    if ("heldBy" in result) throw new ConcurrencyRejectedError(key, result.heldBy);
+    return admissionFor(policy, result.place);
+  };
+
+  const admit: ConcurrencyArbiter["admit"] = (decision, requestId) => {
+    const { policy, key } = decision;
+    if (key === undefined || policy === "allow") return UNARBITRATED;
+    const input = { key, requestId, ...(policy === "reject" ? { ifEmpty: true } : {}) };
+    // In memory the take is synchronous, so two racing callers can't both win
+    // and a refusal is thrown before `dispatch` returns.
+    if (inMemory !== undefined) return admitted(policy, key, inMemory.take(input));
+    return backend.take(input).then((result) => admitted(policy, key, result));
+  };
 
   return {
+    arbitratesAcrossProcesses: options.backend !== undefined,
+
     resolve(flow, actionName, view): ResolvedDecision {
       // Every dispatch resolves the entry's own policy through the same
       // keyed lookup the dispatch resolves its handler with: the trusted
@@ -154,7 +449,7 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
       // A dynamic schedule has no static coordinate: its core is produced by
       // the resolver at dispatch time and carried on the envelope, so its
       // policy is read from there — the same core `runAction` will run.
-      const carried = (view as { resolvedActionCore?: EntryPolicyView }).resolvedActionCore;
+      const carried = view.resolvedActionCore;
       const entryConfig =
         carried !== undefined
           ? carried.concurrency
@@ -164,67 +459,6 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
       return { policy, key: resolveKey(key, view) };
     },
 
-    gate(decision, requestId) {
-      const { policy, key } = decision;
-
-      if (key === undefined || policy === "allow") {
-        return (start) => start();
-      }
-
-      if (policy === "reject") {
-        // Atomic admission, synchronous so two racing callers can't both win.
-        const lease = keyedGate.tryAcquire(key);
-        if (lease === null) {
-          throw new ConcurrencyRejectedError(key, holders.get(key));
-        }
-        holders.set(key, requestId);
-        let released = false;
-        const release = (): void => {
-          if (released) return;
-          released = true;
-          holders.delete(key);
-          lease();
-        };
-        return (start) => {
-          // Release on a synchronous throw from `start()` too, so a failed
-          // kickoff never strands the key.
-          let p: ReturnType<typeof start>;
-          try {
-            p = start();
-          } catch (e) {
-            release();
-            throw e;
-          }
-          return p.then(
-            (v) => {
-              release();
-              return v;
-            },
-            (e) => {
-              release();
-              throw e;
-            }
-          );
-        };
-      }
-
-      // queue: serialize behind the key, FIFO, bounded by the wait budget.
-      // Use try/finally (not `.finally`) so a synchronous throw from `start()`
-      // still clears the holder entry — otherwise a concurrent `reject` could
-      // read a stale in-flight requestId for an already-dead request.
-      return (start) =>
-        keyedGate.runExclusive(
-          key,
-          async () => {
-            holders.set(key, requestId);
-            try {
-              return await start();
-            } finally {
-              holders.delete(key);
-            }
-          },
-          { waitTimeoutMs: QUEUE_WAIT_TIMEOUT_MS }
-        );
-    }
+    admit
   };
 }

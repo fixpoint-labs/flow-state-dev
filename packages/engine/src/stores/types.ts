@@ -173,6 +173,30 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   status: RequestStatus;
   startedAtMs: number;
   completedAtMs?: number;
+  /**
+   * When the request's run finished writing under this id: set as the run's
+   * last write, after `onFinished`, which follows the terminal status.
+   *
+   * - `null`: written by a version that stamps it, and the run has not
+   *   finished (it is still running, or died before stamping; the
+   *   stale-request sweep stamps a dead one).
+   * - absent: written before this field existed (BP-030), so whether the run
+   *   finished is unknown. Tell the two apart with `=== null`, never truthiness.
+   *
+   * Session retention deletes a request only once this is set, so a run's
+   * late writes cannot land under an id that has been freed and reused.
+   */
+  finalizedAtMs?: number | null;
+  /**
+   * Whether the run keeps heartbeating from its terminal write until it
+   * stamps `finalizedAtMs`. Only then does a stale active-request entry mean
+   * the run died in its tail, so only then may the stale-request sweep stamp
+   * the record for it. `false` when heartbeats are off
+   * (`request.heartbeatIntervalMs: 0`) or on a failure path, which stops
+   * beating before `onFinished`; such a record is stamped only by its own run.
+   * Absent on records from before the field: never stamped by the sweep.
+   */
+  heartbeatsUntilFinalized?: boolean;
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
   input?: unknown;
@@ -674,6 +698,17 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
     value: RequestRecord,
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<RequestRecord>>;
+  /**
+   * Delete the request and everything stored under its id: the record, its
+   * items, its stream events and its runOnce results. Request ids can be
+   * caller-supplied, so a later request may take a deleted id, and anything
+   * left under it would be replayed to that request's owner.
+   *
+   * Remove the record last, and only after every child delete has finished
+   * and succeeded: a failure then leaves a retryable delete, and nothing is
+   * left without an owner. Wait out event and item writes already in flight
+   * for the id, so none of them lands after the delete.
+   */
   delete(id: string): Promise<void>;
   list(options?: RequestListOptions): Promise<RequestRecord[]>;
 
@@ -888,6 +923,17 @@ export interface SubscribeToEventsOptions {
    * stream still ends at `suspended`.
    */
   followThroughSuspend?: boolean;
+  /**
+   * The caller's fence against a request id changing hands mid-stream. Ids
+   * are caller-supplied, so between authorizing this stream and any read the
+   * iterator makes after an await, the request can be deleted and another
+   * owner's request take the id. An adapter calls this after every read that
+   * returned events and before yielding any of them; when it resolves
+   * `false` (or throws) the iterator yields none of that batch and ends, as
+   * for a request that is gone. Absent means no fence. The route passes one
+   * that compares the record's incarnation with the one it authorized.
+   */
+  isStillAuthorized?: () => Promise<boolean>;
 }
 
 export interface UserStore extends DeltaStoreOps<UserRecord> {

@@ -4,7 +4,7 @@
  * existing users while also exercising the new `adapters` option.
  */
 import { describe, it, expect } from "vitest";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   createFlowApiRouter,
@@ -235,6 +235,63 @@ describe("HTTP transport adapter (via createFlowApiRouter)", () => {
       { params: { path: ["noauth", "actions", "run"] } }
     );
     expect(response.status).toBe(400);
+  });
+
+  it("answers a session bound to another organization as an unknown session, naming neither org", async () => {
+    // A `queue` action admits the session before anything is written, so a
+    // caller from another organization is refused there. The answer must be
+    // the one an unknown or another user's session gets: no org ids, no hint
+    // that the session exists.
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    registry.register(
+      defineFlow({
+        kind: "org",
+        actions: {
+          run: {
+            concurrency: "queue",
+            inputSchema: z.object({ value: z.string() }),
+            block: handler<{ value: string }, { ok: true }>({
+              name: "org-run",
+              execute: () => ({ ok: true })
+            })
+          }
+        }
+      })({ id: "org" })
+    );
+    const ts = Date.now();
+    await stores.session.set(
+      "sess_org",
+      {
+        id: "sess_org",
+        state: {},
+        version: 0,
+        createdAt: ts,
+        updatedAt: ts,
+        flowKind: "org",
+        flowId: "org",
+        userId: "u_org",
+        orgId: "org_victim_77",
+        lineageId: "lin_sess_org",
+        journal: []
+      },
+      "any"
+    );
+
+    const router = createFlowApiRouter({ registry, stores });
+    const response = await router.POST(
+      new Request("http://localhost/api/flows/org/sess_org/actions/run", {
+        method: "POST",
+        body: JSON.stringify({ userId: "u_org", input: { value: "hi" } })
+      }),
+      { params: { path: ["org", "sess_org", "actions", "run"] } }
+    );
+
+    expect(response.status).toBe(404);
+    const body = await response.text();
+    expect(body).toBe(JSON.stringify({ error: 'Unknown session "sess_org"' }));
+    expect(body).not.toContain("org_victim_77");
+    expect(body).not.toContain(DEFAULT_ORG_ID);
   });
 
   it("returns 409 ConcurrencyRejected for a second request on a session held under reject (FIX-837)", async () => {

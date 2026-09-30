@@ -45,6 +45,8 @@ const flowstate = createFlowState({
 
 The directory layout has two halves. **Scope records** sit at the root, one directory per store: `sessions/`, `users/`, `requests/`, and `projects/`. That last one holds org records — the directory name predates the `project` → `org` scope rename and is kept as-is so existing data keeps resolving. **Resource content and state** sit under `content/` and `state/`, and there each scope gets a subdirectory named for it: `session/`, `user/`, `org/`. So a resource key like `notes/meeting` on session `s1` lands at `content/session/s1/notes/meeting.md`.
 
+Each request's cached step results (runOnce) are stored beside its record as one file per key, named `<requestId>@<key>.runonce`. Files written by older versions, `<requestId>.runonce.<key>.json`, are still read. When a request is deleted, an older-layout file whose name another request id could also have produced is renamed with a `.quarantined` suffix instead of being removed, so no later request reads it; you can delete those files once no run from before the upgrade is still in flight.
+
 ### Postgres
 
 For production and multi-instance fleets. Stores state in PostgreSQL with `LISTEN/NOTIFY` for cross-process live tail.
@@ -315,6 +317,17 @@ A custom store also has to honor session parentage. A session can belong to anot
 
 Omitting `parentage` narrows to `"top-level"`, which is the reverse of how an omitted `tenantId` behaves in the same object. A store that ignores the field hands back child sessions to a caller that asked for top-level ones, and nothing in the type system catches it — the field is optional. Treat a parent id of `null` the same as an absent one, and conjoin `parentage` with the other filters rather than letting it widen past them.
 
+### Deleting requests
+
+Request ids can be chosen by the caller, so an id freed by a delete (session retention included) can be taken by another request, possibly another user's. `RequestStore.delete(id)` therefore removes everything stored under the id, its items, stream events and runOnce results, before the record itself. Remove the record last: if a child delete fails, the record keeps the id taken and the delete can be retried. Writes still queued for the id must not land after the delete.
+
+Retention only deletes a request once its run has marked the record finished, so a custom store also has to:
+
+- persist the record's `finalizedAtMs` and `heartbeatsUntilFinalized` fields;
+- honor `setFieldsIfStatus`'s `expectedIncarnation` argument. When the stored record's incarnation differs, report it as absent and leave it unwritten.
+
+Two cases keep a finished request longer than the retention window. A run that dies before marking its record is released by the stale-request sweeper, but only when the run was heartbeating; with heartbeats off (`request.heartbeatIntervalMs: 0`) or the sweeper disabled, its request is kept. And a record written by an engine version that never marked records is kept for the stale-request threshold or `maxAge`, whichever is larger, so a rolling deploy cannot free the id of a run still finishing on an old instance.
+
 ### Live tail
 
 `RequestStore` exposes `subscribeToEvents(requestId, options)` so the SSE wire can serve a request started on any instance. Stores choose their own delivery mechanism:
@@ -322,6 +335,25 @@ Omitting `parentage` narrows to `"top-level"`, which is the reverse of how an om
 - The in-memory store fans out from an in-process bus.
 - SQLite runs one shared poll loop per request, fanned out to every subscriber and woken in-process by the write path; the filesystem store polls `getEvents(requestId, fromSequence)`.
 - Postgres uses `LISTEN/NOTIFY` on a dedicated client. See `@flow-state-dev/store-postgres` for details.
+
+Request ids can be chosen by the caller, so while a stream is open its request can be deleted and a different request, possibly another user's, can take the same id. `options.isStillAuthorized` guards against that. Whatever mechanism your store uses, call it after every read that returned events and before yielding any of them. If it resolves `false` or throws, yield none of that batch and end the iterator. `isBatchStillAuthorized(options)` from `@flow-state-dev/engine` does the call and treats a throw as `false`, and `pollEvents` already applies it for you.
+
+```ts
+async function* subscribeToEvents(requestId, options) {
+  let lastSeen = options.fromSequence;
+  while (!options.signal?.aborted) {
+    const batch = await readEventsAfter(requestId, lastSeen);
+    if (batch.length > 0) {
+      if (!(await isBatchStillAuthorized(options))) return;
+      for (const event of batch) {
+        yield event;
+        lastSeen = event.sequence_number;
+      }
+    }
+    await waitForMoreEvents(requestId, options.signal);
+  }
+}
+```
 
 ### Incremental items storage
 
@@ -333,7 +365,7 @@ Backed adapters store items incrementally rather than inside the request record'
 
 See the [`@flow-state-dev/store-postgres` README](https://github.com/fixpoint-labs/flow-state-dev/blob/main/packages/store-postgres/README.md#items-storage) for the schema, the optional storage-reclamation steps (`pg_repack`), and the rollback constraints.
 
-`getEvents` accepts an optional `fromSequence` for cursor reads — omitting it returns the full log (used by completed-request replay). A custom store that doesn't need cross-process tail can implement `subscribeToEvents` as an iterator that yields the catch-up via `getEvents` and then ends; clients fall back to bulk replay for completed requests.
+`getEvents` accepts an optional `fromSequence` for cursor reads — omitting it returns the full log (used by completed-request replay). A custom store that doesn't need cross-process tail can implement `subscribeToEvents` as an iterator that yields the catch-up via `getEvents` and then ends; clients fall back to bulk replay for completed requests. The catch-up read still calls `isStillAuthorized` before yielding, like any other read.
 
 The exact interface may evolve. Check the `@flow-state-dev/engine` package source for the current contract.
 

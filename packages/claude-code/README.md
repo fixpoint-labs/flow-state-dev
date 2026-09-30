@@ -322,10 +322,12 @@ should be dropped instead).
 A policy arbitrates *dispatches*, which leaves two cases open. A generator's
 tool calls in one model step run concurrently, so a block exposed as a
 model-facing tool can be invoked twice inside a single dispatch, where the
-policy never sees it. And the arbiter is a map in the running process, so
-external workers are not arbitrated either. The recipe is safe for a
-single-instance host running the agent as a step, one invocation per run; give
-the agent a fresh directory per run otherwise.
+policy never sees it. And by default the arbiter keeps its keys in the running
+process, so external workers are arbitrated only when the queue adapter supplies
+a lease backend they all share (`WorkerAdapter.leaseBackend`). The recipe is
+safe for a single-instance host, or workers sharing a lease backend, running the
+agent as a step, one invocation per run; give the agent a fresh directory per
+run otherwise.
 
 Encoding rather than validating is the whole point, and it is worth being
 explicit about why. A validating grammar has to enumerate every way a string can

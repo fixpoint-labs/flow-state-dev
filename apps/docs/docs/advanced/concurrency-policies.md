@@ -129,4 +129,4 @@ Over HTTP, a `reject` instead returns `409` carrying the in-flight `requestId`, 
 
 ## Limits
 
-This applies to the in-process dispatcher (the default), single-instance. The arbiter is a map in the running process, so it serializes requests that run in that process. If you route execution to external workers (a queue-backed dispatcher), the run happens elsewhere, so the policy isn't enforced there — cross-worker arbitration depends on a durable substrate and is future work.
+By default the arbiter keeps its lines in the running process, so it serializes requests that run in that process. If you route execution to external workers (a queue-backed dispatcher), the run happens elsewhere, and the policy is enforced there only when the queue adapter supplies a lease backend that every process shares. Without one, runs on external workers aren't arbitrated.
