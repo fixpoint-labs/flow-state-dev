@@ -65,6 +65,12 @@ export type ListSessionRequestsOptions = {
    * requests.
    */
   includeItems?: boolean;
+  /**
+   * Request each finished request's `result.output`
+   * (`include_result_output=true`). Off by default: the summaries carry
+   * `result.error` and `result.hasOutput`, not the value the action returned.
+   */
+  includeResultOutput?: boolean;
 };
 
 /**
@@ -227,7 +233,8 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
           status: listOptions?.status,
           limit: listOptions?.limit,
           offset: listOptions?.offset,
-          include_items: listOptions?.includeItems
+          include_items: listOptions?.includeItems,
+          include_result_output: listOptions?.includeResultOutput
         })
       })
     });

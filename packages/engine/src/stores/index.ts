@@ -58,6 +58,7 @@ export type {
   OrgStore,
   PersistErrorHandler,
   PersistErrorInfo,
+  RequestActionResult,
   RequestListOptions,
   RequestRecord,
   RequestStatus,

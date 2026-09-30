@@ -99,6 +99,22 @@ describe("fsdev run integration", () => {
     expect(errorEvent).toBeDefined();
   });
 
+  // A run a completion hook failed after the action answered reports the
+  // failure AND the answer: `output` is what the action returned, not null.
+  it("reports the action's answer on a run a completion hook failed", async () => {
+    const result = await executeRunCommand("throwing", "answerThenHookFails", {
+      input: '{"message": "test"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error!.message).toContain("Intentional completion hook error");
+    expect(result.output).toEqual({ ok: false, error: "already settled" });
+    expect(process.exitCode).toBe(1);
+    expect(parsedEvents().find((e) => e.type === "error")).toBeDefined();
+  });
+
   it("throws CliError for unknown flow kind", async () => {
     await expect(
       executeRunCommand("nonexistent", "action", {

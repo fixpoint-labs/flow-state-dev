@@ -7,7 +7,8 @@
  * the panel's own action path, the one the action bar uses. There is no other
  * write here, and no record editor: what a row can do is what the flow exposes.
  *
- * The answer is read from the request the row dispatched, on its root trace
+ * The answer is read from what the engine recorded for the request the row
+ * dispatched: its status and action result on the session's request list
  * (`outcomeOf`). A refusal is shown as a refusal, in the tool's own words.
  *
  * There is no client-side lock: a second submit while the first is in flight
@@ -20,6 +21,7 @@ import { Button } from "../ui/button";
 import { SchemaForm } from "./schema-form";
 import { buildInputFromForm, getDefaults } from "./action-bar";
 import {
+  NO_RESULT_RECORDED,
   outcomeOf,
   type RequestOutcomeSource,
   type RowActionOutcome,
@@ -172,8 +174,8 @@ function Outcome({ outcome }: { outcome: RowActionOutcome }) {
       );
     case "ok":
       return (
-        <span data-outcome="ok" className="text-[11px] text-emerald-300">
-          Done. The row updates when the task changes.
+        <span data-outcome="ok" className="min-w-0 text-[11px] text-emerald-300 [overflow-wrap:anywhere]">
+          {outcome.output === undefined ? "Done." : `Done: ${describeOutput(outcome.output)}`}
         </span>
       );
     case "refused":
@@ -191,10 +193,20 @@ function Outcome({ outcome }: { outcome: RowActionOutcome }) {
     case "unknown":
       return (
         <span data-outcome="unknown" className="text-[11px] text-slate-400">
-          {outcome.reason === "no-trace"
-            ? "Sent. The outcome isn't visible: this request left no trace (trace observability is off)."
-            : "Sent. The outcome isn't visible: part of the result was not retained."}
+          {outcome.reason === "not-reported"
+            ? NO_RESULT_RECORDED
+            : "Finished, but its return value couldn't be recorded."}
         </span>
       );
+  }
+}
+
+/** An action's return value as one line of text. */
+function describeOutput(output: unknown): string {
+  if (typeof output === "string") return output;
+  try {
+    return JSON.stringify(output) ?? String(output);
+  } catch {
+    return String(output);
   }
 }

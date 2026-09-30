@@ -28,6 +28,8 @@ import {
   tenantMatches
 } from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
+import { normalizeError } from "../../errors/normalize-error";
+import { settledRecordFields, type RequestSettlement } from "../../execution/request-action-result";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import {
   assertSessionAdmitted,
@@ -189,7 +191,7 @@ function isRefusedAdmission(error: unknown): boolean {
 async function terminateUnenqueuedRequest(
   stores: StoreRegistry,
   requestId: string,
-  status: "failed" | "aborted" = "failed",
+  ending: { status: "failed"; cause: unknown } | { status: "aborted" },
   expectedIncarnation?: string
 ): Promise<void> {
   try {
@@ -202,12 +204,18 @@ async function terminateUnenqueuedRequest(
       return;
     }
     const now = Date.now();
+    // The failure's cause is the record's action result, written with the
+    // status (FIX-1661); an abort carries none.
+    const settlement: RequestSettlement =
+      ending.status === "failed"
+        ? { status: "failed", error: normalizeError(ending.cause, { scope: "request" }) }
+        : { status: "aborted" };
     await stores.request.set(
       requestId,
       {
         ...record,
-        status,
-        ...(status === "failed" ? { failedAtMs: now } : {}),
+        ...settledRecordFields(settlement),
+        ...(ending.status === "failed" ? { failedAtMs: now } : {}),
         updatedAt: now
       },
       "any"
@@ -981,7 +989,7 @@ export function createInboundTransportHost(
           // admission never touched the foreign owner's, nor the caller's own
           // earlier request under the id it reused.
           if (!isRefusedAdmission(error)) {
-            await terminateUnenqueuedRequest(stores, requestId, "failed", claimedIncarnation);
+            await terminateUnenqueuedRequest(stores, requestId, { status: "failed", cause: error }, claimedIncarnation);
           }
           throw error;
         });
@@ -1068,7 +1076,7 @@ export function createInboundTransportHost(
                   await terminateUnenqueuedRequest(
                     stores,
                     requestId,
-                    "aborted",
+                    { status: "aborted" },
                     fencedOnly ? claimedIncarnation : undefined
                   );
                   throw new Error(
@@ -1100,12 +1108,12 @@ export function createInboundTransportHost(
               // this dispatch claimed. A binding refusal comes from the run,
               // which adopted whatever held the id, so it ends that.
               if (error instanceof ConcurrencyQueueTimeoutError) {
-                await terminateUnenqueuedRequest(stores, requestId, "failed", claimedIncarnation);
+                await terminateUnenqueuedRequest(stores, requestId, { status: "failed", cause: error }, claimedIncarnation);
               } else if (
                 error instanceof FlowInstanceBindingMismatchError ||
                 error instanceof UserBindingMismatchError
               ) {
-                await terminateUnenqueuedRequest(stores, requestId);
+                await terminateUnenqueuedRequest(stores, requestId, { status: "failed", cause: error });
               }
               throw error;
             });
@@ -1198,7 +1206,7 @@ export function createInboundTransportHost(
             // the record stuck in_progress forever. A refused admission wrote
             // nothing and terminates nothing — the record it found is not ours.
             if (!isRefusedAdmission(error)) {
-              await terminateUnenqueuedRequest(stores, requestId, "failed", claimedIncarnation);
+              await terminateUnenqueuedRequest(stores, requestId, { status: "failed", cause: error }, claimedIncarnation);
             }
             throw error;
           });

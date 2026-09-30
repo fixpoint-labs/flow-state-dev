@@ -272,8 +272,43 @@ export type SessionRequestSummary = {
    * via the state endpoint. Present on responses that carry full records.
    */
   items?: OutputItem[];
+  /**
+   * What the action came to, once the request has ended. See
+   * {@link SessionRequestResult}.
+   *
+   * Absent while the request runs or is suspended, and on `aborted` or
+   * `interrupted` requests. Absent on a `completed`, `incomplete` or `failed`
+   * request means no result was recorded (a server, or history, from before
+   * results were stored). Guard with `== null` (BP-030).
+   */
+  result?: SessionRequestResult;
   createdAt: number;
   updatedAt: number;
+};
+
+/**
+ * A request's action result, as `GET /sessions/:id/requests` lists it.
+ *
+ * | Request ended | `result` |
+ * |---|---|
+ * | `completed` / `incomplete` | `{ output }`, the value the action returned; no `output` when it returned nothing |
+ * | `failed` | `{ error }`, plus `output` when the action answered before a completion hook failed the request |
+ *
+ * `output` is listed only when the caller passes `includeResultOutput: true`;
+ * `hasOutput` says whether there is one either way.
+ */
+export type SessionRequestResult = {
+  /** The action's return value. Listed only with `includeResultOutput`. */
+  output?: unknown;
+  /** Whether the action's return value is stored, listed or not. */
+  hasOutput?: boolean;
+  /**
+   * The action returned a value that could not be stored as JSON. The request
+   * still finished; its return value is unknown.
+   */
+  outputNotRecorded?: true;
+  /** Why the request failed. */
+  error?: { code: string; message: string };
 };
 
 /**
