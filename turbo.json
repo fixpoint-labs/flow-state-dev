@@ -22,7 +22,7 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "env": ["CI", "REDIS_URL", "GOAL_CONTROL"]
+      "env": ["CI", "REDIS_URL"]
     },
     "lint": {},
     "dev": {

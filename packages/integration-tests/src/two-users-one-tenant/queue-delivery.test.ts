@@ -20,8 +20,9 @@
  * arbitrate across processes still refuses `external-dispatcher`.
  *
  * Controls, which must fail: the commit before the fix fails **delivers**
- * and **one-at-a-time**; `GOAL_CONTROL=local-arbiter`, where each runtime
- * keeps its own lines in memory, fails **one-at-a-time**.
+ * and **one-at-a-time**; setting `LEASES` below to `"local"`, where each
+ * runtime keeps its own lines in memory, fails **one-at-a-time**. (A constant,
+ * not an environment switch: nothing under `packages/` reads a control.)
  *
  * Needs `REDIS_URL`. Without it the case skips locally and fails in CI.
  */
@@ -122,9 +123,8 @@ const describeWithRedis =
           })
       : describe.skip;
 
-/** `local-arbiter` runs the control that must fail **one-at-a-time**. */
-const control: QueueDeploymentOptions["leases"] =
-  process.env.GOAL_CONTROL === "local-arbiter" ? "local" : "shared";
+/** `"local"` runs the control that must fail **one-at-a-time**. */
+const LEASES: QueueDeploymentOptions["leases"] = "shared";
 
 describeWithRedis("a delivery into an existing session, on a BullMQ host", () => {
   let deployment: QueueDeployment | undefined;
@@ -134,7 +134,7 @@ describeWithRedis("a delivery into an existing session, on a BullMQ host", () =>
   });
 
   it("delivers, one at a time with the session's own runs, and not for another user", async () => {
-    deployment = await startQueueDeployment([inboxFlow("inbox", "queue")], { leases: control });
+    deployment = await startQueueDeployment([inboxFlow("inbox", "queue")], { leases: LEASES });
     const alice = deployment.as("alice");
     const bob = deployment.as("bob");
 
@@ -221,7 +221,7 @@ describeWithRedis("a delivery into an existing session, on a BullMQ host", () =>
   });
 
   it("refuses a `reject` recipient's second delivery while the first holds the session", async () => {
-    deployment = await startQueueDeployment([inboxFlow("hook", "reject")], { leases: control });
+    deployment = await startQueueDeployment([inboxFlow("hook", "reject")], { leases: LEASES });
     const alice = deployment.as("alice");
     const seed = await post(alice, "hook", "s_hook", "work", { tag: "seed" });
     await settledIn(alice, "hook", "s_hook", seed.requestId!);
