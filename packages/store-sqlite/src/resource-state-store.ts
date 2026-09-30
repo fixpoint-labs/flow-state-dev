@@ -17,8 +17,18 @@
  * the swap are one atomic operation under SQLite's row locking. `changes === 0`
  * means the predicate did not match, which is the conflict signal; the current
  * row is then re-read to report it.
+ *
+ * The guards that refuse a version a verb cannot act on, and the conflict a
+ * losing write reports, are the shared rule from `@flow-state-dev/core/helpers`.
+ * The compare inside each write statement is this store's own statement of the
+ * same rule, kept in step by the shared conformance suite.
  */
 import type Database from "better-sqlite3";
+import {
+  assertDeleteExpectedVersion,
+  assertSetExpectedVersion,
+  resourceStateConflict
+} from "@flow-state-dev/core/helpers";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
   ResourceStateStore,
@@ -131,95 +141,6 @@ export function createSQLiteResourceStateStore(
   };
 
   /**
-   * Refuse an `expectedVersion` that cannot name a version.
-   *
-   * Mirrors `assertVersionNumber` in the engine's
-   * `stores/resource-state-predicate` module — restated for the same reason as
-   * {@link conflictFrom} below, and pinned across all four adapters by the
-   * shared conformance suite. `0` means "no live row" and real versions start
-   * at `1`, so a negative, fractional, `NaN` or infinite version is refused
-   * loudly: that is a programming error and not a lost race, and reporting it
-   * as a conflict would name a concurrency outcome this store never observed.
-   *
-   * This is what keeps the `-1` sentinel in `delete` sound: without it,
-   * `delete(…, -1)` matched the sentinel branch and tombstoned any live row.
-   */
-  const assertVersionNumber = (expectedVersion: unknown): void => {
-    if (!Number.isInteger(expectedVersion) || (expectedVersion as number) < 0) {
-      throw new TypeError(
-        `expectedVersion must be a non-negative integer or "any", received ${String(expectedVersion)}`
-      );
-    }
-  };
-
-  /**
-   * `set` honours all three members of the union, and the two non-numeric ones
-   * are not interchangeable: `0` is "no live row" (create-if-absent, a
-   * tombstone satisfies it) and `"absent"` is the stricter "no row at all" (a
-   * tombstone is a row and refuses it). Mirrors `assertSetExpectedVersion` in
-   * the engine module.
-   *
-   * The assertion signature lets the `expectedVersion + 1` and the numeric
-   * binds further down rely on the narrowing without restating the check —
-   * which is also what keeps a string out of a numeric bind parameter, where
-   * it would fail silently rather than loudly. The narrowing is a promise the
-   * compiler takes on trust, so the check is an allowlist: `Number.isInteger`
-   * plus the two string early-returns refuse every other value, including
-   * members this union does not have yet.
-   */
-  const assertSetExpectedVersion: (
-    expectedVersion: ExpectedVersion
-  ) => asserts expectedVersion is number | "any" | "absent" = (expectedVersion) => {
-    if (expectedVersion === "any" || expectedVersion === "absent") return;
-    assertVersionNumber(expectedVersion);
-  };
-
-  /**
-   * `delete` refuses `"absent"`: "delete only if the row does not exist" states
-   * no condition a delete could act on, since `0` already covers "no live row,
-   * so the terminal state already holds." Mirrors
-   * `assertDeleteExpectedVersion` in the engine module. Keeping the refusal on
-   * this verb only is what lets `set` honour the word without it meaning two
-   * things.
-   */
-  const assertDeleteExpectedVersion: (
-    expectedVersion: ExpectedVersion
-  ) => asserts expectedVersion is number | "any" = (expectedVersion) => {
-    if (expectedVersion === "any") return;
-    if (expectedVersion === "absent") {
-      throw new TypeError(
-        'expectedVersion "absent" is not supported by ResourceStateStore.delete; use 0, which means "no live row" here'
-      );
-    }
-    assertVersionNumber(expectedVersion);
-  };
-
-  /**
-   * Build the conflict result from whatever is stored right now.
-   *
-   * This mirrors `resourceStateConflict` in the engine's
-   * `stores/resource-state-predicate` module, which is the reference for what a
-   * conflict reports. It is restated rather than imported because a store
-   * adapter's dependency on `@flow-state-dev/engine` is **type-only** by
-   * package boundary (`scripts/validate-package-boundaries.mjs`), and that
-   * module is runtime code. What is shared is `ResourceStateRow`, above: both
-   * SQL adapters parse into the same shape, so the two bodies are the same
-   * three lines, and the shared conformance suite pins the rule for all four
-   * adapters — a semantic tweak that misses one shows up as a failing case
-   * rather than as silent divergence.
-   */
-  const conflictFrom = (row: ResourceStateRow | undefined): SetResult<JsonObject> => {
-    const isLive = row !== undefined && row.lifecycle === "live";
-    return {
-      ok: false,
-      conflict: {
-        currentValue: isLive ? row.state : undefined,
-        currentVersion: row?.version ?? 0
-      }
-    };
-  };
-
-  /**
    * The `"absent"` write: insert if no row exists at all, otherwise report the
    * row that refused it — atomically, so no concurrent revive can be mistaken
    * for the refusing row. `.immediate` (BEGIN IMMEDIATE) takes the write lock
@@ -235,7 +156,7 @@ export function createSQLiteResourceStateStore(
     ): SetResult<JsonObject> => {
       const inserted = insertStmt.run(scopeType, scopeId, resourceKey, payload, 1);
       if (inserted.changes > 0) return { ok: true, version: 1 };
-      return conflictFrom(readRow(scopeType, scopeId, resourceKey));
+      return resourceStateConflict(readRow(scopeType, scopeId, resourceKey));
     }
   ).immediate;
 
@@ -298,7 +219,7 @@ export function createSQLiteResourceStateStore(
         // version, so a version is never reused; a live row is a conflict.
         const current = readRow(scopeType, scopeId, resourceKey);
         if (current === undefined || current.lifecycle === "live") {
-          return conflictFrom(current);
+          return resourceStateConflict(current);
         }
         const nextVersion = current.version + 1;
         const revived = reviveIfDeletedStmt.run(
@@ -310,7 +231,7 @@ export function createSQLiteResourceStateStore(
           current.version
         );
         if (revived.changes === 0) {
-          return conflictFrom(readRow(scopeType, scopeId, resourceKey));
+          return resourceStateConflict(readRow(scopeType, scopeId, resourceKey));
         }
         return { ok: true, version: nextVersion };
       }
@@ -325,7 +246,7 @@ export function createSQLiteResourceStateStore(
         expectedVersion
       );
       if (updated.changes === 0) {
-        return conflictFrom(readRow(scopeType, scopeId, resourceKey));
+        return resourceStateConflict(readRow(scopeType, scopeId, resourceKey));
       }
       return { ok: true, version: nextVersion };
     },
@@ -388,7 +309,7 @@ export function createSQLiteResourceStateStore(
       // A positive `expectedVersion` DID assert one, and at that same
       // linearization point it did not hold. A genuine conflict, carrying the
       // version now stored so the caller can retry against it.
-      return conflictFrom(current);
+      return resourceStateConflict(current);
     },
 
     async getAll(

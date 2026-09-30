@@ -721,8 +721,7 @@ export function createResourceStateStoreConformanceTests(
         // at all", where `0` is "no live row"). `delete` refuses it: `0`
         // already means "no live row, so the terminal state already holds",
         // and "delete only if absent" asks nothing on top of that. Pinning
-        // both halves here keeps the three restated copies of this guard —
-        // one shared, one per SQL adapter — from drifting apart.
+        // both halves here holds every adapter to the same split.
         await expect(store.delete("session", "s1", "k", "absent")).rejects.toThrow(
           /expectedVersion/
         );
