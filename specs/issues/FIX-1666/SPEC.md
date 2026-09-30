@@ -46,7 +46,7 @@ through the same route App Lab uses.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/devforce-lab/it-waits-for-a-person-before-it-files/`, scripted stub harness, no key |
-| **Signal** | Before any answer: the session listing for the lab's person returns the EM seat's session with exactly one pending approval naming the held-out feature, and the board holds no row. After Approve: exactly one row, for that feature, dispatched to the coder seat by id, and the stub reached once. After Deny, on a fresh open: no row, no dispatch. A second open over the same store raises no second ask |
+| **Signal** | Before any answer: the session listing for the lab's person returns the EM seat's session with exactly one pending approval naming the held-out feature, and the board holds no row. After Approve: exactly one row, for that feature, dispatched to the coder seat by id, and the stub reached once. After Deny, on a fresh open: no row, no dispatch. A second open over the same store raises no second ask, whether the first is pending, approved or denied |
 | **Input** | A held-out fixture: the feature's issue slug and one-line goal |
 | **Anti-game** | Every read goes through the lab's HTTP door with its verified bearer. The answer goes through the engine's resume route, never a lab helper. Rows are enumerated, not looked up |
 | **Control that must fail** | `GOAL_CONTROL=no-gate`: the EM files without suspending. The check must FAIL on "a row existed before any approval" |
@@ -67,7 +67,9 @@ lab's open raises it once when a host asks. Both are in the lab's tree. No frame
   off; the coder does the work, as today.
 - **The three existing checks** open the lab exactly as before, with the ask off.
 - **App Lab, the framework, and kitchen-sink** are untouched. The ask is the framework's stock
-  suspension, which Inbox already reads.
+  suspension, which Inbox already reads. The workstream's Stream shows it once FIX-1662 draws its
+  member seats' pending asks beside the transcript, an amendment there
+  ([DECISIONS.md → Decided](DECISIONS.md#decided-not-asked)).
 
 ## Sign off
 
@@ -81,6 +83,9 @@ nothing, or waits on work it didn't need.
 2. **[D2](DECISIONS.md#d2) · The ask is raised when a host opens the lab with it turned on, off
    by default; App Lab's DevForce config turns it on.** If wrong: Inbox is empty on open unless a
    person does something first, or the three checks change shape.
+
+**Depends on FIX-1662** drawing a member seat's pending ask in the workstream's Stream; without
+it the card shows in Inbox but not in the Stream, and FIX-1663's a1 fails there.
 
 **Open: none.** D1 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).

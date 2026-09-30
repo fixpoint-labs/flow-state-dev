@@ -5,8 +5,8 @@
 The issue fixes the fences: the goal lab's tree only, no model in the path that raises the ask,
 no approval model in the framework or App Lab, the three checks green. FIX-1662 fixes what Inbox
 reads: pending approvals and questions in the seat sessions the session listing returns to this
-person ([its BR-24 to BR-27](https://github.com/fixpoint-labs/flow-state-dev/pull/2424)). These
-are the calls left open.
+person ([its BR-24 to BR-27](https://github.com/fixpoint-labs/flow-state-dev/pull/2424)), and
+what a workstream's Stream draws (its BR-18). These are the calls left open.
 
 ## The tree
 
@@ -72,8 +72,22 @@ It comes down to the first row: only raising on open makes the ask appear withou
 - **Answered only through the engine's resume route**, over the lab's door with its bearer. A
   lab helper that resolved the ask would prove a path App Lab never takes.
 - **Durable execution is on only when the ask is.** The three checks run with it off, as today.
-- **Raised once per feature.** A second open over the same store finds the pending ask, or the
-  row an earlier Approve filed, and raises nothing.
+- **Raised once per feature, and a Deny is final for that store.** A second open finds any
+  asking request for the feature in the EM's session, pending, approved or denied, or the row
+  another door filed, and raises nothing. The guard reads the request history the engine already
+  keeps, so a Deny needs no record of its own. Retrying on reopen was rejected: it would put an
+  ask the person already declined back in their Inbox on every restart, and "asked once" is the
+  simpler promise to state.
+- **The ask stays in the EM seat's own session; App Lab's Stream draws it from there.** Inbox
+  reads seat sessions (FIX-1662 BR-24) and a workstream's Stream reads the channel's session
+  (BR-18), and no shipped mechanism puts one session's suspension in another's stream. Of the two
+  sessions, the ask belongs in the seat's: FIX-1663's a1 is "a DevForce seat raises an ask", and
+  the resume, the kind and the one-session rule (BR-26) all follow the session it is in. So
+  FIX-1662's Stream draws, beside the transcript, the pending asks in the sessions of the
+  channel's member seats, which its shared read already loads for Inbox, with the same card and
+  resume. The EM is a declared member of the feature channel, which is the link. That is an App
+  Lab read over shipped routes; nothing moves into Core or Engine, and it is FIX-1662's to amend
+  ([PLAN.md → Follow-ups](PLAN.md#follow-ups)).
 - **Run as the lab's person** (`u_devforce_lab` in `org_devforce_lab`), the identity the lab's
   door resolves. If FIX-1662's config resolves a different person, the ask follows that person.
 - **No `WORKER.md` changes.** Their tokens are held-out evidence for the first check.
@@ -88,6 +102,8 @@ It comes down to the first row: only raising on open makes the ask appear withou
 | Lift kitchen-sink's escalation or ask API into the lab or a package | The Architect names it an invent-kill; the stock suspension already does it |
 | Seed a suspension record directly in the store | Not a run a person can repeat; resume would have no request to continue |
 | Make `onPost` ask before filing | Changes the third check's door and its evidence |
+| Raise the ask in the feature channel's session, so the Stream shows it as is | The shipped channel kind has no action that can suspend, so the lab would rebuild a framework kind. And the ask would then belong to the channel, not a seat: Inbox reads seat sessions and a1 names a seat |
+| Run the ask in a child session of the channel, as the post door does | Child sessions are left out of the default session listing, so Inbox would miss it, and the Stream still does not draw child sessions |
 
 ## Open / Settled
 
@@ -101,3 +117,7 @@ is checked first at implement time ([PLAN.md → At implement time](PLAN.md#at-i
 - **Draft** — the missing ask framed as a gap in what the EM does, not in the shell; the EM made
   to ask before it files using the stock approval, raised on open only when a host asks, and
   proved by its own model-free check with a control that removes the gate. One PR, lab tree only.
+- **Review round 1** — the ask stays in the EM's session and FIX-1662's Stream draws member
+  seats' pending asks (it only drew the transcript, so the card would not show there); a Deny now
+  counts toward "raised once", read from the engine's request history, so a reopen does not ask
+  again.

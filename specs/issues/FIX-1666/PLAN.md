@@ -10,7 +10,7 @@ are pinned only where the Pinned names table says so.
 | ID | Where | Change | Rules |
 |---|---|---|---|
 | S1 | `lab/workforce/flows/workers/em.mts` | A third door: a durable action that prepares the feature, suspends on a stock `human_approval` naming it, then on approve files the row through the existing `addRow` and runs `board.drain`; on reject files nothing and says so. `addRow` stays the one row writer for all three doors | AR-2, AR-8, AR-10, AR-12, AR-14 |
-| S2 | `lab/host.mts` | An `openLab` option carrying the feature to ask about, absent by default. When present: `durable: true` on the flow state, then raise the ask once in the EM seat's session as the lab's person, idempotent per feature, and fail open if it could not be raised. Absent: byte-for-byte today's behaviour | AR-1, AR-2, AR-5, AR-6 |
+| S2 | `lab/host.mts` | An `openLab` option carrying the feature to ask about, absent by default. When present: `durable: true` on the flow state, then raise the ask once in the EM seat's session as the lab's person, and fail open if it could not be raised. Once per feature means: skip if the EM's session already holds an asking request for that feature, whatever its answer (pending, approved or denied), or the row exists Absent: byte-for-byte today's behaviour | AR-1, AR-2, AR-5, AR-6 |
 | S3 | `goals/devforce-lab/it-waits-for-a-person-before-it-files/` | `goal.md` from [SPEC.md's goal](SPEC.md#the-goal-and-how-well-know-its-met) in the `goals/README.md` format; `run.mts` with legs 0 to 5; `fixtures/input.json` held-out | AR-1 to AR-16 |
 | S4 | `lab/README.md` | The fourth check's row, and a short section on the ask door, per [DOCS.md](DOCS.md) | — |
 | S5 | FIX-1662's `goals/devforce-lab/lab/fsdev.config.mts` | One line passing S2's option, **only if** that config is on `main` when this PR opens; otherwise FIX-1662's S12 carries it (coordinator note) | D2 |
@@ -39,10 +39,10 @@ with the verified bearer (the same door the first check's leg 7 uses). The answe
 | Leg | What | Signal |
 |---|---|---|
 | 0 | Open without the ask | No request in the EM's session; flow state not durable. Then the three existing checks run green (AR-1, AR-15) |
-| 1 | Open with the ask | `GET /sessions` as the lab's person lists the EM's session; its requests hold exactly one `suspended`, one pending `human_approval` whose message carries both held-out strings; `rows()` is empty; `dispatched(em)` is empty; stub runs 0; no key in env (AR-2 to AR-4, AR-7) |
+| 1 | Open with the ask | `GET /sessions` as the lab's person lists the EM's session; its requests hold exactly one `suspended`, one pending `human_approval` whose message carries both held-out strings; the feature channel's declared members include the EM seat; `rows()` is empty; `dispatched(em)` is empty; stub runs 0; no key in env (AR-2 to AR-4, AR-7) |
 | 2 | Approve | Resume with `approve` → the request completes; `rows()` holds exactly one row, id derived from the held-out slug; `dispatched(em)` names the coder seat by `flowId`, not the reviewer; stub reached once; row `completed`; no pending approval left. Negative half first: a resume with no bearer, and one with `submit`, are refused and it stays pending (AR-8, AR-9, AR-11, AR-13) |
 | 3 | Deny, fresh open | Resume with `reject` → completes; `rows()` empty; no dispatch; output says nothing was filed (AR-10, AR-11) |
-| 4 | Re-open, same store | After leg 1's state and again after leg 2's: no second pending approval, no second row (AR-5) |
+| 4 | Re-open, same store | After leg 1's state, after leg 2's and after leg 3's: no second approval raised, pending or otherwise; no second row; and after leg 3's, still no row (AR-5) |
 | 5 | Control `GOAL_CONTROL=no-gate` | The EM's asking door files before suspending. The check must FAIL on leg 1, naming "a row existed before any approval" (AR-16) |
 
 CI: AR-6 (open fails, naming the step) and AR-12 (row already exists) as vitest beside the lab if
@@ -87,7 +87,8 @@ em kind, third door (durable):
 
 openLab({ ask: { issue, goal } }):
   flow state durable
-  if EM session has a pending ask for issue, or the row exists -> skip
+  if EM session holds an asking request for issue (pending, approved or denied),
+     or the row exists                                         -> skip
   else run the asking door as the lab's person, in the EM's session, until it suspends
 ```
 
@@ -109,10 +110,15 @@ POC: none. No factual-base checker either: the spec rests on no counted or enume
 
 ## Notes from review
 
-None yet.
+None yet. Review round 1's two findings (where the Stream finds the ask; a Deny surviving a
+reopen) changed the approach and are folded into DECISIONS, the rules and the legs above.
 
 ## Follow-ups
 
 - **FIX-1662 S12** passes this option (coordinator note for cross-spec review).
+- **FIX-1662 S7** draws, in a workstream's Stream beside the transcript, the pending asks in its
+  member seats' sessions, with the same card and resume Inbox uses. Its BR-18 names only the
+  transcript today, so this is an amendment there, not work here
+  ([DECISIONS.md → Decided](DECISIONS.md#decided-not-asked)). Coordinator note for cross-spec review.
 - **FIX-1652** may take this ask as its example of an approval; nothing here decides what an ask
   means beyond this lab.
