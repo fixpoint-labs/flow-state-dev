@@ -20,15 +20,17 @@ below, which differ from the epic's draft because the composer and Hand off don'
 > ## A task
 >
 > Open a task from Tasks or from a card on a board. The Session tab is that task's own run:
-> every step the worker takes, the tool calls and edits as they happen, and every earlier
-> attempt above them. It isn't the worker's chat, so what you read is what this task did.
+> every step the worker takes, the tool calls and edits as they happen, and earlier attempts
+> above them when they ran in the same place. It isn't the worker's chat, so what you read is
+> what this task did. If the worker keeps one session for several tasks, the tab shows only
+> this task's steps and says the session is shared.
 >
 > **Interrupt** stops the run (Esc does the same). The screen says *interrupted* once the run
 > has actually stopped. What happens to the task afterwards, whether it's retried or left, is up
 > to the board, not App Lab.
 >
-> The panel on the right shows who is on it, which harness, when it started, and tokens and
-> cost once the run reports them. If the harness records its plan and the files it touched, as
+> The panel on the right shows who is on it and when it started. If the harness records its
+> plan and the files it touched, as
 > Claude Code does, they're listed; otherwise the panel says so. *Open trace* opens the devtool
 > for the full detail. Tell App Lab where it runs:
 >
@@ -47,13 +49,14 @@ below, which differ from the epic's draft because the composer and Hand off don'
 > | Hand off, reassign, Open PR | Disabled | The eng workstream kit |
 > | Diff and Checks | An empty tab saying so | The eng workstream kit |
 > | Acceptance criteria, who reviews | An empty section | The eng workstream kit |
+> | Which harness, tokens and cost | An empty field saying so | Attention and inspect |
 > | A harness that records no plan | A line saying so | Attention and inspect |
 >
 > A board that hands work off keeps each task on the worker it was given to, which is why
 > reassigning is off rather than refused.
 
-The first row's *Filled in by* follows the open fork: the operation's issue by name if it is
-filed, attention and inspect if not.
+The table mirrors the [gap registry](BUSINESS-RULES.md#gap-registry), which is canonical; the
+first row's *Filled in by* follows the open fork there.
 
 ## Voice watch-outs for the publisher
 

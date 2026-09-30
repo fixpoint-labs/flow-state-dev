@@ -4,20 +4,34 @@
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
 (BR-n), [DECISIONS.md](DECISIONS.md) (D-n) and the epic's rules (ER-n). `tdd`. One PR, branched
-after FIX-1662's `frame` PR merges; it uses that PR's route, panel slot, shared reads and
-registry copies.
+after FIX-1662's `frame` PR **and [the task-run link](#the-task-run-link)** merge; it uses the
+frame's route, panel slot, shared reads and registry copies, and the link on the row.
+
+## The task-run link
+
+**A dependency, filed as its own child of FIX-1649, not built here** (D1; the epic's split
+trigger: a level that needs a read nothing ships splits it out). It is small and lives in
+`@flow-state-dev/orchestration`, the Layer 2 substrate that owns the row and the claim gate.
+Nothing in Core or Engine changes (ER-7).
+
+| | |
+|---|---|
+| **What it adds** | When a handed-off attempt passes the board's claim gate in its run session, the gate stamps the row with that attempt's run: the session id, the request id, and the attempt number. The next attempt replaces it |
+| **Why there** | The gate runs in the run's own session for every handed-off attempt, whatever the seat's session policy and whichever conversation drained the board, so it is the one writer that knows the answer rather than rebuilding it |
+| **Its rules** | Server-written only, absent from the fields a caller or model can set, like `claimedBy`. Client-visible, unlike `claimedBy`: it names a session, and reading that session still passes the server's owner check (BR-9, BP-031). Optional and `== null`-guarded, so rows stored before it read as *no run linked* (BP-030, BR-3). Written inside a write the gate already makes where one fits, never a second write that can fail after the run starts |
+| **What FIX-1664 needs from it** | The field on the row FIX-1662's board read returns, and its three values. The name is that issue's to choose |
 
 ## Surfaces
 
 | ID | Where · role | Change | Rules |
 |---|---|---|---|
 | S1 | `labs/app-lab` · the task level | Fill FIX-1662's task route: header, the four tabs (lazy), the states of BR-2 and BR-3 | BR-1 to BR-4 |
-| S2 | `labs/app-lab` · the run lookup | From board id and task id, derive the dispatch seam's per-task key with core's own helper (never re-spelled), list the assigned seat's dispatch runs, pick the one whose topic matches; hand its id and latest request id to S3 to S5. Owner-refused and shared-key cases per BR-8, BR-9 | D1 BR-5 BR-8 BR-9 |
-| S3 | `labs/app-lab` · Session | `useSession(runSession, { live: true })` over the registry item components FIX-1662 copied in; add any item component a harness run emits that `frame` didn't copy, by `fsdev ui add`, unedited | D1 BR-5 to BR-7 BR-10 ER-6 |
-| S4 | `labs/app-lab` · Interrupt | The shipped abort route on S2's in-progress request; Esc binds to it; state drawn from the request record only | D2 BR-11 to BR-14 |
-| S5 | `labs/app-lab` · the disabled acts | Hand off, reassign, Open PR, the composer and *also post*: disabled, each with its owner line as a prop | D2 BR-15 BR-16 ER-5 |
+| S2 | `labs/app-lab` · the run | Read the run's session id, request id and attempt off the row's [task-run link](#the-task-run-link); no listing, no key rebuilt. No link per BR-3; owner-refused per BR-9. Hand the ids to S3, S4 and S7 | D1 BR-3 BR-5 BR-9 |
+| S3 | `labs/app-lab` · Session | `useSession(runSession, { live: true })`, **mounted only while the Session tab is open**, over the registry item components FIX-1662 copied in; add any item component a harness run emits that `frame` didn't copy, by `fsdev ui add`, unedited. A shared session (BR-8) keeps only items stamped with this task's id, through the attribution helper the substrate and the UI already share, never a copy | D1 BR-5 to BR-8 BR-10 ER-6 |
+| S4 | `labs/app-lab` · Interrupt | The shipped abort route on the request S2 read; Esc binds to it; state drawn from the request record only | D2 BR-11 to BR-14 |
+| S5 | `labs/app-lab` · the disabled acts | Hand off, reassign, Open PR, the composer and *also post*: disabled, each with its owner line as a prop, from the [gap registry](BUSINESS-RULES.md#gap-registry) | D2 BR-15 BR-16 ER-5 |
 | S6 | `labs/app-lab` · Diff, Checks, Brief | Two named empty states; Brief from the row | BR-17 BR-24 |
-| S7 | `labs/app-lab` · the inspector | Fills the right panel's task slot: worker, team, harness, started, tokens, cost, acceptance gap, plan and files from the harness's recorded collections on the run session, linked, trace link | BR-18 to BR-23 |
+| S7 | `labs/app-lab` · the inspector | Fills the right panel's task slot: worker, team, started, the harness-tokens-cost gap, acceptance gap, plan and files from the harness's recorded collections on the run session under S2's request id (one-shot reads, loaded once per open, no stream), linked, trace link | BR-18 to BR-23 |
 | S8 | `labs/app-lab` · start script | Optional `--devtool <url>`, passed to the page for S7's link | BR-23 |
 | S9 | `goals/app-lab/it-shows-and-stops-a-task-run/` | The goal check, both controls, and its input tree ([at implement time](#at-implement-time)) | the goal |
 | S10 | Docs | [DOCS.md](DOCS.md): the README's task sentences and task section | ER-14 |
@@ -30,6 +44,7 @@ for the live session's shape and imports nothing from `apps/`.
 ```mermaid
 flowchart TD
   F["FIX-1662 frame · merged"] --> S1["S1 · task level"]
+  L["the task-run link · merged"] --> S2
   S1 --> S2["S2 · run lookup"]
   S2 --> S3["S3 · Session"]
   S2 --> S4["S4 · Interrupt"]
@@ -50,11 +65,11 @@ operation is a later, separate PR after it merges, not part of this DAG.
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | S2 | Per-task key finds exactly the run's child session among several; per-worker key yields the shared case (BR-8); an unreachable session yields BR-9. Negative: with the key match removed, the test picks the wrong session and fails |
+| V1 | S2, S3 | The screen opens the session and request the row's link names, among several sessions of the same seat and a second run with the same board and task drained from another conversation; a row with no link yields BR-3; an unreachable session yields BR-9; a shared session shows only this task's stamped items (BR-8). Negative: reading the seat's latest session instead of the link picks the wrong one and fails |
 | V2 | S3 | Items render in stored order across two attempts (BR-7); a stored item appears live (BR-6); parked shows the reason and the Inbox link (BR-10) |
 | V3 | S4 | Abort is called with the in-progress request id; *interrupted* renders only after the record reads `aborted` (BR-11); 409 and refusal paths (BR-12, BR-13); no board write on any path (BR-14) |
 | V4 | S5, S6 | Every disabled control and empty tab carries its owner line (BR-15 to BR-17) |
-| V5 | S7 | BR-18 dashes before a handle, values after; *estimated* on an estimated cost; BR-19 against a seeded recorded plan and file-op rows; BR-20 with none; BR-22 both directions; BR-23 with and without `--devtool` |
+| V5 | S7 | BR-18's gap line with its registry owner, whatever the run reported; BR-19 against a seeded recorded plan and file-op rows; BR-20 with none; BR-22 both directions; BR-23 with and without `--devtool` |
 | V6 | S1 to S8 | Static: no literal colour outside token definitions; no tree name in `labs/app-lab/src`; registry copies byte-equal their source; no write call except the abort |
 | VG | S9 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) PASSES, after `GOAL_CONTROL=worker-session` and `GOAL_CONTROL=optimistic-interrupt` each FAILED at their named signal |
 
@@ -75,9 +90,10 @@ Everything else is yours to name.
 |---|---|
 | The abort is the only write this screen makes | ER-15; D2. Anything else is a model the shell invented |
 | A state changes on screen only when the store says so | *Interrupted* before the record says so is the shell's hope, not the run's answer |
-| The run is found by the dispatch key, never by time, title or "latest session of this seat" | A near-miss shows another task's work as this one's, silently (D1) |
-| Every gap's copy is a prop at the surface, naming its owner | The sibling fills it later without touching the surface (ER-5) |
-| One live stream per open task; the inspector's recorded collections load once per open | A Lab with many running tasks must not open a stream per row |
+| The run is the one the row's link names, never found by key, topic, time, title or "latest session of this seat" | A near-miss shows, or aborts, another task's run as this one's, silently (D1) |
+| Every gap's copy is a prop at the surface, naming its owner from the [gap registry](BUSINESS-RULES.md#gap-registry) | The sibling fills it later without touching the surface (ER-5), and one table changes when it does |
+| At most one live stream, and only while the Session tab is open; the inspector's recorded collections load once per open | A Lab with many running tasks must not open a stream per row, and a person reading Brief pays nothing for the Session |
+| No paging through a listing to find something; a truncated answer shows *more than shown* with Retry | A silent wrong answer is worse than a named partial one |
 | No FSD package changes; a part that won't take the skin goes to FIX-1655 | ER-2, ER-6 |
 
 ## Docs
@@ -90,17 +106,21 @@ Reconcile [DOCS.md](DOCS.md) against the running app and publish it in this PR, 
 ```
 open task(board, id):
     row      ← FIX-1662's board read
-    key      ← the dispatch seam's per-task key(board, id)
-    run      ← the assigned seat's dispatch runs, where topic = key       (D1)
-    session  ← live items of run                                          (Session)
-    inspector← row fields + run's recorded plan and files + reported handle
-interrupt:  abort(run's in-progress request) → wait for the record → redraw   (D2)
-everything else: disabled or empty, with its owner's line
+    run      ← row's task-run link: { session, request, attempt }         (D1; none → BR-3)
+    session  ← live items of run.session, while the Session tab is open   (Session)
+               shared session → only items stamped with id                (BR-8)
+    inspector← row fields + recorded plan and files under run.request
+interrupt:  abort(run.request) → wait for the record → redraw              (D2)
+everything else: disabled or empty, with its owner's line from the gap registry
 ```
 
-**POC:** none. The premises are read off code, not argued: the per-task key and the topic on the
-listing (`packages/core/src/types/dispatch.ts`, the session record's `topic`), the assignee
-freeze on a handed-off board (`define-task-collection.ts`), the abort route
+**POC:** none. The premises are read off code, not argued: the claim gate runs in the run's
+own session on every handed-off attempt and marks the task scope, so every item the worker emits
+carries the task's id (`packages/orchestration/src/task-board/task-entry.ts`,
+`packages/contracts/src/items/task-attribution.ts`); the row's claim coordinate is server-only
+and names the drain, not the run (`tasks/schema/task.ts`, `task-board/hand-off.ts`); the recorded
+plan and files are keyed by the run's request id (`packages/claude-code/src/sdk/agent.ts`); the
+assignee freeze on a handed-off board (`define-task-collection.ts`); the abort route
 (`packages/engine/src/routes/abort-routes.ts`). V1 and V3 exercise them first.
 
 ## At implement time
@@ -110,15 +130,40 @@ freeze on a handed-off board (`define-task-collection.ts`), the abort route
   then, use DevForce; otherwise S9 carries a small fixture tree built from DevForce's kinds, and
   the stub gains a hold-until-aborted script.
 - Re-read FIX-1662's merged spec and `frame` PR for the route, slot and shared-read names.
-- Confirm the session listing still returns dispatch runs with `topic` and `latestRequestId`, and
-  what the board does with an aborted attempt. If it re-queues and restarts, report that to
-  FIX-1651 as what an interrupt means for a row; don't cancel from the shell.
-- Check whether FIX-1651 or FIX-1652 shipped anything; a shipped read replaces its gap.
+- Read the task-run link's merged spec for the field's name and shape, and confirm FIX-1662's
+  board read returns it.
+- Confirm what the board does with an aborted attempt. If it re-queues and restarts, report that
+  to FIX-1651 as what an interrupt means for a row; don't cancel from the shell.
+- Any listing the screen still reads (the recorded plan and files, the board's rows for *Blocks*)
+  that answers truncated follows the failure taxonomy: *more than shown* with Retry, no paging.
+- Check whether FIX-1651 or FIX-1652 shipped anything; a shipped read replaces its gap in the
+  [registry](BUSINESS-RULES.md#gap-registry), and only there.
 
 ## Follow-ups
 
 - **The turn operation**, if the open fork is answered *file it*: a child of FIX-1649, then a
   small PR wiring the composer.
 - **A devtool address for a session**, so the trace link lands on the run. Devtool, not App Lab.
-- **Finding a run filters after listing** (BP-033): a topic filter on the listing at the source
-  is engine work. Flagged, not in scope.
+- **Earlier attempts in other sessions** (BR-7): the link names the current attempt's run only.
+  A per-attempt history on the row would let the Session reach them. Not asked for yet.
+- **Harness, tokens and cost for a client** (BR-18): a read of what the run reported belongs to
+  FIX-1652's inspecting of a run, shaped once there, never a second copy of the harness
+  manager's record.
+
+## Notes from review
+
+Below the spec-review bar; for the implementer. From Cursor's review of PR #2428:
+
+- Merge the ten surfaces into four or five for the sequence (run and session and interrupt;
+  gaps and empty tabs; inspector and the devtool flag), keeping the S and V ids as check ids.
+- *Decided, not asked* in DECISIONS overlaps the BRs; the BRs are canonical where they differ.
+- Hand off, reassign and Open PR could be one disabled group with one owner line, unless the
+  closure needs them apart.
+- Tier the BRs as core (BR-5, BR-6, BR-11, BR-14 and the goal) and edge (BR-8 to BR-10, BR-12,
+  BR-13) when writing tests, so the watch-and-stop path is proved first.
+- Hold the resolved run for the open task; don't re-read it on a tab switch.
+- *Blocks* (BR-22) from one board read, never one read per dependency.
+- Elapsed time (BR-4) from the row and a clock, not a polling loop.
+- Mirror kitchen-sink's `background-work-panel` for the Session body and `picked-session-panel`'s
+  request settling for Interrupt, without importing from `apps/`. Use FIX-1662's shared
+  named-gap primitive if `frame` ships one, rather than new markup.
