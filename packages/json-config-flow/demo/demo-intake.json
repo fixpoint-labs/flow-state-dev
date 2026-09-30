@@ -1,0 +1,91 @@
+{
+  "kind": "demo-intake",
+  "requireUser": false,
+  "defaultModel": "mock-model",
+  "actions": {
+    "run": {
+      "block": "main",
+      "description": "Classify an inbound message, branch on intent, transform, and fire a side effect.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" }
+        },
+        "required": ["message"]
+      }
+    }
+  },
+  "blocks": {
+    "main": {
+      "type": "sequencer",
+      "steps": ["classify", "branch"]
+    },
+    "classify": {
+      "type": "generator",
+      "prompt": "Classify the user's message intent as either \"plan\" or \"chat\". Reply with structured JSON only.",
+      "user": "Classify this message.",
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "intent": { "type": "string", "enum": ["plan", "chat"] },
+          "message": { "type": "string" }
+        },
+        "required": ["intent", "message"]
+      }
+    },
+    "branch": {
+      "type": "router",
+      "key": "$.intent",
+      "routes": {
+        "plan": "planPipeline",
+        "default": "chatPipeline"
+      }
+    },
+    "planPipeline": {
+      "type": "sequencer",
+      "steps": ["planMap", "notifyHttp"]
+    },
+    "planMap": {
+      "type": "map",
+      "mappings": {
+        "kind": "plan",
+        "summary": "$.message",
+        "intent": "$.intent"
+      }
+    },
+    "notifyHttp": {
+      "type": "http",
+      "method": "POST",
+      "url": "https://example.invalid/hooks/intake",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Demo": "json-config-flow"
+      },
+      "body": {
+        "event": "plan-intake",
+        "summary": "$.summary",
+        "intent": "$.intent"
+      }
+    },
+    "chatPipeline": {
+      "type": "sequencer",
+      "steps": ["chatMap", "emitTool"]
+    },
+    "chatMap": {
+      "type": "map",
+      "mappings": {
+        "kind": "chat",
+        "reply": "Hello — {{$.message}}",
+        "intent": "$.intent"
+      }
+    },
+    "emitTool": {
+      "type": "tool",
+      "toolId": "logIntake",
+      "args": {
+        "kind": "$.kind",
+        "text": "$.reply"
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@flow-state-dev/json-config-flow",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "LAB / DNM POC: compile a fixed catalog of FSD blocks from JSON config into a defineFlow-registerable flow. Does not replace TypeScript for novel block types.",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root ."
+  },
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
