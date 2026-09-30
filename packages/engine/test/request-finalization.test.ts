@@ -263,6 +263,58 @@ describe("request finalization", () => {
     expect(await stores.activeRequests.get("req_stamp_down")).toBeUndefined();
   });
 
+  it("with heartbeats off, a sweep during onFinished does not take the run for finished", async () => {
+    // `heartbeatIntervalMs: 0` means the entry never beats, so it looks stale
+    // throughout a slow `onFinished`. Staleness proves nothing about such a
+    // run, so the sweep must not stamp it while it is still writing.
+    const stores = createInMemoryStores();
+    const duringOnFinished: Observed[] = [];
+    const flow = makeFlow(async ({ requestId }) => {
+      await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+      const record = await stores.request.get(requestId);
+      duringOnFinished.push({
+        finalizedAtMs: record === undefined ? "no record" : record.finalizedAtMs
+      });
+    }, 0);
+
+    await run(stores, flow, "req_no_heartbeat");
+
+    expect(duringOnFinished).toEqual([{ finalizedAtMs: null }]);
+    // The run itself still stamps when it is done.
+    expect(typeof (await stores.request.get("req_no_heartbeat"))?.finalizedAtMs).toBe("number");
+  });
+
+  it("does not stamp over a late write that failed to flush, and flushes the other queue anyway", async () => {
+    // A failed flush is the same as a failed stamp: the run cannot vouch that
+    // nothing is left in flight, so it leaves the record for the sweep.
+    const stores = createInMemoryStores();
+    let inTail = false;
+    let eventFlushesInTail = 0;
+    const flushItems = stores.request.flushItems.bind(stores.request);
+    const flushEvents = stores.request.flushEvents.bind(stores.request);
+    stores.request.flushItems = async (id) => {
+      if (inTail) throw new Error("item write failed");
+      return flushItems(id);
+    };
+    stores.request.flushEvents = async (id) => {
+      if (inTail) eventFlushesInTail += 1;
+      return flushEvents(id);
+    };
+    const flow = makeFlow(async () => {
+      inTail = true;
+    });
+
+    await run(stores, flow, "req_flush_failed");
+
+    expect(eventFlushesInTail).toBeGreaterThan(0);
+    expect((await stores.request.get("req_flush_failed"))?.finalizedAtMs).toBeNull();
+    expect(await stores.activeRequests.get("req_flush_failed")).toBeDefined();
+
+    inTail = false;
+    await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+    expect(typeof (await stores.request.get("req_flush_failed"))?.finalizedAtMs).toBe("number");
+  });
+
   it("keeps heartbeating while onFinished runs, so a slow finish is not taken for a dead run", async () => {
     const stores = createInMemoryStores();
     let beatDuringOnFinished: number | undefined;
@@ -306,6 +358,7 @@ describe("stale-request sweep and unfinished records", () => {
     startedAtMs: 1,
     ...(status === "completed" ? { completedAtMs: 2 } : {}),
     finalizedAtMs: null,
+    heartbeatsUntilFinalized: status === "completed",
     state: {},
     version: 0,
     createdAt: 1,
@@ -322,6 +375,23 @@ describe("stale-request sweep and unfinished records", () => {
     const after = await stores.request.get("req_died_in_tail");
     expect(after?.status).toBe("completed");
     expect(typeof after?.finalizedAtMs).toBe("number");
+  });
+
+  it("does not stamp a finished record whose run was not heartbeating through its tail", async () => {
+    // Heartbeats off, or a failure path (which stops beating before
+    // `onFinished`): a stale entry says nothing about whether the run is
+    // still writing, so the record stays unfinalized and is never evicted.
+    const stores = createInMemoryStores();
+    await stores.request.set(
+      "req_silent_tail",
+      { ...record("req_silent_tail", "completed"), heartbeatsUntilFinalized: false },
+      "any"
+    );
+    await stores.activeRequests.register(entry("req_silent_tail"));
+
+    await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+
+    expect((await stores.request.get("req_silent_tail"))?.finalizedAtMs).toBeNull();
   });
 
   it("leaves a run that died mid-flight unstamped: it is interrupted, not finished", async () => {

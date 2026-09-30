@@ -186,6 +186,16 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * late writes cannot land under an id that has been freed and reused.
    */
   finalizedAtMs?: number | null;
+  /**
+   * Whether the run keeps heartbeating from its terminal write until it
+   * stamps `finalizedAtMs`. Only then does a stale active-request entry mean
+   * the run died in its tail, so only then may the stale-request sweep stamp
+   * the record for it. `false` when heartbeats are off
+   * (`request.heartbeatIntervalMs: 0`) or on a failure path, which stops
+   * beating before `onFinished`; such a record is stamped only by its own run.
+   * Absent on records from before the field: never stamped by the sweep.
+   */
+  heartbeatsUntilFinalized?: boolean;
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
   input?: unknown;

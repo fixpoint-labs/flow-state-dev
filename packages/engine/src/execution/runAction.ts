@@ -549,23 +549,33 @@ async function patchRequestRecord(
 
 /**
  * Wait out item and event writes still queued under `requestId` before the
- * finalization stamp. Past the terminal status, so a failed write is logged
- * rather than thrown: it changes nothing about how the run ended, and it is
- * no longer pending either way.
+ * finalization stamp. Both queues are settled independently, so one failing
+ * never skips the other. Past the terminal status, so a failure is logged
+ * rather than thrown: it changes nothing about how the run ended.
+ *
+ * @returns `false` when either flush failed. The run then cannot vouch that
+ *   nothing it wrote is still landing, so the caller does not stamp, exactly
+ *   as when the stamp itself fails.
  */
 async function settlePendingWrites(
   stores: StoreRegistry,
   requestId: string,
   logger: RuntimeLogger
-): Promise<void> {
-  try {
-    await stores.request.flushItems(requestId);
-    await stores.request.flushEvents(requestId);
-  } catch (err) {
-    logRuntimeEvent(logger, "warn", "[flow-state] late write failed before finalization", {
-      requestId, error: String(err)
-    });
+): Promise<boolean> {
+  const results = await Promise.allSettled([
+    stores.request.flushItems(requestId),
+    stores.request.flushEvents(requestId)
+  ]);
+  let settled = true;
+  for (const result of results) {
+    if (result.status === "rejected") {
+      settled = false;
+      logRuntimeEvent(logger, "warn", "[flow-state] late write failed before finalization", {
+        requestId, error: String(result.reason)
+      });
+    }
   }
+  return settled;
 }
 
 /**
@@ -1820,7 +1830,8 @@ export async function runActionInternal<
     // no longer holds.
     await patchRequestRecord(options.stores, requestId, {
       status: "in_progress",
-      finalizedAtMs: null
+      finalizedAtMs: null,
+      heartbeatsUntilFinalized: false
     });
     ctx.requestRuntime.status = "in_progress";
     await response.emitRequestStatus("in_progress");
@@ -2203,7 +2214,10 @@ export async function runActionInternal<
     terminalRecordIncarnation = await patchRequestRecord(options.stores, requestId, {
       status: terminalStatus,
       completedAtMs: completedAt,
-      items
+      items,
+      // The timer runs on through `onFinished` until the stamp, so a stale
+      // entry from here means the run died in its tail. Not with heartbeats off.
+      heartbeatsUntilFinalized: heartbeatIntervalMs > 0
     });
 
     ctx.requestRuntime.status = terminalStatus;
@@ -2319,13 +2333,13 @@ export async function runActionInternal<
     // under the id; wait for it, as for `onCompleted`'s above, and for any
     // item or event writes it and `onFinished` left pending.
     await drainRequestSideChainPool(ctx);
-    await settlePendingWrites(options.stores, requestId, logger);
+    const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
 
     // The run has nothing left to write under this id.
     stopHeartbeatTimer();
-    const finalized = await finalizeRequestRecord(
-      options.stores, requestId, terminalRecordIncarnation, logger
-    );
+    const finalized =
+      writesSettled &&
+      (await finalizeRequestRecord(options.stores, requestId, terminalRecordIncarnation, logger));
 
     // Deregister abort controller and active registry. An unstamped run stays
     // registered, heartbeat stopped, for the stale-request sweep to stamp.
@@ -2473,9 +2487,9 @@ export async function runActionInternal<
       // Clear the heartbeat — the drain is done and the terminal write is
       // next. The success path stops polling for cancellation at the same
       // point but heartbeats on through `onFinished`. Here the heartbeat
-      // stops now, so a slow `onFinished` on a failed run can be swept as
-      // dead and stamped finalized early; retention never evicts a request
-      // that did not complete, so nothing is freed by it.
+      // stops now, so the terminal write records `heartbeatsUntilFinalized:
+      // false` and the stale-request sweep never stamps this record: a slow
+      // `onFinished` here looks stale while it is still running.
       stopHeartbeatTimer();
     }
 
@@ -2491,7 +2505,9 @@ export async function runActionInternal<
         terminalRecordIncarnation = await patchRequestRecord(options.stores, requestId, {
           status: "aborted",
           abortedAt,
-          items: itemsToPersist()
+          items: itemsToPersist(),
+          // The heartbeat stopped before this write (see the `finally` above).
+          heartbeatsUntilFinalized: false
         });
 
         ctx.requestRuntime.status = "aborted";
@@ -2523,7 +2539,8 @@ export async function runActionInternal<
         terminalRecordIncarnation = await patchRequestRecord(options.stores, requestId, {
           status: "interrupted",
           interruptedAt: Date.now(),
-          items: itemsToPersist()
+          items: itemsToPersist(),
+          heartbeatsUntilFinalized: false
         });
 
         ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
@@ -2557,7 +2574,8 @@ export async function runActionInternal<
       terminalRecordIncarnation = await patchRequestRecord(options.stores, requestId, {
         status: "failed",
         failedAtMs: failedAt,
-        items: itemsToPersist()
+        items: itemsToPersist(),
+        heartbeatsUntilFinalized: false
       });
 
       ctx.requestRuntime.status = "failed";
@@ -2597,11 +2615,11 @@ export async function runActionInternal<
     // run writing under the id, as are the item and event writes they left
     // pending.
     await drainRequestSideChainPool(ctx);
-    await settlePendingWrites(options.stores, requestId, logger);
+    const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
 
-    const finalized = await finalizeRequestRecord(
-      options.stores, requestId, terminalRecordIncarnation, logger
-    );
+    const finalized =
+      writesSettled &&
+      (await finalizeRequestRecord(options.stores, requestId, terminalRecordIncarnation, logger));
 
     // Deregister abort controller and active registry. An unstamped run stays
     // registered, heartbeat stopped, for the stale-request sweep to stamp.

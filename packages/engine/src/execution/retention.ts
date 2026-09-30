@@ -104,7 +104,8 @@ export async function applyRetentionPolicy(
   // `finalizedAtMs` and the grace window has passed since. Time alone cannot
   // stand in for the stamp: `onFinished` is unbounded, and a process-local
   // registry cannot see a run in another process. A run that dies before
-  // stamping is stamped by the stale-request sweep.
+  // stamping is stamped by the stale-request sweep if it was heartbeating
+  // through its tail; otherwise its record is kept.
   //
   // - `finalizedAtMs: null` — the run has not finished: never evicted here.
   // - absent — written by a version that never stamps (BP-030). During a

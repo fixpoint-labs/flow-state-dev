@@ -119,9 +119,12 @@ export async function detectInterruptedRequests(options: {
       });
     }
 
-    // A run that reached its terminal status heartbeats until it stamps
-    // `finalizedAtMs`, so a stale entry over a terminal, unstamped record is a
-    // run that died in its last steps. Nothing is left to write under the id:
+    // A run whose record says `heartbeatsUntilFinalized` beats from its
+    // terminal write until it stamps `finalizedAtMs`, so a stale entry over
+    // such a terminal, unstamped record is a run that died in its last steps.
+    // Any other run (heartbeats off, or a failure path) looks stale while it
+    // is alive, so staleness proves nothing and its record is left for its
+    // own run to stamp; if that run is gone, the record is never evicted. Nothing is left to write under the id:
     // stamp it here so session retention can evict it. Conditional on the
     // record just read (its status and incarnation), so it never recreates a
     // record or stamps another request that has since taken the id. The same
@@ -130,6 +133,7 @@ export async function detectInterruptedRequests(options: {
     if (
       requestRecord !== undefined &&
       requestRecord.finalizedAtMs === null &&
+      requestRecord.heartbeatsUntilFinalized === true &&
       requestRecord.status !== "in_progress" &&
       isTerminalRequestStatus(requestRecord.status)
     ) {
