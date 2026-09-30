@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 452" role="img" aria-label="Before and after for the App Lab task screen. Today: FIX-1662's task route shows only its empty frame, and a task's run can be found only in the devtool, among a flow's child sessions. After: the task screen reads three shipped things from the Lab's server, the task's board row, the task's own run session found by the dispatch key on board and task, and that run's in-progress request; its one write is Interrupt, through the shipped abort. Beside it, the named gaps: Hand off, reassign, Open PR, Diff, Checks and acceptance criteria name FIX-1651; an unreported harness names FIX-1652; the composer waits on the open fork."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .band  { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .empty { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:5 4; }
+    .inbox { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .write { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .gap   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .head  { fill:var(--ink-3); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-code { fill:var(--code); }
+    .c-acc  { fill:var(--accent); }
+    .c-pro  { fill:var(--prose); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="452"/>
+
+  <g id="today">
+    <rect class="band" x="16" y="16" width="908" height="112" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY</text>
+    <rect class="empty" x="32" y="50" width="400" height="62" rx="5"/>
+    <text class="t-b" x="48" y="74">The task route · FIX-1662's frame</text>
+    <text class="t-s" x="48" y="94">an empty state; nothing reads the task's run</text>
+    <rect class="n-box" x="480" y="50" width="428" height="62" rx="5"/>
+    <text class="t-b" x="496" y="74">The devtool · a flow's child sessions</text>
+    <text class="t-s" x="496" y="94">the run is in there somewhere; you guess which</text>
+  </g>
+
+  <g id="after-label">
+    <text class="t-lbl" x="32" y="158">AFTER</text>
+  </g>
+
+  <g id="screen">
+    <rect class="n-box" x="32" y="170" width="300" height="262" rx="5"/>
+    <text class="t-lbl" x="48" y="192">THE TASK SCREEN</text>
+    <text class="t-b" x="48" y="216">Session · live, this run only</text>
+    <text class="t-s" x="48" y="236">Brief · the row's own fields</text>
+    <text class="t-s" x="48" y="256">Inspector · worker, harness, started,</text>
+    <text class="t-s" x="48" y="272">tokens, cost, plan, files, linked</text>
+    <rect class="write" x="48" y="292" width="268" height="52" rx="5"/>
+    <text class="t-lbl c-acc" x="62" y="312">ONE WRITE</text>
+    <text class="t-b" x="62" y="332">Interrupt → the shipped abort</text>
+    <text class="t-s" x="48" y="370">A state changes on screen only</text>
+    <text class="t-s" x="48" y="386">when the store says it did</text>
+  </g>
+
+  <g id="reads">
+    <text class="t-lbl" x="372" y="192">SHIPPED READS · THE LAB'S SERVER</text>
+    <rect class="inbox" x="372" y="202" width="260" height="52" rx="5"/>
+    <text class="t-b c-code" x="386" y="224">The task's board row</text>
+    <text class="t-s" x="386" y="242">via FIX-1662's shared reads</text>
+    <rect class="inbox" x="372" y="266" width="260" height="52" rx="5"/>
+    <text class="t-b c-code" x="386" y="288">Its run's own session</text>
+    <text class="t-s" x="386" y="306">found by the dispatch key · D1</text>
+    <rect class="inbox" x="372" y="330" width="260" height="52" rx="5"/>
+    <text class="t-b c-code" x="386" y="352">That run's request</text>
+    <text class="t-s" x="386" y="370">what Interrupt aborts · D2</text>
+    <path class="arrow" d="M372 228 H336"/>
+    <path class="arrow" d="M372 292 H336"/>
+    <path class="arrow" d="M372 356 H336"/>
+    <path class="head" d="M332 228 l6 -4 v8 z"/>
+    <path class="head" d="M332 292 l6 -4 v8 z"/>
+    <path class="head" d="M332 356 l6 -4 v8 z"/>
+  </g>
+
+  <g id="gaps">
+    <text class="t-lbl" x="664" y="192">NAMED GAPS · NOT INVENTED</text>
+    <rect class="gap" x="664" y="202" width="244" height="80" rx="5"/>
+    <text class="t-b c-pro" x="678" y="224">FIX-1651</text>
+    <text class="t-s" x="678" y="244">Hand off · reassign · Open PR</text>
+    <text class="t-s" x="678" y="262">Diff · Checks · acceptance</text>
+    <rect class="gap" x="664" y="294" width="244" height="52" rx="5"/>
+    <text class="t-b c-pro" x="678" y="316">FIX-1652</text>
+    <text class="t-s" x="678" y="334">a harness the run hasn't reported</text>
+    <rect class="gap" x="664" y="358" width="244" height="52" rx="5"/>
+    <text class="t-b c-pro" x="678" y="380">The open fork</text>
+    <text class="t-s" x="678" y="398">the composer's turn into the run</text>
+  </g>
+</svg>
