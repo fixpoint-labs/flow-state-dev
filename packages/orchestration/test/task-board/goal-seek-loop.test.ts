@@ -447,8 +447,9 @@ describe("goalSeekLoop - terminal item", () => {
     expect(boardMeta.length).toBeGreaterThan(0);
     expect(termination.length).toBe(1);
     expect((termination[0] as any).component).not.toBe("task-board-meta");
-    // It's an internal observability signal — not client/history-rendered — so
-    // it never surfaces as raw JSON in the client stream.
+    // It's an internal observability signal and declares itself so. The
+    // declaration alone does not suppress it (structural items ignore
+    // `itemVisibility`); the chat registry's `false` entry does.
     expect((termination[0] as any).itemVisibility).toEqual({
       client: false,
       history: false,
