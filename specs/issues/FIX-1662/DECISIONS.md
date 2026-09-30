@@ -116,6 +116,8 @@ It comes down to review size: one PR of two levels and two destinations is past 
   seat sessions) and BR-26 (answered in both places together) could not all hold for an ask in a
   seat's session, which is where the DevForce EM raises it
   ([FIX-1666](https://linear.app/fixpoint-labs/issue/FIX-1666), PR #2437). The epic's journey and
-  FIX-1663's a1 need the card in the Stream. BR-18, BR-26, S3, S7, S10 and V7 amended.
+  FIX-1663's a1 need the card in the Stream. BR-18, BR-26, S3, S7, S10 and V7 amended. That seat is
+  woken by a keyed dispatch, so its session is a dispatch run: S3's listing includes dispatch runs
+  (BR-24) and V7 runs through the channel-notify path.
 
 **Open: none.**

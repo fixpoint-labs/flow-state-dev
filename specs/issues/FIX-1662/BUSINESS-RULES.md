@@ -52,7 +52,7 @@ apply as written; these are the ones this issue adds. *Proved by* names the kind
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-24 | Inbox opens | Every pending approval and question in the seat sessions the session listing returns to this person in this organization, oldest first, with kind, task where known, workstream and wait; All, Approvals and Questions each count exactly theirs. Asks in another member's sessions are not listed: the listing never widens past the caller, and an org-wide ask read is FIX-1652's call. Inbox says so in a line | Goal check |
+| BR-24 | Inbox opens | Every pending approval and question in the seat sessions the session listing returns to this person in this organization, dispatch runs included (a seat woken by a channel post runs in one), oldest first, with kind, task where known, workstream and wait; All, Approvals and Questions each count exactly theirs. Asks in another member's sessions are not listed: the listing never widens past the caller, and an org-wide ask read is FIX-1652's call. Inbox says so in a line | Goal check |
 | BR-25 | An ask is selected | Inbox detail and the Stream use the same approval/question renderer for that ask. Approve and Deny resolve it through the session's shipped resume | CI |
 | BR-26 | An ask is answered anywhere | It leaves Inbox and its workstream's Stream together, because both draw it from the one seat session that holds it | Goal check |
 | BR-27 | A parked row has no pending suspension behind it | It is not an Inbox item. It shows in Tasks under NEEDS YOU and in its worker's status (BR-8); whether a parked row is an ask is FIX-1652's call | CI |
