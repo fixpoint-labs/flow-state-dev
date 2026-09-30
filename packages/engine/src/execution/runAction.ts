@@ -62,6 +62,7 @@ import {
   abortRequest,
   registerAbortController,
   deregisterAbortController,
+  replaceAbortController,
   tagAbortController,
   wasFiredOnlyFenced
 } from "./abort-registry";
@@ -1660,8 +1661,8 @@ export async function runActionInternal<
     // run.
     if (ctx.request.incarnation !== currentIncarnation) {
       currentIncarnation = ctx.request.incarnation;
-      if (wasFiredOnlyFenced(requestId, registered)) {
-        registered = registerAbortController(requestId, currentIncarnation);
+      if (wasFiredOnlyFenced(registered)) {
+        registered = replaceAbortController(requestId, registered, currentIncarnation);
         registered.signal.addEventListener("abort", forwardRegisteredAbort, { once: true });
       } else {
         tagAbortController(requestId, registered, currentIncarnation);

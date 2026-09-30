@@ -46,7 +46,9 @@ import {
 import {
   deregisterAbortController,
   registerAbortController,
-  tagAbortController
+  replaceAbortController,
+  tagAbortController,
+  wasFiredOnlyFenced
 } from "../../execution/abort-registry";
 import { generateId } from "../../utils/generate-id";
 import {
@@ -176,14 +178,30 @@ function isRefusedAdmission(error: unknown): boolean {
   );
 }
 
+/**
+ * End a request whose run never started. With `expectedIncarnation`, only
+ * that request is ended: a record another request put under the id since is
+ * left alone. Without it, whatever holds the id is ended.
+ *
+ * The read and the write are separate calls, so a record replaced between
+ * them is still overwritten. The conditional store write cannot close that:
+ * it does not write `status`.
+ */
 async function terminateUnenqueuedRequest(
   stores: StoreRegistry,
   requestId: string,
-  status: "failed" | "aborted" = "failed"
+  status: "failed" | "aborted" = "failed",
+  expectedIncarnation?: string
 ): Promise<void> {
   try {
     const record = await stores.request.get(requestId);
     if (record === undefined || isTerminalRequestStatus(record.status)) return;
+    if (
+      expectedIncarnation !== undefined &&
+      resolveRequestIncarnation(record) !== expectedIncarnation
+    ) {
+      return;
+    }
     const now = Date.now();
     await stores.request.set(
       requestId,
@@ -910,7 +928,11 @@ export function createInboundTransportHost(
         // last-write-wins hand-off the enqueue-time record already uses, so this
         // adds a window rather than a second registry to keep in sync. The
         // `finally` below removes it on every exit, started or not.
-        const queuedAbort = registerAbortController(requestId);
+        let queuedAbort = registerAbortController(requestId);
+        // The incarnation of the request this dispatch claimed, once it has.
+        // Every terminal write below is for that request, not for whatever
+        // holds the id by the time the write happens.
+        let claimedIncarnation: string | undefined;
         // A `queue` run's start is deferred behind the key, so `dispatchLocal`
         // (which registers `activeRequests` and writes the request record) has
         // not run when this handle is returned. Materialize a discoverable
@@ -940,6 +962,7 @@ export function createInboundTransportHost(
               // Until its record is claimed this controller belongs to no known
               // request, so an abort fenced on one does not fire it. Tagged the
               // moment the record exists, because a cancel can land from then on.
+              claimedIncarnation = incarnation;
               tagAbortController(requestId, queuedAbort, incarnation);
             })
           )
@@ -960,7 +983,7 @@ export function createInboundTransportHost(
           // admission never touched the foreign owner's, nor the caller's own
           // earlier request under the id it reused.
           if (!isRefusedAdmission(error)) {
-            await terminateUnenqueuedRequest(stores, requestId);
+            await terminateUnenqueuedRequest(stores, requestId, "failed", claimedIncarnation);
           }
           throw error;
         });
@@ -1022,11 +1045,36 @@ export function createInboundTransportHost(
               // corrupting outcome rather than an untidy one, so the wait is
               // registered (above) and the decision is re-read here, at the last
               // moment before anything runs (FIX-1077).
+              //
+              // A fenced fire was for the request this dispatch claimed. If
+              // another request has taken the id since, that fire is not its
+              // cancel: the run adopts it and starts on an unfired controller,
+              // and its own start read settles any cancel recorded on it. An
+              // unfenced fire (shutdown) stops whatever holds the id.
               if (queuedAbort.signal.aborted) {
-                await terminateUnenqueuedRequest(stores, requestId, "aborted");
-                throw new Error(
-                  `Request "${requestId}" was cancelled before it left the concurrency queue`
-                );
+                const holder = await stores.request.get(requestId).catch(() => undefined);
+                const heldByAnother =
+                  holder !== undefined &&
+                  claimedIncarnation !== undefined &&
+                  resolveRequestIncarnation(holder) !== claimedIncarnation;
+                const fencedOnly = wasFiredOnlyFenced(queuedAbort);
+                if (holder !== undefined && heldByAnother && fencedOnly) {
+                  queuedAbort = replaceAbortController(
+                    requestId,
+                    queuedAbort,
+                    resolveRequestIncarnation(holder)
+                  );
+                } else {
+                  await terminateUnenqueuedRequest(
+                    stores,
+                    requestId,
+                    "aborted",
+                    fencedOnly ? claimedIncarnation : undefined
+                  );
+                  throw new Error(
+                    `Request "${requestId}" was cancelled before it left the concurrency queue`
+                  );
+                }
               }
               // The check above is not sufficient on its own and is not meant to
               // be: an abort landing after it would be lost, because `runAction`
@@ -1046,8 +1094,13 @@ export function createInboundTransportHost(
               // a record that was never ours. A session another user created
               // under the id while the run waited is refused the same way, and
               // the stub it leaves is ours to settle.
-              if (
-                error instanceof ConcurrencyQueueTimeoutError ||
+              //
+              // A timeout means no run started, so it ends only the request
+              // this dispatch claimed. A binding refusal comes from the run,
+              // which adopted whatever held the id, so it ends that.
+              if (error instanceof ConcurrencyQueueTimeoutError) {
+                await terminateUnenqueuedRequest(stores, requestId, "failed", claimedIncarnation);
+              } else if (
                 error instanceof FlowInstanceBindingMismatchError ||
                 error instanceof UserBindingMismatchError
               ) {
@@ -1110,6 +1163,7 @@ export function createInboundTransportHost(
       // already went out. The concurrency gate does not apply here — external
       // dispatch is unarbitrated in v1 (FIX-830).
       const ts = Date.now();
+      let claimedIncarnation: string | undefined;
       const acceptance = admitOwnership(flow, dispatchEnvelope)
         .then((admitted) =>
           materializeOwned(flow, dispatchEnvelope, admitted, {
@@ -1125,6 +1179,8 @@ export function createInboundTransportHost(
             startedAt: ts,
             lastHeartbeatAt: ts,
             queuedAt: ts
+          }, (incarnation) => {
+            claimedIncarnation = incarnation;
           })
         )
         .then(() => {
@@ -1141,7 +1197,7 @@ export function createInboundTransportHost(
             // the record stuck in_progress forever. A refused admission wrote
             // nothing and terminates nothing — the record it found is not ours.
             if (!isRefusedAdmission(error)) {
-              await terminateUnenqueuedRequest(stores, requestId);
+              await terminateUnenqueuedRequest(stores, requestId, "failed", claimedIncarnation);
             }
             throw error;
           });

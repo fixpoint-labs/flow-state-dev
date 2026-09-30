@@ -23,20 +23,18 @@ interface Registered {
   controller: AbortController;
   /** The incarnation of the request this controller belongs to, once known. */
   incarnation?: string;
-  /**
-   * Set by a fenced `abortRequest` that matched: a fire for the request the
-   * controller was tagged with at that moment.
-   */
-  firedFenced?: boolean;
-  /**
-   * Set by an unfenced `abortRequest`: a fire for whatever runs under the id.
-   * Recorded even when the controller had already fired, so it is never
-   * hidden behind an earlier fenced fire.
-   */
-  firedUnfenced?: boolean;
 }
 
 const controllers = new Map<string, Registered>();
+
+/**
+ * How each controller was fired, kept on the controller rather than on its
+ * registry slot, so the answer survives another run taking the slot.
+ * `fenced`: a fire for the incarnation the controller was tagged with then.
+ * `unfenced`: a fire for whatever runs under the id; recorded even when the
+ * controller had already fired, so an earlier fenced fire never hides it.
+ */
+const firedBy = new WeakMap<AbortController, { fenced?: boolean; unfenced?: boolean }>();
 
 /** True when `entry` may be acted on by a caller expecting `expected`. */
 function matches(entry: Registered, expected: string | undefined): boolean {
@@ -87,26 +85,39 @@ export function abortRequest(requestId: string, expectedIncarnation?: string): b
   if (entry === undefined || !matches(entry, expectedIncarnation)) {
     return false;
   }
-  if (expectedIncarnation === undefined) entry.firedUnfenced = true;
-  else entry.firedFenced = true;
+  const fired = firedBy.get(entry.controller) ?? {};
+  if (expectedIncarnation === undefined) fired.unfenced = true;
+  else fired.fenced = true;
+  firedBy.set(entry.controller, fired);
   entry.controller.abort();
   return true;
 }
 
 /**
- * Whether `controller`, registered under `requestId`, was fired only by fenced
- * `abortRequest`s: fires for one incarnation of the request, and none for
- * whatever runs under the id. False when it has not fired, when any fire was
- * unfenced, or when it is no longer the registered controller.
+ * Whether `controller` was fired only by fenced `abortRequest`s: fires for one
+ * incarnation of its request, and none for whatever runs under the id. False
+ * when it has not fired or when any fire was unfenced. Answered whether or not
+ * the controller is still registered.
  */
-export function wasFiredOnlyFenced(requestId: string, controller: AbortController): boolean {
-  const entry = controllers.get(requestId);
-  return (
-    entry !== undefined &&
-    entry.controller === controller &&
-    entry.firedFenced === true &&
-    entry.firedUnfenced !== true
-  );
+export function wasFiredOnlyFenced(controller: AbortController): boolean {
+  const fired = firedBy.get(controller);
+  return fired?.fenced === true && fired.unfenced !== true;
+}
+
+/**
+ * Give up `previous` for a fresh, unfired controller tagged `incarnation`.
+ * The fresh one takes the registry slot only if `previous` still holds it;
+ * a controller another run displaced does not take the slot back.
+ */
+export function replaceAbortController(
+  requestId: string,
+  previous: AbortController,
+  incarnation: string
+): AbortController {
+  if (controllers.get(requestId)?.controller === previous) {
+    return registerAbortController(requestId, incarnation);
+  }
+  return new AbortController();
 }
 
 /**
