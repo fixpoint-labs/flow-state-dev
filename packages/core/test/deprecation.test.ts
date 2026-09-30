@@ -4,9 +4,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDeprecationWarningsForTests,
-  firstInProcess,
   warnOnceDev,
 } from "../src/helpers/deprecation";
+import { firstInProcess } from "../src/helpers/once-per-process";
 
 describe("warnOnceDev", () => {
   const originalNodeEnv = process.env.NODE_ENV;
@@ -41,11 +41,12 @@ describe("warnOnceDev", () => {
 
     vi.resetModules();
     const reloaded = await import("../src/helpers/deprecation");
+    const reloadedOnce = await import("../src/helpers/once-per-process");
     expect(reloaded.warnOnceDev).not.toBe(warnOnceDev);
     reloaded.warnOnceDev("dk", "first");
 
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(reloaded.firstInProcess("reloaded/key")).toBe(true);
+    expect(reloadedOnce.firstInProcess("reloaded/key")).toBe(true);
     expect(firstInProcess("reloaded/key")).toBe(false);
   });
 

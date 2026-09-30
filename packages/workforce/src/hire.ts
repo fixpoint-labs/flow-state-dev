@@ -875,13 +875,12 @@ export function hireWorkforce(
 
   // After the refusals, deliberately: a roster that did not hire has nothing
   // to be unattended by, and a warning printed beside a fatal error is noise.
-  //
-  // Once per process per sentence: `next dev` re-runs an app's module-scope
-  // hire on every hot reload, and a board that was unattended at boot is still
-  // unattended after an edit. A board that newly goes unattended is a new
-  // sentence, so it still prints.
-  for (const warning of unattendedBoardWarnings(options.channelBoards ?? [], seats)) {
-    if (firstInProcess(`workforce/unattended-board/${warning}`)) console.warn(warning);
+  // Once per process per board (see `firstInProcess`), so a hot reload stays
+  // quiet while a board that newly goes unattended still prints.
+  for (const boardId of options.channelBoards ?? []) {
+    for (const warning of unattendedBoardWarnings([boardId], seats)) {
+      if (firstInProcess(`workforce/unattended-board/${boardId}`)) console.warn(warning);
+    }
   }
 
   return seats;

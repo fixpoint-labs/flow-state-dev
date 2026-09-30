@@ -8,32 +8,7 @@
  * the path runs.
  */
 
-// The claimed keys live on `globalThis`, not in a module-level `Set`. A dev
-// server that re-evaluates modules on every edit (`next dev` re-runs every
-// transpiled workspace package, this one included) would otherwise start each
-// generation with an empty set, and "once per process" would become "once per
-// hot reload". `Symbol.for` keeps the slot the same across those generations.
-const CLAIMED_KEYS = Symbol.for("@flow-state-dev/core/once-per-process");
-
-function claimedKeys(): Set<string> {
-  const slot = globalThis as typeof globalThis & { [CLAIMED_KEYS]?: Set<string> };
-  return (slot[CLAIMED_KEYS] ??= new Set<string>());
-}
-
-/**
- * `true` the first time `key` is claimed in this process, `false` every time
- * after. Survives module re-evaluation, so a boot diagnostic guarded by it
- * prints once per server start rather than once per hot reload.
- *
- * Namespace the key by package (`"workforce/..."`, `"engine/..."`): every
- * caller in the process shares one set.
- */
-export function firstInProcess(key: string): boolean {
-  const claimed = claimedKeys();
-  if (claimed.has(key)) return false;
-  claimed.add(key);
-  return true;
-}
+import { claimedKeys, firstInProcess } from "./once-per-process";
 
 /**
  * Emit a non-fatal dev warning at most once per process per `key`. Skipped
