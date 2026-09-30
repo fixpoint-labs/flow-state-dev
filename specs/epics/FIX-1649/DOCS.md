@@ -41,16 +41,21 @@ Publisher: FIX-1662. How to open a Lab, and the run command, are its own draft.
 >
 > The app you use a Workforce Lab through. Point it at a Lab's Workforce tree (the folder of
 > teams, workers and channels the Lab declares) and an organization, and it gives you one
-> place to work: what needs you, the Lab's channels, and which seats are on shift down the
-> left; a channel's stream, board, brief and results in the middle; and the run a seat is in
-> on the right.
+> place to work.
 >
-> Five destinations sit in the rail: projects, workstreams, chat, attention and resources.
-> Chat and resources show what your tree declares today. Projects, workstreams and attention
-> are reachable now and say plainly what arrives there and when; they fill in as those parts
-> of Workforce ship.
+> The sidebar is where you are and what needs you: the organization, a search that jumps
+> anywhere, the approvals and questions waiting on you, your projects with their workstreams,
+> and each team with its workers and what they're doing.
 >
-> App Lab isn't a debugger. Each run links its full trace in the devtool.
+> The middle is whatever you opened. A project shows its workstreams on one board. A
+> workstream is a channel: workers post as they go, and a message addressed to one of them
+> (`@builder`) goes straight into that worker's session. A task shows one worker's live
+> session, its diff and its checks, and lets you interrupt it or hand it off. The panel on the
+> right follows along, with the team and its tasks at a workstream and the task's details at
+> a task.
+>
+> Anything a part of Workforce hasn't shipped yet says so, and says what arrives there. App
+> Lab isn't a debugger: each task links its full trace in the devtool.
 
 ## UPDATE · `labs/README.md` · the directory table
 
@@ -64,7 +69,9 @@ its README.
 | The token paragraph and example above | FIX-1655 | This document; the full token list in its `DOCS.md` |
 | The design-system package README and the registry components' colour notes in `packages/ui/README.md` | FIX-1655 | Its `DOCS.md` |
 | The App Lab README opening above, how to open a Lab, the `labs/README.md` row | FIX-1662 | This document and its `DOCS.md` |
+| The README's task sentences above, checked against what the task level ships | FIX-1664 | This document and its `DOCS.md` |
 | Nothing in `apps/docs` about App Lab itself | — | App Lab is a private lab, not a published product |
 
-Publish each specific with its implementation. The App Lab opening waits until every
-destination it names is reachable.
+Publish each specific with its implementation. The App Lab opening waits until every level
+it names is reachable, so FIX-1662 publishes it without the task sentences and FIX-1664 adds
+them.

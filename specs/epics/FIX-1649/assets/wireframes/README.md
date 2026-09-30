@@ -1,5 +1,11 @@
 # App Lab wireframes · for the Claude Design hand-off
 
+> **Superseded as structure by the [Claude Design hand-back v1](../design/v1/README.md)
+> (2026-09-30).** Where the two differ, the hand-back wins; [`../design/DESIGN.md`](../design/DESIGN.md)
+> shows each wireframe beside the screen that replaced it. These stay as the history of what went
+> to Claude Design. The rail, the run inspector and the five fixed destinations below no longer
+> describe the shell.
+
 Five low-fidelity screens of the App Lab shell ([FIX-1649](../../SPEC.md)). They fix
 structure: regions, what each section holds, the states each must show, and who owns what
 each surface means. They are not a visual design. Take them to Claude Design as they are;

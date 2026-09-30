@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box: App Lab under labs, with four regions, a rail, a sidebar holding NEEDS YOU, channels and ON SHIFT, a centre with stream, board, brief and results, and a run inspector, reaching five destinations with named empty states; a private design-system package holding the App Lab theme, which overrides the token set's neutral defaults and maps onto the theme contracts FSD components already have; and skin fixes made at the source of reused registry components, with App Lab's copies re-synced, never edited. Reused and skinned, not restyled: the react navigator, roster, board panels and seat detail, the ui conversation, tool, approval and prompt components, and the devtool's full trace, one link away. Filled by sibling epics: projects and workstreams, attention. Not built, below a fence: new L1 nouns, a Heartbeats, Paperclip or Grok Bot clone, a factory or Conductor shell, kitchen-sink as the shell, the Thought Fabric attention domain, a design system per Lab, restyled copies of FSD UI.">
+     aria-label="What's in the box. In the box: App Lab under labs, with one sidebar holding the org switcher, Jump to, NEEDS YOU, the projects tree with workstreams, and teams with their workers; three centre levels, project, workstream and task, each with its tabs; a right panel that follows the level; named empty states where meaning has not shipped, and a Lab's tree opened under an org; built by FIX-1662, with the task level by FIX-1664. A private design-system package holding the App Lab theme in light and dark, which overrides the token set's neutral defaults and maps onto the theme contracts FSD components already have; and skin fixes made at the source of reused registry components, with App Lab's copies re-synced, never edited; both FIX-1655. Reused and skinned, not restyled: the react navigator, roster, board panels and seat detail, the ui conversation, tool call, approval and prompt components, and the devtool's full trace, one link away. Reached here, meaning from siblings: projects, workstreams and tasks, attention, from FIX-1650, 1651 and 1652. Not built, below a fence: new L1 nouns, a Heartbeats, Paperclip or Grok Bot clone, a factory or Conductor shell, kitchen-sink as the shell, the Thought Fabric attention domain, a design system per Lab, restyled copies of FSD UI.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -28,16 +28,16 @@
     <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; ONE APP, ONE SKIN</text>
     <rect class="held" x="32" y="56" width="256" height="166" rx="4"/>
     <text class="t-b" x="44" y="80">App Lab &#183; labs/app-lab</text>
-    <text class="t-s" x="44" y="100">rail &#183; sidebar &#183; centre &#183; inspector</text>
-    <text class="t-s" x="44" y="118">NEEDS YOU &#183; channels &#183; ON SHIFT</text>
-    <text class="t-s" x="44" y="136">stream &#183; board &#183; brief &#183; results</text>
-    <text class="t-s" x="44" y="154">five destinations, one click each</text>
+    <text class="t-s" x="44" y="100">one sidebar &#183; three levels &#183; right panel</text>
+    <text class="t-s" x="44" y="118">NEEDS YOU &#183; projects &#183; teams, workers</text>
+    <text class="t-s" x="44" y="136">project &#183; workstream &#183; task, tabbed</text>
+    <text class="t-s" x="44" y="154">panel follows the level open</text>
     <text class="t-s" x="44" y="172">named empty states, never a model</text>
     <text class="t-s" x="44" y="190">a Lab's tree, org required</text>
-    <text class="t-s" x="44" y="208">FIX-1662</text>
+    <text class="t-s" x="44" y="208">FIX-1662 &#183; task level FIX-1664</text>
     <rect class="held" x="300" y="56" width="260" height="96" rx="4"/>
     <text class="t-b" x="312" y="80">design system &#183; private package</text>
-    <text class="t-s" x="312" y="98">App Lab theme: beige, black, yellow</text>
+    <text class="t-s" x="312" y="98">App Lab theme, light and dark</text>
     <text class="t-s" x="312" y="113">overrides the neutral token defaults</text>
     <text class="t-s" x="312" y="128">mapped onto the existing contracts</text>
     <text class="t-s" x="312" y="146">FIX-1655</text>
@@ -52,7 +52,7 @@
     <text class="t-lbl" x="608" y="44">REUSED AND SKINNED, NOT RESTYLED</text>
     <text class="t-b" x="608" y="68">FSD UI that already ships</text>
     <text class="t-s" x="608" y="88">react: navigator &#183; roster &#183; board panels</text>
-    <text class="t-s" x="608" y="104">seat detail &#183; ui: conversation &#183; tool</text>
+    <text class="t-s" x="608" y="104">seat detail &#183; ui: conversation &#183; tool call</text>
     <text class="t-s" x="608" y="120">approval &#183; prompt input</text>
     <text class="t-s" x="608" y="136">devtool: the full trace, one link away</text>
   </g>
@@ -60,7 +60,7 @@
   <g id="siblings">
     <rect class="repl" x="592" y="156" width="332" height="80" rx="5"/>
     <text class="t-lbl" x="608" y="176">REACHED HERE, MEANING FROM SIBLINGS</text>
-    <text class="t-b" x="608" y="198">projects &#183; workstreams &#183; attention</text>
+    <text class="t-b" x="608" y="198">projects &#183; workstreams, tasks &#183; attention</text>
     <text class="t-s" x="608" y="218">FIX-1650 &#183; FIX-1651 &#183; FIX-1652</text>
   </g>
 
