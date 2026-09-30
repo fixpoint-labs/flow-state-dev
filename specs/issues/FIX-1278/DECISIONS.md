@@ -39,17 +39,19 @@ runtime, while SQLite keeps local copies.
 
 - **E1 · `store-postgres` joins `contracts`' deny set,** next to `store-sqlite`. `contracts`
   already allows nothing, so the only change is the clearer "forbidden import" message.
-- **E2 · The two false comments are fixed here, not left to FIX-1277.**
-  `engine/src/stores/resource-state-predicate.ts:39-44` and
-  `store-postgres/src/resource-state-store.ts:131-138` say a store adapter's engine dependency
-  is type-only "by package boundary". Once this lands, that is false for Postgres, and the
-  script contradicts it. If FIX-1277 lands first and deletes those comments, drop this step.
+- **E2 · Every comment that says Postgres can't import the engine is fixed here, not left to
+  FIX-1277.** Eight sites across `store-postgres/src` and `engine/src/stores` say so
+  ([PLAN → S2](PLAN.md#surface)). Once this lands they are false for Postgres, and the script
+  contradicts them. Fixing only some would leave SPEC's "reads a claim that matches the script"
+  row untrue. Skip any site FIX-1277 has already deleted or rewritten.
 - **E3 · No self-test for the script.** The repo has none for this validator, and the
   plant-and-reject check in the plan proves the new rule is reached. A standing test would be
   a new pattern. That belongs to a broader validator issue, not a parity fix.
 - **E4 · `vercel` and `scheduled` stay outside the package list.** `vercel` imports
   `store-postgres` and both adapters import `scheduled`. The issue puts extending the validator
-  to other packages out of scope.
+  to other packages out of scope. One consequence, the same for both adapters: the cycle check
+  only sees listed packages, so a cycle through `scheduled` or `vercel` goes unreported. BR-3
+  and SPEC say so rather than promise more.
 - **E5 · No POC or fact-checker.** The spec's factual base is two validator runs, and
   [PLAN → Checks](PLAN.md#checks) repeats them. The first-run hit list is the output of the
   mirrored-rule run, pasted verbatim.
@@ -66,6 +68,11 @@ None.
   `@flow-state-dev/react` import in `store-postgres/src` fails the D1-rule validator (exit 1,
   both "forbidden" and "not allowed"), while the same plant passes today's script (exit 0).
   Run on `origin/main` @ `67a3bb9b3`.
+- **The S2 comment sites.** `grep -rn -i "type-only"` over `store-postgres/src` and
+  `engine/src/stores` on `4cc9e8b1c` finds eight comments that cover Postgres (listed in
+  [PLAN → S2](PLAN.md#surface)) and one in `scope-keys.ts` (~L293) that names SQLite alone.
+- **The cycle check sees listed packages only.** `resolveWorkspacePackage` returns `undefined`
+  for anything outside `packages`, so those edges never enter the graph.
 
 ## How it got here
 
@@ -74,3 +81,7 @@ None.
   dependencies. The issue's "explain the asymmetry" branch was chosen over a behaviour-changing
   rewrite. One tooling PR, plus two comment corrections. Figures were cut as out of proportion,
   leaving one mermaid for the goal check.
+- **Review round 1:** two claims promised more than the design delivered. S2 named two comments
+  where eight make the same false claim, so S2 now covers all eight. The cycle guarantee held
+  only among listed packages, so BR-3 and SPEC now say that. D1 is unchanged. Optional notes
+  went to [PLAN → Notes from review](PLAN.md#notes-from-review).

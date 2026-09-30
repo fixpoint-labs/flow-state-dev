@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs**
 
 **No site page or package README changes.** The change is repo tooling (a CI boundary script)
-plus two code comments. Nothing a user of `@flow-state-dev/store-postgres` calls, configures or
+plus code comments. Nothing a user of `@flow-state-dev/store-postgres` calls, configures or
 observes changes.
 
 Checked and left as is:

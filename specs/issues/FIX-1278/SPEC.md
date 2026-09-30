@@ -2,7 +2,7 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-Improvement · tooling · `scripts/` plus two source comments · tiny · 1 PR · no epic · sibling
+Improvement · tooling · `scripts/` plus source comments · tiny · 1 PR · no epic · sibling
 of [FIX-1277](https://linear.app/fixpoint-labs/issue/FIX-1277) (independent, sequenced) ·
 surfaced by [FIX-1157](https://linear.app/fixpoint-labs/issue/FIX-1157)
 
@@ -10,10 +10,10 @@ surfaced by [FIX-1157](https://linear.app/fixpoint-labs/issue/FIX-1157)
 |---|---|---|
 | **adds a `@flow-state-dev/react` or `client` import to `store-postgres`** | `pnpm typecheck` passes and it ships | `pnpm typecheck` fails and names the file |
 | **adds the same import to `store-sqlite`** | Fails, as it should | Unchanged |
-| **creates an import cycle through `store-postgres`** | Nothing reports it | The cycle check reports it |
+| **creates an import cycle through `store-postgres` among packages the script checks** | Nothing reports it | The cycle check reports it. A cycle through a package the script doesn't list (`scheduled`, `vercel`) still goes unreported, as it does for `store-sqlite` |
 | **reads the boundary script to learn what a store adapter may import** | Finds `store-sqlite`'s rule and nothing for Postgres | Finds both rules, and a comment saying why they differ on one point |
 | **reads the code comments that say store adapters only type-import the engine** | Reads a claim that is false for Postgres and that nothing checks | Reads a claim that matches the script |
-| **uses `store-postgres` at runtime** | Today's behaviour | Today's behaviour. No source line changes except two comments |
+| **uses `store-postgres` at runtime** | Today's behaviour | Today's behaviour. No source line changes except comments |
 
 ## The goal, and how we'll know it's met
 
@@ -81,14 +81,17 @@ gets its own rule, which allows engine runtime imports, and the script explains 
 +  },
 ```
 
-Two code comments stop saying Postgres only type-imports the engine
-(`engine/src/stores/resource-state-predicate.ts`, `store-postgres/src/resource-state-store.ts`).
+Every comment that says Postgres can't import the engine stops saying so. There are eight
+([PLAN → S2](PLAN.md#surface) lists them). Comments about SQLite alone stay as they are.
 
 ## What stays as it is
 
 Every runtime line in `store-postgres`, `store-sqlite`'s rule, and the rest of the script.
 The script still ignores `@flow-state-dev/scheduled` for both adapters, since `scheduled` isn't
-in its package list. That's parity, and widening the list is outside this issue. FIX-1277's
+in its package list. For the same reason the cycle check can't see a cycle that passes through
+`scheduled` or `vercel`. `store-postgres` imports `scheduled`, so a `scheduled` → `store-postgres`
+import would be a real cycle that nothing reports. That's parity, and widening the list is
+outside this issue. FIX-1277's
 predicate work also stays out.
 
 ## Sign off
