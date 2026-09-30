@@ -48,14 +48,14 @@ installed, so a hole that is closed in `src` but open in the release is caught.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `node scripts/packed-install/run.mjs` on the chosen `main` commit with only the runner on top: leg a, then the shared suite `packages/integration-tests/src/two-users-one-tenant/` against the installed tarballs with a real Redis. Run by the closure worker, then by the closure PR's CI in the packed-install job, where it stays ([D1](DECISIONS.md#d1)) |
+| **Goal check** | `node scripts/packed-install/run.mjs` (its suite check calls `suite.mjs`) on the chosen `main` commit with only the runner on top: leg a, then the shared suite `packages/integration-tests/src/two-users-one-tenant/` against the installed tarballs with a real Redis. Run by the closure worker, then by the closure PR's CI in the packed-install job, where it stays ([D1](DECISIONS.md#d1)) |
 | **Model** | Scripted and keyless. FIX-1628's case asserts on text a scripted model wrote |
 | **Signal** | The epic's, per leg: [PLAN.md → Checks](PLAN.md#checks) |
 | **Input** | Ids the second user learns as an attacker would: from a response header, a URL, a 202 body |
-| **Anti-game** | Every `@flow-state-dev/*` import a case makes resolves inside the consumer project's install; the run fails otherwise. Zero skipped cases; the queue case fails, not skips, without Redis |
+| **Anti-game** | Every `@flow-state-dev/*` id a case resolves, deep subpaths included, has a realpath under the consumer's `node_modules/`; the run fails otherwise. Zero skipped cases; without `REDIS_URL` the runner refuses to start leg c |
 | **Control that must fail** | Leg a against the pinned 0.1.1 tarball (in the job). Each hole's case, on the commit before its fix, as its child recorded (read, never rebuilt, per epic [ER-16](../../epics/FIX-1635/BUSINESS-RULES.md#what-no-child-may-do)). The runner with one installed package swapped for a workspace link to the repository: the resolution check must fail |
 
-Part 2 needs no journey: part 1 walks every team ([mapping](PLAN.md#part-2--one-journey-per-team)).
+Part 2 needs no journey: part 1 walks every team ([mapping](PLAN.md#part-1-walks-every-team)), so the plan has no separate part 2.
 Part 3 re-runs every child's tests; part 4 sweeps the seams and follows the docs.
 
 ## What changes

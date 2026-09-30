@@ -67,7 +67,7 @@ It comes down to the locked rules: adding the case is an epic amendment, not a c
 ## Decided, not asked
 
 - **Part 2 has no journey of its own.** Every team in the epic's table is walked by part 1's
-  legs; the mapping is in [PLAN.md](PLAN.md#part-2--one-journey-per-team), and a team with no
+  legs; the mapping sits under part 1 in [PLAN.md](PLAN.md#part-1-walks-every-team), and a team with no
   leg would get one.
 - **The run happens in the closure worker's checkout, then again in the PR's CI.** The closure
   rule says a run with findings opens no PR, and CI runs only on pull requests, so the worker
@@ -107,3 +107,7 @@ three planted gaps ([poc/child-manifest](poc/child-manifest/README.md)).
   installed tarballs; that run joins the standing packed-install job, the resource rows keep the
   epic's re-run rule, and the closure runs the whole plan on one `main` commit with only the
   runner on top, repeated until it files nothing.
+- **Review round 1** — the runner's shape pinned: its own `suite.mjs`, a resolution guard on
+  realpaths under the consumer's `node_modules/`, vitest and zod pinned, the case count read at
+  runtime, leg c refused without `REDIS_URL`, the 0.1.1 control untouched. Part 4 split into
+  required rows and observations; the team mapping folded into part 1. D1 and D2 unchanged.

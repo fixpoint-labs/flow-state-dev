@@ -19,9 +19,9 @@ the rule held.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | QR-4 | Leg a runs | Every publishable package is packed after `release:build` and installed, all together, into one empty ESM project | The job's existing checks |
-| QR-5 | A leg b or c case runs | From that installed project. Every `@flow-state-dev/*` specifier it imports resolves inside the project's install; otherwise the run fails, naming the case and the specifier | P1-resolve |
-| QR-6 | Any suite case is skipped, or the suite runs fewer case files than the directory holds | The run fails | P1-total |
-| QR-7 | Redis is not reachable when leg c runs | The queue case fails, never skips. Locally the worker starts `redis-server`; in CI a service container provides it | P1c |
+| QR-5 | A leg b or c case runs | From that installed project. Every `@flow-state-dev/*` id it resolves, deep subpaths included, has a realpath under the project's `node_modules/`; otherwise the run fails, naming the case and the id | P1-resolve |
+| QR-6 | Any suite case is skipped, or fewer case files ran than the suite directory holds, counted at runtime | The run fails | P1-total |
+| QR-7 | `REDIS_URL` is unset, or Redis is unreachable, when leg c would run | The runner refuses to start leg c, whether or not `CI` is set; the queue case never skips. Locally the worker starts `redis-server`; in CI a service container provides it | P1c · S3 |
 | QR-8 | No provider key may be set | The run is keyless; FIX-1628's case uses a scripted model | The runner's environment |
 | QR-9 | A check fails on the closure commit | A finding. Only the two tests [D3](DECISIONS.md#d3) names may be re-run, once, and only in part 3 | Report |
 
@@ -30,7 +30,7 @@ the rule held.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | QR-10 | Part 1 runs | Leg a passes and fails against the 0.1.1 tarball; every suite case passes against the install; the workspace-link control fails the resolution check | P1a · P1b · P1c · P1-resolve · P1-total · P1-control |
-| QR-11 | Part 2 runs | Every team in the epic's table maps to a part-1 leg; a team with none gets a journey | [Part 2](PLAN.md#part-2--one-journey-per-team) |
+| QR-11 | Part 1 runs | Every team in the epic's table maps to a part-1 leg, so no part-2 journey is needed; a team with none gets one | [The mapping](PLAN.md#part-1-walks-every-team) |
 | QR-12 | Part 3 runs | `pnpm test` passes on the commit, every file in the manifest ran with no skips, and each hole's child has a recorded pre-fix failure for its case | P3.1 · P3.2 · P3.3 |
 | QR-13 | Part 4 runs | Each seam row holds, the docs are followed as written, and each *not done if* state is shown absent | P4 |
 

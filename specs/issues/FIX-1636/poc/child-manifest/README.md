@@ -17,7 +17,7 @@ node specs/issues/FIX-1636/poc/child-manifest/check.mjs --control=bad-sha       
 node specs/issues/FIX-1636/poc/child-manifest/check.mjs --control=unlisted-child  # must fail, needs LINEAR_API_KEY
 ```
 
-With `LINEAR_API_KEY` set it also checks the child set against Linear. Without it, that
+It is a consistency gate, not a generator: the merge ranges and case owners are kept by hand, and it fails when they disagree with `main` or Linear. With `LINEAR_API_KEY` set it also checks the child set against Linear. Without it, that
 assertion is skipped and says so.
 
 **What it showed, on `main` at 71bec56b4 (FIX-1634's last PR merged at 17c7e727a):**

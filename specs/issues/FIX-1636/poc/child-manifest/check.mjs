@@ -44,7 +44,7 @@ const CONTROL = args.control;
 const CHILDREN = {
   "FIX-1256": { prs: [1469], ranges: [["47869f9ca^1", "47869f9ca"]] },
   "FIX-1261": { prs: [1470], ranges: [["3b9dd528f^1", "3b9dd528f"]] },
-  "FIX-1510": { prs: [2047], ranges: [["e2efa7168^1", "e2efa7168"]], under: "FIX-1261" },
+  "FIX-1510": { prs: [2047], ranges: [["e2efa7168^1", "e2efa7168"]] },
   "FIX-1018": { prs: [2377], ranges: [["5886ca846", "71f036a03"]], case: "request-id.test.ts" },
   "FIX-1022": { prs: [2384], ranges: [["71f036a03", "df771cda9"]], case: "session-id.test.ts" },
   "FIX-1021": { prs: [2387], ranges: [["c63ee231c^1", "c63ee231c"]], case: "re-entry.test.ts" },
@@ -110,7 +110,16 @@ if (process.env.LINEAR_API_KEY) {
         '{ issue(id:"FIX-1635"){ children(first:100){ nodes{ identifier state{name} children{ nodes{ identifier state{name} } } } } } }'
     })
   });
-  const nodes = (await res.json()).data.issue.children.nodes;
+  if (!res.ok) {
+    console.log(`✗ Linear answered ${res.status}`);
+    process.exit(1);
+  }
+  const payload = await res.json();
+  if (payload.errors?.length) {
+    console.log(`✗ Linear: ${payload.errors.map((e) => e.message).join("; ")}`);
+    process.exit(1);
+  }
+  const nodes = payload.data.issue.children.nodes;
   const linear = new Map();
   for (const n of nodes) {
     linear.set(n.identifier, n.state.name);
