@@ -98,7 +98,8 @@ ships, or to the sibling that will ship it; until then, the surface shows its na
 |---|---|
 | TEAMS, each team's workers, a worker's harness and status | Workforce as shipped: the tree's teams and seats, and the seat's run |
 | The PROJECTS tree's projects, the project level | FIX-1650 · org primitives |
-| Workstreams, tasks, a board row, brief, results, a task's acceptance criteria and harness plan | FIX-1651 · eng workstream kit |
+| A workstream itself: the channel, its flow, and that it exists | FIX-1650 · org primitives |
+| What sits on a workstream's board: tasks, a board row, brief, results, a task's acceptance criteria and harness plan | FIX-1651 · eng workstream kit |
 | Inbox: what counts as an ask, its kinds (approval, question, decision), what Approve and Deny do; inspect depth past what the task inspector shows | FIX-1652 · attention and inspect |
 | Tasks: a task's state and its NOW activity | FIX-1651 · eng workstream kit |
 | TIME and COST, on Tasks and the task inspector | The session and run data that already ships |
@@ -194,3 +195,6 @@ and reach), and the one code seam, tokens mapped onto `--fsd-nav-*`, already wor
 - **Owner input (Sep 30): Inbox and Tasks.** Screens 04 and 05 added two fixed destinations
   under Jump to; Inbox replaced the NEEDS YOU section and Attention now maps to it. Both went to
   FIX-1662; D1 to D3 unchanged.
+- **Amendment (Sep 30), found by the project-spec refresh**: the workstreams row was split to match
+  FIX-1649's Linear map and FIX-1650's scope: FIX-1650 owns the workstream itself (its channel,
+  its flow, that it exists), FIX-1651 what sits on its board; nothing the shell builds changed.
