@@ -10,6 +10,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { registryTokenDefaults } from "../../../packages/ui/scripts/token-defaults";
 import { APP_LAB_CSS, PACKAGE_ROOT, REPO_ROOT, findThemeValues, rule, themeValues } from "./theme";
 
 const css = readFileSync(APP_LAB_CSS, "utf8");
@@ -18,11 +19,7 @@ const dark = rule(css, ".dark");
 
 /** The token names the registry's `tokens` item installs, as custom properties. */
 function registryTokens(): string[] {
-  const manifest = JSON.parse(readFileSync(join(REPO_ROOT, "packages/ui/registry.json"), "utf8")) as {
-    items: Array<{ name: string; css?: { "@layer base"?: Record<string, Record<string, string>> } }>;
-  };
-  const tokens = manifest.items.find((item) => item.name === "tokens");
-  return Object.keys(tokens?.css?.["@layer base"]?.[":root"] ?? {});
+  return Object.keys(registryTokenDefaults().light).map((name) => `--${name}`);
 }
 
 const temps: string[] = [];
