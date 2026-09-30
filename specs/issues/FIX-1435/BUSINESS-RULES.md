@@ -13,7 +13,8 @@ the Markdown reader (both `resources/` and `references/`). "Door B" is the TypeS
 | BR-1 | A tree has a `resources/` folder at each of the four places: org, an org worker, a team, a team worker | Door A returns one document per `.md` and Door B one module per `.ts`, under the same refs as today | Existing suites · the new both-doors test |
 | BR-2 | The both-doors test's tree is built | It comes from the list of places beside the walk, expanding each `*` with a fixture name. There is no hand-written list of paths (D1) | New both-doors test |
 | BR-3 | A `resources/` folder sits somewhere that isn't a place: the root, a channel folder, a folder nested inside a worker | Neither door reads it, as today | New both-doors test, with decoys |
-| BR-4 | The walk visits a place the list doesn't have, or the list has one the walk skips | The list-driven test fails, naming the slot (the second half only. The first half isn't caught, [D1](DECISIONS.md#d1)) | New both-doors test, with its control run in the PR |
+| BR-4 | The list has a place the walk skips | The list-driven test fails, naming the missing slot | New both-doors test, with its control run in the PR |
+| BR-4b | The walk visits a place the list doesn't have | The saturated-tree test fails, naming the place's pattern. **Limit:** it sees only folder names the fixture builds. A place under a brand-new folder name (V3's `squads/`) is caught once that name is in the fixture, not before ([D1](DECISIONS.md#d1)) | Saturated-tree test, with its control run in the PR |
 | BR-5 | A folder named `resources` sits in a `workers/` level | It is a worker folder like any other, as today | Existing suites |
 
 ## What each door returns, unchanged
@@ -44,5 +45,5 @@ characterization test is where it shows.
 ## Acceptance criteria this issue owns
 
 [The goal](SPEC.md#the-goal-and-how-well-know-its-met): both doors ride one walk with the list of
-places beside it. The both-doors test is built from that list and fails under its control. The
+places beside it. The both-doors test is built from that list, the saturated-tree test checks the walk against it, and each fails under its control. The
 characterization test is green before and after. No existing assertion is edited.

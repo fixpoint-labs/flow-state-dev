@@ -20,9 +20,9 @@ adding one.
 
 ## The goal, and how we'll know it's met
 
-**Where a `resources/` folder may sit is written once. Both doors, the list `fsdev gen` prints,
-and the both-doors test all come from that one place, and nothing either door returns today
-changes.**
+**Where a `resources/` folder may sit lives in one module: the walk and its list of places,
+checked against each other in both directions. Both doors, the list `fsdev gen` prints, and the
+both-doors test all come from that module, and nothing either door returns today changes.**
 
 | Is it the right goal? | |
 |---|---|
@@ -30,7 +30,7 @@ changes.**
 | **Smaller, and rejected** | Hoist the walk and leave the five-path fixture and the `fsdev gen` list hand-written. Both doors agree by construction, but the list still drifts, and the test still guards only the places someone remembered to write down |
 | **Bigger, and not this issue's** | One walk for every convention (`packages/`, `blocks/`, channels, skills). The fence rules it out. The packages pair has the same duplication and is a follow-up |
 | **Not done if** | Either door's output changed anywhere, including order or message wording · an existing assertion was edited to go green · the both-doors test still lists places by hand · a door still descends `workers/` on its own |
-| **The honest limit** | "One file" covers *where to look*. A new place that adds a name to the ref, like a squad id, also changes the ref rule. That rule is already shared and lives in one other file |
+| **The honest limit** | The walk and the list are two representations in one file, not one. The tests catch drift either way, except a walk-only place under a folder name the saturated fixture doesn't build yet. "One file" also covers only *where to look*. A new place that adds a name to the ref, like a squad id, also changes the ref rule. That rule is already shared and lives in one other file |
 
 **No goal check applies:** this is a refactor, and nothing a user runs behaves differently. What
 proves it instead has two halves:
@@ -39,9 +39,11 @@ proves it instead has two halves:
   several workers per level and every structural refusal. It lands first and is green on the
   commit before the refactor and on every commit after. The existing suites pass with no
   assertion edited ([PLAN → Checks](PLAN.md#checks)).
-- **One place.** The both-doors test builds its tree from the list of places. **Control that must
-  fail:** drop one visit from the walk and leave its place on the list. The test fails naming the
-  missing slot. Then the PR re-runs Jake's experiment: add a place to the walk module only. Both
+- **One place.** The both-doors test builds its tree from the list of places, and a saturated-tree
+  test checks every place the walk yields against the list. **Controls that must fail:** drop one
+  visit from the walk and leave its place on the list, and the both-doors test names the missing
+  slot. Add a visit to the walk, under folder names the fixture builds, and leave the list alone,
+  and the saturated-tree test names the extra pattern. Then the PR re-runs Jake's experiment: add a place to the walk module only. Both
   doors now find it, where on `main` the same edit to one door passed while the doors disagreed.
 
 ## What changes

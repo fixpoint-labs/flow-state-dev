@@ -43,6 +43,8 @@ It comes down to whether the walk's shape waits on the fifth place. It doesn't.
   that work and close this issue.
 - **If wrong.** One small internal PR of churn, reshaped when the fifth place lands. Nothing
   public changes, so it's cheap to undo.
+- **Either way, the TypeScript-rule dedupe ships.** It is behaviour-free and doesn't depend on the
+  walk: with this PR if built now, as its own tiny PR if parked.
 
 <a name="d1"></a>
 ## D1 · The list of places moves beside the walk, and the both-doors test builds its tree from it
@@ -51,7 +53,7 @@ It comes down to whether the walk's shape waits on the fifth place. It doesn't.
 |---|---|
 | **Instead of** | Hoisting the walk and keeping the both-doors test's hand-written five-path fixture, with the `fsdev gen` list staying in Door B |
 | **Because** | Jake's third experiment passed 74/74 with the doors disagreeing, because the fixture only held the places someone wrote down. One walk stops the doors disagreeing. Only a test built from the list stops the list going stale. Tenet 5: one fact, one place |
-| **Locks in** | The list becomes something the tests depend on, not just what `fsdev gen` prints. Whoever adds a place edits the walk and the list together, in one file. A place added to the walk but not the list isn't caught. The doors still agree, and only `fsdev gen`'s "searched" line is stale |
+| **Locks in** | The list becomes something the tests depend on, not just what `fsdev gen` prints. Whoever adds a place edits the walk and the list together, in one file. Each place the walk yields carries its pattern, and a second test walks a saturated tree and checks the yields against the list both ways. So a place added to the walk but not the list fails too, as long as its folder names are ones the fixture builds (BR-4b) |
 
 ![The list of places beside the walk, feeding the test, chosen, beside the walk hoisted with the fixture still hand-written. Decides it: whether a fifth place is tested without anyone remembering to. Price: the list is now load-bearing for tests. Flips if the walk could enumerate its own places without a tree to walk](figures/d1-place-list.svg)
 
@@ -98,3 +100,9 @@ without driving the walk from data. That would be the general slot reader the fe
   both doors keep their bodies, order and wording. The list of places moves beside the walk and
   feeds the both-doors test, per Jake's condition. Small, one PR. Whether to build now is put to
   the owner, because his issue comment recommended parking it.
+- **Review round 1** — a review showed D1 closed only half the hole: a place added to the walk but
+  not the list stayed green, and BR-4 claimed both halves. D1 now adds a saturated-tree check, with
+  each yielded place carrying its pattern, so drift fails in both directions (BR-4, BR-4b). Its
+  limit, a brand-new folder name, is stated. The goal now says the walk and its list are *checked
+  against each other*, not that the place is written once. The Open fork now says the
+  TypeScript-rule dedupe ships either way.
