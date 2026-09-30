@@ -292,6 +292,14 @@ const MANIFEST: Record<string, Check[]> = {
   system: [P("@flow-state-dev/core", "FlowDefinition", "authentication", "defaultUserId"),
     S(WEBHOOKS_REF, 'defaultUserId: "system"')],
   DEFAULT_ORG_ID: [E("@flow-state-dev/core", "DEFAULT_ORG_ID")],
+  // the custom dispatcher option on createFlowState; with no `dispatchLocal` it is external
+  dispatcher: [P("@flow-state-dev/engine", "CreateFlowStateOptions", "dispatcher"),
+    S("packages/engine/src/transports/host/createInboundTransportHost.ts", '"dispatchLocal" in effectiveDispatcher')],
+  // the cross-flow session listing, which hands a resolver-less flow's rows to any caller
+  "GET /api/flows/sessions": [S("apps/docs/docs/server/authentication.md", "`GET /api/flows/sessions`")],
+  // a network bind is refused while a served flow has no resolver
+  "fsdev serve": [S("apps/docs/docs/server/authentication.md", "`fsdev serve` refuses to\nbind a non-loopback host"),
+    S("packages/node/src/bind-guard.ts", "Refusing to bind")],
   // a configured resolver returning null is refused 401; the signature is checked before it runs
   "401": [S("apps/docs/docs/server/authentication.md", "refused with 401"),
     S("packages/engine/src/transports/webhook/routes.ts", "flow + provider lookup → raw body → verify")],

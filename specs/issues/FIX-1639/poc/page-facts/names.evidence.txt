@@ -43,3 +43,44 @@ exit 1
 #     POST /api/flows/acme-billing/webhooks/stripe   -> 202   (its instance id)
 #     POST /api/flows/tenant-billing/webhooks/stripe -> 404 {"error":"flow_not_found"}   (kind)
 #     POST /api/flows/acme/webhooks/stripe           -> 404 {"error":"flow_not_found"}   (map key)
+
+# names.mts on the published page, branch head b3d4ad76a, run 2026-09-30 (implementation PR)
+
+$ PAGE=apps/docs/guides/keeping-a-flow-running.md CONTROL= pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
+page names vs main
+fences=4 spans=63 checks passed=91 failed=0
+route probe: singleton billing→202 payments(map key)→404 · collection acme-billing(id)→202 tenant-billing(kind)→404 acme(map key)→404
+note: classified but no longer on the page: dispatchLocal, DEFAULT_ORG_ID, "webhook", key, id, notification, epic-wake
+exit=0
+
+$ PAGE=apps/docs/guides/keeping-a-flow-running.md CONTROL=planted pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
+CONTROL=planted (must FAIL)
+fences=4 spans=64 checks passed=91 failed=1
+route probe: singleton billing→202 payments(map key)→404 · collection acme-billing(id)→202 tenant-billing(kind)→404 acme(map key)→404
+FAIL  span  `notifyTopic`: notifyTopic is not exported by @flow-state-dev/core
+note: classified but no longer on the page: dispatchLocal, DEFAULT_ORG_ID, "webhook", key, id, notification, epic-wake
+exit=1
+
+$ PAGE=apps/docs/guides/keeping-a-flow-running.md CONTROL=unclassified pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
+CONTROL=unclassified (must FAIL)
+fences=4 spans=64 checks passed=91 failed=1
+route probe: singleton billing→202 payments(map key)→404 · collection acme-billing(id)→202 tenant-billing(kind)→404 acme(map key)→404
+FAIL  TOTALITY  `madeUpOption` is on the page and nothing checks it
+note: classified but no longer on the page: dispatchLocal, DEFAULT_ORG_ID, "webhook", key, id, notification, epic-wake
+exit=1
+
+$ PAGE=apps/docs/guides/keeping-a-flow-running.md CONTROL=false-option pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
+CONTROL=false-option (must FAIL)
+fences=4 spans=64 checks passed=91 failed=1
+route probe: singleton billing→202 payments(map key)→404 · collection acme-billing(id)→202 tenant-billing(kind)→404 acme(map key)→404
+FAIL  span  `dispatcher({ delay })`: @flow-state-dev/core dispatcher.(0).delay does not resolve
+note: classified but no longer on the page: dispatchLocal, DEFAULT_ORG_ID, "webhook", key, id, notification, epic-wake
+exit=1
+
+$ PAGE=apps/docs/guides/keeping-a-flow-running.md CONTROL=wrong-segment pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
+CONTROL=wrong-segment (must FAIL)
+fences=4 spans=64 checks passed=91 failed=1
+route probe: singleton billing→202 payments(map key)→404 · collection acme-billing(id)→202 tenant-billing(kind)→404 acme(map key)→404
+FAIL  span  `POST /api/flows/payments/webhooks/stripe`: segment "payments" is not the id of a flow the page registers (billing); it is the `flows` map key, which the route ignores
+note: classified but no longer on the page: dispatchLocal, DEFAULT_ORG_ID, "webhook", key, id, notification, epic-wake
+exit=1

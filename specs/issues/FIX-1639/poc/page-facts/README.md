@@ -63,12 +63,13 @@ with `runAction`, as `createFlowJobProcessor` does.
 
 ```bash
 pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/fence.mts                          # must PASS
-CONTROL=in-process pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/fence.mts       # must FAIL all five
+CONTROL=in-process pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/fence.mts       # must FAIL all six
 ```
 
 Under the control the same flow runs with no queue: the `{ id }` delivery, the `{ from: true }`
 reply and the webhook all run in process, so F1–F4 go red, and F5 has no queued job to
-consume. F3 and F5 are one job with two consumers, so each is the other's contrast.
+consume. F3 and F5 are one job with two consumers, so each is the other's contrast. F6 goes
+red with F2: it delivers in process either way, and passes only when the producer refused.
 
 ## What it showed
 
@@ -85,5 +86,10 @@ consume. F3 and F5 are one job with two consumers, so each is the other's contra
   it is on a process with the external dispatcher. F5: from a `worker-only` worker it goes in
   process and is not refused. The refusal follows the process the sending run is in, for a
   reply as for `{ id }`. [`fence.evidence.txt`](fence.evidence.txt).
+- **On the published page (implementation PR).** `names.mts` and `compile.mts` pass with
+  `PAGE=apps/docs/guides/keeping-a-flow-running.md`, and every control fails; the spans the
+  editor pass added are classified, none skipped. F6, added when the page's table stated it:
+  an `{ id }` delivery from a run on a `worker-only` worker goes in process, like F5's reply.
+  The final-page transcripts are appended to each `*.evidence.txt`.
 - **Not run:** a real Redis. The stub is the host's own discriminator, and the closure
   (FIX-1642) runs the page on a real BullMQ host.

@@ -10,3 +10,16 @@ CONTROL=unminted (must FAIL)
 fences=4 errors=1
 FAIL  lib/flowstate.ts:9  Property 'id' is missing in type 'FlowType<{}, SessionConfig | undefined, RequestConfig | undefined, UserConfig | undefined, OrgConfig | undefined, Record<...>,
 exit 1
+
+# compile.mts on the published page, branch head b3d4ad76a, run 2026-09-30 (implementation PR)
+
+$ PAGE=apps/docs/guides/keeping-a-flow-running.md CONTROL= pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/compile.mts
+page code fences compile
+fences=4 errors=0
+exit=0
+
+$ PAGE=apps/docs/guides/keeping-a-flow-running.md CONTROL=unminted pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/compile.mts
+CONTROL=unminted (must FAIL)
+fences=4 errors=1
+FAIL  lib/flowstate.ts:9  Property 'id' is missing in type 'FlowType<{}, SessionConfig | undefined, RequestConfig | undefined, UserConfig | undefined, OrgConfig | undefined, Record<...>,
+exit=1
