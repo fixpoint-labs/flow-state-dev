@@ -202,15 +202,16 @@ function liveBoardDriver(sessionId: string, boardRef: string, live: PanelLive): 
 
 /**
  * Every row of a collection, for one session — traversing `nextCursor` until
- * the route stops returning one.
+ * the route stops returning one, for up to `MAX_PAGES` (1,000) pages.
  *
  * Deliberately no `loadMore`: the panels draw a standing list that a person
  * scans, not a feed they page through, and a cursor the host cannot see is
  * worse than none. `limit` sets the page **size** the read requests each
  * time, not a cap on what the panel shows — a collection larger than `limit`
- * still renders every row, in `limit`-sized fetches, because a panel that
- * stopped at the first page would truncate silently. The read is bounded by
- * `MAX_PAGES`, which says what happens past it.
+ * is read in `limit`-sized fetches, because a panel that stopped at the first
+ * page would truncate silently. A collection with pages left after
+ * `MAX_PAGES` reads is an error (the panel's error line and Retry), never the
+ * rows read so far.
  *
  * With `live`, `ref` is a task board, and the rows are read again whenever
  * the session keeps a change to it (see `liveBoardDriver`). Without it they
