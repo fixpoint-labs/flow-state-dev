@@ -752,4 +752,45 @@ describe("a run a process starts in process, over the deployment's backend", () 
     await second.finished;
     expect(h.observed.runs.map((r) => r.note)).toEqual(["first", "second"]);
   });
+
+  it("withdraws at once for a cancel of the request it adopted", async () => {
+    // Once a stale cancel has handed the wait to the request that took the
+    // id, a cancel of THAT request is this dispatch's to act on now.
+    const ticketOf = new Map<string, string>();
+    const givenBack: string[] = [];
+    const h = inProcessHosts("queue", (b) => ({
+      ...b,
+      take: async (input) => {
+        const result = await b.take(input);
+        if ("place" in result) ticketOf.set(input.requestId, result.place.ticket);
+        return result;
+      },
+      giveBack: async (place) => {
+        givenBack.push(place.ticket);
+        return b.giveBack(place);
+      }
+    }));
+    const first = h.a.dispatch(envelope("first", "req_1"));
+    await first.accepted;
+    await until(() => h.observed.runs.length === 1, "the first run");
+    const second = h.b.dispatch(envelope("second", "req_2"));
+    await second.accepted;
+
+    const claimed = (await h.stores.request.get("req_2"))!;
+    await h.stores.request.delete("req_2");
+    await h.stores.request.set("req_2", { ...claimed, incarnation: "inc_replacement" }, "absent");
+    expect(abortRequest("req_2", claimed.incarnation)).toBe(true);
+    await settle();
+    expect(givenBack).not.toContain(ticketOf.get("req_2"));
+
+    expect(abortRequest("req_2", "inc_replacement")).toBe(true);
+
+    // All of this lands while the first run still holds the session.
+    await expect(second.finished).rejects.toThrow(/cancelled before it left the concurrency queue/);
+    expect(givenBack).toContain(ticketOf.get("req_2"));
+    expect((await h.stores.request.get("req_2"))?.status).toBe("aborted");
+    expect(h.observed.runs.map((r) => r.note)).toEqual(["first"]);
+    h.releaseAll();
+    await first.finished;
+  });
 });

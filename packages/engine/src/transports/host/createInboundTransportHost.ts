@@ -1120,10 +1120,12 @@ export function createInboundTransportHost(
                 const fired = queuedAbort;
                 const outcome = (async () => {
                   const holder = await stores.request.get(requestId).catch(() => undefined);
+                  // Compared with the request the controller is for now: the
+                  // claimed one, or the one a stale cancel handed it to.
                   const heldByAnother =
                     holder !== undefined &&
-                    claimedIncarnation !== undefined &&
-                    resolveRequestIncarnation(holder) !== claimedIncarnation;
+                    handoffIncarnation !== undefined &&
+                    resolveRequestIncarnation(holder) !== handoffIncarnation;
                   const fencedOnly = wasFiredOnlyFenced(fired);
                   if (holder !== undefined && heldByAnother && fencedOnly) {
                     handoffIncarnation = resolveRequestIncarnation(holder);
@@ -1131,7 +1133,7 @@ export function createInboundTransportHost(
                     watchWhileQueued();
                     return false;
                   }
-                  cancelFence = fencedOnly ? claimedIncarnation : undefined;
+                  cancelFence = fencedOnly ? handoffIncarnation : undefined;
                   return true;
                 })();
                 decided = { controller: fired, outcome };
