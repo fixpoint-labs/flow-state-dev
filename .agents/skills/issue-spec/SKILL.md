@@ -388,7 +388,7 @@ How this workflow's research feeds the set:
   decision (the filters in `asking-for-decisions.md`), with *Instead of · Because · Locks
   in*; the tree; *Decided, not asked*; *Considered and dropped* (the simpler approach
   considered, and why it lost or won); *Open / Settled*; *How it got here* with the draft
-  line. Size — read off `PLAN.md` — goes on `SPEC.md`'s header line, last.
+  line. Size — read off `PLAN.md` — goes on `SPEC.md`'s facts line, written last.
 - **`BUSINESS-RULES.md` is the cases.** Every case the decisions don't already answer as a
   row: when → then → proved by, grouped by area; the failure taxonomy; the acceptance
   criteria this issue owns. A human reviews it for missed cases; the plan turns it into
