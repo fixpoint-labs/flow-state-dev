@@ -9,7 +9,7 @@
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { SectionFailure } from "../components/ui";
-import { seatFor, type LoadedSnapshot } from "../lib/derive";
+import { rosterOf, seatFor, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
@@ -37,8 +37,7 @@ function Gap({ text, testId }: { text: string; testId: string }) {
 export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
   const task = useTask();
   const { row } = task;
-  const seats = snapshot.inventory.ok ? snapshot.inventory.value.seats : [];
-  const seat = row === undefined ? undefined : seatFor(seats, row);
+  const seat = row === undefined ? undefined : seatFor(rosterOf(snapshot), row);
   const after = row === undefined ? [] : task.boardRows.filter((r) => row.deps.includes(r.id));
   const missingAfter = row === undefined ? [] : row.deps.filter((id) => !task.boardRows.some((r) => r.id === id));
   const blocks = row === undefined ? [] : task.boardRows.filter((r) => r.deps.includes(row.id));

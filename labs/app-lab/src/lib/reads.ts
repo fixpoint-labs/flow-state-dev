@@ -25,6 +25,8 @@
  * 4. **Pending asks**: for each listed session a seat owns, the suspension
  *    items only, reduced by `react`'s `deriveSuspensions` to the ones still
  *    pending. Not the transcript.
+ * 5. **Declared documents** a browser may read, from each listed flow's
+ *    manifest, for Jump to (BR-10).
  *
  * Every read after the first fails on its own: a failed section carries its
  * failure and the rest of the snapshot is whole (BR-11). Nothing retries by
@@ -137,21 +139,33 @@ export type Ask = {
 };
 
 /**
- * The request sources the Lab never reopens through its public resume route,
- * whatever the Lab configures: a run a dispatcher started (`internal`, `task`)
- * or a verified webhook delivered. Fixed by the framework, so App Lab can say
- * so up front rather than offer a button the Lab will refuse. Any other
- * source is offered, and a refusal shows on the card.
+ * The request sources the Lab reopens through its public resume route: the
+ * engine's own allow-list (`http`, `mcp`, `scheduled`), mirrored here because
+ * App Lab runs in a browser and can't import the engine. A test pins this set
+ * to the engine's exported one, so the two can't drift apart unnoticed.
+ *
+ * An allow-list, like the engine's: any other source, and a request with no
+ * source at all, is shown as unanswerable rather than offered a button the
+ * Lab will refuse. A host that adds its own transport to the engine's list
+ * (`publicReentrySources`) is shown unanswerable here too, which is the
+ * visible failure rather than the silent one; the server saying per request
+ * whether it will reopen it is FIX-1671's.
  */
-const NEVER_REOPENED_SOURCES = new Set(["internal", "task", "webhook"]);
+export const REOPENED_SOURCES: ReadonlySet<string> = new Set(["http", "mcp", "scheduled"]);
 
 /** What an ask's card says when its run can't be reopened from outside the Lab. */
 export const DISPATCHED_RUN_UNANSWERABLE =
-  "This ask can't be answered from App Lab. A run the Lab started by itself (a channel post waking a seat, a dispatch) is never reopened from outside it; only runs a person or a schedule started are.";
+  "This ask can't be answered from App Lab. The Lab reopens only runs a person, an MCP caller or a schedule started; a run it started by itself (a channel post waking a seat, a dispatch, a webhook) is never reopened from outside it.";
 
 /** What an ask's card says when its session names no owning flow. */
 export const UNOWNED_SESSION_UNANSWERABLE =
   "This ask can't be answered from App Lab: its session was written before sessions recorded their owning flow, so there is no flow to answer it through.";
+
+/**
+ * A declared document the Lab serves to a browser (its frontmatter opts in to
+ * content reads), and a session whose flow serves it, to read it through.
+ */
+export type DeclaredResource = { ref: string; sessionId: string };
 
 /** Everything one refresh read. */
 export type LabSnapshot =
@@ -168,6 +182,8 @@ export type LabSnapshot =
       /** Per workstream id. Absent for a workstream when the inventory did not load. */
       boards: Record<string, Section<WorkstreamBoards>>;
       asks: Section<Ask[]>;
+      /** The declared documents Jump to finds and opens read-only (BR-10). */
+      resources: Section<DeclaredResource[]>;
     };
 
 /** The organization's inventory collections, by their published key patterns. */
@@ -241,7 +257,7 @@ export function toWorkstream(row: unknown): Workstream | undefined {
  * row stored before the link existed, or a malformed one, is *no run*, never a
  * guess (BP-030).
  */
-export function toRunLink(value: unknown): RunLink | null {
+function toRunLink(value: unknown): RunLink | null {
   const sessionId = text(field(value, "sessionId"));
   const requestId = text(field(value, "requestId"));
   const attempt = field(value, "attempt");
@@ -451,7 +467,7 @@ export function createLabReader(clients: LabClients): LabReader {
     const sources = new Map(
       (await clients.sessions.listSessionRequests(session.id, { status: "suspended" })).map((request) => [
         request.id,
-        request.source ?? "http",
+        request.source,
       ]),
     );
     return pending.map((view) => ({
@@ -465,10 +481,38 @@ export function createLabReader(clients: LabClients): LabReader {
       unanswerable:
         session.flowId == null
           ? UNOWNED_SESSION_UNANSWERABLE
-          : NEVER_REOPENED_SOURCES.has(sources.get(view.item.requestId) ?? "http")
+          : !REOPENED_SOURCES.has(sources.get(view.item.requestId) ?? "")
             ? DISPATCHED_RUN_UNANSWERABLE
             : null,
     }));
+  };
+
+  /**
+   * The declared documents a listed session's flow serves to a browser: each
+   * flow's manifest, read once (and cached), keeping the single resources whose
+   * content a client may read. A document no flow serves, or a flow no listed
+   * session runs, is not found: nothing is read but the person's own sessions.
+   */
+  const readResources = async (sessions: SessionSummary[]): Promise<Section<DeclaredResource[]>> => {
+    const byFlow = new Map<string, string>();
+    for (const session of sessions) {
+      const key = session.flowId ?? session.flowKind;
+      if (!byFlow.has(key)) byFlow.set(key, session.id);
+    }
+    const found = new Map<string, DeclaredResource>();
+    try {
+      for (const [key, sessionId] of byFlow) {
+        const manifest = await manifestFor(key, sessionId);
+        for (const entry of manifest.resources) {
+          if (entry.kind === "single" && entry.client.content?.read === true && !found.has(entry.ref)) {
+            found.set(entry.ref, { ref: entry.ref, sessionId });
+          }
+        }
+      }
+    } catch (error) {
+      return { ok: false, failure: describeFailure(error) };
+    }
+    return { ok: true, value: [...found.values()].sort((a, b) => a.ref.localeCompare(b.ref)) };
   };
 
   const read = async (): Promise<LabSnapshot> => {
@@ -479,12 +523,12 @@ export function createLabReader(clients: LabClients): LabReader {
       const failure = describeFailure(error);
       if (failure.httpStatus === 401 || failure.httpStatus === 403) return { refused: failure };
       const failed = { ok: false as const, failure };
-      return { readAt: Date.now(), sessions: failed, orgId: null, inventory: failed, boards: {}, asks: failed };
+      return { readAt: Date.now(), sessions: failed, orgId: null, inventory: failed, boards: {}, asks: failed, resources: failed };
     }
 
     const { inventory, hostSessionId } = await readInventory(sessions);
 
-    const [orgId, boardEntries, asks] = await Promise.all([
+    const [orgId, boardEntries, asks, resources] = await Promise.all([
       hostSessionId === null
         ? Promise.resolve(null)
         : clients.sessions
@@ -518,6 +562,7 @@ export function createLabReader(clients: LabClients): LabReader {
           return { ok: false, failure: describeFailure(error) };
         }
       })(),
+      readResources(sessions),
     ]);
 
     return {
@@ -527,6 +572,7 @@ export function createLabReader(clients: LabClients): LabReader {
       inventory,
       boards: Object.fromEntries(boardEntries),
       asks,
+      resources,
     };
   };
 

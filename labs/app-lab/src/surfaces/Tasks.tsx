@@ -6,7 +6,7 @@
  */
 import { useState } from "react";
 import { COLUMNS, columnFor, isBlocked, readStatus } from "../lib/columns";
-import { openRows, seatFor, type LoadedSnapshot } from "../lib/derive";
+import { openRows, rosterOf, seatFor, type LoadedSnapshot } from "../lib/derive";
 import type { BoardRow } from "../lib/reads";
 import { navigate, TASK_GROUPINGS, type TaskGrouping } from "../lib/routes";
 import { EmptyState, SectionFailure } from "../components/ui";
@@ -19,13 +19,13 @@ const OPEN_COLUMNS = COLUMNS.filter((c) => c !== "DONE");
 export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: TaskGrouping; gaps: Gaps }) {
   const { refresh } = useLab();
   const [showQueued, setShowQueued] = useState(true);
-  const seats = snapshot.inventory.ok ? snapshot.inventory.value.seats : [];
+  const roster = rosterOf(snapshot);
   const all = openRows(snapshot);
   const rows = showQueued ? all : all.filter((row) => readStatus(row.status) !== "pending");
   const failed = Object.entries(snapshot.boards).filter(([, b]) => !b.ok);
 
   const keyOf = (row: BoardRow): string =>
-    by === "state" ? columnFor(row.status) : by === "worker" ? (seatFor(seats, row)?.id ?? row.assignee ?? "unassigned") : row.channelId;
+    by === "state" ? columnFor(row.status) : by === "worker" ? (seatFor(roster, row)?.id ?? row.assignee ?? "unassigned") : row.channelId;
   const groups =
     by === "state"
       ? OPEN_COLUMNS.map((column) => [column, rows.filter((r) => columnFor(r.status) === column)] as const)
@@ -124,7 +124,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                       {row.status}
                       {isBlocked(row.status) ? <span className="ml-1 rounded bg-warning px-1 text-warning-foreground">blocked</span> : null}
                     </td>
-                    <td className="py-1.5 pr-2 text-xs">{seatFor(seats, row)?.id ?? row.assignee ?? "—"}</td>
+                    <td className="py-1.5 pr-2 text-xs">{seatFor(roster, row)?.id ?? row.assignee ?? "—"}</td>
                     <td className="py-1.5 pr-2 text-xs">{row.channelId}</td>
                     <td className="py-1.5 pr-2 text-xs text-muted-foreground" title={gaps.now}>
                       —

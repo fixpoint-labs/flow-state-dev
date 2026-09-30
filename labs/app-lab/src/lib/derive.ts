@@ -18,32 +18,51 @@ export function openRows(snapshot: LoadedSnapshot): BoardRow[] {
   return allRows(snapshot).filter((row) => !isDone(row.status));
 }
 
+/** The seats and workstreams a row's assignee is resolved against. */
+export type Roster = { seats: readonly Seat[]; workstreams: readonly Workstream[] };
+
 /**
- * Whether a row is held by a seat.
+ * The seat a row is held by, or `undefined` when no single seat is.
  *
  * A row names an `assignee`, which is a routing key a board's workers answer
- * to, not a seat address: a board may name `<name>` for the seat `<team>.<name>`.
- * So a row is the seat's when its assignee is the seat's id or the seat's own
- * name. Which seat actually claimed the row is not published to a browser.
+ * to, not a seat address: a board may name `<name>` for the seat
+ * `<team>.<name>`. So, in order:
+ *
+ * 1. a seat whose id is the assignee;
+ * 2. the one seat whose own name is the assignee;
+ * 3. when that name belongs to seats in more than one team, the one of them
+ *    that is a member of the row's channel.
+ *
+ * Still more than one, or none, is no seat: a row is never shown against
+ * several seats, or against a guess. Which seat actually claimed the row is
+ * not published to a browser, and a declared assignee-to-seat map is
+ * FIX-1672's.
  */
-export function holds(seat: Seat, row: BoardRow): boolean {
-  return row.assignee !== null && (row.assignee === seat.id || row.assignee === seat.name);
+export function seatFor(roster: Roster, row: BoardRow): Seat | undefined {
+  if (row.assignee === null) return undefined;
+  const exact = roster.seats.find((seat) => seat.id === row.assignee);
+  if (exact !== undefined) return exact;
+  const named = roster.seats.filter((seat) => seat.name === row.assignee);
+  if (named.length <= 1) return named[0];
+  const members = new Set(roster.workstreams.find((w) => w.id === row.channelId)?.members ?? []);
+  const inChannel = named.filter((seat) => members.has(seat.id));
+  return inChannel.length === 1 ? inChannel[0] : undefined;
 }
 
 /** A worker's status (BR-8). */
 export type WorkerStatus = "working" | "waiting on you" | "idle";
 
 /** *working* with a running row, *waiting on you* with a parked one, *idle* otherwise. */
-export function workerStatus(seat: Seat, rows: readonly BoardRow[]): WorkerStatus {
-  const held = rows.filter((row) => holds(seat, row));
+export function workerStatus(seat: Seat, rows: readonly BoardRow[], roster: Roster): WorkerStatus {
+  const held = rows.filter((row) => seatFor(roster, row)?.id === seat.id);
   if (held.some((row) => readStatus(row.status) === "in_progress")) return "working";
   if (held.some((row) => readStatus(row.status) === "parked")) return "waiting on you";
   return "idle";
 }
 
-/** The seat a row is held by, when one matches. */
-export function seatFor(seats: readonly Seat[], row: BoardRow): Seat | undefined {
-  return seats.find((seat) => holds(seat, row));
+/** The seats and workstreams of a snapshot whose inventory loaded; empty otherwise. */
+export function rosterOf(snapshot: LoadedSnapshot): Roster {
+  return snapshot.inventory.ok ? snapshot.inventory.value : { seats: [], workstreams: [] };
 }
 
 /**

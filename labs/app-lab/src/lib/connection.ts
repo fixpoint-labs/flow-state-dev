@@ -53,7 +53,7 @@ export function readConnection(): Connection {
 }
 
 /** The page meta the start script writes the `--devtool` address into. */
-export const DEVTOOL_META = "app-lab-devtool";
+const DEVTOOL_META = "app-lab-devtool";
 
 /**
  * The devtool App Lab was started with (`--devtool <url>`), or `undefined`.

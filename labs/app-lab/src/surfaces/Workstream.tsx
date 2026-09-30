@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { Board } from "../components/Board";
 import { EmptyState, SectionFailure, StatusWord, Tabs } from "../components/ui";
 import { COLUMNS } from "../lib/columns";
-import { allRows, byColumn, workerStatus, type LoadedSnapshot } from "../lib/derive";
+import { allRows, byColumn, rosterOf, workerStatus, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Failure, type Workstream } from "../lib/reads";
 import { navigate, WORKSTREAM_TABS, type WorkstreamTab } from "../lib/routes";
@@ -124,6 +124,7 @@ export function WorkstreamPanel({ snapshot, workstream, gaps }: { snapshot: Load
   const seats = snapshot.inventory.ok ? snapshot.inventory.value.seats : [];
   const rows = allRows(snapshot);
   const boards = snapshot.boards[workstream.id];
+  const columns = boards?.ok === true ? byColumn(boards.value.rows) : undefined;
   return (
     <div className="space-y-5 p-3" data-testid="workstream-panel">
       <section>
@@ -143,7 +144,7 @@ export function WorkstreamPanel({ snapshot, workstream, gaps }: { snapshot: Load
                 {seat === undefined ? (
                   <span className="text-xs text-muted-foreground">not in the seat inventory</span>
                 ) : (
-                  <StatusWord status={workerStatus(seat, rows)} />
+                  <StatusWord status={workerStatus(seat, rows, rosterOf(snapshot))} />
                 )}
               </li>
             );
@@ -160,7 +161,7 @@ export function WorkstreamPanel({ snapshot, workstream, gaps }: { snapshot: Load
           </p>
         ) : (
           COLUMNS.map((column) => {
-            const inColumn = byColumn(boards.value.rows).get(column) ?? [];
+            const inColumn = columns?.get(column) ?? [];
             return (
               <div key={column} className="mb-2" data-testid="panel-column" data-column={column}>
                 <p className="text-xs font-medium">
@@ -168,7 +169,7 @@ export function WorkstreamPanel({ snapshot, workstream, gaps }: { snapshot: Load
                 </p>
                 <ul>
                   {inColumn.map((row) => (
-                    <li key={row.id}>
+                    <li key={`${row.boardRef}/${row.id}`}>
                       <button
                         type="button"
                         className="truncate text-left text-xs hover:underline"

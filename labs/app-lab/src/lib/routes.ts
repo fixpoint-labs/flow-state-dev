@@ -10,6 +10,7 @@
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
  *     /w/<channelId>/<stream|board|brief|results>
  *     /p/<projectId>/<stream|board|workstreams|brief>
+ *     /r/<sessionId>/<resourceRef>   a declared document, read-only
  */
 import { useSyncExternalStore } from "react";
 
@@ -35,7 +36,8 @@ export type Route =
   | { level: "tasks"; by: TaskGrouping }
   | { level: "task"; boardRef: string; taskId: string; tab: TaskTab }
   | { level: "workstream"; channelId: string; tab: WorkstreamTab }
-  | { level: "project"; projectId: string; tab: ProjectTab };
+  | { level: "project"; projectId: string; tab: ProjectTab }
+  | { level: "resource"; sessionId: string; ref: string };
 
 function oneOf<T extends string>(values: readonly T[], value: string | undefined, fallback: T): T {
   return values.includes(value as T) ? (value as T) : fallback;
@@ -53,6 +55,7 @@ export function parseRoute(pathname: string, search = ""): Route {
   }
   if (head === "w" && a !== undefined) return { level: "workstream", channelId: a, tab: oneOf(WORKSTREAM_TABS, b, "stream") };
   if (head === "p" && a !== undefined) return { level: "project", projectId: a, tab: oneOf(PROJECT_TABS, b, "stream") };
+  if (head === "r" && a !== undefined && b !== undefined) return { level: "resource", sessionId: a, ref: b };
   return { level: "inbox", suspensionId: head === "inbox" && a !== undefined ? a : null };
 }
 
@@ -70,6 +73,8 @@ export function pathFor(route: Route): string {
       return `/w/${e(route.channelId)}/${route.tab}`;
     case "project":
       return `/p/${e(route.projectId)}/${route.tab}`;
+    case "resource":
+      return `/r/${e(route.sessionId)}/${e(route.ref)}`;
   }
 }
 

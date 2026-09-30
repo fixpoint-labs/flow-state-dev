@@ -56,11 +56,11 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
 /** The tree this Lab reads. */
-export const RUN_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
+const RUN_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
 /** The one person this Lab runs as. */
 export const RUN_LAB_USER_ID = "u_run_lab";
 /** The conversation the board is drained from. */
-export const RUN_LAB_DRAIN_SESSION = "s_run_lab_drain";
+const RUN_LAB_DRAIN_SESSION = "s_run_lab_drain";
 
 /** The task entry every seat's hand-off addresses. */
 const ENTRY = "work";

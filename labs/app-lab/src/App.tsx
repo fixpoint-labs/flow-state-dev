@@ -12,6 +12,7 @@ import type { LabClients } from "./lib/connection";
 import type { LoadedSnapshot } from "./lib/derive";
 import { LabProvider, useLab } from "./lib/lab-data";
 import type { Failure } from "./lib/reads";
+import { ResourceView } from "./surfaces/Resource";
 import { useRoute, type Route } from "./lib/routes";
 import { EmptyState } from "./components/ui";
 import { Inbox } from "./surfaces/Inbox";
@@ -114,6 +115,8 @@ function Centre({ snapshot, route, gaps }: { snapshot: LoadedSnapshot; route: Ro
       return <Tasks snapshot={snapshot} by={route.by} gaps={gaps} />;
     case "task":
       return <TaskFrame tab={route.tab} gaps={gaps} />;
+    case "resource":
+      return <ResourceView sessionId={route.sessionId} resourceRef={route.ref} />;
     case "project":
       return <ProjectView snapshot={snapshot} projectId={route.projectId} tab={route.tab} gaps={gaps} />;
     case "workstream": {

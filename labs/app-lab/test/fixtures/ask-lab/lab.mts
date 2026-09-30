@@ -27,6 +27,7 @@ import {
   channelInstances,
   defineChannelFlow,
   hireWorkforce,
+  resourcesFromDocs,
   openChannels,
   openInventory,
   wakeMemberSeats,
@@ -93,7 +94,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
   const orgId = options.bearer === undefined ? DEFAULT_ORG_ID : ASK_LAB_ORG_ID;
   const tree = await readAskLabTree();
   const seats = hireWorkforce(tree.workers, {
-    kinds: { [ASKER_KIND]: defineAskerFlow() as never },
+    kinds: { [ASKER_KIND]: defineAskerFlow(resourcesFromDocs(tree.documents)) as never },
     channelBoards: channelBoardIds(tree.channels),
   });
   const channelKind = defineChannelFlow({ notify: wakeMemberSeats(seats), inventory: true });

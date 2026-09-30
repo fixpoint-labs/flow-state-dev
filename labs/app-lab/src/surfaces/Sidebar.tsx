@@ -11,7 +11,7 @@
 import { useState } from "react";
 import { navigate, NO_PROJECT, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
-import { allRows, openRows, teamsOf, workerStatus, type LoadedSnapshot } from "../lib/derive";
+import { allRows, openRows, rosterOf, teamsOf, workerStatus, type LoadedSnapshot } from "../lib/derive";
 import { SectionFailure, StatusWord } from "../components/ui";
 import type { Gaps } from "../gaps";
 
@@ -177,7 +177,7 @@ export function Sidebar({ route, gaps, onJump }: { route: Route; gaps: Gaps; onJ
                         onClick={() => navigate({ level: "tasks", by: "worker" })}
                       >
                         <span className="truncate">{seat.name}</span>
-                        <StatusWord status={workerStatus(seat, allRows(loaded))} />
+                        <StatusWord status={workerStatus(seat, allRows(loaded), rosterOf(loaded))} />
                       </button>
                       <p className="text-xs text-muted-foreground">
                         <span data-testid="worker-kind">{seat.kind ?? "unknown kind"}</span>
