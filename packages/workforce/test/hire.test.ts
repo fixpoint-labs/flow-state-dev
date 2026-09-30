@@ -592,3 +592,51 @@ describe("hireWorkforce", () => {
     expect(Object.hasOwn(seat.config, "description")).toBe(false);
   });
 });
+
+/**
+ * The worker door's reading of `flow:`, one row per shape a value can take.
+ *
+ * Characterization: every row is what the door does today, and the channel
+ * door's twin table in `channel-binder.test.ts` runs the same values. The two
+ * doors share one rule for "absent, blank, or not a string", so a change to
+ * that rule turns rows red on both tables at once. Only a record with no `flow`
+ * key at all gets the built-in; an own key holding `null` or `undefined` is
+ * present and refused.
+ */
+describe("hireWorkforce reads `flow:` (one row per value)", () => {
+  const BLANK = "declares an empty `flow:`, which names no flow kind";
+
+  it("hires the built-in `agent` kind for a record with no `flow` key", () => {
+    const seat = hireOne(record({ id: "engineering.plain", body: LEAD_BODY }));
+    expect(seat.kind).toBe("agent");
+  });
+
+  it.each([
+    ["an empty string", ""],
+    ["a whitespace-only string", "   "]
+  ])("refuses %s as an empty `flow:`, naming the worker", (_label, value) => {
+    const message = refusalOf([record({ id: "engineering.ghost", declared: { flow: value } })]);
+    expect(message).toContain('worker "engineering.ghost"');
+    expect(message).toContain(BLANK);
+  });
+
+  it.each([
+    ["null", null, "null"],
+    ["an own key holding undefined", undefined, "undefined"],
+    ["a number", 42, "42"],
+    ["an object", {}, "{}"]
+  ])("refuses %s as a `flow:` that names no kind, quoting the value", (_label, value, quoted) => {
+    const message = refusalOf([record({ id: "engineering.ghost", declared: { flow: value } })]);
+    expect(message).toContain('worker "engineering.ghost"');
+    expect(message).toContain(`declares \`flow:\` as ${quoted}, which names no flow kind`);
+  });
+
+  it("hires the kind a `flow:` names when that kind was passed", () => {
+    expect(hireOne(intake).kind).toBe("intake");
+  });
+
+  it("does not trim a named kind: a padded name is a kind that was not passed", () => {
+    const message = refusalOf([record({ id: "engineering.ghost", declared: { flow: " intake " } })]);
+    expect(message).toContain('names flow kind " intake ", which was not passed to hireWorkforce');
+  });
+});
