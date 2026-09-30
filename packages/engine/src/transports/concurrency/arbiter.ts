@@ -309,17 +309,23 @@ export function createConcurrencyArbiter(
    *
    * A place the backend reports missing was dropped, not given up: `retake`
    * lines the request up again at the back, and the wait goes on under the
-   * same budget.
+   * same budget. `reclaim` confirms a turn for a place whose renewals failed
+   * while it waited: `"missing"` when the backend no longer has it, `false`
+   * when it cannot say yet.
    */
   const pollForTurn = async (
     current: () => LeasePlace,
     retake: () => Promise<void>,
+    reclaim: () => Promise<true | false | "missing">,
     signal?: AbortSignal
   ): Promise<void> => {
     const since = Date.now();
     for (let attempt = 0; ; attempt += 1) {
       throwIfWithdrawn(current(), signal);
       let myTurn = await backend.isMyTurn(current());
+      // Its turn, after a loss recorded while it waited: the run may start
+      // only once the place is held again.
+      if (myTurn === true) myTurn = await reclaim();
       throwIfWithdrawn(current(), signal);
       if (myTurn === "missing") {
         await retake();
@@ -392,6 +398,23 @@ export function createConcurrencyArbiter(
       place = result.place;
       holdPlace();
     };
+    /**
+     * A wait-time loss is a renewal outage, not proof the place is gone: renew
+     * it once more, and hold it again if the backend still has it.
+     */
+    const reclaim = async (): Promise<true | false | "missing"> => {
+      if (placeLost === undefined) return true;
+      let kept: boolean | void;
+      try {
+        kept = await backend.renew(place);
+      } catch {
+        return false;
+      }
+      if (kept === false) return "missing";
+      stopRenewing();
+      holdPlace();
+      return true;
+    };
     /** The run has its turn: a place already lost stops it at once. */
     const startHolding = (): void => {
       holding = true;
@@ -441,7 +464,7 @@ export function createConcurrencyArbiter(
         ? undefined
         : inMemory !== undefined
           ? () => inMemory.waitForTurn(place, QUEUE_WAIT_TIMEOUT_MS)
-          : (signal?: AbortSignal) => pollForTurn(() => place, retake, signal);
+          : (signal?: AbortSignal) => pollForTurn(() => place, retake, reclaim, signal);
     const startInTurn = <T>(start: () => Promise<T>): Promise<T> => {
       startHolding();
       return runThenGiveBack(start, giveBack);

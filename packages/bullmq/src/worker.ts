@@ -140,20 +140,19 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
     const now = Date.now();
     const wait = data.leaseWait ?? { firstCheckAt: now, attempt: 0 };
     const waitedMs = now - wait.firstCheckAt;
+    const step = planQueueWait({ key: place.key, waitedMs, attempt: wait.attempt });
     // The first check is always honoured; a later one past the budget times
     // out, as the engine's own wait does.
-    if (turn === true && (wait.attempt === 0 || planQueueWait({ key: place.key, waitedMs, attempt: wait.attempt }).kind === "wait")) {
+    if (turn === true && (wait.attempt === 0 || step.kind === "wait")) {
       if (place !== data.leasePlace || data.leaseWait != null) {
         await job.updateData({ ...data, leasePlace: place, leaseWait: null });
       }
       return place;
     }
 
-    const step = planQueueWait({ key: place.key, waitedMs, attempt: wait.attempt });
     if (step.kind === "timeout") {
-      await giveBack(place);
+      // The processor publishes the terminal and gives the place back.
       await settleUnstartedRequest(stores, requestId, { status: "failed", cause: step.error });
-      await publishFailure(requestId, step.error);
       throw new UnrecoverableError(step.error.message);
     }
     await job.updateData({
@@ -176,18 +175,13 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
       throw new UnrecoverableError(`Unknown flow "${data.flowKind}"`);
     }
 
-    const turn = await takeTurn(job, token);
-    if (turn === CANCELLED) return undefined;
-    const place = turn;
-    // While the run holds its turn, renew the place on a timer of its own
-    // (not the run heartbeat, which a flow can turn off), and stop the run
-    // once the place is lost: another worker may take the key from then on.
+    // The place the run holds, once it has its turn.
+    let place: LeasePlace | undefined;
+    let turnTaken = false;
     const lost = new AbortController();
-    const hold =
-      place !== undefined && leaseBackend !== undefined
-        ? holdLeasePlace(leaseBackend, place, (error) => lost.abort(error))
-        : undefined;
-    // Kept across a retry, given back when the job is done for good.
+    let hold: ReturnType<typeof holdLeasePlace> | undefined;
+    // Kept across a retry (or a requeue), given back when the job is done for
+    // good.
     let keepPlace = false;
 
     // On a retry attempt the previous run may have persisted events under
@@ -211,6 +205,21 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
 
     let terminalPublished = false;
     try {
+      // Inside the `try`, like the organization check below: a turn check
+      // that fails on the last attempt still settles the request and gives
+      // its place back.
+      const turn = await takeTurn(job, token);
+      if (turn === CANCELLED) return undefined;
+      place = turn;
+      turnTaken = true;
+      // While the run holds its turn, renew the place on a timer of its own
+      // (not the run heartbeat, which a flow can turn off), and stop the run
+      // once the place is lost: another worker may take the key from then on.
+      hold =
+        place !== undefined && leaseBackend !== undefined
+          ? holdLeasePlace(leaseBackend, place, (error) => lost.abort(error))
+          : undefined;
+
       // A job enqueued before organizations were required carries none, and a
       // worker runs below principal resolution — there is nothing here that
       // could recover one, and borrowing the worker's own would run somebody's
@@ -255,7 +264,9 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
         },
       });
 
-      if (lost.signal.aborted) {
+      // Decided as of the run's end: a loss after that has nothing to stop.
+      hold?.stop();
+      if (lost.signal.aborted && result.error) {
         // Stopped because its place was lost: the request ends interrupted,
         // and running it again here could overlap the run that took the key.
         throw new UnrecoverableError((lost.signal.reason as Error).message);
@@ -281,6 +292,11 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
 
       return result;
     } catch (caught) {
+      // Requeued to wait for its turn: not a failure, and the place stays.
+      if ((caught as Error | undefined)?.name === "DelayedError") {
+        keepPlace = true;
+        throw caught;
+      }
       // A record another flow instance owns is refused at admission, before
       // any write; retrying can only refuse again, so it fails outright.
       // Matched by name rather than `instanceof` for the same cross-realm
@@ -304,6 +320,10 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
         (err as Error | undefined)?.name !== "UnrecoverableError" &&
         job.attemptsMade + 1 < (job.opts.attempts ?? 1);
       keepPlace = willRetry;
+      // No run started, so nothing else will end the request.
+      if (!turnTaken && !willRetry && data.requestId !== undefined) {
+        await settleUnstartedRequest(stores, data.requestId, { status: "failed", cause: caught });
+      }
       if (publisher && !terminalPublished && !willRetry) {
         const errorResult = {
           error: { message: err instanceof Error ? err.message : String(err) }
@@ -313,7 +333,7 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
       throw err;
     } finally {
       hold?.stop();
-      if (!keepPlace) await giveBack(place);
+      if (!keepPlace) await giveBack(place ?? job.data.leasePlace ?? undefined);
       if (publisher) {
         await publisher.close().catch(() => {});
       }

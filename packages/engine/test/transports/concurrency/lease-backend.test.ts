@@ -622,6 +622,88 @@ describe("a running place whose lease is lost", () => {
     }
   });
 
+  it("is not stopped at its turn for renewals that failed while it waited, when the place is still held", async () => {
+    // A waiter whose renewals failed for half the lease recorded a loss. The
+    // backend may still hold the place (the outage was shorter than the
+    // lease): the run starts in its turn, renewed again, rather than being
+    // stopped at once for a place it still has.
+    vi.useFakeTimers();
+    try {
+      const { backend: shaped } = fourCallBackend();
+      let failFor: string | undefined;
+      const backend: ConcurrencyLeaseBackend = {
+        ...shaped,
+        leaseMs: 1_000,
+        renew: async (place) => {
+          if (place.ticket === failFor) throw new Error("lease backend unreachable");
+          return shaped.renew(place);
+        }
+      };
+      const arbiter = createConcurrencyArbiter({ backend });
+      const admit = async (id: string) =>
+        (await arbiter.admit(arbiter.resolve(queueFlow, "respond", envelope(id)), id)) as ConcurrencyAdmission;
+      const a = await admit("req_a");
+      let releaseA!: () => void;
+      const runA = a.run(() => new Promise<void>((r) => (releaseA = r)));
+      const b = await admit("req_b");
+      failFor = b.place!.ticket;
+      let lostAtStart: boolean | undefined;
+      const runB = b.run(async () => {
+        lostAtStart = b.lost.aborted;
+      });
+      await vi.advanceTimersByTimeAsync(600);
+      failFor = undefined;
+      releaseA();
+      await vi.advanceTimersByTimeAsync(3_000);
+      await Promise.all([runA, runB]);
+      expect(lostAtStart).toBe(false);
+      expect(b.lost.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lines up again at its turn when the place was dropped while its renewals failed", async () => {
+    vi.useFakeTimers();
+    try {
+      const { backend: shaped, inner } = fourCallBackend();
+      let failFor: string | undefined;
+      const backend: ConcurrencyLeaseBackend = {
+        ...shaped,
+        leaseMs: 1_000,
+        renew: async (place) => {
+          if (place.ticket === failFor) throw new Error("lease backend unreachable");
+          const kept = await inner.isMyTurn(place);
+          return kept === "missing" ? false : undefined;
+        }
+      };
+      const arbiter = createConcurrencyArbiter({ backend });
+      const admit = async (id: string) =>
+        (await arbiter.admit(arbiter.resolve(queueFlow, "respond", envelope(id)), id)) as ConcurrencyAdmission;
+      const a = await admit("req_a");
+      let releaseA!: () => void;
+      const runA = a.run(() => new Promise<void>((r) => (releaseA = r)));
+      const b = await admit("req_b");
+      const bFirst = b.place!;
+      failFor = bFirst.ticket;
+      let lostAtStart: boolean | undefined;
+      const runB = b.run(async () => {
+        lostAtStart = b.lost.aborted;
+      });
+      await vi.advanceTimersByTimeAsync(600);
+      // The backend dropped it meanwhile, and A gives the key up.
+      await inner.giveBack(bFirst);
+      failFor = undefined;
+      releaseA();
+      await vi.advanceTimersByTimeAsync(3_000);
+      await Promise.all([runA, runB]);
+      expect(lostAtStart).toBe(false);
+      expect(b.place!.ticket).not.toBe(bFirst.ticket);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("is never told to stop over the in-memory default, whose places do not expire", async () => {
     const arbiter = createConcurrencyArbiter();
     const admission = arbiter.admit(

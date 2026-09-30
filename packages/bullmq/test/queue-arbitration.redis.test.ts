@@ -134,10 +134,20 @@ async function processOf(
     concurrency: 2,
     ...options
   });
-  const worker =
+  const base =
     replaceLeaseBackend === undefined
       ? adapter
       : { ...adapter, leaseBackend: replaceLeaseBackend(adapter) };
+  // The BullMQ worker this process starts, so a case can stop it taking jobs.
+  let consumer: { close(): Promise<void> } | undefined;
+  const worker =
+    base.startWorker === undefined
+      ? base
+      : {
+          ...base,
+          startWorker: (rt: Parameters<NonNullable<typeof base.startWorker>>[0]) =>
+            (consumer = base.startWorker!(rt) as { close(): Promise<void> })
+        };
   const state = createFlowState({
     flows: { [d.kind]: flow },
     stores: { default: { primary: d.primary } },
@@ -147,7 +157,7 @@ async function processOf(
   const runtime = await state.getRuntime();
   const router = await state.getRouter();
   d.store ??= runtime.stores;
-  return { state, runtime, router, adapter };
+  return { state, runtime, router, adapter, consumer: () => consumer };
 }
 
 async function seedSession(store: Store, id: string, kind: string, lineageId: string) {
@@ -350,6 +360,10 @@ describeWithRedis("waiting for a turn on a BullMQ worker", () => {
 
     const severedAt = Date.now();
     await (workerA.adapter.leaseBackend as RedisLeaseBackend).close();
+    // A worker cut off from Redis takes no more work: its slot, freed when
+    // the holder stops, must not pick up `next` (a turn check there fails,
+    // which the processor's own tests cover). Closing lets the holder drain.
+    const drainingA = workerA.consumer()!.close();
 
     await untilSettled(d.store, [holder, next], 15_000);
     const stopped = d.spans.find((s) => s.tag === "holder:stopped");
@@ -360,6 +374,7 @@ describeWithRedis("waiting for a turn on a BullMQ worker", () => {
     expect(stopped!.end - severedAt).toBeLessThan(leaseMs);
     expect(ran!.start - severedAt).toBeLessThan(leaseMs + 3_000);
     expect(await statusesOf(d.store, [holder, next])).toEqual(["interrupted", "completed"]);
+    await drainingA;
   });
 
   it("starts nothing and enqueues nothing when the lease backend cannot be reached (BR-16)", async () => {

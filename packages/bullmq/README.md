@@ -67,7 +67,9 @@ Options: `connection`, `mode`, `retry`, `concurrency` (default 2), `lockDuration
 
 A delivery into an existing session (`dispatcher()` with `session: { id }`) runs here, under the recipient's policy. Declare `concurrency: "allow"` on an entry that should run in parallel.
 
-Each place in line has a lease, `leaseMs` long, that the worker holding it keeps renewing. If a worker dies, the session's key frees once the lease runs out. If a worker can't reach Redis to renew the place its running job holds, it stops that run at half the lease, before another worker can take the key, and the request ends `interrupted`. A job whose place was dropped while its worker was gone lines up again at the back when it runs.
+Each place in line has a lease, `leaseMs` long, that the worker holding it keeps renewing. If a worker dies, the session's key frees once the lease runs out. If a worker can't reach Redis to renew the place its running job holds, it aborts that run's signal at half the lease and the request ends `interrupted`. The stop is cooperative: a run that honours `ctx.signal` has ended before another worker can take the key, and one that ignores it can still be running when the next one starts. A job whose place was dropped while its worker was gone lines up again at the back when it runs.
+
+A session's line is meant to be short: the runs waiting on one conversation, not a backlog. Each turn check looks at every expired place in that line, so a key with hundreds of waiters costs Redis work on every check. If one key can collect that many (a webhook that fires in bursts into a single session, say), declare `reject` on it, or spread the work over more than one key.
 
 When you upgrade, roll out workers before the processes that enqueue. A job enqueued by the new release and picked up by a worker from the release before runs once without the policy, and its session can then wait up to `leaseMs` before the next run starts.
 

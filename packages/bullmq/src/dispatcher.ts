@@ -50,7 +50,7 @@ export function createWorkerDispatcher(
 
       // Enqueue the job — clean up subscriber connections on failure
       try {
-        await queue.add(
+        const job = await queue.add(
           "flow-run",
           {
             flowKind: envelope.flowKind,
@@ -67,6 +67,15 @@ export function createWorkerDispatcher(
           },
           place !== undefined ? { ...jobOpts, jobId: leaseJobId(place) } : jobOpts
         );
+        // BullMQ answers an `add` under an id it already has with the existing
+        // job and writes nothing: a reused ticket would drop this request
+        // silently. Refused by name instead.
+        if (place !== undefined && job?.data?.requestId !== envelope.requestId) {
+          throw new Error(
+            `Job id "${leaseJobId(place)}" already belongs to request "${String(job?.data?.requestId)}"; ` +
+              `request "${envelope.requestId}" was not enqueued. Lease tickets must be unique.`
+          );
+        }
       } catch (err) {
         await subscriber.close().catch(() => {});
         throw err;
