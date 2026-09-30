@@ -218,7 +218,12 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
     await release();
     return refuse(messageOf(error));
   }
-  if (result.error !== undefined) refuse(messageOf(result.error));
+  if (result.error !== undefined) {
+    // Released like a throw: the request this failure left, if any, may never
+    // be read back, and a claim naming a missing request holds the feature.
+    await release();
+    return refuse(messageOf(result.error));
+  }
 
   // Graded on what the store recorded rather than on what came back: a
   // pending ask is a fact about the request a person's Inbox reads.
