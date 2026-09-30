@@ -84,7 +84,6 @@ import {
   loadTenantSession,
   unknownSessionResponse,
   refuseUnattributedRecord,
-  sessionRequestScope,
   snapshotItemsOf,
   SSE_HEADERS
 } from "./route-utils";
@@ -95,6 +94,7 @@ import {
   type ParentIdentity
 } from "./child-session-routes";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
+import { sessionRequestScope } from "../context/session-request-scope";
 
 /**
  * The stream's clock. Module-level so a test can shorten it; not exported from

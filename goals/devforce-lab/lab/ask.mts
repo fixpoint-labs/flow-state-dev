@@ -45,7 +45,7 @@
 import { runAction, type FlowState } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
-import { LEDGER_ID } from "./board.mts";
+import type { FeatureLedger } from "./board.mts";
 import { PHASE } from "./phase.mts";
 import { ASK_ENTRY } from "./seat-config.mts";
 
@@ -81,6 +81,11 @@ export interface RaiseAskOptions {
   feature: AskFeature;
   /** The person the ask runs as, and whose Inbox lists it. */
   principal: { userId: string; orgId: string };
+  /**
+   * The ledger the EM's board files onto — the same object the host handed the
+   * EM kind — so "the row already exists" is read where the row would be.
+   */
+  ledger: FeatureLedger;
 }
 
 /** What the step did. */
@@ -118,7 +123,7 @@ function messageOf(error: unknown): string {
  *   message starts with {@link RAISE_ASK_STEP}.
  */
 export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult> {
-  const { state, emSeat, feature, principal } = options;
+  const { state, emSeat, feature, principal, ledger } = options;
   const sessionId = seatSessionId(emSeat.id);
   const refuse = (why: string): never => {
     throw new Error(`${RAISE_ASK_STEP}: the ask for "${feature.issue}" was not raised — ${why}`);
@@ -143,8 +148,13 @@ export async function raiseAsk(options: RaiseAskOptions): Promise<RaiseAskResult
   const { stores } = runtime;
 
   const taskId = harnessTaskId(feature.issue, PHASE);
+  const orgLedger = ledger.collection.scope === "org";
   const row = await guarded("reading the board", () =>
-    stores.resourceState.get("user", principal.userId, `${LEDGER_ID}/${taskId}`),
+    stores.resourceState.get(
+      orgLedger ? "org" : "user",
+      orgLedger ? principal.orgId : principal.userId,
+      `${ledger.id}/${taskId}`,
+    ),
   );
   if (row !== undefined) return skip(`row ${taskId} is already on the board`);
 

@@ -423,7 +423,11 @@ await runGoal(async () => {
     const root = mkdtempSync(join(tmpdir(), "devforce-tree-no-em-"));
     cpSync(LAB_TREE, root, { recursive: true });
     rmSync(join(root, "teams/eng/workers/em"), { recursive: true });
-    rmSync(join(root, "teams/eng/channels"), { recursive: true });
+    const charter = join(root, "teams/eng/channels/feature/CHANNEL.md");
+    writeFileSync(
+      charter,
+      readFileSync(charter, "utf8").replace(`${fixture.coordinatorSeat}, `, ""),
+    );
     let refused: string | undefined;
     try {
       const { lab } = await open("ask-no-em", inMemoryStores(), { root });
@@ -478,6 +482,7 @@ await runGoal(async () => {
             emSeat: lab.seats[fixture.coordinatorSeat]!,
             feature: other,
             principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+            ledger: lab.ledger,
           }),
         ),
       );
@@ -497,8 +502,8 @@ await runGoal(async () => {
     const base = inMemoryStores();
     const refusing = {
       capabilities: ["primary"],
-      async resolve() {
-        const registry = (await base.resolve()) as Record<string, any>;
+      async resolve(context: Parameters<typeof base.resolve>[0]) {
+        const registry = (await base.resolve(context)) as Record<string, any>;
         const resourceState = new Proxy(registry.resourceState, {
           get(target, prop) {
             if (prop === "get") {
@@ -530,7 +535,9 @@ await runGoal(async () => {
   // ---- 10 · AR-5 — an ask nobody decided does not hold the feature -------
   for (const status of ["interrupted", "aborted"] as const) {
     const stores = inMemoryStores();
-    const registry = (await stores.resolve()) as Record<string, any>;
+    // The in-memory adapter memoizes one registry, so this is the one the
+    // opens below run over.
+    const registry = (await (stores.resolve as () => Promise<unknown>)()) as Record<string, any>;
     const first = await open(`ask-${status}-1`, stores);
     const firstId = first.lab.ask?.raised === true ? first.lab.ask.requestId : undefined;
     await first.lab.dispose();

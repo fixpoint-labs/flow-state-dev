@@ -137,8 +137,9 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   /**
    * Bare tenant id this request ran under (FIX-682). `sessionId` stays bare;
    * isolation of cross-turn history comes from filtering `request.list` by
-   * (`sessionId`, `tenantId`) rather than from namespacing the `sessionId`
-   * field — which keeps request recovery a clean pass-through. Undefined for
+   * the session's request scope (`sessionRequestScope`: `sessionId`,
+   * `tenantId`, owner, organization and flow) rather than from namespacing the
+   * `sessionId` field — which keeps request recovery a clean pass-through. Undefined for
    * single-tenant requests.
    */
   tenantId?: string;
@@ -712,24 +713,26 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * An empty `allowedStatuses` matches nothing, and an absent record is never
    * a match — see {@link ConditionalWriteResult} for the three outcomes.
    *
-   * `expectedCreatedAt`, when given, fences the write to the record a caller
-   * already read: a record at `id` with a different `createdAt` is a different
-   * request (the id was deleted and taken again), and is reported exactly as
-   * an absent one, `{ applied: false, status: undefined }`, with nothing
-   * written. A caller that checked who owns the record passes it, so the write
-   * cannot land on a record that check never saw.
+   * `expectedIncarnation`, when given, fences the write to the request a
+   * caller already read: a record at `id` whose incarnation differs is a
+   * different request (the id was deleted and taken again), and is reported
+   * exactly as an absent one, `{ applied: false, status: undefined }`, with
+   * nothing written. A caller that checked who owns the record passes that
+   * record's `resolveRequestIncarnation(record)`, so the write cannot land on a
+   * record that check never saw.
    *
-   * `createdAt` is not the request's identity: two records under one id can
-   * share a millisecond, and a same-owner hand-off rewrites it. The identity
-   * is {@link RequestRecord.incarnation}; moving this fence onto it is an open
-   * follow-up.
+   * The store compares it with the stored record's incarnation resolved the
+   * same way — its `incarnation`, or `legacy_<createdAt>` when that is absent or
+   * null — inside the same atomic step as the status check. Never compare
+   * `createdAt`: two requests under one id can share a millisecond, and a
+   * same-owner hand-off rewrites it while keeping the incarnation.
    */
   setFieldsIfStatus(
     id: string,
     fields: ConditionalRequestFields,
     allowedStatuses: readonly RequestStatus[],
     updatedAt: number,
-    expectedCreatedAt?: number
+    expectedIncarnation?: string
   ): Promise<ConditionalWriteResult>;
 
   /**

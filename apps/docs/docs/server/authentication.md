@@ -434,8 +434,10 @@ The owner id is an address, not an authorization. Knowing that a session is
 
 A session's request history keeps to its owning flow. Its request list, its
 state with items, and its stream show only requests that flow ran, so passing a
-session's check never gets a caller another flow's requests or items. The
-sessions it started are listed as the children route lists them, in its
+session's check never gets a caller another flow's requests or items. When the
+session runs again, the conversation history sent to the model is built from
+those same requests. A model in one flow never sees turns from another flow.
+The sessions it started are listed as the children route lists them, in its
 stream too, including work handed to another flow.
 
 No endpoint on the flow API enumerates across owners. A caller reaches

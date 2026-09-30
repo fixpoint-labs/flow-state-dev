@@ -71,6 +71,17 @@ import {
 } from "./run-record";
 import { askMarkerPath, readAskMarker } from "./ask";
 import {
+  HARNESS_RUN_OWNER_KEY,
+  foreignRunMessage,
+  isRunOwner,
+  runOwnerFor,
+  runOwnerOf,
+  runPrincipal,
+  type RequestIdentityContext,
+} from "./run-owner";
+
+export type { RequestIdentityContext } from "./run-owner";
+import {
   INBOX,
   askQuestion,
   inboxCollection,
@@ -81,6 +92,7 @@ import {
   withdrawQuestion,
 } from "./inbox";
 import {
+  assertDerivedIdentity,
   harnessTaskId,
   sameSegment,
   acquireCheckout,
@@ -262,7 +274,15 @@ export interface PhaseSpec {
 
 /** How the manager is wired to its board and its host. */
 export interface ManagerOptions {
-  /** The board's ledger collection id — the fence reads the live claim from it. */
+  /**
+   * The board's ledger collection id — the fence reads the live claim from it,
+   * and every run's checkout folder, branch and run record are derived from it.
+   *
+   * Used as is: a channel's board (`eng.feature.work`) is accepted with its
+   * dots. Checked when the manager is built, so an id a git branch cannot carry
+   * (a `.lock` ending, a doubled or trailing dot, a separator) is refused here
+   * rather than after a row has been claimed.
+   */
   boardCollectionId: string;
   /**
    * The board's ledger declaration.
@@ -461,49 +481,6 @@ export class HarnessAttemptFailed extends Error {
     super(message);
     this.name = "HarnessAttemptFailed";
   }
-}
-
-/**
- * Who this run belongs to, from the request's RESOLVED identity.
- *
- * `ctx.user.identity` is what the principal resolver produced, not anything a
- * caller put in a body — which is what makes it usable as an isolation boundary
- * (BP-031). A missing user id is refused rather than defaulted: a default would
- * put every unauthenticated run in one shared checkout, which is the exact
- * collision the principal is here to prevent.
- */
-/**
- * What the principal is read from — the request's authenticated identity, and
- * nothing else.
- *
- * Typed by what it READS rather than as a whole `BlockContext`, so any caller
- * can pass its own narrower context without a cast. The casts were not free:
- * `as BlockContext` on a handler whose resources are typed fails to compile,
- * and the escape hatch that fixes it (`as unknown as`) would silently accept a
- * context that has no identity at all — on the one derivation where a missing
- * identity means two principals sharing a checkout.
- */
-export interface RequestIdentityContext {
-  user?: { identity?: unknown } | undefined;
-}
-
-function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
-  const identity = ctx.user?.identity as
-    | { id?: unknown; tenantId?: unknown }
-    | undefined;
-  const userId = identity?.id;
-  if (typeof userId !== "string" || userId === "") {
-    throw new Error(
-      "[harness-manager] this request has no resolved user identity, so a run cannot be " +
-        "isolated to one. Refusing rather than sharing a checkout across principals.",
-    );
-  }
-  return {
-    userId,
-    ...(typeof identity?.tenantId === "string" && identity.tenantId !== ""
-      ? { tenantId: identity.tenantId }
-      : {}),
-  };
 }
 
 /**
@@ -922,6 +899,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     name = "harness-manager",
   } = options;
 
+  // **The board id is checked HERE, not first at an attempt.** It becomes a
+  // path segment and a git ref component in every run. Refused at the attempt,
+  // the row is claimed, the checkout fails, and the retry budget is spent on a
+  // name no retry can fix; refused here, the host fails before anything is
+  // hired. The attempt still derives through the same function, so the two
+  // cannot disagree.
+  assertDerivedIdentity("boardCollectionId", boardCollectionId);
+
   // **A phase is caller-owned validated configuration, so it is snapshotted.**
   // Held by reference, a host could swap `implement` for `review` after this
   // returns and leave the implement prompt and completion check attached to
@@ -1177,6 +1162,26 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             `to ${describeTenant(resolvedTenant)}. Refusing rather than running one tenant's ` +
             `task in another's workspace.`,
         );
+      }
+
+      // **On a board kept per organization, the run is its starter's** (see
+      // `./run-owner`). Checked before anything is derived from this request's
+      // principal, so a refused drain opens no record and takes no checkout.
+      // The first run records its starter; a row another member owns is
+      // refused here, which is the backstop for a board whose drain was not
+      // wired with `runOwnerDispatcher` — that dispatcher refuses before the
+      // claim and so charges nothing, where this refusal comes after it.
+      if (boardCollection.scope === "org") {
+        const principal = runPrincipal(ctx);
+        const tasks = await boardTasks(ctx);
+        const owner = runOwnerOf(tasks.get(input.taskId));
+        if (owner === null) {
+          await tasks.patchMetadata(input.taskId, {
+            [HARNESS_RUN_OWNER_KEY]: runOwnerFor(principal),
+          });
+        } else if (!isRunOwner(owner, principal)) {
+          throw new HarnessAttemptFailed(foreignRunMessage(input.taskId, owner));
+        }
       }
 
       // **One location, three derivations.** The checkout, the branch and the run

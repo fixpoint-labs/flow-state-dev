@@ -12,10 +12,14 @@
  * tree, the same hire and the same wiring while differing by one expression.
  * Hard-code a harness here and the gate becomes impossible, not inconvenient.
  *
- * ## The board declaration below is an interim tax, not a convention
+ * ## The board declaration below is the framework's tax, not a convention
  *
- * This kind declares the feature board a second time — same `boardId`, same
- * ledger id, its own same-flow dispatcher — and drains it never. It is here
+ * The board belongs to the feature channel: its `CHANNEL.md` names it, and the
+ * host hands this kind the channel's ledger. The manager runs each row as a
+ * coding run whose checkout and branch are derived from that ledger's id.
+ *
+ * This kind also declares the feature board a second time — same `boardId`,
+ * same ledger, its own same-flow dispatcher — and drains it never. It is here
  * because the framework requires it, in two places:
  *
  * - `defineFlow` refuses a flow that declares a task entry with no board
@@ -28,24 +32,19 @@
  * `packages/orchestration/test/task-board/hand-off-cross-flow.test.ts`
  * documents the same constraint in its header.
  *
- * **Do not read it as how DevForce declares boards.** The Architect split that
- * question in two: board *authoring* is a channel-attached `TaskCollection`
- * (FIX-1385), and this cross-flow claim-gate cost is a separate L1 constraint
- * carved onto FIX-1408. A kind that needs a task entry may pay this tax today,
- * labelled interim. A Lab that taught it as the rule would grandfather an
- * asymmetry nobody chose.
+ * **Do not read it as how DevForce declares boards.** Board authoring is
+ * settled — a channel-attached `TaskCollection` (FIX-1385), which is where this
+ * lab's board now lives. The cross-flow claim-gate cost is the framework's to
+ * remove; FIX-1408 closed with it in place, and nothing owns it now. A kind that
+ * needs a task entry pays it today, labelled interim. A Lab that taught it as
+ * the rule would grandfather an asymmetry nobody chose.
  */
 
 import { defineFlow } from "@flow-state-dev/core";
 import type { DeclaredResources } from "@flow-state-dev/core";
 import { harnessManager, type PhaseSpec, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import {
-  featureLedger,
-  LEDGER_ID,
-  recipientBoard,
-  WORK_ENTRY,
-} from "../../../board.mts";
+import { recipientBoard, WORK_ENTRY, type FeatureLedger } from "../../../board.mts";
 import {
   INSPECT_ENTRY,
   readOwnFacts,
@@ -82,19 +81,24 @@ export interface CoderWorkerFlowOptions {
   runTimeoutMs: number;
   /** The file-declared documents, as `resourcesFromDocs` built them. */
   resources: DeclaredResources;
+  /**
+   * The ledger the manager runs rows off — the feature channel's. Its id is
+   * what every run's checkout folder and branch are derived from.
+   */
+  ledger: FeatureLedger;
 }
 
 /**
  * Build the working kind.
  *
- * @param options The harness slot, the workspace, the phase and the documents.
+ * @param options The harness slot, the workspace, the phase, the documents and the ledger.
  * @returns The flow factory `hireWorkforce` mints one copy of per coder record.
  */
 export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
-  const collection = featureLedger();
+  const { collection } = options.ledger;
 
   const manager = harnessManager({
-    boardCollectionId: LEDGER_ID,
+    boardCollectionId: options.ledger.id,
     boardCollection: collection,
     tenant: undefined,
     phase: options.phase,

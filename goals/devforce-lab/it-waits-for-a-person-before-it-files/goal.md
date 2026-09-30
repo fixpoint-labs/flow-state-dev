@@ -14,7 +14,7 @@ nothing to show and "Approve & run" had nothing to run.
 It is **held-out**: leg 0 asserts that neither string appears in any of the lab's code, so a
 different valid feature still passes a correct implementation.
 
-**Signal:** eight legs, each closing named rules (`specs/issues/FIX-1666/BUSINESS-RULES.md`):
+**Signal:** ten legs (0 to 4 and 6 to 10; the control is 5), each closing named rules (`specs/issues/FIX-1666/BUSINESS-RULES.md`):
 
 0. opened without the ask: no request in the EM's session, no row; the held-out feature is in no
    lab code; the run is keyless *(AR-1, AR-7)*;
@@ -34,7 +34,12 @@ different valid feature still passes a correct implementation.
    raised and nothing new is filed *(AR-5)*;
 6. an open that cannot raise the ask (a tree with no EM seat) fails, naming `raiseAsk` *(AR-6)*;
 7. a row another door filed while the ask was pending: Approve files no second row, and the EM says
-   the row already existed *(AR-12)*.
+   the row already existed *(AR-12)*;
+8. two raises racing over one store raise exactly one ask: the feature is claimed with the store's
+   create-if-absent write *(AR-5)*;
+9. a store that refuses a read fails the open, naming `raiseAsk` *(AR-6)*;
+10. an ask left `interrupted` or `aborted` (nobody decided it) does not stop a reopen from asking
+    again; only a pending or answered ask holds the feature *(AR-5)*.
 
 **Anti-game:** a hollow pass is an Inbox item that approves nothing, or an ask that was answered by
 a lab helper rather than by the route App Lab takes. So every read a person's client would make goes
@@ -60,10 +65,11 @@ Needs `git` and a writable temp directory. No network, no model credential.
 It establishes that the lab's tree can raise an approval that a person's client finds where Inbox
 reads, that answering it through the engine's resume route decides whether real DevForce work
 starts, and that the ask is raised once per feature per store. It does **not** establish that App
-Lab draws the card: that is the shell's own check. The three older checks do not ask for the ask and
+Lab draws the card: that is the shell's own check. The other checks do not ask for the ask and
 run as before.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-09-30 | merge of main 2ce1bf7f9 | n/a | PASS | After FIX-1667 moved the board onto the feature channel. The row is now `eng.feature.work/night-mode-toggle--implement`, in org storage. Legs 8 to 10 were added for review. Two raises racing over one store raise one ask, a store that refuses a read fails the open naming `raiseAsk`, and an interrupted or aborted ask doesn't stop a reopen from asking again. Before the merge, each of the three failed on the previous `ask.mts`. `no-gate` FAILs on leg 1 "a row existed before any approval". On the same head the four other devforce-lab checks PASS: `it-wakes…`, `it-keeps…`, `it-commits…` and `it-ships…`, the last now that the reread fix is on main. |
 | 2026-09-30 | cf92e03e7 | n/a | PASS | All eight legs green, keyless. `GOAL_CONTROL=no-gate` FAILs on leg 1 "a row existed before any approval: devforce-tasks--t0--feature/night-mode-toggle--implement", and on legs 3 and 4c (a row after Deny). Same commit: `it-wakes-the-seat-a-file-declared` PASS, `it-commits-from-the-seats-own-file` PASS; `it-ships-an-artifact-a-person-can-open` FAILs on "a fresh process read 0 transcript line(s)", which fails identically on `origin/main` (1590fb9f1) without this change. |
