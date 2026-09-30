@@ -3363,4 +3363,107 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     expect(seen.aborted).toBe(true);
     expect(record?.status).not.toBe("completed");
   });
+
+  // Every order of fires that can land on the run's controller before the
+  // context settles which request the run is, crossed with whether the
+  // context adopts the request admission read or another that took the id.
+  // The run starts cancelled exactly when an unfenced fire landed (it was for
+  // whatever runs under the id) or a fenced fire targeted the request the run
+  // turned out to be. Before settling, a fenced fire can only target the
+  // request admission read, so on the other request only an unfenced fire
+  // counts.
+  describe("pre-settle fires, by order and by the request adopted", () => {
+    type Fire = "fenced" | "unfenced";
+    const sequences: Array<[string, Fire[]]> = [
+      ["no fire", []],
+      ["a fenced fire", ["fenced"]],
+      ["an unfenced fire", ["unfenced"]],
+      ["a fenced then an unfenced fire", ["fenced", "unfenced"]],
+      ["an unfenced then a fenced fire", ["unfenced", "fenced"]]
+    ];
+    const cases = sequences.flatMap(([label, fires]) => [
+      { label, fires, adopts: "same" as const, startsAborted: fires.length > 0 },
+      { label, fires, adopts: "another" as const, startsAborted: fires.includes("unfenced") }
+    ]);
+
+    it.each(cases)(
+      "$label, adopting the $adopts request: starts aborted = $startsAborted",
+      async ({ fires, adopts, startsAborted }) => {
+        const stores = createInMemoryStores();
+        const requestId = `req_presettle_${fires.join("_") || "none"}_${adopts}`;
+        const seen: { aborted?: boolean } = {};
+        const kind = "presettle-fires";
+        const flow = defineFlow({
+          kind,
+          request: { heartbeatIntervalMs: 0 },
+          actions: {
+            run: {
+              inputSchema: z.unknown(),
+              block: handler({
+                name: "observe",
+                inputSchema: z.unknown(),
+                outputSchema: z.string(),
+                execute: async (_input: unknown, ctx) => {
+                  seen.aborted = ctx.signal.aborted;
+                  if (ctx.signal.aborted) throw new DOMException("Aborted", "AbortError");
+                  return "ran";
+                }
+              })
+            }
+          }
+        })({ id: kind });
+        const fresh = () =>
+          createInitialRequestRecord(
+            { requestId, flowKind: kind, flowId: kind, actionName: "run", userId: "u_presettle", orgId: DEFAULT_ORG_ID },
+            Date.now()
+          );
+
+        const admitted = fresh();
+        await stores.request.set(requestId, admitted, "absent");
+        const other = fresh();
+
+        // Admission's read is the first; the context's is the second. The
+        // fires land just before the context reads.
+        const get = stores.request.get.bind(stores.request);
+        let reads = 0;
+        const landed: boolean[] = [];
+        stores.request.get = async (id: string) => {
+          if (id === requestId) {
+            reads += 1;
+            if (reads === 2) {
+              for (const fire of fires) {
+                landed.push(
+                  fire === "fenced" ? abortRequest(requestId, admitted.incarnation) : abortRequest(requestId)
+                );
+              }
+              if (adopts === "another") {
+                await stores.request.delete(requestId);
+                await stores.request.set(requestId, other, "absent");
+              }
+            }
+          }
+          return get(id);
+        };
+
+        await runAction({
+          flow,
+          actionName: "run",
+          input: {},
+          requestId,
+          userId: "u_presettle",
+          orgId: DEFAULT_ORG_ID,
+          stores,
+          runtimeConfig: {}
+        });
+        stores.request.get = get;
+
+        // Precondition: every fire reached this run's controller.
+        expect(landed).toEqual(fires.map(() => true));
+        expect((await stores.request.get(requestId))?.incarnation).toBe(
+          adopts === "same" ? admitted.incarnation : other.incarnation
+        );
+        expect(seen.aborted).toBe(startsAborted);
+      }
+    );
+  });
 });

@@ -24,11 +24,16 @@ interface Registered {
   /** The incarnation of the request this controller belongs to, once known. */
   incarnation?: string;
   /**
-   * Set when the controller was fired by a fenced `abortRequest`, so the fire
-   * was for the request the controller was tagged with at that moment. Unset
-   * for an unfenced fire, which is for whatever runs under the id.
+   * Set by a fenced `abortRequest` that matched: a fire for the request the
+   * controller was tagged with at that moment.
    */
   firedFenced?: boolean;
+  /**
+   * Set by an unfenced `abortRequest`: a fire for whatever runs under the id.
+   * Recorded even when the controller had already fired, so it is never
+   * hidden behind an earlier fenced fire.
+   */
+  firedUnfenced?: boolean;
 }
 
 const controllers = new Map<string, Registered>();
@@ -82,20 +87,26 @@ export function abortRequest(requestId: string, expectedIncarnation?: string): b
   if (entry === undefined || !matches(entry, expectedIncarnation)) {
     return false;
   }
-  if (!entry.controller.signal.aborted) entry.firedFenced = expectedIncarnation !== undefined;
+  if (expectedIncarnation === undefined) entry.firedUnfenced = true;
+  else entry.firedFenced = true;
   entry.controller.abort();
   return true;
 }
 
 /**
- * Whether `controller`, registered under `requestId`, was fired by a fenced
- * `abortRequest`: a fire for one incarnation of the request, not for whatever
- * runs under the id. False when it has not fired, was fired unfenced, or is no
- * longer the registered controller.
+ * Whether `controller`, registered under `requestId`, was fired only by fenced
+ * `abortRequest`s: fires for one incarnation of the request, and none for
+ * whatever runs under the id. False when it has not fired, when any fire was
+ * unfenced, or when it is no longer the registered controller.
  */
-export function wasFiredFenced(requestId: string, controller: AbortController): boolean {
+export function wasFiredOnlyFenced(requestId: string, controller: AbortController): boolean {
   const entry = controllers.get(requestId);
-  return entry !== undefined && entry.controller === controller && entry.firedFenced === true;
+  return (
+    entry !== undefined &&
+    entry.controller === controller &&
+    entry.firedFenced === true &&
+    entry.firedUnfenced !== true
+  );
 }
 
 /**
