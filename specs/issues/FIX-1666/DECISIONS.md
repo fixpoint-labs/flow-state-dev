@@ -1,0 +1,103 @@
+# FIX-1666 · Decisions
+
+[Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
+
+The issue fixes the fences: the goal lab's tree only, no model in the path that raises the ask,
+no approval model in the framework or App Lab, the three checks green. FIX-1662 fixes what Inbox
+reads: pending approvals and questions in the seat sessions the session listing returns to this
+person ([its BR-24 to BR-27](https://github.com/fixpoint-labs/flow-state-dev/pull/2424)). These
+are the calls left open.
+
+## The tree
+
+```mermaid
+flowchart TD
+  I["FIX-1666"] --> D1["D1 · the EM asks before it files · Approve files and the coder starts"]
+  D1 -.->|"rejected · a parked row, not an Inbox ask"| X1a["the coder asks mid-run"]
+  D1 -.->|"rejected · approves nothing DevForce does"| X1b["a demo gate beside the work"]
+  I --> D2["D2 · raised on open when a host asks · off by default"]
+  D2 -.->|"rejected · Inbox empty until someone posts"| X2a["a shaped post makes the EM ask"]
+  D2 -.->|"rejected · changes the three checks"| X2b["raised on every open"]
+  I --> E1["engineering · its own goal check, fourth beside the three"]
+```
+
+Solid edges are what was chosen. Dashed edges lost, and the label says why.
+
+<a name="d1"></a>
+## D1 · The EM asks a person before it files a feature; Approve files the row and the coder starts, Deny files nothing
+
+| | |
+|---|---|
+| **Instead of** | (a) The coder asking mid-run through harness-manager's question channel. (b) A standalone demo gate, a copy of kitchen-sink's `requestApproval`, that approves nothing the lab does |
+| **Because** | Inbox lists pending suspensions in seat sessions. (a) raises a durable question row and parks the task with no suspension behind it, which FIX-1662's BR-27 says is not an Inbox item, and it is a question rather than an approval. (b) puts an item in Inbox, but "Approve & run" would run nothing, so the closure's a1 would pass on a toy. The EM is the seat whose job is deciding that work starts ("files the work, never does it"), so an approval in front of filing is the one ask that means something on this tree. It uses the stock `human_approval` suspension, so no approval model is added anywhere (tenet 2: refine with what exists) |
+| **Locks in** | One durable action on the EM kind: ask, then on Approve file the row through the same code the other two doors use and run the board, so the coder seat's run starts. On Deny, nothing is filed and the EM says so. The EM still declares no task entry and names no harness |
+
+**What would change my mind:** FIX-1652 ruling that the first ask a Lab shows must be a worker's
+question mid-task. Then the ask moves to the coder, and that needs a suspension harness-manager
+does not raise today, which is framework work outside this issue.
+
+**What being wrong costs:** one action and one check in a goal lab, rewritten. FIX-1652 may
+point at this as the example of an ask, which is why it is worth getting the step right.
+
+![D1: the EM asks before filing, chosen, beside the coder asking mid-run and a demo gate; decided by whether Inbox reads it and whether approving runs real work](figures/d1-what-the-ask-gates.svg)
+
+It comes down to the first row: only an ask in front of real work makes "Approve & run" mean
+anything.
+
+<a name="d2"></a>
+## D2 · The ask is raised when a host opens the lab with it turned on; off by default
+
+| | |
+|---|---|
+| **Instead of** | (a) A post on the feature channel in a shape that makes the EM ask instead of filing. (b) Raising it on every open |
+| **Because** | The issue asks that *opening* the tree shows the ask. (a) needs a person to post first, so Inbox is empty on open, and it changes the channel door the third check drives. (b) adds a pending request and, after any answer, a row to every check that opens the lab, so all three change shape. The lab already carries this pattern: its channel door is an option on open, absent by default, because "an entry that is only there to do nothing is worse than none" |
+| **Locks in** | One option on the lab's open, carrying the feature to ask about. When present, durable execution is on and the ask is raised once, as the lab's person, in the EM seat's session. App Lab's DevForce config (FIX-1662's S12) passes it; whichever of the two lands second adds that line |
+
+**What would change my mind:** FIX-1662's config not opening the lab through the lab's host at
+all. Then the same option is exported as a step the config calls after it hires; the rule that
+it is off by default stands.
+
+**What being wrong costs:** a missing line in App Lab's config, found by the closure's a1 as an
+empty Inbox.
+
+![D2: raise on open when a host asks, chosen, beside a shaped post and raising on every open; decided by whether opening alone shows the ask and whether the three checks stay as they are](figures/d2-when-it-is-raised.svg)
+
+It comes down to the first row: only raising on open makes the ask appear without anyone acting.
+
+## Decided, not asked
+
+- **Its own goal check, a fourth under `goals/devforce-lab/`** (engineering call). Widening one
+  of the three would change what it proves, the reason the channel door got its own. The
+  directory is outside `lab/` but inside the goal lab, which the issue's fence covers.
+- **Answered only through the engine's resume route**, over the lab's door with its bearer. A
+  lab helper that resolved the ask would prove a path App Lab never takes.
+- **Durable execution is on only when the ask is.** The three checks run with it off, as today.
+- **Raised once per feature.** A second open over the same store finds the pending ask, or the
+  row an earlier Approve filed, and raises nothing.
+- **Run as the lab's person** (`u_devforce_lab` in `org_devforce_lab`), the identity the lab's
+  door resolves. If FIX-1662's config resolves a different person, the ask follows that person.
+- **No `WORKER.md` changes.** Their tokens are held-out evidence for the first check.
+- **No model, no key.** The action is handlers and the stock suspension; the coder runs the
+  scripted stub in this check.
+
+## Considered and dropped
+
+| Alternative | Why not |
+|---|---|
+| Walk the journey on `goals/multi-seat-collab/lab/` | FIX-1663 D1 rejected it: it rewrites the epic's input |
+| Lift kitchen-sink's escalation or ask API into the lab or a package | The Architect names it an invent-kill; the stock suspension already does it |
+| Seed a suspension record directly in the store | Not a run a person can repeat; resume would have no request to continue |
+| Make `onPost` ask before filing | Changes the third check's door and its evidence |
+
+## Open / Settled
+
+**Open: none.** **Settled: none.** No POC: the suspend and resume path is proved by
+`goals/suspension/resumes-and-completes-after-approval/`, and a board drain composed inside a
+sequencer by the task board's own `unparkAndDrain`. That the two compose in one durable request
+is checked first at implement time ([PLAN.md → At implement time](PLAN.md#at-implement-time)).
+
+## How it got here
+
+- **Draft** — the missing ask framed as a gap in what the EM does, not in the shell; the EM made
+  to ask before it files using the stock approval, raised on open only when a host asks, and
+  proved by its own model-free check with a control that removes the gate. One PR, lab tree only.
