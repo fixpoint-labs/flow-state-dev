@@ -1,0 +1,115 @@
+<svg viewBox="0 0 940 620" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Wireframe 1, the App Lab shell at desktop width. A top bar with the App Lab mark, the Lab and org it has open, and the person. Below it four columns: a narrow nav rail with the five destinations, projects, workstreams, chat, attention and resources, with chat selected; a sidebar with three sections, NEEDS YOU with a count, CHANNELS, and ON SHIFT; the centre, headed by the open channel and four surface tabs, stream, board, brief and results, with the stream showing posts by seats and a composer at the foot; and a right run inspector showing the seat a run belongs to, its state, its current step and its tool calls. Annotations in blue mark what is fixed and what Claude Design refines; ochre marks where the yellow accent applies.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --prose:#A8761C; --prose-soft:#F3E8D2; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --prose:#D9A44B; --prose-soft:#332612; } }
+    .bg   { fill:var(--surface); }
+    .fr   { fill:var(--surface); stroke:var(--ink); stroke-width:2; }
+    .pane { fill:var(--surface); stroke:var(--ink); stroke-width:1.2; }
+    .sub  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .bar  { fill:var(--rule); }
+    .acc  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.6; }
+    .sel  { fill:var(--surface-2); stroke:var(--ink); stroke-width:1.2; }
+    .ln   { stroke:var(--ink); stroke-width:1.2; }
+    .ln1  { stroke:var(--ink); stroke-width:1; }
+    .ln2  { stroke:var(--ink); stroke-width:2; }
+    .note { fill:none; stroke:var(--accent); stroke-width:1; stroke-dasharray:4 3; }
+    .t-h  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:700; letter-spacing:.08em; }
+    .t-b  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9px; }
+    .t-n  { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-size:10px; font-style:italic; }
+    .t-a  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; font-weight:700; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="620"/>
+  <text class="t-h" x="16" y="18">01 · THE SHELL · DESKTOP · LOW FIDELITY, STRUCTURE ONLY</text>
+
+  <g id="frame">
+    <rect class="fr" x="16" y="28" width="908" height="500"/>
+    <g id="topbar">
+      <path d="M16 60 L924 60" class="ln2"/>
+      <text class="t-h" x="28" y="49">APP LAB</text>
+      <rect class="sub" x="120" y="36" width="210" height="18"/>
+      <text class="t-s" x="128" y="48">Lab: DevForce · org: acme</text>
+      <rect class="sub" x="846" y="36" width="66" height="18"/>
+      <text class="t-s" x="856" y="48">person ▾</text>
+    </g>
+    <g id="rail">
+      <path d="M72 60 L72 528" class="ln"/>
+      <text class="t-s" x="24" y="84">PROJ</text>
+      <text class="t-s" x="24" y="112">WORK</text>
+      <rect class="acc" x="18" y="126" width="52" height="24"/>
+      <text class="t-h" x="24" y="142">CHAT</text>
+      <text class="t-s" x="24" y="172">ATTN</text>
+      <text class="t-s" x="24" y="200">RES</text>
+    </g>
+    <g id="sidebar">
+      <path d="M262 60 L262 528" class="ln"/>
+      <text class="t-h" x="84" y="82">NEEDS YOU</text>
+      <rect class="acc" x="226" y="71" width="26" height="14"/>
+      <text class="t-a" x="234" y="82">2</text>
+      <rect class="sub" x="84" y="90" width="168" height="30"/>
+      <text class="t-s" x="92" y="103">em · approve merge?</text>
+      <text class="t-s" x="92" y="115">4m ago</text>
+      <rect class="sub" x="84" y="124" width="168" height="30"/>
+      <text class="t-s" x="92" y="137">coder · which branch?</text>
+      <text class="t-s" x="92" y="149">12m ago</text>
+      <text class="t-h" x="84" y="180">CHANNELS</text>
+      <rect class="sel" x="84" y="188" width="168" height="20"/>
+      <text class="t-b" x="92" y="202"># eng.feature</text>
+      <text class="t-b" x="92" y="226"># eng.questions</text>
+      <text class="t-b" x="92" y="248"># eng.decisions</text>
+      <text class="t-h" x="84" y="282">ON SHIFT</text>
+      <text class="t-b" x="92" y="304">● coder · working</text>
+      <text class="t-b" x="92" y="326">○ em · waiting on you</text>
+      <text class="t-b" x="92" y="348">○ reviewer · idle</text>
+    </g>
+    <g id="centre">
+      <path d="M704 60 L704 528" class="ln"/>
+      <text class="t-h" x="276" y="82"># ENG.FEATURE</text>
+      <rect class="acc" x="276" y="92" width="62" height="20"/>
+      <text class="t-h" x="284" y="106">STREAM</text>
+      <text class="t-s" x="352" y="106">BOARD</text>
+      <text class="t-s" x="400" y="106">BRIEF</text>
+      <text class="t-s" x="446" y="106">RESULTS</text>
+      <path d="M262 116 L704 116" class="ln1"/>
+      <text class="t-s" x="276" y="138">person</text>
+      <rect class="bar" x="276" y="144" width="300" height="8"/>
+      <text class="t-s" x="276" y="172">em · seat</text>
+      <rect class="bar" x="276" y="178" width="380" height="8"/>
+      <rect class="bar" x="276" y="190" width="240" height="8"/>
+      <text class="t-s" x="276" y="218">coder · seat · working…</text>
+      <rect class="sub" x="276" y="224" width="400" height="44"/>
+      <text class="t-s" x="286" y="240">tool call · run tests</text>
+      <text class="t-s" x="286" y="256">approval card · in the stream</text>
+      <rect class="pane" x="276" y="488" width="414" height="28"/>
+      <text class="t-s" x="286" y="506">post to # eng.feature…</text>
+      <rect class="acc" x="646" y="492" width="38" height="20"/>
+      <text class="t-a" x="652" y="506">SEND</text>
+    </g>
+    <g id="inspector">
+      <text class="t-h" x="716" y="82">RUN INSPECTOR</text>
+      <text class="t-b" x="716" y="104">coder · kind coder</text>
+      <rect class="acc" x="716" y="112" width="70" height="16"/>
+      <text class="t-a" x="722" y="124">RUNNING</text>
+      <text class="t-s" x="716" y="148">started 3m ago · turn 4</text>
+      <text class="t-h" x="716" y="176">STEP</text>
+      <rect class="bar" x="716" y="184" width="190" height="8"/>
+      <text class="t-h" x="716" y="214">TOOL CALLS</text>
+      <rect class="sub" x="716" y="222" width="196" height="22"/>
+      <rect class="sub" x="716" y="248" width="196" height="22"/>
+      <rect class="sub" x="716" y="274" width="196" height="22"/>
+      <text class="t-s" x="716" y="316">open full trace in devtool ↗</text>
+    </g>
+  </g>
+
+  <g id="notes">
+    <rect class="note" x="16" y="540" width="908" height="70"/>
+    <text class="t-n" x="28" y="558">Fixed by the epic: four regions (rail · sidebar · centre · inspector); the five destinations always one click away; the sidebar's three sections;</text>
+    <text class="t-n" x="28" y="574">the four centre surfaces as tabs on the open channel; the inspector follows the selected seat or run. Placement, proportions, type and density are Claude Design's.</text>
+    <text class="t-n" x="28" y="590">Ochre marks where the ticket's yellow accent applies: the active destination and tab, counts that need you, a running state, the primary action.</text>
+    <text class="t-n" x="28" y="604">Ground is beige, ink and rules black, hard edges (brutalist). Adjacent to the Paperclip / Grok Bot layout, not a copy of either.</text>
+  </g>
+</svg>

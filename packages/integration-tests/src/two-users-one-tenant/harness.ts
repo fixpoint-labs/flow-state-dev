@@ -55,6 +55,12 @@ export type TwoUserServerOptions = {
    * which transport a request arrived on.
    */
   adapters?: InboundTransportAdapter[];
+  /**
+   * The organization the resolver names for every caller. Defaults to
+   * {@link ORG_ID}. `null` stands in for an app whose resolver verifies the
+   * user but names no organization.
+   */
+  orgId?: string | null;
 };
 
 /**
@@ -64,6 +70,7 @@ export async function startTwoUserServer(
   flows: FlowInstance[],
   options: TwoUserServerOptions = {}
 ): Promise<TwoUserServer> {
+  const orgId = options.orgId === undefined ? ORG_ID : options.orgId;
   const dir = await mkdtemp(join(tmpdir(), "fsd-two-users-"));
   const stores: SQLiteStoreRegistry = createSQLiteStores({ filename: join(dir, "store.db") });
   const registry = createFlowRegistry();
@@ -77,7 +84,8 @@ export async function startTwoUserServer(
       : { debugEndpointsEnabled: options.debugEndpointsEnabled }),
     resolvePrincipal: (context) => {
       const userId = context.request?.headers.get(USER_HEADER);
-      return userId == null || userId === "" ? null : { userId, orgId: ORG_ID };
+      if (userId == null || userId === "") return null;
+      return orgId === null ? { userId } : { userId, orgId };
     }
   });
   const handle: ServeHandle = await serve(router, {

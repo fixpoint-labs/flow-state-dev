@@ -639,6 +639,45 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     expect(groupA?.rawItems).toEqual([...polled, transientRoot]);
   });
 
+  it("keeps a refusal that persisted nothing, after the stream moved on", async () => {
+    // A transient action refused without touching the task (`{ ok: false }`)
+    // writes no item at all: its polled log is empty, and the only record of
+    // the refusal is the root trace its stream saw. Losing it would turn a
+    // visible refusal into "this request left no trace" (BR-15).
+    sendAction
+      .mockResolvedValueOnce({ request: { id: "req_a" } })
+      .mockResolvedValueOnce({ request: { id: "req_b" } });
+    const view = await act(async () => render(<DevToolPanel userId="u1" />));
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
+    });
+    const refusal = {
+      id: "a_root",
+      type: "block_trace",
+      transient: true,
+      output: { ok: false, error: "task is not claimable" },
+    };
+    streamMock.streamState = { requestId: "req_a", status: "completed", rawItems: [refusal] };
+    await act(async () => {
+      fireEvent.click(screen.getByText("row-stub"));
+      await Promise.all(rowAnswers);
+    });
+    // B takes the stream slot.
+    streamMock.streamState = { requestId: "req_b", status: "in_progress", rawItems: [] };
+    await act(async () => {
+      fireEvent.click(screen.getByText("row-stub"));
+      await Promise.all(rowAnswers);
+    });
+
+    requestsState.requests = [
+      { id: "req_a", status: "completed", items: [] },
+      { id: "req_b", status: "in_progress", items: [] },
+    ];
+    await act(async () => view.rerender(<DevToolPanel userId="u1" />));
+
+    expect(lastRowRequests.find((group) => group.requestId === "req_a")?.rawItems).toEqual([refusal]);
+  });
+
   it("does not give a just-dispatched request another request's stream log or status", async () => {
     // The stream can be on another request than the one just dispatched (a
     // replay holds the slot). The not-yet-listed request's group must not

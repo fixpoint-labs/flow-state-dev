@@ -1,0 +1,50 @@
+<svg viewBox="0 0 940 210" role="img" aria-label="One task across two attempts, left to right. Claim 1 clears the link. Gate 1, in run 1's session, writes the link to run 1. The attempt fails and the task waits to retry, still naming run 1. Claim 2 clears the link. Gate 2 writes run 2's link, which stays after the task completes. The link is absent only between a claim and the next gate."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .axis  { stroke:var(--rule); stroke-width:1.2; }
+    .tick  { stroke:var(--ink-3); stroke-width:1.2; }
+    .has   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .none  { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-c   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="210"/>
+
+  <g id="events">
+    <text class="t-lbl" x="16" y="28">THE TASK</text>
+    <line class="axis" x1="16" y1="60" x2="924" y2="60"/>
+    <line class="tick" x1="40" y1="50" x2="40" y2="70"/><text class="t-b" x="30" y="44">claim 1</text>
+    <line class="tick" x1="170" y1="50" x2="170" y2="70"/><text class="t-b" x="150" y="44">gate 1</text>
+    <line class="tick" x1="360" y1="50" x2="360" y2="70"/><text class="t-b" x="330" y="44">fails · re-pends</text>
+    <line class="tick" x1="520" y1="50" x2="520" y2="70"/><text class="t-b" x="500" y="44">claim 2</text>
+    <line class="tick" x1="650" y1="50" x2="650" y2="70"/><text class="t-b" x="630" y="44">gate 2</text>
+    <line class="tick" x1="820" y1="50" x2="820" y2="70"/><text class="t-b" x="792" y="44">completes</text>
+  </g>
+
+  <g id="link">
+    <text class="t-lbl" x="16" y="98">THE ROW'S RUN LINK</text>
+    <rect class="none" x="40" y="110" width="130" height="40" rx="4"/>
+    <text class="t-s" x="52" y="134">no run linked</text>
+    <rect class="has" x="170" y="110" width="350" height="40" rx="4"/>
+    <text class="t-c" x="184" y="134">run 1 · session S1 · request R1 · attempt 1</text>
+    <rect class="none" x="520" y="110" width="130" height="40" rx="4"/>
+    <text class="t-s" x="532" y="134">no run linked</text>
+    <rect class="has" x="650" y="110" width="274" height="40" rx="4"/>
+    <text class="t-c" x="664" y="134">run 2 · S2 · R2 · attempt 2</text>
+  </g>
+
+  <g id="reading">
+    <text class="t-s" x="16" y="182">A person opening the task after it failed, while it waits to retry, or after it completed sees the run</text>
+    <text class="t-s" x="16" y="198">that did that attempt. Only the gap from a claim to its run's start reads as no run linked.</text>
+  </g>
+</svg>

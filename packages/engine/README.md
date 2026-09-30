@@ -356,8 +356,11 @@ else.
 A configured resolver governs the flow's whole `/api/flows` surface, not only
 action calls: session CRUD, session state, resource content, request control,
 and the debug endpoints resolve a principal the same way, and additionally
-require that principal to own the session or request the URL addresses (`403`
-otherwise). Endpoints that span every flow (`GET /sessions`,
+require that principal to own the session or request the URL addresses. Another
+user's session or request is answered exactly as an id nobody has used (a
+`404`, or an empty `200` on a request stream resumed from a cursor), on every
+route that addresses an existing session or request. Creating a session is the
+exception: an id already in use answers `409`, whoever holds it. Endpoints that span every flow (`GET /sessions`,
 `GET /active-requests`) resolve through the host-level fallback and scope their
 results to the caller. Reached without one, they return rows from flows with no
 resolver of their own to any caller. Either way, a row owned by a flow instance
@@ -602,7 +605,8 @@ setFieldsIfStatus(
   id: string,
   fields: ConditionalRequestFields,
   allowedStatuses: readonly RequestStatus[],
-  updatedAt: number
+  updatedAt: number,
+  expectedIncarnation?: string
 ): Promise<ConditionalWriteResult>;
 ```
 
@@ -611,6 +615,12 @@ Both named types are exported from `@flow-state-dev/engine`. `ConditionalRequest
 **`isAbortRequested`** answers whether cancellation has been requested, without materializing the request. It runs on the heartbeat tick for the life of every request, so it **must be O(1) in item count** — reading the record and deserializing a growing item array turns a long run into quadratic work. Return `false` for an unknown request. Read the flag with `=== true`; it is `boolean | undefined`.
 
 **`setFieldsIfStatus`** applies `fields` only while the record's status is one of `allowedStatuses`, evaluating the predicate and the write as one atomic step. Three outcomes: `{ applied: true, status }` when the predicate held; `{ applied: false, status }` when a record exists outside the predicate; `{ applied: false, status: undefined }` when no record exists.
+
+**`expectedIncarnation` fences the write to one request.** A request id can be reused once retention deletes its record, so the record at `id` when you write may not be the one the caller checked. When `expectedIncarnation` is given, compare it with the stored record's incarnation, resolved with `resolveRequestIncarnation(record)` (exported from `@flow-state-dev/engine`), and when they differ report the record as absent, `{ applied: false, status: undefined }`, and write nothing. Do the comparison inside the same atomic step as the status check.
+
+Resolve the stored side with the helper rather than reading `record.incarnation` directly. Records written before incarnations existed have none, and the helper gives them a stable value derived from `createdAt`. If your store has to state the rule in its own query language, the derived form is `legacy_` followed by `createdAt` in decimal, used when `incarnation` is absent or `null`.
+
+Don't compare `createdAt` instead. Two requests under one id can be created in the same millisecond, and a retry by the same owner rewrites `createdAt` on a request that is still running.
 
 Do not implement it as a version CAS. Terminal transitions persist `version` **unchanged**, so a version-checked write still validates after a terminal commit and resurrects a dead record. The predicate has to read status.
 

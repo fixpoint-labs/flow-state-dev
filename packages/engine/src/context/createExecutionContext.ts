@@ -85,6 +85,7 @@ import {
   resolveUserStorageKey,
   resolveOrgStorageKey,
   resolveLineageId,
+  resolveRequestIncarnation,
   resolveResourceIsolation,
   resolveResourceScopeId,
   resolveSessionStorageKey,
@@ -108,6 +109,7 @@ import {
   type RequestPrincipal
 } from "./request-principal";
 import { refuseInstancePin } from "./instance-pin";
+import { sessionRequestScope } from "./session-request-scope";
 import { ownerKeyMaySeed } from "../resources/owner-private";
 import {
   outputItemToSessionItem,
@@ -573,8 +575,9 @@ export async function createExecutionContext<
   // content/resource-state `scopeId`, so two tenants sharing a session id never
   // collide. The bare `sessionId` is preserved for the public identity
   // (`ctx.session.identity.id`), emitted events, and the request record's
-  // (bare) `sessionId` field; request history isolates by the `tenantId` filter
-  // instead of a namespaced field.
+  // (bare) `sessionId` field; request history isolates by the session's
+  // request scope (`sessionRequestScope`, tenant included) instead of a
+  // namespaced field.
   const sessionKey = resolveSessionStorageKey(sessionId, options.tenantId);
 
   // Storage keys — namespaced by the resolved INSTANCE id when the flow opts
@@ -650,11 +653,12 @@ export async function createExecutionContext<
     // `orderBy:"startedAtMs"` makes the windowed selection robust to
     // out-of-order metadata writes. `items` reconstruct cross-turn history.
     stores.request.list({
-      sessionId,
-      // Always pass the tenant (possibly undefined) so history exact-matches
-      // this tenant and never crosses into another tenant's requests for the
-      // same bare session id (FIX-682).
-      tenantId: options.tenantId,
+      // The same filter as the session's reads; see `sessionRequestScope`.
+      ...sessionRequestScope(
+        sessionId,
+        loadedSession ?? { userId, orgId: options.orgId, flowKind: flow.kind, flowId: flow.id },
+        options.tenantId
+      ),
       status: "completed",
       limit: historyWindowTurns,
       orderBy: "startedAtMs",
@@ -1439,7 +1443,13 @@ export async function createExecutionContext<
     // reusing its id) keeps the last-write-wins overwrite it always had. The
     // same fence the transport host applies to its enqueue-time stub, and
     // another principal's record is refused the same way.
-    await claimRequestRecord(stores, flow, requestRecord as RequestRecord);
+    // The record as written: a same-owner hand-off carries the incarnation
+    // the store already held, and this context must run as that request.
+    requestRecord = (await claimRequestRecord(
+      stores,
+      flow,
+      requestRecord as RequestRecord
+    )) as typeof requestRecord;
   } else if (requestRecord.source === undefined) {
     // Pre-FIX-438 records read from a store that hasn't been migrated
     // default to the HTTP source. New writes always carry the field.
@@ -2490,6 +2500,10 @@ export async function createExecutionContext<
         orgId: orgRef.current?.orgId,
         tenantId: options.tenantId
       },
+      // Read from the record this context claimed or adopted, never minted
+      // here: a retry, a resume or a queued run is the same request only if
+      // it reads the same value.
+      incarnation: resolveRequestIncarnation(requestRef.current),
       get tokenUsage() {
         return computeTokenUsage();
       },

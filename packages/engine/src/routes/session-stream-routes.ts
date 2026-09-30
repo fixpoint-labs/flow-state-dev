@@ -39,7 +39,7 @@
  *
  * The session the caller was checked against when the stream opened, and
  * nothing else, however long the connection lasts. Requests are read under
- * that session's tenant, owner and organization (`sessionRequestScope`, as the
+ * that session's tenant, owner, organization and flow (`sessionRequestScope`, as the
  * snapshot reads them), and runs under its tenant, owner and organization too.
  * After each read, before anything it found is sent, the session is read again:
  * if it is gone, or its id now holds another session (`isSameSession`), the
@@ -84,7 +84,6 @@ import {
   loadTenantSession,
   unknownSessionResponse,
   refuseUnattributedRecord,
-  sessionRequestScope,
   snapshotItemsOf,
   SSE_HEADERS
 } from "./route-utils";
@@ -95,6 +94,7 @@ import {
   type ParentIdentity
 } from "./child-session-routes";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
+import { sessionRequestScope } from "../context/session-request-scope";
 
 /**
  * The stream's clock. Module-level so a test can shorten it; not exported from

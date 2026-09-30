@@ -21,7 +21,12 @@ import {
   continueRequest as continueRequestImpl,
   type ContinueRequestResult
 } from "../../execution/request-continuation";
-import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
+import {
+  isSameSession,
+  resolveRequestIncarnation,
+  resolveSessionStorageKey,
+  tenantMatches
+} from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import {
@@ -42,7 +47,10 @@ import {
 } from "../../execution/logging";
 import {
   deregisterAbortController,
-  registerAbortController
+  registerAbortController,
+  replaceAbortController,
+  tagAbortController,
+  wasFiredOnlyFenced
 } from "../../execution/abort-registry";
 import { generateId } from "../../utils/generate-id";
 import {
@@ -65,7 +73,6 @@ import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
 import { CLI_SOURCE, INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
 import {
-  combineSignals,
   createInProcessDispatcher,
   isInProcessDispatcher,
   type InProcessDispatcher
@@ -178,14 +185,30 @@ function isRefusedAdmission(error: unknown): boolean {
   );
 }
 
+/**
+ * End a request whose run never started. With `expectedIncarnation`, only
+ * that request is ended: a record another request put under the id since is
+ * left alone. Without it, whatever holds the id is ended.
+ *
+ * The read and the write are separate calls, so a record replaced between
+ * them is still overwritten. The conditional store write cannot close that:
+ * it does not write `status`.
+ */
 async function terminateUnenqueuedRequest(
   stores: StoreRegistry,
   requestId: string,
-  status: "failed" | "aborted" = "failed"
+  status: "failed" | "aborted" = "failed",
+  expectedIncarnation?: string
 ): Promise<void> {
   try {
     const record = await stores.request.get(requestId);
     if (record === undefined || isTerminalRequestStatus(record.status)) return;
+    if (
+      expectedIncarnation !== undefined &&
+      resolveRequestIncarnation(record) !== expectedIncarnation
+    ) {
+      return;
+    }
     const now = Date.now();
     await stores.request.set(
       requestId,
@@ -649,16 +672,21 @@ export function createInboundTransportHost(
    * overwriting, and a lost race against this same owner (a retry reusing its
    * id) keeps the existing record and re-stamps it, which is the
    * last-write-wins hand-off it always was.
-   * Resolves `true` once the entry is this dispatch's to keep warm and to
-   * remove on exit.
+   * Resolves once the entry is this dispatch's to keep warm and to remove on
+   * exit.
    *
    * @param admitted The session `admitOwnership` read and admitted, if any.
+   * @param onClaimed Called with the claimed record's incarnation (a hand-off
+   *   keeps the holder's) the moment the record is claimed, before any later
+   *   await: from then on the record is visible and cancellable, so a
+   *   controller registered before it must carry the incarnation by then.
    */
   const materializeOwned = async (
     flow: FlowInstance,
     dispatchEnvelope: DispatchEnvelope,
     admitted: SessionRecord | undefined,
-    entry: Omit<Parameters<typeof stores.activeRequests.register>[0], "flowKind" | "flowId">
+    entry: Omit<Parameters<typeof stores.activeRequests.register>[0], "flowKind" | "flowId">,
+    onClaimed?: (incarnation: string) => void
   ): Promise<void> => {
     const record = createInitialRequestRecord(
       { ...dispatchEnvelope, flowKind: flow.kind, flowId: flow.id },
@@ -666,7 +694,8 @@ export function createInboundTransportHost(
     );
     // Owner-fenced on both axes: another flow instance's or another user's
     // record under this id is never overwritten or re-parented.
-    await claimRequestRecord(stores, flow, record);
+    const claimed = await claimRequestRecord(stores, flow, record);
+    onClaimed?.(resolveRequestIncarnation(claimed));
     // A request under a child session moves the child's update time here,
     // where the request is first recorded as working, and not when its run
     // starts: the run can wait behind a concurrency key, or in an external
@@ -819,6 +848,10 @@ export function createInboundTransportHost(
     // gives back holds its key until the process restarts.
     let held: ConcurrencyAdmission | undefined =
       upFront === undefined || isPendingAdmission(upFront) ? undefined : upFront;
+    // The incarnation of the request this dispatch claimed, once it has.
+    // Every terminal write below is for that request, not for whatever holds
+    // the id by the time the write happens.
+    let claimedIncarnation: string | undefined;
     /**
      * Take the admission, unless it was taken up front, and continue with it.
      * Continues synchronously when it already is, so the in-memory default
@@ -853,7 +886,7 @@ export function createInboundTransportHost(
       if (held === undefined) throw error;
       await held.release();
       if (!isRefusedAdmission(error)) {
-        await terminateUnenqueuedRequest(stores, requestId);
+        await terminateUnenqueuedRequest(stores, requestId, "failed", claimedIncarnation);
       }
       throw error;
     };
@@ -922,26 +955,25 @@ export function createInboundTransportHost(
         void inProcessAccepted.catch(() => {});
 
         /**
-         * `cancellation` is a signal the run must inherit rather than merely be
-         * checked against. The queued branch holds one: an abort that lands
-         * between its pre-start check and `runAction`'s own
-         * `registerAbortController` would otherwise be thrown away, because
-         * `runAction` mints a fresh controller and overwrites the one that was
-         * aborted. Threading it makes the handoff atomic — there is one signal
-         * from enqueue to completion, so the abort cannot fall between two
-         * registrations no matter when it lands (FIX-1077).
+         * `abortHandoff` is a controller the run must take over rather than
+         * merely be checked against. The queued branch holds one: an abort that
+         * lands between its pre-start check and `runAction`'s own registration
+         * would otherwise be thrown away, because `runAction` would register a
+         * fresh controller over the one that was aborted. Handing the controller
+         * itself over makes the handoff atomic, so the abort cannot fall between
+         * two registrations no matter when it lands (FIX-1077). It is the
+         * controller and its incarnation, not its signal, so the run can still
+         * tell a cancel for another request under the id from its own.
          */
-        const startRun = (cancellation?: AbortSignal): Promise<ExecutionResult> => {
-          const signal =
-            cancellation === undefined
-              ? envelope.signal
-              : envelope.signal === undefined
-                ? cancellation
-                : combineSignals(envelope.signal, cancellation);
+        const startRun = (abortHandoff?: {
+          controller: AbortController;
+          incarnation?: string;
+        }): Promise<ExecutionResult> => {
           const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
             dispatchEnvelope,
             {
-              signal,
+              signal: envelope.signal,
+              abortHandoff,
               responseEmitter,
               effectiveRuntimeConfig: {
                 ...dispatchRuntimeConfig,
@@ -982,7 +1014,7 @@ export function createInboundTransportHost(
           // last-write-wins hand-off the enqueue-time record already uses, so this
           // adds a window rather than a second registry to keep in sync. The
           // `finally` below removes it on every exit, started or not.
-          const queuedAbort = registerAbortController(requestId);
+          let queuedAbort = registerAbortController(requestId);
           // A `queue` run's start is deferred behind the key, so `dispatchLocal`
           // (which registers `activeRequests` and writes the request record) has
           // not run when this handle is returned. Materialize a discoverable
@@ -1010,6 +1042,12 @@ export function createInboundTransportHost(
                 metadata: dispatchEnvelope.metadata,
                 startedAt: ts,
                 lastHeartbeatAt: ts
+              }, (incarnation) => {
+                // Until its record is claimed this controller belongs to no known
+                // request, so an abort fenced on one does not fire it. Tagged the
+                // moment the record exists, because a cancel can land from then on.
+                claimedIncarnation = incarnation;
+                tagAbortController(requestId, queuedAbort, incarnation);
               }))
             )
             .then(() => {
@@ -1066,9 +1104,67 @@ export function createInboundTransportHost(
               // budget spent, or a shared backend unreachable mid-wait — never
               // started it, and leaves the stub for this dispatch to settle.
               let started = false;
+              // A fired controller is decided once: is it a cancel of the
+              // request this dispatch claimed, or a fenced fire for that request
+              // after another request took the id? A fenced fire is for the
+              // request this dispatch claimed. If another request has taken the
+              // id since, that fire is not its cancel: the run adopts it and
+              // starts on an unfired controller, and its own start read settles
+              // any cancel recorded on it. An unfenced fire (shutdown) stops
+              // whatever holds the id.
+              let handoffIncarnation = claimedIncarnation;
+              let cancelFence: string | undefined;
+              let decided: { controller: AbortController; outcome: Promise<boolean> } | undefined;
+              const isCancelled = (): Promise<boolean> => {
+                if (decided?.controller === queuedAbort) return decided.outcome;
+                const fired = queuedAbort;
+                const outcome = (async () => {
+                  const holder = await stores.request.get(requestId).catch(() => undefined);
+                  const heldByAnother =
+                    holder !== undefined &&
+                    claimedIncarnation !== undefined &&
+                    resolveRequestIncarnation(holder) !== claimedIncarnation;
+                  const fencedOnly = wasFiredOnlyFenced(fired);
+                  if (holder !== undefined && heldByAnother && fencedOnly) {
+                    handoffIncarnation = resolveRequestIncarnation(holder);
+                    queuedAbort = replaceAbortController(requestId, fired, handoffIncarnation);
+                    watchWhileQueued();
+                    return false;
+                  }
+                  cancelFence = fencedOnly ? claimedIncarnation : undefined;
+                  return true;
+                })();
+                decided = { controller: fired, outcome };
+                return outcome;
+              };
+              // On a shared backend a place still in line is renewed for as
+              // long as this process waits on it, so a cancel is acted on as it
+              // lands: the wait is withdrawn, the place given back, and the stub
+              // settled below, rather than all of it waiting for the turn.
+              const withdrawn = new AbortController();
+              const onQueuedAbort = (): void => {
+                void isCancelled().then((cancelled) => {
+                  if (cancelled && !started) withdrawn.abort();
+                });
+              };
+              const watchWhileQueued = (): void => {
+                // In memory the turn-time check below is the only one, as it
+                // always was: a place there is not renewed while it waits.
+                if (started || !arbiter.arbitratesAcrossProcesses) return;
+                if (queuedAbort.signal.aborted) onQueuedAbort();
+                else queuedAbort.signal.addEventListener("abort", onQueuedAbort, { once: true });
+              };
+              watchWhileQueued();
+              const cancelledBeforeStart = async (): Promise<never> => {
+                await terminateUnenqueuedRequest(stores, requestId, "aborted", cancelFence);
+                throw new Error(
+                  `Request "${requestId}" was cancelled before it left the concurrency queue`
+                );
+              };
               // Set by now: materialization runs only once admitted.
               return held!.run(async () => {
                 started = true;
+                queuedAbort.signal.removeEventListener("abort", onQueuedAbort);
                 // `runAction` re-registers and starts its own heartbeat timer from
                 // here, so the host's stewardship of the entry ends exactly here.
                 stopQueuedHeartbeat();
@@ -1083,29 +1179,19 @@ export function createInboundTransportHost(
                 // corrupting outcome rather than an untidy one, so the wait is
                 // registered (above) and the decision is re-read here, at the last
                 // moment before anything runs (FIX-1077).
-                if (queuedAbort.signal.aborted) {
-                  await terminateUnenqueuedRequest(stores, requestId, "aborted");
-                  throw new Error(
-                    `Request "${requestId}" was cancelled before it left the concurrency queue`
-                  );
+                if (queuedAbort.signal.aborted && (await isCancelled())) {
+                  return cancelledBeforeStart();
                 }
                 // The check above is not sufficient on its own and is not meant to
-                // be: an abort landing after it would be lost, because `runAction`
-                // registers a fresh controller over this one. Handing the signal
-                // down is what closes that gap — the check short-circuits the run
-                // entirely when the decision is already made, and the signal
-                // carries it when it is made a moment later.
-                return startRun(queuedAbort.signal);
-                // Handed to the wait as well: on a shared backend a cancel
-                // withdraws the place now rather than at its turn, so the line
-                // behind it moves and the stub settles `aborted` below.
-              }, queuedAbort.signal).catch(async (error: unknown) => {
-                if (!started && queuedAbort.signal.aborted) {
-                  await terminateUnenqueuedRequest(stores, requestId, "aborted");
-                  throw new Error(
-                    `Request "${requestId}" was cancelled before it left the concurrency queue`
-                  );
-                }
+                // be: an abort landing after it would be lost if `runAction`
+                // registered a fresh controller over this one. Handing the
+                // controller down is what closes that gap: the check
+                // short-circuits the run entirely when the decision is already
+                // made, and the controller carries it when it is made a moment
+                // later, along with whom it was made for.
+                return startRun({ controller: queuedAbort, incarnation: handoffIncarnation });
+              }, withdrawn.signal).catch(async (error: unknown) => {
+                if (!started && withdrawn.signal.aborted) return cancelledBeforeStart();
                 // The stub is this dispatch's own by now — materialization
                 // succeeded before the gate opened — so a refusal raised by the
                 // RUN (the loser of a session create race, checked in
@@ -1115,10 +1201,15 @@ export function createInboundTransportHost(
                 // sweeper. Only the admission-time refusal, handled above, found
                 // a record that was never ours. A session another user created
                 // under the id while the run waited is refused the same way, and
-                // the stub it leaves is ours to settle, as is the stub of a run
-                // whose wait failed before its turn came.
-                if (
-                  !started ||
+                // the stub it leaves is ours to settle.
+                //
+                // A wait that failed before its turn (the budget spent, a shared
+                // backend unreachable) means no run started, so it ends only the
+                // request this dispatch claimed. A binding refusal comes from the
+                // run, which adopted whatever held the id, so it ends that.
+                if (!started) {
+                  await terminateUnenqueuedRequest(stores, requestId, "failed", claimedIncarnation);
+                } else if (
                   error instanceof FlowInstanceBindingMismatchError ||
                   error instanceof UserBindingMismatchError
                 ) {
@@ -1212,6 +1303,8 @@ export function createInboundTransportHost(
               startedAt: ts,
               lastHeartbeatAt: ts,
               queuedAt: ts
+            }, (incarnation) => {
+              claimedIncarnation = incarnation;
             }))
           )
           .then(async () => {

@@ -137,11 +137,31 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   /**
    * Bare tenant id this request ran under (FIX-682). `sessionId` stays bare;
    * isolation of cross-turn history comes from filtering `request.list` by
-   * (`sessionId`, `tenantId`) rather than from namespacing the `sessionId`
-   * field — which keeps request recovery a clean pass-through. Undefined for
+   * the session's request scope (`sessionRequestScope`: `sessionId`,
+   * `tenantId`, owner, organization and flow) rather than from namespacing the
+   * `sessionId` field — which keeps request recovery a clean pass-through. Undefined for
    * single-tenant requests.
    */
   tenantId?: string;
+  /**
+   * Which request this record is, among every request that has held its id.
+   *
+   * **Minted, not derived**, like {@link SessionRecord.lineageId}: a random
+   * token stamped once, when the record is first created
+   * (`createInitialRequestRecord`), and carried unchanged by every later write.
+   * The same-owner hand-off in `claimRequestRecord` keeps the stored value
+   * rather than writing its own. A request id is the caller's to choose and
+   * can be reused once retention deletes its record; the record created in its
+   * place gets a new token, so anything keyed on it (a run workspace) does not
+   * carry over. `createdAt` cannot do this job: two records can share a
+   * millisecond.
+   *
+   * Absent on records written before this field existed. Read it through
+   * `resolveRequestIncarnation` (`stores/scope-keys.ts`), which derives a
+   * stable value for those from `createdAt`, under a prefix no minted token
+   * uses (BP-030). Surfaced to blocks as `ctx.request.incarnation`.
+   */
+  incarnation?: string;
   /**
    * Provenance of the inbound transport that produced this request.
    * Set from `InboundRequestEnvelope.source` (FIX-438). Open string —
@@ -191,6 +211,7 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
  * that are not a plain part of the record body:
  *
  * - `id` / `version` / `createdAt` — identity and CAS bookkeeping, owned by `set`.
+ * - `incarnation` — identity, written once when the record is created.
  * - `state` — has its own versioned verbs (`patchField` / `incField` / `pushToArray`).
  * - `items` — lives in a child table on the persistent adapters, written via `persistItems`.
  * - `updatedAt` — supplied as an explicit argument, mirroring the delta verbs.
@@ -205,6 +226,7 @@ export type ConditionalRequestFields = Partial<
     | "id"
     | "version"
     | "createdAt"
+    | "incarnation"
     | "updatedAt"
     | "state"
     | "items"
@@ -691,19 +713,26 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * An empty `allowedStatuses` matches nothing, and an absent record is never
    * a match — see {@link ConditionalWriteResult} for the three outcomes.
    *
-   * `expectedCreatedAt`, when given, fences the write to the record a caller
-   * already read: a record at `id` with a different `createdAt` is a different
-   * request (the id was deleted and taken again), and is reported exactly as
-   * an absent one, `{ applied: false, status: undefined }`, with nothing
-   * written. A caller that checked who owns the record passes it, so the write
-   * cannot land on a record that check never saw.
+   * `expectedIncarnation`, when given, fences the write to the request a
+   * caller already read: a record at `id` whose incarnation differs is a
+   * different request (the id was deleted and taken again), and is reported
+   * exactly as an absent one, `{ applied: false, status: undefined }`, with
+   * nothing written. A caller that checked who owns the record passes that
+   * record's `resolveRequestIncarnation(record)`, so the write cannot land on a
+   * record that check never saw.
+   *
+   * The store compares it with the stored record's incarnation resolved the
+   * same way — its `incarnation`, or `legacy_<createdAt>` when that is absent or
+   * null — inside the same atomic step as the status check. Never compare
+   * `createdAt`: two requests under one id can share a millisecond, and a
+   * same-owner hand-off rewrites it while keeping the incarnation.
    */
   setFieldsIfStatus(
     id: string,
     fields: ConditionalRequestFields,
     allowedStatuses: readonly RequestStatus[],
     updatedAt: number,
-    expectedCreatedAt?: number
+    expectedIncarnation?: string
   ): Promise<ConditionalWriteResult>;
 
   /**

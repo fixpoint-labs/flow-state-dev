@@ -21,7 +21,7 @@ import {
   withRequestSourceDefault,
   withStoredAbortRequested
 } from "../shared";
-import { matchesOrgFilter, matchesTenantFilter } from "../scope-keys";
+import { matchesOrgFilter, matchesTenantFilter, resolveRequestIncarnation } from "../scope-keys";
 import { compareRequestsForListing } from "../list-order";
 import { pollEvents } from "../subscribe-helpers";
 import { appendFile, readdir, readFile, rm, stat } from "node:fs/promises";
@@ -391,7 +391,7 @@ export class FilesystemRequestStore implements RequestStore {
     fields: ConditionalRequestFields,
     allowedStatuses: readonly RequestStatus[],
     updatedAt: number,
-    expectedCreatedAt?: number
+    expectedIncarnation?: string
   ): Promise<ConditionalWriteResult> {
     const { abortRequested, ...recordFields } = fields;
     let found: RequestStatus | undefined;
@@ -407,7 +407,10 @@ export class FilesystemRequestStore implements RequestStore {
     await this.store.update(id, async (current) => {
       found = current.status;
       // Another record under the same id is not the one the caller checked.
-      if (expectedCreatedAt !== undefined && current.createdAt !== expectedCreatedAt) {
+      if (
+        expectedIncarnation !== undefined &&
+        resolveRequestIncarnation(current) !== expectedIncarnation
+      ) {
         otherRecord = true;
         return current;
       }

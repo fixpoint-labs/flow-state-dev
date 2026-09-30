@@ -350,6 +350,31 @@ describe("C4 · the organization boundary on the management surface", () => {
       expect(owner.status).toBe(409);
     });
 
+    it("answers another user's unattributed request, on its status read, as an unused id", async () => {
+      // As for a session: the refusal is the owner's to hear.
+      const { router, stores } = buildRouter([twoAxisFlow()]);
+      await seedRequest(stores, { id: "legacy", flowKind: "secure", userId: "dana" });
+
+      const other = await call(router, "GET", ["secure", "requests", "legacy", "status"], {
+        user: "erin",
+        org: "acme"
+      });
+      const unused = await call(router, "GET", ["secure", "requests", "unused", "status"], {
+        user: "erin",
+        org: "acme"
+      });
+      expect(other.status).toBe(404);
+      expect(await other.json()).toEqual({ error: 'Request "legacy" not found' });
+      expect(unused.status).toBe(404);
+      expect(await unused.json()).toEqual({ error: 'Request "unused" not found' });
+
+      const owner = await call(router, "GET", ["secure", "requests", "legacy", "status"], {
+        user: "dana",
+        org: "acme"
+      });
+      expect(owner.status).toBe(409);
+    });
+
     it("leaves the unattributed record untouched after refusing it", async () => {
       const { router, stores } = buildRouter([twoAxisFlow()]);
       await seedSession(stores, { id: "legacy", flowKind: "secure", userId: "dana" });

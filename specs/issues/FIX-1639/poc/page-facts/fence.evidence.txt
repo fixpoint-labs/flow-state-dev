@@ -1,0 +1,21 @@
+# fence.mts on main 07df7f9d0, run 2026-09-29
+
+$ CONTROL= pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/fence.mts
+external dispatcher (queue host)
+PASS  F1 key dispatch is enqueued  · error=none enqueued=1
+PASS  F2 id delivery refused external-dispatcher, nothing enqueued  · error=Block "deliver" could not dispatch to internal:"work": external-dispatcher — thi enqueued=0
+PASS  F3 from:true reply refused external-dispatcher  · error=Block "reply" could not dispatch to internal:"work": external-dispatcher — this  enqueued=0
+PASS  F4 webhook with sessionId into an existing session is enqueued  · status=202 enqueued-into-existing=true
+PASS  F5 worker-only consumer: from:true reply runs in process, not refused  · error=none reply-ran-in-sender=true enqueued=0
+ran in process: ["s_sender:from"]
+exit 0
+
+$ CONTROL=in-process pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/fence.mts
+CONTROL=in-process (every check must FAIL)
+FAIL  F1 key dispatch is enqueued  · error=none enqueued=0
+FAIL  F2 id delivery refused external-dispatcher, nothing enqueued  · error=none enqueued=0
+FAIL  F3 from:true reply refused external-dispatcher  · no queued job to consume
+FAIL  F4 webhook with sessionId into an existing session is enqueued  · status=202 enqueued-into-existing=false
+FAIL  F5 worker-only consumer: from:true reply runs in process, not refused  · no queued job to consume
+ran in process: ["s_sender:from","s_existing:id","s_existing:hook"]
+exit 1

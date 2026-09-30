@@ -138,6 +138,23 @@ export type JournalEntryInput = Omit<JournalEntry, "id" | "ts">;
 
 export type RequestScopeHandle<TState extends object = Record<string, unknown>> = {
   identity: ScopeIdentity;
+  /**
+   * Which request this is, among every request that has held its id.
+   *
+   * Stamped once when this request is first recorded; one request, one value
+   * for its whole life. A retry, a resume in another process, or a queued run
+   * picking up the record its host wrote all read the same value.
+   *
+   * A request id can be chosen by the caller, and once a request's record is
+   * deleted (session retention, for one) the same id can name a new request,
+   * from the same user or another one. `identity.id` alone cannot tell the two
+   * apart; this can. Anything keyed on a request id that outlives the request
+   * (a scratch directory, a cache) must key on this too, or the next request
+   * under that id inherits it.
+   *
+   * Opaque: compare it for equality, never parse it.
+   */
+  incarnation: string;
   state: Readonly<TState>;
   tokenUsage: TokenLedger;
   costEstimate: CostEstimate;

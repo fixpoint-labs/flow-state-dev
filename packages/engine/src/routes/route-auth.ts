@@ -33,6 +33,7 @@ import {
   loadTenantSession,
   refuseUnattributedRecord,
   unknownRequestResponse,
+  unknownRequestStreamResponse,
   unknownSessionResponse
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
@@ -96,19 +97,6 @@ export type RouteAuthResult = {
 const ALLOWED: RouteAuthResult = {};
 
 /**
- * The request-addressed routes that act on a request rather than read it:
- * re-enter it (retry, continue, resume) or stop it (abort). Each answers a
- * request the caller cannot reach with `unknownRequestResponse`, the answer
- * its handler gives an unused id.
- */
-const REQUEST_CONTROL_ROUTES: ReadonlySet<ParsedFlowRoute["kind"]> = new Set([
-  "retry_request",
-  "continue_request",
-  "resume_suspension",
-  "abort_request"
-]);
-
-/**
  * The not-found a session-addressed route answers for an id with no session
  * behind it, given for a session another user owns. The debug routes name a
  * missing session in their own error code; every other route shares
@@ -118,6 +106,24 @@ function hiddenSessionResponse(route: ParsedFlowRoute, sessionId: string): Respo
   return route.kind.startsWith("debug_")
     ? jsonResponse(404, { error: "session_not_found" })
     : unknownSessionResponse(sessionId);
+}
+
+/**
+ * The answer a request route gives an id with no request behind it, given for
+ * a request another user owns. Every request-addressed route has one: the
+ * stream's (which names an unknown flow first, and is an empty 200 for a
+ * resume cursor), and `unknownRequestResponse` for status, retry, continue,
+ * resume and abort.
+ */
+function hiddenRequestResponse(
+  request: Request,
+  route: ParsedFlowRoute,
+  registry: FlowRegistry,
+  requestId: string
+): Response {
+  return route.kind === "request_stream"
+    ? unknownRequestStreamResponse(request, route, registry)
+    : unknownRequestResponse(requestId);
 }
 
 /**
@@ -395,7 +401,19 @@ export async function authorizeManagementRoute(
       // carries the same `userId` — keeps that window authorized instead of
       // letting it through unchecked.
       const active = await ctx.stores.activeRequests.get(subject.requestId);
-      if (active === undefined) return ALLOWED;
+      if (active === undefined) {
+        // No record and no in-flight entry: nothing names an owner. The stream
+        // would still replay an event log that outlived its record (evicted
+        // by retention, or older than event cleanup), by id alone, to
+        // whoever asks. In an app that authenticates, no caller can be
+        // checked against a log with no owner, so it is answered as an id
+        // nobody has used, its owner included. Every other request route
+        // has nothing to serve without a record, and answers that itself.
+        if (route.kind === "request_stream") {
+          return { denied: unknownRequestStreamResponse(request, route, ctx.registry) };
+        }
+        return ALLOWED;
+      }
       const resolved = ownerFlowOf(ctx, active);
       if (resolved.denied !== undefined) pendingDenial = resolved.denied;
       governing = resolved.flow;
@@ -505,18 +523,12 @@ export async function authorizeManagementRoute(
       sessionHidden: true
     };
   }
-
-  // The routes that re-enter or stop a request answer another user's request
-  // as they answer an id nobody has used, for the same reason and, like the
-  // session above, ahead of the held refusal. The other request-addressed
-  // routes still answer 403 "not yours" below.
-  if (
-    subject.kind === "request" &&
-    REQUEST_CONTROL_ROUTES.has(route.kind) &&
-    owner !== undefined &&
-    principal.userId !== owner
-  ) {
-    return { denied: unknownRequestResponse(subject.requestId) };
+  // The same for every request-addressed route, reads and control alike: a
+  // request id travels in headers, bodies and URLs, so another user's is
+  // answered as an id nobody has used, a legacy one included (ahead of the
+  // held refusal, as for the session above).
+  if (subject.kind === "request" && owner !== undefined && principal.userId !== owner) {
+    return { denied: hiddenRequestResponse(request, route, ctx.registry, subject.requestId) };
   }
 
   // The caller has now proven who they are, so the held refusal costs nothing
@@ -525,8 +537,8 @@ export async function authorizeManagementRoute(
   if (pendingDenial !== undefined) return { denied: pendingDenial };
 
   if (owner !== undefined && principal.userId !== owner) {
-    // A request-addressed route still answers 403 "not yours"; its not-found
-    // shape is decided with the request routes, not here.
+    // Only a user-addressed route reaches here (sessions and requests were
+    // answered above): the path names someone else, and 403 says so.
     return {
       denied: jsonResponse(403, {
         error: "Caller is not the owner of the requested resource"

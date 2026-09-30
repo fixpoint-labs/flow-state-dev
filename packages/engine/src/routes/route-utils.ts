@@ -36,6 +36,7 @@ import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { normalizeResourceState } from "../resources/normalize-resource-state";
 import { sortItemsChronologically } from "../utils/sort";
+import { resolveRequestReplayCursor } from "../streaming/resume";
 
 export const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8"
@@ -134,6 +135,37 @@ export function unknownRequestResponse(requestId: string): Response {
 }
 
 /**
+ * What the request stream answers for an id with no request and no events
+ * behind it, and (from the route guard) for a request the caller may not
+ * read, so the two cannot be told apart. An unknown flow is named first, as
+ * the handler names it. Otherwise: without a resume cursor, a 404; with one,
+ * an empty 200, because a resuming client that already consumed the whole
+ * log is owed "nothing new" rather than a spurious 404.
+ */
+export function unknownRequestStreamResponse(
+  request: Request,
+  route: { flowKind: string; requestId: string },
+  registry: Pick<FlowRegistry, "get">
+): Response {
+  if (registry.get(route.flowKind) === undefined) {
+    return jsonResponse(404, {
+      error: `Unknown flow "${route.flowKind}"`
+    });
+  }
+  const cursor = resolveRequestReplayCursor({
+    requestId: route.requestId,
+    lastEventId: request.headers.get("last-event-id"),
+    startingAfter: new URL(request.url).searchParams.get("starting_after")
+  });
+  if (cursor.sequenceNumber === undefined) {
+    return jsonResponse(404, {
+      error: `Unknown request "${route.requestId}"`
+    });
+  }
+  return new Response("", { status: 200, headers: SSE_HEADERS });
+}
+
+/**
  * Whether the caller may act on `record` through a request-control route
  * (retry, continue, resume, abort). With a principal, the record must be that
  * principal's in the caller's tenant (`principalOwnsRequest`: user, tenant,
@@ -175,30 +207,6 @@ export function isCheckedSession(
 ): boolean {
   if (checked === undefined) return true;
   return checked !== null && isSameSession(checked, session);
-}
-
-/**
- * The request filter for what a session shows, in its snapshot and its
- * stream: requests made in it (by bare id) under its tenant, its owner and its
- * organization.
- *
- * Every request that runs in a session carries its owner and organization;
- * `createExecutionContext` refuses any other. A request record under the id
- * with another owner or organization is one that was refused there, or one an
- * earlier session under the same id left behind, and it is not this session's
- * to show. Every key is present, so an `undefined` tenant or organization
- * exact-matches unbound records rather than lifting the filter.
- *
- * @param sessionId The bare session id, as request records carry it.
- * @param session The session's own record, already read for the caller's tenant.
- * @param tenantId The caller's tenant.
- */
-export function sessionRequestScope(
-  sessionId: string,
-  session: SessionRecord,
-  tenantId: string | undefined
-): { sessionId: string; tenantId: string | undefined; userId: string; orgId: string | undefined } {
-  return { sessionId, tenantId, userId: session.userId, orgId: session.orgId ?? undefined };
 }
 
 // `extractBareTopic` now lives in core alongside `getPatternPrefix` /

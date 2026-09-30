@@ -27,7 +27,7 @@ Packages are ESM (`"type": "module"`), so every relative import in `dist` needs 
 
 Each publishable package's `build` runs `scripts/add-esm-extensions.mjs` after `tsc`, and CI re-checks the output with `--check`. The script rewrites only specifiers that already start with `./` or `../`; a bare specifier is left exactly as written, because rewriting one into a relative path is how `tsc-alias --resolve-full-paths` silently turned a cross-package re-export into a self-reference.
 
-The check that catches this class is not a dry run, a tarball listing, or `publint` — all three pass on broken output. It is installing the tarballs into an empty directory and importing each one.
+The check that catches this class is not a dry run, a tarball listing, or `publint` — all three pass on broken output. It is installing the tarballs into an empty directory and importing each one. CI does exactly that in the **Packed release installs and imports** job: `scripts/packed-install/run.mjs` packs every publishable package after `release:build`, installs them together into an empty ESM project, imports every entry point, starts a server from the installed copies, and serves DevTool's client assets from the installed `@flow-state-dev/devtool` the way `fsdev dev` does. Its `--control` step runs the same path against the pinned 0.1.1 core tarball and must see it fail. Run it locally after `pnpm release:build` with `node scripts/packed-install/run.mjs`.
 
 ## The publish must go through pnpm
 
@@ -42,6 +42,8 @@ Every release path builds through `release:build`, which is `packages:build` plu
 The two stay separate because `packages:build` is also the editor/typecheck input and the Vercel build step for `packages/ui` and `apps/kitchen-sink`, none of which want an app build. Publishing is the only caller that needs the assets, so publishing is what pays for them.
 
 The devtool package refuses to publish without them. Its `prepublishOnly` runs `scripts/check-assets.mjs`, which fails when `dist-client/index.html` is missing, so a release path that loses `build:assets` aborts rather than shipping a package whose `fsdev dev` throws. `pnpm publish` runs that hook before packing, and `changeset publish` calls `pnpm publish`.
+
+The hook covers the publish, not a pack: `pnpm pack` skips `prepublishOnly` and packs without the assets. The packed-install job above is what catches that before release. It runs `release:build`, installs the packed devtool and fails unless the installed copy serves its page, every script and stylesheet the page loads, and every asset those files reference.
 
 ```bash
 # What the tarball actually contains. `pnpm pack` takes no filter — `--filter` puts pnpm
@@ -102,20 +104,11 @@ npx publint ./packages/<name>
 npx @arethetypeswrong/cli --pack ./packages/<name>
 
 # The one that catches an unimportable package: install and import for real.
-# publint and the dry run both pass on output Node cannot load.
-# Import the package you packed — importing a different one proves nothing
-# about it, and it may well load as somebody else's dependency.
-PKG=<name>                      # workspace directory under packages/
-NAME=$(node -p "require('./packages/$PKG/package.json').name")
-OUT=$(mktemp -d)
-pnpm --dir "packages/$PKG" pack --pack-destination "$OUT"
-cd "$(mktemp -d)" && npm init -y >/dev/null && npm install "$OUT"/*.tgz
-node --input-type=module -e "import '$NAME'"
-
-# npm supplies the workspace dependencies of whatever you pack, so this reads
-# the LAST PUBLISHED version of them, not your branch. To prove a fix before it
-# is released, pack the package together with the dependencies it needs and
-# install them in one npm install.
+# publint and the dry run both pass on output Node cannot load. This packs all
+# publishable packages and installs them in ONE npm install, so each package's
+# workspace dependencies are your branch's tarballs, not the last published
+# version (it fails if npm pulls a registry copy instead).
+pnpm release:build && node scripts/packed-install/run.mjs
 
 # Ensure no stray debug code in dist
 grep -r 'console\.log\|debugger' packages/*/dist/ --include='*.js'

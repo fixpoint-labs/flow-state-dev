@@ -23,7 +23,7 @@ import {
   withRequestSourceDefault,
   withStoredAbortRequested
 } from "../shared";
-import { matchesOrgFilter, matchesTenantFilter } from "../scope-keys";
+import { matchesOrgFilter, matchesTenantFilter, resolveRequestIncarnation } from "../scope-keys";
 import { compareRequestsForListing } from "../list-order";
 import { BoundedQueue } from "../../utils/bounded-queue";
 import { StoreSubscriptionError } from "../../errors/store-subscription-error";
@@ -73,11 +73,14 @@ export class InMemoryRequestStore implements RequestStore {
     fields: ConditionalRequestFields,
     allowedStatuses: readonly RequestStatus[],
     updatedAt: number,
-    expectedCreatedAt?: number
+    expectedIncarnation?: string
   ): Promise<ConditionalWriteResult> {
     const current = this.records.get(id);
     if (current === undefined) return { applied: false, status: undefined };
-    if (expectedCreatedAt !== undefined && current.createdAt !== expectedCreatedAt) {
+    if (
+      expectedIncarnation !== undefined &&
+      resolveRequestIncarnation(current) !== expectedIncarnation
+    ) {
       return { applied: false, status: undefined };
     }
     if (!allowedStatuses.includes(current.status)) {

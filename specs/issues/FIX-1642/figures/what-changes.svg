@@ -1,0 +1,59 @@
+<svg viewBox="0 0 940 380" role="img" aria-label="Today: FIX-1639's own check follows its draft page on its own commit, and nothing ties the page to the code once it merges. After: one main commit carries four parts. Part 1, the page followed as written by one reader who cannot see the code, with the name scan, the fence on Redis on the reader's own host and four controls. Part 2, the terms and channel-or-board journeys. Part 3, only what part 1 does not walk of FIX-1639's check. Part 4, a four-item gap sweep. A finding is filed and sends the whole stack round again on a fresh commit. After the wrap, the name scan keeps running in CI."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-now { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; stroke-dasharray:5 4; }
+    .n-in  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-ci  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .commit { stroke:var(--ink-3); stroke-width:1.4; }
+    .dot   { fill:var(--ink-2); }
+    .loop  { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:4 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="380"/>
+
+  <g id="today">
+    <text class="t-lbl" x="24" y="30">TODAY</text>
+    <line class="commit" x1="24" y1="92" x2="916" y2="92"/>
+    <circle class="dot" cx="140" cy="92" r="4"/>
+    <text class="t-s" x="112" y="112">FIX-1639's commit</text>
+    <rect class="n-now" x="40" y="42" width="220" height="36" rx="5"/>
+    <text class="t-b" x="54" y="65">FIX-1639 · its draft, its fixture</text>
+    <circle class="dot" cx="620" cy="92" r="4"/>
+    <text class="t-s" x="560" y="112">a rename, later</text>
+    <text class="t-gone" x="660" y="72">nothing ties the page to the code</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="24" y="152">AFTER</text>
+    <line class="commit" x1="24" y1="340" x2="916" y2="340"/>
+    <circle class="dot" cx="300" cy="340" r="4"/>
+    <text class="t-s" x="252" y="360">one main commit</text>
+    <rect class="n-in" x="40" y="166" width="520" height="44" rx="5"/>
+    <text class="t-lbl" x="54" y="182">PART 1 · THE PAGE AS WRITTEN</text>
+    <text class="t-b" x="54" y="200">fresh reader · fixture · name scan · fence on Redis · controls</text>
+    <rect class="n-in" x="40" y="218" width="520" height="30" rx="5"/>
+    <text class="t-s" x="54" y="237">Part 2 · the terms and channel-or-board journeys</text>
+    <rect class="n-in" x="40" y="254" width="520" height="30" rx="5"/>
+    <text class="t-s" x="54" y="273">Part 3 · only what part 1 doesn't walk of FIX-1639's check</text>
+    <rect class="n-in" x="40" y="290" width="520" height="30" rx="5"/>
+    <text class="t-s" x="54" y="309">Part 4 · seams · not-done-if nouns · terms agree · verified caller</text>
+    <path class="loop" d="M560 305 C 600 305, 600 188, 560 188"/>
+    <text class="t-gone" x="604" y="250">a finding: filed, then</text>
+    <text class="t-gone" x="604" y="264">the whole stack again</text>
+    <rect class="n-ci" x="740" y="286" width="160" height="40" rx="5"/>
+    <text class="t-lbl" x="752" y="302">AFTER THE WRAP</text>
+    <text class="t-b" x="752" y="319">name scan in CI</text>
+  </g>
+</svg>

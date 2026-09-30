@@ -267,6 +267,18 @@ directory of files. `user` and `org` do not carry it: those scopes are shared
 across tenants by design, and a tenant segment would split the sharing they
 exist to provide.
 
+A `run` workspace belongs to one request, and its path also carries that
+request's incarnation, a token that identifies this particular request:
+`.fsdev/workspaces/run/<tenant>/<id>/<incarnation>/`. A retry or a resume of
+the same request lands in the same directory. Once the first request's record
+is deleted, for example by the flow's
+[session retention](/docs/configuration/flow#session), a new request that
+reuses the id gets a new, empty directory, whether it comes from another user
+in the tenant or from the same one.
+
+Directories from finished requests stay on disk. Nothing reads them again, so
+clean them up on whatever schedule suits you.
+
 `scope` and `cwd` are alternatives, not a pair. `cwd` names one directory, so a
 scope beside it would separate nothing while saying it does; setting both
 throws at construction.

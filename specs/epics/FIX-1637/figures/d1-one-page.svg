@@ -1,0 +1,113 @@
+<svg viewBox="0 0 940 478" role="img" aria-label="D1, decided by the owner: fold the config matrix and the terms into the page, or keep three children. Chosen: one page from one writer. Instead of: three children, three pages, as the PRD split them. It comes down to the first row: one writer describes the five features once, where three isolated writers describe them three ways and a reader finds the disagreements. The price is the second row: the fold overrides the owner's first split and the Architect's note, where the split honours both. Third row, a tie: every deliverable ships either way. Locks in FIX-1639 as the only writer, with FIX-1638 and FIX-1640 canceled as folded. Flips if the owner wants each deliverable reviewable on its own."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="478"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Fold the table and the terms into the page, or keep three children?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">One page, one writer</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Three children, three pages</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">FIVE FEATURES,</text>
+    <text class="t-lbl" x="32" y="169">HOW MANY WAYS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Described once</text>
+    <text class="t-s" x="248" y="179">the table and terms read against the page</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Described three ways</text>
+    <text class="t-s" x="612" y="179">three isolated drafts drift apart</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="224">THE OWNER'S</text>
+    <text class="t-lbl" x="32" y="237">SPLIT</text>
+    <text class="mark minus" x="228" y="226">−</text>
+    <text class="t-b" x="248" y="225">Overridden</text>
+    <text class="t-s" x="248" y="243">and the Architect's do-not-merge note</text>
+    <text class="mark plus" x="592" y="226">+</text>
+    <text class="t-b" x="612" y="225">Honoured as written</text>
+    <text class="t-s" x="612" y="243">no call to reverse</text>
+    <line class="row" x1="16" y1="254" x2="924" y2="254"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="282">WHAT SHIPS</text>
+    <text class="mark tie" x="228" y="284">=</text>
+    <text class="t-b" x="248" y="283">Guide, table, terms</text>
+    <text class="t-s" x="248" y="301">the table and terms as sections of one page</text>
+    <text class="mark tie" x="592" y="284">=</text>
+    <text class="t-b" x="612" y="283">Guide, table, terms</text>
+    <text class="t-s" x="612" y="301">the same three deliverables</text>
+    <line class="row" x1="16" y1="312" x2="924" y2="312"/>
+  </g>
+
+  <g id="row-4">
+    <text class="t-lbl" x="32" y="340">REVIEW COST</text>
+    <text class="mark plus" x="228" y="342">+</text>
+    <text class="t-b" x="248" y="341">One spec gate</text>
+    <text class="t-s" x="248" y="359">no cross-spec pass</text>
+    <text class="mark minus" x="592" y="342">−</text>
+    <text class="t-b" x="612" y="341">Three gates and a cross-spec pass</text>
+    <text class="t-s" x="612" y="359">for a small table and three terms</text>
+    <line class="row" x1="16" y1="370" x2="924" y2="370"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="388" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="409">LOCKS IN</text>
+    <text class="t-b" x="32" y="429">FIX-1639 is the only writer</text>
+    <text class="t-s" x="32" y="447">FIX-1638 and FIX-1640 canceled as folded</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="388" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="409">FLIPS IF</text>
+    <text class="t-b" x="494" y="429">The owner wants each deliverable reviewable alone</text>
+    <text class="t-s" x="494" y="447">e.g. for FIX-453 or a design partner</text>
+  </g>
+
+</svg>

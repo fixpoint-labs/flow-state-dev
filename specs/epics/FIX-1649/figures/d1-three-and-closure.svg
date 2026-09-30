@@ -1,0 +1,113 @@
+<svg viewBox="0 0 940 478" role="img" aria-label="D1: how to split the shell after the design hand-back added a task level. Chosen: split it, FIX-1662 carrying the frame, the sidebar and the project and workstream levels, and FIX-1664 the task level. Instead of: FIX-1662 carrying every level. It comes down to the first row, the size of a child: two reviewable specs, where the whole would be one spec of three levels, twelve tabs and two panel modes. Second row, the price: one more seam, the routes and the right panel slot from 1662 to 1664. Third row, a tie: the siblings own meaning either way. Fourth row: the task view builds after the frame lands, where the whole builds in one pass. One child per region or destination stays rejected. Locks in FIX-1664 blocked by FIX-1662 and blocking the closure. Flips if FIX-1664 spec finds the task level shares most of its reads with the workstream level."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 3; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="478"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 &#183; THE CALL</text>
+    <text class="t-q" x="32" y="52">The hand-back added a task level: split the shell there, or keep it one child?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Split: the task level is FIX-1664</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">FIX-1662 carries every level</text>
+  </g>
+
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">SIZE OF A</text>
+    <text class="t-lbl" x="32" y="169">CHILD</text>
+    <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Two reviewable specs</text>
+    <text class="t-s" x="248" y="179">frame and two levels; then the task level</text>
+    <text class="mark minus" x="592" y="162">&#8722;</text>
+    <text class="t-b" x="612" y="161">One spec past review size</text>
+    <text class="t-s" x="612" y="179">three levels, twelve tabs, two panel modes</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="224">SEAMS</text>
+    <text class="mark minus" x="228" y="227">&#8722;</text>
+    <text class="t-b" x="248" y="226">One more</text>
+    <text class="t-s" x="248" y="244">routes and the right panel's slot, 1662 to 1664</text>
+    <text class="mark plus" x="592" y="227">+</text>
+    <text class="t-b" x="612" y="226">None inside the shell</text>
+    <text class="t-s" x="612" y="244">only the token names, from 1655</text>
+    <line class="row" x1="16" y1="252" x2="924" y2="252"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="282">WHERE MEANING</text>
+    <text class="t-lbl" x="32" y="295">LIVES</text>
+    <text class="mark tie" x="228" y="285">=</text>
+    <text class="t-b" x="248" y="284">The siblings own it</text>
+    <text class="t-s" x="248" y="302">the shell only reaches and skins</text>
+    <text class="mark tie" x="592" y="285">=</text>
+    <text class="t-b" x="612" y="284">The siblings own it</text>
+    <text class="t-s" x="612" y="302">the same line, in one child</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+
+  <g id="row-4">
+    <text class="t-lbl" x="32" y="340">ORDER</text>
+    <text class="mark minus" x="228" y="343">&#8722;</text>
+    <text class="t-b" x="248" y="342">Task view builds after the frame</text>
+    <text class="t-s" x="248" y="360">its spec runs in parallel</text>
+    <text class="mark plus" x="592" y="343">+</text>
+    <text class="t-b" x="612" y="342">One build, one pass</text>
+    <text class="t-s" x="612" y="360">no hand-over between children</text>
+    <line class="row" x1="16" y1="368" x2="924" y2="368"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="388" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="409">LOCKS IN</text>
+    <text class="t-b" x="32" y="429">FIX-1664 blocked by 1662, blocks the closure</text>
+    <text class="t-s" x="32" y="447">one child per region stays rejected</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="388" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="409">FLIPS IF</text>
+    <text class="t-b" x="494" y="429">The task level shares most reads with a workstream</text>
+    <text class="t-s" x="494" y="447">then FIX-1664 folds back into FIX-1662</text>
+  </g>
+</svg>

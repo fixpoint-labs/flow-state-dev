@@ -1,0 +1,84 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="What changes. One new guide page, Keeping a flow running, placed at the top level of the guides nav directly above the Webhooks, Background work and Scheduled actions sections. The page runs in order: a webhook, a schedule, work that keeps going, a new session or an existing one with the queue-host fence, a channel or a board, where each setting lives, and terms. It links the reference pages and scheduler guides without rewriting them. Beside it, one-line edits: the notification source row in the guide and the architecture doc, the external-dispatcher refusal row, three link lines, and the epic-wake line in contributor docs. Below a fence, not built: making id work on a queue host, a Heartbeats noun, new nouns, the wake-exploration shapes, and a per-cloud deploy guide."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .nav   { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .step  { fill:var(--surface); stroke:var(--code); stroke-width:1; }
+    .fence-step { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; }
+    .edit  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .link  { fill:var(--surface); stroke:var(--rule); stroke-width:1; }
+    .no    { fill:none; stroke:var(--gone); stroke-width:1.2; stroke-dasharray:6 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-n   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-code{ fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-gone{ fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="nav">
+    <text class="t-lbl" x="16" y="26">THE GUIDES NAV</text>
+    <rect class="new" x="16" y="36" width="210" height="34" rx="5"/>
+    <text class="t-code" x="28" y="50">NEW · TOP LEVEL</text>
+    <text class="t-b" x="28" y="64">Keeping a flow running</text>
+    <rect class="nav" x="240" y="40" width="130" height="26" rx="4"/><text class="t-s" x="252" y="57">Webhooks</text>
+    <rect class="nav" x="380" y="40" width="130" height="26" rx="4"/><text class="t-s" x="392" y="57">Deployment</text>
+    <rect class="nav" x="520" y="40" width="140" height="26" rx="4"/><text class="t-s" x="532" y="57">Background work</text>
+    <rect class="nav" x="670" y="40" width="150" height="26" rx="4"/><text class="t-s" x="682" y="57">Scheduled actions</text>
+    <path class="arrow" d="M121 70 V88"/>
+  </g>
+
+  <g id="page">
+    <rect class="new" x="16" y="88" width="560" height="232" rx="6"/>
+    <text class="t-code" x="32" y="108">THE PAGE, IN ORDER</text>
+    <rect class="step" x="32" y="118" width="164" height="34" rx="4"/><text class="t-n" x="44" y="139">1 · A webhook</text>
+    <rect class="step" x="206" y="118" width="164" height="34" rx="4"/><text class="t-n" x="218" y="139">2 · A schedule</text>
+    <rect class="step" x="380" y="118" width="180" height="34" rx="4"/><text class="t-n" x="392" y="139">3 · Work that keeps going</text>
+    <rect class="fence-step" x="32" y="162" width="338" height="48" rx="4"/>
+    <text class="t-n" x="44" y="181">4 · A new session or an existing one</text>
+    <text class="t-s" x="44" y="199">key works · id and a colocated reply refused</text>
+    <rect class="step" x="380" y="162" width="180" height="48" rx="4"/><text class="t-n" x="392" y="190">5 · A channel or a board</text>
+    <rect class="step" x="32" y="220" width="300" height="34" rx="4"/><text class="t-n" x="44" y="241">Where each setting lives · flow, host, infra</text>
+    <rect class="step" x="342" y="220" width="218" height="34" rx="4"/><text class="t-n" x="354" y="241">Terms · wake, dispatch, tick</text>
+    <text class="t-s" x="32" y="280">Smallest working code per step, then a link to its reference.</text>
+    <text class="t-s" x="32" y="298">Every name checked against main; the fence run on the runtime.</text>
+  </g>
+
+  <g id="links">
+    <text class="t-lbl" x="596" y="108">LINKED, NOT REWRITTEN</text>
+    <rect class="link" x="596" y="118" width="328" height="92" rx="5"/>
+    <text class="t-s" x="610" y="138">Webhook receivers · Scheduled actions</text>
+    <text class="t-s" x="610" y="156">Schedule index · Dispatched work · Channels</text>
+    <text class="t-s" x="610" y="174">Work that outlives the turn · Task board</text>
+    <text class="t-s" x="610" y="192">Authentication · webhook and scheduler guides</text>
+  </g>
+
+  <g id="edits">
+    <text class="t-acc" x="596" y="232">ONE-LINE EDITS</text>
+    <rect class="edit" x="596" y="240" width="328" height="80" rx="5"/>
+    <text class="t-s" x="610" y="259">notification row · guide and architecture doc</text>
+    <text class="t-s" x="610" y="276">external-dispatcher refusal row · adds a reply</text>
+    <text class="t-s" x="610" y="293">three link lines to the new page</text>
+    <text class="t-s" x="610" y="310">epic-wake line · contributor docs only</text>
+  </g>
+
+  <g id="fence">
+    <line x1="16" y1="346" x2="924" y2="346" stroke="var(--gone)" stroke-width="1.4" stroke-dasharray="6 4"/>
+    <text class="t-gone" x="16" y="368">NOT BUILT HERE</text>
+    <rect class="no" x="16" y="378" width="908" height="76" rx="6"/>
+    <text class="t-s" x="32" y="400">id delivery on a queue host · FIX-1634, under FIX-1635</text>
+    <text class="t-s" x="32" y="420">a Heartbeats noun · new Channel, Board, Agent, Team or Outbox concepts</text>
+    <text class="t-s" x="32" y="440">wake-exploration shapes: route, subscribe, wakes, folder wake files, trust lanes · per-cloud deploy guides</text>
+  </g>
+</svg>

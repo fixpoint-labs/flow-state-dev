@@ -1830,11 +1830,17 @@ async function applyGeneratorResume(args: {
  * for the single `model.generate({ maxSteps })` call: drives up to
  * `maxSteps` single-step calls, executes framework tools between steps, and
  * returns a `GeneratorModelResult` shaped like the SDK-owned path's result
- * (final-step text/structuredOutput/toolCalls, aggregate usage, per-step
- * `steps`, sources accumulated across steps) so the caller's downstream
+ * (final-step structuredOutput/toolCalls, aggregate usage, per-step `steps`,
+ * sources accumulated across steps) so the caller's downstream
  * handling — candidate resolution, usage hook, source emission,
  * `tool_call_progress` synthesis, repair, final message emission — runs
- * unchanged.
+ * unchanged. A text turn's `text` is every step's text joined the way the
+ * streaming twin joins it (a blank line before a step that writes text after
+ * earlier text), so the same turn returns the same text streamed or not.
+ * Steps rebuilt on resume only seed the conversation, as in the streaming
+ * twin, so a resumed turn's text starts at its resumed step. A
+ * structured turn never streams and keeps the final step's text, so chatter
+ * before a tool call can't corrupt a JSON answer carried as text.
  */
 async function runOwnedGenerateLoop(params: {
   model: GeneratorModel;
@@ -1875,6 +1881,7 @@ async function runOwnedGenerateLoop(params: {
   let last: GeneratorModelResult | undefined;
   let identity: ModelIdentity | undefined;
   let activeToolNames: string[] | undefined;
+  let text = "";
 
   // Resume pre-phase (FIX-814): if this generator's owned loop recorded steps
   // on a prior run and a suspension under one of its tools is pending, rebuild
@@ -1922,6 +1929,9 @@ async function runOwnedGenerateLoop(params: {
     });
 
     last = step;
+    if (params.outputSchema === undefined && step.text) {
+      text += text.length > 0 ? `\n\n${step.text}` : step.text;
+    }
     if (step.resolvedIdentity !== undefined) {
       // Per-step identity stamping: tools executed after this step attribute
       // their `tool_output` to the model that actually issued the calls.
@@ -1990,7 +2000,7 @@ async function runOwnedGenerateLoop(params: {
   }
 
   return {
-    text: last?.text,
+    text: text.length > 0 ? text : last?.text,
     structuredOutput: last?.structuredOutput,
     toolCalls: remapStepToolCalls(last?.toolCalls, toolset),
     finishReason: last?.finishReason,

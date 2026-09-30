@@ -1,0 +1,12 @@
+# compile.mts on main 07df7f9d0, run 2026-09-29
+
+$ CONTROL= pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/compile.mts
+page code fences compile
+fences=4 errors=0
+exit 0
+
+$ CONTROL=unminted pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/compile.mts
+CONTROL=unminted (must FAIL)
+fences=4 errors=1
+FAIL  lib/flowstate.ts:9  Property 'id' is missing in type 'FlowType<{}, SessionConfig | undefined, RequestConfig | undefined, UserConfig | undefined, OrgConfig | undefined, Record<...>,
+exit 1

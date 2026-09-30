@@ -437,7 +437,11 @@ function PanelContent({ className }: { className?: string }) {
               req.items!,
               liveRawItems.get(req.id) ?? streamFor(req.id)?.rawItems ?? streamRawItems.get(req.id),
             )
-          : (liveRawItems.get(req.id) ?? streamFor(req.id)?.rawItems ?? req.items ?? []),
+          : (liveRawItems.get(req.id) ??
+            streamFor(req.id)?.rawItems ??
+            // A request that persisted nothing (a transient refusal) is not
+            // `settled`, yet its stream may have seen its only trace.
+            mergeRawItems(req.items ?? [], streamRawItems.get(req.id))),
         source: req.source,
         metadata: req.metadata,
       });
