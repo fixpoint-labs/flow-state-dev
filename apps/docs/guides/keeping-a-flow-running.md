@@ -14,7 +14,7 @@ started it has returned.
 ## Waking a flow from outside
 
 A flow can't start itself. Something outside it has to call your server, and your host turns
-that call into a run. That call is a *wake*, and it comes from a service sending a webhook or a
+that call into a run. That call is a *wake*. It usually comes from a service sending a webhook or a
 scheduler firing on a clock.
 
 ### A webhook
@@ -103,8 +103,8 @@ your scheduler calls that entry's dispatch endpoint when the time comes. The cal
 checked like any other request, usually with a shared secret that the flow's
 `authentication` compares against the request.
 
-Below is the same `billing` flow, shown with its schedule. Its `authentication` uses a shared
-bearer secret.
+Here `billing` runs only on a schedule, with no webhooks, so its `authentication` can be a
+shared bearer secret.
 
 ```ts title="flows/billing.ts"
 import {
@@ -139,10 +139,10 @@ On the host, add `createScheduledTransportAdapter()` from `@flow-state-dev/sched
 `Authorization: Bearer <the same secret>`. The endpoint answers `202` and the run continues
 after it.
 
-A flow that takes both webhooks and schedules keeps one `resolvePrincipal` and branches on
+To take webhooks and schedules in one flow, keep one `resolvePrincipal` and branch on
 `ctx.source`, as shown in
-[Authenticating dispatch](/docs/server/scheduled#authenticating-dispatch). Don't use the bearer
-resolver on its own there: it refuses every webhook delivery with a `401`.
+[Authenticating dispatch](/docs/server/scheduled#authenticating-dispatch). The bearer resolver
+on its own refuses every webhook delivery with a `401`.
 
 Schedules you create while the app runs, like a reminder a user sets, come from
 `schedules.resolve` instead of `schedules.static`. That is also how you do something later:
