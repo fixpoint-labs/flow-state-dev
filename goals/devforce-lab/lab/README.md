@@ -12,7 +12,7 @@ declared seat wakes a **different** declared seat, in its own flow instance, int
 a supervised coding run whose prompt was built out of that seat's own files. A
 third seat, declared on the same kind, is never reached.
 
-Three checks drive it. The first two differ by **one expression** — the harness
+Five checks drive it. The first two differ by **one expression** — the harness
 slot; the third adds the two ends of the path neither of them reaches:
 
 | | |
@@ -20,6 +20,8 @@ slot; the third adds the two ends of the path neither of them reaches:
 | [`../it-wakes-the-seat-a-file-declared/`](../it-wakes-the-seat-a-file-declared/) | The contract gate. A scripted stub in the slot, no model at all, every rule graded on what the plumbing carried. |
 | [`../it-commits-from-the-seats-own-file/`](../it-commits-from-the-seats-own-file/) | The honesty check. A real coding agent in that same slot, and the one leg a stub cannot reach — a commit the base ref does not have. |
 | [`../it-ships-an-artifact-a-person-can-open/`](../it-ships-an-artifact-a-person-can-open/) | The product check. A **post** is what starts the work, and the work is published to an address that outlives the run and judged against a condition the brief stated first. |
+| [`../it-keeps-its-rows-on-the-channels-board/`](../it-keeps-its-rows-on-the-channels-board/) | The board check. The feature channel holds the board its rows sit on, and a posted line ends as one completed row read back through the channel, the HTTP door and the organization's storage. No model. |
+| [`../it-waits-for-a-person-before-it-files/`](../it-waits-for-a-person-before-it-files/) | The approval check. With the ask turned on, the EM seat asks a person before it files a feature. Approve files the row and the coder starts; Deny files nothing. No model, and the answer goes through the session's own resume. |
 
 It is **evidence, not an application**. Nobody opens it and clicks through it;
 you re-run it a year from now and compare against the verdict logs in the two
@@ -102,6 +104,34 @@ release step rather than a second leg the lab carries. A proof that quietly ran
 the weaker leg and reported the stronger one would be worse than no proof, so the
 leg is named in the verdict rather than inferred from whether `gh` happened to be
 installed.
+
+## The ask
+
+Nothing in this tree asked a person anything, so an Inbox pointed at it had nothing to show.
+The EM seat now has a third door beside `file` and the channel post: it pauses on a stock
+approval before it files, and files only if a person approves. Deny files nothing and says so.
+
+The door is off unless the host asks for it. `openLab` takes the feature to ask about, turns on
+durable execution, and raises the ask once in the EM seat's own session, as the lab's person.
+Opening again over the same store finds the earlier ask, answered or not, and raises nothing;
+a denied feature stays denied until the store is fresh. The other checks don't ask for
+it, so they run exactly as before.
+
+A host that builds its own flow state instead of calling `openLab`, such as the `fsdev`
+config App Lab serves, turns on durable execution itself and calls the same step,
+`raiseAsk` in `ask.mts`, after it hires.
+
+```ts
+const lab = await openLab({
+  stores,
+  harness: stub.slot,
+  workspace,
+  coderSeatId,
+  ask: { issue: "search-bar", goal: "Add a search bar to the header" },
+});
+// The EM's session now holds one pending approval. Answer it through
+// POST /<em-seat>/requests/<requestId>/resume with "approve" or "reject".
+```
 
 ## What the gate found
 
