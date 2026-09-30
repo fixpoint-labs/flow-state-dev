@@ -80,6 +80,7 @@ export function createInitialRequestRecord<TState extends JsonObject = JsonObjec
     source: input.source ?? "http",
     status: "in_progress",
     startedAtMs: ts,
+    finalizedAtMs: null,
     metadata: input.metadata,
     input: input.input,
     state: (input.requestState ?? {}) as TState,

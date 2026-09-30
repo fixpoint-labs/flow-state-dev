@@ -28,6 +28,20 @@ import type { SubscribeToEventsOptions } from "@flow-state-dev/engine";
 /** Default subscription poll interval (ms). */
 export const DEFAULT_POLL_INTERVAL_MS = 100;
 const DEFAULT_LIVENESS_TIMEOUT_MS = 30_000;
+
+/**
+ * The subscription's `isStillAuthorized` fence: whether events just read may
+ * be yielded. A throw counts as `false`. Inlined rather than imported because
+ * this package keeps a type-only dependency on the engine.
+ */
+async function stillAuthorized(options: SubscribeToEventsOptions): Promise<boolean> {
+  if (options.isStillAuthorized === undefined) return true;
+  try {
+    return await options.isStillAuthorized();
+  } catch {
+    return false;
+  }
+}
 /** Bounded per-subscriber buffer; mirrors the in-memory store's default. */
 const DEFAULT_MAX_PENDING_EVENTS = 1000;
 
@@ -228,6 +242,7 @@ export function createLiveTailRegistry(
 
     // Phase 1 — one-time catch-up from this subscriber's own cursor.
     const initial = await readEvents(requestId, options.fromSequence);
+    if (initial.length > 0 && !(await stillAuthorized(options))) return;
     let lastSeen = options.fromSequence;
     for (const event of initial) {
       yield event;
@@ -279,7 +294,12 @@ export function createLiveTailRegistry(
         // batch. A `wake()` that fires here (sub.wake is the no-op, not the
         // parked resolver) is safely dropped: the outer loop re-checks
         // `sub.buffer.length` and drains anything pushed meanwhile.
-        while (sub.buffer.length > 0) {
+        //
+        // Only the events buffered before the fence check are yielded after
+        // it: anything the loop reads meanwhile waits for the next check.
+        const checked = sub.buffer.length;
+        if (!(await stillAuthorized(options))) return;
+        for (let i = 0; i < checked; i++) {
           const event = sub.buffer.shift() as RequestStreamEvent;
           yield event;
           if (endsRequestStream(event, sub.followThroughSuspend)) return;

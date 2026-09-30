@@ -12,7 +12,7 @@
  * editing this file are noted inline below.
  */
 import type { FlowRegistry } from "../registry/flow-registry";
-import type { SessionRecord, StoreRegistry } from "../stores/types";
+import type { RequestRecord, SessionRecord, StoreRegistry } from "../stores/types";
 import type {
   InboundTransportHost,
   PrincipalResolver,
@@ -85,6 +85,15 @@ export type RouteAuthResult = {
    * never serves a session that took the id after the check.
    */
   session?: SessionRecord | null;
+  /**
+   * For a request-addressed route, the request record the guard read and
+   * checked the caller against. Absent when it read none. A request id is
+   * the caller's to choose, so between this check and the handler's own read
+   * the request can be deleted and the id taken by another owner; a handler
+   * that reads the record again compares incarnations and answers as for an
+   * unknown request when they differ.
+   */
+  request?: RequestRecord;
   /**
    * Set with `denied` when the denial is the route's not-found for a session
    * another user owns. A route that checks something of its own before it
@@ -351,8 +360,11 @@ export async function authorizeManagementRoute(
   // listing) — there is nothing to compare against yet.
   let ownerOrgId: string | undefined;
   let sessionId: string | undefined;
-  /** The session a session-addressed route was checked against; see `RouteAuthResult.session`. */
-  let checked: { session: SessionRecord } | undefined;
+  /**
+   * The session or request record an addressed route was checked against;
+   * see `RouteAuthResult.session` and `RouteAuthResult.request`.
+   */
+  let checked: { session: SessionRecord } | { request: RequestRecord } | undefined;
   /**
    * A refusal this record has already earned, HELD until the caller has been
    * authenticated.
@@ -386,6 +398,7 @@ export async function authorizeManagementRoute(
     case "request": {
       const record = await ctx.stores.request.get(subject.requestId);
       if (record !== undefined) {
+        checked = { request: record };
         const resolved = ownerFlowOf(ctx, record);
         if (resolved.denied !== undefined) pendingDenial = resolved.denied;
         governing = resolved.flow;

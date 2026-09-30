@@ -16,6 +16,10 @@ export {
   type CreateRequestStoreConformanceTestsOptions
 } from "./stores/testing/request-store-conformance";
 export {
+  createRequestRetentionConformanceTests,
+  type CreateRequestRetentionConformanceTestsOptions
+} from "./stores/testing/request-retention-conformance";
+export {
   createContentStoreConformanceTests,
   createResourceStateStoreConformanceTests,
   type CreateContentStoreConformanceTestsOptions,

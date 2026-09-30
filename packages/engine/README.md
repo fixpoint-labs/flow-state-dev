@@ -586,11 +586,13 @@ const flow = defineFlow({
 });
 ```
 
-Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted.
+Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted. Nor is a request whose run has not finished yet, `onFinished` included, or that finished less than twice the live-tail liveness timeout ago (`LIVE_TAIL_LIVENESS_MS`, 30s by default, so 60s), or one still in the active-request registry. A run that dies before finishing is released by the stale-request sweeper, if it was heartbeating; with the sweeper disabled (`staleSweepIntervalMs: 0`), or heartbeats off (`request.heartbeatIntervalMs: 0`), its request is kept. A request spared this way is evicted when the session's next request completes. A record from an engine version that never wrote `finalizedAtMs` is kept for the stale-request threshold or `maxAge`, whichever is larger, plus that window, so a rolling deploy cannot free the id of a run still finishing on an old instance. A custom `RequestStore` must persist the record's `finalizedAtMs` and `heartbeatsUntilFinalized` fields (the run writes the stamp through `setFieldsIfStatus`), and honor that method's `expectedIncarnation` fence.
 
 Retention policies operate at **request granularity** — entire old request records are removed, not individual items. For items that should never be stored at all, use `transient: true` on block definitions.
 
 The `maxItems` check counts items through `RequestStore.countItems(requestId)` rather than loading item payloads, so a retention sweep stays cheap on sessions with large logs. Custom `RequestStore` implementations must provide `countItems`; it returns what `get(id)` would surface as `items.length`.
+
+Eviction calls `RequestStore.delete(id)`, which removes everything the store keeps under that id: the record, its items, its stream events and its runOnce results. Request ids can be supplied by the caller, so a freed id may be taken by a later request, possibly from another user. Anything a custom store leaves behind under the id would be replayed on that request's stream. `createRequestStoreConformanceTests` checks the store's `delete`; `createRequestRetentionConformanceTests` (both from `@flow-state-dev/engine/testing`) runs the whole path through retention and the stream route against a `StoreRegistry`.
 
 Supported duration formats: `'30s'`, `'5m'`, `'2h'`, `'7d'`, or a raw number in milliseconds.
 

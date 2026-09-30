@@ -74,6 +74,7 @@ import {
 import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
 import { CLI_SOURCE, INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
+import { hasLiveRequestAttempt } from "../../execution/request-attempts";
 import {
   createInProcessDispatcher,
   isInProcessDispatcher,
@@ -224,6 +225,9 @@ async function terminateUnenqueuedRequest(
         ...record,
         ...settledRecordFields(settlement),
         ...(ending.status === "failed" ? { failedAtMs: now } : {}),
+        // No run is writing under the id, so the record is finished as it is
+        // written; left unstamped, retention would keep it forever.
+        ...(hasLiveRequestAttempt(stores.request, requestId) ? {} : { finalizedAtMs: now }),
         updatedAt: now
       },
       "any"

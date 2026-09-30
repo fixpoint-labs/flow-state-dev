@@ -12,7 +12,7 @@ import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { ownsRecord } from "../context/record-owner";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
-import { resolveSessionStorageKey } from "../stores/scope-keys";
+import { resolveRequestIncarnation, resolveSessionStorageKey } from "../stores/scope-keys";
 import {
   createClientEventFilter,
   filterClientEvents
@@ -36,15 +36,22 @@ import {
   unknownRequestStreamResponse
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
+import { resolveLiveTailLivenessMs } from "../streaming/live-tail-liveness";
 
-/** Default cross-process liveness timeout — overridable via `LIVE_TAIL_LIVENESS_MS`. */
-const DEFAULT_LIVE_TAIL_LIVENESS_MS = 30_000;
-
-function resolveLivenessTimeoutMs(): number {
-  const raw = process.env.LIVE_TAIL_LIVENESS_MS;
-  if (raw === undefined || raw === "") return DEFAULT_LIVE_TAIL_LIVENESS_MS;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_LIVE_TAIL_LIVENESS_MS;
+/**
+ * Whether the record under `requestId` is still the request whose incarnation
+ * the route authorized. A request id is the caller's to choose, so once the
+ * route has checked who owns the record, any read it makes after an await may
+ * find the request deleted and the id taken by another owner. Incarnations
+ * are never reused, so a match proves the id has not changed hands since.
+ */
+async function stillHoldsIncarnation(
+  stores: StoreRegistry,
+  requestId: string,
+  incarnation: string
+): Promise<boolean> {
+  const current = await stores.request.get(requestId);
+  return current !== undefined && resolveRequestIncarnation(current) === incarnation;
 }
 
 type StreamRouteContext = {
@@ -56,6 +63,13 @@ type StreamRouteContext = {
    * attach streams when the per-flow `request.sseHeartbeatMs` is unset.
    */
   defaultSseHeartbeatMs?: number;
+  /**
+   * The request record the route guard checked the caller against, when it
+   * read one. The stream serves only that record's incarnation: if the id
+   * changed hands between the check and this route's own read, it answers as
+   * for an unknown request.
+   */
+  checkedRequest?: RequestRecord;
 };
 
 /**
@@ -112,6 +126,18 @@ export async function handleRequestStream(
     }
   }
 
+  // The guard checked the caller against one incarnation of this id. If the
+  // request was deleted and the id taken since, what was read above is
+  // someone else's; nothing here has authorized it.
+  if (
+    ctx.checkedRequest !== undefined &&
+    (requestRecord === undefined ||
+      resolveRequestIncarnation(requestRecord) !==
+        resolveRequestIncarnation(ctx.checkedRequest))
+  ) {
+    return unknownRequestStreamResponse(request, route, ctx.registry);
+  }
+
   // A held continuation lease means a same-request continuation (resume /
   // crash-recovery `continue`) is in flight under this id (FIX-811). A
   // `suspended` record with an active lease must therefore be live-tailed and
@@ -143,6 +169,7 @@ export async function handleRequestStream(
     });
 
     const fromSequence = cursor.sequenceNumber ?? 0;
+    const authorizedIncarnation = resolveRequestIncarnation(requestRecord);
     const shouldForward = includeTrace ? undefined : createClientEventFilter();
     const handle = createSSEStream({
       pingIntervalMs: sseHeartbeatMs,
@@ -154,10 +181,15 @@ export async function handleRequestStream(
       {
         fromSequence,
         signal: request.signal,
-        livenessTimeoutMs: resolveLivenessTimeoutMs(),
+        livenessTimeoutMs: resolveLiveTailLivenessMs(),
         // While a continuation lease is held, follow through `request.suspended`
         // (the run-1 suspension being continued past) instead of ending there.
-        followThroughSuspend: leaseHeld
+        followThroughSuspend: leaseHeld,
+        // Every batch the store reads after an await is yielded only while the
+        // id still holds the request authorized above; otherwise the stream
+        // ends as for a request that is gone.
+        isStillAuthorized: () =>
+          stillHoldsIncarnation(ctx.stores, route.requestId, authorizedIncarnation)
       }
     );
 
@@ -192,6 +224,12 @@ export async function handleRequestStream(
       cursor.sequenceNumber
     );
     if (events.length === 0) {
+      return unknownRequestStreamResponse(request, route, ctx.registry);
+    }
+    // No record was found before this read. If one exists now, a request
+    // took the id meanwhile and these may be its events, which nothing here
+    // has authorized; answer as for an unknown request.
+    if ((await ctx.stores.request.get(route.requestId)) !== undefined) {
       return unknownRequestStreamResponse(request, route, ctx.registry);
     }
     let replay = replayRequestEvents({
@@ -236,6 +274,20 @@ export async function handleRequestStream(
     route.requestId,
     cursor.sequenceNumber
   );
+  // The ownership check above read one record; the events were read after
+  // it. Retention can delete that request in between and another caller can
+  // take the id, so these may be the new request's events. Replay only if
+  // the record under the id is still the one that was checked; otherwise
+  // answer as for a request that is gone.
+  if (
+    !(await stillHoldsIncarnation(
+      ctx.stores,
+      route.requestId,
+      resolveRequestIncarnation(requestRecord)
+    ))
+  ) {
+    return unknownRequestStreamResponse(request, route, ctx.registry);
+  }
   if (replaySource.length === 0 && cursor.sequenceNumber === undefined) {
     replaySource = buildReplayEvents(requestRecord, session);
   }
