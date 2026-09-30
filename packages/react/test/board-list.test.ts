@@ -246,6 +246,23 @@ describe("BoardList · the list (V1)", () => {
     await waitFor(() => expect(rowIds()).toEqual(["t-1"]));
   });
 
+  it("errors rather than draw a partial list when the board never stops paging", async () => {
+    // A transport that hands back a `nextCursor` forever, one row per page.
+    let n = 0;
+    const endless = {
+      listCollectionItems: vi.fn(async () => {
+        const row = card(`t-${n++}`, "pending");
+        return { items: [row], nextCursor: row.topic };
+      })
+    };
+    render(createElement(BoardList, { sessionId: SESSION, boardRef: BOARD, resourceClient: endless }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/more still to read/));
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(rowIds()).toEqual([]);
+    // Stops at the ceiling rather than reading forever.
+    expect(endless.listCollectionItems).toHaveBeenCalledTimes(1000);
+  });
+
   it("wraps a host's row body in the list's own row, and says what a host's empty slot says", async () => {
     render(
       createElement(BoardList, {
