@@ -19,7 +19,8 @@ export {
   abortRequest,
   hasActiveAbortController,
   registerAbortController,
-  deregisterAbortController
+  deregisterAbortController,
+  tagAbortController
 } from "./abort-registry";
 export {
   detectInterruptedRequests,

@@ -21,7 +21,13 @@ import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResume
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "../context/createExecutionContext";
-import { isSameSession, resolveLineageId, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
+import {
+  isSameSession,
+  resolveLineageId,
+  resolveRequestIncarnation,
+  resolveSessionStorageKey,
+  tenantMatches
+} from "../stores/scope-keys";
 import { canSpeak, canSpeakStream, getRequestSideChainPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
@@ -969,8 +975,14 @@ export async function runActionInternal<
   // loser is refused now, having written nothing; the winner's
   // `createExecutionContext` adopts this stub, as it adopts the host's
   // enqueue-time one on the queued path.
+  //
+  // The incarnation this run answers to is the admitted record's, or the one
+  // the claim wrote (a same-owner hand-off keeps the holder's). Its abort
+  // controller carries it, so an abort fenced on another request under this
+  // id cannot fire this run.
+  let runIncarnation: string;
   if (admittedRequest === undefined) {
-    await claimRequestRecord(
+    const claimed = await claimRequestRecord(
       options.stores,
       options.flow,
       createInitialRequestRecord(
@@ -990,6 +1002,9 @@ export async function runActionInternal<
         Date.now()
       )
     );
+    runIncarnation = resolveRequestIncarnation(claimed);
+  } else {
+    runIncarnation = resolveRequestIncarnation(admittedRequest);
   }
 
   await registry.register({
@@ -1405,7 +1420,7 @@ export async function runActionInternal<
   // If anything above threw, the controller would never be registered.
   // If anything between here and the main try block throws, the outer
   // try/catch below cleans it up.
-  const abortController = registerAbortController(requestId);
+  const abortController = registerAbortController(requestId, runIncarnation);
   // First poll (FIX-1026). Placed here rather than beside the timer because a
   // poll before this line has no controller to fire and therefore cannot
   // deliver — it would be a guaranteed-useless store read on every request.

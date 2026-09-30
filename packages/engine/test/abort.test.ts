@@ -1,13 +1,15 @@
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
-import { describe, expect, it, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, beforeEach } from "vitest";
 import {
   continueRequest,
   createInMemoryStores,
   runAction,
   createFlowRegistry,
-  createFlowApiRouter
+  createFlowApiRouter,
+  createInboundTransportHost,
+  defaultBodyUserIdPrincipalResolver
 } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { parseFlowRoute } from "../src/routes/parseFlowRoute";
@@ -15,10 +17,13 @@ import {
   registerAbortController,
   abortRequest,
   deregisterAbortController,
-  hasActiveAbortController
+  hasActiveAbortController,
+  tagAbortController
 } from "../src/execution/abort-registry";
 import { handleAbortRequest } from "../src/routes/abort-routes";
-import type { StoreRegistry } from "../src/stores/types";
+import type { RequestRecord, StoreRegistry } from "../src/stores/types";
+import { createInitialRequestRecord } from "../src/context/initial-request-record";
+import { claimRequestRecord } from "../src/context/request-principal";
 
 // ---------------------------------------------------------------------------
 // Abort registry unit tests
@@ -65,6 +70,53 @@ describe("abort-registry", () => {
     // Second abort doesn't throw
     const result = abortRequest("test-req-1");
     expect(result).toBe(true);
+  });
+
+  // An id can name two requests over time, so a fire that names the request
+  // it means acts only on that request's controller.
+  describe("fenced by incarnation", () => {
+    it("fires only the controller of the expected incarnation", () => {
+      const controller = registerAbortController("test-req-1", "inc_a");
+
+      expect(hasActiveAbortController("test-req-1", "inc_b")).toBe(false);
+      expect(abortRequest("test-req-1", "inc_b")).toBe(false);
+      expect(controller.signal.aborted).toBe(false);
+
+      expect(hasActiveAbortController("test-req-1", "inc_a")).toBe(true);
+      expect(abortRequest("test-req-1", "inc_a")).toBe(true);
+      expect(controller.signal.aborted).toBe(true);
+    });
+
+    it("does not fire an untagged controller for a fenced abort", () => {
+      const controller = registerAbortController("test-req-1");
+
+      expect(abortRequest("test-req-1", "inc_a")).toBe(false);
+      expect(controller.signal.aborted).toBe(false);
+    });
+
+    it("fires a controller once it is tagged with its request's incarnation", () => {
+      const controller = registerAbortController("test-req-1");
+      tagAbortController("test-req-1", controller, "inc_a");
+
+      expect(abortRequest("test-req-1", "inc_a")).toBe(true);
+      expect(controller.signal.aborted).toBe(true);
+    });
+
+    it("does not tag a controller that has since been replaced", () => {
+      const first = registerAbortController("test-req-1");
+      const second = registerAbortController("test-req-1", "inc_b");
+      tagAbortController("test-req-1", first, "inc_a");
+
+      expect(abortRequest("test-req-1", "inc_a")).toBe(false);
+      expect(second.signal.aborted).toBe(false);
+    });
+
+    it("still fires by id alone when no incarnation is expected", () => {
+      const controller = registerAbortController("test-req-1", "inc_a");
+
+      expect(abortRequest("test-req-1")).toBe(true);
+      expect(controller.signal.aborted).toBe(true);
+    });
   });
 });
 
@@ -113,7 +165,8 @@ describe("handleAbortRequest", () => {
   });
 
   it("returns 204 when aborting an active request with in-memory controller", async () => {
-    registerAbortController("req_active");
+    // The run's controller carries the incarnation of the request it runs.
+    registerAbortController("req_active", "inc_active");
     await stores.request.set("req_active", {
       orgId: DEFAULT_ORG_ID,
       id: "req_active",
@@ -126,6 +179,7 @@ describe("handleAbortRequest", () => {
       version: 1,
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      incarnation: "inc_active",
       journal: []
     } as any, "any");
 
@@ -264,6 +318,108 @@ describe("handleAbortRequest", () => {
     const stored = await stores.request.get("req_reused");
     expect(stored?.tenantId).toBe("tenant_b");
     expect(stored?.abortRequested).not.toBe(true);
+  });
+
+  // The fence names the request by its incarnation, not its `createdAt`.
+  // These interleaves are the ones `createdAt` gets wrong in each direction,
+  // so both records share or change `createdAt` exactly where it misleads.
+  describe("fenced on the request's incarnation", () => {
+    const REUSED = "req_fence_incarnation";
+    const flow = defineFlow({
+      kind: "chat",
+      actions: {
+        run: {
+          inputSchema: z.unknown(),
+          block: handler({ name: "noop", inputSchema: z.unknown(), execute: () => ({}) })
+        }
+      }
+    })({ id: "chat" });
+    const record = (tenantId: string | undefined, at: number): RequestRecord =>
+      createInitialRequestRecord(
+        { requestId: REUSED, flowKind: "chat", flowId: "chat", actionName: "run", userId: "user_1", tenantId },
+        at
+      );
+
+    /** Run the route, doing `between` after its owner-check read and before its write. */
+    async function abortWithInterleave(
+      tenantId: string | undefined,
+      between: () => Promise<void>
+    ): Promise<number> {
+      const read = stores.request.get.bind(stores.request);
+      stores.request.get = async (id: string) => {
+        const seen = await read(id);
+        await between();
+        return seen;
+      };
+      try {
+        const response = await handleAbortRequest(
+          new Request(`http://localhost/api/flows/chat/requests/${REUSED}/abort`, { method: "POST" }),
+          { kind: "abort_request", flowKind: "chat", requestId: REUSED },
+          { stores, tenantId }
+        );
+        return response.status;
+      } finally {
+        stores.request.get = read;
+      }
+    }
+
+    afterEach(() => deregisterAbortController(REUSED));
+
+    it("misses another tenant's request that took the id in the same millisecond", async () => {
+      await stores.request.set(REUSED, record("tenant_a", 1_000), "absent");
+      const other = record("tenant_b", 1_000);
+
+      const status = await abortWithInterleave("tenant_a", async () => {
+        await stores.request.delete(REUSED);
+        await stores.request.set(REUSED, other, "absent");
+      });
+
+      expect(status).toBe(404);
+      const stored = (await stores.request.get(REUSED))!;
+      expect(stored.incarnation).toBe(other.incarnation);
+      expect(stored.abortRequested).not.toBe(true);
+    });
+
+    it("records the cancel on the owner's request after their own retry handed it off", async () => {
+      await claimRequestRecord(stores, flow, record(undefined, 1_000));
+      const before = (await stores.request.get(REUSED))!;
+
+      const status = await abortWithInterleave(undefined, async () => {
+        await claimRequestRecord(stores, flow, record(undefined, 2_000));
+      });
+
+      const stored = (await stores.request.get(REUSED))!;
+      // The hand-off really did rewrite `createdAt`; only the incarnation held.
+      expect(stored.createdAt).not.toBe(before.createdAt);
+      expect(stored.incarnation).toBe(before.incarnation);
+      expect(status).toBe(202);
+      expect(stored.abortRequested).toBe(true);
+    });
+
+    it("does not fire a later request's controller in this process", async () => {
+      // The write landed on the request the check read; before the route
+      // fires locally, that request finished and a later one under the id
+      // started here. Its controller carries its own incarnation.
+      const checked = record(undefined, 1_000);
+      await stores.request.set(REUSED, checked, "absent");
+      const later = registerAbortController(REUSED, "inc_later_request");
+
+      const status = await abortWithInterleave(undefined, async () => {});
+
+      expect(later.signal.aborted).toBe(false);
+      expect(status).toBe(202);
+    });
+
+    it("fires the controller of the request it fenced on", async () => {
+      const checked = record(undefined, 1_000);
+      await stores.request.set(REUSED, checked, "absent");
+      const own = registerAbortController(REUSED, checked.incarnation);
+
+      const status = await abortWithInterleave(undefined, async () => {});
+
+      expect(own.signal.aborted).toBe(true);
+      expect(status).toBe(204);
+    });
   });
 
   it("returns 409 when request is already completed", async () => {
@@ -1586,7 +1742,10 @@ describe("handleAbortRequest — conditional write", () => {
     const stores = createInMemoryStores();
     const requestId = "req_cond_local";
     await seedRecord(stores, requestId, "in_progress");
-    const controller = registerAbortController(requestId);
+    // A record with no stored incarnation answers to `legacy_<createdAt>`,
+    // and the run's controller carries that same value.
+    const seeded = (await stores.request.get(requestId))!;
+    const controller = registerAbortController(requestId, `legacy_${seeded.createdAt}`);
 
     const response = await postAbort(stores, requestId);
 
@@ -2315,5 +2474,101 @@ describe("cross-process abort delivered during the background drain", () => {
     // finished, not while it was still running in the void.
     expect(sideChainFinished).toBe(true);
     expect((await stores.request.get(requestId))?.status).toBe("completed");
+  });
+});
+
+// A request queued behind a concurrency key is cancellable before its run
+// registers anything: the host registers its controller at dispatch, before the
+// request record exists, and tags it with the record's incarnation once the
+// record is claimed. The route's fenced fire then reaches it and the queued
+// run never starts.
+describe("a queued request cancelled through the route", () => {
+  it("fires the host's queued controller once its record is claimed", async () => {
+    const stores = createInMemoryStores();
+    const executed: string[] = [];
+    let releaseHold!: () => void;
+    const hold = new Promise<void>((resolve) => {
+      releaseHold = resolve;
+    });
+    let markHolding!: () => void;
+    const holding = new Promise<void>((resolve) => {
+      markHolding = resolve;
+    });
+    const concurrency = { policy: "queue", key: "session" } as const;
+    const registry = createFlowRegistry();
+    registry.register(
+      defineFlow({
+        kind: "queued-abort",
+        actions: {
+          hold: {
+            inputSchema: z.object({}),
+            concurrency,
+            block: handler({
+              name: "hold",
+              inputSchema: z.object({}),
+              execute: async () => {
+                markHolding();
+                await hold;
+                return {};
+              }
+            })
+          },
+          queued: {
+            inputSchema: z.object({}),
+            concurrency,
+            block: handler({
+              name: "queued",
+              inputSchema: z.object({}),
+              execute: () => {
+                executed.push("queued");
+                return {};
+              }
+            })
+          }
+        }
+      })({ id: "queued-abort" })
+    );
+    const host = createInboundTransportHost({
+      registry,
+      stores,
+      resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+      runtimeConfig: {}
+    });
+    const dispatch = (action: "hold" | "queued", requestId: string) =>
+      host.dispatch({
+        source: "http",
+        flowKind: "queued-abort",
+        action,
+        input: {},
+        sessionId: "s_queued_abort",
+        requestId,
+        orgId: DEFAULT_ORG_ID,
+        principal: { userId: "u_queued", orgId: DEFAULT_ORG_ID }
+      });
+
+    const holder = dispatch("hold", "req_queued_holder");
+    await holding;
+    const queued = dispatch("queued", "req_queued_waiting");
+    // Wait for the enqueue-time record, then let the claim's continuation run.
+    for (let i = 0; i < 100 && (await stores.request.get("req_queued_waiting")) === undefined; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const response = await handleAbortRequest(
+      new Request("http://localhost/api/flows/queued-abort/requests/req_queued_waiting/abort", {
+        method: "POST"
+      }),
+      { kind: "abort_request", flowKind: "queued-abort", requestId: "req_queued_waiting" },
+      { stores }
+    );
+
+    releaseHold();
+    await holder.finished;
+    await queued.finished.catch(() => undefined);
+
+    // 204: fired here, on the controller the host registered and tagged.
+    expect(response.status).toBe(204);
+    expect(executed).toEqual([]);
   });
 });

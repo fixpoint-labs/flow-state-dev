@@ -21,7 +21,12 @@ import {
   continueRequest as continueRequestImpl,
   type ContinueRequestResult
 } from "../../execution/request-continuation";
-import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
+import {
+  isSameSession,
+  resolveRequestIncarnation,
+  resolveSessionStorageKey,
+  tenantMatches
+} from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import {
@@ -40,7 +45,8 @@ import {
 } from "../../execution/logging";
 import {
   deregisterAbortController,
-  registerAbortController
+  registerAbortController,
+  tagAbortController
 } from "../../execution/abort-registry";
 import { generateId } from "../../utils/generate-id";
 import {
@@ -622,8 +628,9 @@ export function createInboundTransportHost(
    * overwriting, and a lost race against this same owner (a retry reusing its
    * id) keeps the existing record and re-stamps it, which is the
    * last-write-wins hand-off it always was.
-   * Resolves `true` once the entry is this dispatch's to keep warm and to
-   * remove on exit.
+   * Resolves once the entry is this dispatch's to keep warm and to remove on
+   * exit, with the incarnation of the request record it claimed (a hand-off
+   * keeps the holder's), so a controller registered before it can be tagged.
    *
    * @param admitted The session `admitOwnership` read and admitted, if any.
    */
@@ -632,14 +639,14 @@ export function createInboundTransportHost(
     dispatchEnvelope: DispatchEnvelope,
     admitted: SessionRecord | undefined,
     entry: Omit<Parameters<typeof stores.activeRequests.register>[0], "flowKind" | "flowId">
-  ): Promise<void> => {
+  ): Promise<string> => {
     const record = createInitialRequestRecord(
       { ...dispatchEnvelope, flowKind: flow.kind, flowId: flow.id },
       entry.startedAt
     );
     // Owner-fenced on both axes: another flow instance's or another user's
     // record under this id is never overwritten or re-parented.
-    await claimRequestRecord(stores, flow, record);
+    const claimed = await claimRequestRecord(stores, flow, record);
     // A request under a child session moves the child's update time here,
     // where the request is first recorded as working, and not when its run
     // starts: the run can wait behind a concurrency key, or in an external
@@ -684,6 +691,7 @@ export function createInboundTransportHost(
       }
     }
     await stores.activeRequests.register({ ...entry, flowKind: flow.kind, flowId: flow.id });
+    return resolveRequestIncarnation(claimed);
   };
 
   const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
@@ -926,7 +934,10 @@ export function createInboundTransportHost(
               lastHeartbeatAt: ts
             })
           )
-          .then(() => {
+          .then((incarnation) => {
+            // Until its record is claimed this controller belongs to no known
+            // request, so an abort fenced on one does not fire it; now it can.
+            tagAbortController(requestId, queuedAbort, incarnation);
             entryOwned = true;
           })
           .catch(async (error: unknown) => {
