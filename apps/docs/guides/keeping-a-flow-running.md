@@ -184,7 +184,7 @@ open until it settles.
 
 To move the work off your web process entirely, give `createFlowState` a queue:
 `worker: bullmqWorker({ connection })` from `@flow-state-dev/bullmq`. Actions and dispatched
-runs then go through Redis to a worker, and a worker that dies mid-run retries the job.
+runs then go through Redis to a worker, and if a worker dies mid-run, the job is retried.
 
 Read next: [Work that outlives the turn](/guides/background-work) compares side chains,
 queue-backed runs and dispatches side by side. [Dispatched work](/docs/server/background-work)
@@ -200,10 +200,10 @@ What's allowed depends on whether the process hands work to a queue. With `bullm
 separate worker, which runs queued jobs and enqueues nothing. See
 [Separated workers](/guides/background-jobs-bullmq#4-separated-workers).
 
-| `session` | Runs in | On a host that hands work to a queue |
+| `session` | Runs in | With `bullmqWorker` |
 |---|---|---|
 | `{ key: (input) => string }` | a session derived from the key, created on first use | Works |
-| `{ id: (input) => string }` | a session that already exists | Refused before anything starts |
+| `{ id: (input) => string }` | a session that already exists | Refused from a process that hands work to the queue. From a `worker-only` worker it runs in process, without retries |
 | `{ from: true }` | the session that dispatched this run, as a reply | Refused from a process that hands work to the queue. From a `worker-only` worker it runs in process, without retries |
 
 Refused means the dispatch throws `DispatchRefusedError` with `refused: "external-dispatcher"`
@@ -211,15 +211,15 @@ in `colocated` or `dispatch-only` mode, before anything is enqueued. A `{ key }`
 webhook delivery (with or without a `sessionId`) and a schedule tick run normally there.
 
 If you use Workforce, its channels are sessions that already exist, so the same rule reaches
-them. A client's post into a channel succeeds and its line appears, but no member is woken
-and nothing answers. A post into the channel from another flow is refused with
+them. On a host that hands work to a queue, a client's post into a channel succeeds and its
+line appears, but no member is woken and nothing answers. A post into the channel from another flow is refused with
 `external-dispatcher`. See [Channels](/docs/workforce/channels#where-posting-from-another-flow-works-and-where-it-doesnt).
 
 To get a hand-off's result back into the conversation that started it on any host, with
 retries, start the work with a `{ key }`, have it write what it found somewhere both sides can
 read, such as a user- or org-scoped resource or a task board, and read it from the
-conversation. Your app can also list the runs a session started with the client SDK's
-`listChildSessions`. If the flow has to deliver into an existing session, serve it from a
+conversation. From your app, the client SDK's `listChildSessions` lists the sessions a
+conversation's hand-offs started. If the flow has to deliver into an existing session, serve it from a
 host with no queue worker, and accept that its runs aren't retried.
 
 ## A channel or a board
