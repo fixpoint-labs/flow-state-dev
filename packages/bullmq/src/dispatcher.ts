@@ -14,6 +14,7 @@ import type {
   StreamBridge,
 } from "@flow-state-dev/engine";
 import { toJobOptions } from "./retry";
+import { leaseJobId } from "./lease-backend";
 import type { RetryConfig } from "./types";
 
 export interface CreateWorkerDispatcherOptions {
@@ -42,6 +43,11 @@ export function createWorkerDispatcher(
       // Subscribe before enqueuing so we don't miss early events
       const subscriber = activeBridge.createSubscriber(envelope.requestId);
 
+      // A job that carries a place is enqueued under the id the place names,
+      // so the lease backend can read the job's state when the place's lease
+      // runs out, without a second write to bind the two.
+      const place = envelope.leasePlace ?? undefined;
+
       // Enqueue the job — clean up subscriber connections on failure
       try {
         await queue.add(
@@ -57,8 +63,9 @@ export function createWorkerDispatcher(
             source: envelope.source,
             metadata: envelope.metadata,
             requestId: envelope.requestId,
+            ...(place !== undefined ? { leasePlace: place } : {}),
           },
-          jobOpts
+          place !== undefined ? { ...jobOpts, jobId: leaseJobId(place) } : jobOpts
         );
       } catch (err) {
         await subscriber.close().catch(() => {});

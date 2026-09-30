@@ -18,6 +18,7 @@ const fakeRuntime = {
 };
 const fakeBridge = { createPublisher: vi.fn(), createSubscriber: vi.fn() };
 const fakeDispatcher = { dispatch: vi.fn(), close: vi.fn() };
+const fakeLeaseBackend = { leaseMs: 10_000, close: vi.fn().mockResolvedValue(undefined) };
 
 vi.mock("../src/runtime", () => ({
   createBullmqRuntime: vi.fn(() => fakeRuntime),
@@ -28,10 +29,14 @@ vi.mock("../src/stream-bridge", () => ({
 vi.mock("../src/dispatcher", () => ({
   createWorkerDispatcher: vi.fn(() => fakeDispatcher),
 }));
+vi.mock("../src/lease-backend", () => ({
+  createRedisLeaseBackend: vi.fn(() => fakeLeaseBackend),
+}));
 
 import { createBullmqRuntime } from "../src/runtime";
 import { createRedisStreamBridge } from "../src/stream-bridge";
 import { createWorkerDispatcher } from "../src/dispatcher";
+import { createRedisLeaseBackend } from "../src/lease-backend";
 import { bullmqWorker } from "../src/flowstate-adapter";
 
 const flowStateRuntime = {
@@ -44,6 +49,8 @@ beforeEach(() => {
   vi.mocked(createBullmqRuntime).mockClear();
   vi.mocked(createRedisStreamBridge).mockClear();
   vi.mocked(createWorkerDispatcher).mockClear();
+  vi.mocked(createRedisLeaseBackend).mockClear();
+  fakeLeaseBackend.close.mockClear();
   fakeRuntime.createWorker.mockClear();
   fakeRuntime.close.mockClear();
   createdWorker.close.mockClear();
@@ -108,16 +115,35 @@ describe("bullmqWorker", () => {
       bridge: fakeBridge,
       concurrency: 7,
       lockDuration: 60_000,
+      leaseBackend: fakeLeaseBackend,
     });
 
     await handle.close();
     expect(createdWorker.close).toHaveBeenCalledTimes(1);
   });
 
-  it("close delegates to the runtime (queue + workers)", async () => {
+  it("close delegates to the runtime (queue + workers) and closes the lease backend", async () => {
     const adapter = bullmqWorker({ connection: "redis://localhost:6379" });
     await adapter.close?.();
     expect(fakeRuntime.close).toHaveBeenCalledTimes(1);
+    expect(fakeLeaseBackend.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("supplies the engine a lease backend on the same Redis, reading the shared queue", () => {
+    // Without it the engine arbitrates only its own process, so a session's
+    // `queue` / `reject` policy would not hold across worker processes.
+    const adapter = bullmqWorker({
+      connection: "redis://localhost:6379",
+      prefix: "app",
+      leaseMs: 4_000,
+    });
+    expect(adapter.leaseBackend).toBe(fakeLeaseBackend);
+    expect(createRedisLeaseBackend).toHaveBeenCalledWith({
+      connection: "redis://localhost:6379",
+      prefix: "app",
+      queue: fakeQueue,
+      leaseMs: 4_000,
+    });
   });
 
   it("honors an explicit mode", () => {
