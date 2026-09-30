@@ -140,9 +140,9 @@ On the host, add `createScheduledTransportAdapter()` from `@flow-state-dev/sched
 after it.
 
 A flow that takes both webhooks and schedules keeps one `resolvePrincipal` and branches on
-`ctx.source`. The bearer resolver on its own refuses a webhook delivery with a `401`, because
-the delivery carries no bearer header. So when `ctx.source` is `"webhook"`, return your system
-principal: the adapter has already checked the provider's signature before the resolver runs.
+`ctx.source`, as shown in
+[Authenticating dispatch](/docs/server/scheduled#authenticating-dispatch). Don't use the bearer
+resolver on its own there: it refuses every webhook delivery with a `401`.
 
 Schedules you create while the app runs, like a reminder a user sets, come from
 `schedules.resolve` instead of `schedules.static`. That is also how you do something later:
@@ -157,11 +157,11 @@ Read next: [Scheduled actions](/docs/server/scheduled), then the guide for your 
 
 ## Work that keeps going
 
-A webhook run and a scheduled run outlive the call that started them. What's left is handing
-a piece of work off from inside a run, so it carries on in its own session while the run that
-started it finishes.
+A webhook run and a scheduled run outlive the call that started them. To hand a piece of work
+off from inside a run, so it carries on in its own session while the run that started it
+finishes, use a `dispatcher()` block.
 
-That is a `dispatcher()` block. It sends one unit of work to an entry the flow declares under
+It sends one unit of work to an entry the flow declares under
 `internal.actions`, returns as soon as the work is accepted, and doesn't wait for it.
 
 ```ts
@@ -177,7 +177,7 @@ const reconcileLater = dispatcher({
 ```
 
 Add `flowKind` and the same block sends the work to another flow registered on the same
-server. That's how one flow wakes another.
+server. That's how one flow hands work to another.
 
 A `.sideChain()` looks similar and isn't. It runs beside the request, and the request stays
 open until it settles.
@@ -224,7 +224,7 @@ host with no queue worker, and accept that its runs aren't retried.
 
 ## A channel or a board
 
-If you use Workforce, two of its shapes look alike and do different jobs. A **channel** holds
+If you use Workforce, a channel and a board look alike and do different jobs. A **channel** holds
 a conversation: posts, in order, that its members can be woken by. A **board** holds work:
 rows a worker claims, runs and settles. A channel can hold boards. Use the channel for what
 people and agents say, and a board for what has to get done. Posting in a channel hands
@@ -240,7 +240,7 @@ and [Task board](/docs/orchestration/task-board).
 | **A webhook** to start a run | `webhooks.<provider>.on.<event>`: a `defineWebhookBinding` with `block`, `input`, and optionally `sessionId` and `when` | `createWebhookTransportAdapter({ providers })` in `adapters`, with each provider's `verify` and signing secret | The provider pointed at `POST /api/flows/:flowKind/webhooks/:provider`; the secret in your environment |
 | **A schedule** to start a run | `schedules.static.<id>`: a `defineScheduleBinding` with `cron` and `block`; or `schedules.resolve` for schedules stored at runtime; `authentication.resolvePrincipal`, for example `createBearerSecretPrincipalResolver` | `createScheduledTransportAdapter()` in `adapters`; a schedule index when one tick fans out to many stored schedules | A scheduler that calls `POST /api/flows/:flowKind/schedules/:scheduleId/dispatch` on time, with the secret |
 | **Another flow** to start a run | On the sender, `dispatcher({ flowKind, action, session })`; on the receiver, `internal.actions.<action>` | Both flows registered on the same `createFlowState` | Nothing |
-| **Another system**, like a queue or an event bus, to start a run | The entry it should run | A custom inbound transport adapter in `adapters` | Whatever delivers to your adapter |
+| **Another system**, like a queue or an event bus, to start a run | The entry it should run | A custom [inbound transport](/docs/advanced/inbound-transports) adapter in `adapters` | Whatever delivers to your adapter |
 | **Work to continue** after the request returns | `dispatcher()` into `internal.actions` | `worker: bullmqWorker({ connection })` for queue-backed runs, and its `mode` | Redis, and a worker process when the web tier runs `dispatch-only` |
 
 Your infrastructure decides *when* something fires. FSD decides what runs once it does. The
@@ -253,8 +253,8 @@ no resolver takes its `userId` from the request body, which is for local develop
 
 ## Terms
 
-**Wake.** Something outside the flow, a webhook delivery or a schedule tick, starts a run
-through your host.
+**Wake.** Something outside the flow starts a run through your host: a webhook delivery, a
+schedule tick, or a custom inbound transport.
 
 **Dispatch.** A flow sends one unit of work to an entry through a `dispatcher()` block, to run
 in a session of its own or in one that already exists. A schedule's dispatch endpoint,
