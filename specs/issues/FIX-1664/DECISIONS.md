@@ -133,5 +133,10 @@ the button calls it, with no change to the screen.
   stamps on the row, split out as the task-run link; and harness, tokens and cost had no
   client-readable source, so they became a named gap. The goal, D2 and the open fork are
   unchanged.
+- **Aligned with FIX-1668's spec** (PR #2440): the run's flow is read off the session the link
+  names (its `flowId`), since the link carries no flow and a seat can hand off to another flow;
+  the goal check gains that seat and the `board-flow` control. `run_linked` reaches only the
+  run's own session stream, so a row waiting for its link is re-read on a bounded timer (BR-3)
+  rather than assumed to be pushed. D1 is unchanged.
 
 **Open: one** — [above](#open).
