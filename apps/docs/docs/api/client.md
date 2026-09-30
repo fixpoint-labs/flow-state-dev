@@ -133,6 +133,41 @@ There is no counterpart that starts one. Whether work is dispatched at all is de
 
 Full walkthrough: [Client > Overview](/docs/client/overview#dispatched-runs).
 
+### `sessions.listSessionRequests(sessionId, options?)`
+
+List the requests a session has run. Each entry is a `SessionRequestSummary`: the action name, the status, the timings, and, once the request has ended, a `result` saying what the action came to.
+
+```ts
+const requests = await sessions.listSessionRequests("sess_1", { includeResultOutput: true });
+
+for (const req of requests) {
+  const { result } = req;
+  if (result == null) continue; // still running, aborted, or no result recorded
+  if (result.error) console.log(req.actionName, "failed:", result.error.message);
+  else if (result.outputNotRecorded) console.log(req.actionName, "finished, output not recorded");
+  else console.log(req.actionName, "returned", result.output);
+}
+```
+
+| Option | Type | Notes |
+|--------|------|-------|
+| `status` | `RequestStatus` | Only requests with this status. |
+| `limit` / `offset` | `number` | Paging. |
+| `includeItems` | `boolean` | Add each request's item log as `items`. |
+| `includeResultOutput` | `boolean` | Add the action's return value as `result.output`. |
+
+Without `includeResultOutput`, `result` carries `error` and a `hasOutput` flag but not the value itself.
+
+| Request status | `result` |
+|---|---|
+| `completed` or `incomplete` | `{ hasOutput: true }`, plus `output` with `includeResultOutput`. `{ hasOutput: false }` when the action returned nothing. |
+| `failed` | `{ error: { code, message }, hasOutput: false }`. When the action had returned before a completion hook failed the request, `hasOutput` is `true` and `output` is there with `includeResultOutput`. |
+| `in_progress`, `suspended`, `aborted` or `interrupted` | absent |
+
+`output` is a JSON copy of what the action returned, so a `Date` is stored as its ISO string and an object key set to `undefined` is left out. A value that doesn't survive a JSON round trip (a `BigInt`, an object that refers to itself, `NaN` or `Infinity`, a function or symbol, an `undefined` array slot, a `Map`, `Set` or `Error`) isn't stored. Those requests carry `outputNotRecorded: true` and `hasOutput: false` in place of the output, and their status is unaffected.
+
+A finished request written by a server version that didn't store results has no `result`. Check `result == null` rather than inferring the outcome from `status`.
+
 ## SSE Clients
 
 ### `createSSEClient(options)`

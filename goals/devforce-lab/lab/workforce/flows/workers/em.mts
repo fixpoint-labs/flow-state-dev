@@ -9,7 +9,8 @@
  * — not merely "it happened not to". Search this file for the word harness and
  * the only hits are in this paragraph.
  *
- * What it does have is the feature board, and the board's `coder` worker is a
+ * What it does have is the feature board — its declaration of the ledger the
+ * feature channel holds — and the board's `coder` worker is a
  * dispatcher naming another flow instance. That one line is D1: the row is
  * handed across flows to the seat a Markdown file declared, rather than to a
  * task entry co-located on this flow.
@@ -28,7 +29,7 @@ import {
   ASSIGNEE,
   BOARD_ID,
   coordinatorBoard,
-  featureLedger,
+  type FeatureLedger,
   type FeatureRow,
 } from "../../../board.mts";
 import {
@@ -118,17 +119,25 @@ export interface EmWorkerFlowOptions {
   coderSeatId: string;
   /** The file-declared documents, as `resourcesFromDocs` built them. */
   resources: Record<string, unknown>;
+  /**
+   * The ledger the board files onto — the feature channel's, which the host
+   * resolves off the tree. Passed in rather than built here, so the channel,
+   * this board and the coder's manager hold one declaration.
+   */
+  ledger: FeatureLedger;
 }
 
 /**
  * Build the coordinator kind.
  *
- * @param options The coder seat's address and the documents to install.
+ * @param options The coder seat's address, the documents and the ledger.
  * @returns The flow factory `hireWorkforce` mints one copy of per EM record.
  */
 export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
-  const collection = featureLedger();
-  const board = coordinatorBoard({ collection, coderSeatId: options.coderSeatId });
+  const board = coordinatorBoard({
+    collection: options.ledger.collection,
+    coderSeatId: options.coderSeatId,
+  });
 
   /**
    * File one row, addressed to the board's `coder` assignee.

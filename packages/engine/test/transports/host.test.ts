@@ -518,7 +518,10 @@ describe("createInboundTransportHost", () => {
       await expect(handle.accepted).rejects.toThrow("enqueue failed");
       await expect(handle.finished).rejects.toThrow("enqueue failed");
 
-      expect((await stores.request.get(handle.requestId))?.status).toBe("failed");
+      const record = await stores.request.get(handle.requestId);
+      expect(record?.status).toBe("failed");
+      // Its cause is the record's action result (FIX-1661).
+      expect(record?.result).toEqual({ error: { code: expect.any(String), message: "enqueue failed" } });
       expect(await stores.activeRequests.get(handle.requestId)).toBeUndefined();
     });
 

@@ -1232,8 +1232,10 @@ boards: [followups]
 The ledger id is minted from the channel that holds it — `engineering.incidents` holding
 `followups` is `engineering.incidents.followups` — and no record writes it. A board name is a plain
 local name: not empty, no whitespace, none of `.` `/` `*` `[` `]`, and not `__proto__`, `prototype`
-or `constructor`. The dot is the one that matters, since it is the join and a name carrying one
-would address another channel's board.
+or `constructor`, and not `lock`, in any case. The dot is the one that matters, since it is the join
+and a name carrying one would address another channel's board. `lock` is reserved because it would
+mint an id ending in `.lock`, which a git branch can't carry, so a coding run could never work that
+board.
 
 A channel holding one or more boards declares two more actions, `fileTask` and `readBoard`, public
 and internal like `post` and `read`. Both take the board's **local** name; `fileTask` hands back

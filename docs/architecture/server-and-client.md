@@ -400,6 +400,7 @@ Client                        Server
 - Framework examples use `userId: "devuser"` as local default
 - POST returns `202 Accepted` immediately — execution is async
 - Client can pre-generate `requestId` and pass it in the POST body
+- The action's result is stored on the request record as `result` (`output`, and/or `error`) in the same write as the final status. `GET /sessions/:id/requests` returns it, with `result.output` only on `include_result_output=true` (every entry carries `hasOutput`). A missing `result` means unfinished, aborted/interrupted, or a legacy record (BP-030)
 
 ## Canonical Authority
 

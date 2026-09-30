@@ -28,6 +28,8 @@ import {
   tenantMatches
 } from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
+import { normalizeError } from "../../errors/normalize-error";
+import { settledRecordFields, type RequestSettlement } from "../../execution/request-action-result";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import {
   assertSessionAdmitted,
@@ -197,7 +199,7 @@ function isRefusedAdmission(error: unknown): boolean {
 async function terminateUnenqueuedRequest(
   stores: StoreRegistry,
   requestId: string,
-  status: "failed" | "aborted" = "failed",
+  ending: { status: "failed"; cause: unknown } | { status: "aborted" },
   expectedIncarnation?: string
 ): Promise<void> {
   try {
@@ -210,12 +212,18 @@ async function terminateUnenqueuedRequest(
       return;
     }
     const now = Date.now();
+    // The failure's cause is the record's action result, written with the
+    // status (FIX-1661); an abort carries none.
+    const settlement: RequestSettlement =
+      ending.status === "failed"
+        ? { status: "failed", error: normalizeError(ending.cause, { scope: "request" }) }
+        : { status: "aborted" };
     await stores.request.set(
       requestId,
       {
         ...record,
-        status,
-        ...(status === "failed" ? { failedAtMs: now } : {}),
+        ...settledRecordFields(settlement),
+        ...(ending.status === "failed" ? { failedAtMs: now } : {}),
         updatedAt: now
       },
       "any"
@@ -886,7 +894,12 @@ export function createInboundTransportHost(
       if (held === undefined) throw error;
       await held.release();
       if (!isRefusedAdmission(error)) {
-        await terminateUnenqueuedRequest(stores, requestId, "failed", claimedIncarnation);
+        await terminateUnenqueuedRequest(
+          stores,
+          requestId,
+          { status: "failed", cause: error },
+          claimedIncarnation
+        );
       }
       throw error;
     };
@@ -1158,7 +1171,7 @@ export function createInboundTransportHost(
               };
               watchWhileQueued();
               const cancelledBeforeStart = async (): Promise<never> => {
-                await terminateUnenqueuedRequest(stores, requestId, "aborted", cancelFence);
+                await terminateUnenqueuedRequest(stores, requestId, { status: "aborted" }, cancelFence);
                 throw new Error(
                   `Request "${requestId}" was cancelled before it left the concurrency queue`
                 );
@@ -1210,12 +1223,20 @@ export function createInboundTransportHost(
                 // request this dispatch claimed. A binding refusal comes from the
                 // run, which adopted whatever held the id, so it ends that.
                 if (!started) {
-                  await terminateUnenqueuedRequest(stores, requestId, "failed", claimedIncarnation);
+                  await terminateUnenqueuedRequest(
+                    stores,
+                    requestId,
+                    { status: "failed", cause: error },
+                    claimedIncarnation
+                  );
                 } else if (
                   error instanceof FlowInstanceBindingMismatchError ||
                   error instanceof UserBindingMismatchError
                 ) {
-                  await terminateUnenqueuedRequest(stores, requestId);
+                  await terminateUnenqueuedRequest(stores, requestId, {
+                    status: "failed",
+                    cause: error
+                  });
                 }
                 throw error;
               });

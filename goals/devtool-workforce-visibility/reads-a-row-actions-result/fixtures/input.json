@@ -1,0 +1,19 @@
+{
+  "rows": {
+    "handover": "a transient row that the handover leg refuses",
+    "hook": "a row the hook leg refuses under the flow's completion hooks",
+    "ref": "a row the ref leg answers with a value held by reference",
+    "suspend": "a row the suspend leg answers after a person resumes it",
+    "hookFails": "a row whose action answers before a hook fails the request"
+  },
+  "answers": {
+    "handover": "handover: task is cancelled, which is terminal",
+    "hook": "hook: task is not claimable while it is parked",
+    "ref": { "ok": true, "value": "ref: priority raised to 7" },
+    "suspend": "suspend: approved by the on-call reviewer",
+    "hookFails": {
+      "refusal": "hook-fails: the task was already settled",
+      "error": "hook-fails: the notification service is down"
+    }
+  }
+}
