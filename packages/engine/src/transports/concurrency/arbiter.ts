@@ -316,6 +316,9 @@ export function createConcurrencyArbiter(
         // Don't keep the event loop alive solely for a queued wait.
         (timer as { unref?: () => void }).unref?.();
         signal?.addEventListener("abort", wake, { once: true });
+        // Re-read once the listener is in place, so a cancel that fired before
+        // it was added still ends the sleep rather than waiting it out.
+        if (signal?.aborted) wake();
       });
     }
   };
@@ -358,16 +361,22 @@ export function createConcurrencyArbiter(
       }
       stopRenewing();
       givenBack ??= attempt(() => backend.giveBack(place)).catch((error: unknown) => {
-        logRuntimeEvent(
-          logger,
-          "warn",
-          "[flow-state] could not give a concurrency place back; it stays held until the lease backend expires it",
-          {
-            key: place.key,
-            ticket: place.ticket,
-            error: error instanceof Error ? error.message : String(error)
-          }
-        );
+        // Best effort, like the give-back itself: a logger that throws must
+        // not turn this into a rejection the run or `release()` would carry.
+        try {
+          logRuntimeEvent(
+            logger,
+            "warn",
+            "[flow-state] could not give a concurrency place back; it stays held until the lease backend expires it",
+            {
+              key: place.key,
+              ticket: place.ticket,
+              error: error instanceof Error ? error.message : String(error)
+            }
+          );
+        } catch {
+          // Nowhere left to report it.
+        }
       });
       return givenBack;
     };

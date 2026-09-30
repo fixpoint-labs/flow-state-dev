@@ -250,9 +250,13 @@ and a key (default: the tenant-namespaced session id):
 - `allow` (default) and a key that resolves to `undefined` (no session, `"none"`,
   or a custom key returning `undefined`) are passthroughs — today's behavior.
 
-The key is acquired and released within a single `dispatch` lifecycle (released
-when `finished` settles, and on every failure before the run starts), so there
-is no cross-call handoff and no leaked key. The arbiter keeps its lines in a
+On the in-process path the key is acquired and released within a single
+`dispatch` lifecycle (released when `finished` settles, and on every failure
+before the run starts), so there is no cross-call handoff and no leaked key. On
+the external path over a shared lease backend the place is handed off
+(`ConcurrencyAdmission.handOff()`) to the job once it is enqueued, and the
+worker gives it back when the run ends; every failure before the enqueue gives
+it back in the dispatching process. The arbiter keeps its lines in a
 lease backend (`transports/concurrency/lease-backend.ts`): in memory by default,
 which serializes one process, or the one a queue adapter supplies as
 `WorkerAdapter.leaseBackend`, which every process of the deployment shares.

@@ -395,6 +395,35 @@ describe("a backend call that throws synchronously", () => {
     expect(warn).toHaveBeenCalledTimes(2);
   });
 
+  it("does not escape a give-back whose log call throws either", async () => {
+    // The diagnostic is best effort too: a logger that throws must not turn
+    // a failed give-back into the run's failure, or into a rejected release.
+    const { backend: shaped } = fourCallBackend();
+    const backend: ConcurrencyLeaseBackend = {
+      ...shaped,
+      giveBack: async () => {
+        throw new Error("backend unreachable");
+      }
+    };
+    const warn = vi.fn(() => {
+      throw new Error("log sink closed");
+    });
+    const arbiter = createConcurrencyArbiter({ backend, logger: { warn } });
+
+    const ran = await arbiter.admit(
+      arbiter.resolve(rejectFlow, "respond", envelope("req_1")),
+      "req_1"
+    );
+    await expect(ran.run(async () => "done")).resolves.toBe("done");
+
+    const unrun = await arbiter.admit(
+      arbiter.resolve(rejectFlow, "respond", { ...envelope("req_2"), sessionId: "s_2" }),
+      "req_2"
+    );
+    await expect(unrun.release()).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
   it("does not escape the renewal timer", async () => {
     vi.useFakeTimers();
     try {
