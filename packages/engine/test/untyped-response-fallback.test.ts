@@ -10,6 +10,7 @@
  * is present. An update with any other key is invisible to both.
  */
 import { defineFlow, handler, DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -59,7 +60,7 @@ describe("untyped response fallback", () => {
       requestId: "req_untyped",
       sessionId: "sess_untyped",
       userId: "user_untyped",
-      modelResolver: (modelId) => ({ modelId, async generate() { return { text: "ok" }; } }),
+      modelResolver: createMockModelResolver({}),
       stores: createInMemoryStores(),
       response: untypedResponse
     });
