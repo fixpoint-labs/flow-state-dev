@@ -290,7 +290,7 @@ export function createTaskGate(options: TaskGateOptions): TaskBinding["gate"] {
           // ticket goes on state: a store failure here must stop the attempt
           // without the rescue's recorder settling the row errored, and the
           // recorder settles only a claim it finds on state.
-          await linkRun(board, held, ticket, ctx);
+          await writeRunLink(board, held, ticket, ctx);
 
           await ctx.sequencer!.patchState({ currentClaim: ticket });
 
@@ -441,7 +441,7 @@ async function adoptLapsedLease(
  *   hand-written collection answers with no verdict — neither says this run
  *   holds the row. A thrown write propagates as any other gate failure.
  */
-async function linkRun(
+async function writeRunLink(
   board: TaskCollectionRef,
   held: Task,
   ticket: TaskClaimTicket,

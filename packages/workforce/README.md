@@ -1968,7 +1968,7 @@ the root exports, and reaches no Node built-in.
 | `channelBoardTaskTools(board)` | Capability granting a seat all eight task tools over one channel board, board-qualified by name. List it in the seat kind's `uses`; it declares the ledger too. |
 | `channelBoardIds(manifests)` | Every minted id across a roster, sorted and deduped — what `hireWorkforce`'s `channelBoards` takes. |
 | `ChannelBoardCollection` | A `DefinedTaskCollection` carrying its minted `id`. |
-| `channelBoardRowSchema` | One row as `readBoard` publishes it: the board's facts, without execution coordinates or write provenance. |
+| `channelBoardRowSchema` | One row as `readBoard` publishes it: the board's facts and the `run` working the task, without the claim's coordinates (`claimedBy`, the lease) or write provenance. |
 | `channelFileTaskInputSchema` / `channelFileTaskOutputSchema` / `channelReadBoardInputSchema` / `channelReadBoardOutputSchema` | The `fileTask` and `readBoard` contracts. |
 | `ChannelPostRefusedError` | A post refused on the channel's own terms; `reason` is `channel-not-bound` or `author-not-a-member`. |
 | `channelPostInputSchema` / `channelReadOutputSchema` / `channelNotifyInputSchema` | The post, read and notify contracts. |

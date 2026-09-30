@@ -16,6 +16,9 @@
  * - **commits, then throws** — the change item cannot be published after the
  *   write landed. The attempt stops, the link stays naming this run (whose
  *   request reads failed), and the next claim clears it.
+ * - **fails after the claim is on state** — the rescue finds the ticket and
+ *   settles the attempt as a gate failure. The row goes back for retry still
+ *   naming this run, and the retry's claim clears it.
  *
  * The end-to-end hand-off (real drain, real child sessions, every seat policy)
  * is `integration-tests/src/scenarios/task-board-run-link.test.ts`.
@@ -40,7 +43,7 @@ const BOARD_ID = "run-link-board";
 const LEDGER = "run-link-ledger";
 const SEAT = "coder";
 
-type Fault = "none" | "decline" | "throw" | "commit-then-throw";
+type Fault = "none" | "decline" | "throw" | "commit-then-throw" | "state-write-throws";
 
 /**
  * One ledger shared by every collection built over it — the parent's claim and
@@ -51,6 +54,7 @@ async function harness(fault: Fault) {
   let clock = 1000;
   const events: TaskChangeEvent[] = [];
   const ran: string[] = [];
+  let stateFaultFired = false;
 
   const ledger = (onChange?: (event: TaskChangeEvent) => void) =>
     createResourceBackedTaskCollection({
@@ -63,11 +67,13 @@ async function harness(fault: Fault) {
 
   // The parent's side: one row, claimed, as a drain leaves it before hand-off.
   const parent = await ledger();
-  await parent.addTask({ id: "t1", goal: "do it", assignee: SEAT, input: {} });
+  // Two attempts, so a gate failure the rescue settles goes back for retry
+  // rather than ending the row.
+  await parent.addTask({ id: "t1", goal: "do it", assignee: SEAT, input: {}, maxAttempts: 2 });
   const claimed = (await parent.claim("drain", { leaseDurationMs: 10_000 }))!;
 
   const inject = (inner: TaskCollectionRef): TaskCollectionRef => {
-    if (fault === "none" || fault === "commit-then-throw") return inner;
+    if (fault !== "decline" && fault !== "throw") return inner;
     return {
       ...inner,
       linkRun: async (id, run, options) => {
@@ -97,15 +103,27 @@ async function harness(fault: Fault) {
     // the result says why. Under "skip" the same stop completes the request
     // with the error as its output; the row is handled identically.
     onError: "fail",
-    collection: async () =>
-      inject(
+    collection: async (ctx) => {
+      // The gate fails once the claim-state write has landed: the rescue finds
+      // the ticket on state, a case the link write's position does not cover.
+      // `ctx.sequencer` is rebuilt on every read, so the fault rides the gate's
+      // next statement, the task-scope mark, which runs only after that write
+      // resolves. To the rescue the two are the same failure.
+      if (fault === "state-write-throws" && ctx !== undefined && !stateFaultFired) {
+        ctx._markTaskScope = () => {
+          stateFaultFired = true;
+          throw new Error("claim state could not be saved");
+        };
+      }
+      return inject(
         await ledger((event) => {
           events.push(event);
           if (fault === "commit-then-throw" && event.kind === "run_linked") {
             throw new Error("change item could not be published");
           }
         })
-      ),
+      );
+    },
   });
   const entry = gate({ block: worker } as unknown as ActionCore, "implement");
   const flow = defineFlow({ kind: "run-link-gate", actions: { implement: entry } } as never)({
@@ -216,6 +234,31 @@ describe("the claim gate writes the run link", () => {
 
     // The board's lapse path recovers the row; that claim clears the link.
     h.advance(10_001);
+    const recovered = await h.reclaim();
+    expect(recovered?.attempts).toBe(2);
+    expect(recovered?.run).toBeUndefined();
+  });
+
+  it("keeps the link when the claim-state write fails after it, and the next claim clears it", async () => {
+    const h = await harness("state-write-throws");
+
+    const result = await h.run();
+
+    expect(String((result.error as Error | undefined)?.message)).toMatch(
+      /claim state could not be saved/
+    );
+    expect(h.ran).toEqual([]);
+    // The ticket reached state, so the rescue settled the attempt as the gate
+    // failure it is. With an attempt left the row goes back for retry, and the
+    // link still names the run that attempt entered.
+    const row = await h.row();
+    expect(row?.status).toBe("pending");
+    expect(row?.feedback).toMatch(/claim state could not be saved/);
+    expect(row?.run).toEqual({ sessionId: "s_run", requestId: result.requestId, attempt: 1 });
+    const request = await h.stores.request.get(result.requestId!);
+    expect(request?.status).toBe("failed");
+
+    // The retry's claim clears it.
     const recovered = await h.reclaim();
     expect(recovered?.attempts).toBe(2);
     expect(recovered?.run).toBeUndefined();

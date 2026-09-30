@@ -826,15 +826,38 @@ export function assertValidLeaseDeadline(leaseUntil: number): void {
 export function linkRunGuards(
   options: TaskTransitionOptions & { claim?: TaskClaimTicket }
 ): TaskTransitionOptions {
-  if (options?.claim === undefined) {
-    throw new Error(
-      `[tasks] linkRun requires the claim ticket of the attempt it links. ` +
-        `The link names the run working the task, so an unfenced write could ` +
-        `point any task at any run.`
-    );
-  }
+  requireClaimTicket(
+    options?.claim,
+    "linkRun",
+    `of the attempt it links. The link names the run working the task, so an ` +
+      `unfenced write could point any task at any run.`
+  );
   const { adoptLapsedLease: _dropped, ...guards } = options;
   return { ...guards, ifAllowed: true };
+}
+
+/**
+ * Refuse a fenced verb called without the claim ticket it is fenced by.
+ * Shared by `renewLease` and `linkRun` in both backings, so the next fenced
+ * verb has one place to take its refusal from.
+ *
+ * @param detail completes "`<verb>` requires the claim ticket …": which ticket,
+ *   and why an unfenced call is refused.
+ * @throws when `claim` is absent — a programming error, not a lost race.
+ */
+/** The `requireClaimTicket` detail both backings' `renewLease` refuse with. */
+export const RENEW_LEASE_TICKET_DETAIL =
+  `the lease belongs to. Renewal is the holder asserting it is still alive, so an ` +
+  `unfenced renewal would let anything keep anyone's lease open.`;
+
+export function requireClaimTicket(
+  claim: TaskClaimTicket | undefined,
+  verb: string,
+  detail: string
+): asserts claim is TaskClaimTicket {
+  if (claim === undefined) {
+    throw new Error(`[tasks] ${verb} requires the claim ticket ${detail}`);
+  }
 }
 
 /** Copy a run link field by field, so no extra key a caller passed rides into the row. */

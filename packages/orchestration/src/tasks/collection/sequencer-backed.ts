@@ -33,6 +33,8 @@ import {
   applyTransition,
   assertValidLeaseDeadline,
   linkRunGuards,
+  RENEW_LEASE_TICKET_DETAIL,
+  requireClaimTicket,
   runLinkPatch,
   assertValidLeaseDuration,
   buildInitialTask,
@@ -553,13 +555,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
 
     async renewLease(id, leaseUntil, renewOptions) {
       assertValidLeaseDeadline(leaseUntil);
-      if (renewOptions.claim === undefined) {
-        throw new Error(
-          `[tasks] renewLease requires the claim ticket the lease belongs to. ` +
-            `Renewal is the holder asserting it is still alive, so an unfenced ` +
-            `renewal would let anything keep anyone's lease open.`
-        );
-      }
+      requireClaimTicket(renewOptions.claim, "renewLease", RENEW_LEASE_TICKET_DETAIL);
       // Same-status, so this rides the ordinary transition path and picks up
       // all four decline arms — the lease fence among them. See the resource
       // backing's `renewLease` for why `updatedAt` moving is the right answer.
