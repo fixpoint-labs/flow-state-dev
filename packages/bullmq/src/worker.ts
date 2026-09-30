@@ -65,6 +65,9 @@ const DEFAULT_CONCURRENCY = 2;
 /** 5 minutes — LLM calls are slow, so we extend the default lock. */
 const DEFAULT_LOCK_DURATION = 300_000;
 
+/** `takeTurn`'s answer for a job whose request was cancelled while it waited. */
+const CANCELLED = Symbol("cancelled");
+
 /**
  * Builds the job processor used by `createFlowWorker`. Exported separately so
  * the retry/terminal-publish semantics are testable without a Redis
@@ -98,7 +101,7 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
   const takeTurn = async (
     job: Job<FlowJobData>,
     token: string | undefined
-  ): Promise<LeasePlace | undefined> => {
+  ): Promise<LeasePlace | typeof CANCELLED | undefined> => {
     const data = job.data;
     const backend = leaseBackend;
     let place = data.leasePlace ?? undefined;
@@ -108,12 +111,16 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
     const requestId = data.requestId;
 
     // Cancelled while it waited: it never starts. Its place goes back now, so
-    // the next run moves, and `runAction` settles the request aborted from the
-    // recorded cancel without running the action.
-    const record = await stores.request.get(requestId).catch(() => undefined);
-    if (record?.abortRequested === true) {
+    // the next run moves, and the request ends aborted, as a queued run
+    // cancelled in process does.
+    if (await stores.request.isAbortRequested(requestId).catch(() => false)) {
       await giveBack(place);
-      return undefined;
+      await settleUnstartedRequest(stores, requestId, { status: "aborted" });
+      await publishFailure(
+        requestId,
+        new Error(`Request "${requestId}" was cancelled before it left the concurrency queue`)
+      );
+      return CANCELLED;
     }
 
     // Renew before asking: a place whose lease ran out while its job sat in
@@ -169,7 +176,9 @@ export function createFlowJobProcessor(deps: FlowWorkerDeps) {
       throw new UnrecoverableError(`Unknown flow "${data.flowKind}"`);
     }
 
-    const place = await takeTurn(job, token);
+    const turn = await takeTurn(job, token);
+    if (turn === CANCELLED) return undefined;
+    const place = turn;
     // While the run holds its turn, renew the place on a timer of its own
     // (not the run heartbeat, which a flow can turn off), and stop the run
     // once the place is lost: another worker may take the key from then on.

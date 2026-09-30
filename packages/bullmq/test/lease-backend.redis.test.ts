@@ -207,6 +207,55 @@ describeWithRedis("the job processor's wait for its turn", () => {
     }
   });
 
+  it("never starts a waiter cancelled while it waited, ends it aborted, and moves the line (BR-13)", async () => {
+    const { backend } = setup();
+    const holder = await place(backend, "r_holder");
+    const waiter = await place(backend, "r_waiter");
+    const next = await place(backend, "r_next");
+    const stores = createInMemoryStores();
+    const ts = Date.now();
+    await stores.request.set(
+      "r_waiter",
+      {
+        id: "r_waiter",
+        status: "in_progress",
+        actionName: "respond",
+        sessionId: "s_1",
+        userId: "u_1",
+        items: [],
+        startedAt: ts,
+        updatedAt: ts
+      } as never,
+      "any"
+    );
+    // Cancelled the way the abort route records it.
+    await stores.request.setFieldsIfStatus("r_waiter", { abortRequested: true }, ["in_progress"], ts);
+    // A registry with no runnable flow: reaching `runAction` would fail the job.
+    const processor = createFlowJobProcessor({
+      registry,
+      stores,
+      runtimeConfig: {},
+      leaseBackend: backend
+    });
+    const { job, calls } = fakeJob(
+      {
+        flowKind: "chat",
+        actionName: "respond",
+        input: {},
+        userId: "u_1",
+        requestId: "r_waiter",
+        leasePlace: waiter
+      },
+      leaseJobId(waiter)
+    );
+    await expect(processor(job, "token")).resolves.toBeUndefined();
+    expect(calls.moveToDelayed).toEqual([]);
+    expect((await stores.request.get("r_waiter"))?.status).toBe("aborted");
+    expect(await backend.isMyTurn(waiter)).toBe("missing");
+    await backend.giveBack(holder);
+    expect(await backend.isMyTurn(next)).toBe(true);
+  });
+
   it("times a waiter out at the wait budget, settles its request failed, and gives its place back (BR-10)", async () => {
     const { backend } = setup();
     const holder = await place(backend, "r_holder");
