@@ -282,6 +282,22 @@ const MANIFEST: Record<string, Check[]> = {
   input: [bind("input")],
   sessionId: [bind("sessionId")],
   when: [bind("when")],
+  // `when` returning `false` runs nothing: the predicate's return is boolean, and the
+  // reference page publishes "A falsy result skips".
+  false: [bind("when", "()"), S(WEBHOOKS_REF, "A falsy result skips")],
+  authentication: [P("@flow-state-dev/core", "FlowDefinition", "authentication")],
+  // the page's one flow: its id, which the page's code registers and its routes name
+  billing: [ROUTE("POST /api/flows/billing/webhooks/stripe"), S(WEBHOOKS_REF, 'kind: "billing"')],
+  // the webhook sample's `defaultUserId: "system"`, the user every event runs as
+  system: [P("@flow-state-dev/core", "FlowDefinition", "authentication", "defaultUserId"),
+    S(WEBHOOKS_REF, 'defaultUserId: "system"')],
+  DEFAULT_ORG_ID: [E("@flow-state-dev/core", "DEFAULT_ORG_ID")],
+  // a configured resolver returning null is refused 401; the signature is checked before it runs
+  "401": [S("apps/docs/docs/server/authentication.md", "refused with 401"),
+    S("packages/engine/src/transports/webhook/routes.ts", "flow + provider lookup → raw body → verify")],
+  '"webhook"': [S("packages/engine/src/transports/webhook/createWebhookTransportAdapter.ts",
+    'WEBHOOK_TRANSPORT_SOURCE = "webhook"'),
+    P("@flow-state-dev/core", "FlowDefinition", "authentication", "resolvePrincipal", "(0)", "source")],
   bullmqWorker: [E("@flow-state-dev/bullmq", "bullmqWorker")],
   mode: [P("@flow-state-dev/bullmq", "bullmqWorker", "(0)", "mode")],
   "worker: bullmqWorker({ connection })": [P("@flow-state-dev/engine", "CreateFlowStateOptions", "worker"),

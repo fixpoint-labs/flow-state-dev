@@ -59,6 +59,7 @@ with `runAction`, as `createFlowJobProcessor` does.
 | F3 | A `{ from: true }` reply from a queued run, on a process with the external dispatcher (colocated), is refused the same way |
 | F4 | A webhook whose `sessionId` names an existing session is enqueued, not refused |
 | F5 | The same queued job consumed by a `worker-only` process (its own runtime over the same stores, no dispatcher): the reply goes in process and is not refused |
+| F6 | An `{ id }` delivery made by a run on that `worker-only` process goes in process and is not refused; paired with F2, so it passes only when the producer refused the same delivery. Added in the implementation PR, when the page's session table stated the `worker-only` case for `{ id }` too |
 
 ```bash
 pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/fence.mts                          # must PASS
