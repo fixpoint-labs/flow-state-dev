@@ -72,6 +72,13 @@ import {
 } from "./workforce/flows/workers/em.mts";
 import type { HarnessStub } from "./harness-stub.mts";
 import { labNotify, type NotifyLog } from "./notify.mts";
+import {
+  RAISE_ASK_STEP,
+  raiseAsk,
+  seatSessionId,
+  type AskFeature,
+  type RaiseAskResult,
+} from "./ask.mts";
 
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
@@ -183,8 +190,25 @@ export interface OpenLabOptions {
    * current brief does not name. See `phase.mts`.
    */
   requireAcceptance?: boolean;
+  /**
+   * Raise the EM seat's ask on open: one pending approval, in the EM seat's
+   * own session, naming this feature (`ask.mts`).
+   *
+   * **Absent means absent**, as with `channels`: no durable execution, no
+   * request, no store write, and the three older checks open exactly as they
+   * did. Present turns durable execution on, because the answer arrives later
+   * through the engine's resume route, and open fails, naming the step, if the
+   * ask could not be raised.
+   */
+  ask?: AskFeature;
 
   // ---- controls, each the red state of one claim -------------------------
+
+  /**
+   * The asking door files its row before it suspends. The red state of
+   * "nothing is filed until a person approves".
+   */
+  fileBeforeAsking?: boolean;
 
   /**
    * Repoint a seat at a different file-declared document, by seat id.
@@ -273,6 +297,22 @@ export interface Lab {
     seatId: string,
     options?: { door?: "org-less" | "bearer" },
   ): Promise<{ facts?: Record<string, unknown>; error?: string }>;
+  /**
+   * What raising the ask did on this open. Absent when `ask` was not asked for.
+   */
+  ask?: RaiseAskResult;
+  /**
+   * Send one request through the lab's HTTP door, as a person's client would.
+   *
+   * `path` is everything after `/api/flows/`, query string included. The lab's
+   * verified bearer is sent unless `bearer` is `false`, which is how a check
+   * shows the door refuses a caller that presented nothing.
+   */
+  door(
+    method: "GET" | "POST",
+    path: string,
+    options?: { body?: unknown; bearer?: boolean },
+  ): Promise<{ status: number; body: any }>;
   dispose(): Promise<void>;
 }
 
@@ -307,7 +347,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         };
   });
 
-  const emKind = defineEmWorkerFlow({ coderSeatId: options.coderSeatId, resources });
+  const emKind = defineEmWorkerFlow({
+    coderSeatId: options.coderSeatId,
+    resources,
+    ...(options.fileBeforeAsking === true ? { fileBeforeAsking: true } : {}),
+  });
   const coderKind = defineCoderWorkerFlow({
     harness: options.harness,
     workspace: options.workspace,
@@ -352,6 +396,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // not answer an unauthenticated HTTP read (FIX-1515 / BR-17).
     resolvePrincipal: resolveLabPrincipal,
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
+    // Only when the ask is: the three older checks run without it, as before.
+    ...(options.ask === undefined ? {} : { durable: true }),
   } as never);
 
   const runtime = await state.getRuntime();
@@ -368,7 +414,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const router = await state.getRouter();
 
   /** The session the EM seat's actions run in — one per seat, stable across a run. */
-  const sessionFor = (seatId: string): string => `s_${seatId.replace(/\./g, "_")}`;
+  const sessionFor = seatSessionId;
 
   /**
    * The session client `openChannels` is handed.
@@ -484,6 +530,59 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       // taking the run down.
       return { error: messageOf(error) };
     }
+  };
+
+  // The ask, last, once everything it runs over is registered. One EM seat is
+  // what this tree declares; a tree with none, or two, has no single seat the
+  // ask belongs to, and that is a refusal rather than a guess.
+  let ask: RaiseAskResult | undefined;
+  if (options.ask !== undefined) {
+    const emSeats = hired.filter((seat) => seat.kind === EM_KIND);
+    try {
+      if (emSeats.length !== 1) {
+        throw new Error(
+          `${RAISE_ASK_STEP}: wanted one "${EM_KIND}" seat to ask from, found ${emSeats.length}`,
+        );
+      }
+      ask = await raiseAsk({
+        state,
+        emSeat: emSeats[0]!,
+        feature: options.ask,
+        principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+      });
+    } catch (error) {
+      await state.dispose();
+      throw error;
+    }
+  }
+
+  const door = async (
+    method: "GET" | "POST",
+    path: string,
+    doorOptions?: { body?: unknown; bearer?: boolean },
+  ): Promise<{ status: number; body: any }> => {
+    const url = new URL(`http://lab/api/flows/${path}`);
+    const segments = url.pathname.slice("/api/flows/".length).split("/");
+    const request = new Request(url, {
+      method,
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        ...(doorOptions?.bearer === false
+          ? {}
+          : { authorization: `Bearer ${LAB_PRINCIPAL_SECRET}` }),
+      },
+      ...(doorOptions?.body === undefined ? {} : { body: JSON.stringify(doorOptions.body) }),
+    });
+    const response = await (router as any)[method](request, { params: { path: segments } });
+    const text: string = await response.text();
+    let body: unknown = text;
+    try {
+      body = text.length > 0 ? JSON.parse(text) : undefined;
+    } catch {
+      // Not JSON; hand back the text.
+    }
+    return { status: response.status, body };
   };
 
   const act = async (
@@ -627,6 +726,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         ? { facts: (result.output ?? {}) as Record<string, unknown> }
         : { error: result.error };
     },
+
+    ...(ask === undefined ? {} : { ask }),
+    door,
 
     dispose: () => state.dispose(),
   };

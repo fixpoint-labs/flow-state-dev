@@ -19,7 +19,7 @@
  * (BR-16), which is why the code side of the fence can sit inside the tree.
  */
 
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
@@ -59,6 +59,17 @@ export const POST_ENTRY = "onPost";
 export const DRAIN_ENTRY = "drain";
 
 /**
+ * The asking door: pause on a person's approval, then file and run the board.
+ *
+ * A third action rather than a flag on {@link FILE_ENTRY}, for the reason the
+ * post door is one: `file` is the direct door the first check drives, and a
+ * flag that made it wait would change what that check proves. Durable, because
+ * the answer arrives in a later HTTP request through the engine's resume route,
+ * and the request has to be there to continue.
+ */
+export const ASK_ENTRY = "askToFile";
+
+/**
  * What filing one feature takes.
  *
  * `phase` is not an input: this board runs one phase, and letting a caller pick
@@ -79,6 +90,14 @@ export const fileInputSchema = z.object({
    * spend.
    */
   maxAttempts: z.number().int().min(1).default(2),
+});
+
+/** What the asking door is handed: the feature it asks about. */
+export const askInputSchema = z.object({
+  /** The row's identity, as {@link fileInputSchema} takes it. */
+  issue: z.string().min(1),
+  /** What the row is, in a sentence. Named in the ask so a person knows what they approve. */
+  goal: z.string().min(1),
 });
 
 /**
@@ -118,6 +137,12 @@ export interface EmWorkerFlowOptions {
   coderSeatId: string;
   /** The file-declared documents, as `resourcesFromDocs` built them. */
   resources: Record<string, unknown>;
+  /**
+   * **Control only.** The asking door files its row *before* it suspends, so
+   * a row exists while the ask is still pending. The red state of "nothing is
+   * filed until a person approves"; never set outside a goal control.
+   */
+  fileBeforeAsking?: boolean;
 }
 
 /**
@@ -144,10 +169,10 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
   /**
    * Put one row on the board, idempotently.
    *
-   * Shared by the two doors below rather than written twice: what a row IS does
-   * not depend on whether a caller handed it over or somebody posted a line,
-   * and two copies of this is how the posted door comes to file a subtly
-   * different row than the direct one.
+   * Shared by the three doors below rather than written three times: what a
+   * row IS does not depend on whether a caller handed it over, somebody posted
+   * a line, or a person approved an ask, and two copies of this is how one
+   * door comes to file a subtly different row than another.
    */
   const addRow = async (
     tasks: any,
@@ -222,6 +247,103 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     },
   });
 
+  // ---- the asking door --------------------------------------------------
+  //
+  // prepare → gate → on approve: file, then drain → on reject: say so.
+  // The shape of `apps/kitchen-sink/flows/chat-agent/approval-gate.ts`, with
+  // real work behind the approval: the row `addRow` files and the board run
+  // that hands it to the coder seat. Handlers and the stock suspension only;
+  // no model is on this path.
+
+  const askDecisionSchema = askInputSchema.extend({ approved: z.boolean() });
+  const defaultAttempts = (): number => fileInputSchema.shape.maxAttempts.parse(undefined);
+
+  /**
+   * Before the gate. Replayed from the durable log on resume, not re-run.
+   *
+   * Passes the feature through, except under the `fileBeforeAsking` control,
+   * which files here so a check can watch a row exist before anyone approved.
+   */
+  const prepareAsk = handler({
+    name: "devforce-em-prepare-ask",
+    inputSchema: askInputSchema,
+    outputSchema: askInputSchema,
+    uses: [board.capability],
+    execute: async (input: z.infer<typeof askInputSchema>, ctx: BlockContext) => {
+      if (options.fileBeforeAsking === true) {
+        await addRow((ctx as { cap: Record<string, any> }).cap[BOARD_ID], {
+          ...input,
+          maxAttempts: defaultAttempts(),
+        });
+      }
+      return { issue: input.issue, goal: input.goal };
+    },
+  });
+
+  /**
+   * The stock `human_approval` suspension, naming the feature.
+   *
+   * Approve makes `ctx.suspend` return; reject makes it throw
+   * `SuspensionRejectedError`. Either way the gate returns a decision the
+   * branches below read.
+   */
+  const askGate = handler({
+    name: "devforce-em-ask-gate",
+    inputSchema: askInputSchema,
+    outputSchema: askDecisionSchema,
+    execute: async (input: z.infer<typeof askInputSchema>, ctx: BlockContext) => {
+      try {
+        await ctx.suspend!({
+          reason: "human_approval",
+          message: `File ${input.issue}: ${input.goal} and start the coder seat on it?`,
+          allow: ["approve", "reject"],
+        });
+        return { ...input, approved: true };
+      } catch (error) {
+        if (error instanceof SuspensionRejectedError) return { ...input, approved: false };
+        throw error;
+      }
+    },
+  });
+
+  /** On approve: file the row through the one row writer, and say what happened. */
+  const fileApproved = handler({
+    name: "devforce-em-file-approved",
+    inputSchema: askDecisionSchema,
+    uses: [board.capability],
+    execute: async (input: z.infer<typeof askDecisionSchema>, ctx: BlockContext) => {
+      const filed = await addRow((ctx as { cap: Record<string, any> }).cap[BOARD_ID], {
+        issue: input.issue,
+        goal: input.goal,
+        maxAttempts: defaultAttempts(),
+      });
+      ctx.emit.message(
+        filed.existed
+          ? `Approved, but ${filed.taskId} already existed; nothing new was filed.`
+          : `Approved. Filed ${filed.taskId} and handed it to the board.`,
+      );
+    },
+  });
+
+  /** On reject: file nothing, and say so. */
+  const refuseAsked = handler({
+    name: "devforce-em-ask-denied",
+    inputSchema: askDecisionSchema,
+    execute: async (input: z.infer<typeof askDecisionSchema>, ctx: BlockContext) => {
+      ctx.emit.message(`Nothing filed for ${input.issue}: the ask was denied.`);
+    },
+  });
+
+  const askToFile = sequencer({ name: "devforce-em-ask-to-file", inputSchema: askInputSchema })
+    .step(prepareAsk)
+    .step(askGate)
+    .tapIf((decision) => decision.approved, fileApproved)
+    // The board runs inside the approved branch of the same request, so
+    // Approve starts the coder's run without a second call. The resume route
+    // has already answered by the time this runs.
+    .tapIf((decision) => decision.approved, () => ({}), board.drain)
+    .tapIf((decision) => !decision.approved, refuseAsked);
+
   return defineFlow({
     kind: EM_KIND,
     // One copy per worker record, each addressed by its own id.
@@ -231,6 +353,11 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
     actions: {
       [FILE_ENTRY]: { block: fileRow, description: "File one feature as a row on the board." },
       [DRAIN_ENTRY]: { block: board.drain, description: "Run the board until it is idle." },
+      [ASK_ENTRY]: {
+        block: askToFile,
+        durable: true,
+        description: "Ask a person before filing one feature; on approval, file it and run the board.",
+      },
       [INSPECT_ENTRY]: {
         block: readOwnFacts,
         description: "Read what this seat can see of its own configuration. Writes nothing.",
