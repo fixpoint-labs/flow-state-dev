@@ -629,17 +629,21 @@ export function createInboundTransportHost(
    * id) keeps the existing record and re-stamps it, which is the
    * last-write-wins hand-off it always was.
    * Resolves once the entry is this dispatch's to keep warm and to remove on
-   * exit, with the incarnation of the request record it claimed (a hand-off
-   * keeps the holder's), so a controller registered before it can be tagged.
+   * exit.
    *
    * @param admitted The session `admitOwnership` read and admitted, if any.
+   * @param onClaimed Called with the claimed record's incarnation (a hand-off
+   *   keeps the holder's) the moment the record is claimed, before any later
+   *   await: from then on the record is visible and cancellable, so a
+   *   controller registered before it must carry the incarnation by then.
    */
   const materializeOwned = async (
     flow: FlowInstance,
     dispatchEnvelope: DispatchEnvelope,
     admitted: SessionRecord | undefined,
-    entry: Omit<Parameters<typeof stores.activeRequests.register>[0], "flowKind" | "flowId">
-  ): Promise<string> => {
+    entry: Omit<Parameters<typeof stores.activeRequests.register>[0], "flowKind" | "flowId">,
+    onClaimed?: (incarnation: string) => void
+  ): Promise<void> => {
     const record = createInitialRequestRecord(
       { ...dispatchEnvelope, flowKind: flow.kind, flowId: flow.id },
       entry.startedAt
@@ -647,6 +651,7 @@ export function createInboundTransportHost(
     // Owner-fenced on both axes: another flow instance's or another user's
     // record under this id is never overwritten or re-parented.
     const claimed = await claimRequestRecord(stores, flow, record);
+    onClaimed?.(resolveRequestIncarnation(claimed));
     // A request under a child session moves the child's update time here,
     // where the request is first recorded as working, and not when its run
     // starts: the run can wait behind a concurrency key, or in an external
@@ -691,7 +696,6 @@ export function createInboundTransportHost(
       }
     }
     await stores.activeRequests.register({ ...entry, flowKind: flow.kind, flowId: flow.id });
-    return resolveRequestIncarnation(claimed);
   };
 
   const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
@@ -932,12 +936,14 @@ export function createInboundTransportHost(
               metadata: dispatchEnvelope.metadata,
               startedAt: ts,
               lastHeartbeatAt: ts
+            }, (incarnation) => {
+              // Until its record is claimed this controller belongs to no known
+              // request, so an abort fenced on one does not fire it. Tagged the
+              // moment the record exists, because a cancel can land from then on.
+              tagAbortController(requestId, queuedAbort, incarnation);
             })
           )
-          .then((incarnation) => {
-            // Until its record is claimed this controller belongs to no known
-            // request, so an abort fenced on one does not fire it; now it can.
-            tagAbortController(requestId, queuedAbort, incarnation);
+          .then(() => {
             entryOwned = true;
           })
           .catch(async (error: unknown) => {

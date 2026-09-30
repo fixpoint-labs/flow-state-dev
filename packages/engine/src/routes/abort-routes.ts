@@ -4,10 +4,7 @@
 import type { StoreRegistry } from "../stores/types";
 import { resolveRequestIncarnation } from "../stores/scope-keys";
 import type { ResolvedPrincipal } from "../transports/types";
-import {
-  abortRequest,
-  hasActiveAbortController
-} from "../execution/abort-registry";
+import { abortRequest } from "../execution/abort-registry";
 import { callerReachesRequest, jsonResponse, unknownRequestResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -80,8 +77,7 @@ export async function handleAbortRequest(
   // Fire the in-memory controller if the checked request runs in this
   // process. A controller of a later request under the id is not it; that
   // request never received the intent, so it is left running.
-  if (hasActiveAbortController(requestId, incarnation)) {
-    abortRequest(requestId, incarnation);
+  if (abortRequest(requestId, incarnation)) {
     return new Response(null, { status: 204 });
   }
 

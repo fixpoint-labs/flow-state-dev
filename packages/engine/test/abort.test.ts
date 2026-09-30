@@ -2571,4 +2571,75 @@ describe("a queued request cancelled through the route", () => {
     expect(response.status).toBe(204);
     expect(executed).toEqual([]);
   });
+
+  // With heartbeats off nothing polls the stored intent later, so the fire is
+  // the only delivery. A cancel can land as soon as the record is claimed, while
+  // the host is still materializing the rest of the request; the controller has
+  // to carry the incarnation by then, or the fenced fire skips it and the
+  // cancelled request runs.
+  it("fires it for a cancel that lands while the host is still materializing, with heartbeats off", async () => {
+    const stores = createInMemoryStores();
+    const executed: string[] = [];
+    const registry = createFlowRegistry();
+    registry.register(
+      defineFlow({
+        kind: "queued-abort-mid",
+        request: { heartbeatIntervalMs: 0 },
+        actions: {
+          queued: {
+            inputSchema: z.object({}),
+            concurrency: { policy: "queue", key: "session" },
+            block: handler({
+              name: "queued",
+              inputSchema: z.object({}),
+              execute: () => {
+                executed.push("queued");
+                return {};
+              }
+            })
+          }
+        }
+      })({ id: "queued-abort-mid" })
+    );
+    const requestId = "req_queued_mid";
+
+    // The last materialization step, after the claim: cancel from inside it.
+    let status: number | undefined;
+    const register = stores.activeRequests.register.bind(stores.activeRequests);
+    stores.activeRequests.register = async (entry) => {
+      if (entry.requestId === requestId && status === undefined) {
+        const response = await handleAbortRequest(
+          new Request(`http://localhost/api/flows/queued-abort-mid/requests/${requestId}/abort`, {
+            method: "POST"
+          }),
+          { kind: "abort_request", flowKind: "queued-abort-mid", requestId },
+          { stores }
+        );
+        status = response.status;
+      }
+      return register(entry);
+    };
+
+    const host = createInboundTransportHost({
+      registry,
+      stores,
+      resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+      runtimeConfig: {}
+    });
+    const handle = host.dispatch({
+      source: "http",
+      flowKind: "queued-abort-mid",
+      action: "queued",
+      input: {},
+      sessionId: "s_queued_mid",
+      requestId,
+      orgId: DEFAULT_ORG_ID,
+      principal: { userId: "u_queued", orgId: DEFAULT_ORG_ID }
+    });
+    await handle.finished.catch(() => undefined);
+
+    expect(status).toBe(204);
+    expect(executed).toEqual([]);
+    expect((await stores.request.get(requestId))?.status).toBe("aborted");
+  });
 });

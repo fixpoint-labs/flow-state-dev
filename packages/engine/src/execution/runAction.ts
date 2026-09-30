@@ -980,32 +980,29 @@ export async function runActionInternal<
   // the claim wrote (a same-owner hand-off keeps the holder's). Its abort
   // controller carries it, so an abort fenced on another request under this
   // id cannot fire this run.
-  let runIncarnation: string;
-  if (admittedRequest === undefined) {
-    const claimed = await claimRequestRecord(
-      options.stores,
-      options.flow,
-      createInitialRequestRecord(
-        {
-          requestId,
-          flowKind: options.flow.kind,
-          flowId: options.flow.id,
-          actionName: options.actionName as string,
-          userId: options.userId,
-          sessionId: options.sessionId,
-          tenantId: options.tenantId,
-          orgId: options.orgId,
-          source,
-          metadata: options.metadata,
-          input: options.input
-        },
-        Date.now()
-      )
-    );
-    runIncarnation = resolveRequestIncarnation(claimed);
-  } else {
-    runIncarnation = resolveRequestIncarnation(admittedRequest);
-  }
+  const runIncarnation = resolveRequestIncarnation(
+    admittedRequest ??
+      (await claimRequestRecord(
+        options.stores,
+        options.flow,
+        createInitialRequestRecord(
+          {
+            requestId,
+            flowKind: options.flow.kind,
+            flowId: options.flow.id,
+            actionName: options.actionName as string,
+            userId: options.userId,
+            sessionId: options.sessionId,
+            tenantId: options.tenantId,
+            orgId: options.orgId,
+            source,
+            metadata: options.metadata,
+            input: options.input
+          },
+          Date.now()
+        )
+      ))
+  );
 
   await registry.register({
     requestId,
