@@ -22,6 +22,7 @@
  *   Inbox     Inbox equals the stored pending asks, or names its empty state
  *   reach     every level, tab and panel opens, and each empty one is named
  *   post      a composer post is drawn, and is in the stored transcript
+ *   answer    an ask approved from Inbox is no longer pending in the store
  *
  * Controls rebuild App Lab with one source module swapped for a module under
  * `controls/` (a Vite `resolveId` plugin; the build fails if the swap never
@@ -538,9 +539,31 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     if (!(await visible(page, "transcript-line-body"))) fail("the post is in the stored transcript", "after a reload the transcript is empty");
     else if ((await drawn.count()) !== 1) fail("the post is in the stored transcript", `after a reload "${line}" is drawn ${await drawn.count()} times`);
 
+    // ---- answer: an ask approved from Inbox is resumed in the store --------
+    let answered = "no ask to answer";
+    if (store.asks.length > 0) {
+      await open(page, served.origin, "/inbox");
+      await page.getByTestId("inbox-item").first().click();
+      const approve = page.getByTestId("inbox-detail").getByRole("button", { name: "Approve" });
+      if (await approve.isDisabled()) {
+        answered = "the first ask is not answerable from App Lab";
+      } else {
+        await approve.click();
+        let left = store.asks.length;
+        for (let waited = 0; waited < 20_000 && left === store.asks.length; waited += 250) {
+          await sleep(250);
+          left = (await readStore(api, tree, userId)).asks.length;
+        }
+        if (left !== store.asks.length - 1) {
+          fail("an answer from Inbox lands in the store", `${store.asks.length} pending before Approve, ${left} after`);
+        }
+        answered = `approved 1 of ${store.asks.length}, ${left} left in the store`;
+      }
+    }
+
     if (pageErrors.length > 0) fail("reach", `the page threw: ${pageErrors.join(" | ")}`);
     evidence.push(
-      `${name}: ${store.seats.length} seats, ${store.channels.length} channels, ${storedRows.length} row(s) [${storedRows.map((r) => r.status).join(", ")}], post kept ${kept.length}`,
+      `${name}: ${store.seats.length} seats, ${store.channels.length} channels, ${storedRows.length} row(s) [${storedRows.map((r) => r.status).join(", ")}], post kept ${kept.length}, ${answered}`,
     );
   } finally {
     await browser.close();

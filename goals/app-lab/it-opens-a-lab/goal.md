@@ -17,6 +17,7 @@
 - **reach**: every level, tab and panel opens (Inbox, Tasks, the project level's four tabs, each workstream's four tabs and panel, and the task frame's four tabs and panel slot). Every empty one names what will be there. The page throws nothing.
 - **the post appears on screen**: a composer post on the first workstream is drawn.
 - **the post is in the stored transcript**: the channel's session holds exactly one `channel-post` with that body, and a reload draws it once.
+- **an answer from Inbox lands in the store**: when an ask is pending (DevForce's EM seat raises one at boot), Approve on Inbox leaves one fewer pending suspension in the store.
 
 The rows come from the Lab's own doors. On multi-seat-collab, the planner files through its action, and the worker seats drain until the row parks. On DevForce, a `<issue>: <text>` post on the channel wakes the EM, which files the row.
 
@@ -34,6 +35,9 @@ The rows come from the Lab's own doors. On multi-seat-collab, the planner files 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| 2026-09-30 | 9661e4494+wip | n/a | PASS | devforce: 3 seats, 1 channel, 1 row (pending, filed by the EM from a post), post kept once; multi-seat-collab: 3 seats, 1 channel, 1 row (parked), post kept once; Inbox 0 of 0 pending on both, empty state named. |
+| 2026-09-30 | 9661e4494+wip | n/a | PASS | Before the #2445 merge. devforce: 3 seats, 1 channel, 1 row (pending, filed by the EM from a post), post kept once; multi-seat-collab: 3 seats, 1 channel, 1 row (parked), post kept once; Inbox 0 of 0 pending on both, empty state named. |
 | 2026-09-30 | 9661e4494+wip | n/a | FAIL (control `static-names`, expected) | Only `[multi-seat-collab] TEAMS equals the store's seats`: missing [eng.builder, eng.planner], extra [eng.coder, eng.em]. DevForce passes, because the written-in list is its own. |
 | 2026-09-30 | 9661e4494+wip | n/a | FAIL (control `optimistic-post`, expected) | Only `the post is in the stored transcript`, on both Labs: 0 stored copies, and gone after a reload. The line *was* drawn, so "appears on screen" stayed green. |
+| 2026-09-30 | wip on #2445 merge | n/a | PASS | DevForce now raises the EM's ask at boot: Inbox 1 listed of 1 pending, Approve left 0 pending in the store. devforce: 3 seats, 1 channel, 1 row (pending), post kept once; multi-seat-collab: 3 seats, 1 channel, 1 row (parked), post kept once, Inbox empty state named. |
+| 2026-09-30 | wip on #2445 merge | n/a | FAIL (control `static-names`, expected) | Only `[multi-seat-collab] TEAMS equals the store's seats`: missing [eng.builder, eng.planner], extra [eng.coder, eng.em]. |
+| 2026-09-30 | wip on #2445 merge | n/a | FAIL (control `optimistic-post`, expected) | Only `the post is in the stored transcript`, on both Labs: 0 stored copies, gone after a reload. |

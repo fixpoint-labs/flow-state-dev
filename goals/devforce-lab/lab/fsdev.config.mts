@@ -6,7 +6,7 @@
  * One `FlowState` holding the hired seats and the channel, default-exported,
  * with no app and no route of the lab's own. It is host code only: `host.mts`
  * and the lab's checks are untouched, and this file wires the same tree the
- * same way `openLab` does, with the three things a long-lived server needs
+ * same way `openLab` does, with the four things a long-lived server needs
  * that a check does not:
  *
  * - **The inventory, opened at boot.** The organization's seat and channel
@@ -19,6 +19,10 @@
  *   presents no bearer, so an org-less request has nothing to fall back to. The
  *   bearer is handed to the page through the `devtool` block, which the host
  *   injects on a loopback bind only.
+ * - **One ask waiting.** After the hire, `raiseAsk` (`ask.mts`) puts the EM
+ *   seat's approval for {@link ASK_FEATURE} in the EM seat's own session, so
+ *   App Lab's Inbox has something to answer. Approve files the row and starts
+ *   the coder seat; Deny files nothing.
  *
  * The harness is the lab's scripted stub: no model, and a run that changes
  * nothing in its checkout. A real coding agent goes in the same slot, as
@@ -51,6 +55,7 @@ import {
   type OpenChannelsOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { RAISE_ASK_STEP, raiseAsk, type AskFeature } from "./ask.mts";
 import { ASSIGNEE } from "./board.mts";
 import { harnessStub } from "./harness-stub.mts";
 import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID } from "./host.mts";
@@ -82,6 +87,12 @@ const resolvePrincipal: PrincipalResolver = async (context) => {
     );
   }
   return principal;
+};
+
+/** The feature the EM seat asks a person to approve when the server opens. */
+const ASK_FEATURE: AskFeature = {
+  issue: "night-mode-toggle",
+  goal: "Add a night-mode toggle to the settings page.",
 };
 
 const roster = await readDeclaredRoster(LAB_TREE);
@@ -211,9 +222,18 @@ const inventory = await openInventory(
 );
 if (inventory.problems.length > 0) throw new Error(inventory.problems.join("; "));
 
-// TODO(FIX-1666, PR #2445): once `./ask.mts` lands on main, call
-// `raiseAsk({ state: flowState, emSeat, feature, principal })` here, after the
-// hire, so the EM's ask sits in its own session (`s_<seat id>`) for Inbox.
-// Whichever of FIX-1662 and FIX-1666 merges second wires it.
+// The EM seat's ask, last, once everything it runs over is registered: one
+// pending approval in the EM seat's own session (`s_<seat id>`), which Inbox
+// lists. Raised once per feature per store (`ask.mts`).
+if (emSeats.length !== 1) {
+  throw new Error(`${RAISE_ASK_STEP}: wanted one "${EM_KIND}" seat to ask from, found ${emSeats.length}`);
+}
+await raiseAsk({
+  state: flowState,
+  emSeat: hired.find((seat) => seat.id === emSeats[0])!,
+  feature: ASK_FEATURE,
+  principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+  ledger,
+});
 
 export default flowState;
