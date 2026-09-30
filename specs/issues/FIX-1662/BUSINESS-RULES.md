@@ -41,7 +41,7 @@ apply as written; these are the ones this issue adds. *Proved by* names the kind
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-18 | A workstream's Stream opens | The channel's transcript, one live stream for that session, older lines paged in; lines render with the shipped item and registry components. Beside it, every pending approval and question in the sessions of the channel's member seats, from the same read Inbox makes (BR-24, so the same person and organization limit), drawn with Inbox's card and answered through the same resume (BR-25). An ask lives in its seat's session, never the channel's, so this is the only way it reaches the Stream | Goal check |
+| BR-18 | A workstream's Stream opens | The channel's transcript, one live stream for that session, older lines paged in; lines render with the shipped item and registry components. Beside the transcript, as an adjunct, the Stream shows exactly the BR-24 pending asks whose seat is a member of this channel, oldest first as in Inbox, drawn with the same approval and question cards as Inbox and answered through the same resume (BR-25); they are not transcript lines and are not duplicated into the transcript. A seat on two channels shows its ask on both Streams | Goal check |
 | BR-19 | A person posts without `@` | The line goes through the channel's own post action; the stream shows it only once the transcript holds it | Goal check under `optimistic-post` |
 | BR-20 | A post fails | The draft stays in the composer with the error; nothing is drawn as sent | CI |
 | BR-21 | A person addresses `@worker` | Sent through FIX-1664's named session write; until it merges, the send is disabled and says so | CI |
@@ -53,7 +53,7 @@ apply as written; these are the ones this issue adds. *Proved by* names the kind
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-24 | Inbox opens | Every pending approval and question in the seat sessions the session listing returns to this person in this organization, oldest first, with kind, task where known, workstream and wait; All, Approvals and Questions each count exactly theirs. Asks in another member's sessions are not listed: the listing never widens past the caller, and an org-wide ask read is FIX-1652's call. Inbox says so in a line | Goal check |
-| BR-25 | An ask is selected | The detail pane uses the same renderer as the stream's card for that ask. Approve and Deny resolve it through the session's shipped resume | CI |
+| BR-25 | An ask is selected | Inbox detail and the Stream use the same approval/question renderer for that ask. Approve and Deny resolve it through the session's shipped resume | CI |
 | BR-26 | An ask is answered anywhere | It leaves Inbox and its workstream's Stream together, because both draw it from the one seat session that holds it | Goal check |
 | BR-27 | A parked row has no pending suspension behind it | It is not an Inbox item. It shows in Tasks under NEEDS YOU and in its worker's status (BR-8); whether a parked row is an ask is FIX-1652's call | CI |
 | BR-28 | Inbox or Tasks has nothing | A named empty state in a sentence | CI |

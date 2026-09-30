@@ -11,11 +11,11 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 |---|---|---|---|
 | S1 | `labs/app-lab/` · package | New private package `@flow-state-dev/app-lab`: a Vite React app shaped like `apps/devtool`, plus a start script that loads a Lab's config with `@flow-state-dev/cli`'s `loadFsdevConfig` and hands it to `@flow-state-dev/node`'s `serve(flowstate, { staticDir })`, bound to loopback unless the Lab resolves a verified principal (the `fsdev serve` guard) | BR-1 BR-2 |
 | S2 | `labs/app-lab` · the connection | Reads user and credential the way the devtool shell does; a refused or org-less principal renders the refusal screen before any read | BR-3 ER-4 |
-| S3 | `labs/app-lab` · the shared reads | One module every surface reads through: the seat and channel inventory, each channel's attached boards, the person's listed seat sessions, their pending suspensions. One read per resource per refresh, shared by counts, badges and screens; per-seat reads batched. It also holds the one answer path (the session's shipped resume) that Inbox and the Stream both call | BR-4 BR-7 BR-8 BR-11 BR-26 |
+| S3 | `labs/app-lab` · the shared reads | One module every surface reads through: the seat and channel inventory, each channel's attached boards, the person's listed seat sessions, their pending suspensions. One read per resource per refresh, shared by counts, badges and screens; per-seat reads batched. It also holds the one answer path (the session's shipped resume) that Inbox and the Stream both call. Contract: it refreshes on boot, org switch, a successful resume and Retry, not on every route or tab change; ask reads use the pending-ask projection (`react`'s `deriveSuspensions` over the listed sessions), not the full transcript per seat; Inbox and the Stream share its one cache | BR-4 BR-7 BR-8 BR-11 BR-26 |
 | S4 | `labs/app-lab` · the frame | Three columns; the routes and the right panel's slot ([pinned](#pinned-names)); tab in the URL; centre tabs mounted lazily | ER-1 BR-17 |
 | S5 | `labs/app-lab` · the sidebar | Org switcher, Jump to (⌘K, incl. resources), Inbox and Tasks with counts, PROJECTS (workstreams directly while no projects ship), TEAMS with workers below each team, footer | BR-6 to BR-11 |
 | S6 | `labs/app-lab` · the project level | Route and tabs Stream, Board, Workstreams, Brief, each its named empty state (FIX-1650); team strip from the inventory | BR-9 |
-| S7 | `labs/app-lab` · the workstream level | Stream (transcript, registry cards, composer, and the member seats' pending asks from S3's suspensions read, filtered to the channel's members, with S11's approval and question cards, as Inbox uses, and S3's resume), Board (App Lab's own five-column grouping over BR-12's map; `react`'s `BoardColumns` draws one column per status and can't merge them, so it is not used for the board, and no FSD package changes), Brief (charter), Results (empty state) | BR-12 BR-13 BR-14 BR-18 to BR-22 BR-26 |
+| S7 | `labs/app-lab` · the workstream level | Stream (transcript, composer, member pending asks per BR-18), Board (App Lab's own five-column grouping over BR-12's map; `react`'s `BoardColumns` draws one column per status and can't merge them, so it is not used for the board, and no FSD package changes), Brief (charter), Results (empty state) | BR-12 BR-13 BR-14 BR-18 to BR-22 BR-26 |
 | S8 | `labs/app-lab` · the workstream panel | Progress (empty state), Team (members, BR-8), Tasks grouped by column | BR-23 |
 | S9 | `labs/app-lab` · Tasks | The list over S3's board reads, grouped by State / Worker / Stream, Queued toggle, full width | BR-15 BR-16 BR-28 |
 | S10 | `labs/app-lab` · Inbox | List and detail pane; the detail uses the stream's approval and question renderers; Approve / Deny via S3's resume; reply through the ER-15 seam | BR-24 to BR-28 |
@@ -72,7 +72,7 @@ final hand-back (ER-9) as its own PR.
 | V4 | S5 | TEAMS equals the store's seats per team; BR-8's three states; BR-9 with no projects |
 | V5 | S7, S9 | BR-12 for every shipped status, including the legacy `awaiting_review` read as parked; BR-13, BR-14, BR-15 |
 | V6 | S7 | A post appears only after the transcript holds it; a refused post keeps the draft (BR-19, BR-20); `@worker` disabled until the seam is filled (BR-21) |
-| V7 | S7, S10 | Approve and Deny resolve through the resume; an ask in a member seat's session shows in that workstream's Stream and in Inbox, and answering it in either clears both (BR-18, BR-25, BR-26). Negative: an ask in a seat that is not the channel's member is not drawn in its Stream |
+| V7 | S7, S10 | Approve and Deny resolve through the resume; an ask in a member seat's session shows in that workstream's Stream and in Inbox, and answering it in either clears both (BR-18, BR-25, BR-26). Positive: the Stream's asks are exactly the intersection of the BR-24 listing and the channel's member seats, and an ask whose seat is on two channels shows on both Streams. Negative: an ask in a seat that is not the channel's member is not drawn in its Stream |
 | V8 | S1 to S11 | Static: no literal colour in App Lab's styles outside token definitions; no seat, channel, board, team or kind name from either tree in `labs/app-lab/src` (BR-5); registry copies byte-equal their source |
 | VG | S13 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) PASSES on both trees, after `GOAL_CONTROL=static-names` and `GOAL_CONTROL=optimistic-post` each FAILED at their named signal |
 | V9 | D1 | Leg-b readiness: App Lab starts over a config it has never seen (a temp copy of multi-seat-collab's) with no change to `labs/app-lab` |
@@ -145,11 +145,7 @@ Recorded for implementation, not baked into the design. Accept or decline each a
   workstream/Inbox exist. Consider deferring S11 to `workstream`/`inbox-tasks` and trimming S6 to
   route + tab shells + empty copy props unless ER-1 forces more here — otherwise `frame` is still a
   whole-product merge."
-- **Cursor (PLAN, S3):** "Worth one explicit contract in this plan: **refresh triggers** (boot,
-  mutation, manual Retry — not every route change) and **session read shape** (pending-ask
-  projection for Inbox list; full session only on detail). Without that, batched per-seat reads can
-  still devolve into O(seats × transcript size) per refresh." From the review body as well: default
-  to virtualized lists and one in-memory task index feeding BR-8, Tasks counts and TEAMS status;
+- **Cursor (review body):** default to virtualized lists and one in-memory task index feeding BR-8, Tasks counts and TEAMS status;
   TanStack Query or the devtool's client cache pattern over a one-off refresh layer.
 - **Cursor (PLAN, Removed):** "Naming four kitchen-sink files to mirror invites file-by-file drift.
   A shorter 'shape reference' (three columns + panel slot + channel post semantics) plus **react**
