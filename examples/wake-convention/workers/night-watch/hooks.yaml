@@ -1,0 +1,8 @@
+# References registered catalog ids. Proposed.
+# Does not compile to webhooks.github.on.
+on:
+  - event: github.issues.opened
+    run: record
+    session: repo-issue
+  - leftover: channel.support-desk.poke
+    reason: Layer 2 leftover. Not a registered transport event.

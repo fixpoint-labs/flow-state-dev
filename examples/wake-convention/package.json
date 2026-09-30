@@ -1,0 +1,22 @@
+{
+  "name": "@flow-state-dev/example-wake-convention",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Explore: transports + events register by file convention; worker/channel folders own wakes (FIX-1644 / FIX-1637). Examples only — not a product.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root .",
+    "inspect": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@flow-state-dev/orchestration": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

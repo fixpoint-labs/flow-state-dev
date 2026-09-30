@@ -1,0 +1,6 @@
+on:
+  - event: github.pull_request.review_requested
+    run: review
+    session: repo-pr
+  - event: github.issues.closed
+    run: ignore
