@@ -30,11 +30,11 @@ worked it, and never another task's run or a guess.**
 | **The real need** | The issue: App Lab's task view *"has to open the exact run behind a task"*, and *"anything else that has to tie a task to its run gets the same answer instead of a guess"*. FIX-1664's build waits on it ([D1 there](../FIX-1664/DECISIONS.md)) |
 | **Smaller, and rejected** | "The field exists on the task schema." Passes with the parent's session written in (which is what the claim's own coordinate already holds), or with the field stripped on the way to the browser, and App Lab still opens nothing |
 | **Bigger, and not this issue's** | A history of every attempt's run, and a transcript read (issue scope, invent-kills). The task id stamped on the run itself (an open wall the Architect left). Retiring the devtool's topic match (FIX-1514's leftover, a follow-up) |
-| **Not done if** | The link names the session of the conversation that drained the board rather than the run's · it reaches the server but not the reads App Lab uses · two tasks in one shared worker session name the same request · a second drain from another conversation leaves a row naming the first drain's run |
+| **Not done if** | The link names the session of the conversation that drained the board rather than the run's · it reaches the server but not the reads App Lab uses · two tasks in one shared worker session name the same request · a second drain from another conversation leaves a row naming the first drain's run · a run on another flow than the board's can't be opened from its link |
 
 ```mermaid
 flowchart LR
-  I["a channel board · two hand-off seats · per-task and per-worker"] --> D["drain from conversation A · re-drain from B"]
+  I["a channel board · hand-off seats · per-task, per-worker, and one on another flow"] --> D["drain from conversation A · re-drain from B"]
   D --> W["each worker writes its own session and request to disk"]
   W --> R["read every row back through the browser and model reads"]
   R -->|"each row's link equals what its worker wrote"| P["PASS · goal met"]
@@ -48,10 +48,10 @@ own run, never with what the board says it did.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/task-run-link/it-names-the-run-working-each-task/` · model n/a (model-free: a row is handed off, a run starts, or it doesn't) · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | For every row: `run.sessionId` and `run.requestId` equal the ids the worker recorded from inside its run, and `run.attempt` equals the row's `attempts`, on the browser read, the model read and the last `task-change` item alike. Two tasks on the per-worker seat name one session and two different requests. A row drained from conversation B names B's run |
-| **Input** | A file-declared channel with one board and two seats that hand off. Rename the team, channel or board, or swap which seat is per-worker, and a correct build still passes: the harness reads names off the tree |
+| **Signal** | For every row: `run.sessionId` and `run.requestId` equal the ids the worker recorded from inside its run, and `run.attempt` equals the row's `attempts`, on the browser read and the model read, and on the last `task-change` item of the run's own session stream. Two tasks on the per-worker seat name one session and two different requests. A row drained from conversation B names B's run. For the seat on another flow, the run opened from the link (its owner read off the session, then its request read through that flow) returns the marker the worker emitted |
+| **Input** | A file-declared channel with one board and three seats that hand off: per-task, per-worker, and one whose dispatcher names another flow. Rename the team, channel or board, or swap which seat is per-worker, and a correct build still passes: the harness reads names off the tree |
 | **Anti-game** | Proof is a file the worker writes from its own context, outside the board. No assertion on the board's report, on a unit-level collection, or on the ids the hand-off returned to the drain, which is a neighbour of the claim, not the claim |
-| **Control that must fail** | `GOAL_CONTROL=stamp-at-claim`: the link is filled from the claiming conversation's coordinate. Must FAIL at *session equals the worker's*. `GOAL_CONTROL=server-only`: the field joins the server-only list. Must FAIL at *link present on the browser read*. Today's `main` fails every leg |
+| **Control that must fail** | `GOAL_CONTROL=stamp-at-claim`: the link is filled from the claiming conversation's coordinate. Must FAIL at *session equals the worker's*. `GOAL_CONTROL=server-only`: the field joins the server-only list. Must FAIL at *link present on the browser read*. `GOAL_CONTROL=board-flow`: the run is opened through the board's own flow instead of its session's owner. Must FAIL at *marker read on the cross-flow seat*. Today's `main` fails every leg |
 
 ## What changes
 
@@ -77,13 +77,18 @@ Nobody writes this field. It is absent from everything a caller or a model can s
 flowchart LR
   C["board claim · attempt N"] -->|"clears the link"| T["task row"]
   G["claim gate · the run's own session"] -->|"fenced write · session · request · N"| T
-  T --> S["task-change stream"]
+  G -.->|"run_linked item"| S["the run's own session stream"]
   T --> B["browser read of a channel board"]
   T --> M["model read · readBoard"]
+  B --> O["open the run · its owner from the session read"]
 ```
 
 The gate already re-reads the row before the worker runs; it now writes one fenced field before
 the worker's first step. A gate that can't write it stops the attempt the way a stale claim does.
+A board view learns the link by reading the row, as it learns every other change a handed-off run
+makes: the run's writes publish on the run's own session, not on the session that drained the
+board. To open the run, a reader reads the session the link names and goes through the flow that
+session records as its owner, which may not be the board's.
 
 ## What stays as it is
 

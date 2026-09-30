@@ -41,7 +41,7 @@ Handed-off attempts are coarse units, a coding run each, so none is known.
 | | |
 |---|---|
 | **Instead of** | Keeping it server-only, like `claimedBy`, and giving App Lab its own server read |
-| **Because** | App Lab reads a channel board the way every browser does, through the board's browser read, and the change stream a UI follows. A second read path beside the row is the "Lab-only mirror" the Architect's fence forbids. The ids grant nothing: opening the session still passes the server's owner check (BP-031), and the link carries no tenant and no claiming session. A channel board's browser list must stay a subset of its model list (a test holds that), so the model read gets it too |
+| **Because** | App Lab reads a channel board the way every browser does, through the board's browser read; a UI already following the run's own session sees it on that session's change stream. A second read path beside the row is the "Lab-only mirror" the Architect's fence forbids. The ids grant nothing: opening the session still passes the server's owner check (BP-031), and the link carries no tenant and no claiming session. A channel board's browser list must stay a subset of its model list (a test holds that), so the model read gets it too |
 | **Locks in** | Anyone who can read a board, and any model that reads it with `readBoard`, sees the session and request id of each task's run. The two channel publication lists stop saying "no execution coordinates"; they say "one: the run link". Taking it back later breaks App Lab |
 
 ![D2: who can see which run is working a task? Everyone who can read the row, chosen, beside the server only. Decides it: how App Lab reads a board. Price: a model reading the board sees run ids](figures/d2-who-reads.svg)
@@ -71,6 +71,20 @@ It comes down to a finished task: cleared-on-end leaves it naming no run at all.
   follow-up if a reader needs it.
 - **The link carries session, request and attempt, and nothing else.** No tenant, no board id, no
   seat: the row already has the seat, and a tenant is the server's to know (BP-031).
+- **No flow on the link; a reader gets the run's flow from its session.** A seat may hand off to
+  another flow, so the board's flow is not always the run's. The session record already stores its
+  owning flow instance, and the flow-agnostic, owner-checked session read returns it (`flowId`, the
+  same field the React docs tell a dispatch-run reader to use). The gate can't write it without
+  reaching down: a block's context hides its own flow instance by design. A copy on the row would
+  be a second record of a fact the engine owns.
+- **The link's `task-change` publishes on the run's own session**, like every write the run makes
+  to the row, its settlement included. Nothing pushes it to the session that drained the board. A
+  board view sees the link on its next read of the row.
+- **A link that landed stays, even when the gate fails after it.** If the gate's remaining setup
+  throws, or the change item can't be published after the write committed, the attempt stops
+  before the worker, as BR-6. The link still names the run the attempt entered, and that run's
+  request reads failed, so a reader who opens it sees why. The next claim clears it. No rollback
+  write: it could fail too, and the link it would remove is true.
 - **The write is a new fenced verb on the collection**, same guards as lease renewal (terminal,
   recreated row, lost claim), and emits a `task-change` of kind `run_linked`. On a lapsed lease the
   gate may fold it into the renewal it already makes; the implementer's call.
@@ -94,5 +108,9 @@ It comes down to a finished task: cleared-on-end leaves it naming no run at all.
 - **Draft** — framed as the run naming itself on the task row; one fenced write at the claim gate,
   published on the row's existing reads, kept until the next claim; one PR across orchestration
   and workforce's two channel lists.
+- **Codex review of 29a40095** — three gaps closed without changing D1 to D3. A run on another
+  flow is opened through its session's recorded owner, and the goal check gains a cross-flow seat.
+  `run_linked` is scoped to the run's own session stream; board views read the row. A link that
+  lands before a later gate failure stays, because it is true.
 
 **Open: none.**
