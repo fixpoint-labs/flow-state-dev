@@ -183,26 +183,43 @@ pipeline
 
 ### Work queue signal lifecycle
 
-Background `.sideChain()` tasks are decoupled from the request's transport-level abort signal (FIX-663). Each request constructs two `AbortController`s:
+Background `.sideChain()` tasks are decoupled from the request's transport-level abort signal (FIX-663). Each request has three `AbortController`s:
 
-- `abortController` — the abort-registry controller. Fires on an explicit cancellation only, never on a transport signal. Two paths reach it and they converge here: the `/abort` endpoint / `session.abortRequest()` when the request is running in this process, and `runAction`'s heartbeat-tick poll when the intent was recorded by another process (FIX-1026). A cross-process abort is therefore indistinguishable downstream from a local one.
-- `sideChainController` — fires only when `abortController` fires.
+- `registered`: the abort-registry controller, tagged with the incarnation of the request the run executes as. It fires on an explicit cancellation only, never on a transport signal. Three paths reach it:
+  - the `/abort` endpoint, when the request is running in this process. The fire is fenced on the incarnation it cancelled, so it does not reach a later request under the same id;
+  - the run's own reads of the request store: once as it starts, then on each heartbeat tick, when the intent was recorded by another process (FIX-1026). Both reads are fenced the same way;
+  - an unfenced fire (host shutdown, the CLI stopping its turn), which stops whatever runs under the id.
+
+  A cross-process abort is therefore indistinguishable downstream from a local one. On the host's queued path, `registered` is the controller the host registered while the request waited, handed to the run rather than replaced, so a cancel that landed on it in between is kept.
+- `abortController`: the run's own controller. It fires when `registered` fires, but only once the run has settled which request it executes as (see below).
+- `sideChainController`: fires only when `abortController` fires.
 
 ```
 runActionInternal
-  abortController        ← registry; fires on /abort here, or on the
-                           heartbeat poll reading abortRequested from
-                           the request store (cross-process delivery)
+  registered             ← registry, tagged with the run's incarnation;
+                           fires on /abort here (fenced), on the start or
+                           heartbeat read of abortRequested (fenced), or on
+                           shutdown (unfenced). May be the host's handed-over
+                           controller.
+  abortController        ← run-local; registered's fire is forwarded to it
+                           only after the incarnation settles
   composedSignal = AbortSignal.any([options.signal, abortController.signal])
                          ← foreground chain; also fires on transport signal
-  sideChainController   ← NEW; listens on abortController.signal ({ once: true })
+  sideChainController    ← listens on abortController.signal ({ once: true })
                            does NOT see options.signal / composedSignal
 
   createExecutionContext({ signal: composedSignal,
                            sideChainSignal: sideChainController.signal })
+    adopts whatever request holds the id now
     root ctx.signal = composedSignal
     root ctx._requestSideChainSignal = sideChainController.signal
     (re-attached on every child scope in _withExecutionScope)
+
+  settle: context's incarnation ≠ the one registered was tagged with?
+    fired only by fenced fires → drop registered, register a fresh one
+    otherwise                  → re-tag registered (an unfenced fire stays)
+  then forward registered's fire, if any, to abortController
+  then read abortRequested once for the settled incarnation
 
   sequencer .sideChain(block):
     taskCtx = { ...ctx, signal: ctx._requestSideChainSignal }
@@ -213,7 +230,14 @@ runActionInternal
 
 Wiring details:
 
-- `sideChainController` listens on `abortController.signal` with `{ once: true }`, plus a defensive `if (signal.aborted)` guard for the registration/abort race. A transport signal composed into `composedSignal` via `AbortSignal.any` does **not** propagate to `sideChainController` because the listener is on `abortController.signal` directly.
+- Which request a run executes as is only known once the execution context has read the record. Admission reads it earlier, and another request can take the id in between. Until the context settles it, a fire on `registered` is held back. At the settle point:
+  - If the context adopted a different incarnation and `registered` was fired only by fenced fires, those fires were for the earlier request. The run drops that controller and registers a fresh one.
+  - Otherwise `registered` is re-tagged and any fire stays, since an unfenced fire applies to whatever runs under the id.
+  - Then a held fire is forwarded to `abortController`, and the run reads the stored cancel once for the incarnation it settled on.
+
+  How a controller was fired is recorded on the controller itself, so the answer holds even if another run has since taken its registry slot.
+- A controller handed over by the host goes through the same rule when the run registers it. If it was fired only by fenced fires aimed at another incarnation than the one admission read, the run starts on a fresh controller instead.
+- `sideChainController` listens on `abortController.signal` with `{ once: true }`, plus a defensive `if (signal.aborted)` guard for the registration/abort race. A transport signal composed into `composedSignal` via `AbortSignal.any` does **not** propagate to `sideChainController` because the listener is on `abortController.signal` directly. Neither does a fire on `registered` that the settle step drops.
 - `_requestSideChainSignal` is an internal `BlockContext` field, propagated through every scope alongside `_requestSideChainPool`.
 - The sequencer DSL substitutes `ctx.signal` with `_requestSideChainSignal` at `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` dispatch, and threads a `signalOverride` through `_withExecutionScope` so descendant scopes inherit it rather than the closure-captured root signal.
 - `drainRequestSideChainPool` takes no signal: it waits unconditionally, on every terminal path — success, `failed`, `aborted`, and `interrupted` alike (FIX-1001). If an explicit `/abort` arrives mid-drain, in-flight tasks self-cancel via their own `ctx.signal` and settle as rejections, so the drain still resolves. **The suspend path is not a terminal path and still does not drain** — see the replay contract below; `suspended` is a pause, and its in-flight background work is re-run after resume.

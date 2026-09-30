@@ -450,7 +450,6 @@ export class FilesystemRequestStore implements RequestStore {
     fields: ConditionalRequestFields,
     allowedStatuses: readonly RequestStatus[],
     updatedAt: number,
-    expectedCreatedAt?: number,
     expectedIncarnation?: string
   ): Promise<ConditionalWriteResult> {
     const { abortRequested, ...recordFields } = fields;
@@ -468,9 +467,8 @@ export class FilesystemRequestStore implements RequestStore {
       found = current.status;
       // Another record under the same id is not the one the caller checked.
       if (
-        (expectedCreatedAt !== undefined && current.createdAt !== expectedCreatedAt) ||
-        (expectedIncarnation !== undefined &&
-          resolveRequestIncarnation(current) !== expectedIncarnation)
+        expectedIncarnation !== undefined &&
+        resolveRequestIncarnation(current) !== expectedIncarnation
       ) {
         otherRecord = true;
         return current;

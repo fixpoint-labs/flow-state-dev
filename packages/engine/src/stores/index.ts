@@ -80,7 +80,8 @@ export type {
 
 export {
   resolveUserStorageKey,
-  resolveOrgStorageKey
+  resolveOrgStorageKey,
+  resolveRequestIncarnation
 } from "./scope-keys";
 export type { IsolationFlow } from "./scope-keys";
 

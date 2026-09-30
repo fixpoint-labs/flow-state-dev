@@ -1,0 +1,105 @@
+<svg viewBox="0 0 940 430" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Wireframe 5, the five nav destinations, each as the centre it opens. Projects and workstreams: lists of what the Lab's tree holds, and, until the Org primitives and Eng workstream kit epics ship their meaning, a named empty state that says what arrives and from where, with no invented fields. Chat: the channels the tree declares, opening one onto its stream; ships today. Attention: what needs the person, and which seats are working, the same asks NEEDS YOU lists; the fuller view arrives with the Attention and inspect epic. Resources: the resources the tree declares, each with its scope and when it last changed, opening one read-only; ships today. Each frame is marked as shipping now or as waiting on its sibling epic.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --code:#2C7C69; --prose:#A8761C; --prose-soft:#F3E8D2; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --code:#5DBBA1; --prose:#D9A44B; --prose-soft:#332612; } }
+    .bg   { fill:var(--surface); }
+    .fr   { fill:var(--surface); stroke:var(--ink); stroke-width:2; }
+    .wait { fill:var(--surface); stroke:var(--ink-3); stroke-width:1.6; stroke-dasharray:6 4; }
+    .sub  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .acc  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.6; }
+    .note { fill:none; stroke:var(--accent); stroke-width:1; stroke-dasharray:4 3; }
+    .t-h  { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:700; letter-spacing:.08em; }
+    .t-b  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-m  { fill:var(--ink-3); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; font-style:italic; }
+    .t-s  { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; }
+    .t-ok { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; font-weight:700; letter-spacing:.06em; }
+    .t-w  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:8.5px; font-weight:700; letter-spacing:.06em; }
+    .t-n  { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-size:10px; font-style:italic; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="430"/>
+  <text class="t-h" x="16" y="18">05 · THE FIVE DESTINATIONS · WHAT EACH OPENS</text>
+
+  <g id="projects">
+    <rect class="wait" x="16" y="30" width="172" height="250"/>
+    <text class="t-h" x="28" y="52">PROJECTS</text>
+    <text class="t-w" x="28" y="68">MEANING · FIX-1650</text>
+    <rect class="sub" x="28" y="80" width="148" height="100"/>
+    <text class="t-m" x="36" y="100">No projects yet.</text>
+    <text class="t-m" x="36" y="118">Projects arrive with</text>
+    <text class="t-m" x="36" y="134">org primitives.</text>
+    <text class="t-s" x="36" y="160">optional, never required</text>
+    <text class="t-s" x="28" y="208">when shipped: a list,</text>
+    <text class="t-s" x="28" y="222">each opening its channels</text>
+  </g>
+
+  <g id="workstreams">
+    <rect class="wait" x="200" y="30" width="172" height="250"/>
+    <text class="t-h" x="212" y="52">WORKSTREAMS</text>
+    <text class="t-w" x="212" y="68">MEANING · FIX-1650 · 1651</text>
+    <rect class="sub" x="212" y="80" width="148" height="100"/>
+    <text class="t-m" x="220" y="100">No workstreams yet.</text>
+    <text class="t-m" x="220" y="118">A workstream is a</text>
+    <text class="t-m" x="220" y="134">channel and its flow.</text>
+    <text class="t-s" x="220" y="160">arrives with its epic</text>
+    <text class="t-s" x="212" y="208">when shipped: a list, each</text>
+    <text class="t-s" x="212" y="222">opening its channel + board</text>
+  </g>
+
+  <g id="chat">
+    <rect class="fr" x="384" y="30" width="172" height="250"/>
+    <rect class="acc" x="390" y="38" width="160" height="22"/>
+    <text class="t-h" x="396" y="52">CHAT</text>
+    <text class="t-ok" x="396" y="76">SHIPS NOW</text>
+    <rect class="sub" x="396" y="86" width="148" height="20"/>
+    <text class="t-b" x="404" y="100"># eng.feature</text>
+    <rect class="sub" x="396" y="110" width="148" height="20"/>
+    <text class="t-b" x="404" y="124"># eng.questions</text>
+    <rect class="sub" x="396" y="134" width="148" height="20"/>
+    <text class="t-b" x="404" y="148"># eng.decisions</text>
+    <text class="t-s" x="396" y="176">opens the channel on</text>
+    <text class="t-s" x="396" y="190">its stream (wireframe 3)</text>
+  </g>
+
+  <g id="attention">
+    <rect class="wait" x="568" y="30" width="172" height="250"/>
+    <text class="t-h" x="580" y="52">ATTENTION</text>
+    <text class="t-w" x="580" y="68">MEANING · FIX-1652</text>
+    <text class="t-ok" x="580" y="90">NOW: THE ASKS</text>
+    <rect class="sub" x="580" y="98" width="148" height="30"/>
+    <text class="t-b" x="588" y="117">em: approve merge?</text>
+    <rect class="sub" x="580" y="132" width="148" height="30"/>
+    <text class="t-b" x="588" y="151">coder: which branch?</text>
+    <text class="t-s" x="580" y="184">same list as NEEDS YOU</text>
+    <text class="t-s" x="580" y="208">when shipped: needs-you,</text>
+    <text class="t-s" x="580" y="222">harness visibility,</text>
+    <text class="t-s" x="580" y="236">as FIX-1652 defines them</text>
+  </g>
+
+  <g id="resources">
+    <rect class="fr" x="752" y="30" width="172" height="250"/>
+    <text class="t-h" x="764" y="52">RESOURCES</text>
+    <text class="t-ok" x="764" y="76">SHIPS NOW</text>
+    <rect class="sub" x="764" y="86" width="148" height="30"/>
+    <text class="t-b" x="772" y="100">engineering-handbook</text>
+    <text class="t-s" x="772" y="111">org · 2d ago</text>
+    <rect class="sub" x="764" y="120" width="148" height="30"/>
+    <text class="t-b" x="772" y="134">feature-brief</text>
+    <text class="t-s" x="772" y="145">team eng · 2h ago</text>
+    <text class="t-s" x="764" y="176">declared in the tree;</text>
+    <text class="t-s" x="764" y="190">opens read-only</text>
+  </g>
+
+  <g id="notes">
+    <rect class="note" x="16" y="294" width="908" height="124"/>
+    <text class="t-n" x="28" y="312">Solid frame: ships with this epic from what already exists. Dashed frame: the shell reaches it now and its sibling epic says what it means.</text>
+    <text class="t-n" x="28" y="328">A destination whose meaning hasn't shipped shows a named empty state (what arrives, and that it is coming), never a model the shell invented.</text>
+    <text class="t-n" x="28" y="344">The shell owns how each is reached and how it looks; FIX-1650 (projects, workstreams), FIX-1651 (eng workstream kit) and FIX-1652 (attention and inspect)</text>
+    <text class="t-n" x="28" y="360">own what each means. A project is optional sugar, never required to open a Lab. Attention is not the Thought Fabric attention domain.</text>
+    <text class="t-n" x="28" y="376">Review and GitHub wake (FIX-1653) is an adjacent Lab surface, not a sixth destination here. Ochre: the active destination.</text>
+    <text class="t-n" x="28" y="392">Everything shown is from the Lab's own tree, with its org: the shell opens no Lab without one.</text>
+  </g>
+</svg>

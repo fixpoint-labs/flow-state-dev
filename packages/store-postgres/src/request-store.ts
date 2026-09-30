@@ -378,7 +378,6 @@ export function createPostgresRequestStore(
       fields: ConditionalRequestFields,
       allowedStatuses: readonly RequestStatus[],
       updatedAt: number,
-      expectedCreatedAt?: number,
       expectedIncarnation?: string
     ): Promise<ConditionalWriteResult> {
       // ONE statement, and the predicate read is a LOCKING one. `locked`
@@ -418,7 +417,7 @@ export function createPostgresRequestStore(
       // carry the old value back and move the indexed column BACKWARD.
       const result = await executor.query(
         `WITH locked AS (
-           SELECT id, status, (data->>'createdAt')::bigint AS created_at,
+           SELECT id, status,
                   COALESCE(data->>'incarnation', 'legacy_' || (data->>'createdAt')) AS incarnation
              FROM requests WHERE id = $1 FOR UPDATE
          ),
@@ -428,39 +427,22 @@ export function createPostgresRequestStore(
                   updated_at = $3
              FROM locked l
             WHERE r.id = l.id AND l.status = ANY($4::text[])
-              AND ($5::bigint IS NULL OR l.created_at = $5::bigint)
-              AND ($6::text IS NULL OR l.incarnation = $6::text)
+              AND ($5::text IS NULL OR l.incarnation = $5::text)
            RETURNING r.id
          )
-         SELECT l.status AS status, l.created_at AS created_at,
-                l.incarnation AS incarnation,
+         SELECT l.status AS status, l.incarnation AS incarnation,
                 EXISTS (SELECT 1 FROM applied) AS applied
            FROM locked l`,
-        [
-          id,
-          JSON.stringify(fields),
-          updatedAt,
-          [...allowedStatuses],
-          expectedCreatedAt ?? null,
-          expectedIncarnation ?? null
-        ]
+        [id, JSON.stringify(fields), updatedAt, [...allowedStatuses], expectedIncarnation ?? null]
       );
 
       // No row means no record: `rows`, not `rowCount` — a PGlite-backed
       // executor reports `affectedRows` there, which is 0 for a SELECT.
       const row = result.rows[0] as
-        | {
-            status: RequestStatus;
-            created_at: string | number;
-            incarnation: string;
-            applied: boolean;
-          }
+        | { status: RequestStatus; incarnation: string; applied: boolean }
         | undefined;
       if (row === undefined) return { applied: false, status: undefined };
       // Another record under the same id is not the one the caller checked.
-      if (expectedCreatedAt !== undefined && Number(row.created_at) !== expectedCreatedAt) {
-        return { applied: false, status: undefined };
-      }
       if (expectedIncarnation !== undefined && row.incarnation !== expectedIncarnation) {
         return { applied: false, status: undefined };
       }

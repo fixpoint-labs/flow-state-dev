@@ -168,7 +168,7 @@ The host verifies credentials. The framework applies `defaultUserId` and `requir
 |-------|------|---------|--------------|
 | `stateSchema` | Zod object | — | Request-scoped state. |
 | `onStarted` / `onCompleted` / `onErrored` / `onFinished` / `onStepErrored` | `BlockDefinition` | — | Request lifecycle hooks. |
-| `heartbeatIntervalMs` | `number` | `10000` | Active-request heartbeat. `0` disables the heartbeat *and* cross-process abort delivery. |
+| `heartbeatIntervalMs` | `number` | `10000` | Active-request heartbeat. `0` disables the heartbeat *and* cross-process abort delivery to a running request. Each run still checks once for a cancellation as it starts. |
 | `sseHeartbeatMs` | `number` | `15000` | SSE `: ping` cadence. `0` disables. |
 | `concurrency` | `ConcurrencyConfig` | `"allow"` | Default for actions that omit `concurrency`. |
 | `mutationTimeoutMs` | `number` | `30000` | Budget for in-memory state writes. `Infinity` disables. Scopes that persist — request, session, user, org — are not covered by it. |

@@ -144,7 +144,6 @@ export async function detectInterruptedRequests(options: {
         { finalizedAtMs: now },
         [requestRecord.status],
         now,
-        undefined,
         resolveRequestIncarnation(requestRecord)
       );
     }

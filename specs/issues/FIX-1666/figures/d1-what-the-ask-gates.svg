@@ -1,0 +1,94 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D1: what should the one ask on the DevForce tree gate? Chosen: the EM asks before it files a feature; Approve files the row and the coder starts, Deny files nothing. Instead of: the coder asking mid-run, or a demo gate beside the work. It comes down to the first row, whether approving runs real work: the chosen ask gates the step that starts work, a demo gate runs nothing. Second row, whether Inbox reads it: the chosen ask is a stock approval suspension in a seat session, the coder's question is a parked row that Inbox does not list. Third row, the price: one more durable action on the EM kind. Locks in one durable action on the EM, which still names no harness. Flips if FIX-1652 rules the first ask must be a worker's question mid-task."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 &#183; THE CALL</text>
+    <text class="t-q" x="32" y="52">The DevForce tree gets one ask a person can approve. What does it gate?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">The EM asks before it files</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Coder asks mid-run · or a demo gate</text>
+  </g>
+  <g id="row-1">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">APPROVING</text>
+    <text class="t-lbl" x="32" y="169">RUNS WORK?</text>
+    <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Yes: the row is filed, the coder starts</text>
+    <text class="t-s" x="248" y="179">Deny files nothing</text>
+    <text class="mark minus" x="592" y="162">&#8722;</text>
+    <text class="t-b" x="612" y="161">The demo gate runs nothing</text>
+    <text class="t-s" x="612" y="179">a1 would pass on a toy</text>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="224">DOES INBOX</text>
+    <text class="t-lbl" x="32" y="237">READ IT?</text>
+    <text class="mark plus" x="228" y="227">+</text>
+    <text class="t-b" x="248" y="226">A stock approval in a seat session</text>
+    <text class="t-s" x="248" y="244">what Inbox lists</text>
+    <text class="mark minus" x="592" y="227">&#8722;</text>
+    <text class="t-b" x="612" y="226">The coder's question parks a row</text>
+    <text class="t-s" x="612" y="244">no suspension, so not an Inbox item</text>
+    <line class="row" x1="16" y1="252" x2="924" y2="252"/>
+  </g>
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="282">COST</text>
+    <text class="t-lbl" x="32" y="295">NOW</text>
+    <text class="mark minus" x="228" y="285">&#8722;</text>
+    <text class="t-b" x="248" y="284">One more action on the EM</text>
+    <text class="t-s" x="248" y="302">and a fourth check</text>
+    <text class="mark plus" x="592" y="285">+</text>
+    <text class="t-b" x="612" y="284">The demo gate is a copy</text>
+    <text class="t-s" x="612" y="302">kitchen-sink already has one</text>
+    <line class="row" x1="16" y1="310" x2="924" y2="310"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">One durable action on the EM kind</text>
+    <text class="t-s" x="32" y="389">it still names no harness and has no task entry</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">FIX-1652 rules the first ask is a worker's question</text>
+    <text class="t-s" x="494" y="389">then it moves to the coder, with framework work</text>
+  </g>
+</svg>
