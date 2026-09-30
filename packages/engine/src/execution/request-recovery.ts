@@ -124,8 +124,9 @@ export async function detectInterruptedRequests(options: {
     // such a terminal, unstamped record is a run that died in its last steps.
     // Any other run (heartbeats off, or a failure path) looks stale while it
     // is alive, so staleness proves nothing and its record is left for its
-    // own run to stamp; if that run is gone, the record is never evicted. Nothing is left to write under the id:
-    // stamp it here so session retention can evict it. Conditional on the
+    // own run to stamp; if that run is gone, the record is never evicted.
+    // For a record this sweep may stamp, nothing is left to write under the
+    // id: stamp it here so session retention can evict it. Conditional on the
     // record just read (its status and incarnation), so it never recreates a
     // record or stamps another request that has since taken the id. The same
     // path repairs a run whose own stamp failed: it stays registered with its

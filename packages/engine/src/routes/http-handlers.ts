@@ -441,7 +441,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           voiceProvider: runtimeConfig.voiceProvider,
-          defaultSseHeartbeatMs
+          defaultSseHeartbeatMs,
+          checkedRequest: auth.request
         });
       }
 

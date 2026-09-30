@@ -171,3 +171,27 @@ describe("record-less replay of a request id taken during the read", () => {
     expect(response.status).toBe(404);
   });
 });
+
+// The route guard checks the caller against the record it reads; the route
+// then reads the record again. If the id changed hands in between, the second
+// read is another owner's request, which the guard never checked.
+describe("a request id taken again between the route guard and the stream", () => {
+  it("does not serve the new owner's request to the caller the guard checked", async () => {
+    const stores: StoreRegistry = createInMemoryStores();
+    // What the guard read and admitted: alice's request.
+    const checked = completedRecord("alice", "inc_alice");
+    // What the store holds by the time the route reads: bob's, same id.
+    await stores.request.set(REQUEST_ID, completedRecord("bob", "inc_bob"), "any");
+    stores.request.persistEvents(REQUEST_ID, events("bob's secret"));
+    await stores.request.flushEvents(REQUEST_ID);
+
+    const response = await handleRequestStream(
+      new Request("https://x/y/stream"),
+      route,
+      { registry: stubRegistry(), stores, checkedRequest: checked }
+    );
+
+    expect(await response.text()).not.toContain("bob's secret");
+    expect(response.status).toBe(404);
+  });
+});

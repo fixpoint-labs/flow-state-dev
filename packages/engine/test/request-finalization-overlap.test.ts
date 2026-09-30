@@ -234,3 +234,55 @@ describe("the last overlapping run ending by throwing", () => {
     expect(await stores.activeRequests.get(requestId)).toBeUndefined();
   });
 });
+
+// A run that fails during setup still writes a terminal record (`failed`),
+// and nothing runs after it. It must stamp that record and deregister, or
+// retention would keep the failed request forever.
+describe("a single run that fails during setup", () => {
+  it("stamps its failed record and deregisters it", async () => {
+    const previous = process.env.FSDEV_DEFAULT_MODEL;
+    // Rejected when the execution context builds its model resolver: a setup
+    // failure that lands after the request record is written.
+    process.env.FSDEV_DEFAULT_MODEL = "intent/chat";
+    try {
+      const stores = createInMemoryStores();
+      const requestId = "req_setup_failure";
+      const flow = defineFlow({
+        kind: "setup-failure-flow",
+        actions: {
+          run: {
+            inputSchema: z.any(),
+            block: handler({
+              name: "never",
+              inputSchema: z.any(),
+              outputSchema: z.any(),
+              execute: () => null
+            })
+          }
+        }
+      })({ id: "setup-failure-flow" });
+
+      await expect(
+        runAction({
+          orgId: DEFAULT_ORG_ID,
+          flow,
+          actionName: "run",
+          requestId,
+          sessionId: "sess_setup_failure",
+          userId: "user_setup_failure",
+          input: {},
+          stores,
+          runtimeConfig: {}
+        })
+      ).rejects.toThrow();
+
+      const record = await stores.request.get(requestId);
+      expect(record?.status).toBe("failed");
+      expect(typeof record?.finalizedAtMs).toBe("number");
+      expect(await stores.activeRequests.get(requestId)).toBeUndefined();
+    } finally {
+      if (previous === undefined) delete process.env.FSDEV_DEFAULT_MODEL;
+      else process.env.FSDEV_DEFAULT_MODEL = previous;
+    }
+  });
+});

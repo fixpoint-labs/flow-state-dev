@@ -519,6 +519,9 @@ describe("createInboundTransportHost", () => {
       await expect(handle.finished).rejects.toThrow("enqueue failed");
 
       expect((await stores.request.get(handle.requestId))?.status).toBe("failed");
+      // Nothing will run under the id, so the record is finished as written:
+      // unstamped, retention would keep it forever.
+      expect(typeof (await stores.request.get(handle.requestId))?.finalizedAtMs).toBe("number");
       expect(await stores.activeRequests.get(handle.requestId)).toBeUndefined();
     });
 

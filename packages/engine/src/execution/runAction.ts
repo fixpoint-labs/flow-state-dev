@@ -422,9 +422,10 @@ async function settleFreshRequestSetupFailure(options: {
   };
   error: unknown;
   logger: RuntimeLogger;
-}): Promise<void> {
+}): Promise<string | undefined> {
   const now = Date.now();
   const normalized = normalizeError(options.error, { scope: "request" });
+  let writtenIncarnation: string | undefined;
   const item: ErrorItem = {
     id: `item_error_${now}_${Math.random().toString(16).slice(2)}`,
     type: "error",
@@ -476,18 +477,20 @@ async function settleFreshRequestSetupFailure(options: {
           (entry) => entry.transient !== true
         )
       );
+      const failed: RequestRecord = {
+        ...base,
+        status: "failed",
+        failedAtMs: now,
+        updatedAt: now,
+        items
+      };
       const written = await options.stores.request.set(
         options.requestId,
-        {
-          ...base,
-          status: "failed",
-          failedAtMs: now,
-          updatedAt: now,
-          items
-        },
+        failed,
         current === undefined ? "absent" : "any"
       );
       if (written.ok) {
+        writtenIncarnation = resolveRequestIncarnation(failed);
         options.stores.request.persistItems(options.requestId, items);
         await options.stores.request.flushItems(options.requestId);
         settled = true;
@@ -514,6 +517,7 @@ async function settleFreshRequestSetupFailure(options: {
     requestId: options.requestId,
     error: summarizeForLog(normalized)
   });
+  return writtenIncarnation;
 }
 
 /**
@@ -913,9 +917,11 @@ export async function runActionInternal<
     return await runActionAttempt({ ...options, requestId }, attempt);
   } finally {
     // Reached with the attempt still open only when the run ended by
-    // throwing rather than through its own finalization. If it was the last
-    // live attempt and an earlier one left it the stamp, stamp now: nothing
-    // else will, and an unstamped record is never evicted.
+    // throwing rather than through its own finalization (a setup failure, or
+    // an error past its terminal write). If it was the last live attempt and
+    // a terminal record is waiting for its stamp (its own, or one an earlier
+    // attempt left it), stamp now: nothing else will, and an unstamped record
+    // is never evicted.
     if (attempt.end() && attempt.leftToStamp() !== undefined) {
       await finalizeAfterLastAttempt(options, requestId, attempt.leftToStamp());
     }
@@ -1203,6 +1209,7 @@ async function runActionAttempt<
   // Incarnation of the record this run's terminal patch wrote, so the final
   // `finalizedAtMs` stamp lands on that record and no other.
   let terminalRecordIncarnation: string | undefined;
+  attempt.trackTerminal(() => terminalRecordIncarnation);
 
   /**
    * One abort-intent poll. Reads the narrow projection rather than the record —
@@ -1845,7 +1852,9 @@ async function runActionAttempt<
     deregisterAbortController(requestId);
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
     if (!isReplayMode) {
-      await settleFreshRequestSetupFailure({
+      // The failed record is this run's terminal write; the run's exit
+      // stamps it (see `runActionInternal`).
+      terminalRecordIncarnation = await settleFreshRequestSetupFailure({
         stores: options.stores,
         requestId,
         flow: options.flow,

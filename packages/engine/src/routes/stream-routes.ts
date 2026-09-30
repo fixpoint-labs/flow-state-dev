@@ -63,6 +63,13 @@ type StreamRouteContext = {
    * attach streams when the per-flow `request.sseHeartbeatMs` is unset.
    */
   defaultSseHeartbeatMs?: number;
+  /**
+   * The request record the route guard checked the caller against, when it
+   * read one. The stream serves only that record's incarnation: if the id
+   * changed hands between the check and this route's own read, it answers as
+   * for an unknown request.
+   */
+  checkedRequest?: RequestRecord;
 };
 
 /**
@@ -117,6 +124,18 @@ export async function handleRequestStream(
         if (requestRecord !== undefined) break;
       }
     }
+  }
+
+  // The guard checked the caller against one incarnation of this id. If the
+  // request was deleted and the id taken since, what was read above is
+  // someone else's; nothing here has authorized it.
+  if (
+    ctx.checkedRequest !== undefined &&
+    (requestRecord === undefined ||
+      resolveRequestIncarnation(requestRecord) !==
+        resolveRequestIncarnation(ctx.checkedRequest))
+  ) {
+    return unknownRequestStreamResponse(request, route, ctx.registry);
   }
 
   // A held continuation lease means a same-request continuation (resume /

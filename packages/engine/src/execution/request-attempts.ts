@@ -42,7 +42,15 @@ export type RequestAttempt = {
    * false.
    */
   leaveStamp(incarnation: string | undefined): void;
-  /** The incarnation an earlier attempt left for this one to stamp. */
+  /**
+   * Where this attempt keeps the incarnation of the terminal record it wrote
+   * itself, read when it ends without having stamped.
+   */
+  trackTerminal(read: () => string | undefined): void;
+  /**
+   * The terminal record this attempt must stamp when it ends without having
+   * done so: one an earlier attempt left it, else its own.
+   */
   leftToStamp(): string | undefined;
 };
 
@@ -62,6 +70,7 @@ export function beginRequestAttempt(store: object, requestId: string): RequestAt
   const state = live;
   state.count += 1;
   let ended = false;
+  let ownTerminal: (() => string | undefined) | undefined;
   return {
     end(): boolean {
       if (ended) return false;
@@ -76,8 +85,11 @@ export function beginRequestAttempt(store: object, requestId: string): RequestAt
     leaveStamp(incarnation: string | undefined): void {
       if (incarnation !== undefined) state.unstampedIncarnation = incarnation;
     },
+    trackTerminal(read: () => string | undefined): void {
+      ownTerminal = read;
+    },
     leftToStamp(): string | undefined {
-      return state.unstampedIncarnation;
+      return state.unstampedIncarnation ?? ownTerminal?.();
     }
   };
 }
