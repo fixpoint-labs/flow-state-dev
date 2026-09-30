@@ -40,7 +40,6 @@
 // ── The manager ─────────────────────────────────────────────────────────────
 export {
   harnessManager,
-  runOwnerDispatcher,
   harnessDrainBudgetMs,
   resolveOwnership,
   requestTenant,
@@ -64,6 +63,7 @@ export {
 
 // ── Whose run a row is, on a board kept per organization ────────────────────
 export {
+  runOwnerDispatcher,
   HARNESS_RUN_OWNER_KEY,
   runOwnerOf,
   type RunOwner,

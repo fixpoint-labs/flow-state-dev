@@ -69,6 +69,11 @@ session. With `runOwnerDispatcher()` on the draining board, the refusal happens 
 is claimed and costs it no attempt. Without it the manager still refuses to run someone else's
 row, but only after the claim, so the row is charged an attempt.
 
+**Wire `runOwnerDispatcher()` on every board kept per organization that drains rows into a
+manager.** The manager's own refusal keeps the run from being split between two people, but only
+the dispatcher keeps a teammate's drain from spending the row's retries. The dispatcher claims in
+the board's own readiness and order, so it takes the place of any other dispatcher on that board.
+
 ## The slot
 
 The manager calls your factory once, with three feeds:

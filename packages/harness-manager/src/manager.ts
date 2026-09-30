@@ -52,11 +52,8 @@ import {
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
   resolveResourceCollection,
-  topologicalDispatcher,
-  type ClaimOptions,
   type DefinedTaskCollection,
   type TaskCollectionRef,
-  type TaskDispatcher,
   type TaskWorker,
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
@@ -79,8 +76,11 @@ import {
   isRunOwner,
   runOwnerFor,
   runOwnerOf,
-  type RunOwner,
+  runPrincipal,
+  type RequestIdentityContext,
 } from "./run-owner";
+
+export type { RequestIdentityContext } from "./run-owner";
 import {
   INBOX,
   askQuestion,
@@ -484,49 +484,6 @@ export class HarnessAttemptFailed extends Error {
 }
 
 /**
- * Who this run belongs to, from the request's RESOLVED identity.
- *
- * `ctx.user.identity` is what the principal resolver produced, not anything a
- * caller put in a body — which is what makes it usable as an isolation boundary
- * (BP-031). A missing user id is refused rather than defaulted: a default would
- * put every unauthenticated run in one shared checkout, which is the exact
- * collision the principal is here to prevent.
- */
-/**
- * What the principal is read from — the request's authenticated identity, and
- * nothing else.
- *
- * Typed by what it READS rather than as a whole `BlockContext`, so any caller
- * can pass its own narrower context without a cast. The casts were not free:
- * `as BlockContext` on a handler whose resources are typed fails to compile,
- * and the escape hatch that fixes it (`as unknown as`) would silently accept a
- * context that has no identity at all — on the one derivation where a missing
- * identity means two principals sharing a checkout.
- */
-export interface RequestIdentityContext {
-  user?: { identity?: unknown } | undefined;
-}
-
-function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
-  const identity = ctx.user?.identity as
-    | { id?: unknown; tenantId?: unknown }
-    | undefined;
-  const userId = identity?.id;
-  if (typeof userId !== "string" || userId === "") {
-    throw new Error(
-      "[harness-manager] this request has no resolved user identity, so a run cannot be " +
-        "isolated to one. Refusing rather than sharing a checkout across principals.",
-    );
-  }
-  return {
-    userId,
-    ...(typeof identity?.tenantId === "string" && identity.tenantId !== ""
-      ? { tenantId: identity.tenantId }
-      : {}),
-  };
-}
-
-/**
  * This attempt is no longer the live one.
  *
  * Distinct from {@link HarnessAttemptFailed} because it is not a failed
@@ -925,56 +882,6 @@ function createManagerCapability(options: {
       [boardCollectionId]: boardCollection,
     },
   });
-}
-
-/**
- * A board dispatcher that never claims a row whose coding run another member
- * started — the half of the run-owner rule that charges nothing.
- *
- * Wire it on the board that DRAINS rows a manager runs, when that board is
- * kept per organization (a channel's board): `taskBoard({ dispatcher:
- * runOwnerDispatcher() })`. The claim is what spends an attempt, so narrowing
- * it is the only place a refusal can leave the row exactly as it was: same
- * status, same attempt count, same lease. It narrows `inner` rather than
- * replacing it, so ordering and readiness stay the inner dispatcher's.
- *
- * A row with no recorded owner is claimable by anyone; the manager records
- * the claimant on its first run (see `./run-owner`). When a claim comes back
- * empty only because every claimable row was someone else's, the drain is
- * refused with an error naming whose run it is, rather than returning as if
- * the board were idle.
- *
- * @param inner The dispatcher to narrow. Defaults to `topologicalDispatcher`,
- *   the task board's own default.
- * @returns A dispatcher to pass as `taskBoard({ dispatcher })`.
- */
-export function runOwnerDispatcher(inner: TaskDispatcher = topologicalDispatcher): TaskDispatcher {
-  return {
-    async claim(collection, workerId, ctx) {
-      const principal = runPrincipal(ctx);
-      const refused: Array<{ taskId: string; owner: RunOwner }> = [];
-      const narrowed: TaskCollectionRef = Object.create(collection, {
-        claim: {
-          value: (claimant: string, options: ClaimOptions = {}) =>
-            collection.claim(claimant, {
-              ...options,
-              eligibility: (task) => {
-                if (options.eligibility !== undefined && !options.eligibility(task)) return false;
-                const owner = runOwnerOf(task);
-                if (owner === null || isRunOwner(owner, principal)) return true;
-                refused.push({ taskId: task.id, owner });
-                return false;
-              },
-            }),
-        },
-      });
-      const claimed = await inner.claim(narrowed, workerId, ctx);
-      if (claimed === null && refused.length > 0) {
-        throw new Error(foreignRunMessage(refused[0]!.taskId, refused[0]!.owner));
-      }
-      return claimed;
-    },
-  };
 }
 
 /** Build the manager: one handed-off worker for one phase. */

@@ -13,7 +13,7 @@
  * member on the row the first time it runs it, from the request's resolved
  * identity (BP-031), and two doors enforce it:
  *
- * - {@link import("./manager").runOwnerDispatcher} narrows the board's claim,
+ * - {@link runOwnerDispatcher} narrows the board's claim,
  *   so another member's drain never claims the row. That is the door that
  *   charges nothing: the claim is what spends an attempt, and it never happens.
  *   The host wires it on the board that drains.
@@ -29,6 +29,7 @@
  * one member another's checkout, record or session, since those are derived
  * from each request's own resolved identity and never from the row.
  */
+import type { TaskDispatcher } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import type { RunPrincipal } from "./workspace";
 
@@ -80,4 +81,86 @@ export function foreignRunMessage(taskId: string, owner: RunOwner): string {
     `it, and its checkout, branch, run record and agent session are theirs. Only their drain ` +
     `continues it; this drain leaves the row as it is.`
   );
+}
+
+/**
+ * What the principal is read from — the request's authenticated identity, and
+ * nothing else.
+ *
+ * Typed by what it READS rather than as a whole `BlockContext`, so any caller
+ * can pass its own narrower context without a cast. The casts were not free:
+ * `as BlockContext` on a handler whose resources are typed fails to compile,
+ * and the escape hatch that fixes it (`as unknown as`) would silently accept a
+ * context that has no identity at all — on the one derivation where a missing
+ * identity means two principals sharing a checkout.
+ */
+export interface RequestIdentityContext {
+  user?: { identity?: unknown } | undefined;
+}
+
+/**
+ * Who this run belongs to, from the request's RESOLVED identity.
+ *
+ * `ctx.user.identity` is what the principal resolver produced, not anything a
+ * caller put in a body — which is what makes it usable as an isolation boundary
+ * (BP-031). A missing user id is refused rather than defaulted: a default would
+ * put every unauthenticated run in one shared checkout, which is the exact
+ * collision the principal is here to prevent.
+ */
+export function runPrincipal(ctx: RequestIdentityContext): RunPrincipal {
+  const identity = ctx.user?.identity as
+    | { id?: unknown; tenantId?: unknown }
+    | undefined;
+  const userId = identity?.id;
+  if (typeof userId !== "string" || userId === "") {
+    throw new Error(
+      "[harness-manager] this request has no resolved user identity, so a run cannot be " +
+        "isolated to one. Refusing rather than sharing a checkout across principals.",
+    );
+  }
+  return {
+    userId,
+    ...(typeof identity?.tenantId === "string" && identity.tenantId !== ""
+      ? { tenantId: identity.tenantId }
+      : {}),
+  };
+}
+
+/**
+ * A board dispatcher that never claims a row whose coding run another member
+ * started — the half of the run-owner rule that charges nothing.
+ *
+ * Wire it on the board that drains rows a manager runs, when that board is
+ * kept per organization (a channel's board): `taskBoard({ dispatcher:
+ * runOwnerDispatcher() })`. The claim is what spends an attempt, so refusing
+ * here leaves the row exactly as it was: same status, same attempt count,
+ * same lease. Readiness and order stay the collection's: the owner check is
+ * an `eligibility` narrow, which the substrate applies on top of its own.
+ *
+ * A row with no recorded owner is claimable by anyone; the manager records
+ * the claimant on its first run. When a claim comes back empty only because
+ * every claimable row was someone else's, the drain is refused with an error
+ * naming whose run it is, rather than returning as if the board were idle.
+ *
+ * @returns A dispatcher to pass as `taskBoard({ dispatcher })`.
+ */
+export function runOwnerDispatcher(): TaskDispatcher {
+  return {
+    async claim(collection, workerId, ctx) {
+      const principal = runPrincipal(ctx);
+      let refused: { taskId: string; owner: RunOwner } | undefined;
+      const claimed = await collection.claim(workerId, {
+        eligibility: (task) => {
+          const owner = runOwnerOf(task);
+          if (owner === null || isRunOwner(owner, principal)) return true;
+          if (refused === undefined) refused = { taskId: task.id, owner };
+          return false;
+        },
+      });
+      if (claimed === null && refused !== undefined) {
+        throw new Error(foreignRunMessage(refused.taskId, refused.owner));
+      }
+      return claimed;
+    },
+  };
 }

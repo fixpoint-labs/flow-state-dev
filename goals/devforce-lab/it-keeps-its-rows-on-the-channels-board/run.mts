@@ -60,6 +60,17 @@ const POST_LINE = `${ISSUE}: Add a greeting module to the repository.`;
 /** The row id the EM's filing returns: the issue-and-phase, as the manager derives it. */
 const TASK_ID = harnessTaskId(ISSUE, PHASE);
 const SETTLE_BUDGET_MS = 120_000;
+/**
+ * A pattern that matches `id` only where a file pins it as a value: a quoted
+ * string that is exactly the id, or the id standing alone after `:`, `=`, `[`
+ * or `,`. Word characters, dots and dashes on either side mean a longer name,
+ * not this one.
+ */
+function pinsOf(id: string): RegExp {
+  const lit = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(["'\`])${lit}\\1|[:=\\[,]\\s*${lit}(?![\\w.-])`);
+}
+
 /** Fields a browser's read of a board may never carry. */
 const PRIVATE_ROW_FIELDS = ["input", "output", "metadata", "context", "claimedBy", "leaseUntil", "writeLog"];
 
@@ -152,8 +163,8 @@ await runGoal(async () => {
   }
 
   try {
-    const board = (lab as Partial<Lab>).board;
-    if (board === undefined || declared.length === 0) {
+    const board = lab.board;
+    if (declared.length === 0) {
       note(`the channel lists no board: "${channel.id}"'s file declares none`);
       return { failures, evidence: "" };
     }
@@ -161,14 +172,18 @@ await runGoal(async () => {
       note(`the channel's file declares [${declared.join(", ")}]; the lab resolved "${board.name}"`);
     }
     // The minted id is the channel's id, a dot, and the local name — and no
-    // file in the tree or the lab's code writes it.
+    // file in the tree or the lab's code pins it. Pinning is a value: a quoted
+    // string that is exactly the id, or the id standing alone after `:`, `=`,
+    // `[` or `,` (a YAML key, an assignment, a list entry). Prose and comments
+    // that name the id in passing are not a second declaration of it.
+    const pins = pinsOf(board.id);
     const writers = [
       ...filesUnder(LAB_TREE).map(([path, text]) => [`workforce/${path}`, text] as const),
       ...filesUnder(LAB_ROOT)
         .filter(([path]) => path.endsWith(".mts"))
         .map(([path, text]) => [`lab/${path}`, text] as const),
     ]
-      .filter(([, text]) => text.includes(board.id))
+      .filter(([, text]) => pins.test(text))
       .map(([path]) => path);
     if (writers.length > 0) note(`the board's minted id "${board.id}" is written in ${writers.join(", ")}`);
     evidence.push(
