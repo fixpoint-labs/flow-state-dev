@@ -1307,17 +1307,25 @@ describe("runAction — cross-process abort delivery", () => {
     const base = createInMemoryStores();
     const requestId = "req_xproc_prereg";
     const sessionId = "sess_xproc_prereg";
-    let pollsBeforeRegistration = 0;
+    let ticksBeforeRegistration = 0;
+    let readsBeforeRegistration = 0;
 
     // `runAction` installs the heartbeat timer well before it calls
     // `registerAbortController`, and does session work in between. Making that
     // session work take real time puts ticks deterministically inside the
-    // window instead of racing the scheduler for them.
+    // window instead of racing the scheduler for them. Each tick heartbeats,
+    // so the heartbeat count shows the ticks landed there.
     const stores = withStoreOverrides(base, {
       request: {
         async isAbortRequested(this: StoreRegistry["request"], id: string) {
-          if (!hasActiveAbortController(id)) pollsBeforeRegistration += 1;
+          if (!hasActiveAbortController(id)) readsBeforeRegistration += 1;
           return Object.getPrototypeOf(this).isAbortRequested.call(this, id);
+        }
+      },
+      activeRequests: {
+        async heartbeat(this: StoreRegistry["activeRequests"], id: string) {
+          if (!hasActiveAbortController(id)) ticksBeforeRegistration += 1;
+          return Object.getPrototypeOf(this).heartbeat.call(this, id);
         }
       }
     });
@@ -1371,7 +1379,10 @@ describe("runAction — cross-process abort delivery", () => {
     });
 
     // Precondition: ticks really did land in the pre-registration window.
-    expect(pollsBeforeRegistration).toBeGreaterThan(0);
+    expect(ticksBeforeRegistration).toBeGreaterThan(0);
+    // They read nothing there: until the run knows which request it executes
+    // as, a cancel it read could belong to another request under the id.
+    expect(readsBeforeRegistration).toBe(0);
     // And delivery still happened. Under a DETECTION latch those first ticks
     // would have latched on a read they could not act on, suppressed every
     // later poll, and let the run finish naturally.
@@ -2864,9 +2875,9 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     expect(record?.status).toBe("aborted");
   });
 
-  // The catch-up read after a re-tag answers for whatever holds the id at that
-  // moment. A cancel recorded on a request that took the id since is not this
-  // run's, and must not stop it.
+  // The stored-cancel read at the start of the run answers for whatever holds
+  // the id at that moment. A cancel recorded on a request that took the id
+  // since the context adopted the record is not this run's, and must not stop it.
   it("does not stop the run for a cancel recorded on a request that took the id since", async () => {
     const stores = createInMemoryStores();
     const requestId = "req_adopted_then_reused";
@@ -2913,7 +2924,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
       if (reads === 1) return { ...record, incarnation: "inc_admitted_earlier" };
       return record;
     };
-    // Before the catch-up read lands (after the context has read and adopted
+    // Before the start read lands (after the context has read and adopted
     // the record), the adopted request's record goes and a later request
     // takes the id, and someone cancels that later request.
     const isAbortRequested = stores.request.isAbortRequested.bind(stores.request);
@@ -3006,5 +3017,100 @@ describe("a run's abort controller carries the incarnation it executes as", () =
     });
 
     expect(seen.aborted).toBe(false);
+  });
+
+  // A cancel recorded on the request admission read belongs to that request.
+  // If another request takes the id before the context reads the record, the
+  // run executes as that other request, which nobody cancelled.
+  it("does not start the adopted request cancelled by the earlier request's stored cancel", async () => {
+    const stores = createInMemoryStores();
+    const requestId = "req_cancelled_then_replaced";
+    const seen: { aborted?: boolean } = {};
+    const flow = defineFlow({
+      kind: "adopt-fence-cancelled",
+      request: { heartbeatIntervalMs: 0 },
+      actions: {
+        run: {
+          inputSchema: z.unknown(),
+          block: handler({
+            name: "observe",
+            inputSchema: z.unknown(),
+            outputSchema: z.string(),
+            execute: async (_input: unknown, ctx) => {
+              seen.aborted = ctx.signal.aborted;
+              return "ran";
+            }
+          })
+        }
+      }
+    })({ id: "adopt-fence-cancelled" });
+    const fresh = () =>
+      createInitialRequestRecord(
+        {
+          requestId,
+          flowKind: "adopt-fence-cancelled",
+          flowId: "adopt-fence-cancelled",
+          actionName: "run",
+          userId: "u_adopt",
+          orgId: DEFAULT_ORG_ID
+        },
+        Date.now()
+      );
+
+    // On file: the earlier request, already cancelled.
+    const earlier = fresh();
+    await stores.request.set(requestId, earlier, "absent");
+    await stores.request.setFieldsIfStatus(
+      requestId,
+      { abortRequested: true },
+      ["in_progress"],
+      Date.now(),
+      earlier.incarnation
+    );
+
+    // Admission reads the earlier request. The read that decides which
+    // request the run executes as (any later read not made to confirm a
+    // stored cancel) finds a replacement that took the id.
+    const later = fresh();
+    const get = stores.request.get.bind(stores.request);
+    const isAbortRequested = stores.request.isAbortRequested.bind(stores.request);
+    let reads = 0;
+    let confirming = false;
+    let swapped = false;
+    stores.request.isAbortRequested = async (id: string) => {
+      confirming = true;
+      return isAbortRequested(id);
+    };
+    stores.request.get = async (id: string) => {
+      if (id === requestId) {
+        reads += 1;
+        if (reads > 1 && !confirming && !swapped) {
+          swapped = true;
+          await stores.request.delete(requestId);
+          await stores.request.set(requestId, later, "absent");
+        }
+        confirming = false;
+      }
+      return get(id);
+    };
+
+    await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_adopt",
+      orgId: DEFAULT_ORG_ID,
+      stores,
+      runtimeConfig: {}
+    });
+    stores.request.get = get;
+    stores.request.isAbortRequested = isAbortRequested;
+
+    const record = await stores.request.get(requestId);
+    expect(swapped).toBe(true);
+    expect(record?.incarnation).toBe(later.incarnation);
+    expect(seen.aborted).toBe(false);
+    expect(record?.status).toBe("completed");
   });
 });

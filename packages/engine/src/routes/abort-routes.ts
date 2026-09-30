@@ -27,7 +27,8 @@ type AbortRouteContext = {
  * a cancel issued anywhere stops a run anywhere. Delivery is bounded by the
  * flow's `heartbeatIntervalMs` and needs a request store shared across
  * processes; with `heartbeatIntervalMs: 0` there is no tick and therefore no
- * delivery.
+ * delivery to a running request, only the one read a run makes as it starts
+ * on a request recorded before it (a queued or dispatched request).
  *
  * Returns 204 when the in-memory controller was fired here, 202 when the
  * intent was recorded for the running process to pick up, 404 if the request

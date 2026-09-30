@@ -1007,6 +1007,10 @@ export async function runActionInternal<
   // The incarnation this run executes as: admission's, until the execution
   // context adopts the record and says otherwise (see the re-tag below).
   let currentIncarnation = runIncarnation;
+  // Until the context has adopted the record, which request this run is is not
+  // settled, so no stored cancel is delivered: one delivered for admission's
+  // request would stay on this run's controller if another request took the id.
+  let incarnationSettled = false;
   /**
    * Whether a cancel is recorded on the request this run executes as. The flag
    * is read first, as the O(1) `isAbortRequested`, and only when it is set is
@@ -1083,7 +1087,7 @@ export async function runActionInternal<
    * this closes.
    */
   const pollAbortIntent = async (): Promise<void> => {
-    if (deliveredAbort || abortPollInFlight) return;
+    if (deliveredAbort || abortPollInFlight || !incarnationSettled) return;
     abortPollInFlight = true;
     try {
       if (!(await abortRecordedForThisRun())) return;
@@ -1437,29 +1441,6 @@ export async function runActionInternal<
   // If anything between here and the main try block throws, the outer
   // try/catch below cleans it up.
   const abortController = registerAbortController(requestId, runIncarnation);
-  // First poll (FIX-1026). Placed here rather than beside the timer because a
-  // poll before this line has no controller to fire and therefore cannot
-  // deliver — it would be a guaranteed-useless store read on every request.
-  // Here it closes the window where the cancel was recorded between admission
-  // and the run starting, without waiting a full interval. Gated on the timer
-  // so `heartbeatIntervalMs: 0` really is off.
-  //
-  // AWAITED, not fired and forgotten. The read is issued either way; awaiting
-  // is what makes "a cancel recorded before the run started stops the run" a
-  // guarantee instead of a race the store's latency decides. Left unawaited, an
-  // action shorter than one `isAbortRequested` round trip runs to completion —
-  // model calls included — clears the post-drain abort check, and persists
-  // `completed` before the read that would have stopped it returns; by then the
-  // controller is deregistered and the delivery has nowhere to land. The cost
-  // is one narrow read on the start path, and `pollAbortIntent` swallows its
-  // own failures, so this can delay a request start but can never fail one.
-  //
-  // With heartbeats off it still runs once when this run adopts a record that
-  // was already on file (a queued stub, a record a replacement left). A cancel
-  // may have been recorded on that request before this controller existed, and
-  // a fire aimed at it could have missed an earlier controller under the id;
-  // with no ticks to come, this read is the only delivery left.
-  if (heartbeatTimer !== undefined || admittedRequest !== undefined) await pollAbortIntent();
   const composedSignal = options.signal
     ? AbortSignal.any([options.signal, abortController.signal])
     : abortController.signal;
@@ -1658,15 +1639,37 @@ export async function runActionInternal<
     // The controller was tagged from admission's read, but the context reads
     // the record again and runs as whatever request holds the id now. If
     // another request took the id in between, re-tag the controller with the
-    // one this run executes as, so a cancel fenced on it fires here. A cancel
-    // of that request recorded while the tag was still the earlier one missed
-    // the controller, so read the stored intent once and deliver it.
-    if (ctx.request.incarnation !== currentIncarnation) {
+    // one this run executes as, so a cancel fenced on it fires here. From here
+    // on, which request this run is is settled.
+    const adoptedAnother = ctx.request.incarnation !== currentIncarnation;
+    if (adoptedAnother) {
       currentIncarnation = ctx.request.incarnation;
       tagAbortController(requestId, abortController, currentIncarnation);
-      if (await abortRecordedForThisRun().catch(() => false)) {
-        abortController.abort();
-      }
+    }
+    incarnationSettled = true;
+
+    // First poll (FIX-1026), against the request this run executes as. It
+    // closes the window where the cancel was recorded between admission and
+    // the run starting, without waiting a full interval: nothing has executed
+    // yet. Earlier than here, a cancel it read could belong to a request that
+    // no longer holds the id.
+    //
+    // AWAITED, not fired and forgotten. Awaiting is what makes "a cancel
+    // recorded before the run started stops the run" a guarantee instead of a
+    // race the store's latency decides. Left unawaited, an action shorter than
+    // one `isAbortRequested` round trip runs to completion — model calls
+    // included — clears the post-drain abort check, and persists `completed`
+    // before the read that would have stopped it returns. The cost is one
+    // narrow read on the start path, and `pollAbortIntent` swallows its own
+    // failures, so this can delay a request start but can never fail one.
+    //
+    // With heartbeats off it still runs once when this run adopts a record
+    // that was already on file (a queued stub, a record a replacement left):
+    // a cancel may have been recorded on that request before this controller
+    // carried its incarnation, and with no ticks to come this read is the only
+    // delivery left. Otherwise `heartbeatIntervalMs: 0` does no reads.
+    if (heartbeatTimer !== undefined || admittedRequest !== undefined || adoptedAnother) {
+      await pollAbortIntent();
     }
 
     // Resume mode: load the suspension record + checkpoint to restore the durable
