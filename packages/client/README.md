@@ -37,8 +37,8 @@ Subscribe to a request's SSE stream with typed event handlers:
 ```ts
 import { createSSEClient } from "@flow-state-dev/client";
 
-// `url` is the route path; the client puts `baseUrl` in front of it, same rule as
-// createClient. In a browser on the same origin with no base path, omit `baseUrl`. In Node a relative
+// `url` is the full route, `/api/flows/...` included; the client only puts `baseUrl`
+// (origin plus any base path) in front of it and appends nothing. In a browser on the same origin with no base path, omit `baseUrl`. In Node a relative
 // path can't be fetched, so add baseUrl: "http://localhost:3000" (plus any base path).
 const stream = createSSEClient({
   url: `/api/flows/my-app/requests/${requestId}/stream`,

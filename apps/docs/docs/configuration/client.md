@@ -49,7 +49,7 @@ const client = createClient({
 });
 ```
 
-The same rule applies to `createSessionClient`, `createRecoveryClient`, `createResourceClient`, `createSSEClient`, and `FlowProvider`.
+The same rule applies to `createSessionClient`, `createRecoveryClient`, `createResourceClient`, and `FlowProvider`. `createSSEClient` follows only the prefix half: `baseUrl` is still the origin plus any base path, but nothing is appended, so its `url` must already hold the full route, `/api/flows/…` included.
 
 ### Fields
 
