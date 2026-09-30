@@ -107,6 +107,16 @@ export type RunActionOptions<
    */
   resolvedActionCore?: ActionCore;
   signal?: AbortSignal;
+  /**
+   * An abort controller the caller registered under `requestId` before the
+   * run started, with the incarnation it was tagged with. The run registers
+   * it as its own instead of a fresh one, so a cancel that landed on it is
+   * not lost in the handoff. A cancel that was aimed at another incarnation
+   * than the one the run executes as is dropped, the same way the run treats
+   * its own controller. `signal` is not a substitute: a signal carries a fire
+   * but not whom it was for.
+   */
+  abortHandoff?: { controller: AbortController; incarnation?: string };
   stores: StoreRegistry;
   retry?: RetryPolicy;
   responseEmitter?: ResponseEmitter;

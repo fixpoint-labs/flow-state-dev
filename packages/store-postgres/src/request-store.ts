@@ -20,6 +20,7 @@ import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items"
 import {
   abortableSleep,
   endsRequestStream,
+  isBatchStillAuthorized,
   isTerminalRequestStatus,
   pollEvents,
   synthesizeRequestInterrupted,
@@ -377,7 +378,7 @@ export function createPostgresRequestStore(
       fields: ConditionalRequestFields,
       allowedStatuses: readonly RequestStatus[],
       updatedAt: number,
-      expectedCreatedAt?: number
+      expectedIncarnation?: string
     ): Promise<ConditionalWriteResult> {
       // ONE statement, and the predicate read is a LOCKING one. `locked`
       // takes a row lock and — unlike a plain read, which is pinned to the
@@ -416,7 +417,8 @@ export function createPostgresRequestStore(
       // carry the old value back and move the indexed column BACKWARD.
       const result = await executor.query(
         `WITH locked AS (
-           SELECT id, status, (data->>'createdAt')::bigint AS created_at
+           SELECT id, status,
+                  COALESCE(data->>'incarnation', 'legacy_' || (data->>'createdAt')) AS incarnation
              FROM requests WHERE id = $1 FOR UPDATE
          ),
          applied AS (
@@ -425,23 +427,23 @@ export function createPostgresRequestStore(
                   updated_at = $3
              FROM locked l
             WHERE r.id = l.id AND l.status = ANY($4::text[])
-              AND ($5::bigint IS NULL OR l.created_at = $5::bigint)
+              AND ($5::text IS NULL OR l.incarnation = $5::text)
            RETURNING r.id
          )
-         SELECT l.status AS status, l.created_at AS created_at,
+         SELECT l.status AS status, l.incarnation AS incarnation,
                 EXISTS (SELECT 1 FROM applied) AS applied
            FROM locked l`,
-        [id, JSON.stringify(fields), updatedAt, [...allowedStatuses], expectedCreatedAt ?? null]
+        [id, JSON.stringify(fields), updatedAt, [...allowedStatuses], expectedIncarnation ?? null]
       );
 
       // No row means no record: `rows`, not `rowCount` — a PGlite-backed
       // executor reports `affectedRows` there, which is 0 for a SELECT.
       const row = result.rows[0] as
-        | { status: RequestStatus; created_at: string | number; applied: boolean }
+        | { status: RequestStatus; incarnation: string; applied: boolean }
         | undefined;
       if (row === undefined) return { applied: false, status: undefined };
       // Another record under the same id is not the one the caller checked.
-      if (expectedCreatedAt !== undefined && Number(row.created_at) !== expectedCreatedAt) {
+      if (expectedIncarnation !== undefined && row.incarnation !== expectedIncarnation) {
         return { applied: false, status: undefined };
       }
       return { applied: row.applied === true, status: row.status };
@@ -455,10 +457,33 @@ export function createPostgresRequestStore(
       // re-insert rows after the DELETE.
       const pending = pendingItemWrites.get(id);
       if (pending) await pending;
-      await Promise.all([
+      // Same for events: drop the unwritten batch so a queued
+      // write inserts nothing, and wait out one already running.
+      pendingNewEvents.delete(id);
+      const pendingEvents = pendingEventWrites.get(id);
+      if (pendingEvents) await pendingEvents;
+      // Events and runOnce results go with the record: ids are
+      // caller-supplied, so a later request may take this one, and a replay
+      // of it must not surface this run's events.
+      //
+      // Children first, record last. The executor has no transaction, so the
+      // order is what keeps this safe: a failed child delete leaves the record
+      // (the delete can be retried, and nothing is left without an owner), and
+      // the id cannot be claimed again until the record is gone, by which time
+      // no child cleanup is left to hit the new owner's rows.
+      // `allSettled`, not `all`: a fast failure must not return while a
+      // sibling delete is still running, or a retry could free the id and the
+      // straggler would then delete the next owner's rows.
+      const children = await Promise.allSettled([
         executor.query("DELETE FROM request_items WHERE request_id = $1", [id]),
-        base.delete(id)
+        executor.query("DELETE FROM request_events WHERE request_id = $1", [id]),
+        executor.query("DELETE FROM request_runonce WHERE request_id = $1", [id])
       ]);
+      const failed = children.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected"
+      );
+      if (failed !== undefined) throw failed.reason;
+      await base.delete(id);
       clearItemMaps(id);
     },
     async list(options?: RequestListOptions): Promise<RequestRecord[]> {
@@ -664,6 +689,7 @@ async function* subscribeViaListen(
   const livenessMs = options.livenessTimeoutMs ?? DEFAULT_LIVENESS_TIMEOUT_MS;
 
   const initial = await readEvents(requestId, options.fromSequence);
+  if (initial.length > 0 && !(await isBatchStillAuthorized(options))) return;
   let lastSeen = options.fromSequence;
   for (const event of initial) {
     yield event;
@@ -708,6 +734,7 @@ async function* subscribeViaListen(
 
       // Drain anything persisted between the catch-up SELECT and LISTEN setup.
       const gap = await readEvents(requestId, lastSeen);
+      if (gap.length > 0 && !(await isBatchStillAuthorized(options))) return;
       for (const event of gap) {
         yield event;
         lastSeen = event.sequence_number;
@@ -746,6 +773,7 @@ async function* subscribeViaListen(
           dirty = false;
           const next = await readEvents(requestId, lastSeen);
           if (next.length > 0) {
+            if (!(await isBatchStillAuthorized(options))) return;
             lastTickAt = Date.now();
             for (const event of next) {
               yield event;

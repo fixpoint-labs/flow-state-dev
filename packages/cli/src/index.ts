@@ -8,6 +8,7 @@ export { resolveFlow, discoverFlows, getSearchedDirs, isFlowInstance } from "./r
 export type { DiscoverFlowsOptions, FlowImportFailure } from "./resolve-flow";
 export { loadFsdevConfig } from "./load-config";
 export type { LoadConfigOptions, LoadedConfig } from "./load-config";
+export { declaredDevtoolConfig } from "./devtool-config";
 export { parseInputArg } from "./parse-input";
 export { formatOutput } from "./format-output";
 export {

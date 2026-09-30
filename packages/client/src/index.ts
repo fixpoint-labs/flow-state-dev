@@ -106,6 +106,7 @@ export type {
   ResourceSnapshotEntry,
   SendActionOptions,
   SessionDetail,
+  SessionRequestResult,
   SessionRequestSummary,
   SessionSSECallbacks,
   SessionStreamHandle,

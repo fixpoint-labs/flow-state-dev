@@ -341,16 +341,16 @@ The two keys lining up is the point: derive the checkout from the session and
 arbitrate on the session.
 
 A policy arbitrates dispatches, which covers one of the three ways two runs can
-end up in one checkout:
+end up in one checkout, and a second when the workers share a lease backend:
 
 | How | Covered? |
 |---|---|
 | **Two requests, one session.** | Yes. That is what the policy is for. |
 | **Two agent invocations inside one dispatch.** | No. A generator's tool calls in a single model step run concurrently, so a model holding this block as a tool can call it twice and both land in the same directory, inside one dispatch where the policy never sees them. |
-| **Two workers, one session.** | No. The arbiter is a map in the running process, so routing execution to external workers leaves both able to land in one checkout. That needs a lock in shared storage. |
+| **Two workers, one session.** | Only when the workers share a lease backend. By default the arbiter keeps its keys in the running process, so routing execution to external workers leaves both able to land in one checkout. A queue adapter that supplies a lease backend every worker shares (`WorkerAdapter.leaseBackend`) lines them up on the same session key. |
 
-So the recipe is safe for a single-instance host running the agent as a step, one
-invocation per dispatch. Outside that, derive a fresh directory per run — or let
+So the recipe is safe for a single-instance host, or workers that share a lease
+backend, running the agent as a step, one invocation per dispatch. Outside that, derive a fresh directory per run — or let
 the harness manager hold the lease.
 
 #### Rules for deriving the key

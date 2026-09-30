@@ -153,6 +153,8 @@ describe("createExecutionContext", () => {
     await stores.request.set("req_prev", {
       id: "req_prev",
       flowKind: flow.kind,
+      flowId: flow.id,
+      orgId: DEFAULT_ORG_ID,
       actionName: "run",
       sessionId: "sess_token",
       userId: "user_token",
@@ -331,6 +333,8 @@ describe("createExecutionContext", () => {
     await stores.request.set("req_tool_prev", {
       id: "req_tool_prev",
       flowKind: flow.kind,
+      flowId: flow.id,
+      orgId: DEFAULT_ORG_ID,
       actionName: "run",
       sessionId: "sess_tool_replay",
       userId: "user_tool_replay",
@@ -504,6 +508,8 @@ describe("loadLLMHistory — turn-aware windowing (FIX-608)", () => {
     return {
       id: spec.requestId,
       flowKind: "fix608-flow",
+      flowId: "fix608-flow",
+      orgId: DEFAULT_ORG_ID,
       actionName: "run",
       sessionId: "sess",
       userId: "user_1",

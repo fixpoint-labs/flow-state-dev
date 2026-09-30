@@ -190,8 +190,8 @@ function PanelContent({ className }: { className?: string }) {
   const [liveRawItems, setLiveRawItems] = useState<Map<string, OutputItem[]>>(new Map());
   // The last raw log each streamed request's stream delivered, kept after the
   // stream moves on. Read only once a request has finished, to add the traces
-  // its polled log lacks (a transient block's are never persisted), so a
-  // Tasks-tab row can still read its outcome (FIX-1629).
+  // its polled log lacks (a transient block's are never persisted), so the
+  // Stream and Trace tabs keep what they showed live.
   const [streamRawItems, setStreamRawItems] = useState<Map<string, OutputItem[]>>(new Map());
   // The requests Tasks-tab rows dispatched in this workspace (FIX-1629). Only
   // one request is streamed at a time, so a row whose request is not the
@@ -437,7 +437,11 @@ function PanelContent({ className }: { className?: string }) {
               req.items!,
               liveRawItems.get(req.id) ?? streamFor(req.id)?.rawItems ?? streamRawItems.get(req.id),
             )
-          : (liveRawItems.get(req.id) ?? streamFor(req.id)?.rawItems ?? req.items ?? []),
+          : (liveRawItems.get(req.id) ??
+            streamFor(req.id)?.rawItems ??
+            // A request that persisted nothing (a transient refusal) is not
+            // `settled`, yet its stream may have seen its only trace.
+            mergeRawItems(req.items ?? [], streamRawItems.get(req.id))),
         source: req.source,
         metadata: req.metadata,
       });
@@ -582,8 +586,10 @@ function PanelContent({ className }: { className?: string }) {
   );
 
   // The Tasks tab changes a task only through the viewed flow's own actions,
-  // on this same dispatch path, and reads each outcome from the session's
-  // requests (FIX-1629).
+  // on this same dispatch path (FIX-1629), and reads each outcome from what
+  // the engine recorded for the request: its status and action result on the
+  // polled list (FIX-1661). Never from the stream, which holds one request at
+  // a time, or from traces, which a transient block never keeps.
   const runRowAction = useCallback(
     async (action: string, input: unknown): Promise<RowDispatch> => {
       const answer = await handleSendAction(action, input);
@@ -595,14 +601,18 @@ function PanelContent({ className }: { className?: string }) {
     },
     [handleSendAction],
   );
+  const rowOutcomeSources = useMemo(
+    () => requests.map((req) => ({ requestId: req.id, status: req.status, result: req.result })),
+    [requests],
+  );
   const rowActions = useMemo<RowActions>(
     () => ({
       names: activeFlow?.actions ?? [],
       schemas: activeFlow?.actionSchemas,
       run: runRowAction,
-      requests: requestGroups,
+      requests: rowOutcomeSources,
     }),
-    [activeFlow?.actions, activeFlow?.actionSchemas, runRowAction, requestGroups],
+    [activeFlow?.actions, activeFlow?.actionSchemas, runRowAction, rowOutcomeSources],
   );
 
   // Re-read the list while any row's request is still running (or not listed

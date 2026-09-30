@@ -27,7 +27,14 @@ export type TaskChangeKind =
   | "label_changed"
   | "metadata_changed"
   | "priority_changed"
-  | "assignee_changed";
+  | "assignee_changed"
+  /**
+   * A handed-off run wrote itself onto its task (FIX-1668) — the row's `run`
+   * now names that run. Published on the run's own session, like every write
+   * the run makes; a view following another session sees the link on its next
+   * read of the row.
+   */
+  | "run_linked";
 
 /**
  * Substrate-internal event published on every task mutation. Carries the

@@ -258,10 +258,13 @@ for the full contract reference and a walk-through of authoring a custom
 adapter.
 
 A flow's concurrency policy is enforced once at the host dispatch seam — the
-in-process dispatcher gates the run there, so every transport inherits the
+in-process dispatcher gates the run there (and, over a shared lease backend,
+the host takes an external run's place before enqueueing; see below), so every
+transport inherits the
 same behavior and adapters only map the outcome to their native response.
 When a `reject` policy drops a competing request, `host.dispatch` throws
-`ConcurrencyRejectedError` synchronously (carrying the contended `key` and the
+`ConcurrencyRejectedError` synchronously over the default in-memory backend
+(through `accepted` over a shared one; see below), carrying the contended `key` and the
 `inFlightRequestId`); the HTTP adapter maps it to 409, fire-and-forget
 webhook/scheduled adapters to a benign skipped 200, MCP to a server-busy
 error. A `queue` policy that waits past its budget rejects the request's
@@ -269,6 +272,39 @@ error. A `queue` policy that waits past its budget rejects the request's
 stream, not a synchronous status). Both errors are exported from this package.
 See the [concurrency policies
 reference](https://flow-state.dev/docs/advanced/concurrency-policies).
+
+### Concurrency across processes: `WorkerAdapter.leaseBackend`
+
+By default the arbiter keeps each key's line in the running process
+(`createInMemoryLeaseBackend()`), so a policy serializes requests that run in
+that process, and work handed to an external queue runs unarbitrated. A queue
+adapter whose runs land in several processes can supply a backend they all
+share as `leaseBackend` on its `WorkerAdapter`. The arbiter in every process
+then lines up on the same keys, and an external dispatch is arbitrated too: the
+host takes the run's place before enqueueing (once the caller's ownership of the
+session and request id is confirmed), and the job carries it as
+`DispatchEnvelope.leasePlace`.
+
+A backend implements four calls and holds no policy:
+
+| Call | Does |
+| --- | --- |
+| `take({ key, requestId, ifEmpty? })` | Appends a place to the key's line, or with `ifEmpty` (the `reject` policy) claims only a free key and otherwise answers `{ heldBy }`. Not idempotent |
+| `isMyTurn(place)` | True when the place is first on its key |
+| `giveBack(place)` | Removes the place and wakes the next waiter. Idempotent |
+| `renew(place)` | Extends a place whose lease expires. Called every 2 seconds for as long as the process holds the place, until it gives it back or enqueues its job |
+
+Any call may throw when the backend is unreachable; the dispatch is then
+refused rather than run unarbitrated. Over a supplied backend a `reject`
+refusal arrives through the handle's `accepted` and `finished`, not as a
+synchronous throw, and the built-in adapters map it the same way.
+
+The worker owns a job's place: it waits for `isMyTurn`, runs, and gives the
+place back. `planQueueWait({ key, waitedMs, attempt })` answers "not my turn
+yet" the way the engine does, with jittered backoff inside the 30-second queue
+budget, so a worker that waits by requeueing its job reaches the same timeout
+an in-process run would. A job whose `leasePlace` is `null` or absent runs as it
+always did.
 
 ## Authentication
 
@@ -550,11 +586,13 @@ const flow = defineFlow({
 });
 ```
 
-Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted.
+Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted. Nor is a request whose run has not finished yet, `onFinished` included, or that finished less than twice the live-tail liveness timeout ago (`LIVE_TAIL_LIVENESS_MS`, 30s by default, so 60s), or one still in the active-request registry. A run that dies before finishing is released by the stale-request sweeper, if it was heartbeating; with the sweeper disabled (`staleSweepIntervalMs: 0`), or heartbeats off (`request.heartbeatIntervalMs: 0`), its request is kept. A request spared this way is evicted when the session's next request completes. A record from an engine version that never wrote `finalizedAtMs` is kept for the stale-request threshold or `maxAge`, whichever is larger, plus that window, so a rolling deploy cannot free the id of a run still finishing on an old instance. A custom `RequestStore` must persist the record's `finalizedAtMs` and `heartbeatsUntilFinalized` fields (the run writes the stamp through `setFieldsIfStatus`), and honor that method's `expectedIncarnation` fence.
 
 Retention policies operate at **request granularity** — entire old request records are removed, not individual items. For items that should never be stored at all, use `transient: true` on block definitions.
 
 The `maxItems` check counts items through `RequestStore.countItems(requestId)` rather than loading item payloads, so a retention sweep stays cheap on sessions with large logs. Custom `RequestStore` implementations must provide `countItems`; it returns what `get(id)` would surface as `items.length`.
+
+Eviction calls `RequestStore.delete(id)`, which removes everything the store keeps under that id: the record, its items, its stream events and its runOnce results. Request ids can be supplied by the caller, so a freed id may be taken by a later request, possibly from another user. Anything a custom store leaves behind under the id would be replayed on that request's stream. `createRequestStoreConformanceTests` checks the store's `delete`; `createRequestRetentionConformanceTests` (both from `@flow-state-dev/engine/testing`) runs the whole path through retention and the stream route against a `StoreRegistry`.
 
 Supported duration formats: `'30s'`, `'5m'`, `'2h'`, `'7d'`, or a raw number in milliseconds.
 
@@ -569,7 +607,8 @@ setFieldsIfStatus(
   id: string,
   fields: ConditionalRequestFields,
   allowedStatuses: readonly RequestStatus[],
-  updatedAt: number
+  updatedAt: number,
+  expectedIncarnation?: string
 ): Promise<ConditionalWriteResult>;
 ```
 
@@ -578,6 +617,12 @@ Both named types are exported from `@flow-state-dev/engine`. `ConditionalRequest
 **`isAbortRequested`** answers whether cancellation has been requested, without materializing the request. It runs on the heartbeat tick for the life of every request, so it **must be O(1) in item count** — reading the record and deserializing a growing item array turns a long run into quadratic work. Return `false` for an unknown request. Read the flag with `=== true`; it is `boolean | undefined`.
 
 **`setFieldsIfStatus`** applies `fields` only while the record's status is one of `allowedStatuses`, evaluating the predicate and the write as one atomic step. Three outcomes: `{ applied: true, status }` when the predicate held; `{ applied: false, status }` when a record exists outside the predicate; `{ applied: false, status: undefined }` when no record exists.
+
+**`expectedIncarnation` fences the write to one request.** A request id can be reused once retention deletes its record, so the record at `id` when you write may not be the one the caller checked. When `expectedIncarnation` is given, compare it with the stored record's incarnation, resolved with `resolveRequestIncarnation(record)` (exported from `@flow-state-dev/engine`), and when they differ report the record as absent, `{ applied: false, status: undefined }`, and write nothing. Do the comparison inside the same atomic step as the status check.
+
+Resolve the stored side with the helper rather than reading `record.incarnation` directly. Records written before incarnations existed have none, and the helper gives them a stable value derived from `createdAt`. If your store has to state the rule in its own query language, the derived form is `legacy_` followed by `createdAt` in decimal, used when `incarnation` is absent or `null`.
+
+Don't compare `createdAt` instead. Two requests under one id can be created in the same millisecond, and a retry by the same owner rewrites `createdAt` on a request that is still running.
 
 Do not implement it as a version CAS. Terminal transitions persist `version` **unchanged**, so a version-checked write still validates after a terminal commit and resurrects a dead record. The predicate has to read status.
 

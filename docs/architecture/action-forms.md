@@ -179,9 +179,12 @@ own `dispatch` namespace) and adopts it on the same key; the adoption check
 includes the parent's lineage. `{ id }` delivers into an existing session of the
 same flow kind and principal — an unknown id, another principal's, or another
 tenant's is `session-not-found`; another flow's or a mismatched org is
-`session-not-addressable` — and is refused under an external dispatcher
-(`usesExternalDispatcher`, refusal `external-dispatcher`) because the run
-would start on another process against a session this one cannot fence.
+`session-not-addressable` — and is refused under an external dispatcher whose
+adapter supplies no shared lease backend (`usesExternalDispatcher` without
+`arbitratesExternalDispatch`, refusal `external-dispatcher`), because the run
+would start on another process against a session this one cannot fence. With a
+lease backend the delivery takes its place on the session's key before it is
+enqueued, and the worker runs it in that place's turn.
 `{ from: true }` is that same existing-session delivery, addressed at the
 seam-stamped sender (`readDispatchStamp` → `from.sessionId`). The author names
 no session. A request the runtime did not dispatch — including a public action

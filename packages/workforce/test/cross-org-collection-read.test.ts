@@ -122,6 +122,8 @@ const seed = handler({
       // Valid shapes, so the envelope actually stores them — a row the write
       // rejected would make the projection check unable to fire.
       claimedBy: { sessionId: "LEAKED-CLAIMEDBY", requestId: "req-x" },
+      // The one coordinate a card DOES carry (FIX-1668).
+      run: { sessionId: "sess-run", requestId: "req-run", attempt: 1 },
       leaseUntil: 99999,
       retryLedger: { granted: 7, deniedByBudget: true },
       writeLog: [{ id: "LEAKED-WRITELOG", revision: 3 }],
@@ -338,6 +340,21 @@ describe("FIX-1477 · the panel collections' client read", () => {
     // cannot pass by publishing nothing.
     expect(card.goal, "the card still carries what it renders").toBe("ship the thing");
     expect(card.status).toBe("pending");
+  });
+
+  it("a board card carries the run link, so a view can open the run (FIX-1668)", async () => {
+    const h = await buildHarness();
+    await plant(h, "org-a", "support.ada", "ship the thing");
+    const sessionId = await openSession(h, "org-a", "org-a");
+
+    const board = await readCollection(h, sessionId, BOARD_REF, "", {
+      "x-verified-org": "org-a"
+    });
+
+    const card = board.json.items[0].clientData as Record<string, unknown>;
+    expect(card.run).toEqual({ sessionId: "sess-run", requestId: "req-run", attempt: 1 });
+    // Beside it, the claim's coordinate still does not come back.
+    expect(card).not.toHaveProperty("claimedBy");
   });
 
   it("a roster row carries no settings bag", async () => {

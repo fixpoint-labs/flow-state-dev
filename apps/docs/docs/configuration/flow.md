@@ -156,7 +156,7 @@ The host verifies credentials. The framework applies `defaultUserId` and `requir
 | `stateSchema` | Zod object | — | Session state shape. Use `.nullable().default(null)` for fields that start empty. |
 | `client` | `{ expose?, derived? }` | private | What crosses to the browser under `clientData.session`. `expose` copies named fields verbatim. `derived` computes named projections from `{ state, resources }`. Names must not collide. |
 | `metadata` | Zod schema | — | Declares the session metadata shape (`title`, tags, and so on) for typing. Not enforced at runtime today: neither the session-metadata route nor `ctx.session.setMetadata()` parses against it, so a value outside the schema is persisted unchanged. |
-| `retention` | `{ maxItems?, maxAge? }` | unbounded | Bounds the persisted item log. `maxAge` is milliseconds or a duration string (`"7d"`). Oldest completed requests evict first. |
+| `retention` | `{ maxItems?, maxAge? }` | unbounded | Bounds the persisted item log. `maxAge` is milliseconds or a duration string (`"7d"`). Oldest completed requests evict first. A request stays until its run has finished, `onFinished` and any background work it started included, and for twice the configured `LIVE_TAIL_LIVENESS_MS` after (one minute by default), so a busy session can briefly exceed its limits; a request kept this way still counts toward `maxItems`, so older history is evicted in its place. Deleting a request also removes its stream events and cached step results. See [Deleting requests](/docs/persistence/overview#deleting-requests) for the edge cases and what a custom store must support. |
 | `historyWindow` | `{ turns: number }` | `50` | Caps cross-turn history loaded per request. `0` or a negative number disables it. Per-call `history({ limit })` can only shrink this window. |
 | `cas` | `CASOptions` | — | Optimistic-concurrency options for this scope. |
 
@@ -168,7 +168,7 @@ The host verifies credentials. The framework applies `defaultUserId` and `requir
 |-------|------|---------|--------------|
 | `stateSchema` | Zod object | — | Request-scoped state. |
 | `onStarted` / `onCompleted` / `onErrored` / `onFinished` / `onStepErrored` | `BlockDefinition` | — | Request lifecycle hooks. |
-| `heartbeatIntervalMs` | `number` | `10000` | Active-request heartbeat. `0` disables the heartbeat *and* cross-process abort delivery. |
+| `heartbeatIntervalMs` | `number` | `10000` | Active-request heartbeat. `0` disables the heartbeat *and* cross-process abort delivery to a running request. Each run still checks once for a cancellation as it starts. |
 | `sseHeartbeatMs` | `number` | `15000` | SSE `: ping` cadence. `0` disables. |
 | `concurrency` | `ConcurrencyConfig` | `"allow"` | Default for actions that omit `concurrency`. |
 | `mutationTimeoutMs` | `number` | `30000` | Budget for in-memory state writes. `Infinity` disables. Scopes that persist — request, session, user, org — are not covered by it. |

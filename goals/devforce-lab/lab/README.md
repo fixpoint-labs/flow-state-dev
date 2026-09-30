@@ -12,7 +12,7 @@ declared seat wakes a **different** declared seat, in its own flow instance, int
 a supervised coding run whose prompt was built out of that seat's own files. A
 third seat, declared on the same kind, is never reached.
 
-Three checks drive it. The first two differ by **one expression** — the harness
+Five checks drive it. The first two differ by **one expression** — the harness
 slot; the third adds the two ends of the path neither of them reaches:
 
 | | |
@@ -20,6 +20,8 @@ slot; the third adds the two ends of the path neither of them reaches:
 | [`../it-wakes-the-seat-a-file-declared/`](../it-wakes-the-seat-a-file-declared/) | The contract gate. A scripted stub in the slot, no model at all, every rule graded on what the plumbing carried. |
 | [`../it-commits-from-the-seats-own-file/`](../it-commits-from-the-seats-own-file/) | The honesty check. A real coding agent in that same slot, and the one leg a stub cannot reach — a commit the base ref does not have. |
 | [`../it-ships-an-artifact-a-person-can-open/`](../it-ships-an-artifact-a-person-can-open/) | The product check. A **post** is what starts the work, and the work is published to an address that outlives the run and judged against a condition the brief stated first. |
+| [`../it-keeps-its-rows-on-the-channels-board/`](../it-keeps-its-rows-on-the-channels-board/) | The board check. The feature channel holds the board its rows sit on, and a posted line ends as one completed row read back through the channel, the HTTP door and the organization's storage. No model. |
+| [`../it-waits-for-a-person-before-it-files/`](../it-waits-for-a-person-before-it-files/) | The approval check. With the ask turned on, the EM seat asks a person before it files a feature. Approve files the row and the coder starts; Deny files nothing. No model, and the answer goes through the session's own resume. |
 
 It is **evidence, not an application**. Nobody opens it and clicks through it;
 you re-run it a year from now and compare against the verdict logs in the two
@@ -39,7 +41,7 @@ workforce/
     eng/
       resources/feature-brief.md                   the working seat's brief
       skills/commit-style/SKILL.md                 every eng seat holds it
-      channels/feature/CHANNEL.md                  declared, walked, and driven by the third check
+      channels/feature/CHANNEL.md                  holds the board, `boards: [work]`; driven by the third check
       workers/em/WORKER.md                         flow: em      — names no harness
       workers/coder/WORKER.md                      flow: coder
       workers/coder/skills/branch-naming/SKILL.md  the coder's alone
@@ -66,7 +68,7 @@ no opinion at that spot — not because a convention is missing.
 
 | File | Why it is the lab's |
 |---|---|
-| `board.mts` | The loader walks four folders and silently ignores everything else, so a board declared as a tree folder would look declared and be read by nobody. Boards are declared in code, by design. |
+| `board.mts` | The two declarations of the channel's board: the EM's, whose worker hands a row to the coder seat, and the coder's, which only lets that hand-off in. The board itself belongs to the channel: its file names it, and the framework mints its id from where the channel sits. |
 | `workforce/flows/workers/em.mts` | The coordinator kind. It owns the board and files rows, and declares **no task entry at all** — so "the EM seat does no harness work" is a fact about the kind, not about one run. |
 | `workforce/flows/workers/coder.mts` | The working kind. One task entry, `harnessManager` behind it, and the harness itself passed in as a slot. |
 | `host.mts` | Read the tree, build the kinds, hire, register. The assignee → seat address is supplied by the caller, because a board's `workers` keys are assignees and which seat one reaches is a dispatcher's static `flowKind`. The HTTP door is wired with a host-owned `resolvePrincipal`, so an unauthenticated read is refused rather than waved through under the development-organization fallback. |
@@ -79,20 +81,12 @@ those.
 
 ## What it works around
 
-**The `coder` kind declares the feature board a second time, and drains it
-never.** Same `boardId`, same ledger id, its own same-flow dispatcher. Two
-framework rules make that mandatory for a recipient of a cross-flow hand-off:
-`defineFlow` refuses a flow that declares a task entry with no reachable board
-handing off to it, and the claim gate refuses a dispatch whose `boardId` differs
-from the one the recipient's own board was built with.
-`packages/orchestration/test/task-board/hand-off-cross-flow.test.ts` documents the
-same constraint in its own header.
-
-**It is an interim tax, not a convention.** Board *authoring* — what an author
-declares — is a channel-attached `TaskCollection` (FIX-1385). The cross-flow
-claim-gate cost is a separate L1 constraint, carved onto FIX-1408. A kind that
-needs a task entry may pay this tax today, labelled as one. A lab that taught it
-as the rule would grandfather an asymmetry nobody chose.
+**The `coder` kind declares the channel's board a second time, and never drains
+it.** Same board id, the same ledger, its own dispatcher. `defineFlow` refuses a
+flow that declares a task entry with no reachable board handing off to it, and
+the claim gate refuses a dispatch whose board id differs from the recipient's
+own. That cost is the framework's to remove. Where the board lives is settled:
+on the channel, as its file says.
 
 **The two older checks drive the EM seat through its own actions rather than
 through the feature channel, and still do.** For them the channel is declared,
@@ -110,6 +104,34 @@ release step rather than a second leg the lab carries. A proof that quietly ran
 the weaker leg and reported the stronger one would be worse than no proof, so the
 leg is named in the verdict rather than inferred from whether `gh` happened to be
 installed.
+
+## The ask
+
+Nothing in this tree asked a person anything, so an Inbox pointed at it had nothing to show.
+The EM seat now has a third door beside `file` and the channel post: it pauses on a stock
+approval before it files, and files only if a person approves. Deny files nothing and says so.
+
+The door is off unless the host asks for it. `openLab` takes the feature to ask about, turns on
+durable execution, and raises the ask once in the EM seat's own session, as the lab's person.
+Opening again over the same store finds the earlier ask, answered or not, and raises nothing;
+a denied feature stays denied until the store is fresh. The other checks don't ask for
+it, so they run exactly as before.
+
+A host that builds its own flow state instead of calling `openLab`, such as the `fsdev`
+config App Lab serves, turns on durable execution itself and calls the same step,
+`raiseAsk` in `ask.mts`, after it hires.
+
+```ts
+const lab = await openLab({
+  stores,
+  harness: stub.slot,
+  workspace,
+  coderSeatId,
+  ask: { issue: "search-bar", goal: "Add a search bar to the header" },
+});
+// The EM's session now holds one pending approval. Answer it through
+// POST /<em-seat>/requests/<requestId>/resume with "approve" or "reject".
+```
 
 ## What the gate found
 

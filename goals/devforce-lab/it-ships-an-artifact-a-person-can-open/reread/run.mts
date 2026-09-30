@@ -13,7 +13,11 @@
  * registry and the open handles. So the goal closes its store, spawns this,
  * and grades what comes back on stdout.
  *
- *   pnpm tsx .../reread/run.mts <db-file> <user-id> <ledger-key> <channel-session-id>
+ *   pnpm tsx .../reread/run.mts <db-file> <user-id> <org-id> <ledger-key> <channel-session-id>
+ *
+ * The row is read from the organization's storage, because the board is the
+ * feature channel's and a channel's board is kept per organization; the run
+ * record is the user's own.
  *
  * Prints one JSON object and exits 0, or prints the reason and exits 1. It
  * asserts nothing: the goal owns the grading, and a reader that graded would be
@@ -21,6 +25,7 @@
  */
 
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { CHANNEL_POST_COMPONENT } from "@flow-state-dev/workforce";
 
 /** What the goal reads back off stdout. */
 interface Reread {
@@ -33,20 +38,21 @@ interface Reread {
   transcriptLines: number | null;
 }
 
-const [dbFile, userId, ledgerKey, channelSessionId] = process.argv.slice(2);
+const [dbFile, userId, orgId, ledgerKey, channelSessionId] = process.argv.slice(2);
 if (
   dbFile === undefined ||
   userId === undefined ||
+  orgId === undefined ||
   ledgerKey === undefined ||
   channelSessionId === undefined
 ) {
-  console.error("usage: run.mts <db-file> <user-id> <ledger-key> <channel-session-id>");
+  console.error("usage: run.mts <db-file> <user-id> <org-id> <ledger-key> <channel-session-id>");
   process.exit(1);
 }
 
 const stores = createSQLiteStores({ filename: dbFile });
 try {
-  const row = await stores.resourceState.get("user", userId, ledgerKey);
+  const row = await stores.resourceState.get("org", orgId, ledgerKey);
   const runs = await stores.resourceState.getByPrefix("user", userId, "runs/");
   const session = (await stores.session.get(channelSessionId)) as
     | { state?: { transcript?: unknown[] } }
@@ -54,11 +60,24 @@ try {
 
   const firstRun = Object.values(runs)[0]?.state as { outcome?: unknown } | undefined;
 
+  // A post is kept as a `channel-post` component item on the channel's
+  // session; lines written before that lived in `state.transcript`. Both are
+  // counted, so a store from either side reads back whole.
+  const requests = await stores.request.list({ sessionId: channelSessionId, withItems: true } as never);
+  const postedLines = requests
+    .flatMap((request) => (request as { items?: unknown[] }).items ?? [])
+    .filter((item) => {
+      const typed = item as { type?: string; component?: unknown };
+      return typed.type === "component" && typed.component === CHANNEL_POST_COMPONENT;
+    }).length;
+  const legacyLines = session?.state?.transcript?.length;
+
   const result: Reread = {
     rowStatus: ((row?.state as { status?: string } | undefined)?.status ?? null) as string | null,
     runRecords: Object.keys(runs).length,
     runOutcome: firstRun?.outcome === undefined ? null : String(firstRun.outcome),
-    transcriptLines: session?.state?.transcript?.length ?? null,
+    transcriptLines:
+      session === undefined ? null : (legacyLines ?? 0) + postedLines,
   };
   console.log(JSON.stringify(result));
 } finally {

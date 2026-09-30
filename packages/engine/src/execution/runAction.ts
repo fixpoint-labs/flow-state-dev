@@ -21,7 +21,13 @@ import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResume
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "../context/createExecutionContext";
-import { isSameSession, resolveLineageId, resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
+import {
+  isSameSession,
+  resolveLineageId,
+  resolveRequestIncarnation,
+  resolveSessionStorageKey,
+  tenantMatches
+} from "../stores/scope-keys";
 import { canSpeak, canSpeakStream, getRequestSideChainPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
@@ -37,6 +43,7 @@ import { normalizeError, displayCause } from "../errors/normalize-error";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
 import { executeBlock } from "./executeBlock";
+import { recordOutput, settledRecordFields, type RecordedOutput, type RequestSettlement } from "./request-action-result";
 import { getResponseItems, getResponseItemCount } from "./internal/response";
 import {
   applyNormalizedErrorSeam,
@@ -55,8 +62,12 @@ import { generateId } from "../utils/generate-id";
 import {
   abortRequest,
   registerAbortController,
-  deregisterAbortController
+  deregisterAbortController,
+  replaceAbortController,
+  tagAbortController,
+  wasFiredOnlyFenced
 } from "./abort-registry";
+import { beginRequestAttempt, type RequestAttempt } from "./request-attempts";
 import {
   assertSessionAdmitted,
   FlowInstanceBindingMismatchError,
@@ -415,9 +426,10 @@ async function settleFreshRequestSetupFailure(options: {
   };
   error: unknown;
   logger: RuntimeLogger;
-}): Promise<void> {
+}): Promise<string | undefined> {
   const now = Date.now();
   const normalized = normalizeError(options.error, { scope: "request" });
+  let writtenIncarnation: string | undefined;
   const item: ErrorItem = {
     id: `item_error_${now}_${Math.random().toString(16).slice(2)}`,
     type: "error",
@@ -469,18 +481,20 @@ async function settleFreshRequestSetupFailure(options: {
           (entry) => entry.transient !== true
         )
       );
+      const failed: RequestRecord = {
+        ...base,
+        ...settledRecordFields({ status: "failed", error: normalized }),
+        failedAtMs: now,
+        updatedAt: now,
+        items
+      };
       const written = await options.stores.request.set(
         options.requestId,
-        {
-          ...base,
-          status: "failed",
-          failedAtMs: now,
-          updatedAt: now,
-          items
-        },
+        failed,
         current === undefined ? "absent" : "any"
       );
       if (written.ok) {
+        writtenIncarnation = resolveRequestIncarnation(failed);
         options.stores.request.persistItems(options.requestId, items);
         await options.stores.request.flushItems(options.requestId);
         settled = true;
@@ -507,20 +521,63 @@ async function settleFreshRequestSetupFailure(options: {
     requestId: options.requestId,
     error: summarizeForLog(normalized)
   });
+  return writtenIncarnation;
+}
+
+/** Record fields a patch may carry beside the status and the result. */
+type RequestRecordFields = Omit<Partial<RequestRecord>, "status" | "result">;
+
+/**
+ * Applies a partial request-record update that does not end the request.
+ *
+ * Typed so it cannot write a final status: ending a request goes through
+ * {@link settleRequestRecord}, which writes the action's result in the same
+ * write (FIX-1661).
+ */
+async function patchRequestRecord(
+  stores: StoreRegistry,
+  requestId: string,
+  patch: RequestRecordFields & { status?: "in_progress" }
+): Promise<string | undefined> {
+  return writeRequestRecordPatch(stores, requestId, patch);
+}
+
+/**
+ * Ends a request's record: its status and the action result built from
+ * `settlement` land in one write, so a poller never sees a final status
+ * without its result (FIX-1661). A suspension goes through here too, and
+ * clears any result a prior write left.
+ */
+async function settleRequestRecord(
+  stores: StoreRegistry,
+  requestId: string,
+  settlement: RequestSettlement,
+  fields: RequestRecordFields
+): Promise<string | undefined> {
+  return writeRequestRecordPatch(stores, requestId, {
+    ...fields,
+    ...settledRecordFields(settlement)
+  });
 }
 
 /**
  * Applies a partial request-record update when a record exists.
  * Strips ephemeral content from items before writing to the store.
+ *
+ * Internal: call {@link patchRequestRecord} or {@link settleRequestRecord},
+ * whose types keep a final status from landing without its result.
+ *
+ * @returns The incarnation of the record written, or `undefined` when there
+ *   was none to patch.
  */
-async function patchRequestRecord(
+async function writeRequestRecordPatch(
   stores: StoreRegistry,
   requestId: string,
   patch: Partial<RequestRecord>
-): Promise<void> {
+): Promise<string | undefined> {
   const current = await stores.request.get(requestId);
   if (current === undefined) {
-    return;
+    return undefined;
   }
 
   const sanitized = patch.items !== undefined
@@ -535,6 +592,97 @@ async function patchRequestRecord(
     { ...current, ...sanitized, updatedAt: Date.now() },
     "any"
   );
+  return resolveRequestIncarnation(current);
+}
+
+/**
+ * Wait out item and event writes still queued under `requestId` before the
+ * finalization stamp. Both queues are settled independently, so one failing
+ * never skips the other. Past the terminal status, so a failure is logged
+ * rather than thrown: it changes nothing about how the run ended.
+ *
+ * @returns `false` when either flush failed. The run then cannot vouch that
+ *   nothing it wrote is still landing, so the caller does not stamp, exactly
+ *   as when the stamp itself fails.
+ */
+async function settlePendingWrites(
+  stores: StoreRegistry,
+  requestId: string,
+  logger: RuntimeLogger
+): Promise<boolean> {
+  const results = await Promise.allSettled([
+    stores.request.flushItems(requestId),
+    stores.request.flushEvents(requestId)
+  ]);
+  let settled = true;
+  for (const result of results) {
+    if (result.status === "rejected") {
+      settled = false;
+      logRuntimeEvent(logger, "warn", "[flow-state] late write failed before finalization", {
+        requestId, error: String(result.reason)
+      });
+    }
+  }
+  return settled;
+}
+
+/**
+ * Statuses a run leaves its record in when it has finished for good: every
+ * terminal status except `suspended`, whose run resumes under the same id.
+ */
+const FINALIZABLE_STATUSES = ["completed", "failed", "incomplete", "aborted", "interrupted"] as const;
+
+/** Attempts at the finalization stamp before leaving it to the stale sweep. */
+const FINALIZE_ATTEMPTS = 3;
+
+/**
+ * Record that this run has finished writing under its request id, as its last
+ * write before leaving the active registry. Session retention deletes a
+ * request only once this is set.
+ *
+ * Conditional on this run's own record (`recordIncarnation`, the incarnation
+ * of the record its terminal patch wrote) still existing in a terminal
+ * status. So it never recreates a record a sibling has already deleted, never
+ * stamps a new request that has since taken the id (even one created in the
+ * same millisecond), and never stamps one a new run has taken back to
+ * `in_progress`. With no terminal record to fence on there is nothing to
+ * stamp.
+ *
+ * A store error is retried, then reported by returning `false`, never thrown:
+ * the run has succeeded or failed already. The caller then leaves the run in
+ * the active registry, where its heartbeat has stopped, so the stale-request
+ * sweep finds it and stamps it. Until then the record is only kept longer.
+ *
+ * @returns `false` when every attempt threw; `true` otherwise.
+ */
+async function finalizeRequestRecord(
+  stores: StoreRegistry,
+  requestId: string,
+  recordIncarnation: string | undefined,
+  logger: RuntimeLogger
+): Promise<boolean> {
+  if (recordIncarnation === undefined) return true;
+  for (let attempt = 1; attempt <= FINALIZE_ATTEMPTS; attempt++) {
+    const now = Date.now();
+    try {
+      await stores.request.setFieldsIfStatus(
+        requestId,
+        { finalizedAtMs: now },
+        FINALIZABLE_STATUSES,
+        now,
+        recordIncarnation
+      );
+      return true;
+    } catch (err) {
+      logRuntimeEvent(logger, "warn", "[flow-state] request finalization failed", {
+        requestId, attempt, error: String(err)
+      });
+      if (attempt < FINALIZE_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+      }
+    }
+  }
+  return false;
 }
 
 /**
@@ -794,12 +942,64 @@ export async function runAction<
 
 /**
  * Internal action execution entrypoint with injectable seams for instrumentation/testing.
+ *
+ * Counts the run as a live attempt of its request id for its whole duration
+ * (see `request-attempts.ts`), so a run that overlaps another of the same
+ * request leaves stamping and deregistering to whichever ends last.
  */
 export async function runActionInternal<
   TFlow extends FlowInstance = FlowInstance,
   TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string
 >(
   options: RunActionInternalOptions<TFlow, TActionName>
+): Promise<ExecutionResult> {
+  const requestId = options.requestId ?? generateId("req");
+  const attempt = beginRequestAttempt(options.stores.request, requestId);
+  try {
+    return await runActionAttempt({ ...options, requestId }, attempt);
+  } finally {
+    // Reached with the attempt still open only when the run ended by
+    // throwing rather than through its own finalization (a setup failure, or
+    // an error past its terminal write). If it was the last live attempt and
+    // a terminal record is waiting for its stamp (its own, or one an earlier
+    // attempt left it), stamp now: nothing else will, and an unstamped record
+    // is never evicted.
+    if (attempt.end() && attempt.leftToStamp() !== undefined) {
+      await finalizeAfterLastAttempt(options, requestId, attempt.leftToStamp());
+    }
+  }
+}
+
+/**
+ * Stamp and deregister for the last attempt of a request when it ended by
+ * throwing. Best-effort: the run's own error is what propagates, and a
+ * record left unstamped stays registered for the stale-request sweep.
+ */
+async function finalizeAfterLastAttempt(
+  options: Pick<RunActionInternalOptions, "stores" | "runtimeConfig">,
+  requestId: string,
+  incarnation: string | undefined
+): Promise<void> {
+  const logger = options.runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER;
+  try {
+    const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
+    const finalized =
+      writesSettled &&
+      (await finalizeRequestRecord(options.stores, requestId, incarnation, logger));
+    if (finalized) await options.stores.activeRequests.deregister(requestId);
+  } catch (err) {
+    logRuntimeEvent(logger, "warn", "[flow-state] request finalization failed", {
+      requestId, error: String(err)
+    });
+  }
+}
+
+async function runActionAttempt<
+  TFlow extends FlowInstance = FlowInstance,
+  TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string
+>(
+  options: RunActionInternalOptions<TFlow, TActionName>,
+  attempt: RequestAttempt
 ): Promise<ExecutionResult> {
   const startedAt = Date.now();
   const action = resolveAction(
@@ -819,7 +1019,8 @@ export async function runActionInternal<
     throw new OrgRequiredError(options.flow.kind, "runAction");
   }
 
-  const requestId = options.requestId ?? generateId("req");
+  // Always set by `runActionInternal`.
+  const requestId = options.requestId as string;
   const internalSeams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
   const response = options.responseEmitter ?? createInternalResponseEmitter({
     requestId,
@@ -848,7 +1049,9 @@ export async function runActionInternal<
   }
 
   const logger = options.runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER;
-  const resolvedRetention = resolveRetentionPolicy(options.flow.session?.retention);
+  const resolvedRetention = resolveRetentionPolicy(options.flow.session?.retention, {
+    staleThresholdMs: options.runtimeConfig.requestHost?.staleThresholdMs
+  });
 
   response.setLogCallback((eventType, detail) => {
     logRuntimeEvent(logger, "debug", `[flow-state] ${eventType}`, {
@@ -969,28 +1172,56 @@ export async function runActionInternal<
   // loser is refused now, having written nothing; the winner's
   // `createExecutionContext` adopts this stub, as it adopts the host's
   // enqueue-time one on the queued path.
-  if (admittedRequest === undefined) {
-    await claimRequestRecord(
-      options.stores,
-      options.flow,
-      createInitialRequestRecord(
-        {
-          requestId,
-          flowKind: options.flow.kind,
-          flowId: options.flow.id,
-          actionName: options.actionName as string,
-          userId: options.userId,
-          sessionId: options.sessionId,
-          tenantId: options.tenantId,
-          orgId: options.orgId,
-          source,
-          metadata: options.metadata,
-          input: options.input
-        },
-        Date.now()
-      )
+  //
+  // The incarnation this run answers to is the admitted record's, or the one
+  // the claim wrote (a same-owner hand-off keeps the holder's). Its abort
+  // controller carries it, so an abort fenced on another request under this
+  // id cannot fire this run.
+  const runIncarnation = resolveRequestIncarnation(
+    admittedRequest ??
+      (await claimRequestRecord(
+        options.stores,
+        options.flow,
+        createInitialRequestRecord(
+          {
+            requestId,
+            flowKind: options.flow.kind,
+            flowId: options.flow.id,
+            actionName: options.actionName as string,
+            userId: options.userId,
+            sessionId: options.sessionId,
+            tenantId: options.tenantId,
+            orgId: options.orgId,
+            source,
+            metadata: options.metadata,
+            input: options.input
+          },
+          Date.now()
+        )
+      ))
+  );
+  // The incarnation this run executes as: admission's, until the execution
+  // context adopts the record and says otherwise (see the re-tag below).
+  let currentIncarnation = runIncarnation;
+  // Until the context has adopted the record, which request this run is is not
+  // settled, so no stored cancel is delivered: one delivered for admission's
+  // request would stay on this run's controller if another request took the id.
+  let incarnationSettled = false;
+  /**
+   * Whether a cancel is recorded on the request this run executes as. The flag
+   * is read first, as the O(1) `isAbortRequested`, and only when it is set is
+   * the record read, to check it is still this run's request and not a later
+   * one that took the id. The common path stays one narrow read.
+   */
+  const abortRecordedForThisRun = async (): Promise<boolean> => {
+    if (!(await options.stores.request.isAbortRequested(requestId))) return false;
+    const record = await options.stores.request.get(requestId);
+    return (
+      record !== undefined &&
+      record.abortRequested === true &&
+      resolveRequestIncarnation(record) === currentIncarnation
     );
-  }
+  };
 
   await registry.register({
     requestId,
@@ -1041,6 +1272,14 @@ export async function runActionInternal<
   // returning true while the controller is registered, aborted or not),
   // doubling store reads precisely when the store is already degrading.
   let abortPollInFlight = false;
+  // Set once the run has reached its terminal status. The success path keeps
+  // the timer running through `onFinished` so the heartbeat shows the run is
+  // still alive, but there is nothing left to cancel.
+  let abortPollClosed = false;
+  // Incarnation of the record this run's terminal patch wrote, so the final
+  // `finalizedAtMs` stamp lands on that record and no other.
+  let terminalRecordIncarnation: string | undefined;
+  attempt.trackTerminal(() => terminalRecordIncarnation);
 
   /**
    * One abort-intent poll. Reads the narrow projection rather than the record —
@@ -1052,13 +1291,13 @@ export async function runActionInternal<
    * this closes.
    */
   const pollAbortIntent = async (): Promise<void> => {
-    if (deliveredAbort || abortPollInFlight) return;
+    if (deliveredAbort || abortPollInFlight || abortPollClosed || !incarnationSettled) return;
     abortPollInFlight = true;
     try {
-      if (!(await options.stores.request.isAbortRequested(requestId))) return;
+      if (!(await abortRecordedForThisRun())) return;
       // Returns false when no controller is registered yet. Not a delivery, so
       // the latch stays unset and the next tick retries.
-      if (!abortRequest(requestId)) return;
+      if (!abortRequest(requestId, currentIncarnation)) return;
       deliveredAbort = true;
       logRuntimeEvent(logger, "info", "[flow-state] [abort] cross-process abort delivered", {
         requestId
@@ -1405,24 +1644,31 @@ export async function runActionInternal<
   // If anything above threw, the controller would never be registered.
   // If anything between here and the main try block throws, the outer
   // try/catch below cleans it up.
-  const abortController = registerAbortController(requestId);
-  // First poll (FIX-1026). Placed here rather than beside the timer because a
-  // poll before this line has no controller to fire and therefore cannot
-  // deliver — it would be a guaranteed-useless store read on every request.
-  // Here it closes the window where the cancel was recorded between admission
-  // and the run starting, without waiting a full interval. Gated on the timer
-  // so `heartbeatIntervalMs: 0` really is off.
   //
-  // AWAITED, not fired and forgotten. The read is issued either way; awaiting
-  // is what makes "a cancel recorded before the run started stops the run" a
-  // guarantee instead of a race the store's latency decides. Left unawaited, an
-  // action shorter than one `isAbortRequested` round trip runs to completion —
-  // model calls included — clears the post-drain abort check, and persists
-  // `completed` before the read that would have stopped it returns; by then the
-  // controller is deregistered and the delivery has nowhere to land. The cost
-  // is one narrow read on the start path, and `pollAbortIntent` swallows its
-  // own failures, so this can delay a request start but can never fail one.
-  if (heartbeatTimer !== undefined) await pollAbortIntent();
+  // Two controllers. `registered` is the one in the registry, which the abort
+  // endpoint and the poll fire. `abortController` is this run's own signal.
+  // A fire reaches the run only once the context has settled which request the
+  // run executes as: one that landed earlier, for a request that then lost the
+  // id to the one the context adopted, belongs to that other request and is
+  // dropped with its controller (see the settle step below).
+  //
+  // A controller handed over by the caller is kept, fires and all, unless its
+  // only fires were fenced on another request than the one admission read:
+  // those are not this run's, so it starts on a fresh one.
+  const handoff = options.abortHandoff;
+  const keepHandoff =
+    handoff !== undefined &&
+    !(handoff.incarnation !== runIncarnation && wasFiredOnlyFenced(handoff.controller));
+  let registered = registerAbortController(
+    requestId,
+    runIncarnation,
+    keepHandoff ? handoff.controller : undefined
+  );
+  const abortController = new AbortController();
+  const forwardRegisteredAbort = (): void => {
+    if (incarnationSettled) abortController.abort(registered.signal.reason);
+  };
+  registered.signal.addEventListener("abort", forwardRegisteredAbort, { once: true });
   const composedSignal = options.signal
     ? AbortSignal.any([options.signal, abortController.signal])
     : abortController.signal;
@@ -1618,6 +1864,49 @@ export async function runActionInternal<
       effectiveRuntimeConfig: options.runtimeConfig
     });
 
+    // The controller was tagged from admission's read, but the context reads
+    // the record again and runs as whatever request holds the id now. If
+    // another request took the id in between, the registered controller must
+    // answer to the one this run executes as. Re-tag it, or, if only fires
+    // fenced on the earlier request landed on it, replace it: those were not
+    // for this request. Any unfenced fire (shutdown, a CLI stopping its own
+    // turn) was for whatever runs under the id, so it stays. From here on,
+    // which request this run is is settled, and a fire that stays reaches the
+    // run.
+    if (ctx.request.incarnation !== currentIncarnation) {
+      currentIncarnation = ctx.request.incarnation;
+      if (wasFiredOnlyFenced(registered)) {
+        registered = replaceAbortController(requestId, registered, currentIncarnation);
+        registered.signal.addEventListener("abort", forwardRegisteredAbort, { once: true });
+      } else {
+        tagAbortController(requestId, registered, currentIncarnation);
+      }
+    }
+    incarnationSettled = true;
+    if (registered.signal.aborted) forwardRegisteredAbort();
+
+    // First poll (FIX-1026), against the request this run executes as. It
+    // closes the window where the cancel was recorded between admission and
+    // the run starting, without waiting a full interval: nothing has executed
+    // yet. Earlier than here, a cancel it read could belong to a request that
+    // no longer holds the id.
+    //
+    // AWAITED, not fired and forgotten. Awaiting is what makes "a cancel
+    // recorded before the run started stops the run" a guarantee instead of a
+    // race the store's latency decides. Left unawaited, an action shorter than
+    // one `isAbortRequested` round trip runs to completion — model calls
+    // included — clears the post-drain abort check, and persists `completed`
+    // before the read that would have stopped it returns. The cost is one
+    // narrow read on the start path, and `pollAbortIntent` swallows its own
+    // failures, so this can delay a request start but can never fail one.
+    //
+    // Every run makes it, heartbeats on or off: a cancel can be recorded on
+    // this request before its controller carried the incarnation (a queued
+    // stub, a record a replacement left, a record a claim took over), and with
+    // heartbeats off this read is the only delivery there is. It is one O(1)
+    // `isAbortRequested` read per run.
+    await pollAbortIntent();
+
     // Resume mode: load the suspension record + checkpoint to restore the durable
     // sequencer's accumulator state. `resumeOf` (legacy two-request path) reads
     // from the ORIGINAL request id; same-request replay (FIX-811) reads from this
@@ -1683,7 +1972,9 @@ export async function runActionInternal<
     deregisterAbortController(requestId);
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
     if (!isReplayMode) {
-      await settleFreshRequestSetupFailure({
+      // The failed record is this run's terminal write; the run's exit
+      // stamps it (see `runActionInternal`).
+      terminalRecordIncarnation = await settleFreshRequestSetupFailure({
         stores: options.stores,
         requestId,
         flow: options.flow,
@@ -1716,7 +2007,13 @@ export async function runActionInternal<
     (ctx as any)._replayLog = replayLog;
 
     // Point of no return: suspended / interrupted → in_progress.
-    await patchRequestRecord(options.stores, requestId, { status: "in_progress" });
+    // A run is writing under this id again, so an earlier run's finalization
+    // no longer holds.
+    await patchRequestRecord(options.stores, requestId, {
+      status: "in_progress",
+      finalizedAtMs: null,
+      heartbeatsUntilFinalized: false
+    });
     ctx.requestRuntime.status = "in_progress";
     await response.emitRequestStatus("in_progress");
   }
@@ -1798,6 +2095,12 @@ export async function runActionInternal<
     deregisterAbortController(requestId);
     throw startupError;
   }
+
+  // What the action block returned, once it has. Set before the completion
+  // hooks run, so a hook that fails the request leaves it on the record.
+  // `recorded` is the record's snapshot, taken then too, so a hook that
+  // mutates the returned object cannot change the recorded answer.
+  let actionAnswer: { output: unknown; recorded: RecordedOutput } | undefined;
 
   try {
     // Re-throw deferred parse error now that we have ctx for error handling.
@@ -1904,8 +2207,7 @@ export async function runActionInternal<
         await flushCheckpoints();
         await flushTraces();
 
-        await patchRequestRecord(options.stores, requestId, {
-          status: "suspended",
+        await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: itemsToPersist()
         });
         ctx.requestRuntime.status = "suspended";
@@ -1920,7 +2222,9 @@ export async function runActionInternal<
         });
 
         deregisterAbortController(requestId);
-        await registry.deregister(requestId).catch(() => {});
+        // Another run of this request still live in this process keeps the
+        // shared registry entry; it deregisters when it ends.
+        if (attempt.end()) await registry.deregister(requestId).catch(() => {});
         if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
         // Release the resume lease so the request can be resumed again at the
@@ -1961,6 +2265,10 @@ export async function runActionInternal<
     if (result.error !== undefined) {
       throw result.error;
     }
+    // The action has answered. Anything that fails the request from here on
+    // (a completion hook, the token budget) keeps this answer on the failed
+    // record beside its own error (FIX-1661).
+    actionAnswer = { output: result.output, recorded: recordOutput(result.output) };
 
     const tokenBudget = getActionTokenBudget(action);
     let terminalStatus: "completed" | "incomplete" = "completed";
@@ -2078,8 +2386,11 @@ export async function runActionInternal<
     // cancel arriving this late is the teardown window, which §9 covers.
     await drainRequestSideChainPool(ctx);
 
-    // Clear heartbeat
-    if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+    // Stop polling for cancellation: the run is past the point where one could
+    // take effect. The heartbeat itself keeps going until the record is
+    // finalized below, so the stale-request sweep does not take a slow
+    // `onFinished` for a dead run.
+    abortPollClosed = true;
 
     // Flush pending item, event, and checkpoint writes before terminal status.
     // Checkpoints are fire-and-forget at emit time but must complete before
@@ -2092,11 +2403,18 @@ export async function runActionInternal<
 
     const completedAt = Date.now();
     const items = itemsToPersist();
-    await patchRequestRecord(options.stores, requestId, {
-      status: terminalStatus,
-      completedAtMs: completedAt,
-      items
-    });
+    terminalRecordIncarnation = await settleRequestRecord(
+      options.stores,
+      requestId,
+      { status: terminalStatus, recorded: actionAnswer.recorded },
+      {
+        completedAtMs: completedAt,
+        items,
+        // The timer runs on through `onFinished` until the stamp, so a stale
+        // entry from here means the run died in its tail. Not with heartbeats off.
+        heartbeatsUntilFinalized: heartbeatIntervalMs > 0
+      }
+    );
 
     ctx.requestRuntime.status = terminalStatus;
     ctx.requestRuntime.completedAtMs = completedAt;
@@ -2207,13 +2525,34 @@ export async function runActionInternal<
     }, ctx, { internalSeams, logger });
     await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
-    // Deregister abort controller and active registry
+    // `.sideChain()` work queued by `onFinished` is still this run writing
+    // under the id; wait for it, as for `onCompleted`'s above, and for any
+    // item or event writes it and `onFinished` left pending.
+    await drainRequestSideChainPool(ctx);
+    const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
+
+    // The run has nothing left to write under this id.
+    stopHeartbeatTimer();
+    // Another run of this request still live in this process (a continuation
+    // overlapping a run the sweep took for dead) is still writing under the
+    // id: leave the stamp and the shared registry entry to whichever ends last.
+    const lastAttempt = attempt.end();
+    if (!lastAttempt) attempt.leaveStamp(terminalRecordIncarnation);
+    const finalized =
+      lastAttempt &&
+      writesSettled &&
+      (await finalizeRequestRecord(options.stores, requestId, terminalRecordIncarnation, logger));
+
+    // Deregister abort controller and active registry. An unstamped run stays
+    // registered, heartbeat stopped, for the stale-request sweep to stamp.
     deregisterAbortController(requestId);
-    await registry.deregister(requestId).catch((err) => {
-      logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
-        requestId, error: String(err)
+    if (finalized) {
+      await registry.deregister(requestId).catch((err) => {
+        logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
+          requestId, error: String(err)
+        });
       });
-    });
+    }
     if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
     return {
@@ -2257,7 +2596,10 @@ export async function runActionInternal<
       ? await options.stores.request.get(requestId).catch(() => undefined)
       : undefined;
     let wasIntentionalAbort =
-      signalAborted && (deliveredAbort || classificationRecord?.abortRequested === true);
+      signalAborted &&
+      (deliveredAbort ||
+        (classificationRecord?.abortRequested === true &&
+          resolveRequestIncarnation(classificationRecord) === currentIncarnation));
 
     // The failure path's normalized error is needed for the client-visible
     // error item, which is emitted before the drain so a caller hears the
@@ -2333,10 +2675,11 @@ export async function runActionInternal<
       //     controller, while a stop accepted on another instance only sets the
       //     durable flag and reaches us through the heartbeat's abort poll —
       //     which is running precisely because the heartbeat outlives the drain.
-      //     `isAbortRequested`, not `get()`: this asks one boolean, and the
-      //     interface requires it be O(1) in item count, where `get()`
+      //     `isAbortRequested` first, not `get()`: this asks one boolean, and
+      //     the interface requires it be O(1) in item count, where `get()`
       //     materializes the whole item history to answer it on the persistent
-      //     adapters. A store failure resolves to `false`, which keeps the
+      //     adapters. Only a set flag pays for the `get()` that checks it is
+      //     this run's request. A store failure resolves to `false`, which keeps the
       //     branch already chosen — the same direction the classification read
       //     above fails in. (That read stays on `get()` deliberately: it is the
       //     call that absorbs a transient failure before `patchRequestRecord`,
@@ -2344,12 +2687,15 @@ export async function runActionInternal<
       if (!wasIntentionalAbort) {
         wasIntentionalAbort =
           deliveredAbort ||
-          (await options.stores.request.isAbortRequested(requestId).catch(() => false));
+          (await abortRecordedForThisRun().catch(() => false));
       }
     } finally {
       // Clear the heartbeat — the drain is done and the terminal write is
-      // next. Same position, relative to the record patch, as the success
-      // path's.
+      // next. The success path stops polling for cancellation at the same
+      // point but heartbeats on through `onFinished`. Here the heartbeat
+      // stops now, so the terminal write records `heartbeatsUntilFinalized:
+      // false` and the stale-request sweep never stamps this record: a slow
+      // `onFinished` here looks stale while it is still running.
       stopHeartbeatTimer();
     }
 
@@ -2362,10 +2708,11 @@ export async function runActionInternal<
         await flushTraces();
 
         const abortedAt = Date.now();
-        await patchRequestRecord(options.stores, requestId, {
-          status: "aborted",
+        terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "aborted" }, {
           abortedAt,
-          items: itemsToPersist()
+          items: itemsToPersist(),
+          // The heartbeat stopped before this write (see the `finally` above).
+          heartbeatsUntilFinalized: false
         });
 
         ctx.requestRuntime.status = "aborted";
@@ -2394,10 +2741,10 @@ export async function runActionInternal<
         await flushCheckpoints();
         await flushTraces();
 
-        await patchRequestRecord(options.stores, requestId, {
-          status: "interrupted",
+        terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "interrupted" }, {
           interruptedAt: Date.now(),
-          items: itemsToPersist()
+          items: itemsToPersist(),
+          heartbeatsUntilFinalized: false
         });
 
         ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
@@ -2428,11 +2775,12 @@ export async function runActionInternal<
       await flushTraces();
 
       const failedAt = Date.now();
-      await patchRequestRecord(options.stores, requestId, {
-        status: "failed",
-        failedAtMs: failedAt,
-        items: itemsToPersist()
-      });
+      terminalRecordIncarnation = await settleRequestRecord(
+        options.stores,
+        requestId,
+        { status: "failed", error: normalized, answered: actionAnswer?.recorded },
+        { failedAtMs: failedAt, items: itemsToPersist(), heartbeatsUntilFinalized: false }
+      );
 
       ctx.requestRuntime.status = "failed";
       ctx.requestRuntime.failedAtMs = failedAt;
@@ -2467,17 +2815,36 @@ export async function runActionInternal<
       });
     }
 
-    // Deregister abort controller and active registry
+    // `.sideChain()` work queued by `onErrored`/`onFinished` is still this
+    // run writing under the id, as are the item and event writes they left
+    // pending.
+    await drainRequestSideChainPool(ctx);
+    const writesSettled = await settlePendingWrites(options.stores, requestId, logger);
+
+    // As on the success path: only the last live attempt stamps.
+    const lastAttempt = attempt.end();
+    if (!lastAttempt) attempt.leaveStamp(terminalRecordIncarnation);
+    const finalized =
+      lastAttempt &&
+      writesSettled &&
+      (await finalizeRequestRecord(options.stores, requestId, terminalRecordIncarnation, logger));
+
+    // Deregister abort controller and active registry. An unstamped run stays
+    // registered, heartbeat stopped, for the stale-request sweep to stamp.
     deregisterAbortController(requestId);
-    await registry.deregister(requestId).catch((err) => {
-      logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
-        requestId, error: String(err)
+    if (finalized) {
+      await registry.deregister(requestId).catch((err) => {
+        logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
+          requestId, error: String(err)
+        });
       });
-    });
+    }
     if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
     return {
-      output: undefined,
+      // The action's answer when it gave one before the request failed, as the
+      // record stores it (FIX-1661); none for an abort or a disconnect.
+      output: signalAborted || wasIntentionalAbort ? undefined : actionAnswer?.output,
       // Merged prior ∪ re-entry items in replay mode (FIX-811); identical to
       // `response.getItems()` on a normal run.
       items: itemsToPersist(),

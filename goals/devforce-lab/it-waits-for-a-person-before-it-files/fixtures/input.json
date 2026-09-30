@@ -1,0 +1,11 @@
+{
+  "feature": {
+    "issue": "night-mode-toggle",
+    "goal": "Add a night-mode toggle to the settings page, token ASK-GOAL-7D3E2."
+  },
+  "coordinatorSeat": "eng.em",
+  "assignedSeat": "eng.coder",
+  "silentSeat": "eng.reviewer",
+  "channel": "eng.feature",
+  "wait": { "timeoutMs": 60000, "pollMs": 100 }
+}

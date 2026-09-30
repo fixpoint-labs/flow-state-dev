@@ -13,7 +13,13 @@ import {
 function makeRequest(
   id: string,
   sessionId: string,
-  opts: { startedAtMs: number; completedAtMs: number; itemCount: number; status?: RequestRecord["status"] }
+  opts: {
+    startedAtMs: number;
+    completedAtMs: number;
+    itemCount: number;
+    status?: RequestRecord["status"];
+    finalizedAtMs?: number | null;
+  }
 ): RequestRecord {
   return {
     id,
@@ -24,6 +30,7 @@ function makeRequest(
     status: opts.status ?? "completed",
     startedAtMs: opts.startedAtMs,
     completedAtMs: opts.completedAtMs,
+    ...(opts.finalizedAtMs !== undefined ? { finalizedAtMs: opts.finalizedAtMs } : {}),
     state: {},
     version: 1,
     createdAt: opts.startedAtMs,
@@ -50,6 +57,8 @@ describe("resolveRetentionPolicy", () => {
     expect(resolveRetentionPolicy({ maxItems: 100 })).toEqual({
       maxItems: 100,
       maxAgeMs: undefined,
+      terminalGraceMs: 60_000,
+      legacyGraceMs: 120_000,
     });
   });
 
@@ -57,6 +66,8 @@ describe("resolveRetentionPolicy", () => {
     expect(resolveRetentionPolicy({ maxAge: "24h" })).toEqual({
       maxItems: undefined,
       maxAgeMs: 86_400_000,
+      terminalGraceMs: 60_000,
+      legacyGraceMs: 86_460_000,
     });
   });
 
@@ -64,6 +75,8 @@ describe("resolveRetentionPolicy", () => {
     expect(resolveRetentionPolicy({ maxAge: 5000 })).toEqual({
       maxItems: undefined,
       maxAgeMs: 5000,
+      terminalGraceMs: 60_000,
+      legacyGraceMs: 120_000,
     });
   });
 
@@ -71,7 +84,33 @@ describe("resolveRetentionPolicy", () => {
     expect(resolveRetentionPolicy({ maxItems: 500, maxAge: "1h" })).toEqual({
       maxItems: 500,
       maxAgeMs: 3_600_000,
+      terminalGraceMs: 60_000,
+      legacyGraceMs: 3_660_000,
     });
+  });
+
+  // A record from a version that never stamps is held for the stale-request
+  // threshold the host actually uses, when it is longer than the default.
+  it("takes the host's stale threshold into the rollout-safety bound when it is longer", () => {
+    expect(
+      resolveRetentionPolicy({ maxItems: 1 }, { staleThresholdMs: 300_000 })?.legacyGraceMs
+    ).toBe(360_000);
+    expect(
+      resolveRetentionPolicy({ maxItems: 1 }, { staleThresholdMs: 1_000 })?.legacyGraceMs
+    ).toBe(120_000);
+  });
+
+  // The grace window must outlast any live-tail stream still following a
+  // request that has just finished, whatever the host set its timeout to.
+  it("derives the terminal grace window from the live-tail liveness timeout", () => {
+    const previous = process.env.LIVE_TAIL_LIVENESS_MS;
+    process.env.LIVE_TAIL_LIVENESS_MS = "45000";
+    try {
+      expect(resolveRetentionPolicy({ maxItems: 1 })?.terminalGraceMs).toBe(90_000);
+    } finally {
+      if (previous === undefined) delete process.env.LIVE_TAIL_LIVENESS_MS;
+      else process.env.LIVE_TAIL_LIVENESS_MS = previous;
+    }
   });
 });
 
@@ -366,6 +405,163 @@ describe("applyRetentionPolicy", () => {
       const result = await applyRetentionPolicy(stores, SESSION_ID, CURRENT_REQ, policy, now);
 
       expect(result.deletedRequestIds).toEqual(["req_no_complete"]);
+    });
+  });
+
+  // A request's record turns `completed` before its run has persisted the
+  // terminal event and left the active registry. A sibling's retention pass in
+  // that window must not free the id: the run's last event would then land
+  // under it, and the id's next owner would replay it.
+  describe("a request whose run has not finished", () => {
+    it("is not evicted, so its last event cannot land under a freed id", async () => {
+      const stores = await setupStores([
+        makeRequest("req_finishing", SESSION_ID, { startedAtMs: 100, completedAtMs: 200, itemCount: 5 }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 300, completedAtMs: 400, itemCount: 5 }),
+      ]);
+      // Still running: record says completed, terminal event not yet written.
+      await stores.activeRequests.register({
+        requestId: "req_finishing",
+        flowKind: "test-flow",
+        actionName: "run",
+        sessionId: SESSION_ID,
+        userId: "user1",
+        startedAt: 100,
+        lastHeartbeatAt: 200
+      });
+
+      const result = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5 }, 500
+      );
+
+      // The run then writes its terminal event.
+      stores.request.persistEvents("req_finishing", [
+        { stream: "request", type: "request.completed", requestId: "req_finishing", sequence_number: 9, status: "completed", ts: 210 }
+      ]);
+      await stores.request.flushEvents("req_finishing");
+
+      expect(result.deletedRequestIds).toEqual([]);
+      // The event belongs to a request that still exists, not to a freed id.
+      expect(await stores.request.get("req_finishing")).toBeDefined();
+    });
+
+    // The active registry cannot be relied on for this: a process-local one
+    // does not see a run finishing in another process. The grace window
+    // covers that run's tail, and outlasts any stream still tailing it.
+    it("is not evicted inside the terminal grace window, even when no registry shows it running", async () => {
+      const stores = await setupStores([
+        makeRequest("req_just_done", SESSION_ID, { startedAtMs: 100, completedAtMs: 1_000, itemCount: 5 }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 1_100, completedAtMs: 1_200, itemCount: 5 }),
+      ]);
+
+      const inside = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5, terminalGraceMs: 60_000 }, 1_000 + 59_999
+      );
+      expect(inside.deletedRequestIds).toEqual([]);
+
+      const after = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5, terminalGraceMs: 60_000 }, 1_000 + 60_000
+      );
+      expect(after.deletedRequestIds).toEqual(["req_just_done"]);
+    });
+
+    it("is evicted by the next pass once its run has left the active registry", async () => {
+      const stores = await setupStores([
+        makeRequest("req_finishing", SESSION_ID, { startedAtMs: 100, completedAtMs: 200, itemCount: 5 }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 300, completedAtMs: 400, itemCount: 5 }),
+      ]);
+
+      const result = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5 }, 500
+      );
+
+      expect(result.deletedRequestIds).toEqual(["req_finishing"]);
+    });
+
+    // A record written by this version carries `finalizedAtMs: null` until
+    // its run has finished, `onFinished` included. Only the run can say that,
+    // so no amount of elapsed time makes such a record evictable.
+    it("is not evicted while its record says the run has not finished, however old", async () => {
+      const stores = await setupStores([
+        makeRequest("req_unfinished", SESSION_ID, {
+          startedAtMs: 100, completedAtMs: 200, itemCount: 5, finalizedAtMs: null
+        }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 300, completedAtMs: 400, itemCount: 5 }),
+      ]);
+
+      const result = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5, terminalGraceMs: 60_000 }, 365 * 86_400_000
+      );
+
+      expect(result.deletedRequestIds).toEqual([]);
+    });
+
+    // The rollout-safety rule. A record with no `finalizedAtMs` at all was
+    // written by a version that never stamps, so during a rolling deploy its
+    // run may still be in `onFinished` on an old instance, invisible to this
+    // one's registry. The short grace window is not enough: it is held until
+    // a run with no heartbeat would count as dead (or `maxAge`, if larger).
+    it("holds a record from a version that never stamps for the rollout-safety bound, not the grace window", async () => {
+      const policy = resolveRetentionPolicy({ maxItems: 5 })!;
+      const stores = await setupStores([
+        makeRequest("req_old_version", SESSION_ID, { startedAtMs: 100, completedAtMs: 1_000, itemCount: 5 }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 1_100, completedAtMs: 1_200, itemCount: 5 }),
+      ]);
+
+      const pastGrace = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, policy, 1_000 + policy.terminalGraceMs! + 1
+      );
+      expect(pastGrace.deletedRequestIds).toEqual([]);
+
+      const justInside = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, policy, 1_000 + policy.legacyGraceMs! - 1
+      );
+      expect(justInside.deletedRequestIds).toEqual([]);
+
+      const atBound = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, policy, 1_000 + policy.legacyGraceMs!
+      );
+      expect(atBound.deletedRequestIds).toEqual(["req_old_version"]);
+    });
+
+    // Only deleting a protected request waits. Its items are still history
+    // the session holds, so they count toward `maxItems`, and older history
+    // is evicted to make room for them.
+    it("still counts toward maxItems, so older evictable history makes room for it", async () => {
+      const stores = await setupStores([
+        makeRequest("req_old", SESSION_ID, {
+          startedAtMs: 100, completedAtMs: 200, itemCount: 5, finalizedAtMs: 300
+        }),
+        makeRequest("req_protected", SESSION_ID, {
+          startedAtMs: 1_000, completedAtMs: 1_100, itemCount: 8, finalizedAtMs: null
+        }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 2_000, completedAtMs: 2_100, itemCount: 3 }),
+      ]);
+
+      const result = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 10, terminalGraceMs: 60_000 }, 1_000_000
+      );
+
+      expect(result.deletedRequestIds).toEqual(["req_old"]);
+      expect(await stores.request.get("req_protected")).toBeDefined();
+    });
+
+    it("is evicted once the grace window has passed since its run finished", async () => {
+      const stores = await setupStores([
+        makeRequest("req_finalized", SESSION_ID, {
+          startedAtMs: 100, completedAtMs: 1_000, itemCount: 5, finalizedAtMs: 5_000
+        }),
+        makeRequest(CURRENT_REQ, SESSION_ID, { startedAtMs: 6_000, completedAtMs: 6_100, itemCount: 5 }),
+      ]);
+
+      const inside = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5, terminalGraceMs: 60_000 }, 5_000 + 59_999
+      );
+      expect(inside.deletedRequestIds).toEqual([]);
+
+      const after = await applyRetentionPolicy(
+        stores, SESSION_ID, CURRENT_REQ, { maxItems: 5, terminalGraceMs: 60_000 }, 5_000 + 60_000
+      );
+      expect(after.deletedRequestIds).toEqual(["req_finalized"]);
     });
   });
 });

@@ -21,15 +21,24 @@ import {
   continueRequest as continueRequestImpl,
   type ContinueRequestResult
 } from "../../execution/request-continuation";
-import { isSameSession, resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
+import {
+  isSameSession,
+  resolveRequestIncarnation,
+  resolveSessionStorageKey,
+  tenantMatches
+} from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
+import { normalizeError } from "../../errors/normalize-error";
+import { settledRecordFields, type RequestSettlement } from "../../execution/request-action-result";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import {
   assertSessionAdmitted,
   FlowInstanceBindingMismatchError,
+  OrgBindingMismatchError,
   RequestOwnerMismatchError,
   UserBindingMismatchError
 } from "../../context/binding-errors";
+import { isOrgAttributed } from "../../context/org-attribution";
 import { claimRequestRecord, principalOwnsRequest } from "../../context/request-principal";
 import { pinRejectsCaller, UnknownFlowError } from "../../context/instance-pin";
 import { foreignRecordRefusal, ownsRecord } from "../../context/record-owner";
@@ -40,16 +49,20 @@ import {
 } from "../../execution/logging";
 import {
   deregisterAbortController,
-  registerAbortController
+  registerAbortController,
+  replaceAbortController,
+  tagAbortController,
+  wasFiredOnlyFenced
 } from "../../execution/abort-registry";
 import { generateId } from "../../utils/generate-id";
 import {
-  ConcurrencyQueueTimeoutError,
   OrgRequiredError,
   PrincipalResolutionError
 } from "../errors";
 import {
   createConcurrencyArbiter,
+  isPendingAdmission,
+  type ConcurrencyAdmission,
   type ConcurrencyArbiter
 } from "../concurrency/arbiter";
 import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
@@ -61,8 +74,8 @@ import {
 import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
 import { CLI_SOURCE, INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
+import { hasLiveRequestAttempt } from "../../execution/request-attempts";
 import {
-  combineSignals,
   createInProcessDispatcher,
   isInProcessDispatcher,
   type InProcessDispatcher
@@ -130,6 +143,10 @@ export type CreateInboundTransportHostOptions = {
    * `queue`/`reject` policy is enforced ONCE rather than once per host — two
    * arbiters hold two independent keyed gates, and a request admitted by one
    * knows nothing about a key the other is holding (FIX-1077).
+   *
+   * An arbiter over a backend shared across processes
+   * (`arbitratesAcrossProcesses`) also arbitrates work this host hands to an
+   * external dispatcher (FIX-1634).
    */
   arbiter?: ConcurrencyArbiter;
 };
@@ -158,7 +175,7 @@ export type CreateInboundTransportHostOptions = {
 /**
  * Whether `error` is an admission refused before this dispatch wrote anything:
  * another flow instance's record, another principal's request, or another
- * user's session. The record under the id, if any, is not this dispatch's to
+ * user's or organization's session. The record under the id, if any, is not this dispatch's to
  * terminate: it belongs to someone else, or it is the caller's own earlier
  * request under an id it reused.
  */
@@ -166,25 +183,51 @@ function isRefusedAdmission(error: unknown): boolean {
   return (
     error instanceof FlowInstanceBindingMismatchError ||
     error instanceof RequestOwnerMismatchError ||
-    error instanceof UserBindingMismatchError
+    error instanceof UserBindingMismatchError ||
+    error instanceof OrgBindingMismatchError
   );
 }
 
+/**
+ * End a request whose run never started. With `expectedIncarnation`, only
+ * that request is ended: a record another request put under the id since is
+ * left alone. Without it, whatever holds the id is ended.
+ *
+ * The read and the write are separate calls, so a record replaced between
+ * them is still overwritten. The conditional store write cannot close that:
+ * it does not write `status`.
+ */
 async function terminateUnenqueuedRequest(
   stores: StoreRegistry,
   requestId: string,
-  status: "failed" | "aborted" = "failed"
+  ending: { status: "failed"; cause: unknown } | { status: "aborted" },
+  expectedIncarnation?: string
 ): Promise<void> {
   try {
     const record = await stores.request.get(requestId);
     if (record === undefined || isTerminalRequestStatus(record.status)) return;
+    if (
+      expectedIncarnation !== undefined &&
+      resolveRequestIncarnation(record) !== expectedIncarnation
+    ) {
+      return;
+    }
     const now = Date.now();
+    // The failure's cause is the record's action result, written with the
+    // status (FIX-1661); an abort carries none.
+    const settlement: RequestSettlement =
+      ending.status === "failed"
+        ? { status: "failed", error: normalizeError(ending.cause, { scope: "request" }) }
+        : { status: "aborted" };
     await stores.request.set(
       requestId,
       {
         ...record,
-        status,
-        ...(status === "failed" ? { failedAtMs: now } : {}),
+        ...settledRecordFields(settlement),
+        ...(ending.status === "failed" ? { failedAtMs: now } : {}),
+        // No run is writing under the id, so the record is finished as it is
+        // written; left unstamped, retention would keep it forever.
+        ...(hasLiveRequestAttempt(stores.request, requestId) ? {} : { finalizedAtMs: now }),
         updatedAt: now
       },
       "any"
@@ -485,13 +528,16 @@ export function createInboundTransportHost(
     options.dispatcher ?? inProcessDispatcher;
   const isExternalDispatcher = !isInProcessDispatcher(effectiveDispatcher);
 
-  // One arbiter governs every in-process dispatch, so an action's concurrency
-  // policy is enforced once at this shared seam (FIX-837). v1 enforces only the
-  // in-process dispatcher (the default): with an external dispatcher (BullMQ)
-  // the run completes in another worker, so the policy is deferred to the
-  // durable substrate (FIX-830) rather than gating the enqueue, which would give
-  // misleading semantics (a `reject` lease freed at enqueue, not run-completion).
+  // One arbiter governs every dispatch, so an action's concurrency policy is
+  // enforced once at this shared seam (FIX-837). Work handed to an external
+  // dispatcher (BullMQ) runs in another process, so it is arbitrated only when
+  // the arbiter's keys are shared with that process: the dispatch takes its
+  // place here, the place rides the job, and the worker waits its turn and gives
+  // it back when the run ends (FIX-1634). Over a process-local arbiter it is not
+  // arbitrated at all — releasing a key at enqueue would free a `reject` lease
+  // when the job is queued rather than when the run completes.
   const arbiter = options.arbiter ?? createConcurrencyArbiter();
+  const arbitratesExternalDispatch = isExternalDispatcher && arbiter.arbitratesAcrossProcesses;
 
   /**
    * Hand a STARTED run's `finished` to the adapter's keep-alive hook, containing
@@ -596,6 +642,22 @@ export function createInboundTransportHost(
         userId: dispatchEnvelope.userId,
         tenantId: dispatchEnvelope.tenantId
       });
+      // The organization binding the run enforces at execution, checked here
+      // too so a request from another organization is refused before it takes
+      // a place on the session's key. An unattributed session is left to the
+      // execution-time check, which names that condition itself.
+      if (
+        session !== undefined &&
+        tenantMatches(session.tenantId, dispatchEnvelope.tenantId) &&
+        isOrgAttributed(session) &&
+        session.orgId !== dispatchEnvelope.orgId
+      ) {
+        throw new OrgBindingMismatchError(
+          dispatchEnvelope.sessionId,
+          session.orgId as string,
+          dispatchEnvelope.orgId as string
+        );
+      }
     }
     const active = await stores.activeRequests.get(dispatchEnvelope.requestId);
     if (active !== undefined && !ownsRecord(flow, active)) {
@@ -622,16 +684,21 @@ export function createInboundTransportHost(
    * overwriting, and a lost race against this same owner (a retry reusing its
    * id) keeps the existing record and re-stamps it, which is the
    * last-write-wins hand-off it always was.
-   * Resolves `true` once the entry is this dispatch's to keep warm and to
-   * remove on exit.
+   * Resolves once the entry is this dispatch's to keep warm and to remove on
+   * exit.
    *
    * @param admitted The session `admitOwnership` read and admitted, if any.
+   * @param onClaimed Called with the claimed record's incarnation (a hand-off
+   *   keeps the holder's) the moment the record is claimed, before any later
+   *   await: from then on the record is visible and cancellable, so a
+   *   controller registered before it must carry the incarnation by then.
    */
   const materializeOwned = async (
     flow: FlowInstance,
     dispatchEnvelope: DispatchEnvelope,
     admitted: SessionRecord | undefined,
-    entry: Omit<Parameters<typeof stores.activeRequests.register>[0], "flowKind" | "flowId">
+    entry: Omit<Parameters<typeof stores.activeRequests.register>[0], "flowKind" | "flowId">,
+    onClaimed?: (incarnation: string) => void
   ): Promise<void> => {
     const record = createInitialRequestRecord(
       { ...dispatchEnvelope, flowKind: flow.kind, flowId: flow.id },
@@ -639,7 +706,8 @@ export function createInboundTransportHost(
     );
     // Owner-fenced on both axes: another flow instance's or another user's
     // record under this id is never overwritten or re-parented.
-    await claimRequestRecord(stores, flow, record);
+    const claimed = await claimRequestRecord(stores, flow, record);
+    onClaimed?.(resolveRequestIncarnation(claimed));
     // A request under a child session moves the child's update time here,
     // where the request is first recorded as working, and not when its run
     // starts: the run can wait behind a concurrency key, or in an external
@@ -711,20 +779,6 @@ export function createInboundTransportHost(
       resolvedActionCore: envelope.resolvedActionCore
     };
 
-    // Concurrency gate, resolved up front and built before any request record or
-    // live stream exists. For `reject` this synchronously claims the action's
-    // key and throws `ConcurrencyRejectedError` here when another request holds
-    // it — so a dropped caller never materializes a run. `queue` defers the
-    // kickoff behind the key (FIFO); `allow` is a passthrough preserving today's
-    // timing. Only the *start* of execution is gated — the handle (requestId,
-    // liveStream, finished) is still returned synchronously, so an SSE client
-    // gets an open stream while queued. External dispatchers run elsewhere, so
-    // they skip arbitration (no key, passthrough) — see the arbiter note above.
-    const decision = isExternalDispatcher
-      ? { policy: "allow" as const, key: undefined }
-      : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
-    const gateStart = arbiter.gate(decision, requestId);
-
     // The config this dispatch runs under. Normally the host's own; a detached
     // child carries the LAUNCHING request's, because the caller may have derived
     // one the host was never built with — `fsdev run` does, so `--model` reaches
@@ -777,39 +831,85 @@ export function createInboundTransportHost(
     const sseHeartbeatMs =
       flowHeartbeatMs !== undefined ? flowHeartbeatMs : defaultSseHeartbeatMs;
 
-    // The envelope's `responseEmitter` field is three-state:
-    //   - `undefined` (default) → host owns streaming; create a LiveRequestStream
-    //   - `null`                → explicit fire-and-forget (webhook, schedule)
-    //   - a `ResponseEmitter`   → caller is bringing its own; do not create a
-    //                             redundant live stream and waste a slot
+    // Concurrency admission. For `reject` it claims the action's key and
+    // refuses with `ConcurrencyRejectedError` when another request holds it,
+    // so a dropped caller never materializes a run; `queue` joins the key's
+    // line (the run starts in its turn); `allow` takes nothing, preserving
+    // today's timing. Only the *start* of execution is gated: the handle
+    // (requestId, liveStream, finished) is still returned synchronously, so an
+    // SSE client gets an open stream while queued. External dispatch without a
+    // shared backend skips arbitration (no key, nothing taken).
     //
-    // External dispatchers (BullMQ, etc.) execute in a separate context and
-    // persist events to the shared store. The client falls back to the GET
-    // request-stream endpoint (store-driven live tail) when it receives a 202
-    // instead of an inline SSE response, so creating a live stream here would
-    // be an empty pipe that never receives events.
-    const liveStream =
-      envelope.responseEmitter === undefined && !isExternalDispatcher
-        ? createLiveRequestStream({
-            requestId,
-            maxBufferSize: maxResponseBufferSize,
-            sseHeartbeatMs
-          })
-        : null;
+    // WHEN the place is taken depends on the backend. Over the in-memory
+    // default it is taken here, synchronously, before any record or stream
+    // exists, so a `reject` is still thrown from `dispatch`. Over a shared
+    // backend it is taken only once `admitOwnership` has passed (BP-031): a
+    // caller that does not own the session or request id must not hold, or
+    // stand in line on, its key, where every process would honour the place.
+    // That refusal, and the backend's own errors, arrive through `accepted`.
+    const decision =
+      isExternalDispatcher && !arbitratesExternalDispatch
+        ? { policy: "allow" as const, key: undefined }
+        : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
+    const upFront = arbiter.arbitratesAcrossProcesses
+      ? undefined
+      : arbiter.admit(decision, requestId);
+    // The admission once taken. From here until a branch below hands it to its
+    // run, every failure gives it back: the synchronous setup is wrapped below,
+    // and each asynchronous chain ends in `releaseHeldAdmission`. A place nobody
+    // gives back holds its key until the process restarts.
+    let held: ConcurrencyAdmission | undefined =
+      upFront === undefined || isPendingAdmission(upFront) ? undefined : upFront;
+    // The incarnation of the request this dispatch claimed, once it has.
+    // Every terminal write below is for that request, not for whatever holds
+    // the id by the time the write happens.
+    let claimedIncarnation: string | undefined;
+    /**
+     * Take the admission, unless it was taken up front, and continue with it.
+     * Continues synchronously when it already is, so the in-memory default
+     * keeps today's timing to the microtask.
+     */
+    const admitThen = <T>(next: (admitted: ConcurrencyAdmission) => T | Promise<T>): Promise<T> => {
+      const taken = held;
+      if (taken !== undefined) {
+        try {
+          return Promise.resolve(next(taken));
+        } catch (error) {
+          return Promise.reject(error);
+        }
+      }
+      return Promise.resolve()
+        .then(() => upFront ?? arbiter.admit(decision, requestId))
+        .then((admitted) => {
+          held = admitted;
+          return next(admitted);
+        });
+    };
+    /**
+     * Undo a dispatch that failed after admission and before its run started,
+     * then rethrow. Gives the place back when one was taken, and terminates the
+     * `in_progress` record this dispatch may have written. A refusal found a
+     * record that is not this dispatch's (another owner's, or the caller's own
+     * earlier request under a reused id), so it terminates nothing; and a
+     * failure before the place was taken (a refusal, an unreachable backend)
+     * wrote nothing at all.
+     */
+    const releaseHeldAdmission = async (error: unknown): Promise<never> => {
+      if (held === undefined) throw error;
+      await held.release();
+      if (!isRefusedAdmission(error)) {
+        await terminateUnenqueuedRequest(
+          stores,
+          requestId,
+          { status: "failed", cause: error },
+          claimedIncarnation
+        );
+      }
+      throw error;
+    };
 
-    // Pick the emitter in priority order: caller-provided emitter wins when
-    // present (skips the live-stream branch above by construction), otherwise
-    // the host's live-stream emitter, otherwise a fresh internal emitter so
-    // the runtime always has somewhere to write items. The handle exposes
-    // whichever one was used.
-    const responseEmitter =
-      envelope.responseEmitter ??
-      liveStream?.emitter ??
-      createResponseEmitter({ requestId });
-
-    // Delegate to the dispatcher. InProcessDispatcher uses dispatchLocal
-    // (carries non-serializable context); external dispatchers use the
-    // generic dispatch interface.
+    let liveStream: DispatchHandle["liveStream"] = null;
+    let responseEmitter: DispatchHandle["responseEmitter"];
     let finished: Promise<ExecutionResult>;
     // Resolves once the request is accepted. Every branch sets it, and each
     // means "discoverable" in the terms its own path can honour: enqueue-time
@@ -822,97 +922,402 @@ export function createInboundTransportHost(
     // admission refused before either happened must leave a foreign owner's
     // entry alone on the way out.
     let entryOwned = false;
-    if ("dispatchLocal" in effectiveDispatcher) {
-      // The in-process milestones, held here rather than read off the handle
-      // because `gateStart` owns *when* the run is started and the handle does
-      // not exist until it does (FIX-982). The `queue` branch below has its own,
-      // earlier acceptance — its enqueue-time writes — and ignores these.
-      let markAccepted: () => void = () => {};
-      let failAccepted: (error: unknown) => void = () => {};
-      const inProcessAccepted = new Promise<void>((resolve, reject) => {
-        markAccepted = resolve;
-        failAccepted = reject;
-      });
-      // Handled unconditionally: this is discarded on the `queue` path and
-      // ignored by every caller that only wants `finished`.
-      void inProcessAccepted.catch(() => {});
+    try {
+      // The envelope's `responseEmitter` field is three-state:
+      //   - `undefined` (default) → host owns streaming; create a LiveRequestStream
+      //   - `null`                → explicit fire-and-forget (webhook, schedule)
+      //   - a `ResponseEmitter`   → caller is bringing its own; do not create a
+      //                             redundant live stream and waste a slot
+      //
+      // External dispatchers (BullMQ, etc.) execute in a separate context and
+      // persist events to the shared store. The client falls back to the GET
+      // request-stream endpoint (store-driven live tail) when it receives a 202
+      // instead of an inline SSE response, so creating a live stream here would
+      // be an empty pipe that never receives events.
+      liveStream =
+        envelope.responseEmitter === undefined && !isExternalDispatcher
+          ? createLiveRequestStream({
+              requestId,
+              maxBufferSize: maxResponseBufferSize,
+              sseHeartbeatMs
+            })
+          : null;
 
-      /**
-       * `cancellation` is a signal the run must inherit rather than merely be
-       * checked against. The queued branch holds one: an abort that lands
-       * between its pre-start check and `runAction`'s own
-       * `registerAbortController` would otherwise be thrown away, because
-       * `runAction` mints a fresh controller and overwrites the one that was
-       * aborted. Threading it makes the handoff atomic — there is one signal
-       * from enqueue to completion, so the abort cannot fall between two
-       * registrations no matter when it lands (FIX-1077).
-       */
-      const startRun = (cancellation?: AbortSignal): Promise<ExecutionResult> => {
-        const signal =
-          cancellation === undefined
-            ? envelope.signal
-            : envelope.signal === undefined
-              ? cancellation
-              : combineSignals(envelope.signal, cancellation);
-        const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
-          dispatchEnvelope,
-          {
-            signal,
-            responseEmitter,
-            effectiveRuntimeConfig: {
-              ...dispatchRuntimeConfig,
-              voiceProvider: effectiveVoiceProvider
+      // Pick the emitter in priority order: caller-provided emitter wins when
+      // present (skips the live-stream branch above by construction), otherwise
+      // the host's live-stream emitter, otherwise a fresh internal emitter so
+      // the runtime always has somewhere to write items. The handle exposes
+      // whichever one was used.
+      responseEmitter =
+        envelope.responseEmitter ??
+        liveStream?.emitter ??
+        createResponseEmitter({ requestId });
+
+      // Delegate to the dispatcher. InProcessDispatcher uses dispatchLocal
+      // (carries non-serializable context); external dispatchers use the
+      // generic dispatch interface.
+      if ("dispatchLocal" in effectiveDispatcher) {
+        // The in-process milestones, held here rather than read off the handle
+        // because `gateStart` owns *when* the run is started and the handle does
+        // not exist until it does (FIX-982). The `queue` branch below has its own,
+        // earlier acceptance — its enqueue-time writes — and ignores these.
+        let markAccepted: () => void = () => {};
+        let failAccepted: (error: unknown) => void = () => {};
+        const inProcessAccepted = new Promise<void>((resolve, reject) => {
+          markAccepted = resolve;
+          failAccepted = reject;
+        });
+        // Handled unconditionally: this is discarded on the `queue` path and
+        // ignored by every caller that only wants `finished`.
+        void inProcessAccepted.catch(() => {});
+
+        /**
+         * `abortHandoff` is a controller the run must take over rather than
+         * merely be checked against. The queued branch holds one: an abort that
+         * lands between its pre-start check and `runAction`'s own registration
+         * would otherwise be thrown away, because `runAction` would register a
+         * fresh controller over the one that was aborted. Handing the controller
+         * itself over makes the handoff atomic, so the abort cannot fall between
+         * two registrations no matter when it lands (FIX-1077). It is the
+         * controller and its incarnation, not its signal, so the run can still
+         * tell a cancel for another request under the id from its own.
+         */
+        const startRun = (abortHandoff?: {
+          controller: AbortController;
+          incarnation?: string;
+        }): Promise<ExecutionResult> => {
+          const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
+            dispatchEnvelope,
+            {
+              signal: envelope.signal,
+              abortHandoff,
+              responseEmitter,
+              effectiveRuntimeConfig: {
+                ...dispatchRuntimeConfig,
+                voiceProvider: effectiveVoiceProvider
+              }
             }
-          }
-        );
-        handle.accepted?.then(() => {
-          entryOwned = true;
-          markAccepted();
-        }, failAccepted);
-        return handle.finished;
-      };
+          );
+          handle.accepted?.then(() => {
+            entryOwned = true;
+            markAccepted();
+          }, failAccepted);
+          return handle.finished;
+        };
 
-      // A DISPATCHED request (the seam's `internal` / `task` sources) takes this
-      // branch whatever its policy, and the reason is the meaning of `accepted`
-      // rather than the concurrency queue. The seam hands back a handle the
-      // moment acceptance resolves, and a later read of that request authorizes
-      // off the provenance persisted in its record's `metadata.dispatch` — the
-      // incarnation guard reads its recipient lineage from there. On the
-      // ordinary non-queued path acceptance is `onRegistered`, fired well before
-      // the request record is written, so the sender would be handed an id whose
-      // durable stamp does not exist yet, and a failure in that window leaves an
-      // accepted but unverifiable delivery. The queued branch already resolves
-      // acceptance off its own enqueue-time writes, so the id and its stamp
-      // become durable together. Under `allow` the gate below is a passthrough,
-      // so the run still starts immediately — only what `accepted` waits for
-      // changes.
-      const isDispatched =
-        envelope.source === INTERNAL_SOURCE || envelope.source === TASK_SOURCE;
+        // A DISPATCHED request (the seam's `internal` / `task` sources) takes this
+        // branch whatever its policy, and the reason is the meaning of `accepted`
+        // rather than the concurrency queue. The seam hands back a handle the
+        // moment acceptance resolves, and a later read of that request authorizes
+        // off the provenance persisted in its record's `metadata.dispatch` — the
+        // incarnation guard reads its recipient lineage from there. On the
+        // ordinary non-queued path acceptance is `onRegistered`, fired well before
+        // the request record is written, so the sender would be handed an id whose
+        // durable stamp does not exist yet, and a failure in that window leaves an
+        // accepted but unverifiable delivery. The queued branch already resolves
+        // acceptance off its own enqueue-time writes, so the id and its stamp
+        // become durable together. Under `allow` the gate below is a passthrough,
+        // so the run still starts immediately — only what `accepted` waits for
+        // changes.
+        const isDispatched =
+          envelope.source === INTERNAL_SOURCE || envelope.source === TASK_SOURCE;
 
-      if (isDispatched || (decision.policy === "queue" && decision.key !== undefined)) {
-        // Registered HERE rather than left to `runAction`, because between this
-        // dispatch and the run's own registration the request is real,
-        // discoverable, and cancellable by anyone reading the store — and yet
-        // has no controller for `abortRequest` to find. `runAction` re-registers
-        // (overwriting this one) when it actually starts, which is the same
-        // last-write-wins hand-off the enqueue-time record already uses, so this
-        // adds a window rather than a second registry to keep in sync. The
-        // `finally` below removes it on every exit, started or not.
-        const queuedAbort = registerAbortController(requestId);
-        // A `queue` run's start is deferred behind the key, so `dispatchLocal`
-        // (which registers `activeRequests` and writes the request record) has
-        // not run when this handle is returned. Materialize a discoverable
-        // `in_progress` record + activeRequests entry now — the same enqueue-time
-        // stub the external dispatcher writes (FIX-828) — so the synchronously
-        // returned `requestId` resolves instead of 404ing on `.../requests/:id/
-        // stream` while queued. `runAction` adopts/overwrites the stub when the
-        // run starts (last-write-wins). If the wait budget elapses the run never
-        // starts, so flip the stub to a terminal failure rather than leaving a
-        // phantom `in_progress` the client can never resolve.
+        if (isDispatched || (decision.policy === "queue" && decision.key !== undefined)) {
+          // Registered HERE rather than left to `runAction`, because between this
+          // dispatch and the run's own registration the request is real,
+          // discoverable, and cancellable by anyone reading the store — and yet
+          // has no controller for `abortRequest` to find. `runAction` re-registers
+          // (overwriting this one) when it actually starts, which is the same
+          // last-write-wins hand-off the enqueue-time record already uses, so this
+          // adds a window rather than a second registry to keep in sync. The
+          // `finally` below removes it on every exit, started or not.
+          let queuedAbort = registerAbortController(requestId);
+          // A `queue` run's start is deferred behind the key, so `dispatchLocal`
+          // (which registers `activeRequests` and writes the request record) has
+          // not run when this handle is returned. Materialize a discoverable
+          // `in_progress` record + activeRequests entry now — the same enqueue-time
+          // stub the external dispatcher writes (FIX-828) — so the synchronously
+          // returned `requestId` resolves instead of 404ing on `.../requests/:id/
+          // stream` while queued. `runAction` adopts/overwrites the stub when the
+          // run starts (last-write-wins). If the wait budget elapses the run never
+          // starts, so flip the stub to a terminal failure rather than leaving a
+          // phantom `in_progress` the client can never resolve.
+          const ts = Date.now();
+          // Ownership first, then the place, then the writes: see the
+          // admission note above for why the place waits on ownership.
+          const materialized = admitOwnership(flow, dispatchEnvelope)
+            .then((admitted) =>
+              admitThen(() => materializeOwned(flow, dispatchEnvelope, admitted, {
+                requestId,
+                actionName: dispatchEnvelope.actionName,
+                sessionId: dispatchEnvelope.sessionId,
+                userId: dispatchEnvelope.userId,
+                orgId: dispatchEnvelope.orgId,
+                tenantId: dispatchEnvelope.tenantId,
+                source: dispatchEnvelope.source ?? "http",
+                input: dispatchEnvelope.input,
+                metadata: dispatchEnvelope.metadata,
+                startedAt: ts,
+                lastHeartbeatAt: ts
+              }, (incarnation) => {
+                // Until its record is claimed this controller belongs to no known
+                // request, so an abort fenced on one does not fire it. Tagged the
+                // moment the record exists, because a cancel can land from then on.
+                claimedIncarnation = incarnation;
+                tagAbortController(requestId, queuedAbort, incarnation);
+              }))
+            )
+            .then(() => {
+              entryOwned = true;
+            })
+            // Only `run` gives the place back, and it is reached only once
+            // materialization succeeds; every failure before that gives it
+            // back here.
+            .catch(releaseHeldAdmission);
+
+          // This branch defers a start, so it needs the same acceptance signal the
+          // external branch has (FIX-999). `accepted` was previously left
+          // `undefined` here, so a caller that awaits "where one exists" awaited
+          // nothing on the one in-process path that can defer — reporting Started
+          // before the record was discoverable, and before a failed materialization
+          // was known. Awaiting an absent promise is not a weaker guarantee, it is
+          // no guarantee.
+          accepted = materialized.then(() => undefined);
+
+          // Nothing heartbeats the enqueue-time entry while the run waits behind
+          // the concurrency key, so the stale sweeper reaps a perfectly valid
+          // queued request and a liveness read reports it not live. The rule this
+          // restores is "whoever owns the entry keeps it warm": the host
+          // registered it, so the host heartbeats it until the run starts and
+          // `runAction`'s own timer takes over. No sweeper exemption — an
+          // exemption for unstarted requests would reintroduce the never-reaped
+          // entry the liveness gate's sweep arm exists to prevent.
+          let queuedHeartbeat: ReturnType<typeof setInterval> | undefined;
+          const stopQueuedHeartbeat = (): void => {
+            if (queuedHeartbeat !== undefined) {
+              clearInterval(queuedHeartbeat);
+              queuedHeartbeat = undefined;
+            }
+          };
+
+          const queuedHeartbeatMs = resolveQueuedHeartbeatMs(
+            flow.request?.heartbeatIntervalMs
+          );
+
+          finished = materialized
+            .then(() => {
+              // A flow that disables heartbeats gets no queued timer either —
+              // starting one here would keep an entry warm that the flow asked
+              // never to be kept warm.
+              if (queuedHeartbeatMs > 0) {
+                queuedHeartbeat = setInterval(() => {
+                  stores.activeRequests.heartbeat(requestId).catch(() => {});
+                }, queuedHeartbeatMs);
+                if (typeof (queuedHeartbeat as { unref?: () => void }).unref === "function") {
+                  (queuedHeartbeat as unknown as { unref: () => void }).unref();
+                }
+              }
+              // Whether the run reached its turn. A wait that fails first — the
+              // budget spent, or a shared backend unreachable mid-wait — never
+              // started it, and leaves the stub for this dispatch to settle.
+              let started = false;
+              // A fired controller is decided once: is it a cancel of the
+              // request this dispatch claimed, or a fenced fire for that request
+              // after another request took the id? A fenced fire is for the
+              // request this dispatch claimed. If another request has taken the
+              // id since, that fire is not its cancel: the run adopts it and
+              // starts on an unfired controller, and its own start read settles
+              // any cancel recorded on it. An unfenced fire (shutdown) stops
+              // whatever holds the id.
+              let handoffIncarnation = claimedIncarnation;
+              let cancelFence: string | undefined;
+              let decided: { controller: AbortController; outcome: Promise<boolean> } | undefined;
+              const isCancelled = (): Promise<boolean> => {
+                if (decided?.controller === queuedAbort) return decided.outcome;
+                const fired = queuedAbort;
+                const outcome = (async () => {
+                  const holder = await stores.request.get(requestId).catch(() => undefined);
+                  // Compared with the request the controller is for now: the
+                  // claimed one, or the one a stale cancel handed it to.
+                  const heldByAnother =
+                    holder !== undefined &&
+                    handoffIncarnation !== undefined &&
+                    resolveRequestIncarnation(holder) !== handoffIncarnation;
+                  const fencedOnly = wasFiredOnlyFenced(fired);
+                  if (holder !== undefined && heldByAnother && fencedOnly) {
+                    handoffIncarnation = resolveRequestIncarnation(holder);
+                    queuedAbort = replaceAbortController(requestId, fired, handoffIncarnation);
+                    watchWhileQueued();
+                    return false;
+                  }
+                  cancelFence = fencedOnly ? handoffIncarnation : undefined;
+                  return true;
+                })();
+                decided = { controller: fired, outcome };
+                return outcome;
+              };
+              // On a shared backend a place still in line is renewed for as
+              // long as this process waits on it, so a cancel is acted on as it
+              // lands: the wait is withdrawn, the place given back, and the stub
+              // settled below, rather than all of it waiting for the turn.
+              const withdrawn = new AbortController();
+              const onQueuedAbort = (): void => {
+                void isCancelled().then((cancelled) => {
+                  if (cancelled && !started) withdrawn.abort();
+                });
+              };
+              const watchWhileQueued = (): void => {
+                // In memory the turn-time check below is the only one, as it
+                // always was: a place there is not renewed while it waits.
+                if (started || !arbiter.arbitratesAcrossProcesses) return;
+                if (queuedAbort.signal.aborted) onQueuedAbort();
+                else queuedAbort.signal.addEventListener("abort", onQueuedAbort, { once: true });
+              };
+              watchWhileQueued();
+              const cancelledBeforeStart = async (): Promise<never> => {
+                await terminateUnenqueuedRequest(stores, requestId, { status: "aborted" }, cancelFence);
+                throw new Error(
+                  `Request "${requestId}" was cancelled before it left the concurrency queue`
+                );
+              };
+              // Set by now: materialization runs only once admitted.
+              return held!.run(async () => {
+                started = true;
+                queuedAbort.signal.removeEventListener("abort", onQueuedAbort);
+                // `runAction` re-registers and starts its own heartbeat timer from
+                // here, so the host's stewardship of the entry ends exactly here.
+                stopQueuedHeartbeat();
+                // Cancelled while it sat in the queue, so do not start it now.
+                //
+                // A queued run is the one dispatch that exists without an abort
+                // controller: `runAction` registers that, and `runAction` has not
+                // been called yet. So `abortRequest` finds nothing and returns
+                // false, and a cancel issued in this window — shutdown's drain is
+                // the reachable one — silently does not apply. Waking up after
+                // `dispose()` and starting a run against closed adapters is a
+                // corrupting outcome rather than an untidy one, so the wait is
+                // registered (above) and the decision is re-read here, at the last
+                // moment before anything runs (FIX-1077).
+                if (queuedAbort.signal.aborted && (await isCancelled())) {
+                  return cancelledBeforeStart();
+                }
+                // The check above is not sufficient on its own and is not meant to
+                // be: an abort landing after it would be lost if `runAction`
+                // registered a fresh controller over this one. Handing the
+                // controller down is what closes that gap: the check
+                // short-circuits the run entirely when the decision is already
+                // made, and the controller carries it when it is made a moment
+                // later, along with whom it was made for.
+                return startRun({ controller: queuedAbort, incarnation: handoffIncarnation });
+              }, withdrawn.signal).catch(async (error: unknown) => {
+                if (!started && withdrawn.signal.aborted) return cancelledBeforeStart();
+                // The stub is this dispatch's own by now — materialization
+                // succeeded before the gate opened — so a refusal raised by the
+                // RUN (the loser of a session create race, checked in
+                // `createExecutionContext`) terminates it like any other start
+                // that never happened. Left `in_progress`, it would outlive the
+                // entry the `finally` below removes and be invisible to the
+                // sweeper. Only the admission-time refusal, handled above, found
+                // a record that was never ours. A session another user created
+                // under the id while the run waited is refused the same way, and
+                // the stub it leaves is ours to settle.
+                //
+                // A wait that failed before its turn (the budget spent, a shared
+                // backend unreachable) means no run started, so it ends only the
+                // request this dispatch claimed. A binding refusal comes from the
+                // run, which adopted whatever held the id, so it ends that.
+                if (!started) {
+                  await terminateUnenqueuedRequest(
+                    stores,
+                    requestId,
+                    { status: "failed", cause: error },
+                    claimedIncarnation
+                  );
+                } else if (
+                  error instanceof FlowInstanceBindingMismatchError ||
+                  error instanceof UserBindingMismatchError
+                ) {
+                  await terminateUnenqueuedRequest(stores, requestId, {
+                    status: "failed",
+                    cause: error
+                  });
+                }
+                throw error;
+              });
+            })
+            .finally(() => {
+              stopQueuedHeartbeat();
+              // Whoever registered it removes it, on every exit — started,
+              // cancelled, or timed out — so the pre-start window cannot leak
+              // controllers into a long-lived process. Idempotent with
+              // `runAction`'s own deregistration on the path where it did start.
+              deregisterAbortController(requestId);
+            });
+        } else {
+          // Nothing is written before the run here (`runAction` writes its own
+          // records), so a shared backend's place waits only on ownership.
+          const arbitrated =
+            arbiter.arbitratesAcrossProcesses &&
+            decision.key !== undefined &&
+            decision.policy !== "allow";
+          finished = arbitrated
+            ? admitOwnership(flow, dispatchEnvelope).then(() =>
+                admitThen((admitted) => admitted.run(startRun))
+              )
+            : admitThen((admitted) => admitted.run(startRun));
+          // A start that never happens (the gate threw on the way in) must fail
+          // acceptance rather than leave it pending forever. Once the run has
+          // registered this is already settled and both arms are no-ops.
+          finished.then(markAccepted, failAccepted);
+          accepted = inProcessAccepted;
+        }
+      } else {
+        // External dispatchers (BullMQ, etc.) run in a separate process and only
+        // register the request once the worker starts `runAction`. A client GET
+        // .../stream that arrives first would find no record and 404. Materialize
+        // the activeRequests entry and an `in_progress` record here, at enqueue
+        // time, so the stream route resolves a live record and tails events
+        // immediately (FIX-828). The shared `createInitialRequestRecord` builder
+        // constructs this stub the same way the worker would, so the worker
+        // adopts it as-is and skips its own write. Gating the dispatcher hand-off
+        // on these writes means a store failure fails the dispatch rather than
+        // enqueueing a job with no discoverable record (no orphan). Resume and the
+        // Vercel adapter route through here too, so both inherit the fix.
+        //
+        // `lastHeartbeatAt` is stamped at enqueue and nothing heartbeats until
+        // the worker claims the job and re-registers (runAction), so this entry's
+        // age measures queue wait, not worker death. `queuedAt` says so on the
+        // entry itself, which is what keeps a backed-up queue from reading as a
+        // pile of dead requests (FIX-999): the liveness read reports a queued job
+        // live, and the sweeper leaves it alone until it outlives the queued
+        // grace, at which point it is reaped like anything else.
+        //
+        // The in-process branch above keeps its entry warm with a timer instead,
+        // and that difference is not an inconsistency. There the host is holding
+        // the run and can honestly assert "this is still mine". Here it hands the
+        // job to another process and returns 202 — on a serverless host it may be
+        // frozen moments later. A timer here would make a queued job's survival
+        // depend on the liveness of a process that is not running it, and would
+        // beat on behalf of work it has no knowledge of.
+        // `acceptance` resolves once the request is accepted: the enqueue-time
+        // writes commit AND the dispatcher accepts the job. The response path
+        // awaits the exposed `accepted` view before acking, so the 202 means
+        // "discoverable and enqueued" — not merely "record written". Crucially the
+        // enqueue (`effectiveDispatcher.dispatch`) is inside this promise, so an
+        // enqueue failure rejects the ack (failing the POST / reverting the
+        // resume) rather than landing in the detached `finished` chain after a 202
+        // already went out.
+        //
+        // Arbitrated only over a shared backend (FIX-1634): the place is taken
+        // once ownership passes, before these writes, and rides the job as
+        // `leasePlace`; the
+        // worker waits its turn and gives it back when the run ends. Until the job
+        // is enqueued the place is this dispatch's, so every failure on the way
+        // gives it back. Without a shared backend nothing was taken.
         const ts = Date.now();
-        const materialized = admitOwnership(flow, dispatchEnvelope)
+        const acceptance = admitOwnership(flow, dispatchEnvelope)
           .then((admitted) =>
-            materializeOwned(flow, dispatchEnvelope, admitted, {
+            admitThen(() => materializeOwned(flow, dispatchEnvelope, admitted, {
               requestId,
               actionName: dispatchEnvelope.actionName,
               sessionId: dispatchEnvelope.sessionId,
@@ -923,214 +1328,41 @@ export function createInboundTransportHost(
               input: dispatchEnvelope.input,
               metadata: dispatchEnvelope.metadata,
               startedAt: ts,
-              lastHeartbeatAt: ts
-            })
+              lastHeartbeatAt: ts,
+              queuedAt: ts
+            }, (incarnation) => {
+              claimedIncarnation = incarnation;
+            }))
           )
-          .then(() => {
+          .then(async () => {
             entryOwned = true;
+            const place = held?.place;
+            const handle = await effectiveDispatcher.dispatch(
+              place === undefined ? dispatchEnvelope : { ...dispatchEnvelope, leasePlace: place }
+            );
+            // Enqueued: the place is the job's now, and its worker renews it.
+            // Until here this process held it, and the admission renewed it.
+            held?.handOff();
+            return handle;
           })
-          .catch(async (error: unknown) => {
-          // Under `reject` the arbiter claimed the key synchronously in
-          // `gate()` and only the wrapper it returned releases it — and that
-          // wrapper is invoked only once materialization succeeds. Run it here
-          // with a start that fails, so the failed dispatch does not hold the
-          // key until the process restarts. `queue` and `allow` hold nothing
-          // before `gateStart` runs, so there is nothing to give back.
-          if (decision.policy === "reject") {
-            await gateStart(() => Promise.reject(error)).catch(() => undefined);
-          }
-          // Only a record this dispatch wrote is its to terminate — a refused
-          // admission never touched the foreign owner's, nor the caller's own
-          // earlier request under the id it reused.
-          if (!isRefusedAdmission(error)) {
-            await terminateUnenqueuedRequest(stores, requestId);
-          }
-          throw error;
-        });
+          // Materialization or the enqueue failed: the job is not running and
+          // never will. The record can land before the entry write fails, and a
+          // failed enqueue leaves a fully-written one, so it is terminated
+          // rather than left `in_progress` with nothing for the sweeper to reap
+          // (the `finally` below only deregisters the entry). The place goes
+          // back with it.
+          .catch(releaseHeldAdmission);
 
-        // This branch defers a start, so it needs the same acceptance signal the
-        // external branch has (FIX-999). `accepted` was previously left
-        // `undefined` here, so a caller that awaits "where one exists" awaited
-        // nothing on the one in-process path that can defer — reporting Started
-        // before the record was discoverable, and before a failed materialization
-        // was known. Awaiting an absent promise is not a weaker guarantee, it is
-        // no guarantee.
-        accepted = materialized.then(() => undefined);
-
-        // Nothing heartbeats the enqueue-time entry while the run waits behind
-        // the concurrency key, so the stale sweeper reaps a perfectly valid
-        // queued request and a liveness read reports it not live. The rule this
-        // restores is "whoever owns the entry keeps it warm": the host
-        // registered it, so the host heartbeats it until the run starts and
-        // `runAction`'s own timer takes over. No sweeper exemption — an
-        // exemption for unstarted requests would reintroduce the never-reaped
-        // entry the liveness gate's sweep arm exists to prevent.
-        let queuedHeartbeat: ReturnType<typeof setInterval> | undefined;
-        const stopQueuedHeartbeat = (): void => {
-          if (queuedHeartbeat !== undefined) {
-            clearInterval(queuedHeartbeat);
-            queuedHeartbeat = undefined;
-          }
-        };
-
-        const queuedHeartbeatMs = resolveQueuedHeartbeatMs(
-          flow.request?.heartbeatIntervalMs
-        );
-
-        finished = materialized
-          .then(() => {
-            // A flow that disables heartbeats gets no queued timer either —
-            // starting one here would keep an entry warm that the flow asked
-            // never to be kept warm.
-            if (queuedHeartbeatMs > 0) {
-              queuedHeartbeat = setInterval(() => {
-                stores.activeRequests.heartbeat(requestId).catch(() => {});
-              }, queuedHeartbeatMs);
-              if (typeof (queuedHeartbeat as { unref?: () => void }).unref === "function") {
-                (queuedHeartbeat as unknown as { unref: () => void }).unref();
-              }
-            }
-            return gateStart(async () => {
-              // `runAction` re-registers and starts its own heartbeat timer from
-              // here, so the host's stewardship of the entry ends exactly here.
-              stopQueuedHeartbeat();
-              // Cancelled while it sat in the queue, so do not start it now.
-              //
-              // A queued run is the one dispatch that exists without an abort
-              // controller: `runAction` registers that, and `runAction` has not
-              // been called yet. So `abortRequest` finds nothing and returns
-              // false, and a cancel issued in this window — shutdown's drain is
-              // the reachable one — silently does not apply. Waking up after
-              // `dispose()` and starting a run against closed adapters is a
-              // corrupting outcome rather than an untidy one, so the wait is
-              // registered (above) and the decision is re-read here, at the last
-              // moment before anything runs (FIX-1077).
-              if (queuedAbort.signal.aborted) {
-                await terminateUnenqueuedRequest(stores, requestId, "aborted");
-                throw new Error(
-                  `Request "${requestId}" was cancelled before it left the concurrency queue`
-                );
-              }
-              // The check above is not sufficient on its own and is not meant to
-              // be: an abort landing after it would be lost, because `runAction`
-              // registers a fresh controller over this one. Handing the signal
-              // down is what closes that gap — the check short-circuits the run
-              // entirely when the decision is already made, and the signal
-              // carries it when it is made a moment later.
-              return startRun(queuedAbort.signal);
-            }).catch(async (error: unknown) => {
-              // The stub is this dispatch's own by now — materialization
-              // succeeded before the gate opened — so a refusal raised by the
-              // RUN (the loser of a session create race, checked in
-              // `createExecutionContext`) terminates it like any other start
-              // that never happened. Left `in_progress`, it would outlive the
-              // entry the `finally` below removes and be invisible to the
-              // sweeper. Only the admission-time refusal, handled above, found
-              // a record that was never ours. A session another user created
-              // under the id while the run waited is refused the same way, and
-              // the stub it leaves is ours to settle.
-              if (
-                error instanceof ConcurrencyQueueTimeoutError ||
-                error instanceof FlowInstanceBindingMismatchError ||
-                error instanceof UserBindingMismatchError
-              ) {
-                await terminateUnenqueuedRequest(stores, requestId);
-              }
-              throw error;
-            });
-          })
-          .finally(() => {
-            stopQueuedHeartbeat();
-            // Whoever registered it removes it, on every exit — started,
-            // cancelled, or timed out — so the pre-start window cannot leak
-            // controllers into a long-lived process. Idempotent with
-            // `runAction`'s own deregistration on the path where it did start.
-            deregisterAbortController(requestId);
-          });
-      } else {
-        finished = gateStart(startRun);
-        // A start that never happens (the gate threw on the way in) must fail
-        // acceptance rather than leave it pending forever. Once the run has
-        // registered this is already settled and both arms are no-ops.
-        finished.then(markAccepted, failAccepted);
-        accepted = inProcessAccepted;
+        accepted = acceptance.then(() => undefined);
+        finished = acceptance.then((handle) => handle.finished);
       }
-    } else {
-      // External dispatchers (BullMQ, etc.) run in a separate process and only
-      // register the request once the worker starts `runAction`. A client GET
-      // .../stream that arrives first would find no record and 404. Materialize
-      // the activeRequests entry and an `in_progress` record here, at enqueue
-      // time, so the stream route resolves a live record and tails events
-      // immediately (FIX-828). The shared `createInitialRequestRecord` builder
-      // constructs this stub the same way the worker would, so the worker
-      // adopts it as-is and skips its own write. Gating the dispatcher hand-off
-      // on these writes means a store failure fails the dispatch rather than
-      // enqueueing a job with no discoverable record (no orphan). Resume and the
-      // Vercel adapter route through here too, so both inherit the fix.
-      //
-      // `lastHeartbeatAt` is stamped at enqueue and nothing heartbeats until
-      // the worker claims the job and re-registers (runAction), so this entry's
-      // age measures queue wait, not worker death. `queuedAt` says so on the
-      // entry itself, which is what keeps a backed-up queue from reading as a
-      // pile of dead requests (FIX-999): the liveness read reports a queued job
-      // live, and the sweeper leaves it alone until it outlives the queued
-      // grace, at which point it is reaped like anything else.
-      //
-      // The in-process branch above keeps its entry warm with a timer instead,
-      // and that difference is not an inconsistency. There the host is holding
-      // the run and can honestly assert "this is still mine". Here it hands the
-      // job to another process and returns 202 — on a serverless host it may be
-      // frozen moments later. A timer here would make a queued job's survival
-      // depend on the liveness of a process that is not running it, and would
-      // beat on behalf of work it has no knowledge of.
-      // `acceptance` resolves once the request is accepted: the enqueue-time
-      // writes commit AND the dispatcher accepts the job. The response path
-      // awaits the exposed `accepted` view before acking, so the 202 means
-      // "discoverable and enqueued" — not merely "record written". Crucially the
-      // enqueue (`effectiveDispatcher.dispatch`) is inside this promise, so an
-      // enqueue failure rejects the ack (failing the POST / reverting the
-      // resume) rather than landing in the detached `finished` chain after a 202
-      // already went out. The concurrency gate does not apply here — external
-      // dispatch is unarbitrated in v1 (FIX-830).
-      const ts = Date.now();
-      const acceptance = admitOwnership(flow, dispatchEnvelope)
-        .then((admitted) =>
-          materializeOwned(flow, dispatchEnvelope, admitted, {
-            requestId,
-            actionName: dispatchEnvelope.actionName,
-            sessionId: dispatchEnvelope.sessionId,
-            userId: dispatchEnvelope.userId,
-            orgId: dispatchEnvelope.orgId,
-            tenantId: dispatchEnvelope.tenantId,
-            source: dispatchEnvelope.source ?? "http",
-            input: dispatchEnvelope.input,
-            metadata: dispatchEnvelope.metadata,
-            startedAt: ts,
-            lastHeartbeatAt: ts,
-            queuedAt: ts
-          })
-        )
-        .then(() => {
-          entryOwned = true;
-          return effectiveDispatcher.dispatch(dispatchEnvelope);
-        })
-        .catch(async (error: unknown) => {
-            // Materialization or the enqueue failed: the job is not running and
-            // never will. Terminate the in_progress record we may have written —
-            // the record can land before the entry write fails, and a failed
-            // enqueue leaves a fully-written record — so it doesn't outlive the
-            // job. The `finally` below only deregisters the activeRequests
-            // entry, which would otherwise leave the sweeper nothing to reap and
-            // the record stuck in_progress forever. A refused admission wrote
-            // nothing and terminates nothing — the record it found is not ours.
-            if (!isRefusedAdmission(error)) {
-              await terminateUnenqueuedRequest(stores, requestId);
-            }
-            throw error;
-          });
-
-      accepted = acceptance.then(() => undefined);
-      finished = acceptance.then((handle) => handle.finished);
+    } catch (error) {
+      // A synchronous throw between admission and the hand-off to a run: give
+      // the place back before the error leaves `dispatch`. In memory the
+      // give-back is synchronous, so the key is free by the time it does.
+      if (held !== undefined) void held.release();
+      liveStream?.close();
+      throw error;
     }
 
     finished = finished.finally(() => {
@@ -1172,6 +1404,10 @@ export function createInboundTransportHost(
     // surfaced to the caller via `accepted`). This only registers an extra
     // rejection handler — callers that await `finished` still observe it.
     void finished.catch(() => {});
+    // Likewise `accepted`: a caller that awaits only `finished` (MCP does)
+    // sees the same failure there, so an unobserved `accepted` must not
+    // surface as an unhandled rejection.
+    void accepted?.catch(() => {});
 
     return {
       requestId,
@@ -1270,6 +1506,7 @@ export function createInboundTransportHost(
     },
     logger: runtimeConfig.logger,
     usesExternalDispatcher: isExternalDispatcher,
+    arbitratesExternalDispatch,
     dispatch,
     continueRequest,
     validateDispatch,

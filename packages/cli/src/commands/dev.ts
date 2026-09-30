@@ -21,6 +21,7 @@ import {
 } from "@flow-state-dev/engine";
 import { serve } from "@flow-state-dev/node";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { declaredDevtoolConfig } from "../devtool-config";
 import { formatFailedImportSection } from "../resolve-flow";
 import { resolveRuntimeSource, assertNoFlowDirWithConfig } from "../resolve-runtime";
 import { forceModelResolver } from "../model-override";
@@ -145,11 +146,7 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     // page by serve() so a secured flow is debuggable without hand-editing
     // DevTool settings. Normalize an empty/blank-only `devtool` block to
     // undefined so serve() leaves the static path byte-identical to production.
-    const declared = resolved.flowState.meta.devtool;
-    const hasField =
-      (declared?.userId?.trim().length ?? 0) > 0 ||
-      (declared?.bearerToken?.trim().length ?? 0) > 0;
-    devtoolConfig = hasField ? declared : undefined;
+    devtoolConfig = declaredDevtoolConfig(resolved.flowState);
   } else {
     // --- discovery path: scan flows, build a router over local SQLite ---
     if (resolved.flows.length === 0) {

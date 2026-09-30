@@ -63,7 +63,7 @@ describe("useSessionRequests — interrupted-sweep gating", () => {
     await waitFor(() => {
       expect(recoveryClientMock.checkInterrupted).toHaveBeenCalledWith({ userId: "devuser" });
     });
-    expect(sessionClientMock.listSessionRequests).toHaveBeenCalledWith("sess_1", { includeItems: true });
+    expect(sessionClientMock.listSessionRequests).toHaveBeenCalledWith("sess_1", { includeItems: true, includeResultOutput: true });
   });
 
   it("does not sweep when there is no session, regardless of the flag", async () => {
@@ -193,7 +193,7 @@ describe("useSessionRequests — switching sessions", () => {
     await waitFor(() =>
       expect(sessionClientMock.listSessionRequests).toHaveBeenCalledWith(
         "sess_parent",
-        { includeItems: true }
+        { includeItems: true, includeResultOutput: true }
       )
     );
 

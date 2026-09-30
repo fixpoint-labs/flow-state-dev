@@ -265,6 +265,12 @@ export function createSQLiteRequestStore(
   const deleteItemsStmt = db.prepare(
     "DELETE FROM request_items WHERE request_id = ?"
   );
+  const deleteEventsStmt = db.prepare(
+    "DELETE FROM request_events WHERE request_id = ?"
+  );
+  const deleteRunOnceStmt = db.prepare(
+    "DELETE FROM request_runonce WHERE request_id = ?"
+  );
 
   const insertEventStmt = db.prepare(
     "INSERT OR REPLACE INTO request_events (request_id, sequence_number, event_data) VALUES (?, ?, ?)"
@@ -391,7 +397,7 @@ export function createSQLiteRequestStore(
       fields: ConditionalRequestFields,
       allowedStatuses: readonly RequestStatus[],
       updatedAt: number,
-      expectedCreatedAt?: number
+      expectedIncarnation?: string
     ): Promise<ConditionalWriteResult> {
       // One transaction, and it must be IMMEDIATE. A plain better-sqlite3
       // transaction is DEFERRED: it takes only a read lock at the first
@@ -411,7 +417,12 @@ export function createSQLiteRequestStore(
         if (row === undefined) return { applied: false, status: undefined };
         const record = JSON.parse(row.data) as RequestRecord;
         // Another record under the same id is not the one the caller checked.
-        if (expectedCreatedAt !== undefined && record.createdAt !== expectedCreatedAt) {
+        // The incarnation rule is the engine's `resolveRequestIncarnation`,
+        // restated here because this package takes only types from the engine.
+        if (
+          expectedIncarnation !== undefined &&
+          (record.incarnation ?? `legacy_${record.createdAt}`) !== expectedIncarnation
+        ) {
           return { applied: false, status: undefined };
         }
         if (!allowedStatuses.includes(row.status)) {
@@ -435,6 +446,13 @@ export function createSQLiteRequestStore(
       // no in-flight async write to await — only the queued microtask.)
       clearItemMaps(id);
       deleteItemsStmt.run(id);
+      // Events and runOnce results go with the record: ids are
+      // caller-supplied, so a later request may take this one, and a replay
+      // of it must not surface this run's events. Dropping the unwritten
+      // batch makes a queued `persistEvents` microtask a no-op, as above.
+      pendingNewEvents.delete(id);
+      deleteEventsStmt.run(id);
+      deleteRunOnceStmt.run(id);
       await base.delete(id);
     },
 

@@ -1205,9 +1205,11 @@ const postToStandup = dispatcher({
 Address `{ id }`, never `{ key }`: a key-derived session resolves to a different session for every
 poster, so the channel never sees the post. Nothing detects that mistake.
 
-A flow-to-flow post needs in-process dispatch. On a deployment whose dispatcher hands work to an
-external queue, a post into an opened channel is refused with `external-dispatcher`. A post through the public action route is
-written, but its notify block never runs: no member is woken and a routed channel doesn't answer.
+A flow-to-flow post works where dispatch runs in process, or where queue workers share a lease
+backend (`WorkerAdapter.leaseBackend`). On a deployment whose dispatcher hands work to an external
+queue and whose adapter supplies no shared lease backend, a post into an opened channel is refused
+with `external-dispatcher`. A post through the public action route is written there, but its
+notify block never runs: no member is woken and a routed channel doesn't answer.
 
 A post into a session nobody opened refuses `channel-not-bound` and writes nothing. The shared
 instance answers for every session id and the action path creates what it does not find, so
@@ -1230,8 +1232,10 @@ boards: [followups]
 The ledger id is minted from the channel that holds it — `engineering.incidents` holding
 `followups` is `engineering.incidents.followups` — and no record writes it. A board name is a plain
 local name: not empty, no whitespace, none of `.` `/` `*` `[` `]`, and not `__proto__`, `prototype`
-or `constructor`. The dot is the one that matters, since it is the join and a name carrying one
-would address another channel's board.
+or `constructor`, and not `lock`, in any case. The dot is the one that matters, since it is the join
+and a name carrying one would address another channel's board. `lock` is reserved because it would
+mint an id ending in `.lock`, which a git branch can't carry, so a coding run could never work that
+board.
 
 A channel holding one or more boards declares two more actions, `fileTask` and `readBoard`, public
 and internal like `post` and `read`. Both take the board's **local** name; `fileTask` hands back
@@ -1241,13 +1245,14 @@ channel's board refuses the same way. `read` gains a `boards` key listing the lo
 holding none omits it and declares neither action.
 
 `readBoard` returns a declared projection of each row, not the whole record: the board's own facts,
-without the execution coordinates (`claimedBy`, the lease) or the substrate's write provenance.
-`channelBoardRowSchema` is that shape.
+without the claim's execution coordinates (`claimedBy`, the lease) or the substrate's write
+provenance. The one coordinate it does carry is `run`, the handed-off run working the task, so a
+reader can open that run. `channelBoardRowSchema` is that shape.
 
 A board's ledger is readable directly by a browser, which is what lets a UI draw the board as
 columns without going through an action. The ledger is org-scoped, so that read resolves against the
 organization the reading session belongs to. What crosses is `id`, `title`, `goal`, `status`,
-`assignee`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`,
+`assignee`, `run`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`,
 `updatedAt`, `startedAt` and `completedAt`.
 
 The channel owns the ledger and runs nothing. A seat that claims rows resolves the same declaration
@@ -1365,9 +1370,10 @@ answer. If it is cancelled before the route is recorded in `channelRouteLedger`,
 answers, though the fan-out ends `aborted`. After a cancel, a `channel-route` item can name a member
 who was never woken.
 
-Routing needs in-process dispatch. Behind a dispatcher that hands work to an external queue, such
-as BullMQ, a post is written but its notify block never runs, so no member is picked or woken and
-nothing answers.
+Routing works where dispatch runs in process, or where queue workers share a lease backend
+(`WorkerAdapter.leaseBackend`). Behind a dispatcher that hands work to an external queue without
+one, such as BullMQ today, a post is written but its notify block never runs, so no member is
+picked or woken and nothing answers.
 
 ### Registering your own kind
 
@@ -1641,8 +1647,8 @@ The tool returns once the post is handed to the channel, as `{ handedTo, note }`
 channel, such as an author who is not a member, lands on the channel's request, not in the seat's
 turn. A refusal at dispatch fails the call by name: `session-not-found` for an id nobody opened,
 `session-not-addressable` for a session on another channel kind, and `external-dispatcher` behind
-a dispatcher that hands work to an external queue. The tool works only where dispatch runs in
-process.
+a dispatcher that hands work to an external queue without a shared lease backend. The tool works
+only where dispatch runs in process or is arbitrated over a shared lease backend.
 
 In a routed channel, a routed member of the built-in `agent` kind has a non-empty reply handed to
 the channel as its answer, whether or not it calls the tool. A tool call into that channel during
@@ -1953,7 +1959,7 @@ the root exports, and reaches no Node built-in.
 | `SeatCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that seat wants. Read by the built-in `agent` kind; validated at the hire. |
 | `defineChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. `options.route` is the route from `routeByPurpose`. |
 | `wakeMemberSeats(seats, options?)` | The notify block that wakes each member seat declaring `onChannelPost`, never on a post with an `author`. `options.fallback` runs for members whose seat can't hear a post. |
-| `routeByPurpose(seats, { model })` | The route a channel kind takes as `defineChannelFlow({ route })`. For a channel that declares `routing:`, each post from a person goes to one member: the member the person's last post was routed to, until it answers (a held post holds nothing), else one evaluator call's pick among the members with a description (block name `channel-route`), else the declared fallback. A member of the built-in `agent` kind answers with the channel's last 20 lines in view, and its reply is posted into the channel as its line, once per post. Needs in-process dispatch. Throws without a `model`. |
+| `routeByPurpose(seats, { model })` | The route a channel kind takes as `defineChannelFlow({ route })`. For a channel that declares `routing:`, each post from a person goes to one member: the member the person's last post was routed to, until it answers (a held post holds nothing), else one evaluator call's pick among the members with a description (block name `channel-route`), else the declared fallback. A member of the built-in `agent` kind answers with the channel's last 20 lines in view, and its reply is posted into the channel as its line, once per post. Needs in-process dispatch or queue workers that share a lease backend. Throws without a `model`. |
 | `channelRouteRecordSchema` / `ChannelRouteRecord` / `CHANNEL_ROUTE_COMPONENT` / `CHANNEL_ROUTE_EVALUATOR` | One route decision as it is kept on the channel's session (`{ postId, by, member?, reason? }`, where `by` is `held`, `evaluated`, `fallback` or `failed`), the component name it is kept under, and the route evaluator's block name. Both names are `"channel-route"`. |
 | `ChannelRoute` / `ChannelRouting` | What `routeByPurpose` returns, and a channel file's `routing:` as read (`{ fallback }`). |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
@@ -1965,7 +1971,7 @@ the root exports, and reaches no Node built-in.
 | `channelBoardTaskTools(board)` | Capability granting a seat all eight task tools over one channel board, board-qualified by name. List it in the seat kind's `uses`; it declares the ledger too. |
 | `channelBoardIds(manifests)` | Every minted id across a roster, sorted and deduped — what `hireWorkforce`'s `channelBoards` takes. |
 | `ChannelBoardCollection` | A `DefinedTaskCollection` carrying its minted `id`. |
-| `channelBoardRowSchema` | One row as `readBoard` publishes it: the board's facts, without execution coordinates or write provenance. |
+| `channelBoardRowSchema` | One row as `readBoard` publishes it: the board's facts and the `run` working the task, without the claim's coordinates (`claimedBy`, the lease) or write provenance. |
 | `channelFileTaskInputSchema` / `channelFileTaskOutputSchema` / `channelReadBoardInputSchema` / `channelReadBoardOutputSchema` | The `fileTask` and `readBoard` contracts. |
 | `ChannelPostRefusedError` | A post refused on the channel's own terms; `reason` is `channel-not-bound` or `author-not-a-member`. |
 | `channelPostInputSchema` / `channelReadOutputSchema` / `channelNotifyInputSchema` | The post, read and notify contracts. |
@@ -2042,7 +2048,7 @@ the root exports, and reaches no Node built-in.
 | Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the id is taken. An open channel there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable channel — is named and refused rather than released |
 | `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
 | `author-not-a-member` | A `post` claiming an `author` outside the channel's declared members. Per-request; nothing is written |
-| `external-dispatcher` | A flow-to-flow post into an opened channel on a host whose dispatcher hands work to an external queue. A post through the public action route is written, but its notify block never runs: no member is woken and a routed channel doesn't answer |
+| `external-dispatcher` | A flow-to-flow post into an opened channel on a host whose dispatcher hands work to an external queue and shares no lease backend. A post through the public action route is written, but its notify block never runs: no member is woken and a routed channel doesn't answer |
 | Inventory id is not one path segment | `membershipKey` and `membershipPrefix` throw, naming the offending argument: an empty id, one containing `/` or `\`, or `.` and `..` |
 | Unknown kind on `hire` | The tool, listing the hireable kinds. Writes nothing. |
 | Address already served | The `hire` tool, naming the address and the live kind. Writes nothing. |

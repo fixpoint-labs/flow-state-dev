@@ -34,6 +34,46 @@ const manager = harnessManager({
 
 Mount it as the block behind a board seat that hands off, and rows filed on that board become supervised runs.
 
+## Running a channel's board
+
+A channel can hold a board (see `@flow-state-dev/workforce` → "Holding a board"). To run its
+rows as supervised coding runs, hand the manager that board and its id:
+
+```ts
+import { channelBoard } from "@flow-state-dev/workforce";
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { harnessManager, runOwnerDispatcher } from "@flow-state-dev/harness-manager";
+
+const work = channelBoard("eng.feature", "work");
+
+const manager = harnessManager({
+  boardCollectionId: work.id,   // "eng.feature.work"
+  boardCollection: work,
+  // ...the rest as above
+});
+
+// On the board that drains the channel's rows:
+taskBoard({ collection: work, dispatcher: runOwnerDispatcher(), /* ... */ });
+```
+
+The manager builds each run's checkout folder and git branch from the board's id, used as is. A
+channel's board id contains dots, which the manager accepts. It refuses, when you build it, an id
+git can't use as a branch name, such as one ending in `.lock`; a channel can't name a board
+`lock`. Two boards whose ids differ other than in letter case never share a checkout. Board ids
+that worked before keep the same folders and branches, so an upgrade moves nobody's work.
+
+The board is kept per organization, so everyone in the organization sees its rows. A row's
+coding run belongs to the person who started it: a drain by anyone else in the organization is
+refused, naming whose run it is. Their own retry picks up the same checkout, branch and agent
+session. With `runOwnerDispatcher()` on the draining board, the refusal happens before the row
+is claimed and costs it no attempt. Without it the manager still refuses to run someone else's
+row, but only after the claim, so the row is charged an attempt.
+
+**Wire `runOwnerDispatcher()` on every board kept per organization that drains rows into a
+manager.** The manager's own refusal keeps the run from being split between two people, but only
+the dispatcher keeps a teammate's drain from spending the row's retries. The dispatcher claims in
+the board's own readiness and order, so it takes the place of any other dispatcher on that board.
+
 ## The slot
 
 The manager calls your factory once, with three feeds:
@@ -106,7 +146,7 @@ Neither bounds what the run *spawned*. A command the agent's process started can
 
 ## The export surface, in two halves
 
-**`@flow-state-dev/harness-manager`** — the supported host API, and what this package versions: `harnessManager` and its options, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, and the run-record and inbox collections for building a status surface.
+**`@flow-state-dev/harness-manager`** — the supported host API, and what this package versions: `harnessManager` and its options, `PhaseSpec` and the run-context types, `WorkspaceConfig`, the construction-time guards (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`, `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per organization, and the run-record and inbox collections for building a status surface.
 
 **`@flow-state-dev/harness-manager/checkout`** — how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. A separate entry point rather than a note on the main barrel, because semver binds what the barrel exports whatever a header says about it. This repository's own consumer and its goal checks import from here; a host should not. They are git-worktree-specific, and a second checkout strategy would put them behind a seam. Adopt `harnessManager({ harness })` and let it own the checkout.
 

@@ -21,10 +21,10 @@ import {
   withRequestSourceDefault,
   withStoredAbortRequested
 } from "../shared";
-import { matchesOrgFilter, matchesTenantFilter } from "../scope-keys";
+import { matchesOrgFilter, matchesTenantFilter, resolveRequestIncarnation } from "../scope-keys";
 import { compareRequestsForListing } from "../list-order";
 import { pollEvents } from "../subscribe-helpers";
-import { appendFile, readdir, readFile, rm, stat } from "node:fs/promises";
+import { appendFile, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   createSerializedWriteQueue,
@@ -80,10 +80,63 @@ function encodeSegment(segment: string): string {
 
 /**
  * Per-key runOnce result file path:
- * `{rootDir}/<enc(requestId)>.runonce.<enc(key)>.json`. One file per
+ * `{rootDir}/<enc(requestId)>@<enc(key)>.runonce`. One file per
  * (requestId, key) so persisting one key never rewrites another's bytes.
+ *
+ * `@` is the boundary because `encodeSegment` always escapes it, so it never
+ * appears inside an encoded id or key: everything before the first `@` is the
+ * request id, whatever the caller put in it. Record files end in `.json` and
+ * never contain `@`, so neither can be taken for the other.
  */
 function toRunOnceKeyPath(
+  rootDir: string,
+  requestId: string,
+  key: string
+): string {
+  return path.join(rootDir, `${runOnceKeyPrefix(requestId)}${encodeSegment(key)}.runonce`);
+}
+
+/** `decodeURIComponent` that returns `undefined` for a malformed name. */
+function safeDecode(name: string): string | undefined {
+  try {
+    return decodeURIComponent(name);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether `parsed`, read from the file `name`, reads back as the record of the
+ * request whose id is the whole name (`<enc(id)>.json`).
+ *
+ * A pre-`@` per-key runOnce file can carry that same name, and a stored result
+ * is arbitrary JSON, so no field can tell a record from a result shaped like
+ * one. Such a file is therefore treated as possibly a record everywhere: never
+ * deleted with another request, and never served as a runOnce result.
+ */
+function readsBackAsRecordFile(name: string, parsed: unknown): boolean {
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    (parsed as { id?: unknown }).id === safeDecode(name.slice(0, -".json".length))
+  );
+}
+
+/** File-name prefix every per-key runOnce file of `requestId` starts with. */
+function runOnceKeyPrefix(requestId: string): string {
+  return `${encodeSegment(requestId)}@`;
+}
+
+/**
+ * Per-key runOnce file path in the layout used before the `@` boundary:
+ * `{rootDir}/<enc(requestId)>.runonce.<enc(key)>.json`. Read as a fallback and
+ * removed on delete, never written (BP-030).
+ *
+ * The layout is ambiguous: `.` is not escaped, so `foo.runonce.bar.runonce.step.json`
+ * is both ("foo", "bar.runonce.step") and ("foo.runonce.bar", "step"), and it is
+ * also the record file of a request whose id is `foo.runonce.bar.runonce.step`.
+ */
+function toLegacyRunOnceKeyPath(
   rootDir: string,
   requestId: string,
   key: string
@@ -93,6 +146,12 @@ function toRunOnceKeyPath(
     `${encodeSegment(requestId)}.runonce.${encodeSegment(key)}.json`
   );
 }
+
+/**
+ * Suffix an ambiguous pre-`@` per-key runOnce file is renamed to on delete.
+ * No read path opens it, and `listRecords` collects only `.json` files.
+ */
+const QUARANTINE_SUFFIX = ".quarantined";
 
 // Module-scoped so the "warn once per corrupted file" guarantee holds across
 // reads and across store instances within the same process (mirrors the
@@ -391,7 +450,7 @@ export class FilesystemRequestStore implements RequestStore {
     fields: ConditionalRequestFields,
     allowedStatuses: readonly RequestStatus[],
     updatedAt: number,
-    expectedCreatedAt?: number
+    expectedIncarnation?: string
   ): Promise<ConditionalWriteResult> {
     const { abortRequested, ...recordFields } = fields;
     let found: RequestStatus | undefined;
@@ -407,7 +466,10 @@ export class FilesystemRequestStore implements RequestStore {
     await this.store.update(id, async (current) => {
       found = current.status;
       // Another record under the same id is not the one the caller checked.
-      if (expectedCreatedAt !== undefined && current.createdAt !== expectedCreatedAt) {
+      if (
+        expectedIncarnation !== undefined &&
+        resolveRequestIncarnation(current) !== expectedIncarnation
+      ) {
         otherRecord = true;
         return current;
       }
@@ -486,6 +548,12 @@ export class FilesystemRequestStore implements RequestStore {
   }
 
   async delete(id: string): Promise<void> {
+    // Settle event writes before the sweep. A queued write takes its batch
+    // the moment it starts, so dropping the unwritten batch alone is not
+    // enough: an append already in flight would recreate the log after the
+    // sweep, and a later request reusing the id would replay it.
+    this.pendingNewEvents.delete(id);
+    await this.eventWriteQueues.get(id)?.drain();
     // Sidecars are swept inside the per-id lock, alongside the record file.
     // Sweeping them after `delete` returned would put the marker removal
     // outside the lock, where a conditional write can slip in between and be
@@ -495,24 +563,38 @@ export class FilesystemRequestStore implements RequestStore {
     // fact about anything. Dropping it keeps the skip above answering a
     // question about a record that exists.
     this.abortIntentMigrated.delete(id);
+    // An event write failure not yet reported belonged to the deleted
+    // request; the id's next owner must not be handed it by its first flush.
+    this.lastEventError.delete(id);
   }
 
   /**
    * Remove the sidecar files the request store writes alongside the primary
-   * record: the NDJSON event log and every runOnce file (legacy single-map and
-   * per-key). Without this, deleting a request orphans those files on disk and
-   * they accumulate for high-churn deployments. The events/legacy-runonce
-   * paths encode the id with `encodeURIComponent`; per-key runOnce files use
-   * `encodeSegment` (which also escapes `:`). Both agree for framework `req_*`
-   * ids; matching both prefixes keeps the sweep correct for any id.
+   * record: the NDJSON event log and every runOnce file (single-map, per-key,
+   * and per-key in the layout before the `@` boundary). Without this, deleting
+   * a request orphans those files on disk and they accumulate for high-churn
+   * deployments.
+   *
+   * Per-key files are matched by prefix. In the current layout the prefix ends
+   * at the first `@`, which no encoded id contains, so it matches this id's
+   * files and no other's. Older per-key files carry no such boundary (see
+   * {@link toLegacyRunOnceKeyPath}); see {@link classifyLegacyRunOnceKeyFile}
+   * for which are removed, which are quarantined, and which are left.
    */
   private async deleteSidecars(id: string): Promise<void> {
-    const exact = new Set([
+    // `<id>.events.json` and `<id>.runonce.json` are also the record files of
+    // the requests whose ids are `<id>.events` and `<id>.runonce`. Such a file
+    // that reads back as that record is left; see `isRecordFile`.
+    const exactJson = new Set([
       path.basename(toEventsPath(this.rootDir, id)),
-      path.basename(toRunOncePath(this.rootDir, id)),
-      path.basename(toAbortMarkerPath(this.rootDir, id))
+      path.basename(toRunOncePath(this.rootDir, id))
     ]);
-    const runOncePrefixes = [
+    const abortMarker = path.basename(toAbortMarkerPath(this.rootDir, id));
+    const keyPrefix = runOnceKeyPrefix(id);
+    // The events/single-map paths encode the id with `encodeURIComponent`;
+    // per-key files use `encodeSegment` (which also escapes `:`). Both agree
+    // for framework `req_*` ids; matching both keeps the sweep correct for any id.
+    const legacyKeyPrefixes = [
       `${encodeURIComponent(id)}.runonce.`,
       `${encodeSegment(id)}.runonce.`
     ];
@@ -523,16 +605,89 @@ export class FilesystemRequestStore implements RequestStore {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
       throw err;
     }
-    await Promise.all(
+    // Every removal settles before a failure is reported, so no straggler
+    // from this attempt is still running when the caller retries.
+    const results = await Promise.allSettled(
       entries.map(async (name) => {
         const isPerKeyRunOnce =
-          name.endsWith(".json") &&
-          runOncePrefixes.some((prefix) => name.startsWith(prefix));
-        if (exact.has(name) || isPerKeyRunOnce) {
-          await rm(path.join(this.rootDir, name), { force: true });
+          name.startsWith(keyPrefix) && name.endsWith(".runonce");
+        const filePath = path.join(this.rootDir, name);
+        if (name === abortMarker || isPerKeyRunOnce) {
+          await rm(filePath, { force: true });
+          return;
+        }
+        if (exactJson.has(name)) {
+          if (!(await this.isRecordFile(name))) await rm(filePath, { force: true });
+          return;
+        }
+        const legacy = await this.classifyLegacyRunOnceKeyFile(name, legacyKeyPrefixes);
+        if (legacy === "remove") {
+          await rm(filePath, { force: true });
+        } else if (legacy === "quarantine") {
+          await rename(filePath, `${filePath}${QUARANTINE_SUFFIX}`).catch((err) => {
+            if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+          });
         }
       })
     );
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected"
+    );
+    if (failure !== undefined) throw failure.reason;
+  }
+
+  /**
+   * Whether the file `name` reads back as the record of the request whose id
+   * is the whole name (see {@link readsBackAsRecordFile}). A missing or
+   * unparseable file does not.
+   */
+  private async isRecordFile(name: string): Promise<boolean> {
+    let content: string;
+    try {
+      content = await readFile(path.join(this.rootDir, name), "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw err;
+    }
+    try {
+      return readsBackAsRecordFile(name, JSON.parse(content) as unknown);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * What deleting the request whose prefixes are given does to `name`, when it
+   * may be a per-key runOnce file in the pre-`@` layout.
+   *
+   * The name is `<id>.runonce.<key>.json` with `.` unescaped, and the same name
+   * is also the record file of the request whose id is the whole name. So:
+   *
+   * - `"keep"`: not such a file, or it reads back as that other request's
+   *   record.
+   * - `"remove"`: `.runonce.` appears once, so this id and this key are the
+   *   only way to read the name.
+   * - `"quarantine"`: `.runonce.` appears more than once, so another id could
+   *   have written the same name (`foo.runonce.bar.runonce.step.json` is both
+   *   ("foo", "bar.runonce.step") and ("foo.runonce.bar", "step")). Left where
+   *   it is, the next request to take this id could read another request's
+   *   result as its own; removed, it could be another live request's. It is
+   *   renamed out of every read path instead, which cannot hand a result to
+   *   the wrong request. The price, only for such ids and only for results
+   *   stored before the upgrade, is that the other request may run that step
+   *   again.
+   */
+  private async classifyLegacyRunOnceKeyFile(
+    name: string,
+    prefixes: readonly string[]
+  ): Promise<"keep" | "remove" | "quarantine"> {
+    if (!name.endsWith(".json")) return "keep";
+    const prefix = prefixes.find((candidate) => name.startsWith(candidate));
+    if (prefix === undefined) return "keep";
+    const keyPart = name.slice(prefix.length, -".json".length);
+    if (keyPart.length === 0) return "keep";
+    if (await this.isRecordFile(name)) return "keep";
+    return name.split(".runonce.").length > 2 ? "quarantine" : "remove";
   }
 
   async list(options?: RequestListOptions): Promise<RequestRecord[]> {
@@ -726,8 +881,24 @@ export class FilesystemRequestStore implements RequestStore {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
 
-    // Lazy fallback: a legacy single-map file written by an older version.
-    // Legacy files are read-only after upgrade — never rewritten.
+    // Lazy fallbacks for files written by older versions, which are read-only
+    // after upgrade — never rewritten. First the per-key file in the layout
+    // before the `@` boundary, then the single-map file before that.
+    //
+    // An older per-key file that reads back as the record whose id is its
+    // whole name is not served: it may be that request's record, which delete
+    // leaves in place, and serving it could hand a previous owner's result to
+    // whoever takes this id next. A genuine result of that shape costs one
+    // re-run of its step.
+    const legacyKeyPath = toLegacyRunOnceKeyPath(this.rootDir, requestId, key);
+    try {
+      const value = JSON.parse(await readFile(legacyKeyPath, "utf8")) as unknown;
+      if (!readsBackAsRecordFile(path.basename(legacyKeyPath), value)) {
+        return { found: true, value };
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
     const legacyPath = toRunOncePath(this.rootDir, requestId);
     let map: Record<string, unknown>;
     try {
@@ -739,6 +910,9 @@ export class FilesystemRequestStore implements RequestStore {
       }
       throw error;
     }
+    // The single-map name is also the record file of request `<id>.runonce`;
+    // that record is never read as this request's results.
+    if (readsBackAsRecordFile(path.basename(legacyPath), map)) return { found: false };
     if (!Object.prototype.hasOwnProperty.call(map, key)) return { found: false };
     return { found: true, value: map[key] };
   }

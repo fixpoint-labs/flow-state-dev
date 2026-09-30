@@ -30,9 +30,10 @@
  * and the seat's turn goes on. A refusal the dispatch returns at once fails
  * the call by name: an id nobody opened (`session-not-found`), a session of
  * another channel kind (`session-not-addressable`), or a host whose dispatcher
- * hands work to an external queue (`external-dispatcher`), where a delivery
- * into an existing session is refused before anything is enqueued. So the
- * tool works where dispatch runs in process.
+ * hands work to an external queue with no shared lease backend
+ * (`external-dispatcher`), where a delivery into an existing session is
+ * refused before anything is enqueued. So the tool works where dispatch runs
+ * in process, or where queue workers share a lease backend.
  *
  * ## One line per routed post
  *

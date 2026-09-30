@@ -15,6 +15,7 @@ import type {
 } from "@flow-state-dev/core";
 import type { CreateFlowApiRouterOptions, FlowApiRouter } from "../routes/createFlowApiRouter";
 import type { FlowDispatcher } from "../transports/dispatcher";
+import type { ConcurrencyLeaseBackend } from "../transports/concurrency/lease-backend";
 import type {
   InProcessPrincipal,
   InProcessPrincipalQuestion
@@ -93,6 +94,22 @@ export interface WorkerAdapter {
   startWorker(runtime: FlowStateRuntime): WorkerHandle;
   /** Release backend resources (queues, connections). Called by `dispose()`. */
   close?(): Promise<void>;
+  /**
+   * An ordered-lease backend shared by every process of the deployment, for
+   * the engine's concurrency arbiter to keep its lines in.
+   *
+   * Supplied by an adapter whose runs land in several processes, so a
+   * session's `queue` / `reject` policy holds across all of them. The
+   * arbiter keeps the policy; the backend only orders places on a key. With
+   * one, a delivery into an existing session is accepted and carries its
+   * place on the job (`DispatchEnvelope.leasePlace`), which the adapter's
+   * worker waits on and gives back.
+   *
+   * Absent → each process arbitrates only its own in-process runs, work handed
+   * to the queue is not arbitrated, and a delivery into an existing session is
+   * refused `external-dispatcher`.
+   */
+  readonly leaseBackend?: ConcurrencyLeaseBackend;
 }
 
 export interface CreateFlowStateOptions<

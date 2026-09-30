@@ -1,0 +1,172 @@
+[
+  {
+    "epic": "devforce-tasks--t0--feature",
+    "principal": {
+      "userId": "u_devforce_lab"
+    },
+    "checkout": "/ws/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/devforce-tasks--t0--feature/fix-1--implement",
+    "branch": "conductor/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/devforce-tasks--t0--feature/fix-1--implement"
+  },
+  {
+    "epic": "devforce-tasks--t0--feature",
+    "principal": {
+      "userId": "alice@example.com",
+      "tenantId": "acme"
+    },
+    "checkout": "/ws/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/devforce-tasks--t0--feature/fix-1--implement",
+    "branch": "conductor/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/devforce-tasks--t0--feature/fix-1--implement"
+  },
+  {
+    "epic": "conductor-tasks--t0--harness-manager",
+    "principal": {
+      "userId": "u_devforce_lab"
+    },
+    "checkout": "/ws/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/conductor-tasks--t0--harness-manager/fix-1--implement",
+    "branch": "conductor/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/conductor-tasks--t0--harness-manager/fix-1--implement"
+  },
+  {
+    "epic": "conductor-tasks--t0--harness-manager",
+    "principal": {
+      "userId": "alice@example.com",
+      "tenantId": "acme"
+    },
+    "checkout": "/ws/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/conductor-tasks--t0--harness-manager/fix-1--implement",
+    "branch": "conductor/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/conductor-tasks--t0--harness-manager/fix-1--implement"
+  },
+  {
+    "epic": "conductor-tasks--t1h0123abcd--epic",
+    "principal": {
+      "userId": "u_devforce_lab"
+    },
+    "checkout": "/ws/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/conductor-tasks--t1h0123abcd--epic/fix-1--implement",
+    "branch": "conductor/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/conductor-tasks--t1h0123abcd--epic/fix-1--implement"
+  },
+  {
+    "epic": "conductor-tasks--t1h0123abcd--epic",
+    "principal": {
+      "userId": "alice@example.com",
+      "tenantId": "acme"
+    },
+    "checkout": "/ws/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/conductor-tasks--t1h0123abcd--epic/fix-1--implement",
+    "branch": "conductor/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/conductor-tasks--t1h0123abcd--epic/fix-1--implement"
+  },
+  {
+    "epic": "slot-test",
+    "principal": {
+      "userId": "u_devforce_lab"
+    },
+    "checkout": "/ws/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/slot-test/fix-1--implement",
+    "branch": "conductor/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/slot-test/fix-1--implement"
+  },
+  {
+    "epic": "slot-test",
+    "principal": {
+      "userId": "alice@example.com",
+      "tenantId": "acme"
+    },
+    "checkout": "/ws/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/slot-test/fix-1--implement",
+    "branch": "conductor/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/slot-test/fix-1--implement"
+  },
+  {
+    "epic": "eng-feature-work",
+    "principal": {
+      "userId": "u_devforce_lab"
+    },
+    "checkout": "/ws/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/eng-feature-work/fix-1--implement",
+    "branch": "conductor/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/eng-feature-work/fix-1--implement"
+  },
+  {
+    "epic": "eng-feature-work",
+    "principal": {
+      "userId": "alice@example.com",
+      "tenantId": "acme"
+    },
+    "checkout": "/ws/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/eng-feature-work/fix-1--implement",
+    "branch": "conductor/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/eng-feature-work/fix-1--implement"
+  },
+  {
+    "epic": "eng_feature_work",
+    "principal": {
+      "userId": "u_devforce_lab"
+    },
+    "checkout": "/ws/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/eng_feature_work/fix-1--implement",
+    "branch": "conductor/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/eng_feature_work/fix-1--implement"
+  },
+  {
+    "epic": "eng_feature_work",
+    "principal": {
+      "userId": "alice@example.com",
+      "tenantId": "acme"
+    },
+    "checkout": "/ws/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/eng_feature_work/fix-1--implement",
+    "branch": "conductor/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/eng_feature_work/fix-1--implement"
+  },
+  {
+    "epic": "Foo",
+    "principal": {
+      "userId": "u_devforce_lab"
+    },
+    "checkout": "/ws/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/foo/fix-1--implement",
+    "branch": "conductor/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/foo/fix-1--implement"
+  },
+  {
+    "epic": "Foo",
+    "principal": {
+      "userId": "alice@example.com",
+      "tenantId": "acme"
+    },
+    "checkout": "/ws/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/foo/fix-1--implement",
+    "branch": "conductor/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/foo/fix-1--implement"
+  },
+  {
+    "epic": "foo",
+    "principal": {
+      "userId": "u_devforce_lab"
+    },
+    "checkout": "/ws/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/foo/fix-1--implement",
+    "branch": "conductor/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/foo/fix-1--implement"
+  },
+  {
+    "epic": "foo",
+    "principal": {
+      "userId": "alice@example.com",
+      "tenantId": "acme"
+    },
+    "checkout": "/ws/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/foo/fix-1--implement",
+    "branch": "conductor/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/foo/fix-1--implement"
+  },
+  {
+    "epic": "A__B--c",
+    "principal": {
+      "userId": "u_devforce_lab"
+    },
+    "checkout": "/ws/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/a__b--c/fix-1--implement",
+    "branch": "conductor/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/a__b--c/fix-1--implement"
+  },
+  {
+    "epic": "A__B--c",
+    "principal": {
+      "userId": "alice@example.com",
+      "tenantId": "acme"
+    },
+    "checkout": "/ws/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/a__b--c/fix-1--implement",
+    "branch": "conductor/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/a__b--c/fix-1--implement"
+  },
+  {
+    "epic": "x1",
+    "principal": {
+      "userId": "u_devforce_lab"
+    },
+    "checkout": "/ws/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/x1/fix-1--implement",
+    "branch": "conductor/t0/h3d621417fd062c5a4e41d352126cd57beb1103b00a371044f98d92ff7e468a83/x1/fix-1--implement"
+  },
+  {
+    "epic": "x1",
+    "principal": {
+      "userId": "alice@example.com",
+      "tenantId": "acme"
+    },
+    "checkout": "/ws/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/x1/fix-1--implement",
+    "branch": "conductor/t1hce1652a2be5c9c124c56af74514e40e16c0aa4330e2a38805fb382cb9b53e641/hf47852bf5a56b22e0a2cb5922583db18773f47b657c7cedc0a5cc5e4934c0e42/x1/fix-1--implement"
+  }
+]

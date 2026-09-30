@@ -1,7 +1,7 @@
 /**
  * Route-level tests for SSE resume cursor threading (FIX-685 Slice A).
  *
- * The terminal and GC'd-record replay branches of `handleRequestStream`
+ * The terminal and record-less replay branches of `handleRequestStream`
  * must push the resolved resume cursor into `getEvents(requestId,
  * fromSequence)` so pre-cursor events are never read from the store, and
  * the item-reconstruction fallback must only fire when the *unfiltered*
@@ -143,11 +143,15 @@ describe("stream resume — route cursor threading (Slice A)", () => {
     expect(body).toBe("");
   });
 
-  it("GC'd-record replay reads the store from the resume cursor", async () => {
+  // The record-less branch replays events stored under an id with no record.
+  // A deleted request no longer produces that state: `delete` takes the
+  // events with the record, so a freed id cannot replay its previous run
+  // (last case below). Who may read the branch at all is the route's call.
+  it("record-less replay reads the store from the resume cursor", async () => {
     const stores: StoreRegistry = createInMemoryStores();
     const requestId = "req_gcd_cursor";
 
-    // No request record (GC'd) — only persisted events survive.
+    // Events with no request record.
     stores.request.persistEvents(requestId, streamEvents(requestId));
     await stores.request.flushEvents(requestId);
 
@@ -167,12 +171,29 @@ describe("stream resume — route cursor threading (Slice A)", () => {
     expect(body).not.toContain("\"sequence_number\":1");
   });
 
-  it("GC'd-record replay 404s only when the unfiltered log is empty", async () => {
+  it("record-less replay 404s only when the unfiltered log is empty", async () => {
     const stores: StoreRegistry = createInMemoryStores();
     const requestId = "req_gcd_unknown";
 
     const request = new Request("https://x/y/stream");
     const response = await handleRequestStream(request, streamRoute(requestId), {
+      registry: stubRegistry(),
+      stores
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  it("a deleted request's id replays nothing: its events went with the record", async () => {
+    const stores: StoreRegistry = createInMemoryStores();
+    const requestId = "req_deleted";
+
+    await stores.request.set(requestId, completedRecord(requestId, [makeMessageItem(requestId, 0)]), "any");
+    stores.request.persistEvents(requestId, streamEvents(requestId));
+    await stores.request.flushEvents(requestId);
+    await stores.request.delete(requestId);
+
+    const response = await handleRequestStream(new Request("https://x/y/stream"), streamRoute(requestId), {
       registry: stubRegistry(),
       stores
     });

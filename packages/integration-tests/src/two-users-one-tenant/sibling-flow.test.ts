@@ -17,7 +17,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { ORG_ID, startTwoUserServer, waitFor, type TwoUserServer } from "./harness";
+import {
+  ORG_ID,
+  shortenRetentionGrace,
+  startTwoUserServer,
+  waitFor,
+  type TwoUserServer
+} from "./harness";
 
 const noteSchema = z.object({ text: z.string() });
 
@@ -214,8 +220,11 @@ describe("a request whose record is gone but whose events remain", () => {
   it("answers the second user as an unused id, not with the owner's replay", async () => {
     const alice = server.as("alice");
     const bob = server.as("bob");
+    const waitOutRetentionGrace = shortenRetentionGrace();
 
-    // Alice's first entry, then a second whose retention evicts the first's record.
+    // Alice's first entry, then a second whose retention evicts the first's
+    // record. Retention spares a request for a short window after its run
+    // finishes, so the second completes only once the first is past it.
     const first = await alice(`/diary/s_diary/actions/write`, {
       method: "POST",
       body: JSON.stringify({ input: { text: NOTE_TEXT } })
@@ -223,6 +232,7 @@ describe("a request whose record is gone but whose events remain", () => {
     expect(first.status).toBe(202);
     const firstId = first.headers.get("x-request-id")!;
     expect(await settled(alice, "diary", firstId)).toBe("completed");
+    await waitOutRetentionGrace();
     const second = await alice(`/diary/s_diary/actions/write`, {
       method: "POST",
       body: JSON.stringify({ input: { text: "a later entry" } })

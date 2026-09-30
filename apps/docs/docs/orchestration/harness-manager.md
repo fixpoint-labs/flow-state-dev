@@ -116,6 +116,8 @@ Answer it and the run picks up **the same coding session** — not a new one tol
 
 Each task gets its own directory, derived from who the run belongs to plus the board, the issue and the phase. Deriving rather than storing is what lets any later session resolve the same path.
 
+The board can be your own task collection or one a channel holds. A channel's board has an id like `eng.feature.work`; the manager accepts it as is and names the folder and branch with it. An id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is built. Two boards whose ids differ other than in letter case never end up in the same checkout, and a board whose id worked before keeps its folders and branches. On a channel's board, a row's run belongs to the person who started it, and another person's drain doesn't run it. Give the draining board `runOwnerDispatcher()` and that drain leaves the row untouched, without spending one of its attempts.
+
 A **lease** keeps two attempts out of one tree: a lock file beside the checkout, taken before the tree is provisioned and released on every exit. It carries a token unique to the acquisition, so a replacement's lock is never removed by a process the replacement displaced.
 
 The lease is not a mutex. Checking the lock and removing it are two steps, not one, so a lock whose holder has died is reclaimed after a stale window rather than instantly. That window is sized past the longest a live attempt could legitimately hold it, which is why the manager refuses a configuration that shortens it below that.

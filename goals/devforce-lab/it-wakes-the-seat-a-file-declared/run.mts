@@ -55,7 +55,6 @@ import {
 } from "../lab/host.mts";
 import { harnessStub, type HarnessStubOptions, type StubRun } from "../lab/harness-stub.mts";
 import { BASE_REF, commitAll, createScratchRepo } from "../lab/scratch-repo.mts";
-import { LEDGER_ID } from "../lab/board.mts";
 import { PHASE } from "../lab/phase.mts";
 
 stripIntentOverrides();
@@ -514,7 +513,7 @@ await runGoal(async () => {
         // being THE derived checkout.
         const expected = checkoutPathFor(workspace, {
           principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID } as never,
-          epic: LEDGER_ID,
+          epic: lab.board.id,
           issue: fixture.row.issue,
           phase: PHASE,
         });
@@ -528,7 +527,7 @@ await runGoal(async () => {
         // between the issue and the phase must not land in the same tree.
         const shifted = checkoutPathFor(workspace, {
           principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID } as never,
-          epic: LEDGER_ID,
+          epic: lab.board.id,
           issue: fixture.row.issue.slice(0, -1),
           phase: `${fixture.row.issue.slice(-1)}-${PHASE}`,
         });

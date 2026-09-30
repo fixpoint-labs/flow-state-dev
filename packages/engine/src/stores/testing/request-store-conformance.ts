@@ -122,6 +122,98 @@ export function createRequestStoreConformanceTests(
   }
 
   describe(`${name} (RequestStore subscribeToEvents conformance)`, () => {
+    // A request id is the caller's to choose. Between a stream's
+    // authorization and any read it makes after an await, the request can be
+    // deleted and the id taken by another owner. `isStillAuthorized` is how
+    // the caller fences that: a batch read after it no longer holds is never
+    // yielded, and the iterator ends.
+    describe("incarnation fence", () => {
+      const takeOver = async (store: RequestStore, requestId: string): Promise<void> => {
+        await store.delete(requestId);
+        await store.set(
+          requestId,
+          { ...makeRecord(requestId, "in_progress", []), userId: "u_bob", incarnation: "inc_bob" },
+          "any"
+        );
+        store.persistEvents(requestId, [
+          makeRequestStreamEvent(requestId, 1),
+          makeRequestStreamEvent(requestId, 2),
+          makeRequestCompletedEvent(requestId, 3)
+        ]);
+        await store.flushEvents(requestId);
+      };
+      const drain = async (
+        iter: AsyncIterableIterator<RequestStreamEvent>,
+        controller: AbortController
+      ): Promise<number[]> => {
+        const seen: number[] = [];
+        const timer = setTimeout(() => controller.abort(), liveTolerance * 3);
+        try {
+          for (;;) {
+            const next = await iter.next();
+            if (next.done) break;
+            seen.push(next.value.sequence_number);
+          }
+        } finally {
+          clearTimeout(timer);
+        }
+        return seen;
+      };
+
+      it("yields nothing when the id changed hands before the first read", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_fence_first_read";
+          await store.set(
+            requestId,
+            { ...makeRecord(requestId, "in_progress", []), incarnation: "inc_alice" },
+            "any"
+          );
+          const controller = new AbortController();
+          const iter = store.subscribeToEvents(requestId, {
+            fromSequence: 0,
+            signal: controller.signal,
+            livenessTimeoutMs: 60_000,
+            isStillAuthorized: async () =>
+              (await store.get(requestId))?.incarnation === "inc_alice"
+          });
+
+          // The iterator has not read yet: its first read is still pending.
+          await takeOver(store, requestId);
+
+          expect(await drain(iter, controller)).toEqual([]);
+        });
+      });
+
+      it("yields nothing of the new owner's after a later read", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_fence_later_read";
+          await store.set(
+            requestId,
+            { ...makeRecord(requestId, "in_progress", []), incarnation: "inc_alice" },
+            "any"
+          );
+          store.persistEvents(requestId, [makeRequestStreamEvent(requestId, 1)]);
+          await store.flushEvents(requestId);
+          const controller = new AbortController();
+          const iter = store.subscribeToEvents(requestId, {
+            fromSequence: 0,
+            signal: controller.signal,
+            livenessTimeoutMs: 60_000,
+            isStillAuthorized: async () =>
+              (await store.get(requestId))?.incarnation === "inc_alice"
+          });
+          const first = await iter.next();
+          expect(first.done ? undefined : first.value.sequence_number).toBe(1);
+
+          // Alice's request is deleted and Bob's takes the id before the
+          // stream's next read.
+          await takeOver(store, requestId);
+
+          expect(await drain(iter, controller)).toEqual([]);
+        });
+      });
+    });
+
     it("catch-up phase yields events strictly greater than fromSequence", async () => {
       await withStore(async (store) => {
         for (let i = 1; i <= 5; i += 1) {
@@ -497,6 +589,79 @@ export function createRequestStoreConformanceTests(
     });
   });
 
+  // Request ids are caller-supplied, so a later request may take a deleted
+  // one. Nothing the deleted run left under the id may reach it.
+  describe(`${name} (RequestStore delete conformance)`, () => {
+    it("delete removes the request's events and runOnce results with the record", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_delete_children";
+        await store.set(requestId, makeRecord(requestId, "completed", []), "any");
+        store.persistEvents(requestId, [
+          makeRequestStreamEvent(requestId, 1),
+          makeRequestCompletedEvent(requestId, 2)
+        ]);
+        await store.flushEvents(requestId);
+        await store.setRunOnceResult(requestId, "step", { owner: "previous" });
+
+        await store.delete(requestId);
+
+        expect(await store.get(requestId)).toBeUndefined();
+        expect(await store.getEvents(requestId)).toEqual([]);
+        expect(await store.getRunOnceResult(requestId, "step")).toEqual({ found: false });
+      });
+    });
+
+    it("delete is not undone by events persisted just before it", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_delete_queued";
+        await store.set(requestId, makeRecord(requestId, "completed", []), "any");
+        // No flush: the write is still queued when delete runs.
+        store.persistEvents(requestId, [makeRequestStreamEvent(requestId, 1)]);
+
+        await store.delete(requestId);
+        await store.flushEvents(requestId);
+
+        expect(await store.getEvents(requestId)).toEqual([]);
+      });
+    });
+
+    it("delete leaves other requests' events in place", async () => {
+      await withStore(async (store) => {
+        store.persistEvents("req_delete_other", [makeRequestStreamEvent("req_delete_other", 1)]);
+        await store.flushEvents("req_delete_other");
+
+        await store.delete("req_delete_target");
+
+        const kept = await store.getEvents("req_delete_other");
+        expect(kept.map((e) => e.sequence_number)).toEqual([1]);
+      });
+    });
+
+    it("delete leaves the runOnce results of an id that merely starts with it", async () => {
+      // Request ids are caller-supplied. Deleting "foo" must not reach a
+      // result stored for "foo.runonce.bar": losing it would let that
+      // request's step run a second time.
+      await withStore(async (store) => {
+        await store.set("foo", makeRecord("foo", "completed", []), "any");
+        await store.set(
+          "foo.runonce.bar",
+          makeRecord("foo.runonce.bar", "completed", []),
+          "any"
+        );
+        await store.setRunOnceResult("foo", "step", { owner: "foo" });
+        await store.setRunOnceResult("foo.runonce.bar", "step", { owner: "bar" });
+
+        await store.delete("foo");
+
+        expect(await store.getRunOnceResult("foo.runonce.bar", "step")).toEqual({
+          found: true,
+          value: { owner: "bar" }
+        });
+        expect(await store.getRunOnceResult("foo", "step")).toEqual({ found: false });
+      });
+    });
+  });
+
   describe(`${name} (RequestStore incarnation conformance)`, () => {
     // A request's incarnation is its identity: the engine stamps it once and
     // every later context reads it back from here. An adapter that dropped it
@@ -512,6 +677,41 @@ export function createRequestStoreConformanceTests(
         expect((await store.get(requestId))?.incarnation).toBe("inc_conformance");
         const listed = await store.list({ userId: "u_conformance" });
         expect(listed.find((r) => r.id === requestId)?.incarnation).toBe("inc_conformance");
+      });
+    });
+  });
+
+  describe(`${name} (RequestStore action-result conformance)`, () => {
+    // The action's result rides the final status write (FIX-1661), and the
+    // session request list is where a client reads it. An adapter that kept
+    // only its indexed columns, or dropped a nested value, would leave every
+    // finished request reading as "no result recorded".
+    it("carries a record's result through set, get and list", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_result_conformance";
+        const record = makeRecord(requestId, "in_progress", []);
+        const result = {
+          output: { ok: false, error: "task is cancelled", nested: [1, { deep: null }] },
+          error: { code: "execution_error", message: "hook failed" }
+        };
+        await store.set(requestId, record, "absent");
+        await store.set(requestId, { ...record, status: "failed", updatedAt: record.updatedAt + 1, result }, "any");
+
+        expect((await store.get(requestId))?.result).toEqual(result);
+        const listed = await store.list({ userId: "u_conformance" });
+        expect(listed.find((r) => r.id === requestId)?.result).toEqual(result);
+      });
+    });
+
+    it("lists a record written without a result with the field absent", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_result_legacy_conformance";
+        const record = makeRecord(requestId, "completed", []);
+        await store.set(requestId, record, "absent");
+
+        expect((await store.get(requestId))?.result == null).toBe(true);
+        const listed = await store.list({ userId: "u_conformance" });
+        expect(listed.find((r) => r.id === requestId)?.result == null).toBe(true);
       });
     });
   });
@@ -690,34 +890,182 @@ export function createRequestStoreConformanceTests(
         });
       });
 
-      // The identity fence: a caller that checked who owns the record passes
-      // its `createdAt`, so the write cannot land on another request that took
-      // the id after that check.
-      it("reports a record with another createdAt as absent, and writes nothing", async () => {
+      // The identity fence. A caller that checked who owns the record passes
+      // that record's incarnation, so the write lands only on the request the
+      // check read: never on another request that took the id afterwards, and
+      // never missing the checked one because a same-owner hand-off rewrote
+      // its `createdAt`. A record written before incarnations existed answers
+      // to `legacy_<createdAt>`, spelled out here rather than read from the
+      // engine's helper, so a store that states the rule in its own query
+      // language is held to the same string.
+      describe("identity fence (expectedIncarnation)", () => {
+        const stamped = (
+          requestId: string,
+          incarnation: string | null | undefined,
+          createdAt: number
+        ): RequestRecord => ({
+          ...makeRecord(requestId, "in_progress", []),
+          createdAt,
+          updatedAt: createdAt,
+          startedAtMs: createdAt,
+          ...(incarnation === undefined ? {} : { incarnation: incarnation as string })
+        });
+
+        async function fenced(store: RequestStore, requestId: string, expected: string) {
+          return store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now(),
+            expected
+          );
+        }
+
+        it("reports a request with another incarnation as absent, even with the same createdAt", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_same_ms";
+            await store.set(requestId, stamped(requestId, "inc_newer", 1_000), "any");
+
+            const missed = await fenced(store, requestId, "inc_checked");
+            expect(missed).toEqual({ applied: false, status: undefined });
+            expect(await store.isAbortRequested(requestId)).toBe(false);
+          });
+        });
+
+        it("applies to the same incarnation even when createdAt was rewritten", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_handed_off";
+            // What a same-owner hand-off leaves: a new createdAt, the kept incarnation.
+            await store.set(requestId, stamped(requestId, "inc_kept", 2_000), "any");
+
+            const hit = await fenced(store, requestId, "inc_kept");
+            expect(hit).toEqual({ applied: true, status: "in_progress" });
+            expect(await store.isAbortRequested(requestId)).toBe(true);
+          });
+        });
+
+        it("fences a legacy record on legacy_<createdAt>", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_legacy";
+            await store.set(requestId, stamped(requestId, undefined, 1_000), "any");
+
+            expect(await fenced(store, requestId, "legacy_1001")).toEqual({
+              applied: false,
+              status: undefined
+            });
+            expect(await store.isAbortRequested(requestId)).toBe(false);
+            expect(await fenced(store, requestId, "legacy_1000")).toEqual({
+              applied: true,
+              status: "in_progress"
+            });
+          });
+        });
+
+        it("fences a handed-off legacy record on the value it stores, not its new createdAt", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_legacy_handed_off";
+            await store.set(requestId, stamped(requestId, "legacy_1000", 2_000), "any");
+
+            expect(await fenced(store, requestId, "legacy_2000")).toEqual({
+              applied: false,
+              status: undefined
+            });
+            expect(await fenced(store, requestId, "legacy_1000")).toEqual({
+              applied: true,
+              status: "in_progress"
+            });
+          });
+        });
+
+        it("never matches a stamped request to a legacy fence", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_stamped_vs_legacy";
+            await store.set(requestId, stamped(requestId, "inc_new", 1_000), "any");
+
+            expect(await fenced(store, requestId, "legacy_1000")).toEqual({
+              applied: false,
+              status: undefined
+            });
+            expect(await store.isAbortRequested(requestId)).toBe(false);
+          });
+        });
+
+        it("treats a null incarnation as absent", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_null";
+            await store.set(requestId, stamped(requestId, null, 1_000), "any");
+
+            expect(await fenced(store, requestId, "legacy_1000")).toEqual({
+              applied: true,
+              status: "in_progress"
+            });
+          });
+        });
+
+        it("reports the terminal status, not absence, when the incarnation matches", async () => {
+          await withStore(async (store) => {
+            const requestId = "req_fence_terminal";
+            await store.set(
+              requestId,
+              { ...stamped(requestId, "inc_done", 1_000), status: "completed" },
+              "any"
+            );
+
+            expect(await fenced(store, requestId, "inc_done")).toEqual({
+              applied: false,
+              status: "completed"
+            });
+          });
+        });
+      });
+
+      // The same fence on the request's identity. Two records under one id can
+      // share a millisecond, so only the incarnation tells them apart.
+      it("reports a record with another incarnation as absent, even in the same millisecond", async () => {
         await withStore(async (store) => {
-          const requestId = "req_cond_fenced";
-          await seed(store, requestId);
-          const { createdAt } = (await store.get(requestId))!;
+          const requestId = "req_cond_incarnation";
+          const record = { ...makeRecord(requestId, "completed", []), incarnation: "inc_now" };
+          await store.set(requestId, record, "any");
 
           const missed = await store.setFieldsIfStatus(
             requestId,
-            { abortRequested: true },
-            ["in_progress"],
+            { finalizedAtMs: 1 },
+            ["completed"],
             Date.now(),
-            createdAt + 1
+            "inc_before"
           );
           expect(missed).toEqual({ applied: false, status: undefined });
-          expect(await store.isAbortRequested(requestId)).toBe(false);
+          expect((await store.get(requestId))?.finalizedAtMs).toBeUndefined();
 
           const hit = await store.setFieldsIfStatus(
             requestId,
-            { abortRequested: true },
-            ["in_progress"],
+            { finalizedAtMs: 1 },
+            ["completed"],
             Date.now(),
-            createdAt
+            "inc_now"
           );
-          expect(hit).toEqual({ applied: true, status: "in_progress" });
-          expect(await store.isAbortRequested(requestId)).toBe(true);
+          expect(hit).toEqual({ applied: true, status: "completed" });
+          expect((await store.get(requestId))?.finalizedAtMs).toBe(1);
+        });
+      });
+
+      // A record written before incarnations were stamped answers to the one
+      // derived from its `createdAt` (BP-030).
+      it("fences a record with no stored incarnation on legacy_<createdAt>", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_cond_incarnation_legacy";
+          await seed(store, requestId, "completed");
+          const { createdAt } = (await store.get(requestId))!;
+
+          const missed = await store.setFieldsIfStatus(
+            requestId, { finalizedAtMs: 1 }, ["completed"], Date.now(), "inc_other"
+          );
+          expect(missed).toEqual({ applied: false, status: undefined });
+
+          const hit = await store.setFieldsIfStatus(
+            requestId, { finalizedAtMs: 1 }, ["completed"], Date.now(), `legacy_${createdAt}`
+          );
+          expect(hit).toEqual({ applied: true, status: "completed" });
         });
       });
 

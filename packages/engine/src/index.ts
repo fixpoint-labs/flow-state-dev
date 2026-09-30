@@ -36,6 +36,7 @@ export {
   filesystemStores,
   inMemoryStores,
   resolveOrgStorageKey,
+  resolveRequestIncarnation,
   resolveTraceMaxRequests,
   resolveUserStorageKey,
   runWithCAS,
@@ -77,6 +78,7 @@ export type {
   OrgListOptions,
   OrgRecord,
   OrgStore,
+  RequestActionResult,
   RequestListOptions,
   RequestRecord,
   RequestStatus,
@@ -166,6 +168,7 @@ export {
   synthesizeRequestInterrupted,
   pollEvents,
   abortableSleep,
+  isBatchStillAuthorized,
   type ReadEventsFn
 } from "./stores/subscribe-helpers";
 export {

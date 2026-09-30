@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createBashBlocks, releaseBashSandbox } from "@flow-state-dev/tools/bash";
 import { z } from "zod";
-import { startTwoUserServer, waitFor, type TwoUserServer } from "./harness";
+import { shortenRetentionGrace, startTwoUserServer, waitFor, type TwoUserServer } from "./harness";
 
 const provider = { type: "local", scope: "run" } as const;
 const { bashCommand } = createBashBlocks({ provider });
@@ -149,6 +149,9 @@ describe("a run workspace, when another user sends the same request id", () => {
   it("after retention deleted the first request: Bob runs under that id and still sees an empty workspace", async () => {
     const alice = server.as("alice");
     const bob = server.as("bob");
+    // Retention spares a request for a window after its run finishes; keep
+    // it short so the polling below sees a real eviction.
+    shortenRetentionGrace();
 
     const a = await run(alice, "s_alice", ALICE_WRITES);
     expect(a.text).toContain(SECRET);

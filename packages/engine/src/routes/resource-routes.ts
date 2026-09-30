@@ -34,6 +34,7 @@ import {
   normalizeResourceState,
   parseResourceWriteState,
 } from "../resources/normalize-resource-state";
+import { normalizeScopeResourceContent } from "../context/resource-registry";
 import { ValidationError } from "../errors/flow-error";
 import { OWNER_ROW_REFUSAL, ownerKeyAdmits } from "../resources/owner-private";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
@@ -124,7 +125,13 @@ export async function handleGetResourceContent(
   if (!data) return jsonResponse(404, { error: "Scope data not found" });
 
   const state = normalizeResourceState(config, data.resources[found.storageKey]);
-  const rawContent = data.content[found.storageKey];
+  // Nothing persisted yet: serve the content the definition declares
+  // (`content` / `contentFile`), the same body a run's context is seeded with.
+  // Otherwise a declared document no run has written reads as null here while
+  // every block that reads it sees its body.
+  const rawContent =
+    data.content[found.storageKey] ??
+    normalizeScopeResourceContent({ [found.storageKey]: config }, undefined)[found.storageKey];
   const templateRaw = await resolveTemplateRaw(ctx, flow, route.sessionId, config);
   const content = await renderContent(config, rawContent, state, templateRaw);
 

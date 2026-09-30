@@ -183,6 +183,8 @@ interface InboundTransportHost {
   resolvePrincipal(ctx: PrincipalResolutionContext): Promise<ResolvedPrincipal>;
   /** True when `dispatch` hands the run to another process (a queue adapter). */
   readonly usesExternalDispatcher: boolean;
+  /** True when that external work is arbitrated over a lease backend the worker processes share. */
+  readonly arbitratesExternalDispatch?: boolean;
 }
 ```
 
@@ -190,7 +192,10 @@ interface InboundTransportHost {
 refuse what cannot be fenced across a process boundary: a `dispatcher()`
 delivering into an *existing* session (`{ id }`) is refused with
 `external-dispatcher` on such a host, while a `{ key }` child and every
-transport dispatch take the ordinary enqueue path.
+transport dispatch take the ordinary enqueue path. The refusal is lifted when
+`host.arbitratesExternalDispatch` is true, which the host sets when its arbiter
+runs over a lease backend the worker adapter supplied: the delivery is then
+fenced by its place on the session's key, which every process honours.
 
 One operation runs *from inside a block* through the same host, installed on
 `RuntimeConfig.requestHost` by `createFlowState` (and as a last resort by the
@@ -229,11 +234,15 @@ transport inherits it at the one shared seam. The arbiter resolves the
 effective policy (`action.concurrency ?? flow.request.concurrency ?? "allow"`)
 and a key (default: the tenant-namespaced session id):
 
-- `reject` claims the key synchronously; if another request holds it, `dispatch`
-  throws `ConcurrencyRejectedError` (status 409, carrying the in-flight
+- `reject` claims the key; if another request holds it, the dispatch is refused
+  with `ConcurrencyRejectedError` (status 409, carrying the in-flight
   `requestId`) before a record exists, so the dropped caller never materializes
-  a run. This extends the set of synchronous `dispatch` throws beyond
-  malformed/unknown-flow.
+  a run. Over the in-memory default the claim is synchronous and `dispatch`
+  throws, which extends the set of synchronous `dispatch` throws beyond
+  malformed/unknown-flow. Over a shared lease backend the claim is a round
+  trip, taken only after the session and request-id ownership read passes, and
+  the refusal rejects `accepted` and `finished` instead. Every adapter maps
+  both: HTTP to 409, webhook and scheduled to a skipped 200, MCP to server-busy.
 - `queue` defers the *start* of execution behind the key (FIFO) while still
   returning the handle synchronously, so an SSE client gets an open stream while
   queued. An over-long wait rejects `finished` with `ConcurrencyQueueTimeoutError`
@@ -241,9 +250,18 @@ and a key (default: the tenant-namespaced session id):
 - `allow` (default) and a key that resolves to `undefined` (no session, `"none"`,
   or a custom key returning `undefined`) are passthroughs — today's behavior.
 
-The key is acquired and released within a single `dispatch` lifecycle (released
-when `finished` settles), so there is no cross-call handoff and no leaked key.
-v1 is in-process / single-instance; cross-worker enforcement is future work.
+On the in-process path the key is acquired and released within a single
+`dispatch` lifecycle (released when `finished` settles, and on every failure
+before the run starts), so there is no cross-call handoff and no leaked key. On
+the external path over a shared lease backend the place is handed off
+(`ConcurrencyAdmission.handOff()`) to the job once it is enqueued, and the
+worker gives it back when the run ends; every failure before the enqueue gives
+it back in the dispatching process. The arbiter keeps its lines in a
+lease backend (`transports/concurrency/lease-backend.ts`): in memory by default,
+which serializes one process, or the one a queue adapter supplies as
+`WorkerAdapter.leaseBackend`, which every process of the deployment shares.
+Only then is an external dispatch arbitrated: its place rides the job as
+`DispatchEnvelope.leasePlace`, and the worker waits its turn and gives it back.
 
 `host.resolvePrincipal` is the auth integration point. Per-flow
 `authentication.resolvePrincipal` (set on `defineFlow`) wins over the
