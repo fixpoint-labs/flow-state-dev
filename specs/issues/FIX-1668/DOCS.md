@@ -32,10 +32,11 @@ doesn't always belong to the flow you read the board through. The session knows 
 
 ```ts
 const session = await client.getSession(task.run.sessionId);
-const flowKind = session.flowId ?? boardFlowKind; // the run's flow, not the board's
+const flowKind = session.flowId; // the run's flow, never the board's
 ```
 
-Pass that `flowKind` to `useSession` and to the request reads. Through any other flow, a live
+Every session a run is dispatched into records its flow, so there is nothing to fall back to.
+Don't substitute the board's flow. Pass that `flowKind` to `useSession` and to the request reads. Through any other flow, a live
 run's stream returns 404.
 
 The `run_linked` change is published on the run's own session, like everything else the run writes
