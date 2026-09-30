@@ -2,28 +2,40 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs**
 
-Destination: `apps/kitchen-sink/.env.local.example`. Two operations, both **replace**. No site
-page, README or package README changes.
+Three **replace** operations. No site page or package README changes.
 
-## 1. Replace the pooling / Neon block (Jake's comment: lines 12–19)
+## 1. `.env.local.example`: replace the whole `VERCEL=1` paragraph
 
-Replaces the comment that describes pooling and Neon behaviour in `lib/server.ts`.
-
-```sh
-# With a database URL set, the app runs the prod profile on vercelPostgresStores()
-# from @flow-state-dev/vercel. That adapter sets the pool options for Vercel and
-# swaps in Neon's WebSocket driver when the URL is a *.neon.tech endpoint. There
-# is nothing to configure here for either.
-```
-
-## 2. Replace the `STORE_TYPE` note (Jake's comment: line 22)
-
-Replaces the line saying `STORE_TYPE` is ignored when `DATABASE_URL` is set.
+Replace all of it: the lead-in ("When deployed on Vercel, VERCEL=1 is set automatically… That
+triggers two things in lib/server.ts"), the pool and Neon list, and the trailer ("Setting
+VERCEL=1 locally forces the same behavior for testing"). Reviewers quoted the range as about
+lines 13–19. Confirm it on `main`.
 
 ```sh
-# STORE_TYPE is ignored when FSD_DB_URL or DATABASE_URL is set, because a
-# database URL selects the prod profile. Setting FSD_ENV=dev overrides that.
+# Deploying to Vercel needs no extra variables beyond a database URL.
 ```
 
-The second sentence covers [BR-3](BUSINESS-RULES.md). If the surrounding comments are
-terser, the implementer may drop it; the first sentence may not be dropped.
+The line doesn't name the store adapter. If an implementer adds a pointer, the import path is
+`@flow-state-dev/vercel/store`. The package root doesn't export `vercelPostgresStores()`.
+
+## 2. `.env.local.example`: replace the `STORE_TYPE` note (about lines 21–22)
+
+```sh
+# With FSD_ENV unset, a database URL (FSD_DB_URL, else DATABASE_URL) selects
+# the prod profile and STORE_TYPE is ignored; with no URL, STORE_TYPE picks the
+# local store. FSD_ENV=dev or FSD_ENV=prod picks the profile explicitly.
+# Full rules: README → Environment variables.
+```
+
+The `FSD_ENV` qualifier is **required**. Without it, a reader who sets `FSD_ENV=dev` along with
+a URL is told the wrong thing ([BR-3](BUSINESS-RULES.md)). You may reword the note, but don't
+drop the qualifier.
+
+## 3. `README.md` env table: the `STORE_TYPE` and `FSD_DB_URL` rows (L246-247)
+
+```diff
+-… Ignored when a database URL is set. |
++… Ignored when a database URL is set, unless `FSD_ENV=dev`. |
+-… When set, the app stores everything there. …
++… When set, the app stores everything there, unless `FSD_ENV=dev`. …
+```

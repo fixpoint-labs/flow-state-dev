@@ -4,49 +4,55 @@
 
 ## Surface
 
-One file: `apps/kitchen-sink/.env.local.example`. Replace the two comment blocks Jake's issue
-comment names (around lines 12–19: pooling and Neon in `lib/server.ts`; around line 22:
-`STORE_TYPE` ignored under `DATABASE_URL`) with the text in [DOCS.md](DOCS.md). Keep every
-variable line and placeholder as is.
+- **`apps/kitchen-sink/.env.local.example`.** Replace the **whole** `VERCEL=1` paragraph,
+  including its lead-in ("When deployed on Vercel, VERCEL=1 is set automatically… That triggers
+  two things") and its trailer ("Setting VERCEL=1 locally forces the same behavior for
+  testing"). Replace the `STORE_TYPE` note too. Keep every variable line and placeholder as it
+  is.
+- **`apps/kitchen-sink/README.md`.** Change the `STORE_TYPE` and `FSD_DB_URL` rows of the env
+  table (L246-247 on `7a23a753`).
 
-**Access note:** in the spec worker's session, reading `.env*` files was denied by permission
-settings, so the exact current lines were taken from Jake's comment, not read. The implementer
-needs read access to that file; confirm the line numbers against it before editing.
+**Confirm the line numbers on `main` before you edit.** The spec worker couldn't read `.env*`
+files in its session, so the ranges come from reviewer quotes. Jake's comment on the issue gave
+12–19 and 22. The second look read the paragraph as 13–19 and the `STORE_TYPE` note as 21–22.
 
 ## Order
 
-1. Read `.env.local.example`, `apps/kitchen-sink/fsdev.config.ts` (lines 1–15, 47, 175–190) and
-   `packages/vercel/src/store.ts` (header, `build()`).
-2. Apply [DOCS.md](DOCS.md), adjusting wording to the surrounding comment style.
-3. Fill the checks table below on the fix commit, and paste it in the PR.
+1. Read `.env.local.example`, `fsdev.config.ts:175-190` and README L240-250.
+2. Apply [DOCS.md](DOCS.md). #2350 fixed a precedence comment in the example file. If that
+   comment sits next to the `STORE_TYPE` note, merge the new text into it instead of saying the
+   same thing twice.
+3. Run the checks below and paste their output in the PR.
 
 ## Checks
 
-Fill on the fix commit. The control column is the same row at `15087779b`; rows 1–6 must fail
-there.
+```bash
+git grep -n "lib/server\|VERCEL=1" apps/kitchen-sink/.env.local.example   # must print nothing
+git grep -n "FSD_ENV" apps/kitchen-sink/.env.local.example                # the qualifier is present
+git grep -n "STORE_TYPE\|FSD_DB_URL" apps/kitchen-sink/README.md          # rows 246-247 name FSD_ENV=dev
+git diff --stat main... -- apps/kitchen-sink                              # two files
+```
 
-| # | Question | Doc line that answers it | Code that makes it true |
-|---|---|---|---|
-| 1 | Does a direct conversation's `escalate` land on the channel board? | README, "talk to a specialist directly" | `workforce/blocks/escalate.ts` |
-| 2 | Where are `support.help` and the specialists in the rail? | README, "expand `channel`" / "expand `agent`" | rail grouping |
-| 3 | Can working outlast the answer? | README, "can show as working for a few seconds" | — (observed) |
-| 4 | Which model do specialists answer with? | README, "`chat` intent … `fsdev.config.ts`" | `models.intents` in `fsdev.config.ts` |
-| 5 | When does the fallback take a post? | channels.md, "the member who takes a post the route can't place" + step 3 | `routeByPurpose` |
-| 6 | Which database URL wins? | `.env.local.example`, persistence comment | `fsdev.config.ts:47` |
-| 7 | Where does pool tuning live? | `.env.local.example`, new comment | `packages/vercel/src/store.ts` header; `git grep -n "lib/server" -- apps/kitchen-sink` prints nothing |
-| 8 | When is `STORE_TYPE` ignored? | `.env.local.example`, new comment; README env table | `defaultProfile` in `fsdev.config.ts` |
+**Red state:** on `main`, the first command prints the paragraph's lines. It may also print a
+`VERCEL=1` line outside that paragraph. No reviewer quoted one, but the spec worker couldn't read
+the file to rule it out. If one turns up, check whether it's accurate before you widen the
+replacement.
 
-Rows 1–6 hold on `main` today (checked while drafting); rows 7–8 are what this PR makes true.
+#2350 closed the six gaps on `main`. Don't re-check them here.
 
 ## Guardrails
 
-- **Touch only `.env.local.example`,** because the fence forbids re-landing #2350's bullets and
-  the README already says the right thing.
-- **No real values in the example file,** because it is committed and copied as-is.
-- **No changeset,** because `apps/kitchen-sink` is private (BP-022).
-- **Don't route through `docs-writer`/`docs-editor`,** because this is a code comment in a config
-  example, not user-facing site prose; a two-line correction doesn't earn the isolation.
+- **Don't re-land a #2350 bullet or touch the channels guide.** The fence forbids it.
+- **Put no real values in the example file.** It's committed and copied as-is.
+- **Add no changeset.** `apps/kitchen-sink` is private (BP-022).
+- **Change no code,** including the stale `fsdev.config.ts` header comment (L11-13). That's out
+  of scope.
+- **Don't route this through `docs-writer`/`docs-editor`.** These are config comments and two
+  table cells.
 
 ## Notes from review
 
-None yet.
+- Cursor suggested keeping the `VERCEL=1` local-testing sentence. We declined, because nothing
+  on the store path reads `VERCEL` ([DECISIONS → E2](DECISIONS.md#engineering-calls)).
+- Both reviewers noted, as out of scope, that `fsdev.config.ts` L11-13 still says deploys set
+  `FSD_ENV=prod`. Next to `defaultProfile`, that's stale.

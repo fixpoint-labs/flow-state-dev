@@ -2,46 +2,43 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-The FSD Architect's fence on the issue fixes the scope class: docs and copy only, land only the
-"still open after #2350" set, never re-land a #2350 bullet, never change `escalate` or close
-FIX-1591. One call is left: what this issue does now that #2350 closed that set.
-
-## The tree
-
-```mermaid
-flowchart TD
-  I["FIX-1631"] --> D1["D1 · ship the two residual example-file lines here"]
-  D1 -.->|"rejected · a new ticket for two comments"| X1a["close now and file the residue separately"]
-  D1 -.->|"rejected · re-lands #2350 bullets"| X1b["reword the six gaps again"]
-  I --> E1["engineering · no product bug filed for the working row"]
-```
-
-Solid edges are what was chosen. Dashed edges lost, and the label says why.
+The FSD Architect's fence on the issue sets the scope class: docs and copy only. Never re-land a
+#2350 bullet, and never change `escalate` or close FIX-1591.
 
 <a name="d1"></a>
-## D1 · Ship only the two residual `.env.local.example` corrections under this issue; record the six gaps as closed by #2350
+## D1 · Decided: ship the residue under FIX-1631
 
-| | |
-|---|---|
-| **Instead of** | (a) Closing FIX-1631 as done by #2350 and filing the two residual lines as a new issue. (b) Re-auditing and rewording the six gaps in a second pass |
-| **Because** | Checked on `main` (`7a23a753`): the README now answers the direct-`escalate`, rail-group, working-row and which-model questions; the channels guide describes the fallback once; the example file has the right precedence. All six landed in #2350's commit `425cc4c1`. The two lines Jake found while fixing sit in the same example file, under the same bullet's intent: the file should agree with the code. (a) spends a ticket, a triage and a second spec-or-brief on two comments. (b) is what the fence forbids |
-| **Locks in** | One docs PR touching `apps/kitchen-sink/.env.local.example` only. FIX-1631's description is reframed to say the six gaps closed on #2350 and the residue closes here |
+The two stale statements in `.env.local.example`, plus the two README rows that make the same
+claim, ship here. The six listed gaps are recorded as closed by #2350 (`425cc4c1`).
 
-**What would change my mind:** the Architect reading the fence as the literal list, so anything
-not on it, however small, needs its own ticket. Then (a).
-
-**What being wrong costs:** two comment lines land under a label that didn't name them. Nothing
-a reader of the app sees changes either way.
-
-![D1: fix the residue here, chosen, beside closing and filing it separately; decided by ceremony per line changed](figures/d1-residue-here.svg)
-
-It comes down to ceremony: a separate issue costs a triage and a review for two comment lines.
+- **Instead of:** closing FIX-1631 and filing the residue as a new issue, or rewording the six
+  gaps again. The first spends a ticket and a triage on a few lines of comments. The fence
+  forbids the second.
+- **Why this isn't a sign-off ask:** the call costs close to nothing either way, and nothing a
+  user of the app sees changes. The second look and the Architect both said so.
+- **Locks in:** one docs PR that touches `.env.local.example` and the `STORE_TYPE` and
+  `FSD_DB_URL` rows of the README env table. FIX-1631's description is reframed to say #2350
+  closed the six gaps and the residue closes here.
 
 ## Engineering calls
 
-- **E1 · No product bug is filed for the lingering working row.** The README now says working
-  can outlast the answer while the specialist finishes its run, which is what happens. The issue
-  says a product fix is separate if someone judges it one; nobody has, and this spec doesn't.
+- **E1 · The README rows are in scope.** README L246-247 make the same wrong claim, that a
+  database URL always wins. They sit in a file this issue already names, so we fix them and keep
+  the goal, rather than narrowing the goal to the example file.
+- **E2 · The whole `VERCEL=1` paragraph goes, not just its middle.** Nothing on the store path
+  reads `VERCEL`. The header at `packages/vercel/src/store.ts:9` says so. The only reader in
+  `apps/kitchen-sink` is the bash sandbox capability
+  (`flows/chat-agent/shared/capabilities/bash.ts:92`), and the paragraph isn't about that. So
+  "setting `VERCEL=1` locally forces the same behaviour" is false for storage as well, and we
+  decline Cursor's suggestion to keep that sentence. To try the prod profile locally, set
+  `FSD_DB_URL`.
+- **E3 · One owner for the selection rules.** Four places describe how the app picks a profile:
+  `fsdev.config.ts`, `apps/kitchen-sink/CLAUDE.md`, the README env table and the example file.
+  The example file stops restating the rules and points at the README env table. It drops the
+  pool and Neon details, and no longer names the store adapter. No shared-helper refactor for
+  the `FSD_DB_URL ?? DATABASE_URL` read.
+- **E4 · No product bug is filed for the lingering working row.** The README already says the
+  working state can outlast the answer.
 
 ## Open
 
@@ -49,5 +46,13 @@ None.
 
 ## How it got here
 
-- **Draft** — framed against `main` after #2350 merged: the six listed gaps are closed there, so
-  the issue shrinks to the two stale statements Jake's comment found in `.env.local.example`.
+- **Draft:** framed against `main` after #2350 merged, which shrank the issue to two stale
+  statements in `.env.local.example`. D1 was put up as a sign-off.
+- **Round 1** (the second look, the FSD Architect, Cursor and Codex):
+  - D1 is recorded as decided, not asked.
+  - The README rows are in scope (E1).
+  - The whole `VERCEL=1` paragraph is replaced (E2).
+  - The pool and Neon details are dropped from the example file (E3).
+  - The `FSD_ENV` exception is required wording.
+  - Cut as out of proportion to the change: the figures, the six-row before-and-after table and
+    the control check at `15087779b`.

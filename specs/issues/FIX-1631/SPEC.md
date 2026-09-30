@@ -7,80 +7,67 @@ Improvement · docs · `apps/kitchen-sink` only · tiny · 1 PR · epic
 blocker · sibling of FIX-1607 · builds on
 [#2350](https://github.com/fixpoint-labs/flow-state-dev/pull/2350) (merged)
 
-## Six people, before and after
+## The problem
 
-| Someone who… | At `15087779b` (the walk-through) | On `main` today, after #2350 | After this issue |
-|---|---|---|---|
-| **talks to a specialist directly and it files a case** | Told the conversation is "separate from the channel", then finds the case on the channel's board | README says a case filed there lands on `support.help`'s `escalations` board | Unchanged |
-| **looks for `support.help` or a specialist in the rail** | Finds neither until they guess which collapsed group to open | README names the group to expand for each | Unchanged |
-| **watches a specialist answer** | Promised "working, then its answer"; sees working outlast the answer | README says working can stay a few seconds after the answer | Unchanged |
-| **asks which model the specialists use** | Nothing says | README: the `chat` intent in `fsdev.config.ts`, since no `WORKER.md` names one | Unchanged |
-| **reads the channels guide on the fallback member** | Two passages disagree | One description: the fallback takes a post the route can't place | Unchanged |
-| **copies `.env.local.example` to set up a database** | Told `DATABASE_URL` wins; the code reads `FSD_DB_URL` first | Order fixed. Still told about pooling in a `lib/server.ts` that no longer exists, and that `STORE_TYPE` is ignored only under `DATABASE_URL` | The file describes what the app does: pool tuning lives in the Vercel store adapter, and any database URL makes `STORE_TYPE` moot |
+#2350's last commit, `425cc4c1`, closed all six gaps this issue lists: direct `escalate` filing,
+where things sit in the rail, the lingering working row, which model the specialists use, the
+channels-guide fallback, and database URL precedence. What's left is the residue that Jake's
+comment on the issue names, plus the README rows the review found:
 
-All six "still open after #2350" gaps the issue lists were closed by #2350's last commit
-(`425cc4c1`), which merged. Jake's comment on the issue names what that fix left behind: two
-stale statements in the same example file. That residue is the whole of what this issue has
-left to ship.
+- **`.env.local.example` describes a `VERCEL=1` switch that no longer exists.** The paragraph
+  says Vercel sets `VERCEL=1`, that this "triggers two things in `lib/server.ts`" (pool tuning
+  and the Neon driver), and that setting it locally forces the same behaviour. `lib/server.ts` is
+  gone, and the store no longer reads `VERCEL`. The prod profile's store adapter supplies the
+  pool and Neon settings (`packages/vercel/src/store.ts:1-10`).
+- **The docs say a database URL always wins.** The example file says `STORE_TYPE` is ignored when
+  `DATABASE_URL` is set. The README env table says `STORE_TYPE` is "Ignored when a database URL
+  is set" (L246) and that with `FSD_DB_URL` set "the app stores everything there" (L247). All
+  three are wrong when `FSD_ENV=dev` is set, because an explicit `FSD_ENV` picks the profile and
+  the dev profile honours `STORE_TYPE` (`apps/kitchen-sink/fsdev.config.ts:175-190`).
 
 ## The goal, and how we'll know it's met
 
-**A reader following the kitchen-sink README, the channels guide and `.env.local.example` can
-answer each of the issue's six questions without reading code, and no statement in those three
-files contradicts what the app does on the commit the fix lands on.**
+**Nothing in the kitchen-sink README or `.env.local.example` tells a reader something about
+database setup that the app doesn't do.**
 
-| Is it the right goal? | |
-|---|---|
-| **The real need** | The issue's own desired outcome, with `.env.local.example` named because it is the one file of the three still wrong |
-| **Smaller, and rejected** | "Close it, #2350 did the work." Leaves two statements in a setup file that send a reader to a file that doesn't exist |
-| **Bigger, and not this issue's** | The lingering working row as a product timing bug · roster empty-state copy · anything that changes `escalate` or FIX-1591's call |
-| **Not done if** | Any of the six answers needs the code · the example file names a file or precedence the code doesn't have |
+- **Smaller, and rejected:** close it, because #2350 did the work. That leaves a setup file that
+  points at a file that doesn't exist.
+- **Bigger, and not this issue's:** treating the working row as a product timing bug, the stale
+  `fsdev.config.ts` header comment, and anything that changes `escalate` or FIX-1591's call.
 
-```mermaid
-flowchart LR
-  Q["the issue's six questions plus the two residual lines"] --> R["read README, channels guide, .env.local.example on the fix commit"]
-  R -->|"each answered and each claim matches the code it names"| P["PASS"]
-  C["control · the same reading at 15087779b"] -.-> R
-  R -.->|"under the control"| F["must FAIL · names the six gaps"]
-```
-
-The check reads the three files a first-time reader reads, and each claim against the line of
-code it describes. At the walk-through commit it must fail on all six gaps, or it reads
-something else.
-
-| How we verify | |
-|---|---|
-| **Goal check** | No automated goal check applies: this is prose. The proof is [PLAN.md → Checks](PLAN.md#checks), a table of question → the doc line that answers it → the code line that makes it true, filled on the fix commit |
-| **Control that must fail** | The same table at `15087779b`: all six rows fail (verified for the README rows while drafting) |
+**Evidence:** on the fix commit,
+`git grep -n "lib/server\|VERCEL=1" apps/kitchen-sink/.env.local.example` prints nothing, and
+both README rows name the `FSD_ENV` exception. The exact commands are in
+[PLAN.md → Checks](PLAN.md#checks).
 
 ## What changes
 
-![Where each of the issue's gaps went: three the issue already credited to #2350, the six still-open gaps closed by #2350's last commit, and the only remaining work is two comment corrections in the example env file](figures/what-changes.svg)
-
-Every gap the issue lists is already closed on `main`. What's left is two comment blocks in one
-file.
-
 ```diff
  # apps/kitchen-sink/.env.local.example  (shape only; exact text in DOCS.md)
--# … pooling and Neon behaviour in lib/server.ts …
-+# Pool tuning and the Neon driver swap live in vercelPostgresStores()
-+# (@flow-state-dev/vercel), which the prod profile uses.
+-# When deployed on Vercel, VERCEL=1 is set automatically … lib/server.ts …
+-# … Setting VERCEL=1 locally forces the same behavior for testing.
++# (the whole paragraph becomes one line: nothing extra to set for Vercel)
 -# STORE_TYPE is ignored when DATABASE_URL is set.
-+# STORE_TYPE is ignored when FSD_DB_URL or DATABASE_URL is set.
++# (defaults stated as "when FSD_ENV is unset", then a pointer to the README)
+
+ # apps/kitchen-sink/README.md, env table
+-| `STORE_TYPE` | … Ignored when a database URL is set. |
+-| `FSD_DB_URL` | … When set, the app stores everything there. … |
++| `STORE_TYPE` | … Ignored when a database URL is set, unless `FSD_ENV=dev`. |
++| `FSD_DB_URL` | … When set, the app stores everything there, unless `FSD_ENV=dev`. … |
 ```
+
+The example file stops restating how the app picks a profile. It points at the README env
+table, which owns those rules.
 
 ## What stays as it is
 
-The README, the channels guide, the app's behaviour, the by-design `escalate` filing, the
-lingering working row, and every bullet #2350 already landed.
+The app's behaviour, the channels guide, every other README line, the `escalate` filing (which
+works as designed), the lingering working row, and every bullet #2350 landed.
 
 ## Sign off
 
-**The goal, at that size.** If wrong: we hold a docs ticket open over two comments, or close it
-with a setup file that points at a missing file.
-
-- **[D1](DECISIONS.md#d1) · Ship only the two residual `.env.local.example` corrections under
-  this issue, and record the six gaps as closed by #2350.** If wrong: two lines land under a
-  ticket whose fence named a different list. **The one to weigh.**
+**Approve to merge.** The direction is decided ([D1](DECISIONS.md#d1)). If it's wrong, the cost
+is a comment and two table cells that still disagree with the code.
 
 **Open: none.**

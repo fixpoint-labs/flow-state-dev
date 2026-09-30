@@ -4,9 +4,7 @@
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | A reader asks where Postgres pool tuning or the Neon driver comes from | `.env.local.example` names `vercelPostgresStores()` in `@flow-state-dev/vercel`, and no file that doesn't exist | No `lib/server.ts` anywhere under `apps/kitchen-sink` on the fix commit ([PLAN → Checks](PLAN.md#checks), row 7) |
-| BR-2 | A reader sets `FSD_DB_URL` and `STORE_TYPE=filesystem` together | The example file says `STORE_TYPE` is ignored when either database URL is set, matching `defaultProfile: databaseUrl ? "prod" : "dev"` in `fsdev.config.ts` | Row 8 |
-| BR-3 | A reader sets `FSD_ENV=dev` with a database URL | Nothing in the example file contradicts it: an explicit `FSD_ENV` picks the profile. The file may say so in a clause; it must not claim the URL always wins | Row 8 |
-| BR-4 | Any of the six gaps from the walk-through | Its answer on `main` is unchanged by this PR | The diff touches `apps/kitchen-sink/.env.local.example` only |
-| BR-5 | The PR lands | Nothing a user of the app sees changes: no code, no product copy, no `escalate` behaviour | Same diff check. No changeset (private app, BP-022) |
-| BR-6 | The example file gains or keeps a variable line | It holds placeholders only, never a real key or connection string | Read of the diff |
+| BR-1 | A reader copies `.env.local.example` | It names no `lib/server.ts`, no `VERCEL=1` switch, and no pool or Neon details | The `git grep` in [PLAN → Checks](PLAN.md#checks) prints nothing |
+| BR-2 | A reader sets `FSD_DB_URL` or `DATABASE_URL` and leaves `FSD_ENV` unset | The example file and README say the app uses the prod profile and ignores `STORE_TYPE` | Read against `defaultProfile` at `fsdev.config.ts:190` |
+| BR-3 | A reader sets `FSD_ENV=dev` along with a database URL | Neither file says the URL always wins. Every "a URL selects prod" or "`STORE_TYPE` is ignored" claim is qualified by `FSD_ENV` | Read against `fsdev.config.ts:175-189` |
+| BR-4 | The PR lands | It changes `apps/kitchen-sink/.env.local.example` and the `STORE_TYPE` and `FSD_DB_URL` rows of `apps/kitchen-sink/README.md`, and nothing else | `git diff --stat main...` lists those two files, and the README hunk covers those two rows only |
