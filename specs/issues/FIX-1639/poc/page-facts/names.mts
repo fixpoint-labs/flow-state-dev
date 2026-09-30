@@ -1,5 +1,7 @@
 /**
- * FIX-1639 · poc/page-facts/names.mts — throwaway, retained as evidence.
+ * FIX-1639 · poc/page-facts/names.mts — retained as evidence. A one-time pre-merge check:
+ * the implementer runs it once, on the final page, in the implementation PR. It is not an
+ * ongoing gate, and nothing maintains its manifest after that PR merges.
  *
  * Re-derives the page's factual base from `main` instead of trusting the draft: every name a
  * reader could type from the proposed prose in ../../DOCS.md resolves to something that ships.
@@ -10,12 +12,25 @@
  *     reference page that already publishes it.
  *  3. TOTALITY: a span with no classification fails the run. A new name added to the page
  *     without a check here is a failure, not a pass.
+ *  4. ROUTE: a concrete `/api/flows/<segment>/…` route on the page names the id of a flow the
+ *     page's code registers. The segment is the registered instance's id: for a singleton its
+ *     `kind`, for a collection member the id its factory was called with, never the `flows`
+ *     map key. Proved at runtime, once per run, on one host:
+ *       singleton  `kind: "billing"` registered as `flows: { payments: billing() }` answers a
+ *                  webhook at `/api/flows/billing/…` (202) and 404s at `/api/flows/payments/…`;
+ *       collection `kind: "tenant-billing"`, `cardinality: "collection"`, registered as
+ *                  `flows: { acme: tenantBilling({ id: "acme-billing" }) }` answers at
+ *                  `/api/flows/acme-billing/…` (202) and 404s at `/api/flows/tenant-billing/…`
+ *                  and at `/api/flows/acme/…`.
  *
  * Controls, each must FAIL:
  *   CONTROL=planted       the page gains `notifyTopic`, classified as a core export
  *   CONTROL=unclassified  the page gains `madeUpOption` with no classification
  *   CONTROL=false-option  the page gains `dispatcher({ delay })`, classified as a dispatcher
  *                         option: proves the type walk rejects an option that doesn't exist
+ *   CONTROL=wrong-segment the page's host registers the flow as `flows: { payments: billing() }`
+ *                         and gains a webhook route addressed by that map key (`payments`),
+ *                         which is not the flow's id
  *
  * Run from the repo root:  pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
  * After publishing:         PAGE=apps/docs/guides/keeping-a-flow-running.md pnpm exec tsx …
@@ -42,6 +57,10 @@ let quoted = PAGE
 if (CONTROL === "planted") quoted.push("Subscribe other flows with `notifyTopic`.");
 if (CONTROL === "unclassified") quoted.push("Set `madeUpOption` on the host.");
 if (CONTROL === "false-option") quoted.push("Send it later with `dispatcher({ delay })`.");
+if (CONTROL === "wrong-segment") {
+  quoted = quoted.map((l) => l.replace("flows: { billing: billing() }", "flows: { payments: billing() }"));
+  quoted.push("Point Stripe at `POST /api/flows/payments/webhooks/stripe`.");
+}
 
 const fences: string[] = [];
 const prose: string[] = [];
@@ -135,6 +154,94 @@ const S = (file: string, text: string): Check => () => {
   const p = join(ROOT, file);
   return existsSync(p) && readFileSync(p, "utf8").includes(text) ? null : `"${text}" not in ${file}`;
 };
+/**
+ * What addresses `/api/flows/<segment>/…` on the shipped runtime. One host registers a
+ * singleton (`kind: "billing"` under the map key `payments`) and a collection member
+ * (`kind: "tenant-billing"`, id `acme-billing`, under the map key `acme`), then POSTs one
+ * webhook to each candidate segment.
+ */
+type RouteProbe = {
+  singleton: { kind: number; mapKey: number };
+  collection: { id: number; kind: number; mapKey: number };
+};
+async function probeRouteAddress(): Promise<RouteProbe> {
+  const { z } = await import("zod");
+  const core = await import("../../../../../packages/core/src/index.ts");
+  const engine = await import("../../../../../packages/engine/src/index.ts");
+  const quiet = { log: console.log, info: console.info, warn: console.warn, debug: console.debug };
+  console.log = console.info = console.warn = console.debug = () => {};
+  try {
+    const work = core.handler({ name: "work", inputSchema: z.object({}), outputSchema: z.object({}),
+      execute: async () => ({}) });
+    const billing = core.defineFlow({
+      kind: "billing", actions: {},
+      authentication: { defaultUserId: "system", requireUser: false },
+      webhooks: { stripe: { on: { "invoice.paid": core.defineWebhookBinding({ block: work, input: () => ({}) }) } } }
+    });
+    const tenantBilling = core.defineFlow({
+      kind: "tenant-billing", cardinality: "collection", actions: {},
+      authentication: { defaultUserId: "system", requireUser: false },
+      webhooks: { stripe: { on: { "invoice.paid": core.defineWebhookBinding({ block: work, input: () => ({}) }) } } }
+    });
+    const state = engine.createFlowState({
+      flows: { payments: billing(), acme: tenantBilling({ id: "acme-billing" }) },
+      stores: { default: { primary: engine.inMemoryStores() } },
+      adapters: [engine.createWebhookTransportAdapter({
+        providers: { stripe: { verify: () => true, eventType: (p) => (p as { type: string }).type } }
+      })]
+    });
+    const router = await state.getRouter();
+    const post = async (seg: string) => (await router.POST(
+      new Request(`http://localhost/api/flows/${seg}/webhooks/stripe`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "invoice.paid" })
+      }),
+      { params: { path: [seg, "webhooks", "stripe"] } }
+    )).status;
+    const result: RouteProbe = {
+      singleton: { kind: await post("billing"), mapKey: await post("payments") },
+      collection: { id: await post("acme-billing"), kind: await post("tenant-billing"), mapKey: await post("acme") }
+    };
+    await new Promise((r) => setTimeout(r, 20));
+    await state.dispose();
+    return result;
+  } finally {
+    Object.assign(console, quiet);
+  }
+}
+const ROUTE_PROBE = await probeRouteAddress();
+
+/** What the probe must show for "the segment is the flow's id" to hold, on both shapes. */
+const PROBE_HOLDS =
+  ROUTE_PROBE.singleton.kind === 202 && ROUTE_PROBE.singleton.mapKey === 404 &&
+  ROUTE_PROBE.collection.id === 202 && ROUTE_PROBE.collection.kind === 404 &&
+  ROUTE_PROBE.collection.mapKey === 404;
+
+/**
+ * The route's flow segment is the id of a flow the page's code registers: a singleton's
+ * `kind`, or the `id` a collection member's factory was called with.
+ */
+const ROUTE = (span: string): Check => () => {
+  const seg = /\/api\/flows\/([^/]+)\//.exec(span)?.[1];
+  if (seg === undefined) return `no flow segment in ${span}`;
+  if (!PROBE_HOLDS) {
+    return `the runtime no longer addresses the route by the flow's id (${JSON.stringify(ROUTE_PROBE)})`;
+  }
+  const ids = new Set<string>();
+  const collectionKinds = new Set<string>();
+  for (const f of fences) {
+    const kinds = [...f.matchAll(/kind:\s*"([^"]+)"/g)].map((m) => m[1]!);
+    for (const k of kinds) (/cardinality:\s*"collection"/.test(f) ? collectionKinds : ids).add(k);
+    for (const m of f.matchAll(/\w+\(\{\s*id:\s*"([^"]+)"/g)) ids.add(m[1]!);
+  }
+  const mapKeys = new Set(fences.flatMap((f) => [...f.matchAll(/flows:\s*\{\s*(\w+):/g)].map((m) => m[1]!)));
+  if (!ids.has(seg)) {
+    return `segment "${seg}" is not the id of a flow the page registers (${[...ids].join(", ")})` +
+      (collectionKinds.has(seg) ? `; it is a collection's kind, which the route ignores` : "") +
+      (mapKeys.has(seg) ? `; it is the \`flows\` map key, which the route ignores` : "");
+  }
+  return null;
+};
 const PKG = (spec: string): Check => () => (existsSync(join(pkgDir(spec), "package.json")) ? null : `${spec} missing`);
 
 const WEBHOOKS_REF = "apps/docs/docs/server/webhooks.md";
@@ -154,9 +261,19 @@ const MANIFEST: Record<string, Check[]> = {
   DispatchRefusedError: [E("@flow-state-dev/core", "DispatchRefusedError")],
   "POST /api/flows/:flowKind/schedules/:scheduleId/dispatch": [S(SCHEDULED_REF, "POST /api/flows/:flowKind/schedules/:scheduleId/dispatch")],
   "POST /api/flows/:flowKind/webhooks/:provider": [S(WEBHOOKS_REF, "POST /api/flows/:flowKind/webhooks/:provider")],
-  "POST /api/flows/billing/schedules/monthly-invoices/dispatch": [S(SCHEDULED_REF, "/api/flows/billing/schedules/monthly-invoices/dispatch")],
-  "POST /api/flows/billing/webhooks/stripe": [S(WEBHOOKS_REF, "POST /api/flows/billing/webhooks/stripe")],
+  "POST /api/flows/billing/schedules/monthly-invoices/dispatch": [S(SCHEDULED_REF, "/api/flows/billing/schedules/monthly-invoices/dispatch"),
+    ROUTE("POST /api/flows/billing/schedules/monthly-invoices/dispatch")],
+  "POST /api/flows/billing/webhooks/stripe": [S(WEBHOOKS_REF, "POST /api/flows/billing/webhooks/stripe"),
+    ROUTE("POST /api/flows/billing/webhooks/stripe")],
+  "onBackgroundWork: (p) => after(() => p)": [P("@flow-state-dev/engine", "CreateFlowStateOptions", "onBackgroundWork"),
+    S("apps/docs/docs/server/setup.md", "onBackgroundWork: (p) => after(() => p)")],
+  after: [S("apps/docs/guides/deploying-to-vercel.md", 'import { after } from "next/server"')],
+  "next/server": [S("apps/docs/guides/deploying-to-vercel.md", 'import { after } from "next/server"')],
+  dispatchLocal: [P("@flow-state-dev/engine", "InProcessDispatcher", "dispatchLocal"),
+    S("packages/engine/src/transports/host/createInboundTransportHost.ts", '"dispatchLocal" in effectiveDispatcher')],
   adapters: [P("@flow-state-dev/engine", "CreateFlowStateOptions", "adapters")],
+  flows: [P("@flow-state-dev/engine", "CreateFlowStateOptions", "flows")],
+  kind: [P("@flow-state-dev/core", "FlowDefinition", "kind"), ROUTE("POST /api/flows/billing/webhooks/stripe")],
   "authentication.resolvePrincipal": [P("@flow-state-dev/core", "FlowDefinition", "authentication", "resolvePrincipal")],
   resolvePrincipal: [P("@flow-state-dev/core", "FlowDefinition", "authentication", "resolvePrincipal")],
   "ctx.source": [P("@flow-state-dev/core", "FlowDefinition", "authentication", "resolvePrincipal", "(0)", "source")],
@@ -206,6 +323,7 @@ const MANIFEST: Record<string, Check[]> = {
 };
 if (CONTROL === "planted") MANIFEST.notifyTopic = [E("@flow-state-dev/core", "notifyTopic")];
 if (CONTROL === "false-option") MANIFEST["dispatcher({ delay })"] = [dispatcherOpt("delay")];
+if (CONTROL === "wrong-segment") MANIFEST["POST /api/flows/payments/webhooks/stripe"] = [ROUTE("POST /api/flows/payments/webhooks/stripe")];
 
 // ── run ──────────────────────────────────────────────────────────────────────
 const failures: string[] = [];
@@ -238,6 +356,9 @@ const unused = Object.keys(MANIFEST).filter((k) => !spans.includes(k));
 
 console.log(`${CONTROL ? `CONTROL=${CONTROL} (must FAIL)` : "page names vs main"}`);
 console.log(`fences=${fences.length} spans=${spans.length} checks passed=${passed} failed=${failures.length}`);
+console.log(`route probe: singleton billing→${ROUTE_PROBE.singleton.kind} payments(map key)→${ROUTE_PROBE.singleton.mapKey}` +
+  ` · collection acme-billing(id)→${ROUTE_PROBE.collection.id} tenant-billing(kind)→${ROUTE_PROBE.collection.kind}` +
+  ` acme(map key)→${ROUTE_PROBE.collection.mapKey}`);
 for (const f of failures) console.log(`FAIL  ${f}`);
 if (unused.length) console.log(`note: classified but no longer on the page: ${unused.join(", ")}`);
 process.exit(failures.length === 0 ? 0 : 1);
