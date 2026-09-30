@@ -13,7 +13,7 @@ import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { continueRequest, createFlowRegistry, createInMemoryStores, runAction } from "../src";
 import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
-import { buildRequestActionResult } from "../src/execution/request-action-result";
+import { buildRequestActionResult, recordOutput } from "../src/execution/request-action-result";
 
 const answer = { ok: false, error: "task is cancelled, which is terminal" };
 
@@ -191,12 +191,12 @@ describe("the request record's action result", () => {
         throw new Error("not serializable");
       }
     };
-    expect(buildRequestActionResult({ status: "completed", output: hostile })).toEqual({ outputNotRecorded: true });
-    expect(buildRequestActionResult({ status: "failed", answered: { output: hostile } })).toEqual({
+    expect(buildRequestActionResult({ status: "completed", recorded: recordOutput(hostile) })).toEqual({ outputNotRecorded: true });
+    expect(buildRequestActionResult({ status: "failed", answered: recordOutput(hostile) })).toEqual({
       outputNotRecorded: true
     });
     // A toJSON that returns undefined stringifies to `undefined` rather than throwing.
-    expect(buildRequestActionResult({ status: "completed", output: { toJSON: () => undefined } })).toEqual({
+    expect(buildRequestActionResult({ status: "completed", recorded: recordOutput({ toJSON: () => undefined }) })).toEqual({
       outputNotRecorded: true
     });
   });
@@ -222,25 +222,57 @@ describe("the request record's action result", () => {
       ["a typed array", new Uint8Array([1, 2])]
     ];
     for (const [label, output] of lossy) {
-      expect(buildRequestActionResult({ status: "completed", output }), label).toEqual({ outputNotRecorded: true });
+      expect(buildRequestActionResult({ status: "completed", recorded: recordOutput(output) }), label).toEqual({ outputNotRecorded: true });
     }
     // What JSON keeps faithfully is stored as JSON: a Date as its ISO string,
     // an undefined-valued key left out (it reads back undefined either way).
     const at = new Date("2026-09-30T00:00:00.000Z");
     expect(
-      buildRequestActionResult({ status: "completed", output: { at, ok: false, detail: undefined } })
+      buildRequestActionResult({ status: "completed", recorded: recordOutput({ at, ok: false, detail: undefined }) })
     ).toEqual({ output: { at: "2026-09-30T00:00:00.000Z", ok: false } });
     // A class instance's own fields and a boxed primitive survive JSON.
     class Verdict {
       constructor(readonly ok: boolean) {}
     }
     expect(
-      buildRequestActionResult({ status: "completed", output: { v: new Verdict(true), n: Object(3) } })
+      buildRequestActionResult({ status: "completed", recorded: recordOutput({ v: new Verdict(true), n: Object(3) }) })
     ).toEqual({ output: { v: { ok: true }, n: 3 } });
   });
 
   // Storage is uncapped by design (D1): a large answer is still the answer,
   // and only a listing that opts into outputs pays to carry it.
+  // The record holds the action's answer, not what a completion hook later
+  // did to the object the action returned.
+  it("records the answer as the action returned it, before a completion hook mutates it (BR-1)", async () => {
+    const returned = { ok: true, note: "as answered" };
+    const hookFails = { ok: true, note: "as answered" };
+    const { record } = await run(
+      oneAction({
+        execute: () => returned,
+        flowOnCompleted: () => {
+          returned.note = "changed by a hook";
+        }
+      }),
+      "req_hook_mutates"
+    );
+    expect(record?.status).toBe("completed");
+    expect(record?.result).toEqual({ output: { ok: true, note: "as answered" } });
+
+    // The same holds when the mutating hook then fails the request.
+    const failed = await run(
+      oneAction({
+        execute: () => hookFails,
+        onCompleted: () => {
+          hookFails.note = "changed by a hook";
+          throw new Error("hook failed after mutating");
+        }
+      }),
+      "req_hook_mutates_fails"
+    );
+    expect(failed.record?.status).toBe("failed");
+    expect(failed.record?.result?.output).toEqual({ ok: true, note: "as answered" });
+  });
+
   it("stores a large output whole", async () => {
     const blob = "é".repeat(256 * 1024);
     const { record, returned } = await run(oneAction({ execute: () => ({ blob }) }), "req_large");

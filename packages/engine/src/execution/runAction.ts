@@ -37,7 +37,7 @@ import { normalizeError, displayCause } from "../errors/normalize-error";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
 import { executeBlock } from "./executeBlock";
-import { settledRecordFields, type RequestSettlement } from "./request-action-result";
+import { recordOutput, settledRecordFields, type RecordedOutput, type RequestSettlement } from "./request-action-result";
 import { getResponseItems, getResponseItemCount } from "./internal/response";
 import {
   applyNormalizedErrorSeam,
@@ -1841,7 +1841,9 @@ export async function runActionInternal<
 
   // What the action block returned, once it has. Set before the completion
   // hooks run, so a hook that fails the request leaves it on the record.
-  let actionAnswer: { output: unknown } | undefined;
+  // `recorded` is the record's snapshot, taken then too, so a hook that
+  // mutates the returned object cannot change the recorded answer.
+  let actionAnswer: { output: unknown; recorded: RecordedOutput } | undefined;
 
   try {
     // Re-throw deferred parse error now that we have ctx for error handling.
@@ -2007,7 +2009,7 @@ export async function runActionInternal<
     // The action has answered. Anything that fails the request from here on
     // (a completion hook, the token budget) keeps this answer on the failed
     // record beside its own error (FIX-1661).
-    actionAnswer = { output: result.output };
+    actionAnswer = { output: result.output, recorded: recordOutput(result.output) };
 
     const tokenBudget = getActionTokenBudget(action);
     let terminalStatus: "completed" | "incomplete" = "completed";
@@ -2142,7 +2144,7 @@ export async function runActionInternal<
     await settleRequestRecord(
       options.stores,
       requestId,
-      { status: terminalStatus, output: result.output },
+      { status: terminalStatus, recorded: actionAnswer.recorded },
       { completedAtMs: completedAt, items }
     );
 
@@ -2477,7 +2479,7 @@ export async function runActionInternal<
       await settleRequestRecord(
         options.stores,
         requestId,
-        { status: "failed", error: normalized, answered: actionAnswer },
+        { status: "failed", error: normalized, answered: actionAnswer?.recorded },
         { failedAtMs: failedAt, items: itemsToPersist() }
       );
 

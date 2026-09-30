@@ -19,18 +19,33 @@ import type { RequestActionResult } from "../stores/types";
 export type SettlementError = { code?: string; message: string };
 
 /**
+ * The action's output as the record stores it, taken by {@link recordOutput}
+ * the moment the action answers: before the completion hooks run, so a hook
+ * that mutates the returned object cannot change the recorded answer.
+ */
+export type RecordedOutput = Pick<RequestActionResult, "output" | "outputNotRecorded">;
+
+/**
+ * Snapshot an action's return value for its record. See
+ * {@link RecordedOutput} for when to call it.
+ */
+export function recordOutput(output: unknown): RecordedOutput {
+  return recordableOutput(output);
+}
+
+/**
  * How a request ended, with what its record's `result` is built from.
  *
- * - `completed` / `incomplete` — the action's own return value (`undefined`
- *   when it returned nothing).
+ * - `completed` / `incomplete` — the action's own return value, recorded when
+ *   it answered.
  * - `failed` — the cause, when the writer has one, and `answered` when the
  *   action had returned before something after it (a completion hook) failed
  *   the request.
  * - `aborted` / `interrupted` / `suspended` — no result, by design.
  */
 export type RequestSettlement =
-  | { status: "completed" | "incomplete"; output: unknown }
-  | { status: "failed"; error?: SettlementError; answered?: { output: unknown } }
+  | { status: "completed" | "incomplete"; recorded: RecordedOutput }
+  | { status: "failed"; error?: SettlementError; answered?: RecordedOutput }
   | { status: "aborted" }
   | { status: "interrupted" }
   | { status: "suspended" };
@@ -43,10 +58,10 @@ export function buildRequestActionResult(settlement: RequestSettlement): Request
   switch (settlement.status) {
     case "completed":
     case "incomplete":
-      return recordableOutput(settlement.output);
+      return { ...settlement.recorded };
     case "failed":
       return {
-        ...(settlement.answered !== undefined ? recordableOutput(settlement.answered.output) : {}),
+        ...(settlement.answered ?? {}),
         ...(settlement.error !== undefined
           ? { error: { code: settlement.error.code ?? "execution_error", message: settlement.error.message } }
           : {})
@@ -84,7 +99,7 @@ export function settledRecordFields(settlement: RequestSettlement): {
  * an object key whose value is `undefined` is left out, which reads back the
  * same.
  */
-function recordableOutput(output: unknown): RequestActionResult {
+function recordableOutput(output: unknown): RecordedOutput {
   if (output === undefined) return {};
   let text: string | undefined;
   let lossy = false;
