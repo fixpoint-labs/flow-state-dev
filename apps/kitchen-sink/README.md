@@ -243,8 +243,8 @@ Most are optional. These are the ones you're likely to set:
 | `OPENAI_API_KEY` | Optional. Enables voice. |
 | `KITCHEN_SINK_TEST_MODE` | `1` runs every model as a script and needs no key. See [Without a model key](#without-a-model-key). |
 | `PORT` | The port the server listens on. Defaults to `3000`. |
-| `STORE_TYPE` | `filesystem` keeps sessions and hired seats in `.fsdev/data` across restarts. The default, `memory`, starts empty each time. Ignored when a database URL is set. |
-| `FSD_DB_URL` | A Postgres connection string. When set, the app stores everything there. `DATABASE_URL` is read if `FSD_DB_URL` isn't set. |
+| `STORE_TYPE` | `filesystem` keeps sessions and hired seats in `.fsdev/data` across restarts. The default, `memory`, starts empty each time. Ignored when a database URL is set, unless `FSD_ENV=dev`. |
+| `FSD_DB_URL` | A Postgres connection string. When set, the app stores everything there, unless `FSD_ENV=dev`. `DATABASE_URL` is read if `FSD_DB_URL` isn't set. |
 | `REDIS_URL` | Redis for BullMQ background jobs, local dev only. `docker compose -f docker-compose.dev.yml up -d`, run from `apps/kitchen-sink`, starts one. |
 | `FSD_BULLMQ_DISPATCH` | `1` sends every action dispatch through the BullMQ queue instead of running it in process. Needs `REDIS_URL`. |
 | `WORKFORCE_ADMIN_TOKENS` | `<org>:<token>` pairs. Registers the `workforce-admin` flow. See [Hiring while the app runs](#hiring-while-the-app-runs). |
