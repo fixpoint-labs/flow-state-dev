@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 430" role="img" aria-label="What changes. Today, twelve of the component registry's files paint status in fixed colours no theme can reach, the registry ships no colour defaults of its own, and the navigator and panels read their own custom properties with neutral fallbacks. After, the registry ships one token item holding neutral defaults, including four new status tokens, and every component reads colours only through tokens; the navigator and panels are unchanged. Outside FSD's packages, behind a fence, a private design-system package holds App Lab's light and dark values and maps the same tokens onto the navigator's and panels' properties. Kitchen-sink loads no theme and keeps its look; App Lab loads the package."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .zone  { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-bad { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.5; }
+    .n-out { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.5; }
+    .fence { stroke:var(--gone); stroke-width:1.6; stroke-dasharray:7 5; }
+    .arrow { stroke:var(--accent); stroke-width:1.4; fill:none; }
+    .head  { fill:var(--accent); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-new { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="430"/>
+
+  <g id="today">
+    <rect class="zone" x="16" y="16" width="300" height="398" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY · FSD PACKAGES</text>
+    <rect class="n-bad" x="32" y="52" width="268" height="84" rx="5"/>
+    <text class="t-b" x="46" y="74">Component registry</text>
+    <text class="t-bad" x="46" y="94">12 of 38 files paint status in fixed</text>
+    <text class="t-bad" x="46" y="110">colours: green, amber, blue, red</text>
+    <text class="t-s" x="46" y="126">a theme cannot reach them</text>
+    <rect class="n-bad" x="32" y="148" width="268" height="66" rx="5"/>
+    <text class="t-b" x="46" y="170">No colour defaults shipped</text>
+    <text class="t-s" x="46" y="190">each app copies its own token list</text>
+    <text class="t-s" x="46" y="206">into its stylesheet by hand</text>
+    <rect class="n-box" x="32" y="226" width="268" height="66" rx="5"/>
+    <text class="t-b" x="46" y="248">Navigator and panels</text>
+    <text class="t-s" x="46" y="268">read --fsd-nav-* and --fsd-panel-*</text>
+    <text class="t-s" x="46" y="284">with neutral fallbacks · already clean</text>
+    <text class="t-lbl" x="32" y="322">AN APP THAT WANTS A LOOK</text>
+    <text class="t-s" x="32" y="342">edits its copies, or lives with</text>
+    <text class="t-s" x="32" y="358">green, amber and blue on every card</text>
+  </g>
+
+  <g id="after-fsd">
+    <rect class="zone" x="336" y="16" width="300" height="398" rx="6"/>
+    <text class="t-lbl" x="352" y="38">AFTER · FSD PACKAGES</text>
+    <rect class="n-new" x="352" y="52" width="268" height="84" rx="5"/>
+    <text class="t-b" x="366" y="74">One token item in the registry</text>
+    <text class="t-new" x="366" y="94">neutral defaults, today's hues, plus</text>
+    <text class="t-new" x="366" y="110">success · warning · info · attention</text>
+    <text class="t-s" x="366" y="126">arrives with fsdev ui add</text>
+    <rect class="n-new" x="352" y="148" width="268" height="66" rx="5"/>
+    <text class="t-b" x="366" y="170">Components read tokens only</text>
+    <text class="t-s" x="366" y="190">the 12 fixed at their source; a check</text>
+    <text class="t-s" x="366" y="206">fails on any fixed colour class</text>
+    <rect class="n-box" x="352" y="226" width="268" height="66" rx="5"/>
+    <text class="t-b" x="366" y="248">Navigator and panels</text>
+    <text class="t-s" x="366" y="268">unchanged</text>
+    <text class="t-lbl" x="352" y="322">KITCHEN-SINK · NO THEME</text>
+    <text class="t-s" x="352" y="342">same hues as today, copies byte-identical,</text>
+    <text class="t-s" x="352" y="358">no App Lab value anywhere under packages/</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="652" y1="16" x2="652" y2="414"/>
+  </g>
+
+  <g id="after-outside">
+    <text class="t-lbl" x="668" y="38">OUTSIDE FSD · PRIVATE PACKAGE</text>
+    <rect class="n-out" x="668" y="52" width="256" height="100" rx="5"/>
+    <text class="t-b" x="682" y="74">Design system</text>
+    <text class="t-s" x="682" y="94">App Lab's light and dark values</text>
+    <text class="t-s" x="682" y="110">for the same tokens, plus type</text>
+    <text class="t-s" x="682" y="126">and square corners</text>
+    <text class="t-s" x="682" y="142">maps them onto --fsd-* too</text>
+    <path class="arrow" d="M668 102 H 628"/>
+    <path class="head" d="M622 102 l8 -4 v8 z"/>
+    <rect class="n-box" x="668" y="226" width="256" height="66" rx="5"/>
+    <text class="t-b" x="682" y="248">App Lab</text>
+    <text class="t-s" x="682" y="268">loads the package; its copies stay</text>
+    <text class="t-s" x="682" y="284">unedited and re-synced</text>
+    <path class="arrow" d="M796 226 V 158"/>
+    <path class="head" d="M796 152 l-4 8 h8 z"/>
+  </g>
+</svg>
