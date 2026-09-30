@@ -1,0 +1,100 @@
+<svg viewBox="0 0 940 422" role="img" aria-label="D1, what a task&#x27;s Session tab shows. Chosen: the task&#x27;s own run session, found by its dispatch key. Instead of: the assigned worker&#x27;s own conversation. It comes down to the first row: the run session is exactly what this task did, while the worker&#x27;s chat mixes in other work and misses the run&#x27;s tool calls. The price is the second row: a board that keys sessions per worker shows several tasks&#x27; steps in one session, said on screen. The third row is a tie: both are shipped reads. Locks in: one task screen is one run&#x27;s session, every attempt in order. Flips if: FIX-1651 defines a task as something other than a board row a seat runs."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="422"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">What does a task&#x27;s Session tab show?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">The task&#x27;s own run session</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">The worker&#x27;s own conversation</text>
+  </g>
+
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHAT THE PERSON</text>
+    <text class="t-lbl" x="32" y="169">IS TOLD</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Exactly what this task did</text>
+    <text class="t-s" x="248" y="179">every attempt, tool calls and edits, in order</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">The worker&#x27;s chat, not the run</text>
+    <text class="t-s" x="612" y="179">other work mixed in, the run&#x27;s steps absent</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="226">A WORKER WHO</text>
+    <text class="t-lbl" x="32" y="239">SHARES A SESSION</text>
+    <text class="mark minus" x="228" y="228">−</text>
+    <text class="t-b" x="248" y="227">Several tasks in one session</text>
+    <text class="t-s" x="248" y="245">said on screen, never filtered by guess</text>
+    <text class="mark plus" x="592" y="228">+</text>
+    <text class="t-b" x="612" y="227">One conversation, as ever</text>
+    <text class="t-s" x="612" y="245">no sharing question to answer</text>
+    <line class="row" x1="16" y1="258" x2="924" y2="258"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="284">NEW READS</text>
+    <text class="mark tie" x="228" y="286">=</text>
+    <text class="t-b" x="248" y="285">None</text>
+    <text class="t-s" x="248" y="303">the listing already returns dispatch runs</text>
+    <text class="mark tie" x="592" y="286">=</text>
+    <text class="t-b" x="612" y="285">None</text>
+    <text class="t-s" x="612" y="303">the seat&#x27;s sessions are listed today</text>
+    <line class="row" x1="16" y1="316" x2="924" y2="316"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="353">LOCKS IN</text>
+    <text class="t-b" x="32" y="373">One task screen is one run&#x27;s session</text>
+    <text class="t-s" x="32" y="391">every attempt in order, keyed on board and task</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="353">FLIPS IF</text>
+    <text class="t-b" x="494" y="373">FIX-1651 defines a task another way</text>
+    <text class="t-s" x="494" y="391">then the key moves and the tab stays</text>
+  </g>
+</svg>
