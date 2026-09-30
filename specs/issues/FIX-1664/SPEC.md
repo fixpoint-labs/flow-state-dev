@@ -2,8 +2,9 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-Feature · private app `labs/app-lab` · no FSD package changes · medium · 1 PR, after FIX-1662's
-`frame` PR · epic [FIX-1649](../../epics/FIX-1649/SPEC.md) (PR #2421) · beside
+Feature · private app `labs/app-lab` · no FSD package changes here, one small orchestration field
+split out ([the task-run link](PLAN.md#the-task-run-link)) · medium · 1 PR, after FIX-1662's
+`frame` PR and that link · epic [FIX-1649](../../epics/FIX-1649/SPEC.md) (PR #2421) · beside
 [FIX-1662](https://linear.app/fixpoint-labs/issue/FIX-1662) (PR #2424) and
 [FIX-1655](https://linear.app/fixpoint-labs/issue/FIX-1655) (PR #2425)
 
@@ -14,7 +15,7 @@ Feature · private app `labs/app-lab` · no FSD package changes · medium · 1 P
 | **opens a running task** | Finds its run in the devtool by guessing which child session is which | Clicks a row in Tasks or a board card and watches that run's own steps arrive: narration, tool calls, edits, test runs, with no reload |
 | **wants a run to stop** | Aborts the request with curl, if they know its id | Presses **Interrupt** (or Esc). The view says *interrupted* once the run's request says so, never before |
 | **wants to hand a task to another worker, open its PR, or type to the worker** | Can't | Sees each control disabled with a line naming what arrives and who ships it ([D2](DECISIONS.md#d2), [the open fork](DECISIONS.md#open)) |
-| **reads the task inspector** | n/a | Worker and team, harness, started, tokens, cost, the plan and files the harness recorded, linked tasks and the devtool link: each a shipped read or a named gap |
+| **reads the task inspector** | n/a | Worker and team, started, the plan and files the harness recorded, linked tasks and the devtool link from shipped reads; harness, tokens and cost as a named gap, because nothing a client can read carries them yet |
 | **builds the closure check** (FIX-1663) | Nothing to walk to | A task route whose every tab, action and inspector value is either real or names its owner |
 
 ## The goal, and how we'll know it's met
@@ -54,10 +55,11 @@ against App Lab's own state.
 
 ## What changes
 
-![Before: the task route FIX-1662 names shows its empty frame, and a task's run is found only in the devtool among child sessions. After: the task screen reads three shipped things, the task's row, its run's own session found by the dispatch key, and that run's request; Interrupt goes through the shipped abort; Hand off, Open PR, Diff, Checks and the composer are named gaps owned by FIX-1651, FIX-1652 or the open fork](figures/what-changes.svg)
+![Before: the task route FIX-1662 names shows its empty frame, and a task's run is found only in the devtool among child sessions. After: the task screen reads the task's row, the run session and request the row's new task-run link names, and that run's request; Interrupt goes through the shipped abort; Hand off, Open PR, Diff, Checks, harness, tokens, cost and the composer are named gaps owned by FIX-1651, FIX-1652 or the open fork](figures/what-changes.svg)
 
 The top row is today's empty frame. The bottom row is everything the task screen reads or
-writes: three shipped reads, one shipped write, and the gaps named where they sit.
+writes: the row, the run its link names, one shipped write, and the gaps named where they sit.
+Every owner is in one place, the [gap registry](BUSINESS-RULES.md#gap-registry).
 
 No person edits a file for this: a Lab opens as FIX-1662 already describes. The one addition
 a person types is where the devtool is, so the trace link can open it:
@@ -71,20 +73,25 @@ a person types is where the devtool is, so the trace link can open it:
 
 ```mermaid
 flowchart LR
-  T["the task row · FIX-1662's board read"] -->|"board id + task id"| K["the dispatch key for that task"]
-  K --> S["the run's own session · listed as a dispatch run"]
-  S -->|"items, live"| V["Session tab"]
-  S -->|"what the harness recorded"| I["inspector · plan, files"]
-  S -->|"its running request"| X["Interrupt · the shipped abort"]
+  G["the board's claim gate · in the run's session"] -->|"stamps session, request, attempt"| T["the task row · FIX-1662's board read"]
+  T -->|"the link's session"| S["the run's own session"]
+  S -->|"items, live, while the tab is open"| V["Session tab"]
+  T -->|"the link's request"| I["inspector · plan, files it recorded"]
+  T -->|"the link's request"| X["Interrupt · the shipped abort"]
 ```
 
-A handed-off row runs in a child session keyed on the board and the task, so App Lab finds the
-run from the task alone and reads nothing the Lab's server doesn't already serve.
+The run is the one place that knows which session it's in, so it writes that on the row as it
+starts, and App Lab reads it there. Nothing is rebuilt or matched from outside: a key rebuilt
+by the shell can name a different run (the same task drained from another conversation) or no
+run at all (a worker that shares one session across tasks). The link is a small field in the
+orchestration package, filed as its own issue ([D1](DECISIONS.md#d1)); App Lab changes nothing
+else outside itself.
 
 ## What stays as it is
 
-- **Every FSD package.** Session items render through the registry copies FIX-1662 brings in,
-  unedited.
+- **Every FSD package, but for the task-run link**, which is its own issue in the orchestration
+  package. Nothing in Core or Engine. Session items render through the registry copies FIX-1662
+  brings in, unedited.
 - **The board, the run and the harness.** App Lab changes a task only by aborting its run; what
   the board then does with the row is the board's.
 - **FIX-1662's frame**: the route, the right-panel slot and the shared reads are used, not
@@ -101,12 +108,18 @@ If wrong: the owner can't steer a run from the app, which is the issue's own pro
 operation now, or leave it out of this epic's first cut?](DECISIONS.md#open) Recommended: file
 it now as a child of FIX-1649; the composer ships disabled and is wired when it merges.
 
-1. **[D1](DECISIONS.md#d1) · The Session tab is the task's own run, found by its dispatch key,
-   shown live.** If wrong: a Lab whose runs share one session per worker shows several tasks'
-   steps under one task.
+1. **[D1](DECISIONS.md#d1) · The Session tab is the run the task's own row names, shown live;
+   the row learns it from a small field the run stamps as it starts, filed as its own issue
+   that this one waits on.** Changed after merge: the approved draft matched a rebuilt key, which
+   could show or stop the wrong run. If wrong: one small orchestration field and a later start
+   for this issue.
 2. **[D2](DECISIONS.md#d2) · Of the four controls only Interrupt works; Hand off, reassign and
    Open PR are disabled and name FIX-1651.** If wrong: you expected hand-off to work on day
    one, and it needs a board rule changed first.
+
+Also changed after merge, decided rather than asked: harness, tokens and cost are a named gap
+owned by FIX-1652, since nothing a client can read carries them
+([Decided, not asked](DECISIONS.md#decided-not-asked)).
 
 Reasoning and what lost: [DECISIONS.md](DECISIONS.md). The cases:
 [BUSINESS-RULES.md](BUSINESS-RULES.md).

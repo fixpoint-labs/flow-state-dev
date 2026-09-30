@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 422" role="img" aria-label="D1, what a task&#x27;s Session tab shows. Chosen: the task&#x27;s own run session, found by its dispatch key. Instead of: the assigned worker&#x27;s own conversation. It comes down to the first row: the run session is exactly what this task did, while the worker&#x27;s chat mixes in other work and misses the run&#x27;s tool calls. The price is the second row: a board that keys sessions per worker shows several tasks&#x27; steps in one session, said on screen. The third row is a tie: both are shipped reads. Locks in: one task screen is one run&#x27;s session, every attempt in order. Flips if: FIX-1651 defines a task as something other than a board row a seat runs."
+<svg viewBox="0 0 940 422" role="img" aria-label="D1, what a task&#x27;s Session tab shows. Chosen: the run the task&#x27;s own row names, which the run stamps on the row as it starts. Instead of: the assigned worker&#x27;s own conversation. It comes down to the first row: the run session is exactly what this task did, while the worker&#x27;s chat mixes in other work and misses the run&#x27;s tool calls. The second row: a session shared across tasks still shows only the items stamped with this task, said on screen. The price is the third row: one new field on the task row, in the orchestration package, filed as its own issue. Locks in: one task screen is the run its row names, never rebuilt from outside. Flips if: FIX-1651 defines a task as something other than a board row a seat runs."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -43,7 +43,7 @@
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">The task&#x27;s own run session</text>
+    <text class="t-h c-code" x="228" y="112">The run the task&#x27;s row names</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">The worker&#x27;s own conversation</text>
@@ -65,21 +65,21 @@
   <g id="row-1">
     <text class="t-lbl" x="32" y="226">A WORKER WHO</text>
     <text class="t-lbl" x="32" y="239">SHARES A SESSION</text>
-    <text class="mark minus" x="228" y="228">−</text>
-    <text class="t-b" x="248" y="227">Several tasks in one session</text>
-    <text class="t-s" x="248" y="245">said on screen, never filtered by guess</text>
+    <text class="mark plus" x="228" y="228">+</text>
+    <text class="t-b" x="248" y="227">Still only this task</text>
+    <text class="t-s" x="248" y="245">a shared session shows its stamped items</text>
     <text class="mark plus" x="592" y="228">+</text>
     <text class="t-b" x="612" y="227">One conversation, as ever</text>
     <text class="t-s" x="612" y="245">no sharing question to answer</text>
     <line class="row" x1="16" y1="258" x2="924" y2="258"/>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="284">NEW READS</text>
-    <text class="mark tie" x="228" y="286">=</text>
-    <text class="t-b" x="248" y="285">None</text>
-    <text class="t-s" x="248" y="303">the listing already returns dispatch runs</text>
+    <text class="t-lbl" x="32" y="284">WHAT IT COSTS</text>
+    <text class="mark minus" x="228" y="286">−</text>
+    <text class="t-b" x="248" y="285">One field on the row</text>
+    <text class="t-s" x="248" y="303">its own issue, in orchestration · Layer 2</text>
     <text class="mark tie" x="592" y="286">=</text>
-    <text class="t-b" x="612" y="285">None</text>
+    <text class="t-b" x="612" y="285">Nothing new</text>
     <text class="t-s" x="612" y="303">the seat&#x27;s sessions are listed today</text>
     <line class="row" x1="16" y1="316" x2="924" y2="316"/>
   </g>
@@ -87,14 +87,14 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="353">LOCKS IN</text>
-    <text class="t-b" x="32" y="373">One task screen is one run&#x27;s session</text>
-    <text class="t-s" x="32" y="391">every attempt in order, keyed on board and task</text>
+    <text class="t-b" x="32" y="373">One task screen is the run its row names</text>
+    <text class="t-s" x="32" y="391">stamped by the run as it starts, never rebuilt</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="353">FLIPS IF</text>
     <text class="t-b" x="494" y="373">FIX-1651 defines a task another way</text>
-    <text class="t-s" x="494" y="391">then the key moves and the tab stays</text>
+    <text class="t-s" x="494" y="391">then the link moves and the tab stays</text>
   </g>
 </svg>
