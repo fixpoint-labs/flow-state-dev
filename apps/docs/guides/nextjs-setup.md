@@ -257,4 +257,4 @@ Put FlowProvider as high as needed. Every component that uses `useFlow`, `useSes
 
 ### Base URL for the client
 
-The client defaults to `/api/flows` when running in the browser. If your API lives elsewhere (e.g. a separate backend), configure the base URL in the client or FlowProvider. See the [Client API](/docs/api/client) for options.
+The client's request paths already start with `/api/flows`, and it adds that itself, so `baseUrl` is only what goes in front: the origin plus any base path. In the browser, `FlowProvider` needs no `baseUrl` on the same origin. If your app sets a Next.js `basePath`, pass it (`baseUrl="/portal"`). If you call the client from server code (a server component, route handler, or server action), pass an absolute URL such as `http://localhost:3000`, plus the `basePath` if you set one: there is no page origin on the server, so a relative path fails. In a default app with no `basePath`, `baseUrl="/api"` doubles the prefix to `/api/api/flows` and 404s. See [Choosing `baseUrl`](/docs/configuration/client#choosing-baseurl).
