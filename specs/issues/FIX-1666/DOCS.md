@@ -26,8 +26,13 @@ check:
 >
 > The door is off unless the host asks for it. `openLab` takes the feature to ask about, turns on
 > durable execution, and raises the ask once in the EM seat's own session, as the lab's person.
-> Opening again over the same store finds the ask, or the row an earlier approval filed, and
-> raises nothing. The three older checks don't ask for it, so they run exactly as before.
+> Opening again over the same store finds the earlier ask, answered or not, and raises nothing;
+> a denied feature stays denied until the store is fresh. The three older checks don't ask for
+> it, so they run exactly as before.
+>
+> A host that builds its own flow state instead of calling `openLab`, such as the `fsdev`
+> config App Lab serves, turns on durable execution itself and calls the same raise step after
+> it hires.
 >
 > ```ts
 > const lab = await openLab({
@@ -41,4 +46,4 @@ check:
 > // POST /<em-seat>/requests/<requestId>/resume with "approve" or "reject".
 > ```
 
-The option name `ask` is illustrative; the implementer swaps in the shipped name when publishing.
+The option name `ask` and the step's name are illustrative; the implementer swaps in the shipped name when publishing.

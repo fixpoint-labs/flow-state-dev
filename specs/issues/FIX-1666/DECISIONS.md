@@ -51,11 +51,10 @@ anything.
 |---|---|
 | **Instead of** | (a) A post on the feature channel in a shape that makes the EM ask instead of filing. (b) Raising it on every open |
 | **Because** | The issue asks that *opening* the tree shows the ask. (a) needs a person to post first, so Inbox is empty on open, and it changes the channel door the third check drives. (b) adds a pending request and, after any answer, a row to every check that opens the lab, so all three change shape. The lab already carries this pattern: its channel door is an option on open, absent by default, because "an entry that is only there to do nothing is worse than none" |
-| **Locks in** | One option on the lab's open, carrying the feature to ask about. When present, durable execution is on and the ask is raised once, as the lab's person, in the EM seat's session. App Lab's DevForce config (FIX-1662's S12) passes it; whichever of the two lands second adds that line |
+| **Locks in** | The raise is one step of the lab's, called by whichever host turns the ask on: it runs once, as the lab's person, in the EM seat's session, over a flow state with durable execution on. The lab's open takes one option, absent by default, that turns durable on and calls it. App Lab's DevForce config (FIX-1662's S12) builds its own flow state rather than opening through the lab's host, so it turns durable on and calls the same step after it hires; whichever of the two lands second adds those two lines |
 
-**What would change my mind:** FIX-1662's config not opening the lab through the lab's host at
-all. Then the same option is exported as a step the config calls after it hires; the rule that
-it is off by default stands.
+**What would change my mind:** App Lab gaining a way to raise a Lab's asks itself (FIX-1652's
+call). Then the config's call moves there; the rule that it is off by default stands.
 
 **What being wrong costs:** a missing line in App Lab's config, found by the closure's a1 as an
 empty Inbox.
@@ -102,15 +101,21 @@ It comes down to the first row: only raising on open makes the ask appear withou
 | Lift kitchen-sink's escalation or ask API into the lab or a package | The Architect names it an invent-kill; the stock suspension already does it |
 | Seed a suspension record directly in the store | Not a run a person can repeat; resume would have no request to continue |
 | Make `onPost` ask before filing | Changes the third check's door and its evidence |
+| Approve files the row and stops; the existing drain action starts the coder | Leaner, and needs no drain inside a resumed request. But "Approve & run" would run nothing until a second call, which is the demo gate D1 rejects. The premise it would avoid is settled below |
 | Raise the ask in the feature channel's session, so the Stream shows it as is | The shipped channel kind has no action that can suspend, so the lab would rebuild a framework kind. And the ask would then belong to the channel, not a seat: Inbox reads seat sessions and a1 names a seat |
 | Run the ask in a child session of the channel, as the post door does | Child sessions are left out of the default session listing, so Inbox would miss it, and the Stream still does not draw child sessions |
 
 ## Open / Settled
 
-**Open: none.** **Settled: none.** No POC: the suspend and resume path is proved by
-`goals/suspension/resumes-and-completes-after-approval/`, and a board drain composed inside a
-sequencer by the task board's own `unparkAndDrain`. That the two compose in one durable request
-is checked first at implement time ([PLAN.md → At implement time](PLAN.md#at-implement-time)).
+**Open: none.**
+
+**Settled · the drain runs inside the approved branch of a durable request** (confirmed,
+2026-09-30, by [`poc/durable-drain/`](poc/durable-drain/README.md)). On the stock pieces, with
+the answer sent through the engine's resume route: the ask suspends with no row; resume answers
+`202` before the coder runs; after Approve the request completes, one row is filed and settles,
+the coder runs once in a child session under the EM's session; after Deny nothing is filed. The
+`no-gate` control fails as it must. So D1 stands as written, and Approve never holds a person's
+click for the length of a run.
 
 ## How it got here
 
@@ -120,4 +125,6 @@ is checked first at implement time ([PLAN.md → At implement time](PLAN.md#at-i
 - **Review round 1** — the ask stays in the EM's session and FIX-1662's Stream draws member
   seats' pending asks (it only drew the transcript, so the card would not show there); a Deny now
   counts toward "raised once", read from the engine's request history, so a reopen does not ask
-  again.
+  again. The raise became its own step any host calls, because FIX-1662's merged config builds
+  its own flow state rather than opening through the lab's host (D2's change-my-mind fired). The
+  durable-drain premise was settled by a POC rather than left to implement time.

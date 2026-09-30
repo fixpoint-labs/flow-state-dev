@@ -10,10 +10,10 @@ are pinned only where the Pinned names table says so.
 | ID | Where | Change | Rules |
 |---|---|---|---|
 | S1 | `lab/workforce/flows/workers/em.mts` | A third door: a durable action that prepares the feature, suspends on a stock `human_approval` naming it, then on approve files the row through the existing `addRow` and runs `board.drain`; on reject files nothing and says so. `addRow` stays the one row writer for all three doors | AR-2, AR-8, AR-10, AR-12, AR-14 |
-| S2 | `lab/host.mts` | An `openLab` option carrying the feature to ask about, absent by default. When present: `durable: true` on the flow state, then raise the ask once in the EM seat's session as the lab's person, and fail open if it could not be raised. Once per feature means: skip if the EM's session already holds an asking request for that feature, whatever its answer (pending, approved or denied), or the row exists Absent: byte-for-byte today's behaviour | AR-1, AR-2, AR-5, AR-6 |
+| S2 | a new module beside `lab/notify.mts`, and `lab/host.mts` | The raise as its own exported step: given a durable flow state, the EM seat and the feature, it runs the asking door once in the EM seat's session as the lab's person until it suspends. Once per feature means: skip if the EM's session already holds an asking request for that feature, whatever its answer (pending, approved or denied), or the row exists. `openLab` gains one option carrying the feature, absent by default; when present it sets `durable: true` and calls the step, and the open fails, naming the step, if the ask could not be raised. Absent: byte-for-byte today's behaviour. The host keeps the option and one call, not the logic | AR-1, AR-2, AR-5, AR-6 |
 | S3 | `goals/devforce-lab/it-waits-for-a-person-before-it-files/` | `goal.md` from [SPEC.md's goal](SPEC.md#the-goal-and-how-well-know-its-met) in the `goals/README.md` format; `run.mts` with legs 0 to 5; `fixtures/input.json` held-out | AR-1 to AR-16 |
 | S4 | `lab/README.md` | The fourth check's row, and a short section on the ask door, per [DOCS.md](DOCS.md) | — |
-| S5 | FIX-1662's `goals/devforce-lab/lab/fsdev.config.mts` | One line passing S2's option, **only if** that config is on `main` when this PR opens; otherwise FIX-1662's S12 carries it (coordinator note) | D2 |
+| S5 | FIX-1662's `goals/devforce-lab/lab/fsdev.config.mts` | That config builds its own flow state and does not call `openLab` (FIX-1662's merged SPEC sketch and S12). So it turns the ask on with two lines: `durable: true` on its `createFlowState`, and a call to S2's step after it hires. Added here **only if** that config is on `main` when this PR opens; otherwise FIX-1662's S12 carries them (coordinator note) | D2 |
 
 **Removed:** nothing. The `file` and `onPost` doors are unchanged.
 
@@ -21,7 +21,7 @@ are pinned only where the Pinned names table says so.
 
 ```mermaid
 flowchart TD
-  P["at implement time · the durable-drain premise"] --> S1["S1 · the EM's asking door"]
+  S1["S1 · the EM's asking door"]
   S1 --> S2["S2 · the open option"]
   S2 --> S3["S3 · the goal check, red first under no-gate"]
   S3 --> S4["S4 · README"]
@@ -85,33 +85,47 @@ em kind, third door (durable):
   tapIf approved            -> addRow(issue, goal) ; board.drain
   tapIf rejected            -> say "nothing filed: <reason>"
 
-openLab({ ask: { issue, goal } }):
-  flow state durable
+raiseAsk(flowstate, emSeat, { issue, goal }):      # its own module; any host calls it
   if EM session holds an asking request for issue (pending, approved or denied),
      or the row exists                                         -> skip
   else run the asking door as the lab's person, in the EM's session, until it suspends
+
+openLab({ ask }):         flow state durable ; raiseAsk(...)        # the goal checks
+fsdev.config (FIX-1662):  createFlowState({ durable: true, ... }) ; raiseAsk(...)   # App Lab
 ```
 
-POC: none. No factual-base checker either: the spec rests on no counted or enumerated facts.
+POC: [`poc/durable-drain/`](poc/durable-drain/README.md) settled the one premise the sketch
+rested on; see [DECISIONS.md → Settled](DECISIONS.md#open--settled). Run it with
+`pnpm exec tsx specs/issues/FIX-1666/poc/durable-drain/check.mts`. No factual-base checker: the
+spec rests on no counted or enumerated facts.
 
 ## At implement time
 
-1. **First, before S1's shape is final:** confirm a `board.drain` that dispatches cross-flow runs
-   inside the approved branch of a durable request after resume, and the child session appears
-   under the EM's session. `unparkAndDrain` composes drain in a sequencer; durable plus drain
-   together is unproven. If it does not compose, **stop and return a blocker**; do not fall back
-   to filing without running, which would make "Approve & run" run nothing (D1).
-2. Read FIX-1662's merged spec (in review as
-   [#2424](https://github.com/fixpoint-labs/flow-state-dev/pull/2424)) for whether its config
-   opens the lab through `openLab`, and for the person it resolves. If not through `openLab`,
-   export the raise as a step the config calls (D2's change-my-mind).
+1. Re-run the POC on the implementing commit before S1's shape is final. It is the stock-pieces
+   shape; if the lab's own board or hire changes it, **stop and return a blocker** rather than
+   fall back to filing without running, which would make "Approve & run" run nothing (D1).
+2. Read which person FIX-1662's config resolves; the ask runs as that person (DECISIONS →
+   Decided, not asked).
 3. Read FIX-1667's merged spec, if any, for where the board is declared; `addRow` and the drain
    follow it.
 
 ## Notes from review
 
-None yet. Review round 1's two findings (where the Stream finds the ask; a Deny surviving a
-reopen) changed the approach and are folded into DECISIONS, the rules and the legs above.
+Review round 1's approach findings (where the Stream finds the ask; a Deny surviving a reopen;
+the raise as a step App Lab's config calls) are folded into DECISIONS, the rules and the legs
+above. The rest is recorded verbatim for the implementer:
+
+- **Cursor, on the sketch (PR #2437):** "**Reuse existing approval gate shape.** The sketch here
+  matches `apps/kitchen-sink/flows/chat-agent/approval-gate.ts` (prepare → suspend
+  `human_approval` → `.tapIf` branches). Consider pointing implementers at that file +
+  `goals/suspension/completes-via-the-resume-endpoint/` explicitly so S1 doesn't become a one-off
+  durable sequencer — that's the main "3rd party / established pattern" win for this issue."
+- **Cursor, summary (PR #2437):** "**Reuse, don't reinvent:** durable gate shape from
+  `approval-gate.ts`; HTTP grading from `goals/suspension/completes-via-the-resume-endpoint/`;
+  goal scaffolding from `goals/devforce-lab/it-wakes-the-seat-a-file-declared/`."
+- **Second look (PR #2437), minor:** "`addRow`'s doc comment says "Shared by the two doors
+  below"; with a third door this becomes stale. Fold into S1 so the file doesn't drift
+  (BP-034)."
 
 ## Follow-ups
 

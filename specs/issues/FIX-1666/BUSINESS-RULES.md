@@ -14,14 +14,14 @@ check's leg ([PLAN.md → Checks](PLAN.md#checks)) or CI.
 | AR-3 | The ask is pending | The session listing, read through the lab's door as the lab's person, returns the EM seat's session; that session holds exactly one pending approval, allowing approve and reject. The EM seat is a declared member of the feature channel, the link the workstream's Stream draws the same card by (FIX-1662) | Leg 1 |
 | AR-4 | The ask is pending | The board holds no row for that feature, and the coder seat has not been dispatched or reached | Leg 1 |
 | AR-5 | The lab is opened again over the same store with the same feature | No second ask. If the first is pending it stays the one; if it was approved, the row it filed stands; if it was denied, the Deny stands and nothing is filed. In every case nothing is asked | Leg 4 |
-| AR-6 | Raising the ask fails (the store refuses, the kind is missing) | Open fails, naming the step. A lab that opened with the ask requested and no ask behind it is the failure the closure could not tell from an empty Inbox | CI |
+| AR-6 | Raising the ask fails (the store refuses, the kind is missing) | Open fails, naming the step; so does a host that calls the step directly. A lab that opened with the ask requested and no ask behind it is the failure the closure could not tell from an empty Inbox | CI |
 | AR-7 | The ask is raised | No model is called and no key is read on the path | Leg 1, run keyless |
 
 ## Answering it
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| AR-8 | A person approves through the session's resume route | The same request continues: exactly one row is filed for that feature, through the same row code the other two doors use, and the board runs so the row is handed to the coder seat by its instance id | Leg 2 |
+| AR-8 | A person approves through the session's resume route | The route accepts at once; the same request continues: exactly one row is filed for that feature, through the same row code the other two doors use, and the board runs so the row is handed to the coder seat by its instance id. Approve does not wait for the coder's run | Leg 2 |
 | AR-9 | Approved, with the scripted stub | The coder's run is reached once and the row settles as it does in the first check | Leg 2 |
 | AR-10 | A person denies through the same route | The request completes on the reject branch: no row, no dispatch, and the EM's output says nothing was filed and why | Leg 3 |
 | AR-11 | The ask is answered | It is no longer pending in the session, so anything reading pending approvals (Inbox) drops it | Legs 2 and 3 |
