@@ -46,7 +46,7 @@ const EMPTY: PanelRow<never>[] = [];
 /**
  * A ceiling on pages read for ONE identity, not on rows.
  *
- * Both panels are "a list a person scans" (see `usePanelRows`), not a feed
+ * The panels are "a list a person scans" (see `usePanelRows`), not a feed
  * with an unbounded tail, so this is a guard against a misbehaving transport
  * handing back a `nextCursor` forever rather than a limit anyone is expected
  * to reach. At the route's largest page (`STATE_LIST_MAX_LIMIT`, 200 —
@@ -204,13 +204,13 @@ function liveBoardDriver(sessionId: string, boardRef: string, live: PanelLive): 
  * Every row of a collection, for one session — traversing `nextCursor` until
  * the route stops returning one.
  *
- * Deliberately no `loadMore`: both panels draw a standing list that a person
+ * Deliberately no `loadMore`: the panels draw a standing list that a person
  * scans, not a feed they page through, and a cursor the host cannot see is
  * worse than none. `limit` sets the page **size** the read requests each
  * time, not a cap on what the panel shows — a collection larger than `limit`
- * still renders every row, in `limit`-sized fetches (bounded by `MAX_PAGES`,
- * see above), because a panel that stopped at the first page would truncate
- * silently (BR-19, BR-21).
+ * still renders every row, in `limit`-sized fetches, because a panel that
+ * stopped at the first page would truncate silently. The read is bounded by
+ * `MAX_PAGES`, which says what happens past it.
  *
  * With `live`, `ref` is a task board, and the rows are read again whenever
  * the session keeps a change to it (see `liveBoardDriver`). Without it they
