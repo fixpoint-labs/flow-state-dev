@@ -96,8 +96,10 @@ export type BoardColumnsProps = {
    */
   readonly resourceClient?: PanelRowSource;
   /**
-   * Rows to request per page. The panel reads every page regardless — this
-   * sets the size of each fetch, not a cap on what renders (BR-21).
+   * Rows to request per page: the size of each fetch, not a cap on what
+   * renders. The panel follows the cursor for up to 1,000 pages; a collection
+   * with pages left after that shows the error line and Retry, never the
+   * rows read so far (BR-21). See `usePanelRows`.
    */
   readonly limit?: number;
   readonly slots?: BoardColumnsSlots;
