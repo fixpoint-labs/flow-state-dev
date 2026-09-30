@@ -70,7 +70,6 @@ import { DEFAULT_ORG_ID, isValidOrgId } from "@flow-state-dev/core";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
 import { CLI_SOURCE, INTERNAL_SOURCE, TASK_SOURCE } from "../../execution/transport-sources";
 import {
-  combineSignals,
   createInProcessDispatcher,
   isInProcessDispatcher,
   type InProcessDispatcher
@@ -868,26 +867,25 @@ export function createInboundTransportHost(
       void inProcessAccepted.catch(() => {});
 
       /**
-       * `cancellation` is a signal the run must inherit rather than merely be
-       * checked against. The queued branch holds one: an abort that lands
-       * between its pre-start check and `runAction`'s own
-       * `registerAbortController` would otherwise be thrown away, because
-       * `runAction` mints a fresh controller and overwrites the one that was
-       * aborted. Threading it makes the handoff atomic — there is one signal
-       * from enqueue to completion, so the abort cannot fall between two
-       * registrations no matter when it lands (FIX-1077).
+       * `abortHandoff` is a controller the run must take over rather than
+       * merely be checked against. The queued branch holds one: an abort that
+       * lands between its pre-start check and `runAction`'s own registration
+       * would otherwise be thrown away, because `runAction` would register a
+       * fresh controller over the one that was aborted. Handing the controller
+       * itself over makes the handoff atomic, so the abort cannot fall between
+       * two registrations no matter when it lands (FIX-1077). It is the
+       * controller and its incarnation, not its signal, so the run can still
+       * tell a cancel for another request under the id from its own.
        */
-      const startRun = (cancellation?: AbortSignal): Promise<ExecutionResult> => {
-        const signal =
-          cancellation === undefined
-            ? envelope.signal
-            : envelope.signal === undefined
-              ? cancellation
-              : combineSignals(envelope.signal, cancellation);
+      const startRun = (abortHandoff?: {
+        controller: AbortController;
+        incarnation?: string;
+      }): Promise<ExecutionResult> => {
         const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
           dispatchEnvelope,
           {
-            signal,
+            signal: envelope.signal,
+            abortHandoff,
             responseEmitter,
             effectiveRuntimeConfig: {
               ...dispatchRuntimeConfig,
@@ -1051,6 +1049,7 @@ export function createInboundTransportHost(
               // cancel: the run adopts it and starts on an unfired controller,
               // and its own start read settles any cancel recorded on it. An
               // unfenced fire (shutdown) stops whatever holds the id.
+              let handoffIncarnation = claimedIncarnation;
               if (queuedAbort.signal.aborted) {
                 const holder = await stores.request.get(requestId).catch(() => undefined);
                 const heldByAnother =
@@ -1059,10 +1058,11 @@ export function createInboundTransportHost(
                   resolveRequestIncarnation(holder) !== claimedIncarnation;
                 const fencedOnly = wasFiredOnlyFenced(queuedAbort);
                 if (holder !== undefined && heldByAnother && fencedOnly) {
+                  handoffIncarnation = resolveRequestIncarnation(holder);
                   queuedAbort = replaceAbortController(
                     requestId,
                     queuedAbort,
-                    resolveRequestIncarnation(holder)
+                    handoffIncarnation
                   );
                 } else {
                   await terminateUnenqueuedRequest(
@@ -1077,12 +1077,13 @@ export function createInboundTransportHost(
                 }
               }
               // The check above is not sufficient on its own and is not meant to
-              // be: an abort landing after it would be lost, because `runAction`
-              // registers a fresh controller over this one. Handing the signal
-              // down is what closes that gap — the check short-circuits the run
-              // entirely when the decision is already made, and the signal
-              // carries it when it is made a moment later.
-              return startRun(queuedAbort.signal);
+              // be: an abort landing after it would be lost if `runAction`
+              // registered a fresh controller over this one. Handing the
+              // controller down is what closes that gap: the check
+              // short-circuits the run entirely when the decision is already
+              // made, and the controller carries it when it is made a moment
+              // later, along with whom it was made for.
+              return startRun({ controller: queuedAbort, incarnation: handoffIncarnation });
             }).catch(async (error: unknown) => {
               // The stub is this dispatch's own by now — materialization
               // succeeded before the gate opened — so a refusal raised by the

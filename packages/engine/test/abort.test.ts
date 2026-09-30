@@ -2891,6 +2891,139 @@ describe("a queued request cancelled through the route", () => {
     expect(after?.status).not.toBe("aborted");
     expect(executed).toEqual(["started live"]);
   });
+
+  // After the gate hands the run a controller for the replacement, that
+  // request can be cancelled and a third one take the id before the run has
+  // settled which request it is. The cancel was for the replacement; the run
+  // adopts the third request, which nobody cancelled, and must run it live.
+  it("does not stop a later request with a cancel aimed at the one the gate handed over", async () => {
+    const stores = createInMemoryStores();
+    const executed: string[] = [];
+    let releaseHold!: () => void;
+    const hold = new Promise<void>((resolve) => {
+      releaseHold = resolve;
+    });
+    let markHolding!: () => void;
+    const holding = new Promise<void>((resolve) => {
+      markHolding = resolve;
+    });
+    const concurrency = { policy: "queue", key: "session" } as const;
+    const registry = createFlowRegistry();
+    registry.register(
+      defineFlow({
+        kind: "queued-abort-handoff",
+        request: { heartbeatIntervalMs: 0 },
+        actions: {
+          hold: {
+            inputSchema: z.object({}),
+            concurrency,
+            block: handler({
+              name: "hold",
+              inputSchema: z.object({}),
+              execute: async () => {
+                markHolding();
+                await hold;
+                return {};
+              }
+            })
+          },
+          queued: {
+            inputSchema: z.object({}),
+            concurrency,
+            block: handler({
+              name: "queued",
+              inputSchema: z.object({}),
+              execute: (_input, ctx) => {
+                executed.push(ctx.signal.aborted ? "started cancelled" : "started live");
+                return {};
+              }
+            })
+          }
+        }
+      })({ id: "queued-abort-handoff" })
+    );
+    const host = createInboundTransportHost({
+      registry,
+      stores,
+      resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+      runtimeConfig: {}
+    });
+    const dispatch = (action: "hold" | "queued", requestId: string) =>
+      host.dispatch({
+        source: "http",
+        flowKind: "queued-abort-handoff",
+        action,
+        input: {},
+        sessionId: "s_queued_handoff",
+        requestId,
+        orgId: DEFAULT_ORG_ID,
+        principal: { userId: "u_queued", orgId: DEFAULT_ORG_ID }
+      });
+    const requestId = "req_queued_handoff";
+
+    const holder = dispatch("hold", "req_queued_handoff_holder");
+    await holding;
+    const queued = dispatch("queued", requestId);
+    for (let i = 0; i < 100 && (await stores.request.get(requestId)) === undefined; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // The queued request is cancelled, then a replacement takes the id.
+    const response = await handleAbortRequest(
+      new Request(`http://localhost/api/flows/queued-abort-handoff/requests/${requestId}/abort`, {
+        method: "POST"
+      }),
+      { kind: "abort_request", flowKind: "queued-abort-handoff", requestId },
+      { stores }
+    );
+    expect(response.status).toBe(204);
+    const cancelledRecord = (await stores.request.get(requestId))!;
+    await stores.request.delete(requestId);
+    await stores.request.set(
+      requestId,
+      { ...cancelledRecord, abortRequested: undefined, incarnation: "inc_replacement" },
+      "absent"
+    );
+
+    // Once the gate has handed the run a controller for the replacement, the
+    // run's next read of the request is where the replacement is cancelled and
+    // a third request takes the id.
+    const get = stores.request.get.bind(stores.request);
+    let firedForReplacement: boolean | undefined;
+    stores.request.get = async (id: string) => {
+      if (
+        id === requestId &&
+        firedForReplacement === undefined &&
+        hasActiveAbortController(requestId, "inc_replacement")
+      ) {
+        firedForReplacement = abortRequest(requestId, "inc_replacement");
+        await stores.request.delete(requestId);
+        await stores.request.set(
+          requestId,
+          { ...cancelledRecord, abortRequested: undefined, incarnation: "inc_third" },
+          "absent"
+        );
+      }
+      return get(id);
+    };
+
+    try {
+      releaseHold();
+      await holder.finished;
+      await queued.finished.catch(() => undefined);
+    } finally {
+      stores.request.get = get;
+    }
+
+    // Precondition: the replacement's cancel landed on the controller the gate
+    // handed over.
+    expect(firedForReplacement).toBe(true);
+    const after = await stores.request.get(requestId);
+    expect(after?.incarnation).toBe("inc_third");
+    expect(after?.status).not.toBe("aborted");
+    expect(executed).toEqual(["started live"]);
+  });
 });
 
 // The run's controller must carry the incarnation of the request the run
@@ -3477,6 +3610,9 @@ describe("a run's abort controller carries the incarnation it executes as", () =
   // and with whether another run under the id displaced this run's controller
   // from the registry before it settled. How the controller was fired is a
   // fact about the controller, so displacement must not change the outcome.
+  // "handed off" is a controller the caller registered and handed to the run
+  // (the host's queued path), fired while the run is still reading admission:
+  // the run must apply the same rule to it as to its own.
   // The run starts cancelled exactly when an unfenced fire landed (it was for
   // whatever runs under the id) or a fenced fire targeted the request the run
   // turned out to be. Before settling, a fenced fire can only target the
@@ -3492,7 +3628,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
       ["an unfenced then a fenced fire", ["unfenced", "fenced"]]
     ];
     const cases = sequences.flatMap(([label, fires]) =>
-      (["registered", "displaced"] as const).flatMap((slot) => [
+      (["registered", "displaced", "handed off"] as const).flatMap((slot) => [
         { label, fires, slot, adopts: "same" as const, startsAborted: fires.length > 0 },
         {
           label,
@@ -3508,7 +3644,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
       "$label, controller $slot, adopting the $adopts request: starts aborted = $startsAborted",
       async ({ fires, slot, adopts, startsAborted }) => {
         const stores = createInMemoryStores();
-        const requestId = `req_presettle_${fires.join("_") || "none"}_${slot}_${adopts}`;
+        const requestId = `req_presettle_${fires.join("_") || "none"}_${slot.replace(" ", "_")}_${adopts}`;
         const seen: { aborted?: boolean } = {};
         const kind = "presettle-fires";
         const flow = defineFlow({
@@ -3541,14 +3677,23 @@ describe("a run's abort controller carries the incarnation it executes as", () =
         const other = fresh();
 
         // Admission's read is the first; the context's is the second. The
-        // fires land just before the context reads.
+        // fires land just before the context reads, or, for a handed-off
+        // controller, just before admission reads.
+        const handoff =
+          slot === "handed off"
+            ? {
+                controller: registerAbortController(requestId, admitted.incarnation),
+                incarnation: admitted.incarnation
+              }
+            : undefined;
+        const fireOnRead = handoff === undefined ? 2 : 1;
         const get = stores.request.get.bind(stores.request);
         let reads = 0;
         const landed: boolean[] = [];
         stores.request.get = async (id: string) => {
           if (id === requestId) {
             reads += 1;
-            if (reads === 2) {
+            if (reads === fireOnRead) {
               for (const fire of fires) {
                 landed.push(
                   fire === "fenced" ? abortRequest(requestId, admitted.incarnation) : abortRequest(requestId)
@@ -3576,7 +3721,8 @@ describe("a run's abort controller carries the incarnation it executes as", () =
             userId: "u_presettle",
             orgId: DEFAULT_ORG_ID,
             stores,
-            runtimeConfig: {}
+            runtimeConfig: {},
+            abortHandoff: handoff
           });
         } finally {
           stores.request.get = get;

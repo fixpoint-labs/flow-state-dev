@@ -1449,7 +1449,19 @@ export async function runActionInternal<
   // run executes as: one that landed earlier, for a request that then lost the
   // id to the one the context adopted, belongs to that other request and is
   // dropped with its controller (see the settle step below).
-  let registered = registerAbortController(requestId, runIncarnation);
+  //
+  // A controller handed over by the caller is kept, fires and all, unless its
+  // only fires were fenced on another request than the one admission read:
+  // those are not this run's, so it starts on a fresh one.
+  const handoff = options.abortHandoff;
+  const keepHandoff =
+    handoff !== undefined &&
+    !(handoff.incarnation !== runIncarnation && wasFiredOnlyFenced(handoff.controller));
+  let registered = registerAbortController(
+    requestId,
+    runIncarnation,
+    keepHandoff ? handoff.controller : undefined
+  );
   const abortController = new AbortController();
   const forwardRegisteredAbort = (): void => {
     if (incarnationSettled) abortController.abort(registered.signal.reason);

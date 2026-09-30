@@ -49,9 +49,16 @@ function matches(entry: Registered, expected: string | undefined): boolean {
  * `abortRequest` can tell this request from a later one under the same id.
  * An untagged controller is never fired by a fenced abort; tag it later with
  * `tagAbortController` once the incarnation is known.
+ *
+ * Pass `controller` to register one a caller already holds, such as one handed
+ * over from an earlier stage of the same dispatch. How it was fired so far
+ * stays with it.
  */
-export function registerAbortController(requestId: string, incarnation?: string): AbortController {
-  const controller = new AbortController();
+export function registerAbortController(
+  requestId: string,
+  incarnation?: string,
+  controller: AbortController = new AbortController()
+): AbortController {
   controllers.set(requestId, incarnation === undefined ? { controller } : { controller, incarnation });
   return controller;
 }

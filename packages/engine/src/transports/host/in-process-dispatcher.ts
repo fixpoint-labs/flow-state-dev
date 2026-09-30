@@ -31,6 +31,8 @@ export interface InProcessDispatcherDeps {
  */
 export interface InProcessDispatchContext {
   signal?: AbortSignal;
+  /** Forwarded to `runAction`; see `RunActionOptions.abortHandoff`. */
+  abortHandoff?: { controller: AbortController; incarnation?: string };
   responseEmitter?: ResponseEmitter;
   /** Effective runtime config with per-flow overrides already merged. */
   effectiveRuntimeConfig: RuntimeConfig;
@@ -127,6 +129,7 @@ export function createInProcessDispatcher(
       metadata: envelope.metadata,
       resolvedActionCore: envelope.resolvedActionCore,
       signal,
+      abortHandoff: local.abortHandoff,
       stores,
       responseEmitter: local.responseEmitter,
       runtimeConfig: local.effectiveRuntimeConfig,
