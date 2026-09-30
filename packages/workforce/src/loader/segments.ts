@@ -12,6 +12,14 @@
  * root. A segment reaches these readers from an argument as well as from a
  * walk, and `..` in one would read a folder the caller never configured — the
  * same escape the walk's symlink refusal exists to stop.
+ *
+ * This module is on the `@flow-state-dev/workforce/browser` graph (through
+ * `roster/address.ts`), so it must stay free of Node built-ins. Its one import
+ * is the `@flow-state-dev/core/helpers` barrel, which is pure today — but that
+ * is a property of the whole barrel, not of the one helper taken from it. The
+ * guarantee is `test/browser-subpath-safe.test.ts`, which walks this graph
+ * into workspace packages and fails on any Node built-in it reaches; do not
+ * rely on this comment instead.
  */
 import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 
@@ -34,7 +42,6 @@ const MAX_SEGMENT_LENGTH = 64;
 
 /** Folder names the framework reserves. */
 const RESERVED_SEGMENTS = new Set(["_meta"]);
-
 
 /**
  * What a segment names, for the error to say.

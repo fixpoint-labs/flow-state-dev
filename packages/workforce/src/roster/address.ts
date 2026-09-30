@@ -6,7 +6,8 @@
  * resolve an address without the roster's collection definitions (and through
  * them the `@flow-state-dev/core` root). A leaf on purpose (BP-019): the only
  * imports are `@flow-state-dev/core/types` and `../loader/segments`, which
- * imports only the pure `@flow-state-dev/core/helpers`.
+ * imports only the pure `@flow-state-dev/core/helpers` (enforced by
+ * `test/browser-subpath-safe.test.ts`).
  * `@flow-state-dev/workforce/browser` re-exports
  * {@link splitSeatAddress} from here.
  */

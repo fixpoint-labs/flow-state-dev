@@ -21,7 +21,8 @@
  * browser can take it without this module's collections. Its import of
  * `validateSegment` reaches into `../loader/` and is safe:
  * `loader/segments.ts` imports only the pure `@flow-state-dev/core/helpers`
- * (for the shared Windows device-name list). The package's root/loader split
+ * (for the shared Windows device-name list), which
+ * `test/browser-subpath-safe.test.ts` enforces. The package's root/loader split
  * exists to keep `node:fs` out of anything importing `@flow-state-dev/workforce`,
  * and the naming rule is the one piece of the loader with no filesystem in it.
  * Copying the rule here instead would be the second copy of a rule whose whole

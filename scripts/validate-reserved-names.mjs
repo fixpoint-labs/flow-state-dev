@@ -101,8 +101,11 @@ function collectFiles() {
     .filter((rel) => {
       try {
         return lstatSync(join(ROOT, rel)).isFile();
-      } catch {
-        return false;
+      } catch (error) {
+        // A tracked file deleted in the working tree has nothing to scan. Any
+        // other failure would silently shrink the scanned surface, so it throws.
+        if (error?.code === "ENOENT") return false;
+        throw error;
       }
     });
 }
