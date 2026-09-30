@@ -52,8 +52,6 @@ import {
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
   resolveResourceCollection,
-  topologicalDispatcher,
-  type ClaimOptions,
   type DefinedTaskCollection,
   type TaskCollectionRef,
   type TaskDispatcher,
@@ -931,12 +929,12 @@ function createManagerCapability(options: {
  * A board dispatcher that never claims a row whose coding run another member
  * started — the half of the run-owner rule that charges nothing.
  *
- * Wire it on the board that DRAINS rows a manager runs, when that board is
+ * Wire it on the board that drains rows a manager runs, when that board is
  * kept per organization (a channel's board): `taskBoard({ dispatcher:
- * runOwnerDispatcher() })`. The claim is what spends an attempt, so narrowing
- * it is the only place a refusal can leave the row exactly as it was: same
- * status, same attempt count, same lease. It narrows `inner` rather than
- * replacing it, so ordering and readiness stay the inner dispatcher's.
+ * runOwnerDispatcher() })`. The claim is what spends an attempt, so refusing
+ * here leaves the row exactly as it was: same status, same attempt count,
+ * same lease. Readiness and order stay the collection's: the owner check is
+ * an `eligibility` narrow, which the substrate applies on top of its own.
  *
  * A row with no recorded owner is claimable by anyone; the manager records
  * the claimant on its first run (see `./run-owner`). When a claim comes back
@@ -944,33 +942,23 @@ function createManagerCapability(options: {
  * refused with an error naming whose run it is, rather than returning as if
  * the board were idle.
  *
- * @param inner The dispatcher to narrow. Defaults to `topologicalDispatcher`,
- *   the task board's own default.
  * @returns A dispatcher to pass as `taskBoard({ dispatcher })`.
  */
-export function runOwnerDispatcher(inner: TaskDispatcher = topologicalDispatcher): TaskDispatcher {
+export function runOwnerDispatcher(): TaskDispatcher {
   return {
     async claim(collection, workerId, ctx) {
       const principal = runPrincipal(ctx);
-      const refused: Array<{ taskId: string; owner: RunOwner }> = [];
-      const narrowed: TaskCollectionRef = Object.create(collection, {
-        claim: {
-          value: (claimant: string, options: ClaimOptions = {}) =>
-            collection.claim(claimant, {
-              ...options,
-              eligibility: (task) => {
-                if (options.eligibility !== undefined && !options.eligibility(task)) return false;
-                const owner = runOwnerOf(task);
-                if (owner === null || isRunOwner(owner, principal)) return true;
-                refused.push({ taskId: task.id, owner });
-                return false;
-              },
-            }),
+      let refused: { taskId: string; owner: RunOwner } | undefined;
+      const claimed = await collection.claim(workerId, {
+        eligibility: (task) => {
+          const owner = runOwnerOf(task);
+          if (owner === null || isRunOwner(owner, principal)) return true;
+          if (refused === undefined) refused = { taskId: task.id, owner };
+          return false;
         },
       });
-      const claimed = await inner.claim(narrowed, workerId, ctx);
-      if (claimed === null && refused.length > 0) {
-        throw new Error(foreignRunMessage(refused[0]!.taskId, refused[0]!.owner));
+      if (claimed === null && refused !== undefined) {
+        throw new Error(foreignRunMessage(refused.taskId, refused.owner));
       }
       return claimed;
     },
