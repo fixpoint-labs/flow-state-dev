@@ -246,12 +246,12 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 <header class="masthead">
   <p class="eyebrow">Architecture inventory</p>
   <h1>Everything in the framework, and how it fits</h1>
-  <p class="standfirst">A complete map of <code>@flow-state-dev</code>: 30 packages, four ways to decide what runs next, and six orthogonal systems underneath all of them. Sections 02&ndash;04 are how the pieces fit into one thing; the rest is the inventory of what each piece is.</p>
+  <p class="standfirst">A complete map of <code>@flow-state-dev</code>: 30 packages, four ways to decide what runs next, and six orthogonal systems underneath all of them. Sections 02&ndash;04 are how the pieces fit into one thing; the rest is the inventory of what each piece is. Counts are measured at <code>main</code> <code>67a3bb9b</code> (2026-09-30); <a href="#packages">&sect;05</a> says how.</p>
   <div class="stats">
     <div class="stat"><b>30</b><span>packages</span></div>
     <div class="stat"><b>~242k</b><span>lines of src</span></div>
-    <div class="stat"><b>7,655</b><span>tests</span></div>
-    <div class="stat"><b>4</b><span>block kinds</span></div>
+    <div class="stat"><b>~11.3k</b><span>tests</span></div>
+    <div class="stat"><b>5</b><span>block kinds</span></div>
     <div class="stat"><b>24</b><span>sequencer ops</span></div>
     <div class="stat"><b>17</b><span>item types</span></div>
     <div class="stat"><b>7</b><span>deprecations</span></div>
@@ -765,7 +765,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>core</code></td><td>Foundation</td><td class="num">38,977</td><td class="num">178</td><td>The five block builders, <code>defineFlow</code>, capabilities, resources, items, prompt assembly, model resolution, 11 utility factories, the graph layer.</td><td>contracts</td></tr>
       <tr><td><code>engine</code></td><td>Runtime</td><td class="num">52,999</td><td class="num">183</td><td>Block dispatch, retry, rescue, side chains, scopes and CAS, stores, SSE streaming, HTTP routes, transports, durability, recovery, voice pipeline.</td><td>core</td></tr>
       <tr><td><code>orchestration</code></td><td>Composition</td><td class="num">24,847</td><td class="num">107</td><td>Task schema + state machine, <code>TaskCollection</code>, five dispatchers, the task-board primitive, goal-seek loop, flow policy, and the whole skills runtime.</td><td>core</td></tr>
-      <tr><td><code>patterns</code></td><td>Composition</td><td class="num">7,962</td><td class="num">53</td><td>Eight named multi-agent shapes composed over the task board, plus a benchmark adapter registry.</td><td>core, orchestration</td></tr>
+      <tr><td><code>patterns</code></td><td>Composition</td><td class="num">7,962</td><td class="num">53</td><td>Nine named multi-agent shapes composed over the task board, plus a benchmark adapter registry.</td><td>core, orchestration</td></tr>
       <tr><td><code>memory</code></td><td>Composition</td><td class="num">8,079</td><td class="num">33</td><td>Four memory tiers (working / episodic / semantic / digest), consolidation, hygiene janitor, recall tools, one composed capability.</td><td>core</td></tr>
       <tr><td><code>tools</code></td><td>Composition</td><td class="num">7,554</td><td class="num">52</td><td>Search (7 providers), fetch (3), crawl (2), sandboxed bash (5 adapters), MCP client manager.</td><td>core, workspace</td></tr>
       <tr><td><code>workforce</code></td><td>Composition</td><td class="num">17,557</td><td class="num">63</td><td>The seat factory (<code>hireWorkforce</code>), the built-in <code>agent</code> worker kind, the <code>WORKER.md</code> / resource / channel loaders, resource-map codegen, and personas. No Agent factory. The L2 product story (teams / seats / channels) is convention &mdash; see &sect;04 and the <a href="workforce.html">Workforce atlas</a>.</td><td>core, orchestration</td></tr>
@@ -790,7 +790,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>devtool</code></td><td>Consumer</td><td class="num">13,803</td><td class="num">90</td><td>Pre-built inspector assets served by <code>fsdev dev</code>. Built from <code>apps/devtool</code>.</td><td>client, core, react</td></tr>
       <tr><td><code>cli</code></td><td>Consumer</td><td class="num">4,968</td><td class="num">31</td><td>The <code>fsdev</code> binary: run, chat, dev, serve, block, benchmark, list, add, ui.</td><td>core, devtool, engine, node, store-sqlite, testing, workforce</td></tr>
       <tr><td><code>testing</code></td><td>Proving</td><td class="num">4,887</td><td class="num">32</td><td>Harnesses, mocks, snapshot helpers, transport conformance, eval and benchmark runners.</td><td>core, engine</td></tr>
-      <tr><td><code>integration-tests</code></td><td>Proving</td><td class="num">9,977</td><td class="num">49</td><td>27 tier-1 end-to-end flow scenarios, private to the workspace.</td><td>claude-code, core, engine, node, orchestration, patterns, store-sqlite, testing, tools</td></tr>
+      <tr><td><code>integration-tests</code></td><td>Proving</td><td class="num">9,977</td><td class="num">49</td><td>41 tier-1 end-to-end scenario files, private to the workspace.</td><td>claude-code, core, engine, node, orchestration, patterns, store-sqlite, testing, tools</td></tr>
     </tbody>
   </table>
   </div>
@@ -1966,7 +1966,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <div class="cards">
     <div class="card"><h5>testing</h5><span class="role">harness package</span><p><code>createTestContext</code>, <code>testBlock</code>, <code>testSequencer</code>, <code>testRouter</code>, <code>testFlow</code>, <code>testItems</code>, <code>runForTest</code>, replaying refs, trace snapshots, transport conformance, eval and benchmark runners.</p></div>
-    <div class="card"><h5>integration-tests</h5><span class="role">tier 1, mocked</span><p>27 end-to-end scenarios: chat tool loops, session resume, cross-process abort delivery, side-chain pool isolation, and ten distinct task-board cases.</p></div>
+    <div class="card"><h5>integration-tests</h5><span class="role">tier 1, mocked</span><p>41 end-to-end scenario files: chat tool loops, session resume, cross-process abort delivery, side-chain pool isolation, fifteen task-board cases, and seven two-users-one-tenant isolation cases.</p></div>
     <div class="card"><h5>goals/</h5><span class="role">real path, real model</span><p>29 goal families with <code>goal.md</code> + <code>run.mts</code>, run by hand outside CI. The library exists so a goal written for one PR becomes a regression check a year later.</p></div>
     <div class="card"><h5>apps/kitchen-sink</h5><span class="role">reference app</span><p>Next.js app hosting every subsystem — where features get tested end to end in a browser. Carries its own e2e suite and skills folder.</p></div>
     <div class="card"><h5>apps/pattern-benchmark</h5><span class="role">cross-pattern</span><p>Runs six patterns against a fixed task suite and model through the shared benchmark registry.</p></div>
@@ -1975,7 +1975,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <div class="card"><h5>apps/docs</h5><span class="role">129 pages</span><p>Docusaurus site across 21 sections, with its own voice standard and an outsider rule — docs describe what the thing does, never how it was built.</p></div>
   </div>
 
-  <p><strong>7,655 declared test cases</strong> across 630 files sit inside the packages — 61 of those are <code>it.each</code> blocks that expand to more at runtime, so the executed count is higher. The weight follows the mass: 1,878 in <code>core</code>, 1,803 in <code>engine</code>, 937 in <code>orchestration</code>, 459 in <code>memory</code>. The framework's own verification hierarchy is explicit in <code>AGENTS.md</code>: <code>fsdev run</code> is the default for a flow change, <code>pnpm test</code> for unit-level changes, and the kitchen sink in a browser for UI-layer changes.</p>
+  <p><strong>About 11,300 declared test cases</strong> across 904 test files sit inside the packages. That is a grep count of <code>it(</code> / <code>test(</code> calls, so each of the 141 <code>.each</code> tables counts once and the executed count is higher. The weight follows the mass: 2,653 in <code>engine</code>, 2,118 in <code>core</code>, 1,221 in <code>orchestration</code>, 969 in <code>workforce</code>. The framework's own verification hierarchy is explicit in <code>AGENTS.md</code>: <code>fsdev run</code> is the default for a flow change, <code>pnpm test</code> for unit-level changes, and the kitchen sink in a browser for UI-layer changes.</p>
 </section>
 
 
@@ -1984,7 +1984,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <p class="lede">Two kinds of entry: surface already <strong>marked</strong> <code>@deprecated</code> in the code, and surface <strong>proposed</strong> for removal, reduction, or extraction but not yet marked. The first is a cleanup list. The second is a set of boundary decisions.</p>
 
   <h3>Already marked — 7 deprecations across 3 packages</h3>
-  <p>Measured at <code>main</code> <code>67a3bb9b</code> (2026-09-30) by grepping <code>@deprecated</code> in non-test <code>.ts</code> / <code>.tsx</code> under <code>packages/*/src</code>. Every one names its replacement, so none of these is a research task. Twenty-seven of the thirty packages are <code>public</code>; only <code>integration-tests</code>, <code>ui</code>, and <code>@thought-fabric/core</code> are <code>private</code> today, which means everything below is currently published surface.</p>
+  <p>Same commit and scope as <a href="#packages">&sect;05</a>, counting <code>@deprecated</code> in non-test <code>.ts</code> / <code>.tsx</code> only. Every one names its replacement, so none of these is a research task. Twenty-seven of the thirty packages are <code>public</code>; only <code>integration-tests</code>, <code>ui</code>, and <code>@thought-fabric/core</code> are <code>private</code> today, which means everything below is currently published surface.</p>
 
   <div class="tw"><table>
     <thead><tr><th>Package</th><th class="num">Marks</th><th>What is deprecated</th><th>Replacement</th></tr></thead>
@@ -1997,7 +1997,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <div class="note">
     <span class="lbl">Removed since the earlier list</span>
-    <p>An earlier version of this table listed 23 marks across 6 packages. The largest cluster is gone, not pending: <code>patterns</code>' <code>shared/legacy-plan-types.ts</code> (<code>BasePlan</code>, <code>BasePlanTask</code>, <code>PlanMeta</code>, <code>PlanTaskUpdate</code>), <code>react</code>'s <code>CollectionItem</code> back-compat shape, and <code>vercel</code>'s heartbeat re-export shim were deleted in <code>3c6aa682</code> (2026-08-22), and none of those identifiers is findable under <code>packages</code>, <code>labs</code>, <code>apps</code>, or <code>examples</code>. The remaining earlier rows (<code>core</code>, <code>react</code>'s <code>FlowContext</code> singleton, <code>contracts</code>, <code>memory</code>) no longer carry an <code>@deprecated</code> mark at this commit; this table does not re-audit what became of each.</p>
+    <p>The earlier list had 23 marks in 6 packages; its largest cluster (<code>patterns</code>' legacy plan types, <code>react</code>'s <code>CollectionItem</code>, <code>vercel</code>'s heartbeat shim) was deleted in <code>3c6aa682</code> (2026-08-22), and its other rows no longer carry a mark, which this table does not re-audit.</p>
   </div>
 
   <div class="note">
@@ -2091,7 +2091,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       </tr>
       <tr>
         <td><strong>tools → separate packages</strong></td>
-        <td><code>bash</code> is 4,454 of 7,170 lines (62%) with 5 sandbox adapters. <code>search</code>+<code>fetch</code>+<code>crawl</code> together are 1,725 across 12 providers. <code>mcp</code> is 604.</td>
+        <td><code>bash</code> is 4,838 of 7,554 lines (64%) with 5 sandbox adapters. <code>search</code>+<code>fetch</code>+<code>crawl</code> together are 1,725 across 12 providers. <code>mcp</code> is 604.</td>
         <td>The split lines are already the directory lines. <code>bash</code> alone justifies a package; the MCP <em>client</em> and the MCP <em>server</em> package are opposite ends of one protocol and are worth naming as such.</td>
       </tr>
       <tr>
@@ -2125,12 +2125,12 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <div class="tension">
     <h5>The contracts merge, restated as the question it actually is</h5>
     <p><code>contracts</code> exists so browser code can value-import the item taxonomy without pulling <code>core</code> into the bundle. That boundary is intact and enforced: <code>client</code> and <code>react</code> are type-only on <code>core</code>, and merging the two would create the runtime edge the split was built to prevent.</p>
-    <p>But the split is <strong>2,350 lines across 19 files serving 3 runtime import sites</strong> — one item-store helper, one deep-equal, one items barrel. That is the live question: not "should the boundary exist" but "is the whole of <code>contracts</code> on the right side of it?" A smaller <code>contracts</code> holding only what browsers actually execute, with the rest folded back into <code>core</code> as types, would keep the property and shrink the surface.</p>
-    <span class="ask">Before merging: check what those 3 runtime imports pull transitively. If it is a small closure, the answer is a smaller <code>contracts</code>, not no <code>contracts</code>. If it is most of the package, the split is already right-sized and should be left alone.</span>
+    <p>But the split is <strong>2,614 lines across 22 files serving 4 runtime imports</strong> in <code>client</code> and <code>react</code> — the item-ordering helpers, one deep-equal, one <code>toError</code>, and <code>resolveItemVisibility</code> from the root barrel. That is the live question: not "should the boundary exist" but "is the whole of <code>contracts</code> on the right side of it?" A smaller <code>contracts</code> holding only what browsers actually execute, with the rest folded back into <code>core</code> as types, would keep the property and shrink the surface.</p>
+    <span class="ask">Before merging: check what those 4 runtime imports pull transitively. If it is a small closure, the answer is a smaller <code>contracts</code>, not no <code>contracts</code>. If it is most of the package, the split is already right-sized and should be left alone.</span>
   </div>
 
   <h3>Making things private is the cheaper half</h3>
-  <p>Twenty-five of twenty-seven packages are published. For anything on the list above that is not ready to delete, <code>private: true</code> costs one line, stops the surface growing new external callers, and is reversible — where a deletion, once published consumers exist, is not. It is the move that buys time without the contract.</p>
+  <p>Twenty-seven of thirty packages are published. For anything on the list above that is not ready to delete, <code>private: true</code> costs one line, stops the surface growing new external callers, and is reversible — where a deletion, once published consumers exist, is not. It is the move that buys time without the contract.</p>
 </section>
 
 <section id="lenses">
@@ -2140,7 +2140,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <div class="tension">
     <h5>1 · The two mega-packages</h5>
-    <p><code>core</code> (34k lines, 160 files) and <code>engine</code> (42k, 167) are 43% of all source. <code>core/src/index.ts</code> is 443 lines of nothing but export statements across a dozen subdirectories — blocks, flow, capability, graph, items, prompt, models, helpers, adapters, schema, tools, utility, resource-template.</p>
+    <p><code>core</code> (39k lines, 178 files) and <code>engine</code> (53k, 183) are 38% of all source. <code>core/src/index.ts</code> is 545 lines of nothing but export statements reaching into sixteen subdirectories — blocks, flow, capability, items, models, helpers, adapters, schema, tools, utility, types, and more.</p>
     <p>The precedent for splitting already exists: <code>contracts</code> was carved out of <code>core</code> and re-exported so consumers never noticed. Twelve subpath exports on <code>core</code> suggest the seams are already drawn.</p>
     <span class="ask">Is <code>core</code> one package with twelve subpaths, or three packages? What did carving out <code>contracts</code> actually buy, and does that argument extend?</span>
   </div>
@@ -2161,16 +2161,16 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <div class="tension">
     <h5>4 · The architecture overview is measurably stale</h5>
-    <p><code>docs/architecture/overview.md</code> opens its package section with "Six packages with strict dependency boundaries" and lists eight names. There are 27. Its dependency graph shows five nodes. It does not mention orchestration, patterns, memory, tools, workforce, or any host or store adapter.</p>
+    <p><code>docs/architecture/overview.md</code> opens its package section with "Six packages with strict dependency boundaries" and lists eight names. There are 30. Its dependency graph shows seven nodes. It does not mention orchestration, patterns, memory, tools, workforce, or any host or store adapter.</p>
     <p>Tenet 1 is explicit that a doc/code mismatch is <em>itself</em> incoherence, and that the move is to resolve it deliberately rather than rank one over the other silently. This one has a clear answer — the code is right — but it has not been made.</p>
     <span class="ask">Is the overview meant to be a complete map or a 30-second on-ramp? If the latter, say so in it, and point at something that <em>is</em> complete.</span>
   </div>
 
   <div class="tension">
     <h5>5 · Superseded paths that outlived their supersession</h5>
-    <p>23 <code>@deprecated</code> marks across 6 packages, each naming its replacement. Four of the six clusters are old-and-new landing side by side rather than the new path deleting the old one.</p>
+    <p>7 <code>@deprecated</code> marks across 3 packages, each naming its replacement. Only the <code>claude-code</code> aliases are old-and-new landing side by side rather than the new path deleting the old one; the other marks are removed options kept as loud type errors.</p>
     <p>This one now has a decision attached — take them out, or make the package private where a deletion is not yet safe. The itemised list is <a href="#ledger">&sect;26</a>.</p>
-    <span class="ask">What remains open is the general rule, not the list: a supersession that does not delete is how the next 23 accumulate. Is that a review checklist line, or is it already BP-038 and simply not enforced?</span>
+    <span class="ask">What remains open is the general rule, not the list: a supersession that does not delete is how the next batch accumulates. Is that a review checklist line, or is it already BP-038 and simply not enforced?</span>
   </div>
 
   <div class="tension">
