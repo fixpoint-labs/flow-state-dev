@@ -138,8 +138,6 @@ A name must be lowercase letters, digits, and single hyphens, at most 64 charact
 
 A handful of otherwise-legal names are refused as well: `con`, `prn`, `aux`, `nul`, `com1` through `com9`, and `lpt1` through `lpt9`. Windows treats these as device names rather than filenames, whatever extension follows, so a tree containing one cannot be checked out on a Windows machine at all.
 
-That last refusal covers every name above except a **skill** folder. Skills are read by their own loader, which checks the lowercase-hyphen rule and not the device list, so a skill called `con` loads on macOS and Linux and then breaks the checkout for anyone on Windows. Nothing stops you naming one that way; don't.
-
 ## Reading the tree
 
 Point `readWorkforce` at the root:

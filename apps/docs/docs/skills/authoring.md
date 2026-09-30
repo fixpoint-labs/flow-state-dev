@@ -17,7 +17,7 @@ skills/
     assets/           # optional: templates, data files
 ```
 
-`scripts/`, `references/`, and `assets/` are the conventional names, and any other file or folder layout works too. The skill name is the folder name. It's 1 to 64 characters of lowercase letters, digits, and hyphens, with no hyphen at the start or end and no two hyphens in a row.
+`scripts/`, `references/`, and `assets/` are the conventional names, and any other file or folder layout works too. The skill name is the folder name. It's 1 to 64 characters of lowercase letters, digits, and hyphens, with no hyphen at the start or end and no two hyphens in a row. Windows device names (`con`, `prn`, `aux`, `nul`, `com1` through `com9`, `lpt1` through `lpt9`) are refused too, because a folder with one of those names can't be checked out on Windows.
 
 Files inside the folder are bundled with the skill when it's seeded into the resource collection. They're addressable from the body via the `${SKILL_DIR}` substitution (see below), so your body can say "open `${SKILL_DIR}/references/rubric.md`" and the agent knows where to find it.
 

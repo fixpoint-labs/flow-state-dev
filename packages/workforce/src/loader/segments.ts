@@ -51,8 +51,9 @@ const RESERVED_SEGMENTS = new Set(["_meta"]);
  * The numbered devices run **1–9, not 0–9**: `COM0` and `LPT0` are ordinary
  * names on Windows, and refusing them would cost an author two portable names
  * at every level of the tree for nothing. The same list, to the same bound,
- * is in `engine`'s filesystem store — `workforce` denies `engine`, so the two
- * cannot share it today.
+ * is in `engine`'s filesystem store and in `orchestration`'s skill-name
+ * validator — `workforce` denies `engine`, and `orchestration` cannot depend
+ * on `workforce`, so the three cannot share it today.
  */
 const DOS_DEVICE_SEGMENTS: ReadonlySet<string> = new Set([
   "con",
