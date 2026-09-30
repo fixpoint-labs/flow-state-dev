@@ -21,7 +21,8 @@
       "dependsOn": ["^build"]
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "env": ["CI", "REDIS_URL", "GOAL_CONTROL"]
     },
     "lint": {},
     "dev": {
