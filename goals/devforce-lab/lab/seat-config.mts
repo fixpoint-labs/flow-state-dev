@@ -32,6 +32,13 @@ export const DOCUMENT_KEY = "document";
 /** The public entry a check reads a seat's own configuration through. */
 export const INSPECT_ENTRY = "inspect";
 
+/**
+ * The EM seat's asking door: pause on a person's approval, then file and run
+ * the board. Here rather than in `em.mts` so the raise step (`ask.mts`) can
+ * name it without depending on the worker flow module.
+ */
+export const ASK_ENTRY = "askToFile";
+
 /** The component item that entry puts its facts on, for a caller reading the stream. */
 export const SEAT_FACTS_COMPONENT = "devforce-seat-facts";
 
