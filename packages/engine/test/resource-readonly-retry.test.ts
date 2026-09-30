@@ -266,7 +266,7 @@ describe("writable:false refusals are not retried (FIX-1265)", () => {
   });
 });
 
-describe("collection writable:false refusals are not retried (FIX-1519)", () => {
+describe("collection writable:false refusals are not retried", () => {
   it("does not re-execute a retry-configured block that hits a read-only collection write", async () => {
     let attempts = 0;
     const flow = defineFlow({
