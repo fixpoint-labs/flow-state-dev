@@ -5,8 +5,12 @@
  * notes with `text-destructive` straight on the card or page background. In
  * dark mode that text has to clear WCAG AA for normal-size text (4.5:1)
  * against both, or the one colour that says "this failed" is the hardest one
- * to read. Checked on the `tokens` item's defaults, which are what an install
- * writes and what `registry/token-defaults.css` is held to.
+ * to read. The reverse use has to clear it too: a destructive action (the
+ * approval card's Reject button) paints `text-destructive-foreground` on a
+ * solid `bg-destructive` fill, so lightening the red for text must not leave
+ * the button's label unreadable. Checked on the `tokens` item's defaults,
+ * which are what an install writes and what `registry/token-defaults.css` is
+ * held to.
  */
 import { describe, expect, it } from "vitest";
 import { registryTokenDefaults } from "../scripts/token-defaults";
@@ -46,6 +50,10 @@ describe("dark destructive as text", () => {
 
   it.each(["card", "background"])("clears AA on %s", (surface) => {
     expect(contrast(dark.destructive!, dark[surface]!)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it("keeps the label on a solid destructive fill at AA", () => {
+    expect(contrast(dark["destructive-foreground"]!, dark.destructive!)).toBeGreaterThanOrEqual(AA_TEXT);
   });
 
   it("fails a red too dark to read on the dark background", () => {
