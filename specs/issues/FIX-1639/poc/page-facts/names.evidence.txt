@@ -84,3 +84,22 @@ route probe: singleton billing→202 payments(map key)→404 · collection acme-
 FAIL  span  `POST /api/flows/payments/webhooks/stripe`: segment "payments" is not the id of a flow the page registers (billing); it is the `flows` map key, which the route ignores
 note: classified but no longer on the page: dispatchLocal, DEFAULT_ORG_ID, "webhook", key, id, notification, epic-wake
 exit=1
+
+# names.mts on the published page after the colocated reword, parent cb9241ad7, run 2026-09-30
+# (manifest pruned of DEFAULT_ORG_ID and "webhook", which neither the page nor the DOCS.md draft uses)
+
+$ PAGE=apps/docs/guides/keeping-a-flow-running.md CONTROL= pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts
+page names vs main
+fences=4 spans=63 checks passed=91 failed=0
+note: classified but no longer on the page: dispatchLocal, key, id, notification, epic-wake
+exit=0
+
+$ CONTROL= pnpm exec tsx specs/issues/FIX-1639/poc/page-facts/names.mts   # the DOCS.md draft
+fences=4 spans=60 checks passed=84 failed=0
+exit=0
+
+$ PAGE=… CONTROL=planted|unclassified|false-option|wrong-segment   (each must FAIL)
+planted        failed=1  FAIL  span  `notifyTopic`: notifyTopic is not exported by @flow-state-dev/core
+unclassified   failed=1  FAIL  TOTALITY  `madeUpOption` is on the page and nothing checks it
+false-option   failed=1  FAIL  span  `dispatcher({ delay })`: @flow-state-dev/core dispatcher.(0).delay does not resolve
+wrong-segment  failed=1  FAIL  span  `POST /api/flows/payments/webhooks/stripe`: segment "payments" is not the id of a flow the page registers (billing); it is the `flows` map key, which the route ignores

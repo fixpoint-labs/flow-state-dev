@@ -89,8 +89,10 @@ same session, so its state builds up. `when` is an optional predicate on the eve
 The provider's signature verifies each delivery. With no resolver, as in the example, every
 event runs as the `system` user, and the flow is left on the development default. Its
 management and session endpoints are open to anyone. `GET /api/flows/sessions` lists its
-sessions to any caller. And `fsdev serve` won't bind a non-loopback host. In production, give the flow, or the host, a
-`resolvePrincipal` that returns your organization for webhook deliveries, as in
+sessions to any caller. And `fsdev serve` won't bind a non-loopback host.
+
+In production, give the flow, or the host, a `resolvePrincipal` that returns your organization
+for webhook deliveries, as in
 [Stripe webhook with HMAC signature](/docs/server/authentication#stripe-webhook-with-hmac-signature).
 
 Read next: [Webhook receivers](/docs/server/webhooks) for provider definitions, retries and
@@ -195,9 +197,10 @@ has every option and refusal.
 A dispatcher's `session` option decides where the work runs.
 
 What's allowed depends on whether the process hands work to a queue. With `bullmqWorker`, its
-`mode` sets that: `colocated`, the default, enqueues work and runs it in the same process;
-`dispatch-only` enqueues and leaves the running to a separate worker; `worker-only` is that
-separate worker, which runs queued jobs and enqueues nothing. See
+`mode` sets that. `colocated`, the default, both enqueues work and runs a worker, and a job may
+run on any worker on the queue, this one or another replica's. `dispatch-only` enqueues and
+leaves the running to separate workers. `worker-only` is one of those workers: it runs queued
+jobs and enqueues nothing. See
 [Separated workers](/guides/background-jobs-bullmq#4-separated-workers). If you replace the host's
 [`dispatcher` option](/docs/configuration/runtime#createflowstate-fields) on `createFlowState`
 (not the `dispatcher()` block) with your own that runs work in another process, the refusals
@@ -215,7 +218,7 @@ is enqueued. A `{ key }` dispatch, a webhook delivery (with or without a `sessio
 schedule tick run normally there.
 
 If you use Workforce, its channels are sessions that already exist, so the same rule reaches
-them. On a process that hands work to the queue, such as a `colocated` worker, a post made
+them. On a process that hands work to the queue, such as a `colocated` one, a post made
 from your app is saved to the channel and shows in its transcript, but no member is woken and
 nothing answers. A post from another flow, made on such a process, is refused with
 `external-dispatcher`. See

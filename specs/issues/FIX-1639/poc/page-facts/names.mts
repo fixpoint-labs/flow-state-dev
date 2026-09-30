@@ -252,6 +252,8 @@ const sched = (...k: string[]) => P("@flow-state-dev/core", "FlowDefinition", "s
 const dispatcherOpt = (...k: string[]) => P("@flow-state-dev/core", "dispatcher", "(0)", ...k);
 
 /** Every span the page may contain, and what makes it true. */
+// `dispatchLocal`, `key`, `id`, `notification` and `epic-wake` are no longer on the published
+// page; they stay because the default run over the DOCS.md draft still reads them.
 const MANIFEST: Record<string, Check[]> = {
   ".sideChain()": [P("@flow-state-dev/core", "sequencer", "()", "sideChain")],
   "202": [S(WEBHOOKS_REF, "202"), S(SCHEDULED_REF, "| 202  |")],
@@ -291,7 +293,6 @@ const MANIFEST: Record<string, Check[]> = {
   // the webhook sample's `defaultUserId: "system"`, the user every event runs as
   system: [P("@flow-state-dev/core", "FlowDefinition", "authentication", "defaultUserId"),
     S(WEBHOOKS_REF, 'defaultUserId: "system"')],
-  DEFAULT_ORG_ID: [E("@flow-state-dev/core", "DEFAULT_ORG_ID")],
   // the custom dispatcher option on createFlowState; with no `dispatchLocal` it is external
   dispatcher: [P("@flow-state-dev/engine", "CreateFlowStateOptions", "dispatcher"),
     S("packages/engine/src/transports/host/createInboundTransportHost.ts", '"dispatchLocal" in effectiveDispatcher')],
@@ -303,9 +304,6 @@ const MANIFEST: Record<string, Check[]> = {
   // a configured resolver returning null is refused 401; the signature is checked before it runs
   "401": [S("apps/docs/docs/server/authentication.md", "refused with 401"),
     S("packages/engine/src/transports/webhook/routes.ts", "flow + provider lookup → raw body → verify")],
-  '"webhook"': [S("packages/engine/src/transports/webhook/createWebhookTransportAdapter.ts",
-    'WEBHOOK_TRANSPORT_SOURCE = "webhook"'),
-    P("@flow-state-dev/core", "FlowDefinition", "authentication", "resolvePrincipal", "(0)", "source")],
   bullmqWorker: [E("@flow-state-dev/bullmq", "bullmqWorker")],
   mode: [P("@flow-state-dev/bullmq", "bullmqWorker", "(0)", "mode")],
   "worker: bullmqWorker({ connection })": [P("@flow-state-dev/engine", "CreateFlowStateOptions", "worker"),
