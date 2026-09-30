@@ -43,7 +43,12 @@ type BoardListCommonProps = {
    * segment, so it carries no slash.
    */
   readonly boardRef: string;
-  /** Rows to request per page. The list reads every page regardless. */
+  /**
+   * Rows to request per page: the size of each fetch, not a cap on what
+   * renders. The list follows the cursor for up to 1,000 pages; a collection
+   * with pages left after that shows the error line and Retry, never the
+   * rows read so far. See `usePanelRows`.
+   */
   readonly limit?: number;
   readonly slots?: BoardListSlots;
 };

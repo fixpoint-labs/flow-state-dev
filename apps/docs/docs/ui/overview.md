@@ -24,6 +24,43 @@ npx shadcn@latest add https://ui.flow-state.dev/r/message.json
 fsdev ui list
 ```
 
+## Colours and theming
+
+Registry components never name a colour directly. They use tokens, CSS variables with names that say what the colour is for: `background`, `foreground`, `muted-foreground`, `destructive` and so on. Change a token in your stylesheet and every component that reads it follows, with no edit to the files you copied in.
+
+Status gets its own tokens:
+
+| Token | Used for |
+|---|---|
+| `success` | done, approved, a passing result |
+| `warning` | something is off but nobody is being asked: a blocked task, a stuck request |
+| `info` | running, in progress, informational |
+| `attention` | a person must act: a tool call waiting for approval, a task parked for review |
+| `destructive` | failed, rejected, an error |
+
+Each has a `-foreground` partner for text on a filled background. `warning` and `attention` are separate on purpose, so an app can make "waiting on you" stand out without every warning looking like a request.
+
+Defaults come with the components. The first `fsdev ui add` of a component that uses a status token also adds the `tokens` item, which writes every token, light and dark, into your stylesheet. The defaults are plain: green, amber, blue, yellow and red.
+
+```bash
+fsdev ui add tool task-plan   # also adds tokens
+```
+
+The defaults sit in a base layer, so your own values win wherever you declare them. To restyle, set the tokens you want to change:
+
+```css
+:root {
+  --attention: <your highlight colour>;
+  --attention-foreground: <text on it>;
+  --warning: <your warning colour>;
+}
+.dark {
+  --attention: <your highlight colour, dark>;
+}
+```
+
+**Upgrading copies from before the status tokens existed.** Re-add the components you use, then run `fsdev ui add tokens` once. A component copied in fresh against a stylesheet without the tokens renders its status parts with no colour, not an error.
+
 ## What's in the box
 
 Three categories, separated by how tightly they couple to Flow State.

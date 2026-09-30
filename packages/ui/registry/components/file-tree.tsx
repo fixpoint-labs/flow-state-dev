@@ -171,9 +171,9 @@ export function FileTreeFolder({
         <FileTreeIcon>
           {icon ??
             (isExpanded ? (
-              <FolderOpenIcon className="h-4 w-4 text-blue-500" />
+              <FolderOpenIcon className="h-4 w-4 text-muted-foreground" />
             ) : (
-              <FolderIcon className="h-4 w-4 text-blue-500" />
+              <FolderIcon className="h-4 w-4 text-muted-foreground" />
             ))}
         </FileTreeIcon>
         <FileTreeName>{name}</FileTreeName>

@@ -88,7 +88,7 @@ Transport trust and ownership are separate checks. The signature you verified an
 | `mcp` | MCP server adapter (`@flow-state-dev/mcp`) |
 | `webhook` | Webhook receivers |
 | `scheduled` | Scheduled dispatch (`@flow-state-dev/scheduled`) |
-| `notification` | Cross-flow event subscribers |
+| `notification` | No built-in transport sends it. A custom transport may use it, and the DevTool labels those requests *Notification* |
 
 DevTool renders known sources with a label and a small badge. Custom
 transport sources fall back to the raw string.

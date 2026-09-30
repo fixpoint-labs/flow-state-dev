@@ -405,6 +405,7 @@ A `POST /api/flows/billing/webhooks/stripe` with a valid signature and an
 - [Receiving Stripe webhooks](/guides/webhooks-stripe)
 - [Receiving GitHub webhooks](/guides/webhooks-github)
 - [Receiving Slack Events](/guides/webhooks-slack-events)
+- [Keeping a flow running](/guides/keeping-a-flow-running) — webhooks, schedules and hand-offs on one page, with where each setting lives.
 
 For provenance, the `source` field, and the per-flow declarative pattern this
 shares with MCP and Scheduled, see

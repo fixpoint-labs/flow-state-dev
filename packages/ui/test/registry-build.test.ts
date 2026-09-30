@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { readFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 
@@ -22,6 +23,8 @@ interface RegistryItem {
   dependencies: string[];
   registryDependencies: string[];
   files: RegistryFile[];
+  cssVars?: Record<string, Record<string, string>>;
+  css?: Record<string, unknown>;
   categories: string[];
 }
 
@@ -54,6 +57,7 @@ describe("registry build", () => {
 
   it("each item JSON contains embedded source content", () => {
     for (const item of registry.items) {
+      if (item.type === "registry:theme") continue;
       const outputPath = resolve(OUTPUT_DIR, `${item.name}.json`);
       const built = JSON.parse(readFileSync(outputPath, "utf-8"));
 
@@ -93,7 +97,7 @@ describe("registry build", () => {
 
   it("all referenced source files exist in the registry", () => {
     for (const item of registry.items) {
-      for (const file of item.files) {
+      for (const file of item.files ?? []) {
         const sourcePath = resolve(ROOT, file.path);
         expect(
           existsSync(sourcePath),
@@ -107,14 +111,69 @@ describe("registry build", () => {
     for (const item of registry.items) {
       expect(item.name).toBeTruthy();
       expect(item.title).toBeTruthy();
-      expect(item.type).toBe("registry:component");
       expect(item.description).toBeTruthy();
       expect(Array.isArray(item.dependencies)).toBe(true);
       expect(Array.isArray(item.registryDependencies)).toBe(true);
+      if (item.type === "registry:theme") {
+        // A theme carries tokens, not files.
+        expect(item.css ?? item.cssVars).toBeDefined();
+        continue;
+      }
+      expect(item.type).toBe("registry:component");
       expect(Array.isArray(item.files)).toBe(true);
       expect(item.files.length).toBeGreaterThan(0);
     }
   });
+
+  it("writes a dependency on another item in this registry as that item's URL", () => {
+    // The shadcn CLI looks a bare name up in ITS registry, so a bare "tokens"
+    // would 404 on ui.shadcn.com instead of installing ours.
+    const ownNames = new Set(registry.items.map((item) => item.name));
+    for (const item of registry.items) {
+      const built = JSON.parse(readFileSync(resolve(OUTPUT_DIR, `${item.name}.json`), "utf-8"));
+      item.registryDependencies.forEach((dep, i) => {
+        expect(built.registryDependencies[i]).toBe(
+          ownNames.has(dep) ? `https://ui.flow-state.dev/r/${dep}.json` : dep
+        );
+      });
+    }
+    const tool = JSON.parse(readFileSync(resolve(OUTPUT_DIR, "tool.json"), "utf-8"));
+    expect(tool.registryDependencies).toContain("https://ui.flow-state.dev/r/tokens.json");
+    expect(tool.registryDependencies).toContain("collapsible");
+  });
+
+  it("tells the CLI where every file goes, so a helper lands beside the component importing it", () => {
+    // Without a target the CLI puts a registry:lib file in the app's lib/,
+    // while the component that ships with it imports it as "./<name>".
+    for (const item of registry.items) {
+      const built = JSON.parse(readFileSync(resolve(OUTPUT_DIR, `${item.name}.json`), "utf-8"));
+      (item.files ?? []).forEach((file, i) => {
+        expect(built.files[i].target).toBe(file.target);
+      });
+    }
+    const tool = JSON.parse(readFileSync(resolve(OUTPUT_DIR, "tool.json"), "utf-8"));
+    const helper = tool.files.find((f: { type: string }) => f.type === "registry:lib");
+    expect(helper.target).toBe("components/flow-state/tool-grouping.ts");
+  });
+
+  it("emits the tokens item's CSS, light and dark", () => {
+    const tokens = JSON.parse(readFileSync(resolve(OUTPUT_DIR, "tokens.json"), "utf-8"));
+    expect(tokens.cssVars.theme["color-attention"]).toBe("var(--attention)");
+    expect(tokens.css["@layer base"][":root"]["--attention"]).toBeTruthy();
+    expect(tokens.css["@layer base"][".dark"]["--attention"]).toBeTruthy();
+  });
+
+  it("builds against another base URL into another directory", () => {
+    const out = mkdtempSync(join(tmpdir(), "fsd-registry-"));
+    try {
+      execSync(`npx tsx scripts/build-registry.ts --base-url http://127.0.0.1:9/r/ --out ${out}`, { cwd: ROOT });
+      const tool = JSON.parse(readFileSync(resolve(out, "tool.json"), "utf-8"));
+      expect(tool.registryDependencies).toContain("http://127.0.0.1:9/r/tokens.json");
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
+    // Spawns the build; under a parallel test run that alone can pass 5s.
+  }, 30_000);
 
   it("index.json contains all items", () => {
     const index = JSON.parse(readFileSync(resolve(OUTPUT_DIR, "index.json"), "utf-8"));
