@@ -63,7 +63,7 @@ function FieldControl({
   setField: (key: string, next: unknown) => void;
 }) {
   const inputClass =
-    "w-full rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500";
+    "w-full rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
   let control: React.ReactNode;
   if (field.kind === "boolean") {
@@ -127,13 +127,13 @@ function FieldControl({
     <div data-field={field.key}>
       <label className="mb-1 block text-sm font-medium">
         {field.label}
-        {field.required ? <span className="text-red-500"> *</span> : null}
+        {field.required ? <span className="text-destructive"> *</span> : null}
       </label>
       {field.description ? (
         <p className="mb-1 text-xs text-muted-foreground">{field.description}</p>
       ) : null}
       {control}
-      {error ? <p className="mt-1 text-xs text-red-500">{error}</p> : null}
+      {error ? <p className="mt-1 text-xs text-destructive">{error}</p> : null}
     </div>
   );
 }

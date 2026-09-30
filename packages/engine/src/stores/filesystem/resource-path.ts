@@ -13,25 +13,7 @@
  */
 import { lstat, readdir } from "node:fs/promises";
 import path from "node:path";
-
-/**
- * Windows reserved device basenames. A path segment (or scope id) equal to one
- * of these — case-insensitively — is unrepresentable on Windows and rejected by
- * {@link validateSegment}.
- */
-const WINDOWS_RESERVED_NAMES: ReadonlySet<string> = new Set([
-  "con",
-  "prn",
-  "aux",
-  "nul",
-  ...Array.from({ length: 9 }, (_, i) => `com${i + 1}`),
-  ...Array.from({ length: 9 }, (_, i) => `lpt${i + 1}`)
-]);
-
-/** True if `name` (case-insensitively) is a Windows reserved device basename. */
-export function isWindowsReservedName(name: string): boolean {
-  return WINDOWS_RESERVED_NAMES.has(name.toLowerCase());
-}
+import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 
 /**
  * Encode a single key segment into a filesystem-safe on-disk name.
