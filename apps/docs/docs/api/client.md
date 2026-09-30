@@ -20,8 +20,9 @@ import { createClient } from "@flow-state-dev/client";
 const client = createClient({
   flowKind: "my-app",
   userId: "devuser",
-  // baseUrl: omit in a browser on the same origin; in Node pass an absolute origin
-  // such as "http://localhost:3000". Never /api/flows. See /docs/configuration/client#choosing-baseurl
+  // baseUrl: where the FlowState routes are mounted, minus /api/flows (the client adds it).
+  // Omit in a browser on the same origin with no base path; in Node pass an absolute URL
+  // such as "http://localhost:3000", plus any base path. See /docs/configuration/client#choosing-baseurl
 });
 
 const { requestId } = await client.sendAction("chat", { message: "Hello!" });

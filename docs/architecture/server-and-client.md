@@ -177,8 +177,9 @@ await typedClient.actions.chat({ message: "Hello!" });
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-// Browser, same origin: no `baseUrl`. In Node, pass an absolute origin
-// ("http://localhost:3000"). Never `/api/flows`. Canonical rule:
+// Browser, same origin, no base path: no `baseUrl`. In Node, pass an absolute
+// URL ("http://localhost:3000", plus any base path). The client adds
+// `/api/flows` itself; don't include it. Canonical rule:
 // apps/docs/docs/configuration/client.md → "Choosing baseUrl".
 const sessions = createSessionClient();
 

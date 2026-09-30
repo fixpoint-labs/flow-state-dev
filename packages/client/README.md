@@ -14,10 +14,10 @@ pnpm add @flow-state-dev/client
 import { createClient } from "@flow-state-dev/client";
 
 const client = createClient({ flowKind: "my-app", userId: "user_1" });
-// In a browser on the same origin as the API, leave `baseUrl` off. In Node or
-// another server runtime, pass an absolute origin:
+// `baseUrl` is where the FlowState routes are mounted, minus `/api/flows` (the
+// client adds that). In a browser on the same origin with no base path, leave it
+// off. In Node or another server runtime, pass an absolute URL, plus any base path:
 //   createClient({ flowKind: "my-app", userId: "user_1", baseUrl: "http://localhost:3000" })
-// Never pass the `/api` or `/api/flows` route prefix.
 // `flowKind` binds the client to one flow instance (a kind, or a collection
 // member's own id). Sessions it starts are recorded as that instance's, and
 // returned records carry `flowId`, the owner a retry or continuation re-enters.
@@ -37,6 +37,9 @@ Subscribe to a request's SSE stream with typed event handlers:
 ```ts
 import { createSSEClient } from "@flow-state-dev/client";
 
+// `url` is the route path; the client puts `baseUrl` in front of it, same rule as
+// createClient. In a browser on the same origin with no base path, omit `baseUrl`. In Node a relative
+// path can't be fetched, so add baseUrl: "http://localhost:3000" (plus any base path).
 const stream = createSSEClient({
   url: `/api/flows/my-app/requests/${requestId}/stream`,
   onItemAdded: (event) => {
@@ -107,8 +110,8 @@ If you're on React you don't need this — `useSession` and `useRequestStream` w
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-// Browser, same origin: no `baseUrl`. In Node, pass an absolute origin such as
-// { baseUrl: "http://localhost:3000" }. Never the `/api` or `/api/flows` prefix.
+// Browser, same origin, no base path: no `baseUrl`. In Node, pass an absolute
+// URL such as { baseUrl: "http://localhost:3000" }, plus any base path.
 const sessions = createSessionClient();
 
 // State snapshot with clientData and items
@@ -227,7 +230,8 @@ the flow is wired up.
 ```ts
 import { createRecoveryClient } from "@flow-state-dev/client";
 
-// Browser, same origin: no `baseUrl`. From Node, pass an absolute origin.
+// Browser, same origin, no base path: no `baseUrl`. From Node, pass an absolute
+// URL, plus any base path.
 const recovery = createRecoveryClient();
 
 // Sweep stale active-request entries for one user. Marks any in_progress
