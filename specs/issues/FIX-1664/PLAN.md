@@ -68,7 +68,7 @@ operation is a later, separate PR after it merges, not part of this DAG.
 | V1 | S2, S3 | The screen opens the session and request the row's link names, among several sessions of the same seat and a second run with the same board and task drained from another conversation; a row with no link yields BR-3; an unreachable session yields BR-9; a shared session shows only this task's stamped items (BR-8). Negative: reading the seat's latest session instead of the link picks the wrong one and fails |
 | V2 | S3 | Items render in stored order across two attempts (BR-7); a stored item appears live (BR-6); parked shows the reason and the Inbox link (BR-10) |
 | V3 | S4 | Abort is called with the in-progress request id; *interrupted* renders only after the record reads `aborted` (BR-11); 409 and refusal paths (BR-12, BR-13); no board write on any path (BR-14) |
-| V4 | S5, S6 | Every disabled control and empty tab carries its owner line (BR-15 to BR-17) |
+| V4 | S5, S6 | Every disabled control and empty tab carries its gap line from the registry: the owner named, or *not planned in the first cut* where the registry says so; a control with neither fails (BR-15 to BR-17) |
 | V5 | S7 | BR-18's gap line with its registry owner, whatever the run reported; BR-19 against a seeded recorded plan and file-op rows; BR-20 with none; BR-22 both directions; BR-23 with and without `--devtool` |
 | V6 | S1 to S8 | Static: no literal colour outside token definitions; no tree name in `labs/app-lab/src`; registry copies byte-equal their source; no write call except the abort |
 | VG | S9 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) PASSES, after `GOAL_CONTROL=worker-session` and `GOAL_CONTROL=optimistic-interrupt` each FAILED at their named signal |

@@ -35,7 +35,7 @@ names the kind of check the plan runs.
 | BR-13 | The abort is refused or fails | The error shows by the button; the run is drawn as still running | CI |
 | BR-14 | The run was interrupted | App Lab writes nothing to the row; its next status is whatever the board records | CI |
 | BR-15 | Hand off, reassign or Open PR is shown | Disabled, with a line naming what arrives and its owner from the [registry](#gap-registry) | CI |
-| BR-16 | The composer is shown | Disabled, with its owner line from the [registry](#gap-registry), which follows [the open fork](DECISIONS.md#open). *Also post to the workstream* is disabled with it | CI |
+| BR-16 | The composer is shown | Disabled, with its gap line from the [registry](#gap-registry): the operation's owner, or *not planned in the first cut*, which follows [the open fork](DECISIONS.md#open). *Also post to the workstream* is disabled with it | CI |
 
 ## Tabs and the inspector
 
@@ -54,13 +54,16 @@ names the kind of check the plan runs.
 ## Gap registry
 
 **The one place each gap's owner is written.** Every disabled control, empty tab and empty
-field on the task screen takes its owner line from this table, as a prop at the surface (ER-5);
+field on the task screen takes its gap line from this table, as a prop at the surface (ER-5).
+A gap line names what arrives and who ships it, or, where the Owner cell says so, states
+*not planned in the first cut*. Both pass the goal check, and both meet ER-5, which asks
+what arrives rather than who ships it.
 SPEC, PLAN and DOCS point here rather than repeat it. When a gap's owner ships, or the open fork
 is answered, this table changes and the rest follows.
 
 | Gap on the task screen | Day one | Owner | Rules |
 |---|---|---|---|
-| Typing to the worker, and *also post to the workstream* | Disabled composer | A child of FIX-1649 if [the open fork](DECISIONS.md#open) files it, else not in the first cut | BR-16 |
+| Typing to the worker, and *also post to the workstream* | Disabled composer | A child of FIX-1649 if [the open fork](DECISIONS.md#open) files it, else *not planned in the first cut* | BR-16 |
 | Hand off, reassign, Open PR | Disabled | FIX-1651 | BR-15 |
 | Diff, Checks | Empty tab, no count | FIX-1651 | BR-17 |
 | Acceptance criteria, *review by* | Empty section | FIX-1651 | BR-21, BR-24 |

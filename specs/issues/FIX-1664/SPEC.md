@@ -14,15 +14,16 @@ split out ([the task-run link](PLAN.md#the-task-run-link)) · medium · 1 PR, af
 |---|---|---|
 | **opens a running task** | Finds its run in the devtool by guessing which child session is which | Clicks a row in Tasks or a board card and watches that run's own steps arrive: narration, tool calls, edits, test runs, with no reload |
 | **wants a run to stop** | Aborts the request with curl, if they know its id | Presses **Interrupt** (or Esc). The view says *interrupted* once the run's request says so, never before |
-| **wants to hand a task to another worker, open its PR, or type to the worker** | Can't | Sees each control disabled with a line naming what arrives and who ships it ([D2](DECISIONS.md#d2), [the open fork](DECISIONS.md#open)) |
+| **wants to hand a task to another worker, open its PR, or type to the worker** | Can't | Sees each control disabled with a line naming what arrives and who ships it, or saying it is *not planned in the first cut* ([D2](DECISIONS.md#d2), [the open fork](DECISIONS.md#open)) |
 | **reads the task inspector** | n/a | Worker and team, started, the plan and files the harness recorded, linked tasks and the devtool link from shipped reads; harness, tokens and cost as a named gap, because nothing a client can read carries them yet |
-| **builds the closure check** (FIX-1663) | Nothing to walk to | A task route whose every tab, action and inspector value is either real or names its owner |
+| **builds the closure check** (FIX-1663) | Nothing to walk to | A task route whose every tab, action and inspector value is either real or carries its gap line |
 
 ## The goal, and how we'll know it's met
 
 **A person opens one task in App Lab and watches that task's own run live, can stop it, and
 sees every other act and value the design draws either working from a shipped read or
-operation or saying what arrives and who ships it.**
+operation or saying what arrives and who ships it, or that it is not planned in the first
+cut.**
 
 | Is it the right goal? | |
 |---|---|
@@ -30,7 +31,7 @@ operation or saying what arrives and who ships it.**
 | **Smaller, and rejected** | "The four tabs render." Met by a page of fixtures, or by showing the worker's chat instead of the run, which is where a person would be misled about what the task did |
 | **Short of the need, and asked** | **Sending a turn.** Nothing ships that delivers a person's message into a running coding run, so this goal promises a disabled composer, not a working one. Whether to file that operation now is [the open fork](DECISIONS.md#open), and it is the hardest line on the sign-off |
 | **Bigger, and not this issue's** | What a hand-off, a check, acceptance or a harness plan *means* (FIX-1651, FIX-1652) · the frame, routes and Tasks (FIX-1662) · the skin (FIX-1655) |
-| **Not done if** | The Session shows items from any session but the task's run · *interrupted* shows before the request record is aborted · a disabled control has no line saying what arrives · an inspector value shows a number no shipped read returned |
+| **Not done if** | The Session shows items from any session but the task's run · *interrupted* shows before the request record is aborted · a disabled control has no gap line (what arrives and who ships it, or *not planned in the first cut*) · an inspector value shows a number no shipped read returned |
 
 ```mermaid
 flowchart LR
@@ -48,7 +49,7 @@ against App Lab's own state.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/app-lab/it-shows-and-stops-a-task-run/` · model n/a (the scripted harness stub, made to hold until aborted) · real Chromium · run by the implementer at completion · verdict in the implementation PR |
-| **Signal** | Reached from Tasks by clicking, never by a typed URL: the Session tab's items equal, by id and in order, the items stored for the task's run session, and a new one appears within 2 s of being stored with no reload. Interrupt: the run's request record reads `aborted` before the view shows *interrupted*. Every tab, action and inspector field shows a value equal to the store or its named state. Diff, Checks, Hand off, reassign, Open PR and the composer are disabled or empty with their owner named |
+| **Signal** | Reached from Tasks by clicking, never by a typed URL: the Session tab's items equal, by id and in order, the items stored for the task's run session, and a new one appears within 2 s of being stored with no reload. Interrupt: the run's request record reads `aborted` before the view shows *interrupted*. Every tab, action and inspector field shows a value equal to the store or its named state. Diff, Checks, Hand off, reassign, Open PR and the composer are disabled or empty with their gap line from the [gap registry](BUSINESS-RULES.md#gap-registry): the owner named, or *not planned in the first cut* where the registry says so |
 | **Input** | A tree whose channel-attached board hands a row to a coding run on the scripted stub. A second row, on another seat, must pass too |
 | **Anti-game** | No assertion on App Lab's own state or a mocked server. Text found somewhere on the page doesn't count: items and rows are read by id |
 | **Control that must fail** | `GOAL_CONTROL=worker-session`: the Session tab reads the worker seat's own session. Must FAIL at *items equal the run session's*. `GOAL_CONTROL=optimistic-interrupt`: the view shows *interrupted* without calling abort. Must FAIL at *the request reads aborted first*. Today's `main` fails everything |
