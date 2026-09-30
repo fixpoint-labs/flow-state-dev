@@ -1069,7 +1069,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     deferWriteError?: (error: FlowError) => void
   ): Promise<{ committed: boolean; previousState: JsonObject }> => {
     if (nsConfig.writable === false) {
-      throw new Error(`Resource "${storageKey}" is read-only`);
+      throw new FlowError(`Resource "${storageKey}" is read-only`, {
+        code: "resource_read_only",
+        retryable: false
+      });
     }
 
     // `stampOrgId`: judged against the CAS basis (so a retry is judged against
@@ -1276,7 +1279,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       },
       async writeContent(content: string): Promise<void> {
         if (nsConfig.writable === false) {
-          throw new Error(`Resource "${storageKey}" content is read-only`);
+          throw new FlowError(`Resource "${storageKey}" content is read-only`, {
+            code: "resource_read_only",
+            retryable: false
+          });
         }
 
         await options.persistResourceContentKey(storageKey, content);
@@ -1609,7 +1615,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             );
           } catch (err) {
             if (replace && !replaceIntent && err instanceof ResourceAlreadyExistsError) {
-              throw new Error(`Resource "${storageKey}" is read-only`);
+              throw new FlowError(`Resource "${storageKey}" is read-only`, {
+                code: "resource_read_only",
+                retryable: false
+              });
             }
             throw err;
           }
@@ -1832,7 +1841,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             );
           }
           if (nsConfig.writable === false) {
-            throw new Error(`Resource "${storageKey}" is read-only`);
+            throw new FlowError(`Resource "${storageKey}" is read-only`, {
+              code: "resource_read_only",
+              retryable: false
+            });
           }
           const resources = options.readResources();
 
