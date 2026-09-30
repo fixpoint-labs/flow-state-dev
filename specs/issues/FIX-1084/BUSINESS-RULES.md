@@ -25,7 +25,7 @@ check in [PLAN.md → Checks](PLAN.md#checks).
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-6 | Someone plants a divergence in the shared session walk | At least one HTTP-side test and at least one execution-side test fail | VG |
-| BR-7 | The refactor lands | The session declaration walk, its flag predicate and its prefix normalisation exist once in engine source; `createExecutionContext` builds its session buckets from that one place | V4 |
+| BR-7 | The refactor lands | The session declaration walk and its `sharedToLineage` predicate exist once in engine source; `createExecutionContext` builds its session buckets, and resolves a session declaration's scope id, from that one place. User and org bucket building keeps its own loop and prefix normalisation (fenced; PLAN → Follow-ups) | V4 |
 
 ## What must not move
 

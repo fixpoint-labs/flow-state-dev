@@ -37,6 +37,8 @@ the resource routes call. Each probe must match on both sides **and** match the 
   Execution refuses the flow outright; the HTTP helpers still answer (declaration order breaks
   the tie). Execution never produces an address for such a flow, so there is nothing to disagree
   with. The refactor preserves both halves (BR-4).
+  This script logs that case and does not gate it, on purpose: the engine test (PLAN → V2, BR-4)
+  owns "execution refuses, HTTP answers".
 
 ## The red state (recorded, not scripted)
 
