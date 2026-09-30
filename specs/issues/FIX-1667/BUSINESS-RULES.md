@@ -36,9 +36,9 @@ The cases, written as rules. Each says what a person or the system does and what
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-12 | The manager runs a row on a channel's board | It derives a checkout folder, a branch and a run record from that board's id, and runs | `harness-manager` CI · the goal check |
-| BR-13 | Two different boards, one a channel's and one not, could spell the same partition | They never share a checkout folder or a branch | `harness-manager` CI, on a pair built to collide |
+| BR-13 | Two different boards, one a channel's and one not, could spell the same partition (`eng.feature.work` beside `eng-feature-work`) | They never share a checkout folder or a branch: the id is used as is, never translated | `harness-manager` CI, on a pair built to collide |
 | BR-14 | A board id the manager accepts today | Derives byte for byte the same checkout folder and branch as before this change | `harness-manager` CI, against today's derivation recorded before the change |
-| BR-15 | A board id that could climb out of a folder or break a git ref (`..`, a trailing `.`, `.lock`, a separator) | Still refused, naming the id | `harness-manager` CI |
+| BR-15 | A board id that could climb out of a folder or break a git ref: `..`, a leading or trailing `.`, a separator, or an id ending in `.lock` in any case (a channel's board named `lock`) | Refused when the manager is built, naming the id, before any row is claimed | `harness-manager` CI, including a channel board named `lock` and one named `LOCK` |
 
 ![A fence: board ids a channel mints and board ids named today both pass into the manager's derivation; an id that could climb a folder or break a ref is stopped at the fence](figures/manager-fence.svg)
 
@@ -55,8 +55,8 @@ flowchart LR
 ## Failure taxonomy
 
 A tree that declares a bad board name fails at load, before anything is hired, as the framework
-does today. A board the manager cannot derive a partition for fails the attempt at the row, as
-an unusable id does today. Nothing new retries.
+does today. A board the manager cannot run fails when the manager is built, before anything is hired;
+today it fails the attempt at the row, after the row is claimed. Nothing new retries.
 
 ## Acceptance criteria this issue owns
 

@@ -9,7 +9,7 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `harness-manager` · the run partition (`locationSegments` and the run topic) | Derive a checkout folder, branch and run topic from a channel-minted board id. Ids accepted today derive exactly as before; distinct ids never share; unsafe ids still refused (D1) | BR-12 to BR-15 |
+| S1 | `harness-manager` · the run partition (`DERIVED_IDENTITY`, `locationSegments`, the run topic) and `harnessManager`'s construction | Widen the accepted id grammar to allow a single interior dot; refuse `..`, a leading or trailing `.` and a case-insensitive `.lock` ending. Use the id as is, with no translation. Check the id when the manager is built, not only at the attempt (D1) | BR-12 to BR-15 |
 | S2 | `harness-manager` · tests, README, changeset | The derivation matrix of S1, including a recorded snapshot of today's derivation taken **before** S1 lands; the README line from [DOCS.md](DOCS.md); a `patch` changeset | BR-13 BR-14 |
 | S3 | `goals/devforce-lab/lab/workforce/teams/eng/channels/feature/CHANNEL.md` | `boards: [work]` | BR-1 BR-2 |
 | S4 | `goals/devforce-lab/lab/board.mts` | The shared ledger is the channel's, resolved with `channelBoard` from the channel id and board name the host reads off the tree. **Remove** `featureLedger()`, `LEDGER_ID` and the user-scoped ledger. Rewrite the header: the board belongs to the channel; the recipient's second declaration stays, labelled as the framework's tax (FIX-1408 closed without removing it) | BR-1 BR-4 |
@@ -105,6 +105,16 @@ first.
 - **The cross-flow tax** may have been removed by then. If `defineFlow` no longer needs the recipient's second declaration, drop it here too.
 - Check `packages/harness-manager` for any other place a board id becomes a path or ref
   (inbox topics, run-record keys) and route it through S1's derivation.
+
+## Notes from review
+
+Recorded for implementation, not baked into the design. Read them against the code.
+
+- **Round 1, owner's second-look pass** ([comment](https://github.com/fixpoint-labs/flow-state-dev/pull/2438#issuecomment-5915950099)), finding 3: "`boardCollectionId` also feeds `RESERVED_ACCESSORS`, `collectionRef` in `run-record.ts`, the `harness-manager:<id>` block name and `epic: boardCollectionId` at several call sites. The plan's last "At implement time" bullet already says to grep for this. V1 (tracer first) will catch most of it. I'd keep the grep as an explicit step, since `runTopic` sits outside `workspace.ts`."
+- **Round 1, same pass**, architecture note: "One risk is the FIX-1662 BR-14 leg asserting DevForce's board is *empty*, which the plan already flags. Whichever PR merges second should own the reconcile, so name which one in the PR."
+- **Round 1, Cursor** ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2438#discussion_r4147236359)), on S6: "Consider matching `goals/multi-seat-collab/lab/host.mts`: resolve `channelBoard(channel.id, boardName)` where `boardName` comes from that channel's `CHANNEL.md`, instead of scanning for "any channel with boards" and taking the first. Same anti-gaming properties, less open-ended host logic for implementers to generalize."
+- **Round 1, Cursor** ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2438#discussion_r4147236371)): "The fence is described three ways (SVG, "mermaid below is the same…", and the mermaid). One visual + the BR-12–15 table would carry the same proof obligations with less maintenance drift."
+- **Round 1, Cursor** (review summary), runtime: "Once rows live on an org-scoped channel board, App Lab workstream + task chrome need a clear *invalidation* story (push/`resource_change` vs polling)... The goal check's channel + HTTP door + storage triangulation should stay CI-only, not a product read pattern."
 
 ## Follow-ups
 

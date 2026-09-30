@@ -67,9 +67,15 @@ not see. Nothing in the lab does today.
 - **The three checks read rows where they now live.** Their claims, legs and controls do not
   change.
 - **Hire is handed the tree's board ids**, so a kind that stops declaring the board warns.
-- **How the manager turns a dotted name into a folder and branch is the implementer's**, under
-  two rules: two different boards never share one, and every name accepted today derives exactly
-  what it does now.
+- **The manager uses a channel's board id as is.** Its grammar widens by one thing: a single dot
+  may join the parts it accepts today (letters and digits, joined by `-` or `_`). Nothing is
+  translated, so every id accepted today derives exactly what it does now (the old set sits inside
+  the new one), and two boards share a folder or branch only if their ids are the same after the
+  case fold the manager already applies.
+- **The manager checks its board's id when it is built, not when a row is claimed.** A channel
+  accepts a board named `lock`, which mints `eng.feature.lock`, and git refuses a branch part
+  ending in `.lock`. Refused at build, that tree fails before anything is hired. Refused at the
+  row, the row is claimed, the checkout fails, and the retries are spent on a name no retry fixes.
 
 ## Considered and dropped
 
@@ -78,6 +84,8 @@ not see. Nothing in the lab does today.
 | A copy of each row on the channel, kept in step by the lab | Two writes that disagree exactly when a run fails or retries. The rejected half of D1 |
 | Leave the board in the kinds; App Lab reads it there | App Lab reads a workstream through its channel and names nothing from a tree. The rejected (b) of D1 |
 | A new manager option that lets the caller name the checkout partition | Hands every caller an identity to invent, and two boards given the same one would share checkouts, the collision the manager's derivation exists to prevent |
+| Translate the dots (to `-`, `_`, or an encoding) | Collides with ids that are legal today: `eng.feature.work` becomes `eng-feature-work`, which a board may already be called, and the case fold widens the set. Using the id as is has no mapping to prove |
+| Refuse `lock` and other ref-breaking names in the channel's board-name rule | That rule is the workforce package's and covers boards no coding run touches. What the manager can run is the manager's to say, at its own door |
 | Rebuild onto the channel's `fileTask` and a plain drain, as FIX-1385's own check does | Loses the issue-and-phase row id the manager requires, and changes what the three checks prove |
 | Walk App Lab's board journey on another tree | Rejected by [FIX-1663 D1](../FIX-1663/DECISIONS.md#d1): the epic pins the DevForce tree |
 

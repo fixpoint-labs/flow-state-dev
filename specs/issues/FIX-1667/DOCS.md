@@ -25,19 +25,21 @@ const manager = harnessManager({
 });
 ```
 
-The manager builds each run's checkout folder and git branch from the board's id. A channel's
-board id contains dots, and the manager turns it into a folder and branch name that is safe on
-disk and in git. Two different boards never share a checkout. Board ids that worked before keep
-the same folders and branches, so an upgrade moves nobody's work.
+The manager builds each run's checkout folder and git branch from the board's id, used as is. A
+channel's board id contains dots, which the manager accepts. It refuses, when you build it, an id
+git can't use as a branch name, such as one ending in `.lock` (a channel board named `lock`).
+Two different boards never share a checkout. Board ids that worked before keep the same folders
+and branches, so an upgrade moves nobody's work.
 
 The board is kept per organization, so everyone in the organization sees its rows.
 
 ## UPDATE · `apps/docs/docs/orchestration/harness-manager.md` · "The checkout", after its first paragraph
 
 The board can be your own task collection or one a channel holds. A channel's board has an id
-like `eng.feature.work`; the manager accepts it as is and derives a safe folder and branch name
-from it. Two boards never end up in the same checkout, and a board whose id worked before keeps
-its folders and branches.
+like `eng.feature.work`; the manager accepts it as is and names the folder and branch with it. An
+id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is
+built. Two boards never end up in the same checkout, and a board whose id worked before keeps its
+folders and branches.
 
 ## UPDATE · `goals/devforce-lab/lab/README.md`
 
