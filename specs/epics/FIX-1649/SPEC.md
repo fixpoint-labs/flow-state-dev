@@ -15,7 +15,7 @@ beside the [wireframe](assets/wireframes/README.md) it replaced. It reads withou
 | A team that… | Today | After this epic |
 |---|---|---|
 | **uses a Lab day to day** (the owner, dogfooding) | Has kitchen-sink, a teach surface, and the devtool, a debugger. Neither is where a Lab is used | Opens App Lab: what needs them, the projects and their workstreams, the teams and their workers, and a task's live session two clicks away |
-| **builds the next Lab** (DevForce, then CyberForce) | Would write its own chrome, and reach channels, boards and runs its own way | Opens its Workforce tree in App Lab and writes no shell code ([open fork](DECISIONS.md#open)) |
+| **builds the next Lab** (DevForce, then CyberForce) | Would write its own chrome, and reach channels, boards and runs its own way | Opens its Workforce tree in App Lab and writes no shell code ([D3](DECISIONS.md#d3)) |
 | **reuses FSD UI in its own app** | Themes the navigator and panels through `--fsd-nav-*` and `--fsd-panel-*`; some `@flow-state-dev/ui` registry components use fixed palette colours rather than semantic tokens | One token set with neutral defaults skins every reused component; copies stay unedited |
 | **owns a sibling horizon epic** (FIX-1650, 1651, 1652) | Needs a screen before anyone can see what it means | Fills a destination the shell already reaches |
 
@@ -128,7 +128,9 @@ Lab can use, or skin FSD in App Lab's colours.
    chrome imported from `react`, registry components copied in and never restyled.** If wrong:
    the skin can't reach a look Claude Design asks for without changing a component's public API.
 
-**Open: one.** [Is App Lab one app that opens any Lab, or a chrome each Lab's app imports?](DECISIONS.md#open)
-I recommend one app; the set is written on that path, and [what changes under the
-kit](DECISIONS.md#if-kit) is stated there. Rules: [BUSINESS-RULES.md](BUSINESS-RULES.md).
+3. **[D3](DECISIONS.md#d3) · One app that opens any Lab; a Lab is the Workforce tree it
+   opens.** Decided by Jake on Sep 30. If wrong: DevForce or CyberForce must ship as separate
+   products, and extracting the chrome into a package is about one issue.
+
+**Open: none.** Rules: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 Order, and where the hand-back sits: [PLAN.md](PLAN.md).

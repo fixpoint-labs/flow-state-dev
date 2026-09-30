@@ -59,8 +59,7 @@ Linear links for live state. The build is a Cycle 2 candidate: Cycle PM decides 
 4. **All three merge** → the closure run, on one `main` commit. A finding is filed as a child
    of FIX-1649 that blocks FIX-1663; the whole plan runs again after the last fix merges.
 
-The plan is written on the [open fork](DECISIONS.md#open)'s recommended answer;
-[what changes under the kit](DECISIONS.md#if-kit) is stated with the fork.
+The plan is written on [D3](DECISIONS.md#d3): one app, so no child builds a chrome package.
 
 ## Coordination seams to watch
 

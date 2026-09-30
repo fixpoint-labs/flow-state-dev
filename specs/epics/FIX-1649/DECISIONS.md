@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-The calls above any single issue. D1 and D2 are the sign-off surface; one fork is open and is
-Jake's; the rest are decided so no child reopens them. Scope, invent-kills and vocabulary come
+The calls above any single issue. D1, D2 and D3 are the sign-off surface, and no fork is open;
+the rest are decided so no child reopens them. Scope, invent-kills and vocabulary come
 from the PRD and the Architect's signed guidance on FIX-1649.
 
 ## The tree
@@ -16,7 +16,8 @@ flowchart TD
   E --> D2["D2 · one skin through the existing theme contracts"]
   D2 -.->|"rejected"| X2["restyle copies inside App Lab"]
   D2 -.->|"rejected"| X2b["a new theme API in the react package"]
-  E --> O["open · one app, or a chrome each Lab imports"]
+  E --> D3["D3 · one app; a Lab is the tree it opens"]
+  D3 -.->|"rejected"| X3["a chrome kit each Lab's app imports"]
 ```
 
 <a name="d1"></a>
@@ -58,6 +59,26 @@ spec of its own, not a restyled copy.
 ![D2: one skin through the existing contracts, chosen, beside restyling copies and a theme API in react; decided by where the paint lives](figures/d2-one-skin.svg)
 
 It comes down to where the paint lives: a restyled copy or a theme API puts App Lab into FSD.
+
+<a name="d3"></a>
+## D3 · One app that opens any Lab; a Lab is the Workforce tree it opens
+
+Decided by Jake on 2026-09-30, answering the fork this set had open ("One app").
+
+| | |
+|---|---|
+| **Instead of** | A chrome kit each Lab's own app imports |
+| **Because** | Labs share one app chrome, per the Architect, and D-12 says DevForce is a Lab built completely on Workforce: "no special wrappers" reads most naturally as no Lab app at all. One app means no Lab writes UI and there is one thing to deploy; the kit is a package with one consumer today that would amend FIX-1455 D5. It is also the smaller build, and extracting a kit later is cheaper than guessing its seams now |
+| **Locks in** | The chrome stays inside `labs/app-lab`. A second Lab opens as its tree, with no shell code and no wrapper ([ER-4](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)), which the closure's leg b checks on `goals/pentest-lab/lab/workforce/`. A tree is not configuration alone: it carries code (flows, and a host that `fsdev gen` renders per app). How App Lab loads one is FIX-1662's spec's call, between the runtime `@flow-state-dev/workforce` loader and a per-Lab `fsdev gen` step; neither puts shell code in the Lab. The price: a Lab can't have a screen of its own until the shell grows a place for one |
+
+**What would change my mind:** DevForce or CyberForce must ship as separate products, with
+screens only they have.
+
+**What being wrong costs:** about one issue to extract the chrome into a package later.
+
+![D3: one app that opens any Lab's tree, chosen, beside a chrome kit each Lab's app imports; decided by what a Lab is](figures/d3-one-app.svg)
+
+It comes down to what a Lab is: a tree needs no app of its own.
 
 ## Who owns what
 
@@ -137,55 +158,6 @@ until it returns. Kept in step with [`assets/design/DESIGN.md`](assets/design/DE
 | **The right panel at a project** (v1's board has none) | The board takes the full width |
 | **Narrow screens** | Desktop width only |
 
-<a name="open"></a>
-## Open · one, and it is Jake's
-
-### Is App Lab one app that opens any Lab, or a chrome each Lab's own app imports?
-
-**Plain terms.** Labs share one app chrome, per the Architect. That can mean one app you point
-at a Lab (DevForce is App Lab opened on DevForce's tree), or a kit each Lab builds its own app
-from. The screens look the same either way; what differs is whether a Lab ships its own app.
-The hand-back's one org switcher over every project is consistent with one app, though it
-doesn't decide it.
-
-**The trade-off.** One app means no Lab writes UI and one thing to deploy, but a Lab can't have
-a screen of its own until the shell grows a place for it. A kit gives each Lab its own screens,
-at the cost of an app per Lab and a chrome package with one consumer today.
-
-**My recommendation: one app; a Lab is the Workforce tree it opens.** D-12 says DevForce is a
-Lab built completely on Workforce, and "no special wrappers" reads most naturally as no Lab
-app at all. It is also the smaller build, and extracting a kit later is cheaper than guessing
-its seams now. A tree is not configuration alone: it carries code (flows, and a host that
-`fsdev gen` renders per app). How App Lab loads one is FIX-1662's spec's call, between the
-runtime `@flow-state-dev/workforce` loader and a per-Lab `fsdev gen` step. Both keep this
-answer, because neither puts shell code in the Lab. Leg b checks it on
-`goals/pentest-lab/lab/workforce/`.
-
-**What would change my mind:** DevForce or CyberForce being meant to ship as separately
-deployed products, with screens only they have.
-
-**What being wrong costs:** moderate and late. Under my answer, a Lab that needs its own app
-later means extracting the chrome into a package, about one issue. Under the other, we build
-and hold a package surface nobody else uses yet.
-
-![Open fork: one app that opens any Lab's tree, recommended, beside a chrome kit each Lab's app imports; decided by what a Lab is](figures/open-one-app.svg)
-
-It comes down to what a Lab is: a tree needs no app of its own.
-
-<a name="if-kit"></a>
-### If Jake picks the chrome kit
-
-The rest of the set is written on the one-app path. Under the kit, these replace it; no child
-is added:
-
-- **ER-4 becomes:** a second Lab's app imports the chrome package and draws no chrome of its
-  own; its code is its host and routes, nothing the shell already draws; it opens only under an
-  org.
-- **Leg b becomes:** a second app on the pentest lab's tree imports the chrome and reaches every
-  surface leg a reaches, with no chrome component of its own.
-- **FIX-1662** grows a package export for the chrome, which amends FIX-1455 D5 knowingly
-  ([EVOLUTION.md](EVOLUTION.md)), and `DOCS.md` gains a published page for that package.
-
 ## What the end-state POC showed
 
 None built. The design hand-back carries the assembled end-state where it is contested (layout
@@ -198,8 +170,10 @@ and reach), and the one code seam, tokens mapped onto `--fsd-nav-*`, already wor
   visuals ([PLAN.md](PLAN.md)).
 - **Review round 1 (Sep 29)**: D2 names the two shelves and sanctions the registry copy-in with
   a re-sync check; neutral values became the token set's defaults, not a second theme; the load
-  mechanism is FIX-1662's call; the kit path moved under [the fork](#if-kit).
+  mechanism is FIX-1662's call; the kit path moved under the then-open fork.
 - **Design hand-back v1 (Sep 30, owner input)**: three dark screens and Jake's TEAMS
   correction replaced the wireframes as structure; the destinations became the tree and the
   tabs; the right panel became contextual; the theme gained a dark variant; D1 split the shell
   at the task level, filing FIX-1664; [design pass 2](#design-pass-2) opened.
+- **Jake's answer (Sep 30)**: the open fork, one app or a chrome kit each Lab imports, became
+  [D3](#d3): one app. The kit's replacement rules were removed.

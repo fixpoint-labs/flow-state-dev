@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="Open fork for Jake: is App Lab one app that opens any Lab, or a chrome kit each Lab's own app imports? Recommended: one app, where a Lab is the Workforce tree it opens. It comes down to the first row, what a Lab is: a Workforce tree, per D-12, so no Lab writes UI, where the kit makes each Lab an app carrying its own host, routes and auth. Second row: nothing extra to build now, where the kit is a package with one consumer that amends FIX-1455 D5. The price, third row: a Lab cannot have a screen of its own until the shell grows a place for one. Locks in the closure's leg b opening a second tree with no shell code, whichever load path FIX-1662 picks, with the chrome inside App Lab. Flips if DevForce or CyberForce must ship as separate products with screens only they have."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3, decided by Jake on 2026-09-30: is App Lab one app that opens any Lab, or a chrome kit each Lab's own app imports? Chosen: one app, where a Lab is the Workforce tree it opens. Instead of: a chrome kit each Lab imports. It comes down to the first row, what a Lab is: a Workforce tree, per D-12, so no Lab writes UI, where the kit makes each Lab an app carrying its own host, routes and auth. Second row: nothing extra to build now, where the kit is a package with one consumer that amends FIX-1455 D5. The price, third row: a Lab cannot have a screen of its own until the shell grows a place for one. Locks in the closure's leg b opening a second tree with no shell code, whichever load path FIX-1662 picks, with the chrome inside App Lab. Flips if DevForce or CyberForce must ship as separate products with screens only they have."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,13 +36,13 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">OPEN &#183; THE FORK &#183; JAKE</text>
+    <text class="t-lbl" x="32" y="32">D3 &#183; THE CALL &#183; JAKE, SEP 30</text>
     <text class="t-q" x="32" y="52">Is App Lab one app that opens any Lab, or a chrome each Lab's app imports?</text>
   </g>
 
   <g id="options">
-    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
     <text class="t-h c-code" x="228" y="112">One app; a Lab is its tree</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
