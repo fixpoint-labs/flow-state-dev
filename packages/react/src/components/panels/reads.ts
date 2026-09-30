@@ -46,12 +46,15 @@ const EMPTY: PanelRow<never>[] = [];
 /**
  * A ceiling on pages read for ONE identity, not on rows.
  *
- * Both panels are "a list a person scans" (see `usePanelRows`), not a feed
+ * The panels are "a list a person scans" (see `usePanelRows`), not a feed
  * with an unbounded tail, so this is a guard against a misbehaving transport
  * handing back a `nextCursor` forever rather than a limit anyone is expected
  * to reach. At the route's largest page (`STATE_LIST_MAX_LIMIT`, 200 —
  * `packages/engine/src/routes/resource-routes.ts`) this still covers 200,000
- * rows before it gives up and shows what it has.
+ * rows, when the collection honours the requested page size (a projected
+ * collection may treat `limit` as a hint and return smaller pages). Reaching it with a `nextCursor` still outstanding is a read failure,
+ * not a result: the panel shows its error, never the pages it got as if they
+ * were the whole list (BR-19, BR-21).
  */
 const MAX_PAGES = 1000;
 
@@ -200,15 +203,16 @@ function liveBoardDriver(sessionId: string, boardRef: string, live: PanelLive): 
 
 /**
  * Every row of a collection, for one session — traversing `nextCursor` until
- * the route stops returning one.
+ * the route stops returning one, for up to `MAX_PAGES` (1,000) pages.
  *
- * Deliberately no `loadMore`: both panels draw a standing list that a person
+ * Deliberately no `loadMore`: the panels draw a standing list that a person
  * scans, not a feed they page through, and a cursor the host cannot see is
  * worse than none. `limit` sets the page **size** the read requests each
  * time, not a cap on what the panel shows — a collection larger than `limit`
- * still renders every row, in `limit`-sized fetches (bounded by `MAX_PAGES`,
- * see above), because a panel that stopped at the first page would truncate
- * silently (BR-19, BR-21).
+ * is read in `limit`-sized fetches, because a panel that stopped at the first
+ * page would truncate silently. A collection with pages left after
+ * `MAX_PAGES` reads is an error (the panel's error line and Retry), never the
+ * rows read so far.
  *
  * With `live`, `ref` is a task board, and the rows are read again whenever
  * the session keeps a change to it (see `liveBoardDriver`). Without it they
@@ -246,10 +250,12 @@ export function usePanelRows<TClient = unknown>(
         for (const item of page.items) {
           collected.push({ topic: item.topic, clientData: item.clientData as TClient });
         }
-        if (page.nextCursor === undefined) break;
+        if (page.nextCursor === undefined) return collected;
         cursor = page.nextCursor;
       }
-      return collected;
+      throw new Error(
+        `Stopped after ${MAX_PAGES} pages with more still to read, rather than show part of the list as all of it.`
+      );
     },
     driver
   );
