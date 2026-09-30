@@ -22,6 +22,7 @@ import {
   openChannels,
   type ChannelManifest
 } from "../src/index";
+import { kindOf } from "../src/channel/channel-binder";
 
 /** The principal every channel in these tests is opened for. */
 const OWNER = "u_42";
@@ -496,5 +497,54 @@ describe("openChannels", () => {
     await expect(
       openChannels([record("engineering.standup")], { client, userId: OWNER })
     ).rejects.toThrow(/500/);
+  });
+});
+
+/**
+ * The channel door's reading of `flow:`, one row per shape a value can take —
+ * through `channelInstances` (the build path) and through `kindOf` directly
+ * (the reader `openChannels` and the inventory writer share).
+ *
+ * Characterization: every row is what the door does today, and the worker
+ * door's twin table in `hire.test.ts` runs the same values. The two doors share
+ * one rule for "absent, blank, or not a string", so a change to that rule turns
+ * rows red on both tables at once. The channel door words every refusal the
+ * same way; the worker door words them differently, on purpose.
+ */
+describe("the channel door reads `flow:` (one row per value)", () => {
+  const NOT_A_KIND = "declares a `flow:` that is not a kind name";
+
+  it("opens a record with no `flow` key on the built-in `channel` kind", () => {
+    expect(kindOf({})).toEqual({ kind: CHANNEL_KIND });
+    expect(channelInstances([record("eng.a")]).map((i) => i.kind)).toEqual([CHANNEL_KIND]);
+  });
+
+  it.each([
+    ["an empty string", ""],
+    ["a whitespace-only string", "   "],
+    ["null", null],
+    ["an own key holding undefined", undefined],
+    ["a number", 42],
+    ["an object", {}]
+  ])("refuses %s as not a kind name", (_label, value) => {
+    expect(kindOf({ flow: value })).toEqual({ problem: NOT_A_KIND });
+    expect(() => channelInstances([record("eng.a", { flow: value })])).toThrow(NOT_A_KIND);
+  });
+
+  it("selects the kind a `flow:` names when that kind was passed", () => {
+    expect(kindOf({ flow: "my-channel" })).toEqual({ kind: "my-channel" });
+    const instances = channelInstances([record("eng.a", { flow: "my-channel" })], {
+      kinds: { "my-channel": customKind("my-channel") }
+    });
+    expect(instances.map((i) => i.kind)).toEqual(["my-channel"]);
+  });
+
+  it("does not trim a named kind: a padded name is a kind that was not passed", () => {
+    expect(kindOf({ flow: " my-channel " })).toEqual({ kind: " my-channel " });
+    expect(() =>
+      channelInstances([record("eng.a", { flow: " my-channel " })], {
+        kinds: { "my-channel": customKind("my-channel") }
+      })
+    ).toThrow(/" my-channel ".*not passed to channelInstances/s);
   });
 });
