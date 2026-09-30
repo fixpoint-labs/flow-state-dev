@@ -348,7 +348,7 @@ flow X over MCP") lives on the flow definition, not the adapter shape.
 | `mcp` | MCP server adapter (`@flow-state-dev/mcp`) |
 | `webhook` | Webhook receivers |
 | `scheduled` | Scheduled dispatch (`@flow-state-dev/scheduled`, FIX-440) |
-| `notification` | Cross-flow event subscribers |
+| `notification` | No built-in transport sends it. A custom transport may use it, and the DevTool labels those requests *Notification* |
 
 Custom transports pick their own string, except `cli`, which is reserved for
 principal resolution and never recorded on a request (see "The envelope").

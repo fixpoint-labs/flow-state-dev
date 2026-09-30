@@ -59,7 +59,9 @@ the project-spec, deliberately has no lifecycle of its own (see below).
   `.agents/workflows/` and share one verification harness (`node .agents/workflows/verify.mjs`,
   stubbed hooks, no agents spawned):
   - `epic-wake` — one epic-lifecycle wake: the objective gate, per-issue refresh, the capped
-    worker fan-out, the review budgets, claim dedupe, verdict routing.
+    worker fan-out, the review budgets, claim dedupe, verdict routing. Not the product's *wake*:
+    published docs use that word for a webhook or schedule tick starting a flow, and `epic-wake`
+    never appears there.
   - `issue-multi-pr` — one step of a multi-PR issue's DAG: ready set, base selection, rebase
     after a dependency merges, and the assembled end-to-end goal.
 
