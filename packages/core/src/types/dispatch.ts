@@ -296,7 +296,8 @@ export type DispatchRefusal =
   | "dispatch-rejected"
   /**
    * An `id` delivery on a deployment whose dispatcher hands work to an external
-   * queue, where the recipient's concurrency policy would not be applied to it.
+   * queue and whose worker adapter supplies no shared lease backend, where the
+   * recipient's concurrency policy would not be applied to it.
    * A `key` child is unaffected.
    */
   | "external-dispatcher"

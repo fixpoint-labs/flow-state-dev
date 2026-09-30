@@ -46,7 +46,10 @@ import {
   type InProcessPrincipalQuestion
 } from "../transports/host/createInboundTransportHost";
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
-import { createConcurrencyArbiter } from "../transports/concurrency/arbiter";
+import {
+  createConcurrencyArbiter,
+  type ConcurrencyArbiter
+} from "../transports/concurrency/arbiter";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import type {
   CreateFlowStateOptions,
@@ -273,8 +276,11 @@ class InternalFlowState<TSettings extends object>
    * under a `user`/`session` key its own parent still held: a declared `queue`
    * policy silently not serialising, or a `reject` policy silently admitting.
    * Policy is a property of the flow, not of whichever host took the dispatch.
+   *
+   * Built over the worker adapter's `leaseBackend` when it supplies one, so
+   * every process of the deployment lines up on the same keys (FIX-1634).
    */
-  readonly #arbiter = createConcurrencyArbiter();
+  readonly #arbiter: ConcurrencyArbiter;
 
   constructor(options: CreateFlowStateOptions<TSettings>) {
     if (Object.hasOwn(options, "middleware")) {
@@ -300,6 +306,14 @@ class InternalFlowState<TSettings extends object>
     }
 
     this.#options = options;
+    this.#arbiter = createConcurrencyArbiter(
+      options.worker?.leaseBackend !== undefined
+        ? {
+            backend: options.worker.leaseBackend,
+            logger: { warn: (message, context) => this.#logVia("warn", message, context) }
+          }
+        : {}
+    );
     this.#profileKeys = Object.keys(options.stores);
 
     if (this.#profileKeys.length === 0) {

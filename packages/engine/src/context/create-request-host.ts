@@ -553,15 +553,16 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // of leaving it for the lease to recover.
       if ("externalDispatcher" in started) {
         // A delivery into an existing session needs the recipient's concurrency
-        // policy applied and the run reachable from this process; past an
-        // external queue boundary neither holds, so it refuses by name rather
-        // than under-delivering. A `key` child is unaffected: it is a fresh
-        // session whose run the queue owns, exactly like a detached start.
+        // policy applied; past an external queue whose worker adapter supplies
+        // no lease backend it is not, so it refuses by name rather than
+        // under-delivering. A `key` child is unaffected: it is a fresh session
+        // whose run the queue owns, exactly like a detached start.
         return refuse(
           "external-dispatcher",
-          "this deployment dispatches work to an external queue, where a delivery into an " +
-            "existing session is not arbitrated against that session's concurrency policy; " +
-            "delivery refuses rather than under-delivering"
+          "this deployment dispatches work to an external queue whose worker adapter supplies " +
+            "no lease backend, so a delivery into an existing session cannot be arbitrated " +
+            "against that session's concurrency policy; delivery refuses rather than " +
+            "under-delivering"
         );
       }
       // The host refuses synchronously for a small set of pre-dispatch

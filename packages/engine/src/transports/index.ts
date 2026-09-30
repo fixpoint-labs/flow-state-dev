@@ -28,6 +28,16 @@ export type {
   StreamSubscriber
 } from "./dispatcher";
 
+export {
+  createInMemoryLeaseBackend,
+  planQueueWait,
+  type ConcurrencyLeaseBackend,
+  type LeasePlace,
+  type LeaseTakeInput,
+  type LeaseTakeResult,
+  type QueueWaitStep
+} from "./concurrency/lease-backend";
+
 export type { AuthenticationConfig, ResolvePrincipalFn } from "@flow-state-dev/core/types";
 
 export {

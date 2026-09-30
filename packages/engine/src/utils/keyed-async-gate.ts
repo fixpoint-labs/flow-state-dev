@@ -5,10 +5,12 @@
  * competing requests by a derived string key (a session id) and surface
  * reject / timeout outcomes to the caller.
  *
- * It backs the concurrency arbiter (FIX-837): `tryAcquire` is the atomic,
- * synchronous admission used by the `reject` policy, and `runExclusive` is the
- * FIFO serializer used by the `queue` policy. Distinct keys never contend;
- * each key behaves like an independent async mutex with a fair wait queue.
+ * It backs the filesystem resource-state store's per-key writes. (It used to
+ * back the concurrency arbiter too; the arbiter now keeps its lines in a lease
+ * backend — see `transports/concurrency/lease-backend.ts` for why that is a
+ * separate structure.) `tryAcquire` is an atomic, synchronous admission and
+ * `runExclusive` a FIFO serializer. Distinct keys never contend; each key
+ * behaves like an independent async mutex with a fair wait queue.
  *
  * Memory: an entry is created on first contention for a key and deleted the
  * moment the key goes fully idle (no holder, no waiters), so the map tracks
