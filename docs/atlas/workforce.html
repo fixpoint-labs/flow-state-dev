@@ -1862,7 +1862,7 @@ const teamDocs = <b>defineResourceCollection</b>({
 
   <pre class="code"><i>// EXISTS &#8212; open a DM. createSessionClient, packages/client.</i>
 <i>// POST /api/flows/:flowKind/sessions &#8212; session-routes.ts</i>
-const sessions = <b>createSessionClient</b>({ baseUrl: <em>"/api"</em> });
+const sessions = <b>createSessionClient</b>(); <i>// same origin; baseUrl takes an origin and/or base path, never /api/flows</i>
 const dm = await sessions.<b>createSession</b>({
   flowKind: <em>"eng-manager"</em>,
   userId,
