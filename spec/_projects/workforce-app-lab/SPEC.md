@@ -13,7 +13,7 @@ works in. Layer 2 vocabulary is not here; it stays in
 |---|---|
 | **Winning when** | Jake runs his own work from the Lab: projects, workstreams, chat, attention and resources reached from one shell over live Workforce data, and DevForce and CyberForce run in it with no special wrapper |
 | **The read** | Nav surfaces a person reaches in the Lab over live Workforce data, in the shared design system. Five named, zero today |
-| **Now** | 0 done · 1 in flight · 4 not started. The shell (FIX-1649) is writing its epic spec; org primitives is the other Cycle 2 candidate; the other three are held |
+| **Now** | 0 done · 1 in flight · 4 not started. The shell (FIX-1649) is approved and its four children are starting their specs; org primitives is the other Cycle 2 candidate; the other three are held |
 | **Kill line** | If the Lab needs nouns of its own beside Workforce to be usable, the project is mis-shaped: the fix goes to Workforce, not into more Lab epics |
 
 ![The territory](figures/territory.svg)
@@ -21,19 +21,19 @@ works in. Layer 2 vocabulary is not here; it stays in
 Above the fence is what this project builds; below it is what it consumes and never extends.
 The fence is one test: a noun a second app would need goes to Workforce, not into the Lab.
 
-## The epics — derived live 2026-09-29 23:06 UTC
+## The epics — derived live 2026-09-30 01:40 UTC
 
 | Epic | What it owns | State | Surface |
 |---|---|---|---|
-| [FIX-1649](https://linear.app/fixpoint-labs/issue/FIX-1649) · **lab shell** | The chrome, the new design system, nav to every surface, skinning of reused FSD components | **in flight**, epic spec being authored (Linear: Todo) | `epic/workforce-lab-shell`, no PR yet |
+| [FIX-1649](https://linear.app/fixpoint-labs/issue/FIX-1649) · **lab shell** | The chrome, the new design system, nav to every surface, skinning of reused FSD components | **in flight**, epic spec approved Sep 30 (Linear: Spec Approved); children FIX-1655, FIX-1662, FIX-1664 and closure FIX-1663 in spec | [retained spec](https://github.com/fixpoint-labs/flow-state-dev/tree/main/specs/epics/FIX-1649) via [PR #2421](https://github.com/fixpoint-labs/flow-state-dev/pull/2421), merged at approval; no implementation PR yet |
 | [FIX-1650](https://linear.app/fixpoint-labs/issue/FIX-1650) · **org primitives** | Project, workstream as channel plus flow, CoS and Ops defaults, single user | *not started*, Cycle 2 candidate (Todo) | — |
 | [FIX-1651](https://linear.app/fixpoint-labs/issue/FIX-1651) · **eng workstream kit** | Epic and issue thin sync, per-issue board, EM, Lead and specialist seats | *not started*, held (Backlog) | — |
 | [FIX-1652](https://linear.app/fixpoint-labs/issue/FIX-1652) · **attention & inspect** | Needs-you, harness visibility, the resources list | *not started*, held (Backlog) | — |
 | [FIX-1653](https://linear.app/fixpoint-labs/issue/FIX-1653) · **review & GitHub wake** | Review and GitHub wake as Layer 2 of the FIX-1637 wake spine | *not started*, held (Backlog) | — |
 
 0 done · 1 in flight · 4 not started · 0 not filed. Every state is re-derived from Linear and the
-epics' implementation PRs each refresh. **FIX-1649 reads Todo in Linear while its spec is being
-written**; the table says *in flight* on the dispatch's word, and the next refresh re-reads it.
+epics' implementation PRs each refresh. An epic spec merges at approval, so FIX-1649's merged
+spec PR means approved, not done; done is its children's implementation PRs and the closure.
 
 ```mermaid
 flowchart LR

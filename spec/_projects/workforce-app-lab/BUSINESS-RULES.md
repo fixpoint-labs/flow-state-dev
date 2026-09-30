@@ -7,7 +7,7 @@ it; the others inherit it.
 
 | | Rule | Owner | Checked where |
 |---|---|---|---|
-| **PR-1** | When an epic ships a surface in the Lab, then it is reached through the shell's nav and drawn in the shell's design system, reusing FSD components skinned to it rather than forking them | FIX-1649 | Named by FIX-1649's epic spec; its skinning child is FIX-1655 |
+| **PR-1** | When an epic ships a surface in the Lab, then it is reached through the shell's nav and drawn in the shell's design system, reusing FSD components skinned only through `--fsd-*` tokens, never restyled or edited in copy | FIX-1649 | FIX-1663's closure check: leg a (every surface reached), leg c (no App Lab value in FSD); FIX-1655's re-sync check on copied components |
 
 **No epic may:**
 

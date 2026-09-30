@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 300" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The arc: five epic lanes against three weeks from Sep 29. The lab shell, FIX-1649, started its epic spec on the evening of Sep 29 and is the only bar, in flight, ending on the now line at Sep 29 23:06 UTC. Org primitives, FIX-1650, is a Cycle 2 candidate with no bar. The eng workstream kit, attention and inspect, and review and GitHub wake are held with no bar.">
+     aria-label="The arc: five epic lanes against three weeks from Sep 29. The lab shell, FIX-1649, is the only bar: its epic spec ran from the evening of Sep 29 to approval at Sep 30 01:33 UTC, and its four children start their specs on the now line at Sep 30 01:40 UTC. Org primitives, FIX-1650, is a Cycle 2 candidate with no bar. The eng workstream kit, attention and inspect, and review and GitHub wake are held with no bar.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -20,8 +20,9 @@
     .t-now  { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:10px; }
   </style>
 
-  <!-- 30px per day: x = 180 + 30 * (days since Sep 29 00:00 UTC). Now Sep 29 23:06 = 208.9.
-       The shell's bar is drawn 6px wide ending on the now line: its true span is under two hours. -->
+  <!-- 30px per day: x = 180 + 30 * (days since Sep 29 00:00 UTC). Now Sep 30 01:40 = 212.1.
+       The shell's spec bar runs from 202.9 (Sep 29 22:44) to approval at 211.9 (Sep 30 01:33);
+       its build has not yet run a measurable span, so it has no bar of its own. -->
   <g id="axis">
     <text class="t-lbl" x="16" y="20">EPIC</text>
     <text class="t-lbl" x="180" y="20">SEP 29</text>
@@ -35,8 +36,9 @@
   <g id="shell">
     <text class="t-lane" x="16" y="56">lab shell</text>
     <text class="t-s"    x="16" y="70">FIX-1649 · in flight</text>
-    <rect class="flight" x="202.9" y="42" width="6" height="26" rx="2"/>
-    <text class="t-s" x="220" y="59">epic spec being authored</text>
+    <rect class="done" x="202.9" y="42" width="9" height="26" rx="2"/>
+    <text class="t-s" x="222" y="54">epic spec approved Sep 30 01:33</text>
+    <text class="t-s" x="222" y="67">children FIX-1655 · 1662 · 1664 · 1663 in spec</text>
   </g>
 
   <g id="org">
@@ -60,7 +62,7 @@
   </g>
 
   <g id="now">
-    <path class="now" d="M208.9 30 V278"/>
-    <text class="t-now" x="212" y="290">now · Sep 29 23:06 UTC</text>
+    <path class="now" d="M212.1 30 V278"/>
+    <text class="t-now" x="215" y="290">now · Sep 30 01:40 UTC</text>
   </g>
 </svg>
