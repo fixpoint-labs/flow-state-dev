@@ -52,8 +52,11 @@ import {
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
   resolveResourceCollection,
+  topologicalDispatcher,
+  type ClaimOptions,
   type DefinedTaskCollection,
   type TaskCollectionRef,
+  type TaskDispatcher,
   type TaskWorker,
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
@@ -71,6 +74,14 @@ import {
 } from "./run-record";
 import { askMarkerPath, readAskMarker } from "./ask";
 import {
+  HARNESS_RUN_OWNER_KEY,
+  foreignRunMessage,
+  isRunOwner,
+  runOwnerFor,
+  runOwnerOf,
+  type RunOwner,
+} from "./run-owner";
+import {
   INBOX,
   askQuestion,
   inboxCollection,
@@ -81,6 +92,7 @@ import {
   withdrawQuestion,
 } from "./inbox";
 import {
+  assertDerivedIdentity,
   harnessTaskId,
   sameSegment,
   acquireCheckout,
@@ -262,7 +274,15 @@ export interface PhaseSpec {
 
 /** How the manager is wired to its board and its host. */
 export interface ManagerOptions {
-  /** The board's ledger collection id — the fence reads the live claim from it. */
+  /**
+   * The board's ledger collection id — the fence reads the live claim from it,
+   * and every run's checkout folder, branch and run record are derived from it.
+   *
+   * Used as is: a channel's board (`eng.feature.work`) is accepted with its
+   * dots. Checked when the manager is built, so an id a git branch cannot carry
+   * (a `.lock` ending, a doubled or trailing dot, a separator) is refused here
+   * rather than after a row has been claimed.
+   */
   boardCollectionId: string;
   /**
    * The board's ledger declaration.
@@ -907,6 +927,56 @@ function createManagerCapability(options: {
   });
 }
 
+/**
+ * A board dispatcher that never claims a row whose coding run another member
+ * started — the half of the run-owner rule that charges nothing.
+ *
+ * Wire it on the board that DRAINS rows a manager runs, when that board is
+ * kept per organization (a channel's board): `taskBoard({ dispatcher:
+ * runOwnerDispatcher() })`. The claim is what spends an attempt, so narrowing
+ * it is the only place a refusal can leave the row exactly as it was: same
+ * status, same attempt count, same lease. It narrows `inner` rather than
+ * replacing it, so ordering and readiness stay the inner dispatcher's.
+ *
+ * A row with no recorded owner is claimable by anyone; the manager records
+ * the claimant on its first run (see `./run-owner`). When a claim comes back
+ * empty only because every claimable row was someone else's, the drain is
+ * refused with an error naming whose run it is, rather than returning as if
+ * the board were idle.
+ *
+ * @param inner The dispatcher to narrow. Defaults to `topologicalDispatcher`,
+ *   the task board's own default.
+ * @returns A dispatcher to pass as `taskBoard({ dispatcher })`.
+ */
+export function runOwnerDispatcher(inner: TaskDispatcher = topologicalDispatcher): TaskDispatcher {
+  return {
+    async claim(collection, workerId, ctx) {
+      const principal = runPrincipal(ctx);
+      const refused: Array<{ taskId: string; owner: RunOwner }> = [];
+      const narrowed: TaskCollectionRef = Object.create(collection, {
+        claim: {
+          value: (claimant: string, options: ClaimOptions = {}) =>
+            collection.claim(claimant, {
+              ...options,
+              eligibility: (task) => {
+                if (options.eligibility !== undefined && !options.eligibility(task)) return false;
+                const owner = runOwnerOf(task);
+                if (owner === null || isRunOwner(owner, principal)) return true;
+                refused.push({ taskId: task.id, owner });
+                return false;
+              },
+            }),
+        },
+      });
+      const claimed = await inner.claim(narrowed, workerId, ctx);
+      if (claimed === null && refused.length > 0) {
+        throw new Error(foreignRunMessage(refused[0]!.taskId, refused[0]!.owner));
+      }
+      return claimed;
+    },
+  };
+}
+
 /** Build the manager: one handed-off worker for one phase. */
 export function harnessManager(options: ManagerOptions): TaskWorker {
   const {
@@ -921,6 +991,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     announce = () => {},
     name = "harness-manager",
   } = options;
+
+  // **The board id is checked HERE, not first at an attempt.** It becomes a
+  // path segment and a git ref component in every run. Refused at the attempt,
+  // the row is claimed, the checkout fails, and the retry budget is spent on a
+  // name no retry can fix; refused here, the host fails before anything is
+  // hired. The attempt still derives through the same function, so the two
+  // cannot disagree.
+  assertDerivedIdentity("boardCollectionId", boardCollectionId);
 
   // **A phase is caller-owned validated configuration, so it is snapshotted.**
   // Held by reference, a host could swap `implement` for `review` after this
@@ -1177,6 +1255,26 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             `to ${describeTenant(resolvedTenant)}. Refusing rather than running one tenant's ` +
             `task in another's workspace.`,
         );
+      }
+
+      // **On a board kept per organization, the run is its starter's** (see
+      // `./run-owner`). Checked before anything is derived from this request's
+      // principal, so a refused drain opens no record and takes no checkout.
+      // The first run records its starter; a row another member owns is
+      // refused here, which is the backstop for a board whose drain was not
+      // wired with `runOwnerDispatcher` — that dispatcher refuses before the
+      // claim and so charges nothing, where this refusal comes after it.
+      if (boardCollection.scope === "org") {
+        const principal = runPrincipal(ctx);
+        const tasks = await boardTasks(ctx);
+        const owner = runOwnerOf(tasks.get(input.taskId));
+        if (owner === null) {
+          await tasks.patchMetadata(input.taskId, {
+            [HARNESS_RUN_OWNER_KEY]: runOwnerFor(principal),
+          });
+        } else if (!isRunOwner(owner, principal)) {
+          throw new HarnessAttemptFailed(foreignRunMessage(input.taskId, owner));
+        }
       }
 
       // **One location, three derivations.** The checkout, the branch and the run

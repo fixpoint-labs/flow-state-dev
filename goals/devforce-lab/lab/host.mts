@@ -3,17 +3,26 @@
  * gate and the model-backed honesty check drive the *same* tree, the same hire
  * and the same wiring, and differ by one block.
  *
- * What `openLab` does, in order, and nothing else: read the tree, build the two
- * kinds, hire, register, open the declared channels when asked, hand back the
- * handles. Every convention file it reads is found by walking from one root; no
- * file is named in this code.
+ * What `openLab` does, in order, and nothing else: read the tree, resolve the
+ * feature channel's board, build the two kinds on it, hire, register, open the
+ * declared channels when asked, hand back the handles. Every convention file it
+ * reads is found by walking from one root; no file is named in this code.
+ *
+ * **The board belongs to the channel.** The feature channel's `CHANNEL.md`
+ * names it (`boards: [work]`), the framework mints its id from where the
+ * channel sits, and this host resolves it with `channelBoard(channel.id,
+ * boardName)` — both read off the tree, the way
+ * `goals/multi-seat-collab/lab/host.mts` does. Both kinds are handed that one
+ * ledger, so a row the EM files and the coder's run settles is the row the
+ * channel serves. It is kept per organization, so it exists whether or not the
+ * channel is opened.
  *
  * Five pieces here are the lab's rather than the framework's, each because the
  * framework has no opinion at that spot:
  *
- * 1. **The board and its address map** (`board.mts`). The loader walks four
- *    folders and silently ignores the rest, so a board declared as a tree
- *    folder would load as nothing — which is BR-16, and why boards live in code.
+ * 1. **The board's two declarations** (`board.mts`): the EM's, which hands a
+ *    row across flows, and the coder's, which the cross-flow claim gate
+ *    requires. The ledger under both is the channel's.
  * 2. **The assignee → seat address.** A board's `workers` keys are assignees,
  *    not Workforce seats; which seat an assignee reaches is a dispatcher's
  *    `flowKind`, and it is a static instance id rather than a lookup. The
@@ -47,6 +56,8 @@ import {
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   CHANNEL_KIND,
+  channelBoard,
+  channelBoardIds,
   channelInstances,
   defineChannelFlow,
   hireWorkforce,
@@ -60,7 +71,7 @@ import {
 } from "@flow-state-dev/workforce/loader";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { fileURLToPath } from "node:url";
-import { LEDGER_ID } from "./board.mts";
+import type { FeatureLedger } from "./board.mts";
 import { INSPECT_ENTRY, SEAT_FACTS_COMPONENT } from "./seat-config.mts";
 import { defineImplementPhase } from "./phase.mts";
 import { CODER_KIND, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
@@ -196,6 +207,16 @@ export interface OpenLabOptions {
    */
   documentOverrides?: Record<string, string>;
   /**
+   * Build the two kinds on this ledger instead of the channel's.
+   *
+   * The goal check's `kind-ledger` control: the kinds keep a ledger of their
+   * own, as they did before the board moved onto the channel. The run still
+   * completes; only where its row lives moves, which is the red state of "the
+   * channel's board holds the row". The channel still declares its board, and
+   * {@link Lab.board} still names it.
+   */
+  ledger?: FeatureLedger;
+  /**
    * Rewrite one seat's resolved skill union before the mint.
    *
    * Applied to the record for the same reason, so the seat genuinely hires with
@@ -214,6 +235,12 @@ export interface SeatSkill {
 /** Everything a check needs to drive and observe one lab. */
 export interface Lab {
   roster: DeclaredRoster;
+  /**
+   * The feature channel's board, as the tree declares it: its local `name`
+   * (from `CHANNEL.md`) and the `id` the framework minted from where the
+   * channel sits. Read off the tree, so no check spells either.
+   */
+  board: { name: string; id: string };
   /** The hired seats, by id. */
   seats: Record<string, FlowInstance>;
   /** File one row through the EM seat's own action. */
@@ -223,8 +250,14 @@ export interface Lab {
   ): Promise<{ output?: unknown; error?: string }>;
   /** Run the board through the EM seat's own action, and wait for it to return. */
   drain(seatId: string): Promise<{ output?: unknown; error?: string }>;
-  /** Read one row out of the durable ledger. */
+  /** Read one row out of the ledger the kinds run on, where it is stored. */
   row(taskId: string): Promise<Task | undefined>;
+  /**
+   * Every stored resource key in one scope, with its state — the raw storage
+   * a check reads to say where a row lives and that no copy of it exists
+   * anywhere else. `org` reads the lab's organization, `user` the lab's user.
+   */
+  stored(scope: "org" | "user", prefix?: string): Promise<Record<string, unknown>>;
   /**
    * Every row on the feature board, by ledger key.
    *
@@ -249,6 +282,22 @@ export interface Lab {
   post?(body: string): Promise<{ output?: unknown; error?: string }>;
   /** Read the channel's transcript back. Absent when no channel was opened. */
   transcript?(): Promise<ChannelTranscriptLine[]>;
+  /**
+   * Run one of the channel's own actions (`read`, `readBoard`) — the reads
+   * App Lab makes of a workstream. Absent when no channel was opened.
+   */
+  channelAct?(actionName: string, input: unknown): Promise<{ output?: unknown; error?: string }>;
+  /**
+   * Read the channel's board through the HTTP door a browser uses — the
+   * collection read route, on the channel's session.
+   *
+   * `"bearer"` carries the lab's verified bearer; `"org-less"` carries no
+   * credential and is refused before anything is read. Absent when no channel
+   * was opened, since the door reads through the channel's session.
+   */
+  readBoardAtDoor?(
+    door: "org-less" | "bearer",
+  ): Promise<{ status: number; rows?: Array<Record<string, unknown>>; error?: string }>;
   /**
    * Every child session the EM seat's drain started, with the flow it was
    * attributed to — the **dispatch record**.
@@ -287,6 +336,24 @@ export interface Lab {
 export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const roster = await loadTree(options.root ?? LAB_TREE);
 
+  // **The board, read off the tree.** One channel, one declared board: the
+  // lab's wiring hands one ledger to both kinds, so a tree that grew a second
+  // channel or board would be a different lab, and is refused by what it has
+  // rather than resolved by guessing which one was meant.
+  if (roster.channels.length !== 1) {
+    throw new Error(`the tree declares ${roster.channels.length} channel(s); this lab runs one`);
+  }
+  const channel = roster.channels[0]!;
+  const declaredBoards = channel.declared.boards as string[] | undefined;
+  if (declaredBoards?.length !== 1) {
+    throw new Error(
+      `channel "${channel.id}" declares ${declaredBoards?.length ?? 0} board(s); this lab runs one`,
+    );
+  }
+  const boardName = declaredBoards[0]!;
+  const board = channelBoard(channel.id, boardName);
+  const ledger: FeatureLedger = options.ledger ?? { id: board.id, collection: board };
+
   // The documents, as the L1 resource map a flow installs. Org-scoped, which is
   // what makes the seats' document reads — and BR-17 — matter.
   const resources = resourcesFromDocs(roster.documents);
@@ -307,8 +374,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         };
   });
 
-  const emKind = defineEmWorkerFlow({ coderSeatId: options.coderSeatId, resources });
+  const emKind = defineEmWorkerFlow({ coderSeatId: options.coderSeatId, resources, ledger });
   const coderKind = defineCoderWorkerFlow({
+    ledger,
     harness: options.harness,
     workspace: options.workspace,
     phase: defineImplementPhase({ requireAcceptance: options.requireAcceptance === true }),
@@ -319,8 +387,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // Refuses the WHOLE roster when any record cannot be hired, naming the
   // worker. Nothing is returned partially, so a refusal cannot leave a short
   // roster running.
+  // Handed the tree's board ids, so a kind that stopped declaring the board
+  // would be named in hire's unattended-board warning.
   const hired = hireWorkforce(workers, {
     kinds: { [EM_KIND]: emKind as never, [CODER_KIND]: coderKind as never },
+    channelBoards: channelBoardIds(roster.channels),
   });
   const seats: Record<string, FlowInstance> = Object.fromEntries(
     hired.map((seat) => [seat.id, seat]),
@@ -448,7 +519,14 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   const channelInstance = instances.find((instance) => instance.kind === CHANNEL_KIND);
   /** The one channel this tree declares. Its id is its session id. */
-  const channelId = roster.channels[0]?.id;
+  const channelId = channel.id;
+
+  /**
+   * Where the kinds' ledger keeps its rows: the organization for the
+   * channel's board, the user for a ledger a control built of its own.
+   */
+  const ledgerScope = ledger.collection.scope === "org" ? "org" : "user";
+  const ledgerScopeId = ledgerScope === "org" ? LAB_ORG_ID : LAB_USER_ID;
 
   /**
    * Run one action and hand back what it returned.
@@ -498,6 +576,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   return {
     roster: { ...roster, workers },
+    board: { name: boardName, id: board.id },
     seats,
 
     file: (seatId, input) => act(seatId, FILE_ENTRY, input),
@@ -515,22 +594,58 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
             }
             return (result.output as { transcript: ChannelTranscriptLine[] }).transcript;
           },
+          channelAct: (actionName: string, input: unknown) =>
+            actOn(channelInstance, channelId, actionName, input),
+          readBoardAtDoor: async (door: "org-less" | "bearer") => {
+            // The collection read route, on the channel's own session, under
+            // the board's minted id — the read a board panel makes.
+            const segments = ["sessions", channelId, "resources", board.id];
+            const response = await (router as any).GET(
+              new Request(`http://lab/api/flows/${segments.join("/")}`, {
+                method: "GET",
+                headers:
+                  door === "bearer" ? { authorization: `Bearer ${LAB_PRINCIPAL_SECRET}` } : {},
+              }),
+              { params: { path: segments } },
+            );
+            const text: string = await response.text();
+            const json = text.length > 0 ? JSON.parse(text) : undefined;
+            if (response.status >= 400) {
+              return { status: response.status, error: JSON.stringify(json) };
+            }
+            const items = (json?.items ?? []) as Array<{ clientData?: Record<string, unknown> }>;
+            return {
+              status: response.status,
+              rows: items.map((item) => item.clientData ?? {}),
+            };
+          },
         }),
 
     row: async (taskId: string) => {
       const record = await runtime.stores.resourceState.get(
-        "user",
-        LAB_USER_ID,
-        `${LEDGER_ID}/${taskId}`,
+        ledgerScope,
+        ledgerScopeId,
+        `${ledger.id}/${taskId}`,
       );
       return record?.state as Task | undefined;
     },
 
+    stored: async (scope: "org" | "user", prefix = "") => {
+      const found = await runtime.stores.resourceState.getByPrefix(
+        scope,
+        scope === "org" ? LAB_ORG_ID : LAB_USER_ID,
+        prefix,
+      );
+      return Object.fromEntries(
+        Object.entries(found).map(([key, record]) => [key, (record as { state: unknown }).state]),
+      );
+    },
+
     rows: async () => {
       const found = await runtime.stores.resourceState.getByPrefix(
-        "user",
-        LAB_USER_ID,
-        `${LEDGER_ID}/`,
+        ledgerScope,
+        ledgerScopeId,
+        `${ledger.id}/`,
       );
       return Object.fromEntries(
         Object.entries(found).map(([key, record]) => [

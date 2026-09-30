@@ -19,6 +19,8 @@
  * package versions:
  *
  * - {@link harnessManager} and its options, including the `harness` slot.
+ * - `runOwnerDispatcher`, for a board kept per organization: a run belongs to
+ *   the member who started it, and another member's drain leaves it alone.
  * - `PhaseSpec` and the run-context types a phase's hooks are handed: the
  *   shared base, plus the prompt side and the completion side.
  * - `WorkspaceConfig`, and the construction-time guards a host should run at
@@ -38,6 +40,7 @@
 // ── The manager ─────────────────────────────────────────────────────────────
 export {
   harnessManager,
+  runOwnerDispatcher,
   harnessDrainBudgetMs,
   resolveOwnership,
   requestTenant,
@@ -58,6 +61,13 @@ export {
   type QuestionAnnouncement,
   type RequestIdentityContext,
 } from "./manager";
+
+// ── Whose run a row is, on a board kept per organization ────────────────────
+export {
+  HARNESS_RUN_OWNER_KEY,
+  runOwnerOf,
+  type RunOwner,
+} from "./run-owner";
 
 // ── The run record ──────────────────────────────────────────────────────────
 //

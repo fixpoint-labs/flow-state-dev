@@ -39,7 +39,7 @@ workforce/
     eng/
       resources/feature-brief.md                   the working seat's brief
       skills/commit-style/SKILL.md                 every eng seat holds it
-      channels/feature/CHANNEL.md                  declared, walked, and driven by the third check
+      channels/feature/CHANNEL.md                  holds the board, `boards: [work]`; driven by the third check
       workers/em/WORKER.md                         flow: em      — names no harness
       workers/coder/WORKER.md                      flow: coder
       workers/coder/skills/branch-naming/SKILL.md  the coder's alone
@@ -66,7 +66,7 @@ no opinion at that spot — not because a convention is missing.
 
 | File | Why it is the lab's |
 |---|---|
-| `board.mts` | The loader walks four folders and silently ignores everything else, so a board declared as a tree folder would look declared and be read by nobody. Boards are declared in code, by design. |
+| `board.mts` | The two declarations of the channel's board: the EM's, whose worker hands a row to the coder seat, and the coder's, which only lets that hand-off in. The board itself belongs to the channel: its file names it, and the framework mints its id from where the channel sits. |
 | `workforce/flows/workers/em.mts` | The coordinator kind. It owns the board and files rows, and declares **no task entry at all** — so "the EM seat does no harness work" is a fact about the kind, not about one run. |
 | `workforce/flows/workers/coder.mts` | The working kind. One task entry, `harnessManager` behind it, and the harness itself passed in as a slot. |
 | `host.mts` | Read the tree, build the kinds, hire, register. The assignee → seat address is supplied by the caller, because a board's `workers` keys are assignees and which seat one reaches is a dispatcher's static `flowKind`. The HTTP door is wired with a host-owned `resolvePrincipal`, so an unauthenticated read is refused rather than waved through under the development-organization fallback. |
@@ -79,20 +79,12 @@ those.
 
 ## What it works around
 
-**The `coder` kind declares the feature board a second time, and drains it
-never.** Same `boardId`, same ledger id, its own same-flow dispatcher. Two
-framework rules make that mandatory for a recipient of a cross-flow hand-off:
-`defineFlow` refuses a flow that declares a task entry with no reachable board
-handing off to it, and the claim gate refuses a dispatch whose `boardId` differs
-from the one the recipient's own board was built with.
-`packages/orchestration/test/task-board/hand-off-cross-flow.test.ts` documents the
-same constraint in its own header.
-
-**It is an interim tax, not a convention.** Board *authoring* — what an author
-declares — is a channel-attached `TaskCollection` (FIX-1385). The cross-flow
-claim-gate cost is a separate L1 constraint, carved onto FIX-1408. A kind that
-needs a task entry may pay this tax today, labelled as one. A lab that taught it
-as the rule would grandfather an asymmetry nobody chose.
+**The `coder` kind declares the channel's board a second time, and never drains
+it.** Same board id, the same ledger, its own dispatcher. `defineFlow` refuses a
+flow that declares a task entry with no reachable board handing off to it, and
+the claim gate refuses a dispatch whose board id differs from the recipient's
+own. That cost is the framework's to remove. Where the board lives is settled:
+on the channel, as its file says.
 
 **The two older checks drive the EM seat through its own actions rather than
 through the feature channel, and still do.** For them the channel is declared,

@@ -38,15 +38,34 @@ export const OWNED_SEGMENT = /^[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*$/;
 /**
  * A finished identity used as ONE path segment or ref component, whole.
  *
- * **The `+` is the whole difference from {@link OWNED_SEGMENT}, and it is
- * deliberate.** A *component* is joined with others, so it must not contain the
- * identity delimiter — a repeated separator would forge a frame. A *derived
- * identity* is already built (a board collection id, say) and lands between `/`
- * separators rather than inside a join, so it may legitimately carry `--`. What
- * it still may never do is anything a path or a git ref forbids, which is why
- * the rest of the grammar is identical.
+ * **Two differences from {@link OWNED_SEGMENT}, and both are deliberate.**
  *
- * Conflating the two is what made the first version of this reject its own
- * output.
+ * - **The `+`.** A *component* is joined with others, so it must not contain
+ *   the identity delimiter — a repeated separator would forge a frame. A
+ *   *derived identity* is already built (a board collection id, say) and lands
+ *   between `/` separators rather than inside a join, so it may legitimately
+ *   carry `--`.
+ * - **A single interior `.`.** A board a channel holds is named
+ *   `<channel>.<board>` (`eng.feature.work`), and the id is used as is — never
+ *   translated, because `eng-feature-work` may already be another board's id.
+ *   One dot between two runs of letters and digits is something both a path and
+ *   a git ref accept; `..`, a leading or trailing dot and a separator are not,
+ *   and the grammar cannot spell any of them.
+ *
+ * What the grammar cannot express is git's one remaining rule for a ref
+ * component: it may not end in `.lock`. That is {@link LOCK_SUFFIX}, checked
+ * beside this pattern wherever it is.
+ *
+ * Every id the old grammar (no dot) accepted is still accepted and derives the
+ * same string, since nothing is rewritten. Conflating a component with an
+ * identity is what made the first version of this reject its own output.
  */
-export const DERIVED_IDENTITY = /^[A-Za-z0-9]+(?:[_-]+[A-Za-z0-9]+)*$/;
+export const DERIVED_IDENTITY = /^[A-Za-z0-9]+(?:(?:[_-]+|\.)[A-Za-z0-9]+)*$/;
+
+/**
+ * The ending a git ref component may not have, in any case.
+ *
+ * Case-insensitive because the derived identity is folded to lower case before
+ * it becomes a path or a branch, so `x.LOCK` reaches git as `x.lock`.
+ */
+export const LOCK_SUFFIX = /\.lock$/i;
