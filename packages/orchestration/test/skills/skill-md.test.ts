@@ -356,6 +356,26 @@ describe("validateSkillName", () => {
     expect(() => validateSkillName("pdf--processing")).toThrow();
     expect(() => validateSkillName("pdf-processing")).not.toThrow();
   });
+
+  // A skill folder named after a Windows device loads on macOS and Linux and
+  // then makes the repository impossible to check out on Windows, so the
+  // skills tree refuses the same names the rest of the Workforce tree does.
+  const deviceNames = [
+    "con",
+    "prn",
+    "aux",
+    "nul",
+    ...Array.from({ length: 9 }, (_, n) => `com${n + 1}`),
+    ...Array.from({ length: 9 }, (_, n) => `lpt${n + 1}`),
+  ];
+  it.each(deviceNames)("rejects the Windows device name %s", (name) => {
+    expect(() => validateSkillName(name)).toThrow(/reserved device name on Windows/);
+  });
+  // Numbered devices run 1-9 only: com0 and lpt0 are ordinary names on
+  // Windows, and a device name as a prefix is not a device name.
+  it.each(["com0", "lpt0", "console"])("accepts %s, which is not a device name", (name) => {
+    expect(() => validateSkillName(name)).not.toThrow();
+  });
 });
 
 describe("kebabToCamel / camelToKebab", () => {
