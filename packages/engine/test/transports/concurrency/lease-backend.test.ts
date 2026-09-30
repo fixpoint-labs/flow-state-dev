@@ -15,6 +15,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createConcurrencyArbiter,
+  isPendingAdmission,
+  type ConcurrencyAdmission,
   type ConcurrencyFlowView
 } from "../../../src/transports/concurrency/arbiter";
 import { admitAndRun } from "./admit-and-run";
@@ -516,5 +518,118 @@ describe("the in-memory backend's four calls", () => {
 
     await backend.giveBack(second.place);
     expect("place" in (await backend.take({ key: "k", requestId: "r4", ifEmpty: true }))).toBe(true);
+  });
+});
+
+describe("a waiting place the backend no longer has", () => {
+  it("is reported missing by the in-memory backend, not merely as not its turn", async () => {
+    const backend = createInMemoryLeaseBackend();
+    const first = await backend.take({ key: "k", requestId: "r1" });
+    const second = await backend.take({ key: "k", requestId: "r2" });
+    if (!("place" in first) || !("place" in second)) throw new Error("expected places");
+    expect(await backend.isMyTurn(second.place)).toBe(false);
+    await backend.giveBack(second.place);
+    expect(await backend.isMyTurn(second.place)).toBe("missing");
+  });
+
+  it("is re-admitted at the back of the line and still runs", async () => {
+    // A shared backend drops a place whose lease ran out. The request behind
+    // it did not go away, so it lines up again behind whoever arrived since,
+    // rather than waiting forever on a place that will never be first.
+    const { backend, inner } = fourCallBackend();
+    const arbiter = createConcurrencyArbiter({ backend });
+    const admit = (id: string) =>
+      arbiter.admit(arbiter.resolve(queueFlow, "respond", envelope(id)), id) as Promise<ConcurrencyAdmission>;
+    const order: string[] = [];
+    let releaseA!: () => void;
+    const a = await admit("req_a");
+    const runA = a.run(async () => {
+      await new Promise<void>((r) => (releaseA = r));
+      order.push("a");
+    });
+    const b = await admit("req_b");
+    const bFirstPlace = b.place!;
+    const runB = b.run(async () => {
+      order.push("b");
+    });
+    // B has checked its turn once and is sleeping before the next check.
+    await new Promise((r) => setTimeout(r, 0));
+    await inner.giveBack(bFirstPlace);
+    const c = await admit("req_c");
+    const runC = c.run(async () => {
+      order.push("c");
+    });
+    // Let B find its place gone and take a new one behind C.
+    await new Promise((r) => setTimeout(r, 120));
+    releaseA();
+    await Promise.all([runA, runB, runC]);
+    expect(order).toEqual(["a", "c", "b"]);
+    expect(b.place?.ticket).not.toBe(bFirstPlace.ticket);
+  });
+});
+
+describe("a running place whose lease is lost", () => {
+  it("is told to stop when a renewal reports the place gone", async () => {
+    vi.useFakeTimers();
+    try {
+      const { backend: shaped } = fourCallBackend();
+      const backend: ConcurrencyLeaseBackend = { ...shaped, renew: async () => false };
+      const arbiter = createConcurrencyArbiter({ backend });
+      const admission = await arbiter.admit(
+        arbiter.resolve(rejectFlow, "respond", envelope("req_1")),
+        "req_1"
+      );
+      let release!: () => void;
+      const run = admission.run(() => new Promise<void>((r) => (release = r)));
+      expect(admission.lost.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(admission.lost.aborted).toBe(true);
+      release();
+      await run;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("is told to stop before its lease can run out when renewals keep failing", async () => {
+    // Stopping at half the lease leaves the other half for the run to wind
+    // down before another process may take the key: the two never overlap.
+    vi.useFakeTimers();
+    try {
+      const { backend: shaped } = fourCallBackend();
+      const backend: ConcurrencyLeaseBackend = {
+        ...shaped,
+        leaseMs: 10_000,
+        renew: async () => {
+          throw new Error("lease backend unreachable");
+        }
+      };
+      const arbiter = createConcurrencyArbiter({ backend });
+      const admission = await arbiter.admit(
+        arbiter.resolve(rejectFlow, "respond", envelope("req_1")),
+        "req_1"
+      );
+      let release!: () => void;
+      const run = admission.run(() => new Promise<void>((r) => (release = r)));
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(admission.lost.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(admission.lost.aborted).toBe(true);
+      release();
+      await run;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("is never told to stop over the in-memory default, whose places do not expire", async () => {
+    const arbiter = createConcurrencyArbiter();
+    const admission = arbiter.admit(
+      arbiter.resolve(rejectFlow, "respond", envelope("req_1")),
+      "req_1"
+    );
+    if (isPendingAdmission(admission)) throw new Error("expected a synchronous admission");
+    await admission.run(async () => undefined);
+    expect(admission.lost.aborted).toBe(false);
   });
 });

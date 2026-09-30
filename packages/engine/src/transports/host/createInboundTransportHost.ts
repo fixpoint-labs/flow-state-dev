@@ -27,9 +27,7 @@ import {
   resolveSessionStorageKey,
   tenantMatches
 } from "../../stores/scope-keys";
-import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
-import { normalizeError } from "../../errors/normalize-error";
-import { settledRecordFields, type RequestSettlement } from "../../execution/request-action-result";
+import { settleUnstartedRequest } from "../../execution/settle-unstarted-request";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import {
   assertSessionAdmitted,
@@ -185,52 +183,6 @@ function isRefusedAdmission(error: unknown): boolean {
     error instanceof UserBindingMismatchError ||
     error instanceof OrgBindingMismatchError
   );
-}
-
-/**
- * End a request whose run never started. With `expectedIncarnation`, only
- * that request is ended: a record another request put under the id since is
- * left alone. Without it, whatever holds the id is ended.
- *
- * The read and the write are separate calls, so a record replaced between
- * them is still overwritten. The conditional store write cannot close that:
- * it does not write `status`.
- */
-async function terminateUnenqueuedRequest(
-  stores: StoreRegistry,
-  requestId: string,
-  ending: { status: "failed"; cause: unknown } | { status: "aborted" },
-  expectedIncarnation?: string
-): Promise<void> {
-  try {
-    const record = await stores.request.get(requestId);
-    if (record === undefined || isTerminalRequestStatus(record.status)) return;
-    if (
-      expectedIncarnation !== undefined &&
-      resolveRequestIncarnation(record) !== expectedIncarnation
-    ) {
-      return;
-    }
-    const now = Date.now();
-    // The failure's cause is the record's action result, written with the
-    // status (FIX-1661); an abort carries none.
-    const settlement: RequestSettlement =
-      ending.status === "failed"
-        ? { status: "failed", error: normalizeError(ending.cause, { scope: "request" }) }
-        : { status: "aborted" };
-    await stores.request.set(
-      requestId,
-      {
-        ...record,
-        ...settledRecordFields(settlement),
-        ...(ending.status === "failed" ? { failedAtMs: now } : {}),
-        updatedAt: now
-      },
-      "any"
-    );
-  } catch {
-    // Best-effort cleanup; the original dispatch error is what propagates.
-  }
 }
 
 /**
@@ -894,7 +846,7 @@ export function createInboundTransportHost(
       if (held === undefined) throw error;
       await held.release();
       if (!isRefusedAdmission(error)) {
-        await terminateUnenqueuedRequest(
+        await settleUnstartedRequest(
           stores,
           requestId,
           { status: "failed", cause: error },
@@ -982,10 +934,16 @@ export function createInboundTransportHost(
           controller: AbortController;
           incarnation?: string;
         }): Promise<ExecutionResult> => {
+          // A run holding its turn on a shared backend is stopped once its
+          // place can no longer be kept: another process may take the key.
+          const lost = held?.lost;
           const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
             dispatchEnvelope,
             {
-              signal: envelope.signal,
+              signal:
+                lost === undefined || envelope.signal === undefined
+                  ? (envelope.signal ?? lost)
+                  : AbortSignal.any([envelope.signal, lost]),
               abortHandoff,
               responseEmitter,
               effectiveRuntimeConfig: {
@@ -1171,7 +1129,7 @@ export function createInboundTransportHost(
               };
               watchWhileQueued();
               const cancelledBeforeStart = async (): Promise<never> => {
-                await terminateUnenqueuedRequest(stores, requestId, { status: "aborted" }, cancelFence);
+                await settleUnstartedRequest(stores, requestId, { status: "aborted" }, cancelFence);
                 throw new Error(
                   `Request "${requestId}" was cancelled before it left the concurrency queue`
                 );
@@ -1223,7 +1181,7 @@ export function createInboundTransportHost(
                 // request this dispatch claimed. A binding refusal comes from the
                 // run, which adopted whatever held the id, so it ends that.
                 if (!started) {
-                  await terminateUnenqueuedRequest(
+                  await settleUnstartedRequest(
                     stores,
                     requestId,
                     { status: "failed", cause: error },
@@ -1233,7 +1191,7 @@ export function createInboundTransportHost(
                   error instanceof FlowInstanceBindingMismatchError ||
                   error instanceof UserBindingMismatchError
                 ) {
-                  await terminateUnenqueuedRequest(stores, requestId, {
+                  await settleUnstartedRequest(stores, requestId, {
                     status: "failed",
                     cause: error
                   });

@@ -18,7 +18,9 @@
  *     and gives the place back when the run settles, gives it back unrun, or
  *     hands it to a job another process runs. While this process holds a
  *     place on a shared backend it renews it, so a place outlives the
- *     backend's lease for as long as this process holds it.
+ *     backend's lease for as long as this process holds it. A waiter whose
+ *     place the backend dropped takes a new one at the back of the line; a
+ *     running holder whose place cannot be kept is told to stop (`lost`).
  *
  * Over the in-memory default backend all of this is synchronous where it was
  * before backends existed: a `reject` throws from `dispatch`, and a queued run
@@ -47,10 +49,12 @@ import type { DispatchEnvelope } from "../dispatcher";
 import {
   QUEUE_WAIT_TIMEOUT_MS,
   createInMemoryLeaseBackend,
+  holdLeasePlace,
   inMemoryInternalsOf,
   planQueueWait,
   type ConcurrencyLeaseBackend,
   type LeasePlace,
+  type LeasePlaceHold,
   type LeaseTakeResult
 } from "./lease-backend";
 
@@ -84,8 +88,20 @@ export interface ResolvedDecision {
  * anything is written.
  */
 export interface ConcurrencyAdmission {
-  /** The place this dispatch holds or waits in; `undefined` when nothing is arbitrated. */
+  /**
+   * The place this dispatch holds or waits in; `undefined` when nothing is
+   * arbitrated. On a shared backend it can change while the dispatch waits:
+   * a place the backend dropped is replaced by a new one at the back.
+   */
   readonly place: LeasePlace | undefined;
+  /**
+   * Fires, with a `ConcurrencyLeaseLostError`, when the run holds its turn on
+   * a shared backend and the place can no longer be kept, so another process
+   * may take the key. The run is to stop. Never fires over the in-memory
+   * default, whose places do not expire, or once the place is given back or
+   * handed off.
+   */
+  readonly lost: AbortSignal;
   /**
    * Run `start` in this place's turn and give the place back when it settles.
    * A `queue` place waits for its turn first, bounded by the wait budget, and
@@ -192,15 +208,13 @@ export function isPendingAdmission(
   return typeof (admission as { then?: unknown }).then === "function";
 }
 
-/**
- * How often the arbiter renews a place this process holds on a shared
- * backend; see `ConcurrencyLeaseBackend.renew`.
- */
-const HOLDER_RENEW_INTERVAL_MS = 2_000;
+/** A signal that never fires, for an admission that cannot lose its place. */
+const NEVER_LOST: AbortSignal = new AbortController().signal;
 
 /** Nothing to hold: the run starts on the caller's own timing. */
 const UNARBITRATED: ConcurrencyAdmission = {
   place: undefined,
+  lost: NEVER_LOST,
   run: (start) => start(),
   release: async () => {},
   handOff: () => {}
@@ -292,18 +306,33 @@ export function createConcurrencyArbiter(
    * the schedule `planQueueWait` sets. The admission's renewal timer keeps the
    * place alive meanwhile. An abort ends the wait at once, between checks or
    * during the sleep, so a withdrawn place is not renewed until its turn.
+   *
+   * A place the backend reports missing was dropped, not given up: `retake`
+   * lines the request up again at the back, and the wait goes on under the
+   * same budget.
    */
-  const pollForTurn = async (place: LeasePlace, signal?: AbortSignal): Promise<void> => {
+  const pollForTurn = async (
+    current: () => LeasePlace,
+    retake: () => Promise<void>,
+    signal?: AbortSignal
+  ): Promise<void> => {
     const since = Date.now();
     for (let attempt = 0; ; attempt += 1) {
-      throwIfWithdrawn(place, signal);
-      const myTurn = await backend.isMyTurn(place);
-      throwIfWithdrawn(place, signal);
+      throwIfWithdrawn(current(), signal);
+      let myTurn = await backend.isMyTurn(current());
+      throwIfWithdrawn(current(), signal);
+      if (myTurn === "missing") {
+        await retake();
+        throwIfWithdrawn(current(), signal);
+        myTurn = await backend.isMyTurn(current());
+        throwIfWithdrawn(current(), signal);
+      }
+      const place = current();
       const waitedMs = Date.now() - since;
       // The first check is immediate and always honoured. A later one that
       // lands past the budget (the check itself may have taken it there)
       // times out rather than starting a run the budget no longer covers.
-      if (myTurn && (attempt === 0 || waitedMs < QUEUE_WAIT_TIMEOUT_MS)) return;
+      if (myTurn === true && (attempt === 0 || waitedMs < QUEUE_WAIT_TIMEOUT_MS)) return;
       const step = planQueueWait({ key: place.key, waitedMs, attempt });
       if (step.kind === "timeout") throw step.error;
       await new Promise<void>((resolve) => {
@@ -324,25 +353,49 @@ export function createConcurrencyArbiter(
   };
 
   /** Build the admission for a place, once taken. Shared by both backends. */
-  const admissionFor = (policy: ConcurrencyPolicyName, place: LeasePlace): ConcurrencyAdmission => {
+  const admissionFor = (
+    policy: ConcurrencyPolicyName,
+    requestId: string,
+    taken: LeasePlace
+  ): ConcurrencyAdmission => {
+    let place = taken;
     let running = false;
+    // Set once the run has its turn: from then on a lost place stops it.
+    let holding = false;
+    let placeLost: Error | undefined;
+    const lost = new AbortController();
     // On a shared backend this process renews the place for as long as it
     // holds it: while the dispatch writes its records, while it waits its
     // turn, and while it runs, until it gives the place back or hands it to
     // a job. Nobody else renews it in that time, and a place whose lease
     // lapsed would let another process's run start alongside this one.
     // In-memory places never expire, so the default path starts no timer.
-    let renewal: ReturnType<typeof setInterval> | undefined;
-    if (inMemory === undefined) {
-      renewal = setInterval(() => {
-        attempt(() => backend.renew(place)).catch(() => undefined);
-      }, HOLDER_RENEW_INTERVAL_MS);
-      // Don't keep the event loop alive solely to renew a lease.
-      (renewal as { unref?: () => void }).unref?.();
-    }
+    let hold: LeasePlaceHold | undefined;
+    const holdPlace = (): void => {
+      if (inMemory !== undefined) return;
+      placeLost = undefined;
+      hold = holdLeasePlace(backend, place, (error) => {
+        placeLost = error;
+        if (holding) lost.abort(error);
+      });
+    };
+    holdPlace();
     const stopRenewing = (): void => {
-      if (renewal !== undefined) clearInterval(renewal);
-      renewal = undefined;
+      hold?.stop();
+      hold = undefined;
+    };
+    /** Line a request whose place was dropped up again, at the back. */
+    const retake = async (): Promise<void> => {
+      stopRenewing();
+      const result = await backend.take({ key: place.key, requestId });
+      if ("heldBy" in result) throw new ConcurrencyRejectedError(place.key, result.heldBy);
+      place = result.place;
+      holdPlace();
+    };
+    /** The run has its turn: a place already lost stops it at once. */
+    const startHolding = (): void => {
+      holding = true;
+      if (placeLost !== undefined) lost.abort(placeLost);
     };
     // Undefined until given back; then the give-back itself, which never
     // rejects, so `release()` and a settling run share one round trip.
@@ -388,15 +441,22 @@ export function createConcurrencyArbiter(
         ? undefined
         : inMemory !== undefined
           ? () => inMemory.waitForTurn(place, QUEUE_WAIT_TIMEOUT_MS)
-          : (signal?: AbortSignal) => pollForTurn(place, signal);
+          : (signal?: AbortSignal) => pollForTurn(() => place, retake, signal);
+    const startInTurn = <T>(start: () => Promise<T>): Promise<T> => {
+      startHolding();
+      return runThenGiveBack(start, giveBack);
+    };
 
     return {
-      place,
+      get place() {
+        return place;
+      },
+      lost: lost.signal,
       run(start, signal) {
         running = true;
-        if (waitForTurn === undefined) return runThenGiveBack(start, giveBack);
+        if (waitForTurn === undefined) return startInTurn(start);
         return waitForTurn(signal).then(
-          () => runThenGiveBack(start, giveBack),
+          () => startInTurn(start),
           async (error: unknown) => {
             await giveBack();
             throw error;
@@ -416,10 +476,11 @@ export function createConcurrencyArbiter(
   const admitted = (
     policy: ConcurrencyPolicyName,
     key: string,
+    requestId: string,
     result: LeaseTakeResult
   ): ConcurrencyAdmission => {
     if ("heldBy" in result) throw new ConcurrencyRejectedError(key, result.heldBy);
-    return admissionFor(policy, result.place);
+    return admissionFor(policy, requestId, result.place);
   };
 
   const admit: ConcurrencyArbiter["admit"] = (decision, requestId) => {
@@ -428,8 +489,8 @@ export function createConcurrencyArbiter(
     const input = { key, requestId, ...(policy === "reject" ? { ifEmpty: true } : {}) };
     // In memory the take is synchronous, so two racing callers can't both win
     // and a refusal is thrown before `dispatch` returns.
-    if (inMemory !== undefined) return admitted(policy, key, inMemory.take(input));
-    return backend.take(input).then((result) => admitted(policy, key, result));
+    if (inMemory !== undefined) return admitted(policy, key, requestId, inMemory.take(input));
+    return backend.take(input).then((result) => admitted(policy, key, requestId, result));
   };
 
   return {

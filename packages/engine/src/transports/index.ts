@@ -30,8 +30,10 @@ export type {
 
 export {
   createInMemoryLeaseBackend,
+  holdLeasePlace,
   planQueueWait,
   type ConcurrencyLeaseBackend,
+  type LeasePlaceHold,
   type LeasePlace,
   type LeaseTakeInput,
   type LeaseTakeResult,
@@ -41,6 +43,7 @@ export {
 export type { AuthenticationConfig, ResolvePrincipalFn } from "@flow-state-dev/core/types";
 
 export {
+  ConcurrencyLeaseLostError,
   ConcurrencyQueueTimeoutError,
   ConcurrencyRejectedError,
   OrgRequiredError,

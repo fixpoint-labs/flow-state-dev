@@ -23,12 +23,13 @@
  * pushed wake is worth having there, it belongs on the public contract.
  *
  * `planQueueWait` is the arbiter's answer to "not my turn, now what?" for a
- * backend with no in-process wake. It is exported for an adapter's worker,
- * which waits by requeueing its job rather than holding a slot, and must reach
- * the same decision the engine would.
+ * backend with no in-process wake, and `holdLeasePlace` is how a process keeps
+ * a place it holds. Both are exported for an adapter's worker, which waits by
+ * requeueing its job rather than holding a slot and renews the place of the
+ * job it runs, and must reach the same decisions the engine would.
  */
 
-import { ConcurrencyQueueTimeoutError } from "../errors";
+import { ConcurrencyLeaseLostError, ConcurrencyQueueTimeoutError } from "../errors";
 
 /** A run's place in one key's line, as the backend issued it. Opaque to callers. */
 export interface LeasePlace {
@@ -70,19 +71,113 @@ export interface ConcurrencyLeaseBackend {
    * already on the line. The engine takes once per dispatch.
    */
   take(input: LeaseTakeInput): Promise<LeaseTakeResult>;
-  /** True when this place is the first live place on its key. */
-  isMyTurn(place: LeasePlace): Promise<boolean>;
+  /**
+   * True when this place is the first live place on its key. `"missing"` when
+   * the key's line no longer has the place at all: a backend whose places
+   * expire dropped it. The request behind it did not go away, so the engine
+   * takes a new place for it, at the back of the line. A backend that answers
+   * only `true` / `false` never re-admits a waiter.
+   */
+  isMyTurn(place: LeasePlace): Promise<boolean | "missing">;
   /** Remove the place. Idempotent. Wakes the next waiter on the key. */
   giveBack(place: LeasePlace): Promise<void>;
   /**
    * Extend the place's lease, for a backend whose places expire. The engine's
-   * arbiter calls it every 2 seconds for as long as its process holds the
-   * place: from `take`, through the dispatch's writes, its wait for a turn and
-   * its run, until it gives the place back or hands it to a job (whose worker
-   * then renews it). A lease a few times longer than 2 seconds survives one
-   * missed renewal.
+   * arbiter calls it every 2 seconds (more often under a short `leaseMs`) for
+   * as long as its process holds the place: from `take`, through the
+   * dispatch's writes, its wait for a turn and its run, until it gives the
+   * place back or hands it to a job (whose worker then renews it). A lease a
+   * few times longer than 2 seconds survives one missed renewal.
+   *
+   * Answers `false` when the place is gone, so it can no longer be kept; a
+   * running holder is then stopped. Any other answer, `undefined` included,
+   * means the place was kept.
    */
-  renew(place: LeasePlace): Promise<void>;
+  renew(place: LeasePlace): Promise<boolean | void>;
+  /**
+   * How long a place lives past its last renewal, for a backend whose places
+   * expire. With it, a running holder that cannot renew is stopped at half
+   * the lease, so it has ended before another process can take the key.
+   * Without it, only a renewal that answers `false` stops a holder.
+   */
+  readonly leaseMs?: number;
+}
+
+/**
+ * How often a held place is renewed, for a backend whose places expire; see
+ * `ConcurrencyLeaseBackend.renew`.
+ */
+const HOLD_RENEW_INTERVAL_MS = 2_000;
+
+/** A place this process keeps renewed until it stops holding it. */
+export interface LeasePlaceHold {
+  /** Stop renewing. Idempotent. Does not give the place back. */
+  stop(): void;
+}
+
+/**
+ * Keep a place alive for as long as this process holds it, and say when it
+ * cannot be kept.
+ *
+ * Renews every 2 seconds, or every quarter of the backend's `leaseMs` when
+ * that is shorter. `onLost` is called once, with a `ConcurrencyLeaseLostError`,
+ * when a renewal answers that the place is gone, or, on a backend that
+ * declares `leaseMs`, when no renewal has landed for half the lease: the
+ * other half is the holder's time to stop before another process can take
+ * the key. A renewal that throws is otherwise ignored. Renewal stops after
+ * `onLost`. The holder gives the place back itself.
+ */
+export function holdLeasePlace(
+  backend: ConcurrencyLeaseBackend,
+  place: LeasePlace,
+  onLost: (error: ConcurrencyLeaseLostError) => void
+): LeasePlaceHold {
+  const leaseMs = backend.leaseMs;
+  const intervalMs =
+    leaseMs === undefined ? HOLD_RENEW_INTERVAL_MS : Math.min(HOLD_RENEW_INTERVAL_MS, leaseMs / 4);
+  let stopped = false;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  const unref = (timer: unknown): void => {
+    // Don't keep the event loop alive solely to renew a lease.
+    (timer as { unref?: () => void }).unref?.();
+  };
+  const lose = (): void => {
+    if (stopped) return;
+    hold.stop();
+    onLost(new ConcurrencyLeaseLostError(place.key));
+  };
+  const armDeadline = (): void => {
+    if (leaseMs === undefined || stopped) return;
+    if (deadline !== undefined) clearTimeout(deadline);
+    deadline = setTimeout(lose, leaseMs / 2);
+    unref(deadline);
+  };
+  const renewal = setInterval(() => {
+    let pending: Promise<boolean | void>;
+    try {
+      pending = backend.renew(place);
+    } catch {
+      return;
+    }
+    pending.then(
+      (kept) => {
+        if (stopped) return;
+        if (kept === false) lose();
+        else armDeadline();
+      },
+      () => undefined
+    );
+  }, intervalMs);
+  unref(renewal);
+  const hold: LeasePlaceHold = {
+    stop() {
+      stopped = true;
+      clearInterval(renewal);
+      if (deadline !== undefined) clearTimeout(deadline);
+    }
+  };
+  armDeadline();
+  return hold;
 }
 
 /** The default budget a `queue` run waits for its turn before timing out. */
@@ -172,7 +267,8 @@ export function inMemoryInternalsOf(
  * arbiter. Several arbiters built over one of these share its keys, which is
  * how a test stands two processes on one deployment's backend.
  *
- * Places never expire, so `renew` does nothing. Idle keys are pruned.
+ * Places never expire, so `renew` does nothing and a place is missing only
+ * once it was given back. Idle keys are pruned.
  *
  * Not built on `createKeyedAsyncGate`, though the two look alike: the gate
  * holds anonymous leases, and a backend must name each place (a ticket another
@@ -236,7 +332,11 @@ export function createInMemoryLeaseBackend(): ConcurrencyLeaseBackend {
 
   const backend: ConcurrencyLeaseBackend = {
     take: async (input) => internals.take(input),
-    isMyTurn: async ({ key, ticket }) => lines.get(key)?.[0]?.ticket === ticket,
+    isMyTurn: async ({ key, ticket }) => {
+      const line = lines.get(key);
+      if (line?.[0]?.ticket === ticket) return true;
+      return line?.some((p) => p.ticket === ticket) === true ? false : "missing";
+    },
     giveBack: async (place) => internals.giveBack(place),
     renew: async () => {}
   };
