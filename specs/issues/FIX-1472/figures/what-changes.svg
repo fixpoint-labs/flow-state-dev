@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 430" role="img" aria-label="The two task-board recorders, before and after. Today, each recorder's column interleaves its own exits with a baseline, write and classify block and a report, raise or defer block, and those two blocks appear in both columns. After, each column keeps only its own exits, in the same order as today, and both columns point at two shared steps drawn once between them: the write step and the surface step. The error recorder's two containment guards stay at the top of its own column."
+<svg viewBox="0 0 940 430" role="img" aria-label="The two task-board recorders, before and after. Today, each recorder's column interleaves its own exits with a baseline, write and classify block, and that block appears in both columns. After, each column keeps only its own exits, in the same order as today, and both columns point at one shared write step drawn once between them. Each column still ends with its own report-then-raise-or-defer, written out where it runs. The error recorder's two containment guards stay at the top of its own column."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -34,8 +34,8 @@
     <text class="t-d" x="44" y="212">baseline · write · classify</text>
     <rect class="exit" x="32" y="240" width="196" height="40" rx="4"/>
     <text class="t-b" x="44" y="264">stop renewal · clear claim</text>
-    <rect class="dup" x="32" y="292" width="196" height="40" rx="4"/>
-    <text class="t-d" x="44" y="316">report · raise or defer</text>
+    <rect class="exit" x="32" y="292" width="196" height="40" rx="4"/>
+    <text class="t-b" x="44" y="316">report · raise or defer</text>
     <rect class="guard" x="240" y="84" width="196" height="40" rx="4"/>
     <text class="t-b" x="252" y="108">two containment guards</text>
     <rect class="exit" x="240" y="136" width="196" height="40" rx="4"/>
@@ -44,8 +44,8 @@
     <text class="t-d" x="252" y="212">baseline · write · classify</text>
     <rect class="exit" x="240" y="240" width="196" height="40" rx="4"/>
     <text class="t-b" x="252" y="264">clear claim · stop renewal</text>
-    <rect class="dup" x="240" y="292" width="196" height="40" rx="4"/>
-    <text class="t-d" x="252" y="316">report · raise or defer</text>
+    <rect class="exit" x="240" y="292" width="196" height="40" rx="4"/>
+    <text class="t-b" x="252" y="316">report · raise or defer</text>
     <text class="t-s" x="252" y="352">then onError</text>
   </g>
 
@@ -69,17 +69,14 @@
     <rect class="shared" x="636" y="182" width="130" height="52" rx="5"/>
     <text class="t-c" x="648" y="204">write step</text>
     <text class="t-s" x="648" y="222">baseline · classify</text>
-    <rect class="shared" x="636" y="286" width="130" height="52" rx="5"/>
-    <text class="t-c" x="648" y="308">surface step</text>
-    <text class="t-s" x="648" y="326">report · raise/defer</text>
+    <rect class="exit" x="494" y="292" width="126" height="40" rx="4"/>
+    <text class="t-b" x="504" y="316">report · raise/defer</text>
+    <rect class="exit" x="782" y="292" width="130" height="40" rx="4"/>
+    <text class="t-b" x="792" y="316">report · raise/defer</text>
     <path class="link" d="M540 208 H636"/>
     <path class="link" d="M766 208 H860"/>
-    <path class="link" d="M540 312 H636"/>
-    <path class="link" d="M766 312 H860"/>
     <text class="t-s" x="494" y="212">calls →</text>
-    <text class="t-s" x="494" y="316">calls →</text>
     <text class="t-s" x="866" y="212">← calls</text>
-    <text class="t-s" x="866" y="316">← calls</text>
   </g>
 
   <g id="legend">

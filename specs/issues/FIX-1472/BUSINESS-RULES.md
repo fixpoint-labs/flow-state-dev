@@ -52,8 +52,8 @@ BR-15). Nothing retries.
 
 ## Acceptance criteria this issue owns
 
-- The baseline, write, classify, release sequence and the report-then-raise-or-defer tail each
-  exist once, and both recorders use them.
-- Neither shared step takes an argument that selects an exit rule.
+- The baseline, write, classify, release sequence exists once, and both recorders use it. The
+  report-then-raise-or-defer tail stays written out in each recorder, where its rule runs.
+- The shared step takes no argument that selects an exit rule or raise-or-defer.
 - BR-1 to BR-18 pass on `main` before the move and pass unedited after it, and the planted
   controls turn them red ([PLAN V2](PLAN.md#checks)).

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, what the two task-board recorders share. Chosen: the write and its report, with each recorder's exits written out in its own body. Instead of: a shared template that runs the whole recorder and asks each one through hooks what to do at each exit. It comes down to the first row: with the chosen shape a reader sees where a recorder exits by reading its body top to bottom, while the template moves every exit behind a callback. The price is the second row: a few lines of exit bookkeeping stay in both recorders, where the template has none. The third row is a tie: behaviour is identical either way. Locks in: the shared steps can never be told which exit to take. Flips if: the two recorders' exit rules converge."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, what the two task-board recorders share. Chosen: the write and its report, with each recorder's exits written out in its own body. Instead of: a shared template that runs the whole recorder and asks each one through hooks what to do at each exit. It comes down to the first row: with the chosen shape a reader sees where a recorder exits by reading its body top to bottom, while the template moves every exit behind a callback. The price is the second row: a few lines of exit bookkeeping stay in both recorders, where the template has none. The third row is a tie: behaviour is identical either way. Locks in: the shared step can never be told which exit to take. Flips if: the two recorders' exit rules converge."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -87,7 +87,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">The shared steps never pick an exit</text>
+    <text class="t-b" x="32" y="371">The shared step never picks an exit</text>
     <text class="t-s" x="32" y="389">adding a mode to them later means reopening D1</text>
   </g>
 
