@@ -118,9 +118,9 @@ const snapshot = await sessions.getSessionState("sess_1", {
 // the first page's `at` and `sessionCreatedAt` to `createSessionSSEClient`
 // (`since`, `sessionCreatedAt`), so it follows the session you read.
 
-// List a session's requests. Returns summaries only by default; pass
-// `includeItems` to back-fill each request's item log — useful for inspecting
-// requests that already completed (e.g. the DevTool's trace view).
+// List a session's requests. Each summary carries `result` once the request
+// ends: `{ error }` when it failed, and the output with `includeResultOutput`.
+// Pass `includeItems` to back-fill each request's item log (e.g. the DevTool).
 const requests = await sessions.listSessionRequests("sess_1", {
   includeItems: true,
 });

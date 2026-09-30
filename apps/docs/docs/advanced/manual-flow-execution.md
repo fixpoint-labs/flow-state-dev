@@ -91,6 +91,15 @@ run time exactly as it would through the HTTP layer.
 produced, a `durationMs`, an `error` when the run failed, and the `requestId` —
 the id of the run, for correlating logs or attaching a stream.
 
+The same `output` and `error` are stored on the request's record, as `result`,
+when the run ends. A client that dispatched the action over HTTP reads them from
+[`listSessionRequests`](/docs/api/client#sessionslistsessionrequestssessionid-options)
+without waiting on the stream (pass `includeResultOutput: true` for the output).
+
+Stored means kept for as long as the request is. That includes the output of an
+action whose block is marked `transient`, which keeps the block's traces out of
+storage but not the action's return value.
+
 To fire-and-forget, don't await: drop the `await` and let the run proceed. The
 run is durable either way — items and events persist to the `stores` you passed.
 One caveat: an un-awaited run that fails produces an unhandled promise

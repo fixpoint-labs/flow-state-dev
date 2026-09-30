@@ -133,6 +133,34 @@ There is no counterpart that starts one. Whether work is dispatched at all is de
 
 Full walkthrough: [Client > Overview](/docs/client/overview#dispatched-runs).
 
+### `sessions.listSessionRequests(sessionId, options?)`
+
+List the requests a session has run. Each entry is a summary of one request: its action, its status, its timings, and what the action came to.
+
+```ts
+const requests = await sessions.listSessionRequests("sess_1", { includeResultOutput: true });
+
+for (const req of requests) {
+  if (req.result == null) continue; // not finished, or no result recorded
+  if (req.result.error) console.log(req.actionName, "failed:", req.result.error.message);
+  else console.log(req.actionName, "returned", req.result.output);
+}
+```
+
+`result` is filled in when the request ends:
+
+| Request ended | `result` |
+|---|---|
+| `completed` or `incomplete` | `{ output }`, the value the action returned. `{}` when it returned nothing. |
+| `failed` | `{ error: { code, message } }`. If the action had already answered when a completion hook failed the request, `output` is there too. |
+| `aborted` or `interrupted`, or still running or suspended | absent |
+
+The output is stored as JSON. A value JSON can't hold, such as a `BigInt` or an object that refers to itself, is recorded as `{ outputNotRecorded: true }` instead, and the request keeps the status it earned.
+
+A request recorded by a server version that didn't store results has no `result` either, so check it with `== null` rather than reading `status` alone.
+
+The summaries leave out each request's item log and the action's return value. Pass `includeItems: true` for the log and `includeResultOutput: true` for `result.output`. Without it, `result` still carries `error` and a `hasOutput` flag, so you can tell a failure from a success without shipping every output on each call.
+
 ## SSE Clients
 
 ### `createSSEClient(options)`
