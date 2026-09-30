@@ -12,6 +12,7 @@ flowchart TD
   I["FIX-960"] --> D1["D1 · request state is written by omitting state"]
   D1 -.->|"rejected"| X1["pass ctx.request as the state<br/>also admits session, user and org handles"]
   D1 -.->|"rejected"| X1b["one default slot for both<br/>moves stored tasks"]
+  D1 -.->|"rejected"| X1c["rename only, keep an explicit request arm<br/>caps still sit on two of three arms"]
   I --> D2["D2 · the board layer keeps its own words"]
   D2 -.->|"rejected"| X2["rename the board layer too<br/>there the two arms really differ"]
 ```
@@ -24,7 +25,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 | | |
 |---|---|
 | **Instead of** | Passing `state: ctx.request` explicitly |
-| **Because** | The issue asks for a rename with the same defaults. The two arms default to different slots (`tasks` for a passed ref, the `collectionId` for the request), and stored tasks live at those slots. Keying the request default on an omitted `state` keeps both exactly, with no runtime sniffing of what was passed. Accepting `ctx.request` would type-check `ctx.session`, `ctx.user` and `ctx.org` too, since every scope handle has the same shape, and that is a new storage option nobody asked for |
+| **Because** | The issue asks for a rename with the same defaults. The two arms default to different slots (`tasks` for a passed ref, the `collectionId` for the request), and stored tasks live at those slots. Keying the request default on an omitted `state` keeps both exactly, with no runtime sniffing of what was passed. Accepting any scope handle would type-check `ctx.session`, `ctx.user` and `ctx.org` too, a new storage option nobody asked for. A field narrowed to the request handle avoids that (it is a distinct type), but the constructor would then have to tell a request handle from a state ref at runtime to pick the default slot, which is the sniffing this avoids, and it adds a second spelling of the request to a PR whose claim is equivalence |
 | **Locks in** | One default a reader must learn: `backing: "state"` with no `state` means the request. Adding an explicit `state: ctx.request` spelling later is additive; removing the omitted form would be a second breaking change |
 
 ![Where a request-backed collection's state comes from: omit state, chosen, beside passing ctx.request. Decides it: every stored slot stays where it is with no sniffing. Price: one implicit default. Locks in the omitted form; flips if the request needs to be spelled at the call site.](figures/d1-omit-state.svg)
@@ -32,7 +33,15 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 It comes down to the stored slot: omitting `state` keeps both defaults exactly, while an explicit handle also admits session state.
 
 **What would change my mind:** evidence that readers misread the omitted form as "no state".
-Then add `state: ctx.request` as an accepted spelling, restricted to the request handle.
+Then add `state: ctx.request` as an accepted spelling, restricted to the request handle's type,
+which is additive.
+
+**The smaller alternative, priced:** rename only, keeping two arms (`backing: "state"` with a
+required ref, and an explicit `backing: "request"`). It avoids this decision's implicit default
+entirely and is the smaller API change. It loses because the issue's second complaint survives
+it: caps still sit on two of three arms with a paragraph explaining why, and the two arms still
+present one constructor as two mechanisms. If the implicit default is the product risk you weigh
+most, this is the alternative to pick instead, and it keeps every stored slot just as D1 does.
 
 <a name="d2"></a>
 ## D2 · The task-board layer keeps `"sequencer"` and `"request"`; only the collection factory's options are renamed
@@ -67,7 +76,8 @@ It comes down to the board's own arms: they really differ, so a fold there would
 | One default slot for the folded arm | Moves stored tasks for every caller on the other default: request boards would collide on `tasks`, or checkpointed sequencer boards would look under `collectionId` and find nothing |
 | A `state: "request"` sentinel | Explicit, but mixes a string and a ref in one field and still needs a branch on the value |
 | Keep `sequencer` as a deprecated alias | The issue rules it out, and an alias keeps the misleading word teachable |
-| Only rename the discriminant, keep two arms | Leaves the paragraph explaining why caps sit on two of three arms, which is the issue's second complaint |
+| Only rename the discriminant, keep two arms (explicit `backing: "request"`) | The smaller API change, and no implicit default. Leaves the paragraph explaining why caps sit on two of three arms, which is the issue's second complaint. Priced under [D1](#d1) |
+| Accept `state: ctx.request`, narrowed to the request handle's type | Keeps session, user and org out, but the default slot then depends on which kind of object was passed (runtime sniffing), and it adds a second spelling of the request. Additive later if the omitted form misreads (D1) |
 
 ## Settled
 
@@ -85,6 +95,10 @@ It comes down to the board's own arms: they really differ, so a fold there would
 
 ## How it got here
 
+- **Review round 1** — Cursor and a second-look pass both asked for the rename-only alternative
+  and a request-narrowed ref to be priced at sign-off. Both added under D1 and in the dropped
+  table; D1's rationale corrected (the request handle is a distinct type, so narrowing is
+  possible; the cost is the runtime branch, not the type). D1 unchanged.
 - **Draft** — framed as a naming lie over one shared mechanism; fold the two state arms into
   `backing: "state"` keyed on an optional ref so both default slots survive; one PR, collection
   factory only, board layer untouched.

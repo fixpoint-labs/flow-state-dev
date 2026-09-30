@@ -85,6 +85,29 @@ exits 0. It confirmed the issue's 22 and found 6 more source sites outside `pack
   it; its caps attach to the single `state` arm.
 - Re-run the census; counts drift as tests are added.
 
+## Notes from review
+
+Recorded for the implementer to weigh against real code; not folded into the design.
+
+- **Cursor (PR #2483, census):** "census needs manual updates for new syntactic shapes
+  (`OVERRIDES`). Peers (FIX-817, FIX-1503) ship in-script `--plant` — optional alignment, not a
+  blocker." Also: "Count duplication (22/28/40/76/32 in prose + JSON) — consider one baseline
+  artifact or 'run census' as single source."
+- **Second look (PR #2483, point 1):** "the 'what would change my mind' trigger should be pinned,
+  not left open. If the `StateBackedOptions` doc comment can't explain the omitted case in one
+  sentence, add the explicit `state: ctx.request` spelling in the same PR." (D1 is unchanged;
+  adding that spelling is additive and would be restricted to the request handle's type.)
+- **Second look (point 2, BR-4):** "the runtime throw should sit at the top of
+  `getOrCreateTaskCollection` ... before the `ctx.request` and `claimIdentity` reads ... It should
+  also list the valid literals (`state`, `resource`) in the message", and point out the `sequencer`
+  field's replacement is `state`, so an untyped caller doesn't fail one step later.
+- **Second look (point 3):** "`requestStateRef` becomes a single-use adapter ... Check whether the
+  constructor could take the narrow set of mutators it actually calls, instead of a full
+  `StateRef`. If it can, the adapter and its `input: undefined` stub disappear. If that widens the
+  PR, leave it as a follow-up."
+- **Second look (point 4):** "V4's census must run against the PR's final tree, not the base",
+  with the board-layer count held at 32 (already in V4).
+
 ## Follow-ups
 
 - Whether the board layer's `"request"`/`"sequencer"` should be renamed for symmetry. Flagged, not filed (D2).

@@ -5,6 +5,13 @@
 Only changed material. Every board-layer example (`taskBoard({ collection: { backing: … } })`)
 stays as it is (D2). No new page, no sidebar change.
 
+**Two layers, two vocabularies (D2).** After this change a board is still configured with
+`taskBoard({ collection: { backing: "sequencer" | "request" } })`, while the collection factory
+under it takes `getOrCreateTaskCollection({ backing: "state" | "resource" })`. Wherever a page
+shows both, it says so in one sentence: the board's words choose where the board's drain keeps
+its work; the factory's words choose which state holds the tasks. Readers should not discover the
+difference by diffing examples.
+
 ## UPDATE · `apps/docs/docs/orchestration/task-board.md` · "How long the counts last"
 
 Replace the two backing bullets and the two paragraphs after the list with:

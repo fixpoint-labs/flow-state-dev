@@ -93,6 +93,9 @@ hold a naming fix open for cap work it was never meant to carry.
 1. **[D1](DECISIONS.md#d1) · A request-backed collection is written by leaving `state` out,
    rather than passing `ctx.request`.** If wrong: one default a reader has to learn. Switching to
    an explicit `ctx.request` later is additive and cheap.
+   The smaller alternative is rename-only: keep an explicit `backing: "request"` arm and no
+   implicit default, at the cost of caps still sitting on two of three arms
+   ([priced in D1](DECISIONS.md#d1)).
 2. **[D2](DECISIONS.md#d2) · The task-board layer keeps `"sequencer"` and `"request"`; only the
    collection factory is renamed.** If wrong: two words for neighbouring layers until a follow-up
    renames the board's, which is its own breaking change.
