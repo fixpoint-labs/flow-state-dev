@@ -103,7 +103,8 @@ If you're on React you don't need this — `useSession` and `useRequestStream` w
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-// Same origin by default. See Client options for `baseUrl`.
+// Same origin by default. `baseUrl` takes an origin and/or the app's base path,
+// never the `/api` or `/api/flows` route prefix. See Client options.
 const sessions = createSessionClient(/* { baseUrl: "https://api.example.com" } */);
 
 // State snapshot with clientData and items

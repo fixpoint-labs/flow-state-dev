@@ -177,7 +177,7 @@ await typedClient.actions.chat({ message: "Hello!" });
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient(); // same origin; pass an origin as `baseUrl` for a remote API
+const sessions = createSessionClient(); // same origin; `baseUrl` takes an origin and/or base path, never `/api/flows`
 
 const list = await sessions.listSessions({ flowKind: "my-app" });
 const detail = await sessions.getSession(sessionId);

@@ -21,13 +21,13 @@ const client = createClient({
 });
 ```
 
-Every request path the client builds already starts with `/api/flows`. Leave `baseUrl` off when the API is mounted on the same origin — setting it to `"/api/flows"` produces `/api/flows/api/flows/…`.
+Every request path the client builds already starts with `/api/flows`, so `baseUrl` is only what goes in front of it: an origin, your app's base path, or both. Leave it off for a same-origin app with no base path. Never include the `/api` or `/api/flows` route prefix. Setting it to `"/api/flows"` produces `/api/flows/api/flows/…`.
 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `flowKind` | `string` | required | The flow instance to call: its `kind` for an ordinary flow, the copy's own id for a flow that runs as several copies. See [Flows](/docs/fundamentals/flows#how-an-instance-is-addressed). |
 | `userId` | `string` | required | Caller identity sent on every request. The server still resolves the principal from your auth hook; this is the client's claim. |
-| `baseUrl` | `string` | same origin | Prefix put in front of `/api/flows/…`. Omit it for a same-origin app (Next.js route handler, the `node` host). Set an origin such as `https://api.example.com` when the API lives elsewhere. |
+| `baseUrl` | `string` | same origin | Prefix put in front of `/api/flows/…`: an origin such as `https://api.example.com`, the app's base path such as `/portal` under a Next.js `basePath`, or both. Never the `/api` or `/api/flows` route prefix. Omit it for a same-origin app with no base path (Next.js route handler, the `node` host). |
 | `fetcher` | `typeof fetch` | global `fetch` | Custom fetch (tests, extra headers). |
 
 `createTypedClient({ flow, userId, ... })` adds the same connection fields and types `sendAction` from the flow instance.
@@ -57,7 +57,7 @@ import { FlowProvider } from "@flow-state-dev/react";
 | `flowKind` | `string` | Default flow instance for hooks. |
 | `userId` | `string` | Default caller id. |
 | `sessionId` | `string` | Default session. `useFlow({ autoCreateSession: true })` can mint one instead. |
-| `baseUrl` | `string` | Forwarded to the client. Same rule: omit it for a same-origin app. |
+| `baseUrl` | `string` | Forwarded to the client. Same rule: an origin and/or base path, never the route prefix; omit it for a same-origin app with no base path. |
 | `renderers` | `RendererRegistry` | Custom item renderers. Nested providers merge; child keys override. |
 | `children` | `ReactNode` | The tree that may call hooks. |
 
