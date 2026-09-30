@@ -38,4 +38,5 @@ export {
   type UpdateStateRunner,
 } from "./update-state-with";
 export { toError } from "./to-error";
+export { isWindowsReservedName } from "./windows-reserved-name";
 export { withTimeout } from "./with-timeout";

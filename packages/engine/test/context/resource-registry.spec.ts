@@ -25,7 +25,7 @@ import {
 import { isCollectionConfig } from "../../src/resources/is-collection-config";
 import { runResourceCAS, type ResourceCASIntent } from "../../src/stores/resource-cas";
 import { createStateContainer } from "../../src/stores/state-container";
-import { ResourceDeletedError, ValidationError } from "../../src/errors/flow-error";
+import { FlowError, ResourceDeletedError, ValidationError } from "../../src/errors/flow-error";
 import type { ExpectedVersion, SetResult } from "../../src/stores/types";
 import {
   checkWriteVersion,
@@ -201,6 +201,22 @@ function makeRegistry(options: {
     deleteResourceContentKey: async (key) => { delete content[key]; },
     onResourceChanged: options.onResourceChanged
   });
+}
+
+/**
+ * A collection's writable:false refusal is the same error a single resource
+ * throws (FIX-1519): a non-retryable `resource_read_only` FlowError, so a
+ * retry-configured block does not re-run on it, with the documented message.
+ */
+async function expectReadOnly(write: Promise<unknown>, message: string): Promise<void> {
+  const err = await write.then(
+    () => undefined,
+    (e: unknown) => e
+  );
+  expect(err).toBeInstanceOf(FlowError);
+  expect((err as FlowError).code).toBe("resource_read_only");
+  expect((err as FlowError).retryable).toBe(false);
+  expect((err as FlowError).message).toBe(message);
 }
 
 describe("concurrent resource writes", () => {
@@ -1148,7 +1164,7 @@ describe("createScopeResourceRegistry — collections", () => {
     });
     const ref = await (registry as any).items.get("doc1");
     onChange.mockClear();
-    await expect(ref.patchState({ v: 99 })).rejects.toThrow(/read-only/);
+    await expectReadOnly(ref.patchState({ v: 99 }), 'Resource "items/doc1" is read-only');
     expect(ref.state).toEqual({ v: 1 });
     expect(onUpdated).not.toHaveBeenCalled();
     expect(onChange).not.toHaveBeenCalled();
@@ -1199,12 +1215,13 @@ describe("createScopeResourceRegistry — collections", () => {
     });
     const ref = await (registry as any).items.get("doc1");
     onChange.mockClear();
-    await expect(ref.setState({ v: 99 })).rejects.toThrow(/read-only/);
+    await expectReadOnly(ref.setState({ v: 99 }), 'Resource "items/doc1" is read-only');
     expect(ref.state).toEqual({ v: 1 });
 
-    await expect(
-      (registry as any).items.create("doc1", { v: 42 }, { replace: true })
-    ).rejects.toThrow(/read-only/);
+    await expectReadOnly(
+      (registry as any).items.create("doc1", { v: 42 }, { replace: true }),
+      'Resource "items/doc1" is read-only'
+    );
     expect((await (registry as any).items.get("doc1")).state).toEqual({ v: 1 });
     expect(onUpdated).not.toHaveBeenCalled();
     expect(onChange).not.toHaveBeenCalled();
@@ -1226,7 +1243,7 @@ describe("createScopeResourceRegistry — collections", () => {
       onResourceChanged: onChange
     });
     onChange.mockClear();
-    await expect((registry as any).items.delete("doc1")).rejects.toThrow(/read-only/);
+    await expectReadOnly((registry as any).items.delete("doc1"), 'Resource "items/doc1" is read-only');
     expect(await (registry as any).items.getOptional("doc1")).toBeDefined();
     expect((await (registry as any).items.get("doc1")).state).toEqual({ v: 1 });
     expect(onDeleted).not.toHaveBeenCalled();
@@ -1234,7 +1251,7 @@ describe("createScopeResourceRegistry — collections", () => {
 
     // The operation is refused, not just a live-row check — a missing key
     // is the same write-shaped call, not an idempotent no-op.
-    await expect((registry as any).items.delete("missing")).rejects.toThrow(/read-only/);
+    await expectReadOnly((registry as any).items.delete("missing"), 'Resource "items/missing" is read-only');
   });
 
   it("create({ replace: true }) on a writable: false collection does not overwrite a concurrent create (FIX-1510)", async () => {
@@ -1264,9 +1281,10 @@ describe("createScopeResourceRegistry — collections", () => {
       deleteResourceContentKey: async () => {}
     });
 
-    await expect(
-      (registry as any).items.create("doc1", { v: 42 }, { replace: true })
-    ).rejects.toThrow(/read-only/);
+    await expectReadOnly(
+      (registry as any).items.create("doc1", { v: 42 }, { replace: true }),
+      'Resource "items/doc1" is read-only'
+    );
     expect(providers.rows.get("items/doc1")?.state).toEqual({ v: 1 });
   });
 
@@ -1399,7 +1417,7 @@ describe("createScopeResourceRegistry — collections", () => {
     });
     const ref = await (registry as any).items.get("doc1");
     onChange.mockClear();
-    await expect(ref.writeContent("fail")).rejects.toThrow(/read-only/);
+    await expectReadOnly(ref.writeContent("fail"), 'Resource "items/doc1" content is read-only');
     expect(onChange).not.toHaveBeenCalled();
   });
 
