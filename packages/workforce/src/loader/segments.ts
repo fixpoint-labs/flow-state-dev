@@ -12,7 +12,16 @@
  * root. A segment reaches these readers from an argument as well as from a
  * walk, and `..` in one would read a folder the caller never configured — the
  * same escape the walk's symlink refusal exists to stop.
+ *
+ * This module is on the `@flow-state-dev/workforce/browser` graph (through
+ * `roster/address.ts`), so it must stay free of Node built-ins. Its one import
+ * is the `@flow-state-dev/core/helpers` barrel, which is pure today — but that
+ * is a property of the whole barrel, not of the one helper taken from it. The
+ * guarantee is `test/browser-subpath-safe.test.ts`, which walks this graph
+ * into workspace packages and fails on any Node built-in it reaches; do not
+ * rely on this comment instead.
  */
+import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 
 /**
  * Pattern a team or worker folder name must match: lowercase `a-z`/`0-9` runs
@@ -33,35 +42,6 @@ const MAX_SEGMENT_LENGTH = 64;
 
 /** Folder names the framework reserves. */
 const RESERVED_SEGMENTS = new Set(["_meta"]);
-
-/**
- * Names Windows reserves for DOS devices, which it refuses **with any
- * extension** — `con.ts` and `nul.md` are as unopenable as `con`.
- *
- * They pass `SEGMENT_PATTERN` (they are lowercase letters and digits), so
- * without this a tree authored on macOS or Linux generates and commits
- * cleanly, and the repository then cannot be checked out on Windows at all.
- * The failure lands on someone who did not write the file and reads as a
- * broken clone rather than as a naming mistake.
- *
- * Checked in lowercase only, which is sufficient because the pattern above
- * already refuses every other casing. `clock$` needs no entry — `$` is not in
- * the allowlist.
- *
- * The numbered devices run **1–9, not 0–9**: `COM0` and `LPT0` are ordinary
- * names on Windows, and refusing them would cost an author two portable names
- * at every level of the tree for nothing. The same list, to the same bound,
- * is in `engine`'s filesystem store — `workforce` denies `engine`, so the two
- * cannot share it today.
- */
-const DOS_DEVICE_SEGMENTS: ReadonlySet<string> = new Set([
-  "con",
-  "prn",
-  "aux",
-  "nul",
-  ...Array.from({ length: 9 }, (_, n) => `com${n + 1}`),
-  ...Array.from({ length: 9 }, (_, n) => `lpt${n + 1}`),
-]);
 
 /**
  * What a segment names, for the error to say.
@@ -125,12 +105,6 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
   if (RESERVED_SEGMENTS.has(segment)) {
     throw new Error(`${what} "${segment}" is reserved`);
   }
-  if (DOS_DEVICE_SEGMENTS.has(segment)) {
-    throw new Error(
-      `${what} "${segment}" is a reserved device name on Windows — a tree ` +
-        `containing it cannot be checked out there, whatever the extension`,
-    );
-  }
   if (!SEGMENT_PATTERN.test(segment)) {
     const identity =
       label === "Org"
@@ -149,6 +123,24 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
     throw new Error(
       `${what} "${segment}" must be lowercase letters, digits, and single ` +
         `hyphens (not at the start or end) — ${identity}`,
+    );
+  }
+  // Names Windows reserves for DOS devices, which it refuses **with any
+  // extension** — `con.ts` and `nul.md` are as unopenable as `con`. They pass
+  // the pattern above (lowercase letters and digits), so without this a tree
+  // authored on macOS or Linux generates and commits cleanly, and the
+  // repository then cannot be checked out on Windows at all. The failure lands
+  // on someone who did not write the file and reads as a broken clone rather
+  // than as a naming mistake.
+  //
+  // The list is the shared one (`isWindowsReservedName`, from `contracts`),
+  // which folds case. It runs after the pattern on purpose: the pattern
+  // already refuses every non-lowercase spelling, so `CON` keeps getting the
+  // lowercase message and only a lowercase device name reaches this one.
+  if (isWindowsReservedName(segment)) {
+    throw new Error(
+      `${what} "${segment}" is a reserved device name on Windows — a tree ` +
+        `containing it cannot be checked out there, whatever the extension`,
     );
   }
 }
