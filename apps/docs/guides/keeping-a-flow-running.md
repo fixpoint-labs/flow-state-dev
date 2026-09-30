@@ -11,20 +11,19 @@ starts because something happened somewhere else, like a payment clearing, a clo
 nine, or another flow finishing its part, and that keeps working after the request that
 started it has returned.
 
-Each piece here has its own reference page. This one puts them in the order you'll meet them,
-says which part goes in your flow, which goes on your host, and which you set up outside FSD,
-and says plainly what a queue-backed host refuses.
+Each section covers one way in, shows which part goes in your flow and which on your host,
+and links the full reference for it.
 
 ## Waking a flow from outside
 
 A flow can't start itself. Something outside it has to call your server, and your host turns
-that call into a run. Two kinds of caller ship: a service that sends webhooks, and a
-scheduler that fires on a clock.
+that call into a run. That call is a *wake*, and it comes from a service sending a webhook or a
+scheduler firing on a clock.
 
 ### A webhook
 
 The flow says which event runs which block. The host says how to check that the event is
-real. Secrets stay on the host.
+real, so the signing secret stays on the host.
 
 ```ts title="flows/billing.ts"
 import { defineFlow, defineWebhookBinding } from "@flow-state-dev/core";
@@ -85,7 +84,8 @@ keeps schedule ticks and hand-offs running there. See
 
 `sessionId` is optional. Leave it out and every event runs in a fresh session. Derive it from
 something stable in the payload, as above, and every event for that customer lands in the
-same session, so its state builds up. `when` narrows a coarse event type to the ones you want.
+same session, so its state builds up. `when` is an optional predicate on the event: return
+`false` and that delivery runs nothing, which narrows a coarse event type to the ones you want.
 
 Read next: [Webhook receivers](/docs/server/webhooks) for provider definitions, retries and
 idempotency, and the [Stripe](/guides/webhooks-stripe), [GitHub](/guides/webhooks-github) and
@@ -95,17 +95,18 @@ idempotency, and the [Stripe](/guides/webhooks-stripe), [GitHub](/guides/webhook
 
 FSD doesn't run a clock. A schedule is a named entry on the flow with a cron string, and
 your scheduler calls that entry's dispatch endpoint when the time comes. The call is
-checked like any other request, usually with a shared secret.
+checked like any other request, usually with a shared secret that the flow's
+`authentication` compares against the request.
 
-```ts title="flows/billing.ts"
+```ts title="flows/invoicing.ts"
 import {
   defineFlow,
   defineScheduleBinding,
 } from "@flow-state-dev/core";
 import { createBearerSecretPrincipalResolver } from "@flow-state-dev/engine";
 
-export const billing = defineFlow({
-  kind: "billing",
+export const invoicing = defineFlow({
+  kind: "invoicing",
   actions: {},
   authentication: {
     resolvePrincipal: createBearerSecretPrincipalResolver({
@@ -126,10 +127,11 @@ export const billing = defineFlow({
 
 On the host, add `createScheduledTransportAdapter()` from `@flow-state-dev/scheduled` to
 `adapters`. Then point your scheduler at
-`POST /api/flows/billing/schedules/monthly-invoices/dispatch` with
+`POST /api/flows/invoicing/schedules/monthly-invoices/dispatch` with
 `Authorization: Bearer <the same secret>`. The endpoint answers `202` and the run continues
-after it. If one flow takes both webhooks and schedules, branch on `ctx.source` inside one
-`resolvePrincipal` rather than replacing it.
+after it. This is a separate flow from `billing` above, with its own `authentication`. If one
+flow takes both webhooks and schedules, branch on `ctx.source` inside one `resolvePrincipal`
+rather than replacing it.
 
 Schedules you create while the app runs, like a reminder a user sets, come from
 `schedules.resolve` instead of `schedules.static`. That is also how you do something later:
@@ -181,31 +183,29 @@ has every option and refusal.
 
 A dispatcher's `session` option decides where the work runs.
 
+What's allowed depends on whether the process hands work to a queue. With `bullmqWorker`, its
+`mode` sets that: `colocated`, the default, enqueues work and runs it in the same process;
+`dispatch-only` enqueues and leaves the running to a separate worker; `worker-only` is that
+separate worker, which runs queued jobs and enqueues nothing. See
+[Separated workers](/guides/background-jobs-bullmq#4-separated-workers).
+
 | `session` | Runs in | On a host that hands work to a queue |
 |---|---|---|
 | `{ key: (input) => string }` | a session derived from the key, created on first use | Works |
 | `{ id: (input) => string }` | a session that already exists | Refused before anything starts |
-| `{ from: true }` | the session that dispatched this run, as a reply | Refused when the run sending it is on a process that hands work to the queue; in process from a `worker-only` worker |
+| `{ from: true }` | the session that dispatched this run, as a reply | Refused from a process that hands work to the queue. From a `worker-only` worker it runs in process, without retries |
 
-On a host whose dispatcher hands work to an external queue, such as `bullmqWorker` in
-`colocated` or `dispatch-only` mode, or a custom dispatcher without `dispatchLocal`, a
-delivery into a session that already exists throws `DispatchRefusedError` with
-`refused: "external-dispatcher"`. Nothing is enqueued. The queue can't apply the receiving
-session's concurrency rules, so FSD refuses rather than deliver work it can't order.
-
-The refusal is narrow. A `{ key }` dispatch, a webhook delivery (with or without a
-`sessionId`) and a schedule tick all run normally on that host. The refusal follows the
-process the sending run is in. A reply from a run on a `colocated` worker is refused. A
-`worker-only` worker installs no dispatcher, so a reply from a run it executes goes in
-process and isn't refused. It also isn't retried: it runs outside the queue.
+In `colocated` or `dispatch-only` mode, a delivery into a session that already exists throws
+`DispatchRefusedError` with `refused: "external-dispatcher"`, and nothing is enqueued. A
+`{ key }` dispatch, a webhook delivery (with or without a `sessionId`) and a schedule tick run
+normally there. A run executing on a `worker-only` worker sends its reply in process: it isn't
+refused, and it isn't retried if the worker dies partway.
 
 A Workforce channel inherits the refusal on such a host. A client's post is written, but no
 member is woken, and posting into the channel from another flow is refused the same way.
 
-If you need a hand-off's result back in the conversation that started it, a reply works when
-your queued runs execute on a separate `worker-only` worker, and isn't retried. On a
-`colocated` worker it's refused. The route that works on every host, and keeps its retries,
-is to start the work with a `{ key }`, have it write what it found somewhere both sides can
+To get a hand-off's result back into the conversation that started it on any host, with
+retries, start the work with a `{ key }`, have it write what it found somewhere both sides can
 read, such as a user- or org-scoped resource or a task board, and read it from the
 conversation. Your app can also list the runs a session started with the client SDK's
 `listChildSessions`. If the flow has to deliver into an existing session, serve it from a
@@ -251,6 +251,6 @@ in one that already exists.
 **Schedule tick.** Your scheduler calling a schedule's dispatch endpoint. FSD doesn't run a
 clock; it answers the call.
 
-*Heartbeat* on these pages means something else: the signals that keep a live stream open
-and show that a running request is still going. It never starts a run. See
+*Heartbeat*, on the pages linked here, means the signals that keep a live stream open while a
+request runs. It never starts a run. See
 [Connection resilience](/docs/server/connection-resilience).
