@@ -53,7 +53,7 @@ import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
 import { useDispatchRuns } from "./hooks/use-dispatch-runs";
 import { useReadFence } from "@flow-state-dev/react";
 import { flattenTaskItems } from "./lib/task-collection-state";
-import { isRequestOpen, pickFurthestStatus, snapshotSupersedesLive } from "./lib/request-status";
+import { isRequestOpen, mergeRawItems, pickFurthestStatus, snapshotSupersedesLive } from "./lib/request-status";
 
 const NAV_EXPANDED_WIDTH = 300;
 const NAV_COLLAPSED_WIDTH = 64;
@@ -188,6 +188,11 @@ function PanelContent({ className }: { className?: string }) {
   // Raw (uncollapsed) counterpart of `liveItems`, populated only by the
   // per-row Continue action (FIX-865) — see `handleContinueItems` below.
   const [liveRawItems, setLiveRawItems] = useState<Map<string, OutputItem[]>>(new Map());
+  // The last raw log each streamed request's stream delivered, kept after the
+  // stream moves on. Read only once a request has finished, to add the traces
+  // its polled log lacks (a transient block's are never persisted), so the
+  // Stream and Trace tabs keep what they showed live.
+  const [streamRawItems, setStreamRawItems] = useState<Map<string, OutputItem[]>>(new Map());
   // The requests Tasks-tab rows dispatched in this workspace (FIX-1629). Only
   // one request is streamed at a time, so a row whose request is not the
   // streamed one learns it finished only from a re-read of the list; see the
@@ -233,6 +238,7 @@ function PanelContent({ className }: { className?: string }) {
     setDispatchedRequestId(null);
     setLiveItems(new Map());
     setLiveRawItems(new Map());
+    setStreamRawItems(new Map());
     setRowRequestIds(new Set());
     clearReplay();
   }
@@ -365,6 +371,17 @@ function PanelContent({ className }: { className?: string }) {
   }, [liveMode, activeRequestId, dispatchedRequestId, replayState.requestId]);
 
   useEffect(() => {
+    if (streamState === null || streamState.rawItems.length === 0) return;
+    const { requestId, rawItems } = streamState;
+    setStreamRawItems((prev) => {
+      if (prev.get(requestId) === rawItems) return prev;
+      const next = new Map(prev);
+      next.set(requestId, rawItems);
+      return next;
+    });
+  }, [streamState]);
+
+  useEffect(() => {
     if (streamRequestId && streamItems.length > 0) {
       setLiveItems((prev) => {
         const next = new Map(prev);
@@ -414,8 +431,12 @@ function PanelContent({ className }: { className?: string }) {
         // per-row Continue action's own stream (`liveRawItems`) takes
         // priority; for the watched main-stream request, fall back to the
         // live `streamState.rawItems` (trace-inclusive) before the polled list.
+        // A finished request's polled log, plus what only a stream saw of it.
         rawItems: settled
-          ? req.items!
+          ? mergeRawItems(
+              req.items!,
+              liveRawItems.get(req.id) ?? streamFor(req.id)?.rawItems ?? streamRawItems.get(req.id),
+            )
           : (liveRawItems.get(req.id) ?? streamFor(req.id)?.rawItems ?? req.items ?? []),
         source: req.source,
         metadata: req.metadata,
@@ -432,7 +453,7 @@ function PanelContent({ className }: { className?: string }) {
       });
     }
     return groups;
-  }, [requests, liveItems, liveRawItems, activeRequestId, lastResponse, streamState, streamStatus, streamRequestId]);
+  }, [requests, liveItems, liveRawItems, streamRawItems, activeRequestId, lastResponse, streamState, streamStatus, streamRequestId]);
 
   // The flat item stream the Tasks tab and the block tree fold. Derived here
   // rather than in the JSX because `flatMap` returns a NEW array on every

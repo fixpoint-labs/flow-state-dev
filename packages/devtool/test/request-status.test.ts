@@ -6,7 +6,7 @@
  * catches up.
  */
 import { describe, expect, it } from "vitest";
-import { pickFurthestStatus, snapshotSupersedesLive } from "../src/react/lib/request-status";
+import { mergeRawItems, pickFurthestStatus, snapshotSupersedesLive } from "../src/react/lib/request-status";
 
 describe("pickFurthestStatus", () => {
   it("prefers a mid-flight suspend the snapshot hasn't caught up to", () => {
@@ -60,5 +60,21 @@ describe("snapshotSupersedesLive", () => {
     expect(snapshotSupersedesLive("completed", items, true)).toBe(false);
     expect(snapshotSupersedesLive("completed", [], false)).toBe(false);
     expect(snapshotSupersedesLive("completed", undefined, false)).toBe(false);
+  });
+});
+
+describe("mergeRawItems", () => {
+  // A transient trace streams live but is never persisted, so the polled log
+  // of a finished request lacks it. Replacing the stream's log with the polled
+  // one would drop an observed block from the Stream and Trace tabs.
+  it("keeps the polled log and adds what only the stream saw", () => {
+    const polled = [{ id: "a", v: "polled" }, { id: "b" }];
+    const streamed = [{ id: "a", v: "stream" }, { id: "t", transient: true }];
+    expect(mergeRawItems(polled, streamed)).toEqual([{ id: "a", v: "polled" }, { id: "b" }, { id: "t", transient: true }]);
+  });
+
+  it("is the polled log when nothing was streamed", () => {
+    const polled = [{ id: "a" }];
+    expect(mergeRawItems(polled, undefined)).toBe(polled);
   });
 });

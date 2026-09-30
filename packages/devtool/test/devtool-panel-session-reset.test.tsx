@@ -187,10 +187,19 @@ vi.mock("../src/react/components/workspace/action-bar", () => ({
 
 // The third work-starting path: the per-row Continue action for an interrupted
 // request, which the panel hands to the stream view.
+/** The request groups the panel last handed the Stream tab. */
+let lastStreamGroups: Array<{ requestId: string; rawItems: unknown[] }> = [];
 vi.mock("../src/react/components/workspace/stream-view", () => ({
-  StreamView: ({ onContinue }: { onContinue: (requestId: string) => void }) => (
-    <button onClick={() => onContinue("req_interrupted")}>continue-stub</button>
-  ),
+  StreamView: ({
+    onContinue,
+    requestGroups,
+  }: {
+    onContinue: (requestId: string) => void;
+    requestGroups: Array<{ requestId: string; rawItems: unknown[] }>;
+  }) => {
+    lastStreamGroups = requestGroups;
+    return <button onClick={() => onContinue("req_interrupted")}>continue-stub</button>;
+  },
 }));
 
 // The Tasks tab, reduced to the row-action seam the panel hands it: each click
@@ -246,6 +255,7 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     streamMock.streamState = null;
     lastRowRequests = [];
     lastTaskItems = [];
+    lastStreamGroups = [];
     devToolState.activeSessionId = "sess_1";
     devToolState.workspaceToken = 0;
     sendAction.mockReset().mockResolvedValue(null);
@@ -641,14 +651,24 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     });
 
     const recorded = { output: { ok: false, error: "task is cancelled, which is terminal" } };
+    const polled = [{ id: "a_hook", type: "block_trace" }];
     requestsState.requests = [
-      { id: "req_a", status: "completed", items: [], result: recorded },
+      { id: "req_a", status: "completed", items: polled, result: recorded },
       { id: "req_b", status: "in_progress", items: [] },
     ];
     await act(async () => view.rerender(<DevToolPanel userId="u1" />));
     expect(outcomeOf(lastRowRequests, "req_a")).toEqual({
       state: "refused",
       message: "task is cancelled, which is terminal",
+    });
+    // The inspector views still show the transient trace only the stream saw:
+    // the polled log lacks it, and a finished request keeps what streamed.
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Stream" }));
+    });
+    expect(lastStreamGroups.find((group) => group.requestId === "req_a")?.rawItems).toEqual([...polled, streamedRefusal]);
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Tasks" }));
     });
 
     // A listing that recorded nothing for A reads as nothing recorded, even
