@@ -508,9 +508,9 @@ Publish canonical content in the repository; Linear carries status and links, no
    approach chosen, and the build shape>.` This directory is the canonical reviewable
    artifact.
 
-   **The people table is the first content in `SPEC.md`**, under the title and the header
-   line — structural navigation is exempt — with no metadata, status block, or timeline above
-   it (BP-039). The goal section follows it. *How it got here* is the change story and sits at the bottom of
+   **The people table is the first content in `SPEC.md`**, directly under the title and the
+   nav line — structural navigation is exempt — with no metadata, status block, or timeline above
+   it (BP-039); the metadata goes on the facts line at the end. The goal section follows it. *How it got here* is the change story and sits at the bottom of
    `DECISIONS.md`; it never leads.
 
 2. **Draw, render and check the figures** before the commit — the *what changes* figure, a
