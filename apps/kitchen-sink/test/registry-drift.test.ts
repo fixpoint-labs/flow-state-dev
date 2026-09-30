@@ -1,53 +1,9 @@
 /**
- * V8 (specs/issues/FIX-1477/PLAN.md): every file this app installed from the
- * `@flow-state-dev/ui` registry stays byte-identical to its source.
+ * Kitchen-sink's copies of the registry stay byte-identical to their source.
  *
- * `components/flow-state/` is a copy-in, not a dependency (see this app's
- * `CLAUDE.md` → "UI Components: Upstream-First Convention"). A copy that
- * silently forks from its source stops being reviewable as "the registry" —
- * a reader who clones it inherits the fork and never learns they have one.
- * BR-14 in `specs/issues/FIX-1477/BUSINESS-RULES.md` is stricter here than
- * the registry's usual contract (an app that installs a component owns its
- * copy) precisely because this app's job is to *be* the copyable reference.
- *
- * This walks `packages/ui/registry/components/` directly rather than
- * `registry.json`'s manifest (originally V8's only source of files to
- * compare). `routed-specialists.tsx` and `evented-actors.tsx` both exist in
- * both directories, both drifted from their source, and neither is a
- * `registry.json` item — the manifest-scoped version of this check was
- * structurally blind to them (FIX-1477 S9 PR #2019, Cursor Bugbot finding).
- * A drift check whose scope silently excludes real drift is worse than no
- * check: it reads as proof the pair is fine.
- *
- * Two categories of registry-source file are deliberately excluded, both
- * confirmed by walking the tree rather than assumed:
- *
- * - `*.stories.tsx` — Storybook stories. Dev-only source for the registry
- *   package itself; this app has no Storybook setup and installs none of
- *   them (confirmed: `components/flow-state/` contains zero `.stories.tsx`
- *   files, so there is nothing to compare them against).
- * - `generative/` — the two components (`info-card.tsx`, `link-card.tsx`)
- *   this app never installed. Absence, not drift; matches the 25-of-27
- *   installed count the old manifest-scoped version of this test asserted.
- *
- * Every other file under `packages/ui/registry/components/` must have a
- * byte-identical counterpart at the same relative path under
- * `apps/kitchen-sink/components/flow-state/`.
- *
- * The count assertion is the anti-game clause: deleting a source file, or
- * quietly un-installing a target, would otherwise shrink the comparison set
- * and pass by shipping less rather than by matching more.
- *
- * This walk is one-directional by itself: it can only see files the
- * registry has a source for, so a file that exists **only** in the app —
- * a fork with no registry source at all — never enters the comparison and
- * the test reads green regardless. That is the same blind spot the
- * `registry.json`-scoped version of this check had for
- * `routed-specialists.tsx`, one direction over: closing the source→target
- * walk and leaving target→source open just moves where the same mistake
- * hides. The second `it` below asserts the missing direction: every file
- * under `components/flow-state/` must have a same-path source in the
- * registry, unless it's named in `APP_ONLY_FILES` with a reason.
+ * `compareRegistryCopies` does the walk. This file only states this app's
+ * scope: stories are not installed, and neither are the two `generative/`
+ * components. `compared.length` fails a walk that passes by comparing less.
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -66,11 +22,6 @@ const APP_ONLY_FILES: Record<string, string> = {};
 const testDir = dirname(fileURLToPath(import.meta.url));
 const kitchenSinkTargetDir = join(testDir, "../components/flow-state");
 
-/**
- * The comparison lives beside the registry, so any app that installs copies
- * runs the same one over its own folder. What stays here is this app's scope:
- * the two `generative/` components it never installed.
- */
 const drift = () =>
   compareRegistryCopies({
     targetDir: kitchenSinkTargetDir,
