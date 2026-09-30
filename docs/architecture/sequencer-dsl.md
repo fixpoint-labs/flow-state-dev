@@ -221,7 +221,7 @@ pipeline.forEachSideChain((item, index, ctx) => {
 |--------|---------|--------|
 | `concurrency` | 16 | Maximum number of iterations running simultaneously |
 
-**Lifecycle:** The whole batch is queued on the per-request work pool (same as `.sideChain()`). The request executor drains it before terminal status; inner sequencers do not block. Parent flow cancellation cancels in-flight iterations via the abort signal. See FIX-554.
+**Lifecycle:** The whole batch is queued on the per-request work pool (same as `.sideChain()`). Work queued before the terminal hooks is drained before terminal status; inner sequencers do not block. Work queued from `onFinished`/`onErrored` is drained after the final event, before the request's id can be freed. Parent flow cancellation cancels in-flight iterations via the abort signal. See FIX-554.
 
 ### `doUntil(condition, block)` — Loop Until True
 
@@ -285,7 +285,7 @@ pipeline.sideChain(
 
 **Key:** Work failures do NOT abort the main chain. They are logged and surface on the DevTool's trace channel.
 
-**Lifetime — request-scoped pool (FIX-554):** Background work is queued on a single per-request pool, not the sequencer that dispatched it. Inner sequencers do not block their parent on their own background work. The request executor drains the pool to quiescence before terminal status, on every terminal path including `failed` / `aborted` / `interrupted` (FIX-1001); the SSE stream stays open until the drain completes. As tasks settle, the executor emits a `StatusItem` with `blocked: false` and `sideChainTasks: N` — clients use `blocked` to know it's safe to accept new user input (see `isFinishing` on `SessionView` / `UseRequestStreamResult`). When you need a downstream step to read state mutated by a queued task, use `.waitForSideChain()` as an explicit barrier in the dispatching sequencer.
+**Lifetime — request-scoped pool (FIX-554):** Background work is queued on a single per-request pool, not the sequencer that dispatched it. Inner sequencers do not block their parent on their own background work. The request executor drains work queued before the terminal hooks to quiescence before terminal status, on every terminal path including `failed` / `aborted` / `interrupted` (FIX-1001); the SSE stream stays open until that drain completes. Work queued from `onFinished`/`onErrored` runs after the final event: the executor drains it before the run counts as finished and before the request's id can be freed, but the stream may already have closed. As tasks settle, the executor emits a `StatusItem` with `blocked: false` and `sideChainTasks: N` — clients use `blocked` to know it's safe to accept new user input (see `isFinishing` on `SessionView` / `UseRequestStreamResult`). When you need a downstream step to read state mutated by a queued task, use `.waitForSideChain()` as an explicit barrier in the dispatching sequencer.
 
 ### `sideChainIf(condition, block)` — Conditional Background Work
 

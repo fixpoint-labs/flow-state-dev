@@ -67,13 +67,13 @@ If you need to know whether background work succeeded, use `.waitForSideChain()`
 
 ## Side chains are request-scoped
 
-Background work outlives the sequencer that dispatched it. `.sideChain()`, `.sideChainIf()`, and `.forEachSideChain()` queue tasks on a single per-request pool. Inner sequencers do not block their parent on their own background work, and sibling sequencers run their `.sideChain()` tasks concurrently. The request executor drains the pool before the SSE stream closes — your stream stays open until every queued task settles, regardless of which sequencer queued it.
+Background work outlives the sequencer that dispatched it. `.sideChain()`, `.sideChainIf()`, and `.forEachSideChain()` queue tasks on a single per-request pool. Inner sequencers do not block their parent on their own background work, and sibling sequencers run their `.sideChain()` tasks concurrently. The request executor drains the pool before the request's final event — your stream stays open until every task queued by then settles, regardless of which sequencer queued it. Work queued later, from `onFinished` or `onErrored`, is covered below.
 
 The drain runs until the pool is empty, so a background task that queues more background work is waited on too, however deep it nests.
 
 ### The guarantee holds however the request ends
 
-The request is not reported finished until its background work has settled — whether it succeeded or not. If the action throws, if the user hits stop, or if the client disconnects mid-stream, the request still waits for its queued tasks before the terminal record is written and the stream closes.
+The request is not reported finished until the background work queued before its terminal hooks has settled — whether it succeeded or not. If the action throws, if the user hits stop, or if the client disconnects mid-stream, the request still waits for those tasks before the terminal record is written and the stream closes.
 
 That matters most on ephemeral hosts (Vercel, Next.js `after()`, Lambda), where the platform is free to freeze the container the moment the request returns. A task still running at that point can be cut off with a write half-applied. Because the request holds itself open until the pool settles, a `.sideChain()` task that captures memory or writes a summary gets to finish even on a turn the user cancelled.
 

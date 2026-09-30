@@ -565,6 +565,9 @@ export class FilesystemRequestStore implements RequestStore {
     // fact about anything. Dropping it keeps the skip above answering a
     // question about a record that exists.
     this.abortIntentMigrated.delete(id);
+    // An event write failure not yet reported belonged to the deleted
+    // request; the id's next owner must not be handed it by its first flush.
+    this.lastEventError.delete(id);
   }
 
   /**

@@ -370,3 +370,24 @@ describe("FilesystemRequestStore — delete removes the record last", () => {
     expect(await store.get("req_stuck")).toBeUndefined();
   });
 });
+
+// A failed event write is reported by the next flush of the same id. Once the
+// request is deleted, that failure belongs to nobody: a request that takes
+// the id next must not be handed the old request's error.
+describe("FilesystemRequestStore — delete forgets the id's event write failure", () => {
+  it("does not report a deleted request's failed event write to the id's next owner", async () => {
+    const store = createFilesystemRequestStore({ rootDir });
+    // A directory where the event log goes makes the append fail.
+    const eventsPath = path.join(rootDir, "req_reused.events.json");
+    await mkdir(eventsPath, { recursive: true });
+    store.persistEvents("req_reused", [makeRequestStreamEvent("req_reused", 1)]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await rm(eventsPath, { recursive: true, force: true });
+
+    await store.delete("req_reused");
+
+    // The next request under the id writes and flushes cleanly.
+    store.persistEvents("req_reused", [makeRequestStreamEvent("req_reused", 1)]);
+    await expect(store.flushEvents("req_reused")).resolves.toBeUndefined();
+  });
+});
