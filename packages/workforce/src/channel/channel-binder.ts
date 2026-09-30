@@ -29,6 +29,7 @@
  */
 
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { readDeclaredFlow } from "../declared-flow";
 import {
   INSTRUCTIONS_KEY,
   REFUSED_SYSTEM_KEY,
@@ -232,14 +233,15 @@ export function orderedById<T extends { id: string }>(records: readonly T[]): T[
  * did. A second derivation is a second answer to "which flow is this channel
  * on", and the two would diverge silently. Not re-exported from the package
  * root.
+ *
+ * The rule itself — absent, blank, or not a string — is `readDeclaredFlow`,
+ * shared with the worker door. This adapter supplies the channel default and
+ * words both refusal cases the one way the channel door always has.
  */
 export function kindOf(declared: Record<string, unknown>): { kind: string } | { problem: string } {
-  if (!Object.hasOwn(declared, "flow")) return { kind: CHANNEL_KIND };
-  const named = declared.flow;
-  if (typeof named !== "string" || named.trim().length === 0) {
-    return { problem: "declares a `flow:` that is not a kind name" };
-  }
-  return { kind: named };
+  const read = readDeclaredFlow(declared, CHANNEL_KIND);
+  if ("kind" in read) return read;
+  return { problem: "declares a `flow:` that is not a kind name" };
 }
 
 /**

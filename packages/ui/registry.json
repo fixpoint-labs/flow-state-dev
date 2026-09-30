@@ -88,7 +88,7 @@
             "--accent": "hsl(240 3.7% 15.9%)",
             "--accent-foreground": "hsl(0 0% 98%)",
             "--destructive": "hsl(0 62.8% 58%)",
-            "--destructive-foreground": "hsl(0 0% 98%)",
+            "--destructive-foreground": "hsl(240 10% 3.9%)",
             "--border": "hsl(240 3.7% 15.9%)",
             "--input": "hsl(240 3.7% 15.9%)",
             "--ring": "hsl(240 4.9% 83.9%)",
