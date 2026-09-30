@@ -1,23 +1,18 @@
 /**
- * Consolidation and prune output repair: what a caller sees when the model's
- * output can and cannot be recovered.
- *
- * The memory generators reshape common model mis-shapes (bare arrays, prose
- * around JSON, truncated output, a missing envelope key) back into their
- * `{ [key]: [...] }` envelope. What they must never do is turn output that
- * could not be recovered into an empty envelope: `{ removals: [], merges: [] }`
- * means "the model found nothing to prune", and a failed recovery reading the
- * same way is indistinguishable from real work with nothing to record.
- *
- * These tests run the real generator repair pipeline against a scripted model
- * that returns raw text, so they exercise the path production takes.
+ * What consolidation and prune return when model output can and cannot be
+ * recovered. A scripted text model drives the real repair pipeline;
+ * `mockGenerator` skips it.
  */
 import { describe, expect, it } from 'vitest'
 import { testBlock } from '@flow-state-dev/testing'
 import { handler, sequencer } from '@flow-state-dev/core'
-import type { GeneratorModel } from '@flow-state-dev/core/types'
+import type { GeneratorModel, ModelResolver } from '@flow-state-dev/core/types'
 import { z } from 'zod'
-import { consolidationGenerate, pruneGenerate } from '../src/memory-system-blocks.js'
+import {
+  consolidationGenerate,
+  pruneGenerate,
+  type MemorySystemBlocksConfig,
+} from '../src/memory-system-blocks.js'
 
 /**
  * A model resolver whose every model (including core's coercion-repair model)
@@ -25,7 +20,7 @@ import { consolidationGenerate, pruneGenerate } from '../src/memory-system-block
  */
 function textModel(text: string) {
   const calls: string[] = []
-  const resolver = Object.assign(
+  const resolver: ModelResolver = Object.assign(
     (modelId: string): GeneratorModel => ({
       modelId,
       async generate() {
@@ -38,10 +33,11 @@ function textModel(text: string) {
   return { resolver, calls }
 }
 
-const semanticConfig = {
+const semanticConfig: MemorySystemBlocksConfig = {
   model: 'gpt-5-mini',
-  semantic: { scope: 'user' as const, consolidation: { episodicThreshold: 5, onEviction: true, minInterval: 10 } },
-} as any
+  working: {},
+  semantic: { scope: 'user', consolidation: { episodicThreshold: 5, onEviction: true, minInterval: 10 } },
+}
 
 const pruneInput = { triggered: true, facts: [] }
 const consolidateInput = { triggered: true, episodes: [], existingFacts: [] }
@@ -49,25 +45,25 @@ const consolidateInput = { triggered: true, episodes: [], existingFacts: [] }
 describe('prune output repair', () => {
   it('fails, rather than returning an empty prune, when the output is unparseable', async () => {
     const { resolver, calls } = textModel('Sorry, I could not review these facts right now.')
-    const result = await testBlock(pruneGenerate(semanticConfig), { input: pruneInput, modelResolver: resolver as any })
+    const result = await testBlock(pruneGenerate(semanticConfig), { input: pruneInput, modelResolver: resolver })
 
     expect(result.output).not.toEqual({ removals: [], merges: [] })
     expect(result.error).not.toBeNull()
     expect(result.error?.message).toMatch(/output validation failed/)
-    // Deterministic repair gave up and the coercion pass was tried before failing.
-    expect(calls.length).toBeGreaterThanOrEqual(2)
+    // The primary model answered, then core's coercion model was tried before failing.
+    expect(calls).toEqual(expect.arrayContaining(['gpt-5-mini', 'intent/utility']))
   })
 
   it('fails when the output parses but carries none of the envelope keys', async () => {
     const { resolver } = textModel('{"status": "unable to comply"}')
-    const result = await testBlock(pruneGenerate(semanticConfig), { input: pruneInput, modelResolver: resolver as any })
+    const result = await testBlock(pruneGenerate(semanticConfig), { input: pruneInput, modelResolver: resolver })
 
     expect(result.error?.message).toMatch(/output validation failed/)
   })
 
   it('returns an empty prune when the model genuinely proposes nothing', async () => {
     const { resolver } = textModel('{"removals": [], "merges": []}')
-    const result = await testBlock(pruneGenerate(semanticConfig), { input: pruneInput, modelResolver: resolver as any })
+    const result = await testBlock(pruneGenerate(semanticConfig), { input: pruneInput, modelResolver: resolver })
 
     expect(result.error).toBeNull()
     expect(result.output).toEqual({ removals: [], merges: [] })
@@ -75,7 +71,7 @@ describe('prune output repair', () => {
 
   it('patches a partial envelope that carries one of the keys', async () => {
     const { resolver } = textModel('{"removals": [{"factId": "f1", "reason": "stale"}]}')
-    const result = await testBlock(pruneGenerate(semanticConfig), { input: pruneInput, modelResolver: resolver as any })
+    const result = await testBlock(pruneGenerate(semanticConfig), { input: pruneInput, modelResolver: resolver })
 
     expect(result.error).toBeNull()
     expect(result.output).toEqual({ removals: [{ factId: 'f1', reason: 'stale' }], merges: [] })
@@ -95,15 +91,22 @@ describe('consolidation output repair', () => {
 
   it('fails, rather than returning no facts, when the output is unparseable', async () => {
     const { resolver } = textModel('I reviewed the episodes and here is my summary: the user is busy.')
-    const result = await testBlock(consolidationGenerate(semanticConfig), { input: consolidateInput, modelResolver: resolver as any })
+    const result = await testBlock(consolidationGenerate(semanticConfig), { input: consolidateInput, modelResolver: resolver })
 
     expect(result.output).not.toEqual({ facts: [] })
     expect(result.error?.message).toMatch(/output validation failed/)
   })
 
+  it('fails when the output parses but carries none of the envelope keys', async () => {
+    const { resolver } = textModel('{"status": "unable to comply"}')
+    const result = await testBlock(consolidationGenerate(semanticConfig), { input: consolidateInput, modelResolver: resolver })
+
+    expect(result.error?.message).toMatch(/output validation failed/)
+  })
+
   it('wraps a bare array of facts into the envelope', async () => {
     const { resolver } = textModel(JSON.stringify([fact]))
-    const result = await testBlock(consolidationGenerate(semanticConfig), { input: consolidateInput, modelResolver: resolver as any })
+    const result = await testBlock(consolidationGenerate(semanticConfig), { input: consolidateInput, modelResolver: resolver })
 
     expect(result.error).toBeNull()
     expect(result.output).toEqual({ facts: [fact] })
@@ -113,7 +116,7 @@ describe('consolidation output repair', () => {
     const complete = JSON.stringify({ facts: [fact] })
     const truncated = `${complete.slice(0, -2)}, {"subject": "user", "content": "Lives in`
     const { resolver } = textModel(truncated)
-    const result = await testBlock(consolidationGenerate(semanticConfig), { input: consolidateInput, modelResolver: resolver as any })
+    const result = await testBlock(consolidationGenerate(semanticConfig), { input: consolidateInput, modelResolver: resolver })
 
     expect(result.error).toBeNull()
     expect(result.output).toEqual({ facts: [fact] })
@@ -121,7 +124,7 @@ describe('consolidation output repair', () => {
 
   it('returns no facts when the model genuinely found none', async () => {
     const { resolver } = textModel('```json\n{"facts": []}\n```')
-    const result = await testBlock(consolidationGenerate(semanticConfig), { input: consolidateInput, modelResolver: resolver as any })
+    const result = await testBlock(consolidationGenerate(semanticConfig), { input: consolidateInput, modelResolver: resolver })
 
     expect(result.error).toBeNull()
     expect(result.output).toEqual({ facts: [] })
@@ -137,7 +140,7 @@ describe('a failed recovery in the background', () => {
     const turn = sequencer({ name: 'turn', inputSchema: z.any() })
       .step(reply)
       .sideChain(pruneGenerate(semanticConfig))
-    const result = await testBlock(turn, { input: {}, modelResolver: resolver as any })
+    const result = await testBlock(turn, { input: {}, modelResolver: resolver })
 
     expect(result.error).toBeNull()
     expect(result.output).toEqual(pruneInput)
@@ -149,7 +152,7 @@ describe('a failed recovery in the background', () => {
       .step(reply)
       .sideChain(pruneGenerate(semanticConfig))
       .waitForSideChain({ failOnError: true })
-    const result = await testBlock(turn, { input: {}, modelResolver: resolver as any })
+    const result = await testBlock(turn, { input: {}, modelResolver: resolver })
 
     expect(result.error?.message).toMatch(/output validation failed/)
   })

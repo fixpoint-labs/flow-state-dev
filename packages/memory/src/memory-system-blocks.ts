@@ -413,17 +413,9 @@ function parseJsonLoose(text: string): unknown {
  * Core's `attemptDefaultRepair` covers `{ output }` unwrap and the simple
  * string→JSON.parse case, but is bypassed entirely once `repairOutput` is set
  * (see `applyRepairPolicy` in core's generator), so the simple legs are
- * re-implemented here.
- *
- * Only a candidate that actually carries the envelope's content is reshaped.
- * When nothing is recoverable — an unparseable string, or an object with none
- * of the expected keys — the candidate is handed back unchanged, so core's
- * repair loop keeps treating it as a failure (LLM coercion, then a thrown
- * validation error). It is never turned into an empty envelope: an empty
- * envelope means "the model found nothing", and a failed recovery must not
- * read that way. The background `.sideChain()` that runs consolidation and
- * prune is non-aborting, so the failure surfaces on the trace without
- * breaking the turn.
+ * re-implemented here. A string is parsed once and then takes that same path.
+ * Unparseable text, and an object with none of the expected keys, come back
+ * unchanged: an empty envelope means the model found nothing.
  */
 function buildEnvelopeRepair<TKeys extends string>(
   arrayKeys: readonly TKeys[],
@@ -433,24 +425,18 @@ function buildEnvelopeRepair<TKeys extends string>(
     Object.fromEntries(arrayKeys.map((k) => [k, []]))
 
   return (candidate: unknown) => {
-    if (Array.isArray(candidate)) {
-      return { ...empty(), [primaryKey]: candidate }
+    const value =
+      typeof candidate === 'string' ? parseJsonLoose(candidate) ?? candidate : candidate
+
+    if (Array.isArray(value)) {
+      return { ...empty(), [primaryKey]: value }
     }
 
-    if (typeof candidate === 'string') {
-      const parsed = parseJsonLoose(candidate)
-      if (Array.isArray(parsed)) return { ...empty(), [primaryKey]: parsed }
-      if (parsed && typeof parsed === 'object') return parsed
-      // Unrecoverable: leave the failure visible to core's repair loop.
-      return candidate
-    }
-
-    if (candidate && typeof candidate === 'object') {
-      const obj = candidate as Record<string, unknown>
+    if (value && typeof value === 'object') {
+      const obj = value as Record<string, unknown>
       if ('output' in obj) return obj.output
-      // Patch a partial envelope only. An object carrying none of the
-      // expected keys has nothing to recover; filling every key with `[]`
-      // would pass it off as a genuine empty result.
+      // No expected key means there is nothing to patch. Filling every key
+      // with `[]` would look like a genuine empty result.
       if (!arrayKeys.some((key) => key in obj)) return obj
       const patched: Record<string, unknown> = { ...obj }
       let touched = false
