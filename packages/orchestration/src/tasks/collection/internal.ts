@@ -9,7 +9,8 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { ticketNamesTask } from "../claim-ticket";
 import { generateId } from "../generate-id";
 import { initialWriteProvenance } from "../write-provenance";
-import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
+import type { Task, TaskClaimIdentity, TaskRunLink, TaskStatus } from "../schema/task";
+import type { TaskClaimTicket } from "../claim-ticket";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
 import {
@@ -517,8 +518,9 @@ export function transitionDeclineReason(
   // is, so it says (`adoptLapsedLease`).
   //
   // Scoped to a renewal, and that scope is structural rather than a promise:
-  // `renewLease` is the only write that targets `in_progress`, so a settlement
-  // carrying the flag is unaffected and a lapsed worker's result is still
+  // `renewLease` and `linkRun` are the only writes that target `in_progress`,
+  // and only a renewal is handed the flag by the substrate's own callers, so a
+  // settlement carrying it is unaffected and a lapsed worker's result is still
   // refused. Nothing else about the write changes — a reclaim that moved
   // `attempts` or the status has already declined one arm up, which is what
   // makes the takeover decided by the race instead of by the clock.
@@ -810,6 +812,37 @@ export function assertValidLeaseDeadline(leaseUntil: number): void {
 }
 
 /**
+ * The guards a `linkRun` write runs under, and the refusal of an unfenced one
+ * (FIX-1668). Shared so the two backings cannot drift.
+ *
+ * Renewal's guards exactly — `ifAllowed` forced on, so a settled row declines
+ * `terminal` instead of throwing — minus `adoptLapsedLease`. That option is
+ * scoped to writes targeting `in_progress`, which a link write also targets;
+ * dropping it keeps the lease fence on: a lapsed claimant takes the row back
+ * with a renewal first, and only then links.
+ *
+ * @throws when no ticket is presented — a programming error, not a lost race.
+ */
+export function linkRunGuards(
+  options: TaskTransitionOptions & { claim?: TaskClaimTicket }
+): TaskTransitionOptions {
+  if (options?.claim === undefined) {
+    throw new Error(
+      `[tasks] linkRun requires the claim ticket of the attempt it links. ` +
+        `The link names the run working the task, so an unfenced write could ` +
+        `point any task at any run.`
+    );
+  }
+  const { adoptLapsedLease: _dropped, ...guards } = options;
+  return { ...guards, ifAllowed: true };
+}
+
+/** Copy a run link field by field, so no extra key a caller passed rides into the row. */
+export function runLinkPatch(run: TaskRunLink): { run: TaskRunLink } {
+  return { run: { sessionId: run.sessionId, requestId: run.requestId, attempt: run.attempt } };
+}
+
+/**
  * Apply a `claim` to a task — flip status, stamp lease, increment attempts,
  * and record where this attempt is running (FIX-1005).
  *
@@ -868,6 +901,15 @@ export function applyClaimToTask<TInput, TOutput>(
     // stops being it the moment a coordinator relabels the task.
     leaseDurationMs,
     claimedBy,
+    // The run link belongs to the attempt that wrote it (FIX-1668). A claim
+    // starts a new attempt, so it clears the link here — the one place any
+    // claim, drain or recovery, on either backing, passes through — and the
+    // new attempt's run writes its own at the claim gate. Settlement,
+    // retry and abandonment deliberately leave it: a finished task keeps
+    // naming the run that worked it. Cleared unconditionally, for the reason
+    // `claimedBy` is: a spread that added nothing would carry the previous
+    // attempt's run onto this one.
+    run: undefined,
     updatedAt: now,
   };
 }

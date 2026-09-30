@@ -8,7 +8,7 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { TaskClaimTicket } from "../claim-ticket";
-import type { Task, TaskStatus } from "../schema/task";
+import type { Task, TaskRunLink, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import type { TaskWriteToken } from "../write-provenance";
 
@@ -612,6 +612,36 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   renewLease(
     id: string,
     leaseUntil: number,
+    options: TaskTransitionOptions & { claim: TaskClaimTicket }
+  ): Promise<TaskWriteOutcome>;
+  /**
+   * Record which run is working this task — the run naming itself on the row
+   * (FIX-1668). The board's claim gate calls it inside the run's own session,
+   * before the worker's first step, on every handed-off attempt.
+   *
+   * Writes exactly **one** field, `run`, on an `in_progress` row the caller
+   * holds, and publishes one `task-change` of kind `run_linked` — on the
+   * session of the context the collection was resolved in, which at the gate
+   * is the run's own.
+   *
+   * Fenced exactly like {@link renewLease}: `options.claim` is required, and
+   * the write declines `terminal` on a settled row, `not-my-task` on a
+   * recreated one, and `lost-claim` when a reclaim moved the attempt or the
+   * lease has lapsed. `adoptLapsedLease` is ignored here: a lapsed claimant
+   * takes the row back with a renewal first, then links.
+   *
+   * Nothing else clears the field but the next claim (`applyClaimToTask`), and
+   * no caller-facing write surface reaches it.
+   *
+   * Throws — never declines — on a missing ticket.
+   *
+   * **If you implement this interface yourself, implement this verb too:** a
+   * board that hands off calls it on every attempt, and a declined or missing
+   * verdict stops that attempt before the worker runs.
+   */
+  linkRun(
+    id: string,
+    run: TaskRunLink,
     options: TaskTransitionOptions & { claim: TaskClaimTicket }
   ): Promise<TaskWriteOutcome>;
   /**

@@ -32,6 +32,8 @@ import {
   applyClaimToTask,
   applyTransition,
   assertValidLeaseDeadline,
+  linkRunGuards,
+  runLinkPatch,
   assertValidLeaseDuration,
   buildInitialTask,
   claimDisposition,
@@ -568,6 +570,13 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         () => ({ leaseUntil }),
         { ...renewOptions, ifAllowed: true }
       );
+    },
+
+    async linkRun(id, run, linkOptions) {
+      // The run naming itself on its task (FIX-1668). Same-status, so this
+      // rides the ordinary transition path with renewal's guards; unlike a
+      // renewal it IS a change a reader acts on, so it publishes `run_linked`.
+      return transitionTo(id, "in_progress", "run_linked", () => runLinkPatch(run), linkRunGuards(linkOptions));
     },
 
     async complete(id, output, options) {

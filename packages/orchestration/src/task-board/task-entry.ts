@@ -37,6 +37,12 @@
  *    lease means "no live worker holds this" rather than "the worker is taking
  *    a while".
  *
+ * And one write, between the re-mint and the ticket going on state: **the run
+ * link** (FIX-1668). The gate writes this run's session, request and attempt
+ * onto the row, fenced by the ticket, so a reader can open exactly the run
+ * working the task. A declined link is a stale claim; a thrown one stops the
+ * attempt before the worker, with nothing on state for the rescue to settle.
+ *
  * ## Why this is an identity check and not a counter check
  *
  * A task deleted and recreated under the same id inside the claim→dispatch
@@ -76,7 +82,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { assertHandOffBlockSupported } from "./hand-off";
-import { ticketForClaim } from "../tasks/claim-ticket";
+import { ticketForClaim, type TaskClaimTicket } from "../tasks/claim-ticket";
 import { startLeaseRenewal } from "../tasks/lease-renewal";
 import {
   currentLeaseRenewal,
@@ -277,6 +283,15 @@ export function createTaskGate(options: TaskGateOptions): TaskBinding["gate"] {
           // worker body uses, so the shipped recorders settle this row without a
           // second implementation of the fence.
           const ticket = ticketForClaim(board.collectionId, held);
+
+          // THE RUN LINK (FIX-1668): this run names itself on the row. Only
+          // the run knows which session it landed in, so the coordinate comes
+          // from this context, never from the envelope. Written BEFORE the
+          // ticket goes on state: a store failure here must stop the attempt
+          // without the rescue's recorder settling the row errored, and the
+          // recorder settles only a claim it finds on state.
+          await linkRun(board, held, ticket, ctx);
+
           await ctx.sequencer!.patchState({ currentClaim: ticket });
 
           ctx._markTaskScope?.(held.id);
@@ -411,6 +426,49 @@ async function adoptLapsedLease(
     );
   }
   return adopted;
+}
+
+/**
+ * Write the run link for the attempt this dispatch holds (FIX-1668): this
+ * run's session, its request, and the attempt the gate just verified.
+ *
+ * Fenced by the claim ticket, so a claim that moved between the gate's read and
+ * this write is refused inside the write rather than overwritten. A link that
+ * commits stays even if the gate fails after it: it names the run the attempt
+ * entered, whose request then reads failed, and only the next claim clears it.
+ *
+ * @throws {StaleTaskClaimError} when the write is declined, or when a
+ *   hand-written collection answers with no verdict — neither says this run
+ *   holds the row. A thrown write propagates as any other gate failure.
+ */
+async function linkRun(
+  board: TaskCollectionRef,
+  held: Task,
+  ticket: TaskClaimTicket,
+  ctx: BlockContext
+): Promise<void> {
+  const outcome: TaskWriteOutcome | undefined = await board.linkRun(
+    held.id,
+    {
+      sessionId: ctx.session.identity.id,
+      requestId: ctx.request.identity.id,
+      attempt: held.attempts,
+    },
+    { claim: ticket }
+  );
+  if (outcome === undefined) {
+    throw new StaleTaskClaimError(
+      held.id,
+      `this board's collection reported no verdict for the run link, so nothing says the row ` +
+        `is still this dispatch's to run`
+    );
+  }
+  if (outcome.outcome === "declined") {
+    throw new StaleTaskClaimError(
+      held.id,
+      `the run link was refused (${outcome.reason}): the claim moved on after the gate read it`
+    );
+  }
 }
 
 /**

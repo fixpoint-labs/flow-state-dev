@@ -170,8 +170,10 @@ const ledgers = new Map<string, ChannelBoardCollection>();
  * somebody noticed. `claimedBy`, `leaseUntil`, `leaseDurationMs`,
  * `retryLedger`, `abandonments`, `incarnationId`, `revision`, `writeLog` and
  * `writeLogTruncated` are absent here for the reason they are absent there:
- * they are execution coordinates, substrate bookkeeping and write provenance,
- * not what the work is.
+ * they are the claim's execution coordinates, substrate bookkeeping and write
+ * provenance, not what the work is. One coordinate is here, as it is there:
+ * `run`, the handed-off run working the task (FIX-1668), which a board view
+ * opens the run from.
  *
  * **Narrower than the model's list, deliberately.** A card in a column renders
  * a title, a status, who holds it and how it is going. It never renders a
@@ -180,7 +182,7 @@ const ledgers = new Map<string, ChannelBoardCollection>();
  * audience than one model's context, does not receive them. That relationship
  * is asserted rather than described: `cross-org-collection-read.test.ts` fails
  * if this list ever stops being a subset of `channelBoardRowSchema`'s, which is
- * what would happen if an execution coordinate were added here.
+ * what would happen if a claim coordinate were added here alone.
  *
  * It cannot simply re-use `channelBoardRowSchema` because that lives in
  * `channel-flow.ts`, which imports this module — the dependency runs that way
@@ -193,6 +195,7 @@ export const CHANNEL_BOARD_CLIENT_FIELDS = [
   "goal",
   "status",
   "assignee",
+  "run",
   "priority",
   "attempts",
   "maxAttempts",
