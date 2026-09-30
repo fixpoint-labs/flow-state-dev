@@ -63,8 +63,10 @@ import {
   defineChannelFlow,
   hireWorkforce,
   openChannels,
+  openInventory,
   resourcesFromDocs,
   type ChannelTranscriptLine,
+  type InventoryActionRequest,
 } from "@flow-state-dev/workforce";
 import {
   readDeclaredRoster,
@@ -117,21 +119,25 @@ export const LAB_ORG_ID = "org_devforce_lab";
  */
 const LAB_PRINCIPAL_SECRET = "devforce-lab-verified-principal";
 
-const verifyLabBearer = createBearerSecretPrincipalResolver({
-  secret: LAB_PRINCIPAL_SECRET,
-  principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
-});
+/** Fail closed on `secret`: no matching bearer, no principal. */
+function principalFor(secret: string): PrincipalResolver {
+  const verify = createBearerSecretPrincipalResolver({
+    secret,
+    principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+  });
+  return async (context) => {
+    const principal = await verify(context);
+    if (principal === null) {
+      throw new PrincipalResolutionError(
+        "Request requires a verified organization: no verified principal was presented.",
+        { status: 401 },
+      );
+    }
+    return principal;
+  };
+}
 
-const resolveLabPrincipal: PrincipalResolver = async (context) => {
-  const principal = await verifyLabBearer(context);
-  if (principal === null) {
-    throw new PrincipalResolutionError(
-      "Request requires a verified organization: no verified principal was presented.",
-      { status: 401 },
-    );
-  }
-  return principal;
-};
+const resolveLabPrincipal = principalFor(LAB_PRINCIPAL_SECRET);
 
 /**
  * Read a workforce tree into records, refusing a tree that did not load
@@ -213,6 +219,18 @@ export interface OpenLabOptions {
    * ask could not be raised.
    */
   ask?: AskFeature;
+  /**
+   * Open the organization's seat and channel inventory after the channels.
+   * The channel kind is built with the inventory writer. Absent leaves the
+   * kind, and the boot, as they are.
+   */
+  inventory?: boolean;
+  /**
+   * The connection block a served page is handed. Absent for the checks,
+   * which are not a page. A `bearerToken` here is what that page sends, so
+   * the resolver accepts it; without one, the check door's secret stands.
+   */
+  devtool?: { userId: string; bearerToken?: string };
 
   // ---- controls, each the red state of one claim -------------------------
 
@@ -455,10 +473,16 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // composed rather than restated. The built-in kind is replaced wholesale with
   // one carrying this lab's notify slot, because a slot cannot be added to a
   // kind after it is built.
+  if (options.inventory === true && options.channels === undefined) {
+    throw new Error("opening the inventory needs the channel kind, so pass channels too");
+  }
   const channelKind =
     options.channels === undefined
       ? undefined
-      : defineChannelFlow({ notify: labNotify(options.channels) as never });
+      : defineChannelFlow({
+          notify: labNotify(options.channels) as never,
+          ...(options.inventory === true ? { inventory: true } : {}),
+        });
   const instances =
     channelKind === undefined
       ? []
@@ -466,18 +490,27 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           kinds: { [CHANNEL_KIND]: channelKind as never },
         });
 
+  const flows: Record<string, FlowInstance> = {
+    ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
+    ...Object.fromEntries(hired.map((seat) => [seat.id, seat])),
+  };
+  // A page bearer, when the server hands the page one. The checks pass none,
+  // and keep the door's own secret.
+  const resolvePrincipal =
+    options.devtool?.bearerToken === undefined
+      ? resolveLabPrincipal
+      : principalFor(options.devtool.bearerToken);
+
   const state = createFlowState({
-    flows: {
-      ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
-      ...Object.fromEntries(hired.map((seat) => [seat.id, seat])),
-    },
+    flows,
     stores: { default: { primary: options.stores } },
     // A configured resolver, so the development-organization fallback does
     // not answer an unauthenticated HTTP read (FIX-1515 / BR-17).
-    resolvePrincipal: resolveLabPrincipal,
+    resolvePrincipal,
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
     // Only when the ask is: the other checks run without it, as before.
     ...(options.ask === undefined ? {} : { durable: true }),
+    ...(options.devtool === undefined ? {} : { devtool: options.devtool }),
   } as never);
 
   const runtime = await state.getRuntime();
@@ -570,6 +603,39 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   if (channelKind !== undefined) {
     await openChannels(roster.channels, { client: sessionClient, userId: LAB_USER_ID });
+  }
+
+  if (options.inventory === true) {
+    const run = async (request: InventoryActionRequest): Promise<unknown> => {
+      const flow = flows[request.flowKind];
+      if (flow === undefined) throw new Error(`no flow "${request.flowKind}"`);
+      const result = (await runAction({
+        flow,
+        actionName: request.action,
+        input: request.input,
+        userId: request.userId,
+        orgId: request.orgId,
+        sessionId: request.sessionId,
+        source: request.source,
+        stores: runtime.stores,
+        runtimeConfig: runtime.runtimeConfig,
+      } as never)) as { error?: unknown };
+      if (result?.error !== undefined) throw new Error(messageOf(result.error));
+      return result;
+    };
+    try {
+      const inventory = await openInventory(
+        {
+          seats: hired.map((seat) => ({ id: seat.id, kind: seat.kind })),
+          channels: roster.channels,
+        },
+        { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+      );
+      if (inventory.problems.length > 0) throw new Error(inventory.problems.join("; "));
+    } catch (error) {
+      await state.dispose();
+      throw error;
+    }
   }
 
   const channelInstance = instances.find((instance) => instance.kind === CHANNEL_KIND);
