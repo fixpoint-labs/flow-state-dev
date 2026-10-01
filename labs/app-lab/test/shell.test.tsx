@@ -5,6 +5,7 @@
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { createLabClients } from "../src/lib/connection";
@@ -44,6 +45,14 @@ describe("the refusal (V2, BR-3)", () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(seen).toEqual(["/api/flows/sessions"]);
   });
+
+  it("a Lab that names no organization for the person gets the refusal, never an unknown one", async () => {
+    await openApp("/inbox", { channels: false });
+    await screen.findByTestId("refusal");
+    expect(screen.getByTestId("refusal-message").textContent).toMatch(/no organization/);
+    expect(screen.queryByTestId("sidebar")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Unknown organization/);
+  });
 });
 
 describe("a Lab booted without its inventory (V3, BR-4)", () => {
@@ -55,6 +64,13 @@ describe("a Lab booted without its inventory (V3, BR-4)", () => {
     expect(screen.getByTestId("projects-failure").textContent).toMatch(/without opening its inventory/);
     expect(screen.getByTestId("nav-tasks")).toBeTruthy();
     expect(screen.getByTestId("jump-to")).toBeTruthy();
+  });
+
+  it("a Lab whose flows declare no inventory still names the organization it binds the person to", async () => {
+    await openApp("/inbox", { inventoryDeclared: false });
+    expect((await screen.findByTestId("teams-failure")).textContent).toMatch(/without opening its inventory/);
+    expect(screen.getByTestId("org-switcher").textContent).toContain(DEFAULT_ORG_ID);
+    expect(document.body.textContent).not.toMatch(/Unknown organization/);
   });
 });
 

@@ -5,6 +5,7 @@
  * ordinary Lab config whose seats suspend on a stock approval, woken the way a
  * real Lab wakes them, by a channel post through the framework's member wake.
  */
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { PUBLIC_REENTRY_SOURCES } from "@flow-state-dev/engine";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLabClients } from "../src/lib/connection";
@@ -81,6 +82,17 @@ describe("the refusal (V2, BR-3)", () => {
     expect(snapshot.orgId).toBe("org_ask_lab");
     expect(snapshot.inventory.ok).toBe(true);
   });
+
+  it("refuses a Lab that names no organization for the person, and reads nothing from the tree", async () => {
+    // The Lab opens nothing at boot, so the person holds no session and
+    // nothing the Lab serves says which organization they are in.
+    const { baseUrl } = await lab({ channels: false });
+    const seen = countRequests();
+    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    expect(snapshot.refused?.message).toMatch(/no organization/);
+    expect(snapshot.refused?.message).toContain(ASK_LAB_USER_ID);
+    expect(seen).toEqual(["GET /api/flows/sessions"]);
+  });
 });
 
 describe("one read per resource (V3, BR-11)", () => {
@@ -126,7 +138,16 @@ describe("one read per resource (V3, BR-11)", () => {
     expect(snapshot.inventory).toMatchObject({ ok: false });
     if (snapshot.inventory.ok) return;
     expect(snapshot.inventory.failure.message).toMatch(/without opening its inventory/);
-    expect(snapshot.sessions.ok).toBe(true);
+    expect(snapshot.sessions.length).toBeGreaterThan(0);
+    expect(snapshot.orgId).toBe(DEFAULT_ORG_ID);
+  });
+
+  it("a Lab whose flows declare no inventory still reads the organization off the person's sessions", async () => {
+    const { baseUrl } = await lab({ inventoryDeclared: false });
+    const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read());
+    if (snapshot.inventory.ok) throw new Error("the inventory loaded");
+    expect(snapshot.inventory.failure.message).toMatch(/No inventory to read/);
+    expect(snapshot.orgId).toBe(DEFAULT_ORG_ID);
   });
 });
 
@@ -333,6 +354,6 @@ describe("declared documents (BR-10)", () => {
     });
     const snapshot = loaded(await createLabReader(clients).read());
     expect(snapshot.resources).toMatchObject({ ok: false, failure: { message: "manifest unavailable" } });
-    expect(snapshot.sessions.ok).toBe(true);
+    expect(snapshot.sessions.length).toBeGreaterThan(0);
   });
 });

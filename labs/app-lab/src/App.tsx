@@ -2,9 +2,10 @@
  * App Lab's frame (S4): three columns, the sidebar, the centre at the level
  * and tab the URL names, and the right panel's slot for that level.
  *
- * A Lab that refuses the first read for want of a verified organization gets
- * the refusal screen and nothing else (BR-3): the sidebar, the tree and every
- * other read wait behind it.
+ * A Lab that refuses the first read for want of a verified organization, or
+ * that names no organization for the person, gets the refusal screen and
+ * nothing else (BR-3): the sidebar, the tree and every other read wait behind
+ * it.
  */
 import { useEffect, useState } from "react";
 import { GAPS, type Gaps } from "./gaps";
@@ -37,19 +38,23 @@ export function App({ clients, gaps = GAPS, devtoolUrl }: { clients: LabClients;
   );
 }
 
-/** The screen a refused first read gets, and the only one. */
+/**
+ * The screen a Lab gets when App Lab has no organization to open it under, and
+ * the only one: the Lab refused the first read, or served nothing that names
+ * the person's organization.
+ */
 function Refusal({ failure }: { failure: Failure }) {
   return (
     <main className="flex h-screen items-center justify-center p-6" data-testid="refusal">
       <div className="max-w-md">
         <h1 className="text-lg font-semibold">This Lab won't let App Lab in</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          The Lab's server refused the first read because the request carried no verified organization. App Lab shows
-          nothing from the Lab until it does. Check that the Lab's config hands App Lab a credential (its devtool
-          block) and that App Lab is opened on the address its start script printed.
+          {failure.httpStatus === undefined
+            ? "App Lab opens a Lab only under an organization, and this Lab doesn't say which one you're in. App Lab shows nothing from the Lab until it does."
+            : "The Lab's server refused the first read because the request carried no verified organization. App Lab shows nothing from the Lab until it does. Check that the Lab's config hands App Lab a credential (its devtool block) and that App Lab is opened on the address its start script printed."}
         </p>
         <p className="mt-3 rounded-md bg-muted px-3 py-2 font-mono text-xs" data-testid="refusal-message">
-          {failure.httpStatus ?? "?"} · {failure.message}
+          {failure.httpStatus === undefined ? failure.message : `${failure.httpStatus} · ${failure.message}`}
         </p>
       </div>
     </main>

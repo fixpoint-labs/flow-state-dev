@@ -62,9 +62,8 @@ function Heading({ children, onClick, testId }: { children: string; onClick?: ()
 }
 
 /** The organization this person's sessions are bound to. One per Lab principal. */
-function OrgSwitcher({ orgId, onSwitch }: { orgId: string | null; onSwitch: () => void }) {
+function OrgSwitcher({ orgId, onSwitch }: { orgId: string; onSwitch: () => void }) {
   const [open, setOpen] = useState(false);
-  const label = orgId ?? "Unknown organization";
   return (
     <div className="relative" data-testid="org-switcher">
       <button
@@ -74,7 +73,7 @@ function OrgSwitcher({ orgId, onSwitch }: { orgId: string | null; onSwitch: () =
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between rounded-md border px-2 py-1.5 text-left text-sm"
       >
-        <span className="truncate font-medium">{label}</span>
+        <span className="truncate font-medium">{orgId}</span>
         <span className="text-xs text-muted-foreground">▾</span>
       </button>
       {open ? (
@@ -89,7 +88,7 @@ function OrgSwitcher({ orgId, onSwitch }: { orgId: string | null; onSwitch: () =
               onSwitch();
             }}
           >
-            {label}
+            {orgId}
           </button>
           <p className="px-2 py-1 text-xs text-muted-foreground">
             The Lab binds you to one organization; it is the only one to switch to.
@@ -107,12 +106,12 @@ export function Sidebar({ route, gaps, onJump }: { route: Route; gaps: Gaps; onJ
 
   const inboxCount = loaded === undefined ? "…" : loaded.asks.ok ? loaded.asks.value.length : "!";
   const tasksCount = loaded === undefined ? "…" : openRows(loaded).length;
-  const liveSessions = loaded?.sessions.ok === true ? loaded.sessions.value.length : null;
+  const liveSessions = loaded === undefined ? null : loaded.sessions.length;
 
   return (
     <nav aria-label="App Lab" className="flex h-full w-64 shrink-0 flex-col border-r bg-card" data-testid="sidebar">
       <div className="flex-1 overflow-y-auto p-3">
-        <OrgSwitcher orgId={loaded?.orgId ?? null} onSwitch={retry} />
+        {loaded === undefined ? null : <OrgSwitcher orgId={loaded.orgId} onSwitch={retry} />}
         <button
           type="button"
           onClick={onJump}
