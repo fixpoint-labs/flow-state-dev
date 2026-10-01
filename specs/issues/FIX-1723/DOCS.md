@@ -52,6 +52,9 @@ Add:
 - **What a worker is on call for, beyond you.** Webhooks, schedules and other standing watches
   arrive with the standing routines work. Until then on call means waiting on you, and a worker
   that only waits for a webhook reads off shift.
+- **A declared map from a task's assignee to its worker.** Shift Manager matches the assignee to
+  a worker by id, then by a unique name, then by who is in the channel. A task whose assignee
+  matches no single worker counts for no one, so that worker can read off shift while it works.
 
 ## UPDATE · `labs/shift-manager/README.md` · "Tests"
 

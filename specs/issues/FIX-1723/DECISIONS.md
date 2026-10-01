@@ -42,7 +42,7 @@ paused by a person. That would be a seat setting in Workforce, and the rule woul
 |---|---|
 | **Instead of** | A capacity per worker, a new setting in its worker file, drawn as v2 draws it: "2/3 slots" and empty squares for the free ones |
 | **Because** | Nothing in a Lab limits how many rows a worker takes. A cap on screen that the board doesn't keep tells a person a worker is full when it isn't, or free when the board will hand it a fourth row anyway. A held task (running, or waiting on you) is a fact the board records |
-| **Locks in** | Roster says *2 in use*, with one square per held task. No one can see that a worker is full, and Chief of Staff (FIX-1722) can't route by free slots. Adding a cap later is a seat setting **and** a board rule that refuses the extra row, not a label |
+| **Locks in** | Roster says *2 in use*, with one square per held task, a task parked waiting on you included. No one can see that a worker is full, and Chief of Staff (FIX-1722) can't route by free slots. Adding a cap later is a seat setting **and** a board rule that refuses the extra row, not a label |
 
 ![D2: slots in use with no cap, chosen, beside a capacity setting per seat. Decided by whether anything keeps the cap](figures/d2-slots-in-use.svg)
 
@@ -101,5 +101,10 @@ It comes down to the final hand-back: v2 redrew TEAMS on purpose, and keeping bo
 - **Draft** — framed as a page Jake added to the epic from v2; status worked out from board
   rows and pending asks in Shift Manager, no new field; slots in use without a cap; TEAMS
   redrawn as v2's team rows; one PR in `labs/shift-manager` with a goal check of its own.
+- **Review** — org seats grouped as Staff per FIX-1719's seat address; BR-12's counts made exact;
+  the Day/Night switch left to FIX-1725. From the second look: the goal names seat matching as a
+  best match with a FIX-1672 gap line and an oracle that resolves seats on its own; a failed asks
+  read marks every screen *partial*, not Roster alone; the rule is one `seatStates` over the
+  snapshot that every count reduces from. D1–D3 unchanged.
 
 **Open: none.**

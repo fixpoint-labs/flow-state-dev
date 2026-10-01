@@ -18,16 +18,18 @@ already reads the seats and boards; it lacks the page and a status readable at a
 ## The goal, and how we'll know it's met
 
 **A person running a Lab in Shift Manager opens Roster and sees every worker it has, each on
-shift, on call or off shift exactly as the Lab's own records say, with the tasks it holds and
-what it waits on, for all teams or one.**
+shift, on call or off shift as the Lab's own records say, with the tasks it holds and what it
+waits on, for all teams or one.** Which worker holds a task is read from the task's assignee, a
+best match until a declared assignee-to-seat map ships (FIX-1672); a task whose assignee matches
+no single worker counts for no one, and Roster says so.
 
 | Is it the right goal? | |
 |---|---|
 | **The real need** | The issue: *"a Roster listing its workers with slots and shift status that match the running Workforce"*. The design: a ROSTER entry, all teams or one, per-team counts ([v2](https://github.com/fixpoint-labs/flow-state-dev/blob/fa1b85160b477ea7d58b73da3f6e2cc051914c87/specs/epics/FIX-1649/assets/design/v2/README.md)) |
 | **Smaller, and rejected** | "The Roster page renders." A page of the right shape over a status nobody checked against the board is a page a person learns not to trust |
 | **Short of the design, and decided** | **Slots show the count in use, not "2 of 3".** Nothing in a Lab caps how much a worker takes, so there is no "of 3" to read ([D2](DECISIONS.md#d2)). **On call** is *waits on you* until standing watches ship (FIX-1675) |
-| **Bigger, and not this issue's** | Who is on a team and the CoS and Ops seats (FIX-1719) · standing watches, the webhooks and routines a worker is on call for (FIX-1675) · the harness a worker runs (FIX-1652) · Chief of Staff (FIX-1722) · removing tabs v2 dropped |
-| **Not done if** | A worker shows on shift with no running task, or off shift while an ask of its is in Inbox · the sidebar's counts and Roster's disagree · the team filter shows a seat from another team · a seat in the Lab's inventory is missing from Roster · an org seat (CoS, Ops) shows as a team of its own |
+| **Bigger, and not this issue's** | Who is on a team and the CoS and Ops seats (FIX-1719) · standing watches, the webhooks and routines a worker is on call for (FIX-1675) · the harness a worker runs (FIX-1652) · a declared map from a task's assignee to its seat, so an ambiguous assignee can't leave a working seat reading off shift (FIX-1672) · Chief of Staff (FIX-1722) · removing tabs v2 dropped |
+| **Not done if** | A worker shows on shift with no running task, or off shift while an ask of its is in Inbox · the sidebar's counts and Roster's disagree · the team filter shows a seat from another team · a seat in the Lab's inventory is missing from Roster · an org seat (CoS, Ops) shows as a team of its own · asks failed to load and any screen shows a status without the shared *partial* mark |
 
 ```mermaid
 flowchart LR
@@ -46,8 +48,8 @@ every worker the screen draws.
 |---|---|
 | **Goal check** | `goals/shift-manager/it-shows-who-is-on-shift/` · model n/a (scripted stub runs that hold until stopped) · real Chromium · run by the implementer at completion · verdict in the implementation PR |
 | **Signal** | Reached by clicking Roster, then each team. For every inventory seat: its group equals what [BR-1 to BR-4](BUSINESS-RULES.md#status) give from the stored rows and asks; its slots equal its held rows; its HOLDING chips and waits-on entries are exactly those rows and asks. Each team filter lists exactly its seats. The sidebar's counts equal the page's |
-| **Input** | A Lab of two teams and one org-level seat, with seats built into each state: a held run, a pending ask, a parked row, an unclaimed queued row, nothing. Another spread must pass too |
-| **Anti-game** | No assertion on Shift Manager's modules. The oracle is the store, read by the script |
+| **Input** | A Lab of two teams and one org-level seat, with seats built into each state: a held run, a pending ask, a parked row, an unclaimed queued row, nothing. Every assignee names exactly one seat, so the best match is never in play. Another spread must pass too |
+| **Anti-game** | No assertion on Shift Manager's modules. The oracle is the store, read by the script, and it resolves a row to a seat by its own simpler rule (the assignee equals the seat id or name), never by Shift Manager's best match: reusing that would grade the screen against itself. The fixtures are built so both rules agree |
 | **Control that must fail** | `GOAL_CONTROL=ignore-asks`: status reads board rows only. Must FAIL at *status equals the store's* on the asking seat. `GOAL_CONTROL=count-queued`: queued rows count as slots. Must FAIL at *slots equal held rows* on the queued seat. Today's `main` fails: there is no Roster |
 
 ## What changes
