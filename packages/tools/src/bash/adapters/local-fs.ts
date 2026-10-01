@@ -11,7 +11,8 @@
  *
  * Each command runs with a minimal environment (not the server's full
  * `process.env`), a deadline, and a numeric exit code — see
- * `executeCommand` below.
+ * `executeCommand` below. Command execution assumes a Unix process-group
+ * model (Linux/macOS): a timeout kills the command's whole group.
  */
 
 import { spawn } from "node:child_process";
@@ -36,9 +37,9 @@ export interface LocalFsSandboxOptions {
   strictPaths?: boolean;
   /**
    * Extra environment variables for each command, layered over the minimal
-   * base (`PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR`, `TZ`,
-   * copied from the server when set). Nothing else from the server's
-   * environment reaches the command.
+   * base (`BASE_ENV_KEYS`, copied from the server when set), so a key named
+   * here wins. Nothing else from the server's environment reaches the
+   * command.
    */
   env?: Record<string, string>;
   /**
@@ -171,9 +172,15 @@ export function createLocalFsSandbox(
  * overrun kills everything it started — killing only the shell would leave
  * a pipeline's children holding stdout open, and the result would never
  * arrive. After a normal exit nothing is killed, so a background job whose
- * output is redirected (`server > log 2>&1 &`) keeps running as before. `exitCode` is always a number: the shell's own code, `124` on
- * timeout, `128 + n` when killed by signal `n`, and `1` for an output
- * overrun or a spawn failure.
+ * output is redirected (`server > log 2>&1 &`) keeps running as before.
+ *
+ * Because the child is its own process group, it does not receive the
+ * terminal's SIGINT/SIGTERM aimed at the server; the deadline is the only
+ * backstop that stops it.
+ *
+ * `exitCode` is always a number: the shell's own code, `124` on timeout,
+ * `128 + n` when killed by signal `n`, and `1` for an output overrun or a
+ * spawn failure.
  */
 function runBash(
   command: string,
@@ -194,6 +201,8 @@ function runBash(
     let failure: { exitCode: number; message: string } | null = null;
 
     let settled = false;
+    // Declared before `finish`, which clears it, so no call order can hit the TDZ.
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const finish = (exitCode: number) => {
       if (settled) return;
       settled = true;
@@ -222,6 +231,8 @@ function runBash(
     };
 
     const collect = (sink: Buffer[]) => (chunk: Buffer) => {
+      // After a kill or settle, late chunks are dropped rather than buffered.
+      if (settled || failure) return;
       outputBytes += chunk.length;
       if (outputBytes > MAX_OUTPUT_BYTES) {
         fail(1, `output exceeded ${MAX_OUTPUT_BYTES} bytes; command killed`);
@@ -232,7 +243,7 @@ function runBash(
     child.stdout.on("data", collect(stdout));
     child.stderr.on("data", collect(stderr));
 
-    const timer = setTimeout(
+    timer = setTimeout(
       () => fail(TIMEOUT_EXIT_CODE, `exec timed out after ${timeoutMs}ms`),
       timeoutMs,
     );

@@ -182,8 +182,9 @@ export type SandboxProvider =
       strictPaths?: boolean;
       /**
        * Extra environment variables for each command. Commands get a minimal
-       * environment (`PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `TERM`,
-       * `TMPDIR`, `TZ`) plus these — never the server's full `process.env`,
+       * environment (the `BASE_ENV_KEYS` list in `adapters/local-fs.ts`,
+       * copied from the server when set) plus these, layered over it — never
+       * the server's full `process.env`,
        * so API keys the server holds don't reach model-written commands
        * unless named here.
        */
