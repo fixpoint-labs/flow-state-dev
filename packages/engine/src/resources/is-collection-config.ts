@@ -1,19 +1,7 @@
 /**
- * Shared type guard for a resource-collection config entry.
- *
- * A collection is an object with a string `pattern`. Single resources
- * expose `stateSchema` and do not carry `pattern`.
+ * Re-export shim: the collection type guard lives in core
+ * (`@flow-state-dev/core/types` → `storage-identity.ts`), so `defineFlow`'s
+ * build-time collision check and the engine's persistence path apply one
+ * predicate. Preserved at this path so engine imports resolve unchanged.
  */
-import type { ResourceCollectionConfig } from "@flow-state-dev/core/types";
-
-/** True when `value` is a collection config (has a string `pattern`). */
-export function isCollectionConfig(
-  value: unknown
-): value is ResourceCollectionConfig {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "pattern" in value &&
-    typeof (value as ResourceCollectionConfig).pattern === "string"
-  );
-}
+export { isCollectionConfig } from "@flow-state-dev/core/types";

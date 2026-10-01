@@ -115,8 +115,22 @@ function makeFlowFactory(options: {
   });
 }
 
-function makeFlow(options: Parameters<typeof makeFlowFactory>[0]) {
-  return makeFlowFactory(options)();
+function makeFlow(
+  options: Parameters<typeof makeFlowFactory>[0] & {
+    /**
+     * Resources added AFTER `defineFlow` has validated the flow. `defineFlow`
+     * refuses two distinct declarations on one storage cell, so a flow holding
+     * them reaches the registry only when it was assembled outside
+     * `defineFlow`. These cases exercise the registry's same-flow comparison,
+     * which stays as a backstop for exactly that.
+     */
+    unvalidatedResources?: Record<string, unknown>;
+  }
+) {
+  const { unvalidatedResources, ...rest } = options;
+  const flow = makeFlowFactory(rest)();
+  if (unvalidatedResources === undefined) return flow;
+  return { ...flow, resources: { ...flow.resources, ...unvalidatedResources } } as typeof flow;
 }
 
 function captureConflict(fn: () => void): CrossFlowSchemaConflictError {
@@ -641,9 +655,8 @@ describe("cross-flow resource schema validation", () => {
       // `defineResource` preserves unknown properties, so a plain resource can
       // carry a `pattern`. The engine's persistence path branches on the
       // STRUCTURAL `isCollectionConfig` test, so it routes this down the
-      // collection branch and keys its instances off the pattern — even though
-      // core's brand-based check calls it a single resource. Follow the engine:
-      // these two flows share cells under `files/*` despite differing accessors.
+      // collection branch and keys its instances off the pattern, so these two
+      // flows share cells under `files/*` despite differing accessors.
       const withPattern = (schema: z.ZodTypeAny) =>
         defineResource({
           scope: "user",
@@ -667,9 +680,10 @@ describe("cross-flow resource schema validation", () => {
 
   /**
    * Two of ONE flow's declarations can resolve to the same durable cell —
-   * most reachably two collections sharing a `pattern`, which core's
-   * build-time check keys apart on an incidental `ref` and therefore admits.
-   * The accumulator must compare them rather than overwrite, or the earlier
+   * for instance two collections sharing a `pattern`. `defineFlow` refuses
+   * such a flow, so these cases assemble it past that check
+   * (`unvalidatedResources`) to exercise the registry's backstop. The
+   * accumulator must compare them rather than overwrite, or the earlier
    * schema silently leaves the shared view.
    */
   describe("two declarations in one flow resolving to one cell", () => {
@@ -697,7 +711,7 @@ describe("cross-flow resource schema validation", () => {
         registry.register(
           makeFlow({
             kind: "flow-a",
-            rawResources: {
+            unvalidatedResources: {
               alpha: coll(z.object({ body: z.string() }), "alpha"),
               beta: coll(z.object({ body: z.number() }), "beta"),
             },
@@ -717,7 +731,7 @@ describe("cross-flow resource schema validation", () => {
         registry.register(
           makeFlow({
             kind: "flow-a",
-            rawResources: {
+            unvalidatedResources: {
               alpha: coll(z.object({ body: z.string() }), "alpha"),
               beta: coll(z.object({ body: z.string() }), "beta"),
             },
@@ -755,7 +769,7 @@ describe("cross-flow resource schema validation", () => {
         registry.register(
           makeFlow({
             kind: "flow-a",
-            rawResources: {
+            unvalidatedResources: {
               alpha: isoColl(z.object({ body: z.string() }), "alpha"),
               beta: isoColl(z.object({ body: z.number() }), "beta"),
             },
@@ -775,7 +789,7 @@ describe("cross-flow resource schema validation", () => {
           makeFlow({
             kind: "flow-a",
             isolateUserState: true,
-            rawResources: {
+            unvalidatedResources: {
               alpha: coll(z.object({ body: z.string() }), "alpha"),
               beta: coll(z.object({ body: z.number() }), "beta"),
             },
@@ -791,7 +805,7 @@ describe("cross-flow resource schema validation", () => {
         registry.register(
           makeFlow({
             kind: "flow-a",
-            rawResources: {
+            unvalidatedResources: {
               alpha: isoColl(z.object({ body: z.string() }), "alpha"),
               beta: isoColl(z.object({ body: z.string() }), "beta"),
             },
@@ -862,7 +876,7 @@ describe("cross-flow resource schema validation", () => {
         registry.register(
           makeFlow({
             kind: "flow-a",
-            rawResources: {
+            unvalidatedResources: {
               alpha: coll(z.object({ body: z.string() }), "alpha"),
               beta: coll(z.object({ body: z.number() }), "beta"),
             },
@@ -1214,7 +1228,7 @@ describe("non-transitive compatibility over one cell", () => {
       registry.register(
         makeFlow({
           kind: "flow-a",
-          rawResources: {
+          unvalidatedResources: {
             one: coll(z.object({ a: z.string() }), "one"),
             two: coll(z.object({ b: z.string() }), "two"),
             three: coll(z.object({ b: z.number() }), "three"),
@@ -1232,7 +1246,7 @@ describe("non-transitive compatibility over one cell", () => {
     registry.register(
       makeFlow({
         kind: "flow-a",
-        rawResources: {
+        unvalidatedResources: {
           one: coll(z.object({ a: z.string() }), "one"),
           two: coll(z.object({ b: z.string() }), "two"),
         },
@@ -1253,7 +1267,7 @@ describe("non-transitive compatibility over one cell", () => {
       registry.register(
         makeFlow({
           kind: "flow-a",
-          rawResources: {
+          unvalidatedResources: {
             one: coll(z.object({ a: z.string() }), "one"),
             two: coll(z.object({ b: z.string() }), "two"),
             three: coll(z.object({ c: z.string() }), "three"),
