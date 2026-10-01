@@ -180,6 +180,19 @@ export type SandboxProvider =
        * Set to `false` to disable guards. A warning is logged at initialization.
        */
       strictPaths?: boolean;
+      /**
+       * Extra environment variables for each command. Commands get a minimal
+       * environment (`PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `TERM`,
+       * `TMPDIR`, `TZ`) plus these — never the server's full `process.env`,
+       * so API keys the server holds don't reach model-written commands
+       * unless named here.
+       */
+      env?: Record<string, string>;
+      /**
+       * Per-command deadline in milliseconds. Default: 60 000. On overrun the
+       * command and its children are killed and the result has `exitCode: 124`.
+       */
+      execTimeoutMs?: number;
     }
   | {
       type: "vercel";
