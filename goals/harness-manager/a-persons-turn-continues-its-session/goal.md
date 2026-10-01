@@ -20,6 +20,8 @@ and the person's turn. The **fact the proof turns on is generated per run**, nev
 4. Attempt 2's run row carries the **same harness session id** as attempt 1.
 5. The board row settles **`completed`** after **2 claims with 1 turn re-entry**: retry standing
    (`attempts − abandonments − turnReentries`) is **1**, with `maxAttempts: 1`.
+6. Read after delivery, the board row's **run link names the session the turn was sent into**:
+   attempt 2 ran in the session the person is looking at, not one beneath it.
 
 Signal 3 is the one that discriminates. Signal 4 is corroboration: where the Agent SDK runs inside
 a Claude Code session it can report the ambient session id (the answered-run goal measured this),
@@ -56,3 +58,4 @@ agent is allowed `Bash` here as well as file edits.
 |------|--------|-------|---------|-------|
 | 2026-10-01 | door PR | Claude Code (Agent SDK, default model) | PASS | Same session id both attempts, fact file written, 2 claims / 1 turn re-entry. Control with the resume feed returning null: FAIL at signals 3, 4 and 5 |
 | 2026-10-01 | door PR, review round | Claude Code (Agent SDK, default model) | PASS | After the refusal-withdraws change and the backed-off stop wait: same session id both attempts, fact file written, 2 claims / 1 turn re-entry |
+| 2026-10-01 | door PR, second review round | Claude Code (Agent SDK, default model) | PASS | After the door drains in the claiming session: 2 claims / 1 turn re-entry, fact file written, run link on the turn's session. Control draining in the run's own session: FAIL at signal 6 only (attempt 2 in a child session) |

@@ -57,6 +57,8 @@ afterAll(() => {
  * - `no-session` — fails without ever naming a session (a dispatch-only
  *   harness).
  * - `finish-later` — works for 400ms, then returns finished on its own.
+ * - `ignore-stop` — works past its signal until the test releases it: a
+ *   harness that does not stop in time.
  */
 type Step =
   | "hold"
@@ -66,7 +68,8 @@ type Step =
   | "failed"
   | "ask"
   | "no-session"
-  | "finish-later";
+  | "finish-later"
+  | "ignore-stop";
 
 interface SeenAttempt {
   prompt: string;
@@ -79,6 +82,7 @@ function stubHarness(
   seen: SeenAttempt[],
   exitDelayMs: number,
   settleFirst: (to: "completed" | "pending") => Promise<void>,
+  released: Promise<void>,
 ) {
   return (feeds: HarnessFeeds): HarnessBlock =>
     handler({
@@ -102,7 +106,7 @@ function stubHarness(
           usage: null,
           cost: null,
         });
-        if (step === "hold" || step === "finish-on-stop" || step === "fail-on-stop") {
+        if (step === "hold" || step === "finish-on-stop" || step === "fail-on-stop" || step === "ignore-stop") {
           const signal = (ctx as { signal: AbortSignal }).signal;
           await new Promise<void>((resolve) => {
             if (signal.aborted) return resolve();
@@ -110,6 +114,7 @@ function stubHarness(
           });
           if (step === "finish-on-stop") await settleFirst("completed");
           if (step === "fail-on-stop") await settleFirst("pending");
+          if (step === "ignore-stop") await released;
           await new Promise((resolve) => setTimeout(resolve, exitDelayMs));
           throw new DOMException("Aborted", "AbortError");
         }
@@ -142,6 +147,10 @@ function host(options: { script: Step[]; maxAttempts?: number; exitDelayMs?: num
     stateSchema: harnessTaskInputSchema,
   });
   const seen: SeenAttempt[] = [];
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   const manager = harnessManager({
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
@@ -160,7 +169,7 @@ function host(options: { script: Step[]; maxAttempts?: number; exitDelayMs?: num
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
-    harness: stubHarness(options.script, seen, options.exitDelayMs ?? 0, (to) => settleFirst(to)),
+    harness: stubHarness(options.script, seen, options.exitDelayMs ?? 0, (to) => settleFirst(to), released),
   });
   const board = taskBoard({
     name: "door-board",
@@ -208,8 +217,10 @@ function host(options: { script: Step[]; maxAttempts?: number; exitDelayMs?: num
       // How a person's answer to the run's own question re-queues it.
       answer: { block: board.unparkAndDrain },
       interrupt: { block: interrupt },
-      message: manager.messageDoor(board),
+      message: manager.messageDoor({ drain: "resume" }),
     },
+    // Where the door re-runs the board: in the session that claimed the row.
+    internal: { actions: { resume: { block: board.drain } } },
     task: { actions: { work: { block: manager } } },
   } as never)({ id: "door-host" } as never);
   const state = createFlowState({
@@ -353,9 +364,55 @@ function host(options: { script: Step[]; maxAttempts?: number; exitDelayMs?: num
     return (await rt.stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`))?.version;
   };
 
+  /** Write the row as stored, the way a write the test stands in for would. */
+  const writeRow = async (next: Record<string, unknown>): Promise<void> => {
+    const rt = await runtime();
+    await rt.stores.resourceState.set("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`, next, "any");
+  };
+
+  /** Make the next write that re-queues the row (to `pending`) throw, once. */
+  const failNextRequeue = async (): Promise<void> => {
+    const stores = (await runtime()).stores;
+    const original = stores.resourceState.set.bind(stores.resourceState);
+    let armed = true;
+    stores.resourceState.set = async (...args: any[]) => {
+      if (armed && args[2] === `${BOARD_ID}/${TASK_ID}` && args[3]?.status === "pending") {
+        armed = false;
+        throw new Error("the store refused the re-queue");
+      }
+      return original(...(args as [any, any, any, any, any]));
+    };
+  };
+
+  /**
+   * Make the door's wait for a stop run out: from the door's second ask of
+   * the attempt's request, the clock reads past the wait. Returns the restore.
+   */
+  const expireStopWait = async (attemptRequestId: string): Promise<() => void> => {
+    const stores = (await runtime()).stores;
+    const original = stores.request.setFieldsIfStatus.bind(stores.request);
+    const realNow = Date.now;
+    let asks = 0;
+    stores.request.setFieldsIfStatus = async (id: string, ...rest: unknown[]) => {
+      if (id === attemptRequestId && ++asks === 2) {
+        const offset = 2 * 60_000;
+        Date.now = () => realNow() + offset;
+      }
+      return original(id, ...(rest as []));
+    };
+    return () => {
+      Date.now = realNow;
+      stores.request.setFieldsIfStatus = original;
+    };
+  };
+
   return {
     act,
     row,
+    writeRow,
+    failNextRequeue,
+    expireStopWait,
+    release: () => release(),
     until,
     send,
     request,
@@ -406,6 +463,139 @@ describe("a person's turn into a running coding run", () => {
     // The turn spent nothing.
     expect(standing(done)).toBe(before);
     expect(done.turnReentries).toBe(1);
+  }, 60_000);
+});
+
+describe("a turn to each of two attempts, one after the other (BR-5, BR-14)", () => {
+  it("keeps the run in one session that holds both lines", async () => {
+    const lab = host({ script: ["hold", "hold", "finished"] });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    const first = await lab.until((t) => t.status === "in_progress" && t.run !== undefined, "the run link");
+    await lab.until(() => lab.seen.length === 1, "attempt 1 to reach its harness");
+    const session = first.run!.sessionId;
+
+    const one = await lab.send(ALICE, "line one", session);
+    expect(one.error, messageOf(one.error)).toBeUndefined();
+    expect(one.output.outcome).toBe("continuing");
+
+    // The next attempt runs where the first did: the session the person is
+    // looking at, not a new one beneath it.
+    const second = await lab.until(
+      (t) => t.status === "in_progress" && t.run?.attempt === 2,
+      "attempt 2's run link",
+    );
+    expect(second.run!.sessionId).toBe(session);
+    await lab.until(() => lab.seen.length === 2, "attempt 2 to reach its harness");
+
+    // A line sent to that same session reaches the run again.
+    const two = await lab.send(ALICE, "line two", session);
+    expect(two.error, messageOf(two.error)).toBeUndefined();
+    expect(two.output.outcome).toBe("continuing");
+
+    const done = await lab.until((t) => t.status === "completed", "attempt 3 to finish");
+    expect(done.run!.sessionId).toBe(session);
+    expect((await lab.userLines(session)).sort()).toEqual(["line one", "line two"]);
+    expect(lab.seen[1]!.prompt).toContain("line one");
+    expect(lab.seen[2]!.prompt).toContain("line two");
+    expect(lab.seen[2]!.resume).toBe(lab.seen[0]!.session);
+    expect(done.turnReentries).toBe(2);
+  }, 60_000);
+});
+
+describe("a turn between a claim and its run starting", () => {
+  it("is kept for the attempt the claim started, not refused as never started", async () => {
+    const lab = host({ script: ["failed", "finished"] });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    const pending = await lab.until((t) => t.status === "pending" && t.attempts === 1, "attempt 1 to fail");
+    const session = pending.run!.sessionId;
+
+    // Claimed for attempt 2, whose run has not linked yet: the claim cleared
+    // the link.
+    const claimed: Record<string, unknown> = {
+      ...pending,
+      status: "in_progress",
+      attempts: 2,
+      leaseUntil: Date.now() + 60_000,
+      leaseDurationMs: 60_000,
+    };
+    delete claimed.run;
+    await lab.writeRow(claimed);
+
+    const sent = await lab.send(ALICE, "in the gap", session);
+    expect(sent.error, messageOf(sent.error)).toBeUndefined();
+    expect(sent.output.outcome).toBe("kept");
+
+    // That claim's run starts and takes the line.
+    await lab.writeRow(pending as unknown as Record<string, unknown>);
+    await lab.act(ALICE, "drain");
+    await lab.until((t) => t.status === "completed", "the next attempt");
+    expect(lab.seen[1]!.prompt).toContain("in the gap");
+  }, 60_000);
+});
+
+describe("a turn whose re-queue fails after the park", () => {
+  it("answers kept, never not-delivered, and the line reaches the run", async () => {
+    const lab = host({ script: ["hold", "finished"] });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    await lab.until((t) => t.status === "in_progress" && t.run !== undefined, "the run link");
+    await lab.until(() => lab.seen.length === 1, "attempt 1 to reach its harness");
+    await lab.failNextRequeue();
+
+    const sent = await lab.send(ALICE, "kept anyway");
+    expect(sent.error, messageOf(sent.error)).toBeUndefined();
+    expect(sent.output.outcome).toBe("kept");
+    const row = await lab.row();
+    expect(row.status).toBe("parked");
+    expect(row.parkedForTurn).toBe(true);
+
+    // Whatever re-queues the row next runs the line.
+    await lab.act(ALICE, "answer", { taskId: TASK_ID });
+    await lab.until((t) => t.status === "completed", "the next attempt");
+    expect(lab.seen[1]!.prompt).toContain("kept anyway");
+  }, 60_000);
+
+  it("answers kept when the claiming session can't be reached, and leaves the row queued", async () => {
+    const lab = host({ script: ["hold", "finished"] });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    const running = await lab.until((t) => t.status === "in_progress" && t.run !== undefined, "the run link");
+    await lab.until(() => lab.seen.length === 1, "attempt 1 to reach its harness");
+    await lab.writeRow({ ...running, claimedBy: { ...running.claimedBy!, sessionId: "s_gone" } });
+
+    const sent = await lab.send(ALICE, "queued anyway");
+    expect(sent.error, messageOf(sent.error)).toBeUndefined();
+    expect(sent.output.outcome).toBe("kept");
+    expect((await lab.row()).status).toBe("pending");
+
+    await lab.act(ALICE, "drain");
+    const done = await lab.until((t) => t.status === "completed", "the next attempt");
+    expect(lab.seen[1]!.prompt).toContain("queued anyway");
+    expect(done.run!.sessionId).toBe(running.run!.sessionId);
+  }, 60_000);
+});
+
+describe("a run that doesn't stop in time", () => {
+  it("answers kept, so nothing invites a resend of a line the run will get", async () => {
+    const lab = host({ script: ["ignore-stop", "finished"] });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    const running = await lab.until((t) => t.status === "in_progress" && t.run !== undefined, "the run link");
+    await lab.until(() => lab.seen.length === 1, "attempt 1 to reach its harness");
+    const restore = await lab.expireStopWait(running.run!.requestId);
+
+    let sent;
+    try {
+      sent = await lab.send(ALICE, "when you can");
+    } finally {
+      restore();
+      lab.release();
+    }
+    expect(sent.error, messageOf(sent.error)).toBeUndefined();
+    expect(sent.output.outcome).toBe("kept");
+    expect((await lab.request(sent.requestId))?.status).toBe("completed");
   }, 60_000);
 });
 

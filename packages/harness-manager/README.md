@@ -140,19 +140,22 @@ The rule that makes it safe to leave running: the recorded session is the one th
 
 ## Talking to a run
 
-`manager.messageDoor(board)` builds a public action a coding flow declares, for the board whose rows the manager works:
+`manager.messageDoor({ drain })` builds a public action a coding flow declares. `drain` names the flow's `internal` entry that runs the drain of the board whose rows the manager works:
 
 ```ts
 defineFlow({
   kind: "coder",
-  actions: { message: manager.messageDoor(board) },
+  internal: { actions: { resume: { block: board.drain } } },
+  actions: { message: manager.messageDoor({ drain: "resume" }) },
   task: { actions: { work: { block: manager } } },
 });
 ```
 
-Sent `{ message }` on a run's own session, it writes the message into that session as a user item, keeps it in the manager's `turns` collection, stops a running attempt through `ctx.session.stopRequest`, parks the row for a turn and re-queues it without charging an attempt. The next attempt resumes the same coding session with the message appended to its prompt, marked as the person's words. It answers `{ outcome: "continuing" | "kept", taskId }`:
+Sent `{ message }` on a run's own session, it writes the message into that session as a user item, keeps it in the manager's `turns` collection, stops a running attempt through `ctx.session.stopRequest`, parks the row for a turn and re-queues it without charging an attempt. Then it dispatches `drain` into the session that claimed the row, so the next attempt runs in the run's own session again, not one beneath it. That attempt resumes the same coding session with the message appended to its prompt, marked as the person's words. `defineFlow` refuses a flow that doesn't declare the entry. It answers `{ outcome: "continuing" | "kept", taskId }`:
 
 - **running** → `continuing`.
+- **running, but it didn't stop within the wait, or the row couldn't be re-queued or drained** → `kept`. The run gets the message from whatever runs the row next.
+- **claimed, with its run not started yet** → `kept` for that attempt.
 - **parked on its own question, or between attempts** → `kept` for the next attempt; nothing is stopped and the question still needs answering.
 - **never started in this session, finished, or on a harness that named no session** → refused. A refusal throws `TurnRefused`, so the request fails and only a delivered message ever completes. A refused message is withdrawn, so no later attempt takes it; if an attempt already took it, the door answers `continuing` instead of refusing.
 

@@ -82,7 +82,7 @@ import {
 
 export type { RequestIdentityContext } from "./run-owner";
 import { TURNS, takeTurns, turnCollection, turnsPromptSection } from "./turns";
-import { createMessageDoor, type MessageDoorAction, type MessageDoorBoard } from "./door";
+import { createMessageDoor, type MessageDoorAction, type MessageDoorOptions } from "./door";
 import {
   INBOX,
   askQuestion,
@@ -896,14 +896,17 @@ function createManagerCapability(options: {
 export type HarnessManager = TaskWorker & {
   /**
    * The public action that takes a person's message into a run's session
-   * (FIX-1690). Declare it on the kind whose rows this manager runs, handing it
-   * the board that runs them, which re-queues the row after a stop:
+   * (FIX-1690). Declare it on the kind whose rows this manager runs, with an
+   * `internal` entry that runs their board's drain. After a stop the door
+   * dispatches that entry into the session that claimed the row, so the next
+   * attempt runs in the same session:
    *
    * ```ts
-   * actions: { message: manager.messageDoor(board) }
+   * internal: { actions: { resume: { block: board.drain } } },
+   * actions: { message: manager.messageDoor({ drain: "resume" }) }
    * ```
    */
-  messageDoor(board: MessageDoorBoard): MessageDoorAction;
+  messageDoor(options: MessageDoorOptions): MessageDoorAction;
 };
 
 /** Build the manager: one handed-off worker for one phase. */
@@ -1267,7 +1270,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
             topic,
             boardCollectionId,
           },
-          { workspacePath, branch },
+          { workspacePath, branch, childSessionId: ctx.session.identity.id },
         ),
         "the run row was opened",
       );
