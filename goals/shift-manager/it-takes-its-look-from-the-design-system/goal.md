@@ -1,8 +1,8 @@
 # shift-manager › it takes its look from the design system
 
-**Issue:** FIX-1688 and FIX-1689 (epic FIX-1649)
+**Issue:** FIX-1688, FIX-1689 and FIX-1725 (epic FIX-1649)
 
-**Outcome:** Shift Manager's light and dark look comes from the design-system package's one import. The FSD parts it reuses in a task's Session (message, reasoning, tool and code block cards) are its unedited registry copies, and they take that look with the rest of the shell. Remove the one import and no Shift Manager value is left on any of them: the shell and the cards show the registry's neutral defaults.
+**Outcome:** Shift Manager's light and dark look comes from the design-system package's one import. The FSD parts it reuses in a task's Session (message, reasoning, tool and code block cards) are its unedited registry copies, and they take that look with the rest of the shell. Remove the one import and no Shift Manager value is left on any of them: the shell and the cards show the registry's neutral defaults. The Day shift / Night shift switch in the sidebar changes the look on the spot, either way, whatever the OS prefers, and the pick holds through a reload.
 
 **Input:** Shift Manager as checked out, copied to a scratch directory and built twice: as written, and with the line `@import "@flow-state-dev/design-system/shift-manager.css";` removed from `src/styles.css`. Each build is served by Shift Manager's start script over the run-lab (`goals/shift-manager/it-shows-and-stops-a-task-run/lab/`), whose runs store a message, a reasoning item and a tool call with its result. Shift Manager's theme values and font families are read from `labs/design-system/shift-manager.css` at run time.
 
@@ -11,10 +11,12 @@
 - **reach**: the Session draws each swept registry part (message, reasoning, tool, code block) at least once.
 - **themed**: on the build as written, every painted colour is one of Shift Manager's values for that variant (to within 3 per channel), and every font is one of its families.
 - **neutral** (the closure's leg c): on the build without the import, no painted colour is any Shift Manager value from either variant, and no font is one of its families.
+- **switch**: on the build as written, in a fresh browser with nothing picked, opened on Tasks with the OS set to light. Clicking *Night shift* makes the page's computed background Shift Manager's dark `--background`; after a reload it still is. With the OS set to dark, clicking *Day shift* makes it the light `--background`; after a reload it still is. Each time the switch marks the shift the page is on (`aria-pressed`).
 
 **Anti-game:**
 - The no-theme build removes exactly one line. If that line isn't there, the setup fails: a build that "removed" an import that was never loaded proves nothing.
 - Colours are graded by computed value, never by class name. Colours set by an inline literal (syntax highlighting) are content, not skin, and are skipped.
+- Each switch click is made against the opposite OS setting, so a page that ignored the click and followed the OS fails. The two backgrounds are read from `labs/design-system/shift-manager.css`, and the setup fails if they're the same colour.
 - The copies being unedited is CI's job (`labs/shift-manager/test/static.test.ts`), checked against the install list in Shift Manager's `package.json`.
 
 **Model:** n/a (the run-lab's scripted runs).
@@ -23,6 +25,7 @@
 
 **Controls:**
 - `GOAL_CONTROL=hardcoded-accent`: Shift Manager's copy of the tool card paints its completed icon with Shift Manager's accent (`--attention`, light) as a literal class, in both builds. Must fail at **neutral** naming `tool`, light and dark, and nowhere else.
+- `GOAL_CONTROL=switch-ignored`: the switch's buttons do nothing when clicked. Must fail at **switch**, on every step after the first click, and nowhere else.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -33,3 +36,6 @@
 | 2026-10-01 | fix-1688 follow-up (Shift Manager follows the OS setting; passes set the browser's colour scheme) | n/a | PASS | Light: shell 129, message 8, reasoning 16, tool 51, code block 32 elements, 360 colours; dark: message 12, 365 colours. No-theme light 360, dark 365, none a Shift Manager value. |
 | 2026-10-01 | fix-1688 follow-up, `GOAL_CONTROL=hardcoded-accent` | n/a | FAIL (expected) | Only **neutral**, on `tool` (`svg.lucide-circle-check-big` stroke `#e8f551`), light and dark. |
 | 2026-10-01 | 475b3cd4b (feat/FIX-1649-shift-manager) | n/a | PASS | After the rename to Shift Manager. DevTeam served from `labs/shift-manager/teams/devteam`; the pages carry the boot-shift code, unset in this run. |
+| 2026-10-01 | feat/FIX-1649-shift-switch (pre-PR) | n/a | PASS | Adds **switch**. Shell 134 elements (the switch is graded with the rest). switch: OS light, nothing picked `#f0ece1`; Night shift clicked, OS light `#15140f`, and after reload; Day shift clicked, OS dark `#f0ece1`, and after reload. themed and neutral as before. |
+| 2026-10-01 | feat/FIX-1649-shift-switch (pre-PR), `GOAL_CONTROL=switch-ignored` | n/a | FAIL (expected) | Only **switch**: every step after the first click keeps the OS look (`#f0ece1` where `#15140f` is wanted, then the reverse) and the switch never marks the clicked shift. reach, themed and neutral pass. |
+| 2026-10-01 | feat/FIX-1649-shift-switch (pre-PR), `GOAL_CONTROL=hardcoded-accent` | n/a | FAIL (expected) | Only **neutral**, on `tool` (`#e8f551`), light and dark. switch passes. |

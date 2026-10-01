@@ -38,7 +38,9 @@
  *   --shift <name>    boot on a shift profile from this package's `profiles/`:
  *                     `day` (light) or `night` (dark). Falls back to the
  *                     `SHIFT_MANAGER_SHIFT` environment variable. With neither,
- *                     the page follows the OS's light or dark setting.
+ *                     the page follows the OS's light or dark setting. A shift
+ *                     picked in the sidebar's switch wins over both, in the
+ *                     browser it was picked in.
  *
  * The devtool. A task's trace link opens the run in the devtool, which can only
  * show it if it reads the store the run is in. A devtool in another process
