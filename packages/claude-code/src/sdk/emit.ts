@@ -14,7 +14,7 @@
  * the message's `parent_tool_use_id`); tools surface as `tool_output` items
  * correlated by SDK tool-use id.
  */
-import type { BlockContext } from "@flow-state-dev/core/types";
+import { itemScope, type BlockContext } from "@flow-state-dev/core/types";
 import type { TranslatedEvent } from "./types";
 
 /** Provenance shape derived once per run and stamped on every emitted item. */
@@ -104,10 +104,11 @@ function mintId(kind: string): string {
 /**
  * Fields every item carries besides its id. A close reuses the id from
  * `item.added`, so it cannot go through {@link buildBase}. The task id is
- * stamped here once and omitted outside a task scope.
+ * stamped here once and omitted outside a task scope; the owner is decided per
+ * item ({@link resolveOwnedBy}), because a sub-agent's own owner wins inside it.
  */
 function itemFields(ctx: BlockContext, provenance: EmitProvenance) {
-  const taskId = (ctx as { _blockIdentity?: { taskId?: string } })._blockIdentity?.taskId;
+  const { taskId } = itemScope(ctx);
   return {
     requestId: ctx.request.identity.id,
     itemIndex: ctx.response.getItemCount(),
@@ -125,23 +126,14 @@ function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) 
 const CONVERSATIONAL_VISIBILITY = { client: true, history: true } as const;
 
 /**
- * The owner of the container this run sits in, as the runtime describes it.
- * Every top-level item and every sub-agent container item carries it, so a run
- * inside a container shows its steps inside that container
- * (`docs/architecture/streaming.md` → "Container Ownership"). `undefined`
- * outside any container.
- */
-function runtimeOwner(ctx: BlockContext): string | undefined {
-  return (ctx as { _blockIdentity?: { ownedBy?: string } })._blockIdentity?.ownedBy;
-}
-
-/**
  * Resolve the `ownedBy` value for an item. `parentCallId` is the sub-agent's
  * tool-use id (from the SDK message's `parent_tool_use_id`); when a container
  * is open for it, the item nests under that container by carrying its
  * `provenance.blockInstanceId` (the framework's container-ownership key). The
- * sub-agent's owner wins inside it; every other item takes the
- * {@link runtimeOwner}.
+ * sub-agent's owner wins inside it; every other item takes the owner of the
+ * container this run sits in, as the runtime describes it, so a run inside a
+ * container shows its steps inside that container
+ * (`docs/architecture/streaming.md` → "Container Ownership").
  */
 function resolveOwnedBy(
   ctx: BlockContext,
@@ -150,7 +142,7 @@ function resolveOwnedBy(
 ): string | undefined {
   const subAgentOwner =
     parentCallId === undefined ? undefined : state.openSubagents.get(parentCallId)?.instanceId;
-  return subAgentOwner ?? runtimeOwner(ctx);
+  return subAgentOwner ?? itemScope(ctx).ownedBy;
 }
 
 /**
@@ -535,7 +527,7 @@ async function emitSubagentOpen(
   const startedAt = Date.now();
   // A sub-agent box is a nested container: its own item carries the OUTER owner;
   // the items inside it carry the box's id (resolveOwnedBy).
-  const owner = runtimeOwner(ctx);
+  const owner = itemScope(ctx).ownedBy;
   const item = {
     ...base,
     type: "container" as const,
@@ -558,7 +550,7 @@ async function emitSubagentClose(
 ): Promise<void> {
   const open = state.openSubagents.get(event.callId);
   if (open === undefined) return;
-  const owner = runtimeOwner(ctx);
+  const owner = itemScope(ctx).ownedBy;
   await ctx.response.emit({
     type: "item.done",
     item: {
@@ -584,7 +576,7 @@ async function emitError(
   provenance: EmitProvenance,
 ): Promise<void> {
   const base = buildBase(ctx, provenance, "error");
-  const owner = runtimeOwner(ctx);
+  const owner = itemScope(ctx).ownedBy;
   const item = {
     ...base,
     type: "error" as const,
@@ -633,7 +625,7 @@ export async function finalizeOpenItems(
   }
   state.openTools.clear();
 
-  const owner = runtimeOwner(ctx);
+  const owner = itemScope(ctx).ownedBy;
   for (const [, open] of state.openSubagents) {
     await ctx.response.emit({
       type: "item.done",
