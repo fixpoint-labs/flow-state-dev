@@ -53,7 +53,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
             {seat?.id ?? row?.assignee ?? "No worker named"}
           </p>
           <p className="text-xs text-muted-foreground" data-testid="inspector-team">
-            {seat === undefined ? "" : `team ${seat.team}`}
+            {seat === undefined ? "" : seat.team === null ? "no team" : `team ${seat.team}`}
           </p>
         </Section>
         <Section title="STARTED" testId="inspector-started">

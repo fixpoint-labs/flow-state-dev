@@ -68,7 +68,11 @@ export type Seat = {
    * written before doors were published.
    */
   door: string | null;
-  team: string;
+  /**
+   * The team the seat sits in, or `null` for an org seat, whose row carries
+   * no team (its id has no dot).
+   */
+  team: string | null;
   name: string;
 };
 
@@ -248,15 +252,15 @@ function time(value: unknown): number | null {
 }
 
 /**
- * A seat inventory row. A seat id is `<teamId>.<name>` and a team id carries
- * no dot, so the team is everything before the first one. An id with no dot is
- * its own team.
+ * A seat inventory row. A team seat's id is `<teamId>.<name>` and a team id
+ * carries no dot, so the team is everything before the first one. An id with
+ * no dot is an org seat: it is its own name, and sits in no team.
  */
 export function toSeat(row: unknown): Seat | undefined {
   const id = text(field(row, "id"));
   if (id === null) return undefined;
   const dot = id.indexOf(".");
-  const team = dot > 0 ? id.slice(0, dot) : id;
+  const team = dot > 0 ? id.slice(0, dot) : null;
   const name = dot > 0 ? id.slice(dot + 1) : id;
   return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), team, name };
 }

@@ -43,6 +43,9 @@ import { ASKER_KIND, defineAskerFlow } from "./asker.mts";
 /** The tree this Lab reads. */
 export const ASK_LAB_TREE = join(dirname(fileURLToPath(import.meta.url)), "workforce");
 
+/** One more worker, `ops.chief-of-staff`, that {@link AskLabOptions.chiefOfStaff} adds to the tree. */
+const CHIEF_OF_STAFF_TREE = join(dirname(fileURLToPath(import.meta.url)), "with-chief-of-staff");
+
 /** The one person this Lab runs as. */
 export const ASK_LAB_USER_ID = "u_ask_lab";
 
@@ -105,12 +108,15 @@ export type AskLabOptions = {
    * {@link ASK_LAB_ORG_ID}. Absent: the development organization, no credential.
    */
   bearer?: string;
+  /** Add a seat named `chief-of-staff` to the ops team, on the asker kind. Default false. */
+  chiefOfStaff?: boolean;
 };
 
 /** Build, open and hand back the Lab. */
 export async function openAskLab(options: AskLabOptions = {}) {
   const orgId = options.bearer === undefined ? DEFAULT_ORG_ID : ASK_LAB_ORG_ID;
   const tree = await readAskLabTree();
+  if (options.chiefOfStaff === true) tree.workers.push(...(await readAskLabTree(CHIEF_OF_STAFF_TREE)).workers);
   const seats = hireWorkforce(tree.workers, {
     kinds: { [ASKER_KIND]: defineAskerFlow(resourcesFromDocs(tree.documents)) as never },
     channelBoards: channelBoardIds(tree.channels),

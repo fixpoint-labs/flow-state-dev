@@ -2,8 +2,9 @@
  * What the screens compute from one snapshot, kept out of the components so
  * every surface computes it the same way.
  */
+import { splitSeatAddress } from "@flow-state-dev/workforce/browser";
 import { columnFor, isDone, readStatus } from "./columns";
-import type { Ask, BoardRow, Failure, LabSnapshot, Seat, Workstream } from "./reads";
+import type { Ask, BoardRow, Failure, LabSnapshot, Section, Seat, Workstream } from "./reads";
 
 /** A loaded snapshot (not a refusal, not an unreachable Lab). */
 export type LoadedSnapshot = Exclude<LabSnapshot, { refused: Failure } | { unreachable: Failure }>;
@@ -125,11 +126,95 @@ export function byColumn(rows: readonly BoardRow[]): Map<ReturnType<typeof colum
   return grouped;
 }
 
-/** The teams in the seat inventory, each with its seats, in first-seen order. */
+/**
+ * The teams in the seat inventory, each with its seats, in first-seen order.
+ * An org seat sits in no team, so it is in none of them.
+ */
 export function teamsOf(seats: readonly Seat[]): Array<{ team: string; seats: Seat[] }> {
   const teams = new Map<string, Seat[]>();
-  for (const seat of seats) teams.set(seat.team, [...(teams.get(seat.team) ?? []), seat]);
+  for (const seat of seats) if (seat.team !== null) teams.set(seat.team, [...(teams.get(seat.team) ?? []), seat]);
   return [...teams].map(([team, members]) => ({ team, seats: members }));
+}
+
+/**
+ * The name a seat must carry to be the chief of staff: an org seat's id, or a
+ * team seat's name. The only place Shift Manager names a seat (D2).
+ */
+const CHIEF_OF_STAFF = "chief-of-staff";
+
+/** Which seat Shift Manager talks to as the chief of staff, if exactly one is. */
+export type ChiefOfStaff = { kind: "one"; seat: Seat } | { kind: "none" } | { kind: "several"; seats: Seat[] };
+
+/**
+ * The chief of staff among the inventory's seats (D2): the seats whose name,
+ * once an Ops-hired seat's `<org>.` address is split off, is exactly
+ * `chief-of-staff`. That is an org seat (`chief-of-staff`), a team's worker
+ * (`<team>.chief-of-staff`), or either hired at runtime under the org. One is
+ * the chief of staff; two or more are a state, never a guess.
+ */
+export function chiefOfStaffOf(seats: readonly Seat[], orgId: string): ChiefOfStaff {
+  const found = seats.filter((seat) => {
+    const seatId = splitSeatAddress(orgId, seat.id) ?? seat.id;
+    return seatId.slice(seatId.indexOf(".") + 1) === CHIEF_OF_STAFF;
+  });
+  if (found.length === 0) return { kind: "none" };
+  return found.length === 1 ? { kind: "one", seat: found[0]! } : { kind: "several", seats: found };
+}
+
+/** Whether a row is running. */
+const isRunning = (row: BoardRow) => readStatus(row.status) === "in_progress";
+
+/** The first failed board read among the loaded workstreams', if any. */
+function boardFailure(snapshot: LoadedSnapshot): Failure | undefined {
+  for (const boards of Object.values(snapshot.boards)) if (!boards.ok) return boards.failure;
+  return undefined;
+}
+
+/**
+ * The shift summary's numbers (D1, BR-4): the asks waiting on the person, as
+ * Inbox lists them, and the runs going with how many workstreams they run in,
+ * from the rows Tasks reads. Each line fails on its own read (BR-8).
+ */
+export function shiftSummary(snapshot: LoadedSnapshot): {
+  asks: Section<Ask[]>;
+  running: Section<{ runs: number; workstreams: number }>;
+} {
+  const failed = snapshot.inventory.ok ? boardFailure(snapshot) : snapshot.inventory.failure;
+  const running = openRows(snapshot).filter(isRunning);
+  return {
+    asks: snapshot.asks,
+    running:
+      failed === undefined
+        ? { ok: true, value: { runs: running.length, workstreams: new Set(running.map((row) => row.channelId)).size } }
+        : { ok: false, failure: failed },
+  };
+}
+
+/**
+ * One workstream's line in the rail's STREAMS. `needsYou` is `null` when the
+ * asks did not load.
+ */
+export type StreamCount = { workstream: Workstream; running: Section<number>; needsYou: number | null };
+
+/**
+ * The rail's STREAMS (BR-19): each workstream with its running rows and its
+ * members' pending asks, the asks its Stream shows. Fails whole only when the
+ * inventory did; a workstream whose boards failed carries that failure.
+ */
+export function streamCounts(snapshot: LoadedSnapshot): Section<StreamCount[]> {
+  if (!snapshot.inventory.ok) return snapshot.inventory;
+  const asks = snapshot.asks;
+  return {
+    ok: true,
+    value: snapshot.inventory.value.workstreams.map((workstream) => {
+      const boards = snapshot.boards[workstream.id];
+      const running: Section<number> =
+        boards === undefined || boards.ok
+          ? { ok: true, value: (boards?.value.rows ?? []).filter(isRunning).length }
+          : { ok: false, failure: boards.failure };
+      return { workstream, running, needsYou: asks.ok ? asksFor(workstream, asks.value).length : null };
+    }),
+  };
 }
 
 /** How long ago `since` was, in a short human form. */
