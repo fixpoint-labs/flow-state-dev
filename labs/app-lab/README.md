@@ -141,11 +141,11 @@ It's listed once a session whose flow serves it exists. A document without that 
 
 A post appears in the transcript only once the channel has kept it. Until then the composer keeps your draft and says it's posting. If the post is refused, the draft stays and the reason is shown.
 
-**Talking to a worker.** Start a line with `@` and a worker's name to send it to that worker's task in this workstream instead of the channel. If it has several, the composer asks which. If it has none, Send is off and says so. In a task, the composer sends to that task's run. From Inbox, the reply box sends to the worker that asked, if its kind takes messages. DevForce's EM doesn't, so its reply box says so.
+**Talking to a worker.** Start a line with `@` and a worker's name to send it to that worker's task in this workstream instead of the channel. If it has several, the composer asks which. If it has none, Send is off and says so. In a task, the composer sends to that task's run. From Inbox, the reply box sends to the worker that asked, if its kind takes messages. A worker whose kind takes no message gets a reply box that says so.
 
 A running coding run stops where it is and carries on in the same session with your message. The composer says *delivered* once the run's session holds your line, not before. If the worker refuses it, your draft stays and its reason is shown. If the line never reached the Lab, Retry sends it again. If it may have arrived but App Lab can't confirm it, the draft stays and there's no Retry, so it isn't sent twice. A finished task takes no message.
 
-App Lab sends every line the same way: to the action the worker's kind names as its door on the seat's inventory row. It knows no kind and no action name of its own.
+To make your own worker kind take messages, give it one public action that declares `userMessage` and takes `{ message }`. App Lab sends lines there, using the `door` on the seat's inventory row.
 
 Each section loads on its own. If one read fails, that section says what the Lab answered and offers Retry, and the rest of the screen still draws.
 

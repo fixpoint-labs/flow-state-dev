@@ -353,8 +353,8 @@ documents this seat may touch. Everything else is that worker's settings, handed
 verbatim and parsed against its `configSchema`. That schema is closed, so a setting the flow never
 declared is refused by name at the hire.
 
-A seat takes a person's message through its **door**: the one public action its kind declares
-with `userMessage` and a `{ message }` input. The hire finds it, and `openInventory` writes it on the
+A seat takes a person's message through its **door**, which names an action on the seat's flow:
+the one public action its kind declares with `userMessage` and a `{ message }` input. The hire finds it, and `openInventory` writes it on the
 seat's [inventory row](#the-inventory) as `door`, or `null` when the kind has none.
 Two such actions on one kind is a hire warning naming both, and the seat gets `null`.
 
@@ -1743,12 +1743,13 @@ Leave both out and channels work without an inventory. Nothing is declared, noth
 - One row per channel at `inventory/channels/<channelId>`, carrying `{ id, kind, members, openedAt }`.
 - One row per member per channel at `inventory/members/<seatId>/<channelId>`.
 
-**The `run` door.** `run` is your app's door into a flow: it takes the request `openInventory`
-builds, runs it through your runtime, and rejects when the action fails. A door that hands back a
+**The `run` callback.** `run` is the callback your app hands `openInventory` to run an action: it
+takes the request `openInventory` builds, runs it through your runtime, and rejects when the action
+fails. A `run` callback that hands back a
 failed run as an ordinary value reports every channel registered while writing nothing. **It must
 also forward `request.source` into `runAction`'s own `source` option**
 (`runAction({ ..., source: request.source })`). The seat write's request carries
-`source: "internal"`, and it runs only when that value arrives. A door that drops `source` makes
+`source: "internal"`, and it runs only when that value arrives. A `run` callback that drops `source` makes
 the seat write fail, and `problems` names it.
 
 **Where the seat rows go.** Seat rows need a flow to run in, because a resource collection can only
@@ -2003,14 +2004,14 @@ the root exports, and reaches no Node built-in.
 | `membershipPrefix(seatId)` | The prefix that lists one seat's memberships, trailing slash included, relative to the collection's prefix. Refuses the same ids `membershipKey` does. |
 | `SeatInventoryRow` / `ChannelInventoryRow` / `MembershipIndexRow` | One row of each of the three collections. |
 | `seatInventoryRowSchema` / `channelInventoryRowSchema` / `membershipIndexRowSchema` | The Zod schema behind each row type. Closed: an undeclared key is dropped on the way in. |
-| `openInventory(roster, options)` | Write the inventory at boot: one row per seat, one row per channel, one row per membership. Takes `InventoryRoster` (the seats and channels to register) and `OpenInventoryOptions` (the `run` door, `seatWriter`, `userId`, `orgId`). Returns `{ seats, channels, problems }`. |
+| `openInventory(roster, options)` | Write the inventory at boot: one row per seat, one row per channel, one row per membership. Takes `InventoryRoster` (the seats and channels to register) and `OpenInventoryOptions` (the `run` callback, `seatWriter`, `userId`, `orgId`). Returns `{ seats, channels, problems }`. |
 | `inventoryWriterActions(kind)` | The two blocks a custom channel kind installs to get inventory rows, keyed by action name. Split them: `registerChannelInInventory` into `actions` (public, safe — empty input), `registerSeatsInInventory` into `internal.actions` (its input is the row data, with nothing to check it against). The string is the `kind` value those rows carry. |
 | `INVENTORY_REGISTER_CHANNEL` / `INVENTORY_REGISTER_SEATS` | The action names the writer runs: `"registerChannelInInventory"` and `"registerSeatsInInventory"`. |
 | `INVENTORY_SEAT_WRITER_SESSION` | The session id the seat-registration action runs under when `seatWriter` names none: `"inventory-binder"`. |
-| `InventoryRoster` / `InventorySeat` / `InventorySeatWriter` | What `openInventory` takes: the roster (`{ seats, channels }`), one seat (`{ id, kind, actions }`: a hired seat as is, its door read from `actions`; `{}` for a seat with none), and which flow writes the seat rows (`{ flowKind }`). |
-| `InventoryActionRequest` / `InventoryBinding` | What the `run` door receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the seat request and must reach `runAction`), and what one boot of `openInventory` returns (`{ seats, channels, problems }`). |
+| `InventoryRoster` / `InventorySeat` / `InventorySeatWriter` | What `openInventory` takes: the roster (`{ seats, channels }`), one seat (`{ id, kind, actions }`: a hired seat as is, its `door` action read from `actions`; `{}` for a seat with none), and which flow writes the seat rows (`{ flowKind }`). |
+| `InventoryActionRequest` / `InventoryBinding` | What the `run` callback receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the seat request and must reach `runAction`), and what one boot of `openInventory` returns (`{ seats, channels, problems }`). |
 | `OpenInventoryOptions` | The options `openInventory` takes: `run`, `seatWriter`, `userId`, `orgId`. |
-| `seatDoorOf(seat)` / `SeatDoor` | A hired seat's door: the one public action its kind declares with `userMessage` and a `{ message }` input. Returns `{ door }`, `null` when there is none, plus a `problem` naming both when the kind declares two (and `door: null`). `openInventory` writes it on the seat's row. |
+| `seatDoorOf(seat)` / `SeatDoor` | A hired seat's door: the one public action its kind declares with `userMessage` and a `{ message }` input. Returns `{ door, problem? }`. `door` is the action name, or `null` when the kind has none or more than one. `problem` is set when there are two or more, and names them. `openInventory` writes it on the seat's row. |
 
 ## Error Semantics
 
