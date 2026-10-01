@@ -111,7 +111,7 @@ jobs:
   packed-install:
     name: Packed release installs and imports
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     # The two-users-one-tenant suite runs against the installed copies, and its
     # queue case needs a real Redis. The script refuses that leg without one,
@@ -149,6 +149,11 @@ jobs:
           key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
           restore-keys: |
             turbo-${{ runner.os }}-${{ github.job }}-
+
+      # The suite runner's judgement rules (lockfile pins, case count, what
+      # counts as a pass), pinned against fixtures before the slow steps.
+      - name: Suite runner rules
+        run: node --test scripts/packed-install/suite.test.mjs
 
       - name: Release build
         run: pnpm release:build

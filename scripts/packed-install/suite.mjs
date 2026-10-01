@@ -44,8 +44,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join, relative } from "node:path";
+import { join, relative } from "node:path";
+import { runVitestJson } from "./vitest-json.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, "");
 
@@ -184,34 +184,12 @@ function redisAnswers(url) {
  * per file: its tests' statuses, or the reason it never produced any.
  */
 function runVitest(dir, files, env) {
-  const report = join(dir, "fsd-suite-report.json");
-  rmSync(report, { force: true });
-  const vitest = join(
-    dirname(createRequire(join(dir, "package.json")).resolve("vitest/package.json")),
-    "vitest.mjs",
+  const { testResults: results, output } = runVitestJson(
+    dir,
+    [...files.map((f) => `${COPY_DIR}/${f}`), "--config", CONFIG],
+    { env, timeout: 15 * 60_000 },
   );
-  const res = spawnSync(
-    process.execPath,
-    [
-      vitest,
-      "run",
-      ...files.map((f) => `${COPY_DIR}/${f}`),
-      "--root",
-      dir,
-      "--config",
-      CONFIG,
-      "--reporter=json",
-      `--outputFile=${report}`,
-    ],
-    { cwd: dir, encoding: "utf8", timeout: 15 * 60_000, maxBuffer: 64 * 1024 * 1024, env },
-  );
-  let results = [];
-  try {
-    results = JSON.parse(readFileSync(report, "utf8")).testResults;
-  } catch {
-    // No report: the run itself failed. Every file falls through to "never ran".
-  }
-  const tail = `${res.stderr ?? ""}${res.stdout ?? ""}`.trim().slice(-800);
+  const tail = output.slice(-800);
   return files.map((file) => {
     const r = results.find((t) => t.name.endsWith(`/${COPY_DIR}/${file}`));
     if (!r) return { file, ran: false, tests: [], message: tail };
@@ -283,9 +261,7 @@ export function runSuite(project, { redisUrl = process.env.REDIS_URL, beforeRun 
   rmSync(guardLog, { force: true });
   writeFileSync(guardLog, "");
 
-  const { files, legB, legC } = suiteCases(join(dir, COPY_DIR));
-  const expected = suiteCases(SUITE_DIR).files;
-  if (files.length !== expected.length) failures.push(`copied ${files.length} case file(s), the suite holds ${expected.length}`);
+  const { files: expected, legB, legC } = suiteCases(SUITE_DIR);
   log(`    ${expected.length} case file(s) in the suite: leg b ${legB.length}, leg c ${legC.length}`);
 
   log("    leg b · a plain server");

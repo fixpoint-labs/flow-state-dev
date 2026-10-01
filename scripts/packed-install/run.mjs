@@ -58,11 +58,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { createRequire } from "node:module";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { publishableDists } from "../add-esm-extensions.mjs";
 import { runSuite } from "./suite.mjs";
+import { runVitestJson } from "./vitest-json.mjs";
 
 const ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, "");
 const PACKAGES = join(ROOT, "packages");
@@ -337,30 +337,13 @@ export function retryWithPeers(dir, needPeer) {
 function vitestProbe(dir, specs) {
   if (specs.length === 0) return [];
   const probe = "fsd-import-probe.test.mjs";
-  const report = join(dir, "fsd-import-probe.json");
   copyFileSync(join(FIXTURES, probe), join(dir, probe));
-  rmSync(report, { force: true });
-  const vitest = join(
-    dirname(createRequire(join(dir, "package.json")).resolve("vitest/package.json")),
-    "vitest.mjs",
-  );
-  const res = spawnSync(
-    process.execPath,
-    [vitest, "run", probe, "--root", dir, "--reporter=json", `--outputFile=${report}`],
-    {
-      cwd: dir,
-      encoding: "utf8",
-      timeout: 120_000,
-      env: { ...process.env, FSD_PROBE_SPECS: JSON.stringify(specs) },
-    },
-  );
-  let tests = [];
-  try {
-    tests = JSON.parse(readFileSync(report, "utf8")).testResults.flatMap((f) => f.assertionResults);
-  } catch {
-    // No report: the run itself failed. Every spec falls through to NOT_REACHED.
-  }
-  const detail = `${res.stderr ?? ""}${res.stdout ?? ""}`.trim().slice(-300);
+  const { testResults, output } = runVitestJson(dir, [probe], {
+    env: { ...process.env, FSD_PROBE_SPECS: JSON.stringify(specs) },
+  });
+  // No report means the run itself failed: every spec falls through to NOT_REACHED.
+  const tests = testResults.flatMap((f) => f.assertionResults);
+  const detail = output.slice(-300);
   return specs.map((spec) => {
     const t = tests.find((a) => a.title === spec);
     if (!t) return { spec, ok: false, code: "NOT_REACHED", message: detail };
