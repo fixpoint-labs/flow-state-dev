@@ -89,6 +89,12 @@ export type DevToolPanelProps = {
   userIdControl?: UserIdControl;
   /** Optional outer class on the panel root. */
   className?: string;
+  /**
+   * A session to open on mount, with the instance that owns it — a link to one
+   * run. The standalone shell passes the page's `?session=<id>` (see
+   * `readSessionAddress`). The server's ownership check still decides.
+   */
+  openSessionId?: string;
 };
 
 export function DevToolPanel({
@@ -98,6 +104,7 @@ export function DevToolPanel({
   autoRecoverInterrupted = false,
   userIdControl = "internal",
   className,
+  openSessionId,
 }: DevToolPanelProps) {
   const initialConfig = useMemo(() => ({ userId, bearerToken }), [userId, bearerToken]);
 
@@ -107,6 +114,7 @@ export function DevToolPanel({
       baseUrl={baseUrl}
       autoRecoverInterrupted={autoRecoverInterrupted}
       userIdControl={userIdControl}
+      {...(openSessionId === undefined ? {} : { openSessionId })}
     >
       <DebugProvider>
         {/*
@@ -130,6 +138,7 @@ function PanelContent({ className }: { className?: string }) {
     workspaceToken,
     recoveryClient,
     selectWorkspace,
+    sessionAddressError,
   } = useDevTool();
   const [navExpanded, setNavExpanded] = useState(true);
   const [navWidth, setNavWidth] = useState(NAV_EXPANDED_WIDTH);
@@ -823,6 +832,11 @@ function PanelContent({ className }: { className?: string }) {
           <h1 className="text-sm font-semibold tracking-wide">FSD DevTools</h1>
           <Badge variant="secondary" className="text-[10px]">v0.1.0</Badge>
         </div>
+        {sessionAddressError === null ? null : (
+          <p className="truncate text-xs text-amber-300" role="status" data-testid="session-address-error">
+            {sessionAddressError}
+          </p>
+        )}
       </header>
 
       <div className="flex h-[calc(100%-2.5rem)]">

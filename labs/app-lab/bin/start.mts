@@ -26,19 +26,34 @@
  *   --port <n>        default 4300; 0 picks a free port
  *   --host <host>     default 127.0.0.1
  *   --assets <dir>    serve a different build of App Lab's pages (default: this package's dist/)
- *   --devtool <url>   where the devtool runs, for a task's trace link. The
- *                     pages are copied to a temp directory with the address
- *                     written into index.html, once the Lab has loaded, and
- *                     the copy is removed when the process stops. The build
- *                     itself is untouched.
+ *   --devtool <url>   use a devtool running elsewhere for a task's trace link,
+ *                     instead of the one this process serves (below)
+ *   --devtool-assets <dir>
+ *                     serve a different build of the devtool's pages
+ *                     (default: the shipped `@flow-state-dev/devtool` build)
+ *
+ * The devtool. A task's trace link opens the run in the devtool, which can only
+ * show it if it reads the store the run is in. A devtool in another process
+ * over an in-memory Lab never does, so by default this process serves the
+ * shipped devtool too: the same pages and the same `serve()` call `fsdev dev`
+ * makes, over this same `FlowState`, on a port of its own (the devtool's
+ * build loads its files from `/`, so it cannot share App Lab's origin). With
+ * the devtool's pages not built, App Lab still starts, says so, and leaves the
+ * link off. `--devtool <url>` replaces it with a devtool you run yourself.
+ *
+ * Either way the address reaches the page the same way: App Lab's pages are
+ * copied to a temp directory with it written into index.html, once the Lab has
+ * loaded, and the copy is removed when the process stops. The build itself is
+ * untouched.
  */
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { getAssetPath } from "@flow-state-dev/devtool";
 import { declaredDevtoolConfig, loadFsdevConfig } from "@flow-state-dev/fsdev";
-import { assertNetworkBindIsAuthenticated, isLoopbackHost, serve } from "@flow-state-dev/node";
+import { assertNetworkBindIsAuthenticated, isLoopbackHost, serve, type ServeHandle } from "@flow-state-dev/node";
 
 /** App Lab's own build output. */
 const DEFAULT_ASSETS = fileURLToPath(new URL("../dist", import.meta.url));
@@ -66,6 +81,7 @@ const { values } = parseArgs({
     host: { type: "string", default: "127.0.0.1" },
     assets: { type: "string" },
     devtool: { type: "string" },
+    "devtool-assets": { type: "string" },
   },
   strict: true,
 });
@@ -115,7 +131,28 @@ function pagesWithDevtool(url: URL): string {
   return scratch;
 }
 
-const devtoolUrl = values.devtool === undefined ? undefined : devtoolAddress(values.devtool);
+/**
+ * The devtool pages this process serves: `--devtool-assets`, or the shipped
+ * build `fsdev dev` serves (`getAssetPath()`). `undefined` when that build is
+ * missing, which turns the trace link off rather than stopping App Lab.
+ */
+function devtoolPages(): string | undefined {
+  if (values["devtool-assets"] !== undefined) {
+    const dir = from(values["devtool-assets"]);
+    if (!existsSync(resolve(dir, "index.html"))) fail(`No devtool pages at ${dir}.`);
+    return dir;
+  }
+  try {
+    return getAssetPath();
+  } catch (error) {
+    process.stderr.write(
+      `App Lab is serving no devtool, so Open trace is off: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return undefined;
+  }
+}
+
+let devtoolUrl = values.devtool === undefined ? undefined : devtoolAddress(values.devtool);
 
 // Process-global: nothing else in this package may assume the package directory as cwd.
 process.chdir(invokedFrom);
@@ -152,6 +189,25 @@ try {
   fail(error instanceof Error ? error.message : String(error));
 }
 
+// The devtool this process serves, unless `--devtool` names another. Started
+// first, because its address goes into App Lab's pages.
+let devtoolHandle: ServeHandle | undefined;
+const ownDevtool = devtoolUrl === undefined ? devtoolPages() : undefined;
+if (ownDevtool !== undefined) {
+  devtoolHandle = await serve(flowState, {
+    host,
+    port: 0,
+    basePath: "/api/flows",
+    staticDir: ownDevtool,
+    devtoolConfig,
+    handleSignals: false,
+  }).catch(async (error: unknown) => {
+    await flowState.dispose().catch(() => {});
+    return fail(`App Lab could not serve the devtool on ${host}: ${error instanceof Error ? error.message : String(error)}`);
+  });
+  devtoolUrl = new URL(`http://${host.includes(":") ? `[${host}]` : host}:${devtoolHandle.port}/`);
+}
+
 const assets = devtoolUrl === undefined ? built : pagesWithDevtool(devtoolUrl);
 
 const handle = await serve(flowState, {
@@ -162,6 +218,7 @@ const handle = await serve(flowState, {
   devtoolConfig,
   handleSignals: false,
 }).catch(async (error: unknown) => {
+  await devtoolHandle?.close().catch(() => {});
   await flowState.dispose().catch(() => {});
   return fail(`App Lab could not listen on ${host}:${port}: ${error instanceof Error ? error.message : String(error)}`);
 });
@@ -170,6 +227,7 @@ let shuttingDown = false;
 const shutdown = async () => {
   if (shuttingDown) return;
   shuttingDown = true;
+  await devtoolHandle?.close();
   await handle.close();
   removeScratch();
   process.exit(0);
@@ -180,8 +238,13 @@ process.on("SIGTERM", () => void shutdown());
 try {
   await flowState.ready();
 } catch (error) {
+  await devtoolHandle?.close().catch(() => {});
   await handle.close().catch(() => {});
   fail(`The Lab failed to start: ${error instanceof Error ? error.message : String(error)}`);
 }
 
-process.stderr.write(`\n  App Lab: http://${host}:${handle.port}\n  Lab:     ${loaded.path}\n\n`);
+process.stderr.write(
+  `\n  App Lab: http://${host}:${handle.port}\n` +
+    (devtoolHandle === undefined ? "" : `  Devtool: ${devtoolUrl!.href}\n`) +
+    `  Lab:     ${loaded.path}\n\n`,
+);

@@ -431,18 +431,39 @@ export async function writeRunRow(
  * reason from the board's own `feedback`, the previous session captured by the
  * manager before this write. A phase reading this row for anything the clear
  * touches is the same defect returning.
+ *
+ * **The attempt's own session is known at the open**, so it is written here and
+ * not left for the verdict: an attempt a person's turn stopped never reaches
+ * the verdict, and the door finds the row of a run whose next attempt has not
+ * linked yet by this field (FIX-1690).
  */
 export async function openRunRow(
   ctx: CollectionHoldingContext,
   identity: AttemptIdentity,
-  opened: { workspacePath: string; branch: string },
+  opened: { workspacePath: string; branch: string; childSessionId: string },
 ): Promise<RunRowWrite> {
   return writeRunRow(ctx, identity, {
     ...ATTEMPT_SCOPED_CLEAR,
     workspacePath: opened.workspacePath,
     branch: opened.branch,
+    childSessionId: opened.childSessionId,
     outcome: "running",
   });
+}
+
+/**
+ * The row of the run that last opened an attempt in `sessionId`, within one
+ * board's topics, or `undefined` when none did.
+ */
+export async function findRunRowBySession(
+  ctx: CollectionHoldingContext,
+  epic: string,
+  sessionId: string,
+): Promise<RunRecordState | undefined> {
+  const rows = await collectionRef(ctx, RUNS).list(`${epic}/`);
+  return rows
+    .map((ref) => ref.state as RunRecordState | undefined)
+    .find((state) => state?.childSessionId === sessionId);
 }
 
 /** Read one issue-phase's row, or `undefined` when nothing has opened it. */

@@ -11,10 +11,12 @@ import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { createLabClients, type LabClients } from "../src/lib/connection";
-import { createLabReader } from "../src/lib/reads";
+import { createLabReader, type BoardRow } from "../src/lib/reads";
 import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
+import type { OutputItem } from "@flow-state-dev/core/items";
+import { followRequest, readSessionItems, resolveRunFlow, taskItems } from "../src/lib/run";
 import { declaredBrowserReadable } from "./helpers/documents";
-import { serveLab, type ServedLab } from "./helpers/serve-lab";
+import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 
@@ -109,4 +111,72 @@ describe.each([
     if (!snapshot.resources.ok) throw new Error(snapshot.resources.failure.message);
     expect(snapshot.resources.value.length).toBeGreaterThan(0);
   });
+});
+
+// Approve & run on the DevForce tree, the way App Lab does it (FIX-1692). The
+// Lab's own config is loaded as the start script loads it, the waiting ask is
+// answered through App Lab's one answer path, and the row and its run are read
+// through the reads the task screen uses. Before the fix the config's harness
+// could never finish the phase: the run recorded no step and the row went back
+// to pending with nothing left to run it.
+/** The DevForce Lab's step-pace override (`STEP_MS_ENV` in its `harness.mts`). */
+const STEP_MS_ENV = "DEVFORCE_LAB_STEP_MS";
+
+describe("devforce-lab: an approved task's run", () => {
+  let opened: Opened;
+  beforeAll(async () => {
+    // Settling is what this checks, so the scripted run does not wait out the
+    // pacing a person watching needs. The it-shows-and-stops goal keeps it.
+    process.env[STEP_MS_ENV] = "0";
+    try {
+      opened = await open("goals/devforce-lab/lab/fsdev.config.mts", "goals/devforce-lab/lab/workforce");
+    } finally {
+      delete process.env[STEP_MS_ENV];
+    }
+  }, 120_000);
+  afterAll(async () => opened?.lab.handle.close());
+
+  it("streams its steps, stamped with the task, and settles the row the Tasks list and the task screen both read", async () => {
+    const { snapshot, clients } = opened;
+    const reader = createLabReader(clients);
+    if (!snapshot.asks.ok) throw new Error(snapshot.asks.failure.message);
+    const ask = snapshot.asks.value.find((a) => a.kind === "approval");
+    if (ask === undefined) throw new Error("the Lab raised no approval to answer");
+
+    await reader.resume(ask, { action: "approve" });
+
+    // Live: the run's request stream (what the Session tab follows) delivers
+    // its steps, stamped with this task, before anything is stored.
+    const running = await eventually<BoardRow>(async () => {
+      const next = await reader.read();
+      if (next.refused !== undefined) throw new Error(next.refused.message);
+      if (next.unreachable !== undefined) throw new Error(next.unreachable.message);
+      const row = Object.values(next.boards).flatMap((b) => (b.ok ? b.value.rows : []))[0];
+      return row?.status === "in_progress" && row.run !== null ? row : undefined;
+    }, "the approved row to start", 30_000);
+    const flowId = await resolveRunFlow(clients, running.run!.sessionId);
+    const streamed: OutputItem[] = [];
+    const follower = followRequest(clients, { flowId, requestId: running.run!.requestId }, {
+      onItem: (item) => {
+        streamed.push(item);
+      },
+      onStatus: () => {},
+      onError: () => {},
+    });
+
+    let last: BoardRow | undefined;
+    const settled = await eventually<BoardRow>(async () => {
+      last = (await reader.readBoard(running.channelId, running.boardRef)).find((r) => r.id === running.id);
+      return last !== undefined && last.status !== "pending" && last.status !== "in_progress" ? last : undefined;
+    }, "the approved row to settle", 45_000).catch((error: Error) => {
+      throw new Error(`${error.message}; last read ${last?.status ?? "no row"}: ${last?.error ?? ""}`);
+    });
+
+    follower.close();
+    expect(taskItems(streamed, running.boardRef, running.id).items.length).toBeGreaterThan(0);
+    expect(settled.status).toBe("completed");
+    expect(settled.run).not.toBeNull();
+    const { items } = await readSessionItems(clients, settled.run!.sessionId);
+    expect(taskItems(items, settled.boardRef, settled.id).items.length).toBeGreaterThan(0);
+  }, 90_000);
 });

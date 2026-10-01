@@ -17,7 +17,7 @@ pnpm --filter @flow-state-dev/app-lab build
 pnpm --filter @flow-state-dev/app-lab start --config goals/devforce-lab/lab/fsdev.config.mts
 ```
 
-It prints the address, `http://127.0.0.1:4300` by default. One process serves the Lab's API under `/api/flows` and App Lab's pages beside it. The Lab's config is loaded as-is. Nothing in it is edited or wrapped.
+It prints the address, `http://127.0.0.1:4300` by default. One process serves the Lab's API under `/api/flows` and App Lab's pages beside it. It also serves the devtool over the same Lab, on a port of its own, and prints that address too. The Lab's config is loaded as-is. Nothing in it is edited or wrapped.
 
 | Option | Default | What it does |
 |--------|---------|--------------|
@@ -25,7 +25,8 @@ It prints the address, `http://127.0.0.1:4300` by default. One process serves th
 | `--port <n>` | `4300` | `0` picks a free port. |
 | `--host <host>` | `127.0.0.1` | A non-loopback host is refused unless the Lab authenticates requests. |
 | `--assets <dir>` | `dist/` | Serve a different build of the pages. |
-| `--devtool <url>` | none | Where the devtool runs, for a task's *Open trace* link. Must be an `http(s)` address. Without it the link is off and says how to turn it on. |
+| `--devtool <url>` | the devtool App Lab serves | Point a task's *Open trace* link at a devtool you run yourself instead. Must be an `http(s)` address. App Lab then serves no devtool of its own. |
+| `--devtool-assets <dir>` | the `@flow-state-dev/devtool` build | Serve a different build of the devtool's pages. |
 
 The process runs from the directory you started it in, so a Lab's relative paths, such as a SQLite file, land where they would under `fsdev dev`.
 
@@ -133,12 +134,18 @@ It's listed once a session whose flow serves it exists. A document without that 
 
 - **Sidebar.** The organization, Jump to (⌘K), Inbox and Tasks with their counts, PROJECTS (the workstreams, until projects exist), and TEAMS: each team in the Lab's seat inventory, with exactly its seats.
 - **Jump to (⌘K).** Finds workstreams, seats, tasks and the Lab's [readable documents](#what-a-labs-config-provides). A document opens read-only.
-- **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
+- **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card, and can reply to the worker under it. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
 - **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream.
 - **A workstream.** One channel and the boards attached to it. It has four tabs: Stream (the transcript, the composer, and its members' asks), Board (five columns: QUEUED, RUNNING, NEEDS YOU, IN REVIEW, DONE), Brief (the channel's charter) and Results. The right panel lists the channel's members with their status, and its rows by column.
 - **A task.** One task's run, live, with Interrupt. See [A task](#a-task).
 
 A post appears in the transcript only once the channel has kept it. Until then the composer keeps your draft and says it's posting. If the post is refused, the draft stays and the reason is shown.
+
+**Talking to a worker.** Start a line with `@` and a worker's name to send it to that worker's task in this workstream instead of the channel. If it has several, the composer asks which. If it has none, Send is off and says so. In a task, the composer sends to that task's run. From Inbox, the reply box sends to the worker that asked, if its kind takes messages. A worker whose kind takes no message gets a reply box that says so.
+
+A running coding run stops where it is and carries on in the same session with your message. The composer says *delivered* once the run's session holds your line, not before. If the worker refuses it, your draft stays and its reason is shown. If the line never reached the Lab, Retry sends it again. If it may have arrived but App Lab can't confirm it, the draft stays and there's no Retry, so it isn't sent twice. A finished task takes no message.
+
+To make your own worker kind take messages, give it one public action that declares `userMessage` and takes `{ message }`. App Lab sends lines there, using the `door` on the seat's inventory row.
 
 Each section loads on its own. If one read fails, that section says what the Lab answered and offers Retry, and the rest of the screen still draws.
 
@@ -148,19 +155,22 @@ Open a task from Tasks or from a card on a board. The Session tab is that task's
 
 **Interrupt** stops the run (Esc does the same while the Session has focus). The screen says *interrupted* once the run has actually stopped. What happens to the task afterwards, whether it's retried or left, is up to the board, not App Lab.
 
-The panel on the right shows who is on it and when it started. If the harness records its plan and the files it touched, as Claude Code does, they're listed. Otherwise the panel says so. *Open trace* opens the devtool for the full detail. Tell App Lab where it runs:
+The panel on the right shows who is on it and when it started. If the harness records its plan and the files it touched, as Claude Code does, they're listed. Otherwise the panel says so. *Open trace* opens the run's session in the devtool, for the full detail, with the session id beside the link.
+
+The devtool it opens is the one App Lab serves: the same pages `fsdev dev` serves, over the same Lab, in the same process. That matters because the devtool can only show a run from the store the run is in. A Lab whose stores are in memory lives only in App Lab's process, so a devtool started separately has its own empty store. The link adds `?session=<id>`, and the devtool opens the session under the flow that owns it.
+
+The devtool's pages ship prebuilt in the published `@flow-state-dev/devtool` package. In this repository, build them once with `pnpm build:assets`. Without them App Lab still starts, says so, and the link is off.
+
+To use a devtool you run yourself, pass its address. It has to read the same store as App Lab, as the same user, so this suits a Lab with a persistent store, such as SQLite:
 
 ```bash
 pnpm --filter @flow-state-dev/app-lab start --config <your config> --devtool http://localhost:4000
 ```
 
-The run's session id sits beside the link. The devtool doesn't open a session from its address yet, so paste it there.
-
 ### Not there yet
 
 | On the task screen | Shows today | Filled in by |
 |---|---|---|
-| Typing to the worker, and also posting it to the workstream | A disabled composer | Not planned yet. It needs a way to add your message to a running coding run |
 | Hand off, reassign, Open PR | Disabled | The eng workstream kit |
 | Diff and Checks | An empty tab saying so | The eng workstream kit |
 | Acceptance criteria, who reviews | An empty section | The eng workstream kit |
@@ -176,7 +186,7 @@ Each of these is drawn as a named empty state or a disabled control:
 
 - **Projects.** The project level's tabs, and a project's own workstreams.
 - **Parts of the task screen.** Listed under [A task](#not-there-yet).
-- **Addressing one worker.** A line starting with `@` can't be sent. A coding worker takes no message while it runs, so for now a line goes to the whole channel.
+- **Posting a task's message to its workstream too.** Sending to the worker and posting to the channel are two separate things for now.
 - **Worker detail.** A seat's harness, and the NOW, TIME and COST columns on Tasks.
 - **IN REVIEW.** The column is drawn empty, because no row status means "in review" yet.
 
@@ -184,7 +194,7 @@ Each of these is drawn as a named empty state or a disabled control:
 
 App Lab's look comes from the [design-system](../design-system) package, through one import in `src/styles.css`. It follows your operating system's light or dark setting, and switches when you change it. Remove that import and every screen falls back to the registry's neutral defaults.
 
-The cards in a task's Session, and the ask cards in Inbox and in a workstream's Stream, are App Lab's copies of `@flow-state-dev/ui` registry components, kept unedited. The `ui:add` script in `package.json` names what was installed (`chat-assistant`, which brings the message, reasoning, tool, code block, task plan and ask cards with it). A test checks that the copies are exactly what that list ships, byte for byte.
+The cards in a task's Session, and the ask cards in Inbox and in a workstream's Stream, are App Lab's copies of `@flow-state-dev/ui` registry components, kept unedited. The `ui:add` script in `package.json` names what was installed (`chat-assistant`, which brings the message, reasoning, tool, code block, task plan and ask cards with it). `chat-assistant` brings its whole dependency closure, so App Lab also holds copies it doesn't draw today (the debate, evented-actors, routed-specialists and audit-annotation containers) and the libraries they need, such as `shiki`, `streamdown` and `motion`. A test checks that the copies are exactly what that list ships, byte for byte.
 
 ## Tests
 

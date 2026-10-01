@@ -17,6 +17,8 @@ fsdev dev
 
 The navigator groups flows by kind, with each kind's registered copies under it, identified by their exact IDs — see [Flow overview](https://flow-state.dev/docs/devtool/overview#flow-overview) for choosing between copies of one flow and opening a session under the one you picked.
 
+To open one session directly, add `?session=<id>` to the DevTool's address. It opens that session under the flow copy that owns it, or says why it can't — see [Opening a session from a link](https://flow-state.dev/docs/devtool/overview#opening-a-session-from-a-link). Embedded hosts pass the same as `DevToolPanel`'s `openSessionId` prop.
+
 ## API Surface
 
 ### `getAssetPath(): string`

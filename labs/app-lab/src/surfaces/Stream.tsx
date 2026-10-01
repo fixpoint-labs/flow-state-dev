@@ -7,15 +7,26 @@
  * A line is drawn only once the channel holds it: a post keeps its draft
  * until the request settles, then the line arrives from the stream or the
  * read after it. A refused post keeps the draft and says why.
+ *
+ * A line that starts with `@` and a member's name goes to that worker instead
+ * (BR-19, BR-20): into its task's run on this workstream's boards, through
+ * the one send path, and nothing is posted to the channel. Several tasks and
+ * the composer asks which; none and Send is off, saying so. A delivered line
+ * leaves a receipt in the stream, linking to the task's Session, until the
+ * page reloads.
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { createSessionSSEClient } from "@flow-state-dev/client";
 import type { ChannelTranscriptLine } from "@flow-state-dev/workforce/browser";
 import { AskCard } from "../components/AskCard";
 import { EmptyState, SectionFailure } from "../components/ui";
-import { asksFor, type LoadedSnapshot } from "../lib/derive";
+import { addressedSeat, asksFor, doorOf, messageableRows, rosterOf, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, type Failure, type Workstream } from "../lib/reads";
+import { describeFailure, type BoardRow, type Failure, type Workstream } from "../lib/reads";
+import { navigate } from "../lib/routes";
+import { resolveRunFlow } from "../lib/run";
+import { sendTurn, TurnNotDelivered } from "../lib/send";
+import { TurnSendStatus, useTurnSend } from "../components/TurnComposer";
 import { lineLabel, lineOf, mergeLines, postLine, readTranscriptPage } from "../lib/transcript";
 import type { Gaps } from "../gaps";
 
@@ -76,6 +87,36 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
   }, [clients, workstream.id]);
 
   const asks = snapshot.asks.ok ? asksFor(workstream, snapshot.asks.value) : [];
+  const [receipts, setReceipts] = useState<Array<{ id: number; row: BoardRow }>>([]);
+
+  /** Where an `@name` line goes, worked out from the snapshot this screen drew. */
+  const addressing = useCallback(
+    (name: string): Addressing => {
+      const roster = rosterOf(snapshot);
+      const seat = addressedSeat(roster, workstream, name);
+      if (seat === undefined) return { blocked: `@${name} ${gaps.turn.noWorker}` };
+      const boards = snapshot.boards[workstream.id];
+      if (boards !== undefined && !boards.ok) return { blocked: boards.failure.message };
+      const rows = messageableRows(roster, boards?.value.rows ?? [], seat);
+      if (rows.length === 0) return { blocked: `${seat.id} ${gaps.turn.noTask}` };
+      return {
+        blocked: null,
+        rows,
+        send: async (row, message) => {
+          const link = row.run;
+          if (link === null) throw new TurnNotDelivered("refused", gaps.turn.notStarted);
+          const flowId = await resolveRunFlow(clients, link.sessionId).catch((error: unknown) => {
+            throw new TurnNotDelivered("not-sent", describeFailure(error).message);
+          });
+          const door = doorOf(roster.seats, flowId);
+          if (door === null) throw new TurnNotDelivered("refused", `${seat.id} ${gaps.turn.noDoor}`);
+          await sendTurn(clients, { sessionId: link.sessionId, flowId, door }, message);
+          setReceipts((held) => [...held, { id: held.length, row }]);
+        },
+      };
+    },
+    [clients, gaps, snapshot, workstream],
+  );
 
   return (
     <div className="flex min-h-0 flex-1" data-testid="stream">
@@ -107,12 +148,24 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
               {transcript.lines.length === 0 ? (
                 <li className="py-6 text-center text-sm text-muted-foreground">Nothing has been posted here yet.</li>
               ) : null}
+              {receipts.map((receipt) => (
+                <li key={`receipt-${receipt.id}`} className="text-xs text-muted-foreground" data-testid="turn-receipt" data-task-id={receipt.row.id}>
+                  sent into{" "}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => navigate({ level: "task", boardRef: receipt.row.boardRef, taskId: receipt.row.id, tab: "session" })}
+                  >
+                    {receipt.row.title}
+                  </button>
+                </li>
+              ))}
             </ol>
           )}
         </div>
         <Composer
           key={workstream.id}
-          addressWorkerGap={gaps.addressWorker}
+          addressing={addressing}
           send={(body) => {
             // A channel row written before it recorded its kind names no flow to post through.
             if (workstream.kind === null) throw new Error("This channel's inventory row names no flow kind, so there is no post action to send through.");
@@ -144,42 +197,86 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
   );
 }
 
-/** The composer: posts to the whole channel, keeps its draft until the channel keeps the line. */
+/** Where an `@name` line goes: nowhere, and why; or one of the worker's tasks. */
+type Addressing =
+  | { blocked: string }
+  | { blocked: null; rows: BoardRow[]; send: (row: BoardRow, message: string) => Promise<void> };
+
+/** `@name rest` → the name and the line, or `undefined` for a line to the channel. */
+function parseAddress(draft: string): { name: string; message: string } | undefined {
+  const match = /^\s*@(\S*)\s*([\s\S]*)$/.exec(draft);
+  return match === null ? undefined : { name: match[1]!, message: match[2]!.trim() };
+}
+
+/**
+ * The composer: posts to the whole channel, keeps its draft until the channel
+ * keeps the line. A line to `@name` goes to that worker's task instead, with
+ * the send state every turn composer shares ({@link useTurnSend}): delivered
+ * only once the run's session holds it (BR-4).
+ */
 function Composer({
   send,
   onKept,
-  addressWorkerGap,
+  addressing,
 }: {
   send: (body: string) => Promise<void>;
   onKept: () => Promise<void>;
-  addressWorkerGap: string;
+  addressing: (name: string) => Addressing;
 }) {
   const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
+  const turn = useTurnSend();
+  const [chosen, setChosen] = useState<string>("");
   const mounted = useRef(true);
   useEffect(() => () => void (mounted.current = false), []);
 
-  const addressesWorker = /^\s*@/.test(draft);
-  const canSend = draft.trim().length > 0 && !sending && !addressesWorker;
+  const address = parseAddress(draft);
+  const target = address === undefined ? undefined : addressing(address.name);
+  const rows = target !== undefined && target.blocked === null ? target.rows : [];
+  const row = rows.length === 1 ? rows[0] : rows.find((r) => r.id === chosen);
+  const blocked =
+    target === undefined
+      ? null
+      : target.blocked !== null
+        ? target.blocked
+        : row === undefined
+          ? "This worker has several tasks here. Choose which one to message."
+          : null;
+  const busy = posting || turn.state.kind === "sending";
+  const canSend =
+    !busy &&
+    blocked === null &&
+    (address === undefined ? draft.trim().length > 0 : row !== undefined && address.message.length > 0);
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
+  const submit = async (event?: FormEvent) => {
+    event?.preventDefault();
     if (!canSend) return;
-    setSending(true);
-    setError(null);
+    if (address !== undefined) {
+      const to = target as Extract<Addressing, { blocked: null }>;
+      setPostError(null);
+      if (await turn.run(() => to.send(row!, address.message))) {
+        setDraft("");
+        setChosen("");
+      }
+      return;
+    }
+    setPosting(true);
+    setPostError(null);
+    turn.clear();
     try {
       await send(draft.trim());
       if (!mounted.current) return;
       setDraft("");
       await onKept();
     } catch (err) {
-      if (mounted.current) setError(err instanceof Error ? err.message : String(err));
+      if (mounted.current) setPostError(err instanceof Error ? err.message : String(err));
     } finally {
-      if (mounted.current) setSending(false);
+      if (mounted.current) setPosting(false);
     }
   };
 
+  const state = blocked !== null ? "blocked" : posting ? "sending" : turn.state.kind;
   return (
     <form onSubmit={(e) => void submit(e)} className="border-t p-3" data-testid="composer">
       <label className="sr-only" htmlFor="composer-input">
@@ -189,21 +286,47 @@ function Composer({
         id="composer-input"
         data-testid="composer-input"
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          turn.reset();
+        }}
         rows={2}
-        placeholder="Post a line to this workstream…"
+        placeholder="Post a line to this workstream, or @worker to message one…"
         className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm"
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void submit(e);
         }}
       />
+      {rows.length > 1 ? (
+        <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+          Which task?
+          <select
+            value={chosen}
+            onChange={(e) => setChosen(e.target.value)}
+            data-testid="composer-task-picker"
+            className="rounded-md border bg-background px-2 py-1 text-xs"
+          >
+            <option value="">Choose a task…</option>
+            {rows.map((r) => (
+              <option key={`${r.boardRef}/${r.id}`} value={r.id}>
+                {r.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       <div className="mt-2 flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground" data-testid="composer-status">
-          {addressesWorker ? addressWorkerGap : sending ? "Posting… the line appears once the channel keeps it." : null}
-          {error === null ? null : (
+        <p className="text-xs text-muted-foreground" data-testid="composer-status" data-state={state}>
+          {blocked !== null ? (
+            blocked
+          ) : posting ? (
+            "Posting… the line appears once the channel keeps it."
+          ) : postError !== null ? (
             <span role="alert" className="text-destructive" data-testid="composer-error">
-              {error}
+              {postError}
             </span>
+          ) : (
+            <TurnSendStatus state={turn.state} testId="composer" onRetry={() => void submit()} />
           )}
         </p>
         <button
@@ -212,7 +335,7 @@ function Composer({
           data-testid="composer-send"
           className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
         >
-          Post
+          {address === undefined ? "Post" : "Send"}
         </button>
       </div>
     </form>

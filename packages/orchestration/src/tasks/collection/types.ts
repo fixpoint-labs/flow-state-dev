@@ -337,6 +337,24 @@ export interface TaskTransitionOptions {
 }
 
 /**
+ * `awaitReview`'s options: the ordinary transition guards, plus what the park
+ * is for.
+ */
+export interface AwaitReviewOptions extends TaskTransitionOptions {
+  /**
+   * The worker was stopped so a person's message can reach it, rather than
+   * asking a question of its own (FIX-1690). Marks the row `parkedForTurn`; its
+   * `unpark` then counts a turn re-entry, and the claim after it is not
+   * charged against `maxAttempts`.
+   *
+   * Runs only from `in_progress`, whatever `ifAllowed` says: a row that
+   * settled, re-pended or parked first comes back `declined` naming the
+   * status it found.
+   */
+  forTurn?: boolean;
+}
+
+/**
  * `Task` plus a runtime accessor for the items the worker emitted while it
  * held the claim window (FIX-480 §3.1). Returned from `list` / `get` so
  * pattern aggregators (synthesizers, reviewers, replanners) can pick from
@@ -527,7 +545,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   awaitReview(
     id: string,
     feedback?: string,
-    options?: TaskTransitionOptions
+    options?: AwaitReviewOptions
   ): Promise<TaskWriteOutcome>;
   /**
    * Hand a parked task its answer and put it back in the queue (FIX-1244).

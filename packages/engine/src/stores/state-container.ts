@@ -391,6 +391,15 @@ export function createScopeStateOps<TState extends object>(
 
         for (const [field, increment] of entries) {
           const current = next[field];
+          // Absent or null is the field's empty state and starts from 0. Any
+          // other non-number is refused: coercing it to 0 would replace the
+          // stored value with the delta. Throwing aborts the whole call, so a
+          // multi-field increment with one wrong-typed field applies none.
+          if (current !== undefined && current !== null && typeof current !== "number") {
+            throw new Error(
+              `incState target "${field}" is not a number (got ${Array.isArray(current) ? "array" : typeof current})`
+            );
+          }
           const currentNumber =
             typeof current === "number" ? current : 0;
           next[field] = currentNumber + increment;

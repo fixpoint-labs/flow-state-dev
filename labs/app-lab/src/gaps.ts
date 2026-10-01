@@ -38,10 +38,7 @@ export const GAPS = {
    * first cut. When an owner ships, its entry here changes and nothing else.
    */
   task: {
-    composer:
-      "Not built yet: nothing sends your message into a running coding run. It is not planned in the first cut unless that operation is filed.",
-    alsoPost:
-      "Posting a task's message to its workstream too arrives with the same operation as typing to the worker, which is not planned in the first cut unless that operation is filed.",
+    alsoPost: "Posting a task's message to its workstream too arrives with FIX-1474.",
     handOff: "Handing a task to another worker, reassigning it and opening its PR arrive with FIX-1651.",
     diff: {
       title: "No diff yet",
@@ -58,8 +55,25 @@ export const GAPS = {
     recordsNoFiles: "This harness records no file operations. Reading a run that records none arrives with FIX-1652.",
     briefFields: "This board doesn't publish a task's context or input to a browser, so only its title and goal show here. Showing them is not planned in the first cut.",
   },
-  addressWorker:
-    "Addressing one worker with @ isn't built yet: a coding worker takes no message while it runs. Until then a line can only be posted to the whole channel.",
+  /**
+   * Why a message to a worker can't be sent (FIX-1690's rules). Not gaps that
+   * an owner fills: each is the answer for a state a task or a seat is in. A
+   * line that takes the worker's name is drawn after it.
+   */
+  turn: {
+    /** BR-14: the row has no linked run. */
+    notStarted: "This task hasn't started, so there's no session to write into.",
+    /** BR-15. */
+    finished: "A finished task takes no message.",
+    /** The run's kind declares no door. Drawn after the worker's name. */
+    noDoor: "takes no message.",
+    /** BR-22: Inbox's reply, to a kind with no door. Drawn after the worker's name. */
+    replyNoDoor: "takes no message. Answer its ask with Approve or Reject.",
+    /** BR-19: `@worker` with no task in this workstream. Drawn after the worker's name. */
+    noTask: "has no task in this workstream to message.",
+    /** `@name` that names no member of this workstream. Drawn after the name. */
+    noWorker: "is not a worker in this workstream.",
+  },
   resources: "This Lab serves no documents to the browser, so there is nothing to open here yet.",
   inboxScope:
     "Inbox lists the asks in sessions you started, and in the runs those started. Asks in another member's sessions are not listed; an organization-wide view is FIX-1652's call.",

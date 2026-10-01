@@ -290,7 +290,6 @@ const sidebars: SidebarsConfig = {
             "tools/bash",
             "tools/mcp",
             "tools/coding-agents",
-            "tools/claude-code-cli",
             "tools/claude-code-sdk",
             "tools/codex",
             "tools/cursor",

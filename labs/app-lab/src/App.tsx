@@ -27,8 +27,8 @@ import { Tasks } from "./surfaces/Tasks";
 import { findWorkstream, WorkstreamPanel, WorkstreamView } from "./surfaces/Workstream";
 
 /**
- * @param devtoolUrl The devtool App Lab was started with (`--devtool`), for a
- *   task's trace link. Absent: the link is off and says how to turn it on.
+ * @param devtoolUrl The devtool a task's trace link opens: the one App Lab
+ *   serves, or `--devtool`. Absent: the link is off and says how to turn it on.
  */
 export function App({ clients, gaps = GAPS, devtoolUrl }: { clients: LabClients; gaps?: Gaps; devtoolUrl?: string }) {
   return (

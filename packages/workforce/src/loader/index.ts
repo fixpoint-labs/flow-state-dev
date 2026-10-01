@@ -30,6 +30,10 @@
  * one wording for each refusal, `IGNORED_ENTRIES` is the one list of names
  * that never denote anything, and `validateSegment` is the one rule for what a
  * name in this tree may be. What a reader does inside a team is its own.
+ * One walk continues past the team, unexported: `resource-walk` is the descent
+ * to every place a `resources/` folder may sit, shared by the Markdown reader
+ * here and the module walk in `../codegen`, with the list of those places
+ * beside it.
  *
  * **One rule binds every reader here, and the next one added beside them.**
  * Anything the published convention tells an author they may write is either

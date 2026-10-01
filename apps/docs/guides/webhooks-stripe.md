@@ -42,6 +42,7 @@ const recordPaymentPipeline = sequencer({ name: "record-payment-pipeline" })
 
 export const billingFlow = defineFlow({
   kind: "billing",
+  actions: {}, // no caller-facing actions: webhooks are the only way in
   authentication: { defaultUserId: "system", requireUser: false },
   webhooks: {
     stripe: {
@@ -80,7 +81,7 @@ import {
 import { billingFlow } from "@/flows/billing";
 
 export const flowstate = createFlowState({
-  flows: { billingFlow },
+  flows: { billing: billingFlow() },
   stores: { default: { primary: inMemoryStores() } },
   adapters: [
     createWebhookTransportAdapter({

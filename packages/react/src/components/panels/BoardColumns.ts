@@ -19,10 +19,9 @@
  * fills its own affordances through slots.
  */
 import { createElement, useMemo, type ReactNode } from "react";
-import { createResourceClient } from "@flow-state-dev/client";
-import { useFlowContext } from "../../context/FlowContext";
 import { cardRows, type BoardCardRow } from "./cards";
 import { usePanelRows, type PanelRowSource } from "./reads";
+import { usePanelSource } from "./usePanelSource";
 import {
   bareList,
   headingStyle,
@@ -175,10 +174,7 @@ function defaultCardBody(row: BoardCardRow): ReactNode {
 export function BoardColumns(props: BoardColumnsProps): ReactNode {
   const { sessionId, boardRef, resourceClient, limit, slots = {} } = props;
 
-  const context = useFlowContext();
-  const baseUrl = context.baseUrl;
-  const fallback = useMemo(() => createResourceClient({ baseUrl }), [baseUrl]);
-  const source = resourceClient ?? fallback;
+  const source = usePanelSource(resourceClient);
 
   const state = usePanelRows<unknown>(
     source,

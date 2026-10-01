@@ -69,6 +69,7 @@ import {
 import { workerConfigSchema } from "./worker-config";
 import { heldPackageProblems, resolveHeldPackages } from "./seat-packages";
 import { recordSeatDescription } from "./seat-description";
+import { seatDoorOf } from "./seat-door";
 
 /**
  * The keys the factory itself reads. Everything else is the worker's settings.
@@ -874,6 +875,12 @@ export function hireWorkforce(
   // to be unattended by, and a warning printed beside a fatal error is noise.
   for (const warning of unattendedBoardWarnings(options.channelBoards ?? [], seats)) {
     console.warn(warning);
+  }
+  // A kind with two doors is reported, not refused: the seat is hired, and
+  // published with no door, so it takes no message until one is removed.
+  for (const seat of seats) {
+    const { problem } = seatDoorOf(seat);
+    if (problem !== undefined) console.warn(`[workforce] ${problem}`);
   }
 
   return seats;

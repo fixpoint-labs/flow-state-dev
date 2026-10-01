@@ -176,6 +176,19 @@ export type SessionMetadataInput = SessionMetadata & {
 };
 
 /**
+ * What {@link SessionScopeHandle.stopRequest} came to.
+ *
+ * - `"stopped"`: the stop is recorded on the request. A request running in this
+ *   process has its signal fired now; one running in another process is
+ *   stopped on that process's next heartbeat, as an abort is.
+ * - `"already-finished"`: the request had already ended; nothing was written.
+ * - `"not-in-this-session"`: no request under that id belongs to this session
+ *   (another session's, another tenant's, or none at all). Nothing was written,
+ *   and the answer does not say which.
+ */
+export type StopRequestOutcome = "stopped" | "already-finished" | "not-in-this-session";
+
+/**
  * Session scope handle — exposes per-session state and metadata. Resources
  * have been lifted to the flat `ctx.resources` registry (FIX-435); a
  * resource's intrinsic `scope` routes its storage to the session record
@@ -191,6 +204,14 @@ export type SessionScopeHandle<
   appendJournal(entry: JournalEntryInput): Promise<void>;
   getJournal(options?: { limit?: number; offset?: number }): Promise<JournalEntry[]>;
   setMetadata(input: SessionMetadataInput): Promise<void>;
+  /**
+   * Stop another request running in this session, by its id.
+   *
+   * The same stop the abort route records for a client, reached from a block:
+   * the request ends `aborted`. Only a request of this session can be stopped;
+   * any other id answers `"not-in-this-session"`.
+   */
+  stopRequest(requestId: string): Promise<StopRequestOutcome>;
 } & ScopeStateOps<TState>;
 
 export type UserScopeHandle<

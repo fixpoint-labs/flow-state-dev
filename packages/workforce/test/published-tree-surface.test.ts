@@ -834,11 +834,12 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
   // nothing above exercises it — a declaration the suite reported full coverage
   // over while never touching it.
   //
-  // Two rows, not seven. The extension is not one setting: `codegen/discover.ts`
-  // and `codegen/discover-resource-modules.ts` each keep their OWN
-  // `TYPESCRIPT_EXTENSIONS`, so one row per walk is the granularity at which
-  // dropping `.tsx` can actually be caught. A row for every `.ts` position would
-  // be six more fixtures that all fail or all pass together.
+  // Two rows, not seven. The extension list is one definition
+  // (`codegen/typescript-module.ts`), but `codegen/discover.ts` and
+  // `codegen/discover-resource-modules.ts` each apply it in their own walk, so
+  // one row per walk is the granularity at which a walk that stops finding
+  // `.tsx` can actually be caught. A row for every `.ts` position would be six
+  // more fixtures that all fail or all pass together.
   {
     shape: "flows/workers/<kind>.tsx",
     publishedIn: {
@@ -1081,8 +1082,8 @@ describe("the published workforce-tree surface", () => {
     expect(
       [...declaredExtensions].filter((ext) => !exercised.has(ext) && !excused.has(ext)).sort(),
       `The published pages name a file extension no row exercises.\n` +
-        `Each of the two walks keeps its own TYPESCRIPT_EXTENSIONS list, so one row per walk ` +
-        `is what covers an extension — drop it from one list and only that walk's row fails. ` +
+        `Each walk applies the extension rule in its own loop, so one row per walk is what ` +
+        `covers an extension — a walk that stops finding it fails only its own row. ` +
         `If the token is not really an extension, add it to NOT_AN_EXTENSION with why.`,
     ).toEqual([]);
   });
