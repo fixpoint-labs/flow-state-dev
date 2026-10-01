@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today: a channel's CHANNEL.md says nothing about a project, its inventory row holds id, kind, members and openedAt, PROJECTS lists every workstream flat, and the project level is four empty states. After: an org collection, projects, holds one row per project with title, brief, workstreams and sessions, created by app code or the chief of staff. One CHANNEL.md marked mintFor projects is a template, never opened. Creating a row mints the creator's talk session, which holds only the project's id, and bind writes both sides of the link. The channel inventory is unchanged and holds no talk session. Shift Manager groups workstreams under the rows, Brief, Board and Workstreams come from the row, and Stream is your own talk session."
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today: a channel's CHANNEL.md says nothing about a project, its inventory row holds id, kind, members and openedAt, PROJECTS lists every workstream flat, and the project level is four empty states. After: the org collection projects holds one row per project with title, brief, members, workstreams and sessions. One CHANNEL.md marked mintFor projects is a template naming the seats, never opened. The room is the org collection room-lines, one row per line, with its sequence counter on a row of its own. Each member reads and posts the room through their own talk session, which holds only the project's id; the gate is the row's members against the session owner. The channel inventory is unchanged. Shift Manager groups workstreams under the rows, Brief, Board and Workstreams come from the row, and Stream is the room."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -53,20 +53,21 @@
     <rect class="new" x="388" y="52" width="252" height="76" rx="5"/>
     <text class="t-lbl" x="402" y="72">PROJECTS/* · ORG ROWS · RUNTIME</text>
     <text class="t-b" x="402" y="92">title, brief, status, owner</text>
-    <text class="t-new" x="402" y="108">+ workstreams: [eng.feature]</text>
+    <text class="t-new" x="402" y="108">+ members · workstreams</text>
     <text class="t-new" x="402" y="122">+ sessions: [{ sessionId, userId }]</text>
     <rect class="new" x="656" y="52" width="252" height="76" rx="5"/>
-    <text class="t-s" x="670" y="72">project-talk/CHANNEL.md</text>
-    <text class="t-new" x="670" y="92">+ mintFor: projects</text>
-    <text class="t-s" x="670" y="110">a template · never opened at boot</text>
+    <text class="t-lbl" x="670" y="72">ROOM-LINES/* · ORG ROWS</text>
+    <text class="t-new" x="670" y="92">projectId, seq, userId, author, body</text>
+    <text class="t-s" x="670" y="108">created, never edited</text>
+    <text class="t-s" x="670" y="122">seq on its own row · retried</text>
 
     <path class="arrow" d="M514,128 L514,152"/>
-    <text class="t-lbl" x="524" y="145">CREATE MINTS · BIND WRITES BOTH SIDES</text>
-    <path class="arrow" d="M782,128 L782,152"/>
+    <text class="t-lbl" x="524" y="145">GATE: OWNER IN MEMBERS</text>
+    <path class="arrow" d="M782,152 L782,128"/>
     <rect class="new" x="388" y="156" width="520" height="40" rx="5"/>
-    <text class="t-lbl" x="402" y="174">YOUR TALK SESSION</text>
-    <text class="t-new" x="402" y="188">resourceId: "storefront"</text>
-    <text class="t-s" x="600" y="188">members and charter from the template</text>
+    <text class="t-lbl" x="402" y="174">EACH MEMBER'S OWN TALK SESSION · FROM THE MINTFOR TEMPLATE</text>
+    <text class="t-new" x="402" y="188">resourceId only · grants nothing</text>
+    <text class="t-s" x="640" y="188">post · read after cursor</text>
 
     <rect class="n-box" x="388" y="208" width="520" height="34" rx="5"/>
     <text class="t-lbl" x="402" y="229">INVENTORY ROW</text>
@@ -83,7 +84,7 @@
     <text class="t-lbl" x="738" y="274">THE PROJECT LEVEL</text>
     <text class="t-b" x="738" y="296">Brief, Board,</text>
     <text class="t-b" x="738" y="314">Workstreams: the row</text>
-    <text class="t-b" x="738" y="336">Stream: your session</text>
-    <text class="t-s" x="738" y="354">or Join</text>
+    <text class="t-b" x="738" y="336">Stream: the room</text>
+    <text class="t-s" x="738" y="354">members · on focus</text>
   </g>
 </svg>
