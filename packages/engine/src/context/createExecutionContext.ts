@@ -2083,10 +2083,17 @@ export async function createExecutionContext<
         deletedStateKeys[scope].add(key);
         return true;
       },
+      /**
+       * Content is last-write-wins (`ContentStore`), so every call writes —
+       * there is deliberately no "unchanged" short-circuit. The only thing a
+       * skip could compare against is `contentRef`, this context's own last
+       * read or write, which another writer may have replaced since; skipping
+       * on it silently drops the latest write. Re-reading the store first
+       * would cost the same round trip as the write and still race it.
+       */
       persistResourceContentKey: async (key: string, content: string): Promise<void> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);
         if (scopeId === undefined) return;
-        if (contentRef.current[key] === content) return;
         await stores.content.set(storageScopeOf(scope, scopeId), scopeId, key, content);
         contentRef.current[key] = content;
       },

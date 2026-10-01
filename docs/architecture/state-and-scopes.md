@@ -240,7 +240,9 @@ On retry exhaustion, a `ConcurrentModificationError` is thrown.
   first-touch memoize rather than an updater — it patches a single key only when that key is absent
   — so it follows `patchState`, not `updateState`; concurrent callers for one key inside a request
   are single-flighted. `writeContent` carries no version predicate at all — `ContentStore.set`
-  creates or overwrites — so it is last-writer-wins outright.
+  creates or overwrites — so it is last-writer-wins outright. It also has no no-op skip: every call
+  writes, even when the body equals what this request last read or wrote, because that copy may
+  already be stale. A `writeContent` that resolves means the store held that body at commit.
 
 ### Delta verb routing (FIX-405)
 
@@ -767,7 +769,7 @@ Two shapes make that precedence load-bearing rather than cosmetic:
 State and resource mutations emit streaming events:
 
 - `state_change` items track each scope operation
-- `resource_change` items track resource mutations. Content writes (`writeContent`) emit on both single resources and collection instances (FIX-756 parity) — always without a delta, since content carries no state projection; clients take the batched-refetch path for content
+- `resource_change` items track resource mutations. Content writes (`writeContent`) emit on both single resources and collection instances (FIX-756 parity) — always without a delta, since content carries no state projection; clients take the batched-refetch path for content. A content `resource_change` signals that a write was made, not that the stored body differs from before — rewriting the same body still emits one
 - `state_snapshot` items capture the full sequencer state at each step boundary (initial + after every step)
 - `state_change` and `resource_change` items are **invalidation signals** — clients should refetch snapshots for source-of-truth reads
 - In production mode, these items are transient (stream-only, not persisted)
