@@ -77,8 +77,8 @@ It comes down to the final hand-back: v2 redrew TEAMS on purpose, and keeping bo
 - **Waits-on lists only what waits on you.** Webhooks and routines are a named gap owned by
   FIX-1675, and the summary counts *waiting on you*, not v2's "subscriptions".
 - **A worker row shows its kind** where v2 shows focus; the harness keeps its FIX-1652 gap.
-- **The title is the look's name** (*Day shift*, *Night shift*), then the team. No on-page look
-  switch: the look is set at start.
+- **The title is the look's name** (*Day shift*, *Night shift*), then the team, and it follows the
+  look whenever it changes. The Day/Night switch is FIX-1725's; Roster doesn't touch it.
 - **No polling.** Roster draws the shared snapshot and says when it was read.
 - **Jump to's worker results open Roster**, as v2 does.
 - **Seats are grouped by the address FIX-1719 fixes** (its [BR-22](https://github.com/fixpoint-labs/flow-state-dev/pull/2613)):
