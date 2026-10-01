@@ -41,7 +41,7 @@ flowchart LR
   L2 -->|"seat there, then gone, across restarts"| P
   L3 -->|"named, then retired on approval"| P
   C["control · Deny the fire"] -.-> L2
-  L2 -.->|"under the control"| F["must FAIL · the seat is gone"]
+  L2 -.->|"under the control"| F["must FAIL · seat still present"]
 ```
 
 Leg b is the one the smaller goal would skip. Ops hires without asking ([Q2](DECISIONS.md#q2)),
@@ -54,7 +54,7 @@ makes its PASS mean the person still holds the hard-to-undo direction.
 | **Signal** | Leg a: PROJECTS lists at least two projects with their workstreams beneath them, and each project's Stream, Board, Workstreams and Brief show the Lab's content, not a gap entry. Leg b: the person asks Ops for a second coder and, with no approval asked, TEAMS shows the seat, and still does after a restart; the person asks Ops to fire it, an approval appears in Inbox, Approve, and it is gone after the next. A process killed between the decision (Ops's hire, or Approve on the fire) and the change landing comes back with it either made or not yet made, the fire still asked, never half-made. Leg c: a stored seat whose kind the profile no longer registers is listed with the reason, retired on approval, and the next boot names no refused seat |
 | **Input** | The DevTeam profile (`labs/shift-manager/teams/devteam`) with its tree carrying what FIX-1718 and FIX-1719 add, a real model, one org from the Lab's resolver. Leg c seeds its orphan by hiring a kind, then booting without it |
 | **Anti-game** | No asserting on a child's own tests. No Lab code that names a project or Ops beyond the documents. No restart skipped |
-| **Control that must fail** | Deny instead of Approve on the fire: leg b's "seat gone" must FAIL. The same hire ask in a Lab that did not opt into Ops: "seat appears" must FAIL. Today's `main`: all three legs FAIL |
+| **Control that must fail** | Deny instead of Approve on the fire: leg b's "seat gone" must FAIL, the seat still present. The same hire ask in a Lab that did not opt into Ops: "seat appears" must FAIL. Today's `main`: all three legs FAIL |
 
 ## What's in the box
 

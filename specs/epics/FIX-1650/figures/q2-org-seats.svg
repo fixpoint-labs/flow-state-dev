@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 422" role="img" aria-label="Q2, decided by Jake on 1 October 2026: which org seats does a Lab get, and may Ops hire without asking? Chosen: a CoS seat and an Ops seat that a Lab opts into, both on the built-in agent kind, where Ops hires without asking and every fire is still an approval the person answers in Inbox. Instead of the recommendation the epic made: the same two seats, with an Inbox approval on every hire as well as every fire. It comes down to the first row, the friction on a hire: none under the choice, a click in Inbox each time under the other. Second row, a tie: fire and retire are approved in Inbox either way, because a fire removes the seat's inventory row. The price, third row: a model picks who joins, within the kinds the Lab registers, never an org seat and never Ops itself. Locks in: Ops hires unattended and the approval seam stays built for fires. Flips if Jake turns hire approval back on, which is a policy switch in FIX-1719 rather than new work."
+<svg viewBox="0 0 940 422" role="img" aria-label="Q2, decided by Jake on 1 October 2026: which org seats does a Lab get, and may Ops hire without asking? Chosen: a CoS seat and an Ops seat that a Lab opts into, both on the built-in agent kind, where Ops hires without asking and every fire is still an approval the person answers in Inbox. Instead of the recommendation the epic made: the same two seats, with an Inbox approval on every hire as well as every fire. It comes down to the first row, the friction on a hire: none under the choice, a click in Inbox each time under the other. Second row, a tie: fire and retire are approved in Inbox either way, because a fire removes the seat's inventory row. The price, third row: a model picks who joins, within the kinds the Lab registers, never an org seat and never Ops itself. Locks in: Ops hires unattended and the approval seam stays built for fires. Flips if Jake turns hire approval back on, a policy switch ER-20 describes."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -97,6 +97,6 @@
     <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="353">FLIPS IF</text>
     <text class="t-b" x="494" y="373">Jake turns hire approval back on</text>
-    <text class="t-s" x="494" y="391">a policy switch in FIX-1719, no new build</text>
+    <text class="t-s" x="494" y="391">a policy switch, as ER-20 says</text>
   </g>
 </svg>

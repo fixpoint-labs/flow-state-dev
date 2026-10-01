@@ -29,7 +29,7 @@ flowchart TD
 | | |
 |---|---|
 | **Instead of** | Five issues, one per noun: project, workstream, CoS, Ops, repair · or filing nothing until Jake answers |
-| **Because** | A workstream already is a declared channel with its boards: Shift Manager lists them today, so it needs a rule, not an issue. CoS and Ops share one template and one approval policy, so they are one spec. Orphan repair (FIX-1621, adopted) needs no answer from Jake and Ops consumes it, so it is the issue that starts at the gate. It stays apart from Ops's fire for that reason only: the two share one mutation path ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
+| **Because** | A workstream already is a declared channel with its boards: Shift Manager lists them today, so it needs a rule, not an issue. CoS and Ops share one template and one hire and fire policy, so they are one spec. Orphan repair (FIX-1621, adopted) needs no answer from Jake and Ops consumes it, so it is the issue that starts at the gate. It stays apart from Ops's fire for that reason only: the two share one mutation path ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 | **Locks in** | FIX-1621 starts at the gate. FIX-1718's spec starts when Q1 is answered and FIX-1719's when Q2 is (answered 2026-10-01, [below](#q2)). The workstream's definition is FIX-1718's to write ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
 **What would change my mind:** Q2's answer giving CoS behaviour of its own (routing asks,
@@ -124,9 +124,8 @@ one approved fire.
 - **Fire and retire still ask in Inbox.** A fire removes the seat's inventory row
   ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)), the hard-to-undo
   direction, so the approval stays there ([ER-20](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
-- **"For now" is a policy, not a missing part.** The `human_approval` seam stays built for fire,
-  and a hire runs the same path without it, so asking before a hire can come back as a policy
-  switch in FIX-1719 with no new work. FIX-1719 adds no setting beyond what that needs.
+- **"For now" is a policy, not a missing part.** Asking before a hire can come back later; how
+  is [ER-20](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)'s.
 
 **What it costs.** A model picks who joins, inside the fences. Tightening later means looking
 over the seats Ops hired, which is the price the recommendation named.
