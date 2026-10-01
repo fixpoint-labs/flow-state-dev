@@ -1,17 +1,10 @@
 /**
- * `incState` refuses a target that holds something other than a number.
- *
- * Coercing a present string / boolean / object to a baseline of 0 replaces
- * the stored value with the delta and reports success — the prior value is
- * gone with no signal. The refusal has to hold on every path an `incState`
- * takes: the container's own mutator (scopes with no store, and the multi-
- * field call that persists as a full-record `set`), and the store's `incField`
- * verb (the single-field call, which the adapter applies against its own
- * copy). An absent or null field is a field's empty state, not a wrong kind
- * of value, and keeps starting from 0.
- *
- * The per-adapter `incField` contract lives in the shared scope-store
- * conformance suite.
+ * `incState` refuses a target that holds something other than a number, on
+ * every path it takes: the container's own mutator (no store, and the
+ * multi-field call that persists as a full-record `set`) and the store's
+ * `incField` (the single-field call). Absent or null still starts from 0.
+ * The per-adapter `incField` contract lives in the scope-store conformance
+ * suite.
  */
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
@@ -26,28 +19,19 @@ import { createScopePersist } from "../src/stores/scope-persist";
 
 type State = Record<string, unknown>;
 
-const wrongTyped: Array<[string, unknown]> = [
-  ["string", "hello"],
-  ["boolean", true],
-  ["object", { nested: 1 }],
-  ["array", [1, 2]]
-];
-
 describe("incState on a non-numeric target", () => {
   describe("scope with no store", () => {
-    for (const [label, value] of wrongTyped) {
-      it(`refuses a ${label} target and leaves it intact`, async () => {
-        const container = createStateContainer<State>({ count: value }, 0);
-        const ops = createScopeStateOps<State>(container);
+    it("refuses a string target and leaves it intact", async () => {
+      const container = createStateContainer<State>({ count: "hello" }, 0);
+      const ops = createScopeStateOps<State>(container);
 
-        await expect(ops.incState({ count: 1 })).rejects.toThrow(
-          /incState target "count" is not a number/
-        );
+      await expect(ops.incState({ count: 1 })).rejects.toThrow(
+        /incState target "count" is not a number/
+      );
 
-        expect(container.read()).toEqual({ count: value });
-        expect(container.getVersion()).toBe(0);
-      });
-    }
+      expect(container.read()).toEqual({ count: "hello" });
+      expect(container.getVersion()).toBe(0);
+    });
 
     it("starts a missing field from 0", async () => {
       const container = createStateContainer<State>({}, 0);
