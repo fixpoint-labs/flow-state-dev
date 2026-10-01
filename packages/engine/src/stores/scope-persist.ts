@@ -153,8 +153,9 @@ export function createScopePersist<
 /**
  * `reread` for a scope record (see `RunWithCASOptions.reread`). `undefined`
  * when the ref or the stored record is gone. Refreshes `ref.current` when the
- * stored version moved, so the retry's full-record `set` is built from the
- * stored record.
+ * stored record is newer than the one held when the read returns, so the
+ * retry's full-record `set` is built from the stored record. A write that
+ * landed during the read keeps its newer record.
  */
 export function createScopeReread<
   TState,
@@ -168,7 +169,8 @@ export function createScopeReread<
     if (held === undefined) return undefined;
     const record = await store.get(held.id);
     if (record === undefined) return undefined;
-    if (record.version !== held.version) {
+    const latest = ref.current;
+    if (latest === undefined || record.version > latest.version) {
       ref.current = record;
     }
     return { state: record.state as TState, version: record.version };

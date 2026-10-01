@@ -186,7 +186,13 @@ export async function runWithCAS<TState>({
       if (fresh === undefined || fresh.version === expectedVersion) {
         return { state: current, committed: false };
       }
-      container.commit(fresh.state, fresh.version);
+      // Another op in this context can commit while the reread is in flight
+      // (session/user/org are not serialized). Install only a newer version,
+      // as `runCommutative`'s max-version guard does, so an exhausted budget
+      // never leaves an older copy cached.
+      if (fresh.version > container.getVersion()) {
+        container.commit(fresh.state, fresh.version);
+      }
     } else {
       const result = await persist(nextState, expectedVersion, persistHint);
       if (result.ok) {
