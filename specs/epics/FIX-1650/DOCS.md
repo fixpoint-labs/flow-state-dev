@@ -8,6 +8,8 @@ published.
 
 ## UPDATE · `apps/docs/docs/workforce/overview.md` · a new section after "Hire a roster"
 
+FIX-1718 publishes the first two paragraphs; FIX-1719 adds the last two.
+
 > ## Projects, workstreams, and the seats that run them
 >
 > A workstream is a channel with the boards it holds: one place for the conversation about a
@@ -21,22 +23,25 @@ published.
 >
 > Two seats help one person run an organization. The chief of staff is who you ask what is
 > going on; it reads the boards and posts to a project's channel. Ops changes who works there:
-> ask it for another worker, or one fewer, and it puts the request in front of you to approve.
-> Nothing changes until you do. Both are ordinary workers on the built-in kind, declared under
-> `org/workers/`, and a Lab that doesn't add them doesn't have them.
+> ask it for another seat, or one fewer, and it puts the request in front of you to approve.
+> Nothing changes until you do, and every seat it hires is yours. Both are seats on the built-in
+> agent kind, declared under `org/workers/`, and a Lab that doesn't add them doesn't have them.
 >
 > Channels themselves are still declared on disk. Ops reads them; it does not open or close them.
 
 ## Ownership
 
+What [ER-18](BUSINESS-RULES.md#the-closure) holds the closure to.
+
 | Material | Publisher | Specific draft |
 |---|---|---|
-| The shared section above | FIX-1719, after the assembled behaviour is verified | This document |
+| The shared section's project and workstream paragraphs | FIX-1718, after its behaviour is verified | This document |
+| The shared section's org-seat and channel paragraphs | FIX-1719, after its behaviour is verified | This document |
 | How to declare a project and name it from a workstream; what a workstream is | FIX-1718 · `apps/docs/docs/workforce/channels.md` | Its `DOCS.md` |
 | Shift Manager's project level and PROJECTS tree; removing the matching "What isn't here yet" lines | FIX-1718 · `labs/shift-manager/README.md` | Its `DOCS.md` |
 | The CoS and Ops seats, how a Lab opts in, the approval on every hire and fire | FIX-1719 · a new page under `apps/docs/docs/workforce/`, name its spec's call | Its `DOCS.md` |
 | Finding and repairing a seat whose kind is gone | FIX-1621 · `apps/docs/docs/workforce/durable-hire.md` | Its `DOCS.md` |
 
-Publish each specific with its implementation. The shared section waits until all three
-promises in it hold; it is not published because this spec merged. No unchanged page is copied
-here.
+Publish each part with its implementation, never because this spec merged. Published prose says
+"seat" and "agent kind", never "worker" as a noun ([ER-13](BUSINESS-RULES.md#what-no-child-may-do));
+`org/workers/` is a path and stays. No unchanged page is copied here.

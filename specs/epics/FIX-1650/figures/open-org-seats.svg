@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 422" role="img" aria-label="Open question Q2, for Jake: which org seats does a Lab get, and may Ops change the roster without asking? Recommended, not yet chosen: a CoS seat and an Ops seat that a Lab opts into, both on the built-in agent kind, where every hire and every fire is an approval the person answers in Inbox. Beside it: an Ops seat alone, booted in every Lab, that hires and fires on its own within a list of allowed kinds. It comes down to the first row, who changes the roster: the person, one approval each, where the other lets a model do it inside a list. Second row: a Lab that wants neither adds nothing under the recommendation, and gets seats it never declared under the other. The price, third row: an Inbox approval for every hire and fire. Locks in: every roster change in this epic is a person&#x27;s approval. Flips if Jake wants hires to happen unattended, for example overnight."
+<svg viewBox="0 0 940 422" role="img" aria-label="Open question Q2, for Jake: which org seats does a Lab get, and may Ops change the roster without asking? Recommended, not yet chosen: a CoS seat and an Ops seat that a Lab opts into, both on the built-in agent kind, where every hire and every fire is an approval the person answers in Inbox. Beside it: an Ops seat alone, booted in every Lab, that hires and fires on its own within a list of allowed kinds. It comes down to the first row, who changes the roster: the person, one approval each, where the other lets a model do it inside a list. Second row: a Lab that wants neither adds nothing under the recommendation, and gets seats it never declared under the other. The price, third row: an Inbox approval for every hire and fire. Locks in: every roster change in this epic is a person&#x27;s approval, and FIX-1719 makes org seats hireable, each landing in the person&#x27;s own cell. Flips if Jake wants hires to happen unattended, for example overnight."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -90,7 +90,7 @@
     <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="353">LOCKS IN</text>
     <text class="t-b" x="32" y="373">Every roster change is a person's approval</text>
-    <text class="t-s" x="32" y="391">FIX-1719 ships CoS and Ops as documents</text>
+    <text class="t-s" x="32" y="391">FIX-1719 ships them and makes org seats hireable</text>
   </g>
 
   <g id="flips-if">

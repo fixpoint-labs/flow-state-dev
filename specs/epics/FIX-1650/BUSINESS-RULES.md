@@ -3,18 +3,21 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · **Rules** · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 The constraints every child spec and implementation satisfies, and where a cross-spec review
-checks them. Each has one owner, matching [the ownership matrix](DECISIONS.md#who-owns-what).
+checks them. Each has one owner. ER-1 to ER-9, ER-19 and ER-20 are in
+[the ownership matrix](DECISIONS.md#who-owns-what); the fences and process rules sit outside it.
 
 ## What a team gets, and what it doesn't
 
 | # | Rule | Owner | Checked at |
 |---|---|---|---|
-| ER-1 | A project, its workstreams, stream, board and brief are read from what the Lab's tree declares, as Q1's answer defines it | FIX-1718 decides · FIX-1719 consumes | The closure's leg a |
+| ER-1 | A project, its workstreams, stream, board and brief are read from what the Lab's tree declares, as Q1's answer defines it. *Implementer note:* a new `CHANNEL.md` key is a persisted shape (BP-030); a channel without it reads as no project and has a defined place in the PROJECTS tree | FIX-1718 decides · FIX-1719 consumes | The closure's leg a |
 | ER-2 | A workstream is a declared channel with its kind and the boards it holds. There is no Workstream type | FIX-1718 decides · FIX-1719, FIX-1720 consume | FIX-1719's spec review |
-| ER-4 | Every hire and every fire is an approval the person answers; Deny changes nothing (pending Q2) | FIX-1719 decides · FIX-1621 consumes for retire and re-hire | The closure's leg b and its control |
+| ER-4 | Every hire and every fire is an approval the person answers, raised as [ER-20](#what-a-team-gets-and-what-it-doesnt) says; Deny changes nothing (pending Q2) | FIX-1719 decides · FIX-1621 consumes for retire and re-hire | The closure's leg b and its control |
 | ER-5 | An orphan is a stored seat whose kind is not in the map the Lab boots with. It is named with the reason and repaired only on approval: retired, or re-hired onto a registered kind | FIX-1621 decides · FIX-1719 consumes | The closure's leg c |
-| ER-6 | CoS and Ops are documents on the shipped `agent` kind and seat-hire capability, which a Lab opts into. A Lab that adds neither gets neither | FIX-1719 decides · FIX-1718 consumes | FIX-1719's spec review |
-| ER-7 | Every hire, fire and repair lands in the organization the request's principal names, in that owner's cell. Single user; no org id is read from a body | FIX-1621 builds · FIX-1719 consumes | FIX-1621's tests · the closure |
+| ER-6 | CoS and Ops are documents under `org/workers/` on the shipped `agent` kind and seat-hire capability, which a Lab opts into; a Lab that adds neither gets neither. FIX-1719 makes a declared org seat hireable in Layer 2: nothing in Layer 1, no new noun, no team named `org`, no second hire store (pending Q2) | FIX-1719 decides · FIX-1718 consumes | FIX-1719's spec review |
+| ER-7 | Every hire, fire and repair lands in the organization the request's principal names, in that owner's cell. Single user; no org id is read from a body. A seat declared under `org/workers/` is not an org-owned hire cell: hiring it lands in the principal's cell too | FIX-1621 builds · FIX-1719 consumes | FIX-1621's tests · the closure |
+| ER-19 | Fire and retire are one mutation path, and it removes the seat's inventory row. A row written before the change still reads, and a row for a seat no longer hired is not listed under TEAMS (BP-030) | FIX-1621 decides · FIX-1719 consumes | FIX-1621's tests · the closure's leg b |
+| ER-20 | Ops raises each hire and fire as a `human_approval` suspension (`ctx.suspend`), the ask Inbox already renders and resumes; the change is applied only on resume with Approve, so a restart in between leaves it asked, not half-made. Whether the gate sits in the hire block or in Ops's own flow is FIX-1719's first open question | FIX-1719 decides · FIX-1621 consumes | The closure's leg b and its control |
 
 ## What no child may do
 
@@ -41,4 +44,4 @@ checks them. Each has one owner, matching [the ownership matrix](DECISIONS.md#wh
 | # | The epic is done when | Proved by |
 |---|---|---|
 | ER-9 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) is met: legs a, b and c pass, and leg b fails under Deny, on one `main` commit with every bug an earlier run found fixed as a child of this epic | FIX-1720's goal check, real model, in a browser |
-| ER-18 | The docs teach projects and the org seats as things a Lab declares, and the orphan repair as the answer to a refused seat | The publishers in [DOCS.md](DOCS.md#ownership) |
+| ER-18 | Every row in [DOCS.md's ownership table](DOCS.md#ownership) is published | Each publisher's own PR |

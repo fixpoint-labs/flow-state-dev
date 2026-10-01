@@ -7,7 +7,7 @@
 | A team that… | Today | After this epic |
 |---|---|---|
 | **runs a Lab alone in Shift Manager** (the owner, dogfooding) | PROJECTS lists every workstream on its own, and the project level shows four named empty states | Workstreams sit under the project they belong to; the project's Stream, Board, Workstreams and Brief read from the Lab's own tree |
-| **needs one more worker, or one fewer** | Edits a `WORKER.md`, or writes and guards its own hire action, then restarts | Asks Ops. Ops raises the hire or the fire in Inbox, it happens on Approve, and it survives a restart |
+| **needs one more seat, or one fewer** | Edits a `WORKER.md`, or writes and guards its own hire action, then restarts | Asks Ops. Ops raises the hire or the fire in Inbox, it happens on Approve, and it survives a restart |
 | **shipped a release that cut a kind** | The seat that ran it is refused at boot, named, and stays broken | Sees which seats lost their kind and why, and retires or re-hires each one on approval |
 | **builds the next Lab** (DevTeam, then CyberForce) | Would invent its own idea of a project and of an admin seat | Declares its projects in its tree and opts into CoS and Ops as documents, writing no code for either |
 
@@ -22,7 +22,8 @@ use rides on it. The spec work proceeds now; when the build runs is Jake's call
 
 **One person opens a Lab in Shift Manager, finds its workstreams under the projects the Lab
 declares, and changes who works there by asking Ops and approving in Inbox, with every change
-surviving a restart, from what the Lab's tree declares and with nothing new in FSD's core.**
+surviving a restart, from what the Lab's tree declares, with nothing new in Layer 1, no new noun
+and no second hire store.**
 
 | Is it the right goal? | |
 |---|---|
@@ -49,7 +50,7 @@ which is what makes its PASS mean the person decided.
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's goal check ([FIX-1720](https://linear.app/fixpoint-labs/issue/FIX-1720)), in a browser over Shift Manager, on one `main` commit after every other child merges ([ER-9](BUSINESS-RULES.md#the-closure)) |
-| **Signal** | Leg a: PROJECTS lists at least two projects with their workstreams beneath them, and each project's Stream, Board, Workstreams and Brief show the Lab's content, not a gap entry. Leg b: the person asks for a second coder, an approval appears in Inbox, Approve; TEAMS shows the seat, and still does after a restart; a fire the same way leaves it gone after the next. Leg c: a stored seat whose kind the profile no longer registers is listed with the reason, retired on approval, and the next boot names no refused seat |
+| **Signal** | Leg a: PROJECTS lists at least two projects with their workstreams beneath them, and each project's Stream, Board, Workstreams and Brief show the Lab's content, not a gap entry. Leg b: the person asks for a second coder, an approval appears in Inbox, Approve; TEAMS shows the seat, and still does after a restart; a fire the same way leaves it gone after the next. A process killed between Approve and the change landing comes back with the change either made or still asked, never half-made Leg c: a stored seat whose kind the profile no longer registers is listed with the reason, retired on approval, and the next boot names no refused seat |
 | **Input** | The DevTeam profile (`labs/shift-manager/teams/devteam`) with its tree carrying what FIX-1718 and FIX-1719 add, a real model, one org from the Lab's resolver. Leg c seeds its orphan by hiring a kind, then booting without it |
 | **Anti-game** | No asserting on a child's own tests. No Lab code that names a project or Ops beyond the documents. No restart skipped |
 | **Control that must fail** | Deny instead of Approve: leg b's "seat appears" must FAIL. Today's `main`: all three legs FAIL |
@@ -69,13 +70,10 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 |---|---|---|---|
 | [FIX-1718](https://linear.app/fixpoint-labs/issue/FIX-1718) · projects | A project as the tree declares it ([Q1](DECISIONS.md#open)); the project level and the PROJECTS tree filled; what a workstream is, written down | Half the goal: the shell's project level is empty | Backlog · spec route · **holds for Q1** |
 | [FIX-1621](https://linear.app/fixpoint-labs/issue/FIX-1621) · orphan repair | Finds stored seats whose kind is gone, names the reason, retires or re-hires each on approval | Without it, a cut kind leaves a broken seat nobody can clear, and Ops would invent its own detector | Backlog · spec route · adopted from Workforce L2 |
-| [FIX-1719](https://linear.app/fixpoint-labs/issue/FIX-1719) · CoS and Ops | Two org seats a Lab opts into; Ops hires and fires on approval and calls FIX-1621's repair | The other half: who works here, changed without a file edit | Backlog · spec route · **holds for Q2** · blocked by FIX-1621 |
+| [FIX-1719](https://linear.app/fixpoint-labs/issue/FIX-1719) · CoS and Ops | Two org seats a Lab opts into, made hireable from `org/workers/`; Ops hires and fires on approval and calls FIX-1621's repair | The other half: who works here, changed without a file edit | Backlog · spec route · **holds for Q2** · blocked by FIX-1621 |
 | [FIX-1720](https://linear.app/fixpoint-labs/issue/FIX-1720) · closure · **required** | The QA plan and its runs on one `main` commit | Proves the whole | Backlog · blocked by FIX-1718, FIX-1621, FIX-1719 |
 
-3 issues and a closure, none started. Whether three is really two: CoS and Ops could fold into
-FIX-1718, but they answer a different question for Jake and share nothing with projects but the
-closure. Whether three is really four: [D1](DECISIONS.md#d1) keeps CoS and Ops together and
-gives the workstream no issue of its own.
+3 issues and a closure, none started. Why not two or four: [D1](DECISIONS.md#d1).
 
 ## How the issues flow into each other
 
@@ -101,7 +99,8 @@ its frame without waiting on it.
 - **The hire plane** (durable hire, plane isolation, the seat-hire capability) is composed, not
   rebuilt; degrade-by-name at boot stays the default until FIX-1621 ships.
 - **Shift Manager's frame** stays FIX-1649's; this epic replaces only the gap entries it fills.
-- **Related, deliberately not children:** FIX-1715, FIX-1716, FIX-1717 (Workforce EM's tracks)
+- **Related, deliberately not children:** FIX-1715 and FIX-1716 (Workforce EM's tracks), FIX-1717
+  (a Claude thread's)
   · FIX-1651, FIX-1652, FIX-1653 · FIX-1637 and FIX-1645 · FIX-1550 · FIX-1415 and FIX-1341.
 
 ## Sign off
@@ -119,7 +118,8 @@ people are still managed by editing files.
    costs a file and a restart until channel admin ships.
 
 **Open: two, for Jake.** [Q1](DECISIONS.md#open), what a project is, and
-[Q2](DECISIONS.md#open), which org seats a Lab gets and whether Ops asks before it hires.
+[Q2](DECISIONS.md#q2), which org seats a Lab gets, where they are hired, and whether Ops asks
+before it hires.
 Each has a recommendation. Rules: [BUSINESS-RULES.md](BUSINESS-RULES.md). Order:
 [PLAN.md](PLAN.md).
 

@@ -29,7 +29,7 @@ flowchart TD
 | | |
 |---|---|
 | **Instead of** | Five issues, one per noun: project, workstream, CoS, Ops, repair · or filing nothing until Jake answers |
-| **Because** | A workstream already is a declared channel with its boards: Shift Manager lists them today, so it needs a rule, not an issue. CoS and Ops share one template and one approval policy, so they are one spec. Orphan repair (FIX-1621, adopted) needs no answer from Jake and Ops consumes it, so it is the issue that starts at the gate |
+| **Because** | A workstream already is a declared channel with its boards: Shift Manager lists them today, so it needs a rule, not an issue. CoS and Ops share one template and one approval policy, so they are one spec. Orphan repair (FIX-1621, adopted) needs no answer from Jake and Ops consumes it, so it is the issue that starts at the gate. It stays apart from Ops's fire for that reason only: the two share one mutation path ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 | **Locks in** | FIX-1621 starts at the gate. FIX-1718's spec starts when Q1 is answered and FIX-1719's when Q2 is. The workstream's definition is FIX-1718's to write ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
 **What would change my mind:** Q2's answer giving CoS behaviour of its own (routing asks,
@@ -110,26 +110,35 @@ It comes down to the project stream: only a channel already has a conversation.
 **In plain terms.** The PRD names two default seats: a chief of staff (CoS) and Ops. Today a
 person changes who works in a Lab by editing files and restarting. The question is which seats
 a Lab gets, whether it gets them without asking for them, and whether Ops may add or remove a
-worker on its own.
+seat on its own. One fact shapes the answer: a seat declared at the org level can't be hired
+today ([Decided in review](#decided-in-review-recorded-so-no-child-reopens-them)).
 
 **The trade-off.** Approval on every hire and fire costs a click in Inbox each time and means
 nothing changes overnight; letting Ops act within a list of allowed kinds removes the click and
 means a model decides who works there. Booting the seats in every Lab saves a Lab one step and
-gives seats to Labs that never wanted them.
+gives seats to Labs that never wanted them. Declaring the seats where the tree puts org seats
+costs a small Layer 2 change so they can be hired; parking them in a team named `org` costs
+nothing now and breaks the tree's locked layout.
 
-**My recommendation:** two org-level seats, CoS and Ops, under `workforce/org/workers/`, both on
-the built-in `agent` kind, which a Lab opts into. **CoS** is the person's one point of contact:
-it reads the inventory and boards, posts to project streams, and holds no hire tool. **Ops**
-holds the existing seat-hire capability: it hires and fires seats of kinds the Lab registers,
-never an org seat and never itself, and every hire and fire is an approval the person answers
-in Inbox. Ops also clears orphaned seats through FIX-1621. Neither opens channels ([D3](#d3)).
-How a Lab opts in (a template it copies, or documents it names) is FIX-1719's spec's call.
+**My recommendation:** two org-level seats, CoS and Ops, declared under `workforce/org/workers/`
+(the locked tree's place for rare shared seats), both on the built-in `agent` kind, which a Lab
+opts into. FIX-1719 makes such a seat hireable in Layer 2: no new noun, no new folder, no second
+hire store. Declared there is not owned there: every hire, fire and repair lands in the
+principal's own cell ([ER-7](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). **CoS** is
+the person's one point of contact: it reads the inventory and boards, posts to project streams,
+and holds no hire tool. **Ops** holds the existing seat-hire capability: it hires and fires
+seats of kinds the Lab registers, never an org seat and never itself, and each hire and fire is
+an approval the person answers in Inbox ([ER-20](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
+Ops clears orphaned seats through FIX-1621. Neither opens channels ([D3](#d3)). How a Lab opts
+in is FIX-1719's spec's call.
 
 **What would change my mind:** if you want hires to happen unattended, for example a Lab that
 staffs itself overnight. Then Ops acts within an allowlist and the person is told after.
 
 **What being wrong costs:** loosening approval later is a policy change in FIX-1719's
 documents. Tightening it after unattended hires have shipped means auditing seats a model chose.
+The Layer 2 change is additive and stores nothing of its own, since hired seats sit in the
+principal's cell; moving org seats later removes it without a migration.
 
 ![Q2: CoS and Ops, opt-in, Ops asks first, recommended, beside Ops alone, always on, hiring freely; decided by who changes the roster](figures/open-org-seats.svg)
 
@@ -137,7 +146,10 @@ It comes down to who changes the roster: the person, or a model inside a list.
 
 ## Who owns what
 
-![Who owns what: nine cross-cutting rules by FIX-1718, FIX-1621, FIX-1719 and FIX-1720, one decides or builds cell per rule](figures/ownership.svg)
+![Who owns what: eleven cross-cutting rules by FIX-1718, FIX-1621, FIX-1719 and FIX-1720, one decides or builds cell per rule](figures/ownership.svg)
+
+The matrix holds ER-1 to ER-9, ER-19 and ER-20. ER-10 to ER-18 are fences and process that bind
+every child alike, so they sit outside it.
 
 Every rule has one owner. FIX-1621 decides what an orphan is, so Ops calls its read rather than
 writing a second detector. FIX-1718 decides what a project and a workstream are, so CoS joins a
@@ -151,18 +163,31 @@ project's channel the way FIX-1718 defines it. The closure only checks.
   Q2 where Q2 reaches and by its spec otherwise.
 - **Single user, one org per Lab run, from the principal.** No org id in a request body; nothing
   multi-user is built.
-- **FIX-1715, FIX-1716 and FIX-1717 are not children.** They are Workforce EM's parallel tracks.
-- **A fired seat leaves TEAMS.** Today `fire` keeps the seat's inventory row. FIX-1621 retires
-  first, so it owns removing the row; FIX-1719's Ops fires through the same path
-  ([PLAN.md](PLAN.md#coordination-seams-to-watch)).
+- **FIX-1715, FIX-1716 and FIX-1717 are not children.** The first two are Workforce EM's
+  parallel tracks; FIX-1717 is a Claude thread's.
+- **A fired seat leaves TEAMS.** Today `fire` keeps the seat's inventory row, a shipped behaviour
+  this set changes. FIX-1621 owns the change and Ops fires through the same path
+  ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
+- **An org seat is not hireable today (settled, REFUTED).** Read-based on `origin/main`, not
+  executed: the declared roster reader is teams-only and passes over `org/workers/`
+  (`read-workforce-directory.ts:14-16`; `resource-walk.ts` walks it for resources only), and
+  seat-hire never reads a `WORKER.md` (`hire` takes `seatId`, `flow`, `settings`,
+  `instructions`). FIX-1719 closes both halves in Layer 2: the reader lists org seats with no
+  team, and either the seat factory boots them or `hire` names the declared seat. Which half is
+  FIX-1719's first design question.
+- **No team named `org`.** CoS and Ops in a `teams/org/` team would need no loader change, and
+  forks the locked tree (`workforce/org/{resources,skills,channels,workers}/`). Rejected.
 
 ## What the end-state POC showed
 
-None built. Every piece the set composes ships today; the open questions are product calls a
-POC can't answer.
+No end-state POC. One claim was settled by a read-based check instead; its verdict is in
+[Decided in review](#decided-in-review-recorded-so-no-child-reopens-them).
 
 ## How it got here
 
 - **Drafted (Oct 1)** from the Architect's guidance on FIX-1650, FIX-1649's ownership amendment
   (#2423) and the shipped code; FIX-1718, FIX-1719 and FIX-1720 filed, FIX-1621 adopted. Q1 and
   Q2 opened for Jake with recommendations.
+- **Review round 1 (Oct 1).** Q2 reshaped to org seats under the locked tree, made hireable in
+  Layer 2 and fenced to the principal's cell; ER-19 (fire removes the row) and ER-20 (the
+  approval) added; the org-seat claim settled.
