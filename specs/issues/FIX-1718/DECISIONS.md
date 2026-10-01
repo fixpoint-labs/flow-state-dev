@@ -2,121 +2,162 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-What was considered, what was chosen, why, and what each choice locks in. Three decisions are
-the sign-off surface. What a project is was Jake's call, not this spec's: a channel of its own,
-named by its workstreams with one `CHANNEL.md` key, with the channel as the durable record
-everyone finds and no project store beside channels (the epic's Q1, amended on #2622).
+What a project is was Jake's call: data the organization owns, with a conversation minted from a
+template ([HOLD](https://github.com/fixpoint-labs/flow-state-dev/pull/2625#issuecomment-5939811709),
+2026-10-01). How that works on today's code is the FIX-1728 spike's
+([SPIKE.md](https://github.com/fixpoint-labs/flow-state-dev/blob/spike/FIX-1728/specs/spikes/FIX-1728/SPIKE.md),
+3 of 3 legs passing, with the control going red): a row in an org collection, a `mintFor:`
+template, and a two-sided link. This file decides what the spike left to FIX-1718.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-1718"] --> D1["D1 · the declared channel is the record"]
-  D1 -.->|"rejected"| X1["a project store<br/>Jake's fence"]
-  D1 -.->|"rejected"| X2["project in session state<br/>found by one user only"]
-  I --> D2["D2 · one level, checked at start"]
-  D2 -.->|"rejected"| X3["a bad link shown ungrouped<br/>a typo goes quiet"]
+  I["FIX-1718"] --> D1["D1 · the row lists its workstreams"]
+  D1 -.->|"rejected"| X1["project on the inventory row<br/>the tree can't name a runtime row"]
+  D1 -.->|"rejected"| X2["a workstreams collection<br/>a second store, for one field"]
+  I --> D2["D2 · a talk session stores only its link"]
+  D2 -.->|"rejected"| X3["members copied at mint<br/>the chief of staff never arrives"]
   I --> D3["D3 · No project holds the rest"]
-  D3 -.->|"rejected"| X4["every workstream must name one<br/>breaks every Lab today"]
+  D3 -.->|"rejected"| X4["every workstream needs a project<br/>breaks every Lab today"]
+  I --> Q["Q1 · open, FIX-1729 · Q2 · decided by Jake"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · The declared channel is the project's record; its inventory row publishes the project on every boot
+## D1 · A project's row lists its workstreams, and a workstream belongs to at most one project
 
 | | |
 |---|---|
-| **Instead of** | A project record or store of its own · the project written into the channel's session state at open, where its members and charter go |
-| **Because** | Jake's fence: the channel is the durable thing everyone in the Lab finds, and there is no second project store. The `CHANNEL.md` is that record, and the inventory row is how it reaches a browser and a seat, since neither reads the tree. The row is org-scoped; a channel's session is bound to the user it was opened for, so a project kept there would be found by one person only. Session state is also written once, at first open, so on a store that survives a restart an edit to `project:` would never arrive. The row is rewritten from the tree on every boot. The value is built onto the channel kind at boot, as `boards:` is, so a request cannot set it ([BP-031](../../../docs/contributing/best-practices.md)) |
-| **Locks in** | One field on the channel row, `project`, `null` when a channel names none and on a row written before it (BP-030). An edit lands on the next restart. Nothing in Layer 1, no session field, user isolation unchanged. A project's Stream and Brief are read through its channel's session, as a workstream's are today; only what a project is, and which workstreams it holds, is org-level here. A row whose channel left the tree keeps its last project, as rows already keep their last members |
+| **Instead of** | The project on each workstream's inventory row, or a `project:` line in its `CHANNEL.md` · a `workstreams` collection whose rows name their project |
+| **Because** | A project is created at runtime, and a channel's file and its inventory row are written from the tree at boot. The tree can't name a row that doesn't exist yet. The row already is the project's one record, so its workstreams belong there: the chief of staff changes one row, and Shift Manager reads one collection. A collection of workstream rows would hold one field today |
+| **Locks in** | `workstreams: string[]` on the row, full channel ids of declared channels. Writing a row refuses an id the inventory doesn't hold, and an id another row already lists. The inventory row and `CHANNEL.md` gain nothing for this. An id whose channel later leaves the tree stays on the row, and the screens say so rather than drop it |
 
-![D1: the declared channel is the record, its row publishing the project each boot, chosen, beside the project in the channel's session state. Decides it: who can find it. Price: one more stored field](figures/d1-declared-channel.svg)
+![D1: the project row lists its workstreams, chosen, beside the project named on each workstream's inventory row. Decides it: when a project exists. Price: the one-project rule is checked on write](figures/d1-row-lists-workstreams.svg)
 
-It comes down to who can find it: a session answers only the user it was opened for.
+It comes down to when a project exists: at runtime, after the tree was read.
 
-**What would change my mind:** Jake asking for an org-scoped project resource of its own, as
-boards and the seat inventory are (asked 2026-10-01). Then that resource replaces the one module
-that reads projects off the rows, and the `CHANNEL.md` key stays its source.
+**What would change my mind:** workstreams needing data of their own, such as status or an owner.
+Then they become rows of a second collection, the spike's open wall, and this field moves there.
 
 <a name="d2"></a>
-## D2 · One level, checked at start: `project:` names another declared channel that names none, or the Lab doesn't start
+## D2 · A talk session stores only its link; its members and charter come from the template at every start
 
 | | |
 |---|---|
-| **Instead of** | Projects of projects · a link that doesn't resolve shown as a workstream under No project, with a warning |
-| **Because** | A typo in a project name should be found at the start, where the author is, not by someone wondering why a workstream left its project. The binder already refuses a `routing:` fallback that names no member, for the same reason. Nesting buys nothing the design calls for: the shell has three levels, and a project inside a project has no screen |
-| **Locks in** | `project:` is a full channel id (`<team>.<name>`, as `members:` names full seat ids), so a project can gather workstreams from several teams. It may not name its own channel, a channel the roster doesn't declare, or a channel that itself names a project. Each is refused by name with the others, and nothing is registered. A channel kind `defineChannelFlow` didn't build can't carry `project:`, and is refused as for `boards:` |
+| **Instead of** | Members and charter copied into the session when it's minted, as a declared channel's are at first open |
+| **Because** | A copy is frozen. A project created before the chief of staff is on the template would never gain the chief of staff, and the same is true of every member edit after it. That's the hole a reviewer found in the earlier draft, and minting doesn't close it. Built onto the template's kind at boot, as `boards:` is, an edit lands on every project's conversation at the next restart |
+| **Locks in** | Talk state is `resourceId` plus the transcript. A template may not declare `boards:`: a board per project is the spike's open wall. A declared channel keeps today's behaviour, members copied at first open, unchanged |
 
-![D2: one level, checked at start, chosen, beside a bad link shown ungrouped. Decides it: what a typo does. Price: a failed start](figures/d2-checked-at-start.svg)
+![D2: a talk session stores only its link, chosen, beside members copied at mint. Decides it: whether the chief of staff reaches projects made before it. Price: a template's members apply to all its projects](figures/d2-link-only.svg)
 
-It comes down to what a typo does: shown ungrouped, nobody notices until it matters.
+It comes down to whether the chief of staff reaches the projects made before it.
 
-**What would change my mind:** a Lab that needs a project of projects. Then the rule loosens to a
-chain without cycles, and the shell gets a level to show it.
+**What would change my mind:** a Lab that needs different members per project. Then the row
+carries them and the kind reads them from it, not from the session.
 
 <a name="d3"></a>
-## D3 · A workstream that names no project sits under No project, and a Lab with no projects runs as it does today
+## D3 · A workstream no project names sits under No project, and a Lab with no projects runs as it does today
 
 | | |
 |---|---|
-| **Instead of** | Every workstream required to name a project · channels without one left out of PROJECTS |
-| **Because** | Every Lab on `main` declares no project. Requiring one breaks them all at the next start, and leaving them out hides workstreams a person works in today. No project is where they already are: the shell's `unassigned` route is the project level for them |
-| **Locks in** | PROJECTS lists each project with its workstreams, then No project with the rest, shown only when there are some. A channel is a project only when a workstream names it, so a project channel nobody names yet is listed under No project as a workstream. No project's Stream and Brief say it has no project channel; its Board and Workstreams list its workstreams |
+| **Instead of** | Every workstream required to belong to a project · workstreams with none left out of PROJECTS |
+| **Because** | Every Lab on `main` has no projects. Leaving their workstreams out hides the work people do today, and requiring a project stops them. The shell's `unassigned` route already is the project level for them |
+| **Locks in** | PROJECTS lists every row, with its workstreams, even a project with none yet. Then No project, when it holds any. No project's Stream and Brief say it has no conversation or brief; Board and Workstreams list its workstreams |
 
-![D3: No project holds the rest, chosen, beside every workstream required to name one. Decides it: Labs that declare none today. Price: a group in the tree that is not a channel](figures/d3-no-project.svg)
+![D3: No project holds the rest, chosen, beside every workstream required to have one. Decides it: Labs with no projects today. Price: a group that is not a project](figures/d3-no-project.svg)
 
-It comes down to every Lab on `main`: requiring a project stops each one at its next start.
+It comes down to every Lab on `main`, which has no projects.
 
-**What would change my mind:** a Lab where No project is a mistake every time. Then that Lab
-can turn a missing link into a refusal at boot; the default stays.
+**What would change my mind:** a Lab where No project is a mistake every time. That Lab can
+refuse it in its own code; the default stays.
+
+<a name="pending-with-jake"></a>
+## Jake's calls
+
+Both come from the spike's forks. Q2 is decided. Q1 is open pending the [FIX-1729](https://linear.app/fixpoint-labs/issue/FIX-1729) spike, and
+this spec builds its baseline so that either answer swaps the conversation parts only.
+
+<a name="q1"></a>
+### Q1 · When two people talk about one project, do they see each other's lines? · open, pending FIX-1729
+
+- **In plain terms.** Each person gets a private conversation about the project with its seats.
+  The project's record is shared, and the conversations aren't. The engine refuses one person's
+  reads and posts into another's.
+- **The trade-off.** (A) one per person: nothing new below Workforce. (B) one shared thread,
+  kept as rows on the project: all Workforce, but the conversation becomes project data.
+  (C) sharing sessions between people: an auth change in the engine.
+- **Baseline, per Jake:** (A), built here. A shared room is open pending [FIX-1729](https://linear.app/fixpoint-labs/issue/FIX-1729).
+  FIX-1650 is single-user first, so v1 has one conversation per project either way.
+- **What would change my mind:** a v1 Lab where two real people must read one thread.
+- **If wrong:** moving to (B) later adds a thread collection, and today's conversations stay
+  readable but private. Choosing (C) puts an engine auth change on this issue's path.
+- **Here it shapes:** Stream shows the viewer's own conversation, and a viewer with none sees
+  **Join** (BR-20). Rules marked *(baseline)* change if the room is shared. Nothing else does:
+  the row, D1, D3 and the grouping hold either way, and the conversation is reached through one
+  module on each side ([PLAN guardrails](PLAN.md#guardrails)).
+
+<a name="q2"></a>
+### Q2 · Ship this inside FIX-1650, or wait for the parked rooms work? · decided: ship now (Jake, 2026-10-01)
+
+- **In plain terms.** The epic says no conversation is opened at runtime. Minting one when a
+  project is created is exactly that.
+- **The trade-off.** Shipping now amends the epic's D2, D3 and ER-3 to allow two runtime moves,
+  minting on create and joining, and nothing else. Waiting keeps them, but this issue then has
+  no projects to show.
+- **Jake's answer:** ship now. FIX-1650 is being amended (#2622) to allow the narrow slice,
+  recorded as the first case of FIX-1341's lane.
+- **What would change my mind:** the Collab rooms work being close enough to wait for.
+- **If wrong:** if Collab redesigns rooms, `bind` and `mintFor:` get renamed. Stored data is two
+  fields, so the move is small.
+- **Here it shapes:** the whole issue: it is in FIX-1650's scope.
 
 ## Decided, not asked
 
-- **Two PRs.** PR 1 is Workforce: the key, its check, the row field, `discover`. PR 2 is Shift
-  Manager, the DevTeam tree and the goal check, and depends on PR 1.
-- **A workstream is a declared channel with its kind and the boards it holds**, as the epic's
-  ER-2 asks this issue to write down. A project channel is a channel too: it can hold a board,
-  and its rows join the project's Board.
-- **The project's Board is one swimlane per workstream**, the project channel's own boards
-  first, each drawn with the workstream Board's columns. What sits on a row is FIX-1651's.
-- **The project level's team strip** shows the teams with a seat in the project channel's or its
-  workstreams' members.
-- **A project's address is its channel id**: `/p/eng.storefront/stream`. No project keeps
-  `/p/unassigned`, which can't collide, since every channel id carries a dot.
-- **The DevTeam tree declares two projects**, `eng.storefront` (the brief for `eng.feature`) and
-  a second with a board-less workstream, so the epic's closure has two to find. The DevForce
-  host's "one channel" rule becomes "one channel holds a board".
-- **Project channels in the DevTeam tree declare no members.** A post there wakes nobody until
-  the chief of staff joins (FIX-1719).
-- **`discover` names the project** in each channel's entry, and on a project channel the
-  workstreams that name it, from the rows it already lists.
+- **Two PRs.** PR 1, Workforce: the row schema, `mintFor:`, the mint reaction, `bind`, `join`
+  and the workstream check. PR 2: Shift Manager, the DevTeam profile and the goal check. The
+  spike is a write-up with no issue of its own to build it, and this is the first issue that
+  needs it.
+- **The row's brief is the project's Brief.** The template's charter is the same for every
+  project, so it can't be one project's brief.
+- **App defaults call `bind` from product code.** A Lab's default projects are created by its
+  own code at boot, for the Lab's user, if their rows are absent. No `CHANNEL.md` names a
+  project.
+- **Talk sessions are never registered in the channel inventory.** They're per person and
+  per project; the inventory stays the Lab's declared channels.
+- **The project Board is one lane per board-holding workstream,** in the workstream Board's
+  columns. A workstream with no board has no lane.
+- **A project's address is its row id:** `/p/storefront/stream`. A row id can't be
+  `unassigned`, which stays No project's.
+- **The DevTeam profile ships two default projects,** one per workstream, so the epic's closure
+  has two to find. Its tree gains one board-less workstream and the talk template. The DevForce
+  host's "one channel" rule becomes "one channel holds a board", and a template isn't a channel.
+- **One project per workstream is checked on write,** not by a lock. Two writers racing is a
+  single-user non-case in v1. PLAN names it.
 
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
-| A project as a team, or a named pack of channels | Not Jake's answer (epic Q1) |
-| The project channel lists its workstreams | Moving a workstream would edit two files; Jake's answer has the workstream name its project |
-| A project channel marked by a key of its own | A second key, past the epic's limit of one ([D2](../../epics/FIX-1650/DECISIONS.md#d2)) |
-| Loading `org/channels/` so a project can sit at org level | A loader change this issue doesn't need: a full channel id already crosses teams |
-| Shift Manager reading each channel's session for its project | One read per channel per refresh, bound to one user and frozen at first open (D1) |
-| A project collection of its own now, org-scoped as boards are | Nothing this issue reads needs it: the channel row holds the project. Asked of Jake on 2026-10-01; the one module that reads projects is the swap point |
+| A project as a declared channel, named by a `project:` key | Jake's HOLD: a project is runtime data, not a tree declaration |
+| The project in a session's state | Found only by the person who opened it; Jake's fence |
+| A `CHANNELS.md` list of rooms | Invent-killed (ER-10) |
+| A template written only in TypeScript | Nothing a Lab author can read. Kept for app defaults, which call `bind` from code |
+| Registering each talk session in the inventory | Floods the Lab's channel list with per-person conversations |
 
 ## Settled
 
-Nothing settled by a run. The facts the design rests on, read on `main` `1e51ab9f` and checked
-by the Architect: a channel is a session at its own id (`ChannelManifest.id`,
-`manifest.ts:143-149`), opened by `openChannels` for one `userId` and bound to that user, and
-left as it is on later boots, with members and charter in its state; the inventory register
-runs every boot and writes the org-scoped row from inside that session
-(`channel-flow.ts:913-981`); `boards:` is rebuilt from the files on every bind
-(`channels.md` → "Opening it").
+By the FIX-1728 POC on `main` `1e51ab9f`: a seat-like flow creates an org row at runtime, and
+another user in the org lists it (P1, P2). Creating it mints the creator's talk session through
+`reactTo.created`, with `resourceId` in its state (P1). Another person's session answers 404 to
+reads and posts (P3, P6). `join` mints a second session and the row lists both (P4). The
+built-in channel kind minted that way can't post (R1), and `CHANNEL.md` refuses an unknown key
+(R2). Not exercised: two joins at once.
 
 ## How it got here
 
-- **Draft** — framed from Jake's Q1 answer and his fence: the declared channel is the project's
-  record, a workstream names its project with one `CHANNEL.md` key checked at start, the row
-  publishes it for Shift Manager and `discover`, and No project holds the rest; two PRs.
-
-**Open: none.**
+- **Draft 1** framed a project as a declared channel named by a `project:` key, as epic Q1
+  first read. Jake held it.
+- **Draft 2 (this)** rewritten onto FIX-1728's model. FIX-1727 is superseded by it. Jake
+  then decided Q2 and sent Q1 to [FIX-1729](https://linear.app/fixpoint-labs/issue/FIX-1729).

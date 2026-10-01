@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="What changes, today on the left and after on the right. Today: a workstream's CHANNEL.md says nothing about a project, its inventory row holds id, kind and members, and Shift Manager lists every workstream flat under PROJECTS while the project level's four tabs are empty states. After: the workstream's CHANNEL.md names its project channel with one line, checked at boot; the row also carries that project, written every boot; Shift Manager groups workstreams under each project, fills Stream, Board, Workstreams and Brief from the project channel, and lists the workstreams that name none under No project; discover names each channel's project for seats."
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today: a channel's CHANNEL.md says nothing about a project, its inventory row holds id, kind, members and openedAt, PROJECTS lists every workstream flat, and the project level is four empty states. After: an org collection, projects, holds one row per project with title, brief, workstreams and sessions, created by app code or the chief of staff. One CHANNEL.md marked mintFor projects is a template, never opened. Creating a row mints the creator's talk session, which holds only the project's id, and bind writes both sides of the link. The channel inventory is unchanged and holds no talk session. Shift Manager groups workstreams under the rows, Brief, Board and Workstreams come from the row, and Stream is your own talk session."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -50,38 +50,40 @@
   <g id="after">
     <rect class="pane" x="372" y="16" width="552" height="368" rx="6"/>
     <text class="t-lbl" x="388" y="38">AFTER</text>
-    <rect class="n-box" x="388" y="52" width="252" height="52" rx="5"/>
-    <text class="t-s" x="402" y="72">feature/CHANNEL.md</text>
-    <text class="t-new" x="402" y="92">+ project: eng.storefront</text>
-    <rect class="new" x="656" y="52" width="252" height="52" rx="5"/>
-    <text class="t-s" x="670" y="72">storefront/CHANNEL.md</text>
-    <text class="t-b" x="670" y="92">a project · body is the brief</text>
-    <path class="arrow" d="M640,78 L654,78"/>
+    <rect class="new" x="388" y="52" width="252" height="76" rx="5"/>
+    <text class="t-lbl" x="402" y="72">PROJECTS/* · ORG ROWS · RUNTIME</text>
+    <text class="t-b" x="402" y="92">title, brief, status, owner</text>
+    <text class="t-new" x="402" y="108">+ workstreams: [eng.feature]</text>
+    <text class="t-new" x="402" y="122">+ sessions: [{ sessionId, userId }]</text>
+    <rect class="new" x="656" y="52" width="252" height="76" rx="5"/>
+    <text class="t-s" x="670" y="72">project-talk/CHANNEL.md</text>
+    <text class="t-new" x="670" y="92">+ mintFor: projects</text>
+    <text class="t-s" x="670" y="110">a template · never opened at boot</text>
 
-    <path class="arrow" d="M514,104 L514,128"/>
-    <text class="t-lbl" x="524" y="121">CHECKED AT BOOT</text>
-    <rect class="n-box" x="388" y="132" width="520" height="52" rx="5"/>
-    <text class="t-lbl" x="402" y="152">INVENTORY ROW · REWRITTEN EVERY BOOT</text>
-    <text class="t-b" x="402" y="172">id, kind, members, openedAt</text>
-    <text class="t-new" x="632" y="172">+ project: "eng.storefront"</text>
+    <path class="arrow" d="M514,128 L514,152"/>
+    <text class="t-lbl" x="524" y="145">CREATE MINTS · BIND WRITES BOTH SIDES</text>
+    <path class="arrow" d="M782,128 L782,152"/>
+    <rect class="new" x="388" y="156" width="520" height="40" rx="5"/>
+    <text class="t-lbl" x="402" y="174">YOUR TALK SESSION</text>
+    <text class="t-new" x="402" y="188">resourceId: "storefront"</text>
+    <text class="t-s" x="600" y="188">members and charter from the template</text>
 
-    <path class="arrow" d="M514,184 L514,208"/>
-    <path class="arrow" d="M800,184 L800,208"/>
-    <rect class="new" x="388" y="212" width="320" height="156" rx="5"/>
-    <text class="t-lbl" x="402" y="232">SHIFT MANAGER · PROJECTS</text>
-    <text class="t-b" x="402" y="254">eng.storefront</text>
-    <text class="t-s" x="418" y="272">└ eng.feature</text>
-    <text class="t-b" x="402" y="294">eng.second-project</text>
-    <text class="t-s" x="418" y="312">└ eng.…</text>
-    <text class="t-b" x="402" y="334">No project</text>
-    <text class="t-s" x="418" y="352">└ whatever names none</text>
-    <rect class="new" x="724" y="212" width="184" height="72" rx="5"/>
-    <text class="t-lbl" x="738" y="232">DISCOVER · SEATS</text>
-    <text class="t-b" x="738" y="254">names each</text>
-    <text class="t-b" x="738" y="272">channel's project</text>
-    <rect class="new" x="724" y="296" width="184" height="72" rx="5"/>
-    <text class="t-lbl" x="738" y="316">THE PROJECT LEVEL</text>
-    <text class="t-b" x="738" y="338">four tabs filled</text>
-    <text class="t-s" x="738" y="356">from the project channel</text>
+    <rect class="n-box" x="388" y="208" width="520" height="34" rx="5"/>
+    <text class="t-lbl" x="402" y="229">INVENTORY ROW</text>
+    <text class="t-b" x="520" y="230">unchanged · no talk session listed</text>
+
+    <rect class="new" x="388" y="254" width="320" height="114" rx="5"/>
+    <text class="t-lbl" x="402" y="274">SHIFT MANAGER · PROJECTS</text>
+    <text class="t-b" x="402" y="294">Storefront rebuild</text>
+    <text class="t-s" x="418" y="310">└ eng.feature</text>
+    <text class="t-b" x="402" y="330">Second project</text>
+    <text class="t-s" x="418" y="346">└ eng.…</text>
+    <text class="t-b" x="402" y="362">No project · the rest</text>
+    <rect class="new" x="724" y="254" width="184" height="114" rx="5"/>
+    <text class="t-lbl" x="738" y="274">THE PROJECT LEVEL</text>
+    <text class="t-b" x="738" y="296">Brief, Board,</text>
+    <text class="t-b" x="738" y="314">Workstreams: the row</text>
+    <text class="t-b" x="738" y="336">Stream: your session</text>
+    <text class="t-s" x="738" y="354">or Join</text>
   </g>
 </svg>
