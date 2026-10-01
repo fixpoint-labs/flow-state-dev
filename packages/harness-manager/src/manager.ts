@@ -81,6 +81,8 @@ import {
 } from "./run-owner";
 
 export type { RequestIdentityContext } from "./run-owner";
+import { TURNS, takeTurns, turnCollection, turnsPromptSection } from "./turns";
+import { createMessageDoor, type MessageDoorAction, type MessageDoorBoard } from "./door";
 import {
   INBOX,
   askQuestion,
@@ -876,6 +878,9 @@ function createManagerCapability(options: {
       // question a child session writes is the one the coordinator session
       // reads — one registration, not two storage slots that look alike.
       [INBOX]: inboxCollection,
+      // Where a person's message to a run is kept for the attempt that acts on
+      // it (FIX-1690). The door writes it; the next attempt's prompt takes it.
+      [TURNS]: turnCollection,
       // Declared so the fence can read the LIVE claim off the board row. The
       // board declares the same definition object, so this is one registration
       // rather than a second storage slot that looks like the first.
@@ -884,8 +889,25 @@ function createManagerCapability(options: {
   });
 }
 
+/**
+ * The manager: a task worker, plus the door a coding kind declares so a person
+ * can talk to its runs.
+ */
+export type HarnessManager = TaskWorker & {
+  /**
+   * The public action that takes a person's message into a run's session
+   * (FIX-1690). Declare it on the kind whose rows this manager runs, handing it
+   * the board that runs them, which re-queues the row after a stop:
+   *
+   * ```ts
+   * actions: { message: manager.messageDoor(board) }
+   * ```
+   */
+  messageDoor(board: MessageDoorBoard): MessageDoorAction;
+};
+
 /** Build the manager: one handed-off worker for one phase. */
-export function harnessManager(options: ManagerOptions): TaskWorker {
+export function harnessManager(options: ManagerOptions): HarnessManager {
   const {
     boardCollectionId,
     boardCollection,
@@ -989,7 +1011,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // Merging the manager's entries LAST would prevent all three, and it is the
   // wrong fix: the host's declaration would simply not work, with nothing
   // anywhere saying why. This fails loudly, naming the key.
-  const RESERVED_ACCESSORS = new Set([RUNS, boardCollectionId, INBOX]);
+  const RESERVED_ACCESSORS = new Set([RUNS, boardCollectionId, INBOX, TURNS]);
 
   /** Refuse a capability set that claims one of the manager's accessors. */
   const assertClaimsNothingReserved = (
@@ -1009,7 +1031,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     throw new Error(
       `[harness-manager] a capability on \`uses\` declares collection(s) ` +
         `${claimed.map((k) => `"${k}"`).join(", ")}, which the manager owns (${when}) — ` +
-        `"${RUNS}" is the run record, "${INBOX}" is the question inbox, and ` +
+        `"${RUNS}" is the run record, "${INBOX}" is the question inbox, "${TURNS}" holds ` +
+        `a person's messages to a run, and ` +
         `"${boardCollectionId}" is the board ledger the attempt fence reads. All ` +
         `are already available to the phase; declaring them again would replace ` +
         `the manager's own.`,
@@ -1380,7 +1403,17 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         issue: state.issue!,
         phase: state.phase!,
       });
-      return { prompt };
+
+      // **A person's turns, after the phase's own prompt** (FIX-1690). Kept by
+      // the door for this attempt, oldest first, in a section that says whose
+      // words they are: a third channel beside `feedback` (why the last
+      // attempt failed) and `answers` (what a person answered), for the reason
+      // those two are already apart. Taken last, once the checkout is ready, so
+      // an attempt that could not start leaves them for the next one.
+      const turns = await takeTurns(ctx, state.issue!, state.phase!, input.attempts);
+      return {
+        prompt: turns.length === 0 ? prompt : `${prompt}\n\n${turnsPromptSection(turns)}`,
+      };
     },
   });
 
@@ -1785,7 +1818,15 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     .rescue([{ block: recordFailure }]);
 
   worker.validate();
-  return worker;
+
+  const messageDoor = createMessageDoor({
+    name,
+    boardCollectionId,
+    boardCollection,
+    capability: managerCapability as unknown as DefinedCapability,
+    boardTasks,
+  });
+  return Object.assign(worker, { messageDoor }) as HarnessManager;
 }
 
 /**

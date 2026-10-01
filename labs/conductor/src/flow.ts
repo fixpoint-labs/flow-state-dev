@@ -1111,6 +1111,12 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           // declined answer must not run one.
           .tapIf((outcome: AnswerOutput) => outcome.drained, board.drain),
       },
+      /**
+       * Send a person's message into a run. Called in the run's own session
+       * (the board row's run link names it): a running attempt stops, and the
+       * next one resumes the same coding session with the message.
+       */
+      message: manager.messageDoor(board),
     },
   });
 

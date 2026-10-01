@@ -1,0 +1,9 @@
+{
+  "issue": "TURN-RESUME",
+  "phase": "implement",
+  "epic": "harness-manager-turn",
+  "factFileName": "turn-proof.txt",
+  "holdJob": "Somewhere in this conversation you have been given a fact. Do not act on it yet, and do not write it anywhere. Your job right now is to wait for instructions from a person. Wait by running exactly this shell command with the Bash tool, in the foreground (never in the background): node -e \"setTimeout(() => {}, 100000)\". When it ends, run it again the same way, and keep doing so until a person tells you otherwise.",
+  "nextJob": "Continue the task.",
+  "turnText": "Stop waiting. Write down what you were given: the value that followed 'FACT:' earlier in this conversation, on its own, with no other text, into the file named here. Do not commit anything and do not open a pull request. The file:"
+}
