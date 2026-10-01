@@ -47,7 +47,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `task-plan` | Section-grouped renderer for a TaskCollection. Subscribes to `task-change` and `task-board-meta` |
 | `artifact` | Composable artifact viewer shell with header, actions, and content areas |
 | `file-tree` | Tree-structured file and folder display with expand/collapse and selection |
-| `jsx-preview` | Live JSX/TSX renderer for untrusted JSX, with streaming support and error fallback. Renders only presentational HTML and static SVG tags, and drops `on*` handlers, `dangerouslySetInnerHTML`, `srcDoc`, `form` and non-http(s)/mailto/tel URLs. Components passed in `components` are trusted and render as given |
+| `jsx-preview` | Live JSX/TSX renderer that treats its input as untrusted, with streaming support and error fallback. Renders only allowlisted HTML and static SVG tags (`div`, `table`, `img`, `svg`, ...), and drops `on*` handlers, `dangerouslySetInnerHTML`, `srcDoc`, `srcset`, the `form` attribute, and any URL that isn't http(s), mailto, tel or relative. `{...}` expressions are limited to a safe subset, and input over 100,000 characters is refused. Components passed in `components` are trusted and render as given; the JSX can read everything in `bindings` |
 | `sandbox` | Source/preview tab wrapper for JSX artifacts using JSXPreview and CodeBlock |
 | `info-card` | Generative-UI info card: title, optional image, fact rows. Pairs with `emitInfoCard` |
 | `link-card` | Generative-UI link card: rich preview for an external URL. Pairs with `emitLinkCard` |
