@@ -6,10 +6,16 @@
  * request, through the flow its session names. Mounted only while the tab is
  * open, so a person reading Brief pays for no stream. A session shared with
  * other tasks shows only the items stamped with this task's id, and says so.
+ *
+ * Each item is drawn by App Lab's copy of the registry's item components
+ * (`chatAssistantRenderers`: message, reasoning, tool, status, error, task
+ * plan), the same copies the design system skins.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { buildItemRenderStream, ItemRenderer, useFlowContext } from "@flow-state-dev/react";
+import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext } from "@flow-state-dev/react";
+import { chatAssistantRenderers } from "../components/flow-state/chat-assistant";
+import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { EmptyState, SectionFailure } from "../components/ui";
 import { readStatus } from "../lib/columns";
 import { useLab } from "../lib/lab-data";
@@ -54,7 +60,11 @@ export function TaskSession() {
           </div>
         );
       case "open":
-        return <RunItems key={`${run.run.flowId}/${run.run.sessionId}/${run.run.requestId}`} run={run.run} />;
+        return (
+          <FlowProvider renderers={chatAssistantRenderers}>
+            <RunItems key={`${run.run.flowId}/${run.run.sessionId}/${run.run.requestId}`} run={run.run} />
+          </FlowProvider>
+        );
     }
   })();
 
@@ -127,7 +137,8 @@ function RunItems({ run }: { run: OpenRun }) {
     if (stored === undefined) return undefined;
     const mine = taskItems(stored.items, task.boardRef, task.taskId);
     const items = buildItemRenderStream(mine.items, renderers).flatMap((segment) => (segment.kind === "item" ? [segment.item] : segment.items));
-    return { items, shared: mine.shared };
+    // The task plan card reads the whole session's task changes, not only this task's items.
+    return { items, shared: mine.shared, session: stored.items };
   }, [stored, task.boardRef, task.taskId, renderers]);
 
   if (failure !== undefined) {
@@ -151,19 +162,21 @@ function RunItems({ run }: { run: OpenRun }) {
           More than shown: this session holds more steps than one read returns.
         </p>
       ) : null}
-      <ol className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-4" data-testid="session-items">
-        {shown.items.map((item) => (
-          <li key={`${item.requestId}/${item.id}`} data-testid="session-item" data-item-id={item.id} data-item-type={item.type}>
-            {item.type === "suspension" ? (
-              <button type="button" className="text-sm underline" onClick={() => navigate({ level: "inbox", suspensionId: null })}>
-                Waiting on you: answer it in Inbox
-              </button>
-            ) : (
-              <ItemRenderer item={item} />
-            )}
-          </li>
-        ))}
-      </ol>
+      <SessionItemsProvider value={shown.session}>
+        <ol className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-4" data-testid="session-items">
+          {shown.items.map((item) => (
+            <li key={`${item.requestId}/${item.id}`} data-testid="session-item" data-item-id={item.id} data-item-type={item.type}>
+              {item.type === "suspension" ? (
+                <button type="button" className="text-sm underline" onClick={() => navigate({ level: "inbox", suspensionId: null })}>
+                  Waiting on you: answer it in Inbox
+                </button>
+              ) : (
+                <ItemRenderer item={item} />
+              )}
+            </li>
+          ))}
+        </ol>
+      </SessionItemsProvider>
       {shown.items.length === 0 ? (
         <p className="px-4 pb-4 text-sm text-muted-foreground" data-testid="session-empty">
           The run hasn't recorded a step yet.

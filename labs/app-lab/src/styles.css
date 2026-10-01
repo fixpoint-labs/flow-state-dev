@@ -1,69 +1,110 @@
 /*
- * App Lab's stylesheet. Everything App Lab draws references a token by name;
- * the only colour values in App Lab are the neutral defaults below.
+ * App Lab's stylesheet. Everything App Lab draws references a token by name,
+ * and App Lab holds no colour value of its own.
  *
- * The token names are the registry's semantic set plus the four status tokens
- * FIX-1655 adds (success, warning, info, attention, each with -foreground).
- * FIX-1655's design-system package supplies App Lab's own values; when it
- * lands, this block is replaced by its one import and nothing else changes.
+ * The token definitions are the registry's `tokens` item as `fsdev ui add`
+ * writes it: neutral defaults in a base layer, and the Tailwind names pointed
+ * at them. App Lab's look is the design-system package's one import, whose
+ * unlayered values win over those defaults, light by default and dark under
+ * `.dark`. Remove that one line and App Lab draws the neutral defaults.
  */
 /* Scan only App Lab's own source, whichever directory the build runs from. */
 @import "tailwindcss" source(none);
+@import "@flow-state-dev/design-system/app-lab.css";
 @source "./";
+@source "../node_modules/streamdown/dist/*.js";
 @custom-variant dark (&:is(.dark *));
 
-/* Token definitions: neutral defaults. */
-@theme {
-  --color-background: hsl(0 0% 100%);
-  --color-foreground: hsl(240 10% 3.9%);
-  --color-card: hsl(0 0% 100%);
-  --color-card-foreground: hsl(240 10% 3.9%);
-  --color-popover: hsl(0 0% 100%);
-  --color-popover-foreground: hsl(240 10% 3.9%);
-  --color-primary: hsl(240 5.9% 10%);
-  --color-primary-foreground: hsl(0 0% 98%);
-  --color-secondary: hsl(240 4.8% 95.9%);
-  --color-secondary-foreground: hsl(240 5.9% 10%);
-  --color-muted: hsl(240 4.8% 95.9%);
-  --color-muted-foreground: hsl(240 3.8% 46.1%);
-  --color-accent: hsl(240 4.8% 95.9%);
-  --color-accent-foreground: hsl(240 5.9% 10%);
-  --color-destructive: hsl(0 84.2% 60.2%);
-  --color-destructive-foreground: hsl(0 0% 98%);
-  --color-border: hsl(240 5.9% 90%);
-  --color-input: hsl(240 5.9% 90%);
-  --color-ring: hsl(240 5.9% 10%);
-  --color-success: hsl(142 71% 45%);
-  --color-success-foreground: hsl(0 0% 100%);
-  --color-warning: hsl(38 92% 50%);
-  --color-warning-foreground: hsl(240 10% 3.9%);
-  --color-info: hsl(217 91% 60%);
-  --color-info-foreground: hsl(0 0% 100%);
-  --color-attention: var(--color-warning);
-  --color-attention-foreground: var(--color-warning-foreground);
-  --radius: 0.5rem;
+/* Token definitions: the registry's `tokens` item. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-attention: var(--attention);
+  --color-attention-foreground: var(--attention-foreground);
 }
 
-.dark {
-  --color-background: hsl(240 10% 3.9%);
-  --color-foreground: hsl(0 0% 98%);
-  --color-card: hsl(240 10% 3.9%);
-  --color-card-foreground: hsl(0 0% 98%);
-  --color-popover: hsl(240 10% 3.9%);
-  --color-popover-foreground: hsl(0 0% 98%);
-  --color-primary: hsl(0 0% 98%);
-  --color-primary-foreground: hsl(240 5.9% 10%);
-  --color-secondary: hsl(240 3.7% 15.9%);
-  --color-secondary-foreground: hsl(0 0% 98%);
-  --color-muted: hsl(240 3.7% 15.9%);
-  --color-muted-foreground: hsl(240 5% 64.9%);
-  --color-accent: hsl(240 3.7% 15.9%);
-  --color-accent-foreground: hsl(0 0% 98%);
-  --color-destructive: hsl(0 62.8% 30.6%);
-  --color-destructive-foreground: hsl(0 0% 98%);
-  --color-border: hsl(240 3.7% 15.9%);
-  --color-input: hsl(240 3.7% 15.9%);
-  --color-ring: hsl(240 4.9% 83.9%);
+@layer base {
+  :root {
+    --background: hsl(0 0% 100%);
+    --foreground: hsl(240 10% 3.9%);
+    --card: hsl(0 0% 100%);
+    --card-foreground: hsl(240 10% 3.9%);
+    --popover: hsl(0 0% 100%);
+    --popover-foreground: hsl(240 10% 3.9%);
+    --primary: hsl(240 5.9% 10%);
+    --primary-foreground: hsl(0 0% 98%);
+    --secondary: hsl(240 4.8% 95.9%);
+    --secondary-foreground: hsl(240 5.9% 10%);
+    --muted: hsl(240 4.8% 95.9%);
+    --muted-foreground: hsl(240 3.8% 46.1%);
+    --accent: hsl(240 4.8% 95.9%);
+    --accent-foreground: hsl(240 5.9% 10%);
+    --destructive: hsl(0 84.2% 60.2%);
+    --destructive-foreground: hsl(0 0% 98%);
+    --border: hsl(240 5.9% 90%);
+    --input: hsl(240 5.9% 90%);
+    --ring: hsl(240 5.9% 10%);
+    --success: hsl(142 76% 36%);
+    --success-foreground: hsl(0 0% 98%);
+    --warning: hsl(32 95% 44%);
+    --warning-foreground: hsl(0 0% 98%);
+    --info: hsl(217 91% 60%);
+    --info-foreground: hsl(0 0% 98%);
+    --attention: hsl(41 96% 40%);
+    --attention-foreground: hsl(240 10% 3.9%);
+  }
+  .dark {
+    --background: hsl(240 10% 3.9%);
+    --foreground: hsl(0 0% 98%);
+    --card: hsl(240 10% 3.9%);
+    --card-foreground: hsl(0 0% 98%);
+    --popover: hsl(240 10% 3.9%);
+    --popover-foreground: hsl(0 0% 98%);
+    --primary: hsl(0 0% 98%);
+    --primary-foreground: hsl(240 5.9% 10%);
+    --secondary: hsl(240 3.7% 15.9%);
+    --secondary-foreground: hsl(0 0% 98%);
+    --muted: hsl(240 3.7% 15.9%);
+    --muted-foreground: hsl(240 5% 64.9%);
+    --accent: hsl(240 3.7% 15.9%);
+    --accent-foreground: hsl(0 0% 98%);
+    --destructive: hsl(0 62.8% 58%);
+    --destructive-foreground: hsl(240 10% 3.9%);
+    --border: hsl(240 3.7% 15.9%);
+    --input: hsl(240 3.7% 15.9%);
+    --ring: hsl(240 4.9% 83.9%);
+    --success: hsl(142 69% 58%);
+    --success-foreground: hsl(240 10% 3.9%);
+    --warning: hsl(43 96% 56%);
+    --warning-foreground: hsl(240 10% 3.9%);
+    --info: hsl(213 94% 68%);
+    --info-foreground: hsl(240 10% 3.9%);
+    --attention: hsl(48 96% 53%);
+    --attention-foreground: hsl(240 10% 3.9%);
+  }
 }
 /* End of token definitions. */
 

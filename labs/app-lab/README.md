@@ -95,6 +95,12 @@ Each of these is drawn as a named empty state or a disabled control:
 - **Worker detail.** A seat's harness, and the NOW, TIME and COST columns on Tasks.
 - **IN REVIEW.** The column is drawn empty, because no row status means "in review" yet.
 
+## How it looks
+
+App Lab's look comes from the [design-system](../design-system) package, through one import in `src/styles.css`. It follows your operating system's light or dark setting, and switches when you change it. Remove that import and every screen falls back to the registry's neutral defaults.
+
+The cards in a task's Session, and the ask cards in Inbox and in a workstream's Stream, are App Lab's copies of `@flow-state-dev/ui` registry components, kept unedited. The `ui:add` script in `package.json` names what was installed (`chat-assistant`, which brings the message, reasoning, tool, code block, task plan and ask cards with it). A test checks that the copies are exactly what that list ships, byte for byte.
+
 ## Tests
 
 ```bash
@@ -112,4 +118,10 @@ A second goal check opens tasks on a Lab whose runs hold until stopped. It watch
 
 ```bash
 PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/app-lab/it-shows-and-stops-a-task-run/run.mts
+```
+
+A third builds App Lab twice, as written and with its theme import removed, and reads the colours and fonts Chromium paints on the shell and on each registry card in a task's Session. With the import, every one is an App Lab value. Without it, none is:
+
+```bash
+PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/app-lab/it-takes-its-look-from-the-design-system/run.mts
 ```
