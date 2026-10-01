@@ -195,12 +195,23 @@ generator({
 
 | Adapter | Provider type | Description |
 |---------|--------------|-------------|
-| Local FS | `"local"` | Real filesystem + `child_process`. Best for development. Options: `cwd?`, `env?`, `execTimeoutMs?`. Each command gets a minimal environment (`PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR`, `TZ`) plus `env`; pass anything else a command needs, such as a token, in `env`. `execTimeoutMs` defaults to 60 s; on timeout the command and its children are killed and `exitCode` is `124`. `exitCode` is always a number: the shell's code, `124` on timeout, `128 + n` when killed by signal `n`, `1` on output overflow or spawn failure. |
+| Local FS | `"local"` | Real filesystem + `child_process`. Best for development. Options: `cwd?`, `env?`, `execTimeoutMs?` (default 60 s). See [Local FS](#local-fs) below. |
 | Vercel | `"vercel"` | `@vercel/sandbox`. Supports persistent sandboxes. Requires OIDC Federation enabled on the project **or** the `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID` triple. Without either, the adapter throws a clear error naming both options — pick a different provider (e.g. `just-bash`) for unauthenticated/anonymous-visitor demos. See the [Deploying to Vercel guide](https://flow-state.dev/guides/deploying-to-vercel#7-using-the-bash-tool-on-vercel) for the full recipe. |
 | Upstash | `"upstash"` | Placeholder — blocked on upstream API stabilization. |
 | just-bash | `"just-bash"` | In-memory bash emulation. No real processes. |
 | MOAT | `"moat"` | Local container isolation with credential injection (requires the `moat` CLI v0.4.0+). |
 | Custom | `"custom"` | Any object implementing the `Sandbox` interface. |
+
+#### Local FS
+
+The `local` provider runs each command with a minimal environment: `PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR` and `TZ`, plus whatever you pass in `env`. Anything else a command needs goes in `env`. That includes API tokens, proxy settings (`HTTPS_PROXY`, `NO_PROXY`), custom CA bundle paths and `SSH_AUTH_SOCK` for git over ssh. Values in `env` override the defaults, `PATH` included. A command that runs past `execTimeoutMs` is stopped along with its children and returns `exitCode` `124`.
+
+`exitCode` is:
+
+- the shell's own code when the command finishes;
+- `124` on timeout (the command and its children are stopped);
+- `128 + n` when stopped by signal `n`;
+- `1` when output (stdout and stderr combined) exceeds 10 MB, or the command fails to start.
 
 #### MOAT
 
