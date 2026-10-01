@@ -27,7 +27,7 @@ what it waits on, for all teams or one.**
 | **Smaller, and rejected** | "The Roster page renders." A page of the right shape over a status nobody checked against the board is a page a person learns not to trust |
 | **Short of the design, and decided** | **Slots show the count in use, not "2 of 3".** Nothing in a Lab caps how much a worker takes, so there is no "of 3" to read ([D2](DECISIONS.md#d2)). **On call** is *waits on you* until standing watches ship (FIX-1675) |
 | **Bigger, and not this issue's** | Who is on a team and the CoS and Ops seats (FIX-1719) · standing watches, the webhooks and routines a worker is on call for (FIX-1675) · the harness a worker runs (FIX-1652) · Chief of Staff (FIX-1722) · removing tabs v2 dropped |
-| **Not done if** | A worker shows on shift with no running task, or off shift while an ask of its is in Inbox · the sidebar's counts and Roster's disagree · the team filter shows a seat from another team · a seat in the Lab's inventory is missing from Roster |
+| **Not done if** | A worker shows on shift with no running task, or off shift while an ask of its is in Inbox · the sidebar's counts and Roster's disagree · the team filter shows a seat from another team · a seat in the Lab's inventory is missing from Roster · an org seat (CoS, Ops) shows as a team of its own |
 
 ```mermaid
 flowchart LR

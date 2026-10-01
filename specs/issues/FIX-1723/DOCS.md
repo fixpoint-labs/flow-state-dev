@@ -12,7 +12,8 @@ Replace the bullet with:
 - **Sidebar.** The organization, Jump to (⌘K), Inbox and Tasks with their counts, Roster with
   how many workers are on shift and on call, PROJECTS (the workstreams, until projects exist),
   and TEAMS: one row per team in the Lab's seat inventory, with how many of its workers are on
-  shift and a square for each worker. Hover a square for the worker and its status. Click a team
+  shift and a square for each worker. Organization-level workers, such as a chief of staff,
+  sit in one Staff row at the top. Hover a square for the worker and its status. Click a team
   to open Roster for that team. The footer repeats the on-shift and on-call counts.
 
 ## UPDATE · `labs/shift-manager/README.md` · "What you see" → after the Tasks bullet

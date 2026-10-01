@@ -81,8 +81,11 @@ It comes down to the final hand-back: v2 redrew TEAMS on purpose, and keeping bo
   switch: the look is set at start.
 - **No polling.** Roster draws the shared snapshot and says when it was read.
 - **Jump to's worker results open Roster**, as v2 does.
-- **FIX-1719's org seats appear under the team their inventory row names.** That issue owns the
-  row; this spec reads it.
+- **Seats are grouped by the address FIX-1719 fixes** (its [BR-22](https://github.com/fixpoint-labs/flow-state-dev/pull/2613)):
+  an org seat (a bare name, such as CoS and Ops) goes in one **Staff** group, first, as v2 draws
+  the chief; a team seat `<team>.<name>` under its team; a hired seat `<org>.<seatId>` is split
+  with Workforce's own `splitSeatAddress` and grouped by its seat id. Today Shift Manager makes
+  every dotless id a one-seat team, which this fixes. That issue owns the row; this spec reads it.
 
 ## Considered and dropped
 

@@ -10,6 +10,7 @@ and `goals/shift-manager`. No FSD package changes.
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
+| S0 | `shift-manager` · reads (`toSeat`) | Group a seat by its address per FIX-1719's BR-22: dotless → Staff; `<org>.<seatId>` → split with `splitSeatAddress` from `@flow-state-dev/workforce/browser`, then by the seat id; `<team>.<name>` → its team. Needs the snapshot's organization | BR-13a BR-13b |
 | S1 | `shift-manager` · the derive module (`src/lib/derive.ts`) | The one status rule: a seat's held tasks, pending asks and status from a loaded snapshot (D1). **Replaces** `workerStatus` and its `WorkerStatus` type; held excludes queued and errored | BR-1–BR-6 |
 | S2 | `shift-manager` · the status mark (`src/components/ui.tsx`) | **Replace** `StatusWord`'s three words with v2's three marks (on shift solid, on call half, off shift outline) and labels, from design-system tokens only | BR-6 |
 | S3 | `shift-manager` · routes | A `roster` level with an optional team, `/roster[?team=<id>]`; an unknown team reads as All | BR-8 BR-13 |
@@ -25,7 +26,8 @@ and `goals/shift-manager`. No FSD package changes.
 
 ```mermaid
 flowchart TD
-  S1["S1 · the status rule"] --> S2["S2 · the mark"]
+  S0["S0 · seat grouping"] --> S1["S1 · the status rule"]
+  S1 --> S2["S2 · the mark"]
   S1 --> S3["S3 · the route"]
   S2 --> S4["S4 · Roster"]
   S3 --> S4
@@ -43,6 +45,7 @@ flowchart TD
 
 | ID | Runs after | Passes when |
 |---|---|---|
+| V0 | S0 | BR-13a, BR-13b: `chief-of-staff` and `ops` land in Staff; `<org>.eng.coder-2` lands in `eng`; `eng.coder` unchanged |
 | V1 | S1 | BR-1–BR-5 as unit cases, including: running beats waiting; an ask alone is on call; queued, errored and finished alone are off shift; the legacy word; an unresolved assignee and an unowned ask count for nobody. The existing `workerStatus` cases move here with the new words (D1) |
 | V2 | S3 | Round-trip of `/roster` and `/roster?team=`; an unknown team parses to All (BR-13) |
 | V3 | S4 | Rendered against a snapshot fixture: groups, slots squares equal held count with no free squares (D2), chips link to the task route, both gap lines present; BR-18–BR-20 each draw their partial state |
@@ -101,8 +104,8 @@ on today's snapshot; the goal check is the evidence.
   the FIX-1649 amendment adopting v2's Roster and TEAMS has merged before this PR merges.
 - **FIX-1722's sidebar.** It adds the Chief of Staff entry in the same component. Rebase onto
   whichever lands first; the order is Chief of Staff, Inbox, Tasks, Roster.
-- **FIX-1719's seat rows.** Check its field contract: if org seats carry a team the inventory
-  doesn't split on a dot, read it from the row, still defining nothing here.
+- **FIX-1719's seat rows** (spec PR #2613, BR-22). Re-read its contract before S0; if it has
+  moved, S0 follows it. A team whose id equals the org id would read as hired: note, don't guard.
 - **FIX-1651 and FIX-1675.** If *in review* or standing watches have shipped, they join S1, in one
   place, and their gap lines go.
 
