@@ -3,10 +3,15 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
-(BR-n), [DECISIONS.md](DECISIONS.md) (Dn, Qn) and the epic's rules (ER-n). `tdd`. Three PRs.
+(BR-n), [DECISIONS.md](DECISIONS.md) (Dn, Qn) and the epic's rules (ER-n). `tdd`.
 
-**Don't start while the spec is on soft-HOLD** ([SPEC](SPEC.md)). The POCs are the working
-sketches of PR 1 and PR 2:
+**PRs.** Three, for review size, not because of a hard boundary. PR 2 can't ship without PR 1, so
+PR 1 and PR 2 may land as **one Workforce PR**, which makes two in all. Release: each Workforce
+merge publishes a `minor`, and FIX-1719 builds on it. Shift Manager is private and ships with its
+merge.
+
+**Don't start while the spec is on soft-HOLD** ([SPEC](SPEC.md)). **Port** the spikes' modules
+and tests into `packages/workforce` rather than re-deriving them from this prose. They are:
 - `specs/spikes/FIX-1728/poc/resource-talk/` on `spike/FIX-1728`;
 - `specs/spikes/FIX-1729/poc/shared-room/` on `spike/FIX-1729`.
 
@@ -33,17 +38,17 @@ sketches of PR 1 and PR 2:
 |---|---|---|---|---|
 | S1 | 1 | `workforce` · the row | Row schema and a helper declaring `projects`: org scope, shared across flows, browser read with `expose`. New fields nullable with defaults (BP-023) | BR-2 |
 | S2 | 1 | `workforce` · writes | `createProject` and `setWorkstreams`. Rows are written with `create`, never upsert. They refuse `unassigned`, an unknown workstream, and a workstream another row holds. `members` comes from trusted callers only | BR-3 BR-4 |
-| S3 | 1 | `workforce` · room store | `room-lines` (one row per line, keys prefixed by project, `prefetchMode: "lazy"`, no browser read) and `room-seq` (one counter row per project, no browser read) | BR-15 BR-17 BR-20 |
+| S3 | 1 | `workforce` · the room module | One module owns `room-lines`, `room-seq`, and allocating `seq` with its retry. `room-lines` is one row per line, keyed `<projectId>/<seq zero-padded>` so keys sort by `seq`, with `prefetchMode: "lazy"` and no browser read. `room-seq` is one counter row per project, with no browser read. The counter sits apart from the lines and the project row, so posts contend only with posts, never with project edits or joins (the spike kept the counter on the project row). `read { after }` starts at the key after the cursor and returns at most one page (the collection route's 200), plus the next cursor, so a read never scans the whole room | BR-15 BR-16 BR-17 BR-20 |
 | S4 | 1 | `workforce` · the gate | One module: `isMember(row, sessionOwner)`, where the owner comes from the engine's session record. Every room entry calls it. It never reads session state or input | BR-13 BR-14 |
-| S5 | 1 | `workforce` · the sequence | One module allocates the next `seq` from `room-seq`, retrying after a lost race past the engine's three; readers skip gaps | BR-16 |
-| S6 | 1 | `workforce` · talk kind | The channel kind gains an optional `resourceId` on its state (nullable, default null; BP-030) and five entries. `bind` (internal): writes `resourceId` and appends to `sessions`, refusing per BR-10. `post`, `read { after }` and `answer`: run the gate, then the room store. `join`: members only and idempotent: it returns the session the row lists for the caller; otherwise it mints and appends to `sessions` with S5's retry, keeping the earlier entry if its own member won the race. No entry writes a `channel-post` item | BR-10 BR-11 BR-15 BR-16a BR-17 |
+| S5 | 1 | `workforce` · the retry helper | A shared CAS retry helper, used by S3's counter and by `join`'s append to `sessions`. It keeps retrying after the engine's three attempts. Readers skip gaps. S4 and S5 are separate modules so the harness can swap each one: `no-gate` and `no-retry` | BR-16 BR-16a |
+| S6 | 1 | `workforce` · talk kind | The channel kind gains an optional `resourceId` on its state (nullable, default null; BP-030) and five entries. `bind` (internal): writes `resourceId` and appends to `sessions`, refusing per BR-10. `post`, `read { after }` and `answer`: run the gate, then the room store. `join`: members only and idempotent: it returns the session the row lists for the caller; otherwise it mints and appends to `sessions` with S5's helper, keeping the earlier entry if its own member won the race. No entry writes a `channel-post` item | BR-10 BR-11 BR-15 BR-16a BR-17 |
 | S7 | 2 | `workforce` · binder | `mintFor` joins `DECLARABLE_KEYS`. A template is not opened and not registered. It's refused with `boards:` or with an unknown collection. The binder installs `reactTo.created` on the named collection, which dispatches to `bind` keyed on the row id | BR-6 to BR-9 |
 | S8 | 2 | `workforce` · template kind and wakes | When `resourceId` is set, seats and charter come from the template built onto the kind (`withTemplate`, beside `withBoards`). A post wakes seats once, under the poster, keyed per room, and passes the room's recent lines as context | BR-12 BR-18 |
 | S9 | 3 | Shift Manager · reads | `reads.ts` reads `projects/*` once per refresh, beside the inventory. `projectsOf` lives in `derive.ts`, beside `teamsOf`, and groups from the snapshot only | BR-5 BR-22 BR-30 |
-| S10 | 3 | Shift Manager · PROJECTS and the project level | PROJECTS draws `projectsOf`. Brief comes from the row, Board from lanes, and Workstreams from the row's list. Stream is `talkFor(project, viewer)`: the viewer's session from `sessions`, then the room read by cursor (kept in the view) on open, on focus and after its own post's wake; or Join; or the members-only state. Named states cover No project and an unknown id. **Remove** the four `project*` entries from `gaps.ts` | BR-23 to BR-29 BR-31 |
+| S10 | 3 | Shift Manager · PROJECTS and the project level | PROJECTS draws `projectsOf`. Brief comes from the row, Board from lanes, and Workstreams from the row's list. Stream is `talkFor(project, viewer)`. It finds the viewer's session in `sessions` and reads the room by cursor, kept in the view, on open, on focus and after the viewer's own post's wake. If the viewer has no session it shows Join, and a non-member gets the members-only state. `talk.read` lines map onto `ChannelTranscriptLine`, so Stream reuses `transcript.ts` and the workstream's Stream component, with no parallel transcript UI. Named states cover No project and an unknown id. **Remove** the four `project*` entries from `gaps.ts` | BR-23 to BR-29 BR-31 |
 | S11 | 3 | DevTeam tree | Adds `org/resources/projects.ts`, `teams/eng/channels/project-talk/CHANNEL.md` (`mintFor: projects`, with the EM as its seat), and one board-less workstream | Goal |
 | S12 | 3 | DevTeam profile and host | Bearer auth maps three secrets to three users: the owner, a second member, and an outsider. At boot, the profile creates the two default rows if they're absent, with the first two users as members, and calls `bind` for the owner. `openLab` refuses unless exactly one channel holds a board, and the profile picks that channel, not `channels[0]` | Goal |
-| S13 | 3 | Goal check | `goals/shift-manager/it-groups-workstreams-under-their-projects/`, on `it-opens-a-lab`'s harness. It has a browser leg and an HTTP room leg. Controls `unread` and `gap-tabs` swap a Shift Manager module, as that harness does. Controls `no-gate` and `no-retry` swap S4's or S5's module (`no-retry` also drops the `sessions` retry, so the join burst fails too) in the served host; the run fails if a swap never fired | Goal |
+| S13 | 3 | Goal check | `goals/shift-manager/it-groups-workstreams-under-their-projects/`, on `it-opens-a-lab`'s harness. It has a browser leg and an HTTP room leg. Controls `unread` and `gap-tabs` swap a Shift Manager module, as that harness does. Controls `no-gate` and `no-retry` swap S4's or S5's module. `no-retry` drops both the counter retry and the `sessions` retry, so both bursts fail in the served host; the run fails if a swap never fired | Goal |
 | S14 | all | Docs | [DOCS.md](DOCS.md); one `minor` changeset for `@flow-state-dev/workforce` in each of PR 1 and PR 2. Shift Manager is private, so it gets none | — |
 
 ## Sequence
@@ -85,7 +90,7 @@ flowchart TD
 |---|---|---|
 | Project collection | ref `projects`, keys `projects/<id>`, module `workforce/org/resources/projects.ts` | Read by Shift Manager and FIX-1719 |
 | Row | `{ id, title, brief, status, ownerUserId, members: string[], workstreams: string[], sessions: { sessionId, userId }[] }` | The appendix's contract |
-| Room collections | `room-lines` (`{ projectId, seq, userId, author, body }`), `room-seq/<projectId>` | FIX-1729's names, shared with #2622 |
+| Room collections | `room-lines/<projectId>/<seq, zero-padded>` (`{ projectId, seq, userId, author, body }`), `room-seq/<projectId>` | FIX-1729's names, shared with #2622 |
 | `CHANNEL.md` key | `mintFor` | What a Lab writes; the epic's one key |
 | Talk state | `resourceId: string \| null` | The session side of the link; grants nothing |
 | Talk entries | `bind` (internal), `join`, `post`, `read { after }`, `answer` | FIX-1719 calls them |
@@ -102,7 +107,7 @@ flowchart TD
 | No project field in any session's state; a talk session holds `resourceId` only | Jake's fence |
 | Nothing registers a talk session in `inventory/channels/*` | The Lab's channel list stays its declared channels |
 | Project talk is written to `room-lines` only, never mirrored as `channel-post` items | One home for a project's conversation; a mirror would be a second transcript to keep in step |
-| The gate and the sequence allocator are each a module of their own | So the `no-gate` and `no-retry` controls can swap exactly one thing |
+| The gate (S4) and the retry helper (S5) are each a module of their own | Test injection drove the split: the `no-gate` and `no-retry` controls each swap exactly one thing |
 | The conversation is swappable. Shift Manager reaches a project's conversation only through `talkFor(project, viewer)`, and Workforce reaches the room only through the talk entries | If Jake's Q1 card says no, private threads replace these, and the row and grouping stay |
 | `projectsOf` derives only from the snapshot. It makes no read of its own, and never reads a room or a talk session to group | One read per refresh (tenet 5); grouping never depends on membership |
 | Nothing in `core` or `engine`, and user isolation untouched | ER-10, ER-15. An L1 need is an escalation to the epic |
@@ -132,6 +137,8 @@ screen:  talkFor(project, viewer) → read on open, focus, after own post's wake
 - The minted session is a child of the session whose turn created the row, and it outlives that
   session.
 - How many recent lines a seat gets on a wake is the implementer's call. Keep it bounded.
+- Check that the store's collection listing can start after a key. If it can't, cap the scan per
+  read and page by `nextCursor`; a read must never be O(room).
 - The devforce-lab checks refuse a lab file that spells their held-out feature. Name the new
   workstream and template without it.
 - `apps/docs/docs/workforce/channels.md:53` says six keys, but the code has seven. It becomes

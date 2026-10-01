@@ -133,11 +133,9 @@ is written to the recommendation for each.
 
 ## Decided, not asked
 
-- **Three PRs, as FIX-1729 sizes it.**
-  - PR 1, Workforce: the row with `members` and `workstreams`; `room-lines` and `room-seq`; the
-    talk kind's `bind`, `post`, `read`, `answer` and `join`, with the gate and the retry.
-  - PR 2, Workforce: the binder's `mintFor:` and the seat wake, with recent room lines.
-  - PR 3: Shift Manager, the DevTeam profile and the goal check.
+- **Three PRs for review size, or two.** Workforce's room and talk entries, then its `mintFor:`
+  and wakes, then Shift Manager. The first two may merge as one. See [PLAN](PLAN.md) for the
+  release line.
 - **Each seat keeps one conversation per person per room.** A post wakes the seat under the
   poster, so the seat acts with the poster's authority. The seat is given the room's recent
   lines on each wake, so it misses nobody's. A shared seat memory would need a conversation that

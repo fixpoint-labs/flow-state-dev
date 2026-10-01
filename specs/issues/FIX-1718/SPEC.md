@@ -94,6 +94,17 @@ flowchart LR
 
 Nobody's session is shared. The room is org data, and the gate is the project row.
 
+## If Jake's Q1 card says no
+
+If Jake picks a private thread per person over the shared room, these drop:
+- `room-lines`, `room-seq` and the gate;
+- BR-13 to BR-18;
+- most of PR 1, which shrinks to the row and the talk entries;
+- the goal's room leg and the `no-gate` and `no-retry` controls.
+
+The row (without `members`), D1, D3, the grouping, the four tabs, and the browser leg stay.
+Stream shows the viewer's own talk session through `talkFor`, as FIX-1728 had it.
+
 ## What stays as it is
 
 - Declared channels are opened at boot and registered in the inventory as today. A workstream is
