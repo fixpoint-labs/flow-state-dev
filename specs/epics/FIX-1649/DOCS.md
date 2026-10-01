@@ -43,10 +43,14 @@ Publisher: FIX-1662. How to open a Lab, and the run command, are its own draft.
 > teams, workers and channels the Lab declares) and an organization, and it gives you one
 > place to work.
 >
+> It opens on Chief of Staff: a summary of what needs you and what is running, and the Lab's
+> chief of staff to talk to.
+>
 > The sidebar is where you are and what needs you: the organization, a search that jumps
 > anywhere, an Inbox of the approvals and questions waiting on you, a list of every task in
-> flight, your projects with their workstreams, and each team with its workers and what
-> they're doing. Answer an ask in the Inbox, or reply to the worker who raised it; the reply
+> flight, a Roster of who is on shift, on call or off shift, your projects with their
+> workstreams, and each team as a row of squares, one per worker. A switch at the bottom flips
+> between the day and night look. Answer an ask in the Inbox, or reply to the worker who raised it; the reply
 > goes into that worker's session.
 >
 > The middle is whatever you opened. A project shows its workstreams on one board. A
@@ -72,6 +76,9 @@ its README.
 | The design-system package README and the registry components' colour notes in `packages/ui/README.md` | FIX-1655 | Its `DOCS.md` |
 | The App Lab README opening above, how to open a Lab, the `labs/README.md` row | FIX-1662 | This document and its `DOCS.md` |
 | The README's task sentences above, checked against what the task level ships | FIX-1664 | This document and its `DOCS.md` |
+| The README's Chief of Staff sentence above | FIX-1722 | This document and its `DOCS.md` |
+| The README's Roster and TEAMS sentences above | FIX-1723 | This document and its `DOCS.md` |
+| The README's day and night switch sentence above | FIX-1725 | Its issue's *Done when* |
 | Nothing in `apps/docs` about App Lab itself | — | App Lab is a private lab, not a published product |
 
 Publish each specific with its implementation. The App Lab opening waits until every level
