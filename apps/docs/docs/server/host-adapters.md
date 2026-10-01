@@ -54,7 +54,7 @@ import { serve } from "@flow-state-dev/node";
 await serve(flowstate, { basePath: "/flows" });
 ```
 
-Point the client and React hooks at a custom mount by passing the same value as their `apiPath`: `createClient({ ..., apiPath: "/flows" })` or `<FlowProvider apiPath="/flows">`. See [Choosing `apiPath`](/docs/configuration/client#choosing-apipath).
+Point the client at a custom mount by passing the same value as `apiPath`, either `createClient({ ..., apiPath: "/flows" })` or, in React, `<FlowProvider apiPath="/flows">`. See [Choosing `apiPath`](/docs/configuration/client#choosing-apipath).
 
 ---
 

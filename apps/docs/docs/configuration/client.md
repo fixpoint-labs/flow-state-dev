@@ -111,7 +111,7 @@ import { FlowProvider } from "@flow-state-dev/react";
 | `renderers` | `RendererRegistry` | Custom item renderers. Nested providers merge; child keys override. |
 | `children` | `ReactNode` | The tree that may call hooks. |
 
-Hooks (`useFlow`, `useSession`, `useAction`, `useClientData`, `useVoice`, …) accept the same connection fields as overrides, except `apiPath`. Hook-specific options (item visibility, auto-create, subscribe keys) are documented on [React](/docs/client/react).
+Hooks (`useFlow`, `useSession`, `useAction`, `useVoice`, …) accept the same connection fields as overrides, except `apiPath`, which only `useVoice` accepts. Hook-specific options (item visibility, auto-create, subscribe keys) are documented on [React](/docs/client/react).
 
 ## What the client can see
 
