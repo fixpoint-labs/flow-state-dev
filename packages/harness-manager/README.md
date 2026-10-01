@@ -151,15 +151,19 @@ defineFlow({
 });
 ```
 
-Sent `{ message }` on a run's own session, it writes the message into that session as a user item, keeps it in the manager's `turns` collection, stops a running attempt through `ctx.session.stopRequest`, parks the row for a turn and re-queues it without charging an attempt. Then it dispatches `drain` into the session that claimed the row, so the next attempt runs in the run's own session again, not one beneath it. That attempt resumes the same coding session with the message appended to its prompt, marked as the person's words. `defineFlow` refuses a flow that doesn't declare the entry. When another flow drains the board and hands rows to this one across flows, declare the entry on that flow and pass its instance id as `flowKind`. It answers `{ outcome: "continuing" | "kept", taskId }`:
+Sent `{ message }` on a run's own session, it writes the message into that session as a user item and keeps it in the manager's `turns` collection. A running attempt stops, and the next attempt resumes the same coding session with the message appended to its prompt, marked as the person's words. The message doesn't count against `maxAttempts`.
+
+The door starts that next attempt by dispatching `drain` into the session that claimed the row, which keeps every attempt in the run's own session. `defineFlow` refuses a flow that doesn't declare the entry. When another flow drains the board and hands rows to this one, declare the entry on that flow and pass that flow's id as `flowKind` (for a flow with one instance, its kind).
+
+It answers `{ outcome: "continuing" | "kept", taskId }`:
 
 - **running** → `continuing`.
 - **running, but it didn't stop within the wait, or the row couldn't be re-queued or drained** → `kept`. The run gets the message from whatever runs the row next.
 - **claimed, with its run not started yet** → `kept` for that attempt.
 - **parked on its own question, or between attempts** → `kept` for the next attempt; nothing is stopped and the question still needs answering.
-- **never started in this session, finished, or on a harness that named no session** → refused. A refusal throws `TurnRefused`, so the request fails and only a delivered message ever completes. A refused message is withdrawn, so no later attempt takes it; if an attempt already took it, the door answers `continuing` instead of refusing.
+- **never started in this session, finished, or on a harness that named no session** → refused. A refusal fails the request, with the reason in words as the error's message and the door's `TurnRefused` error as its cause, so only a delivered message ever completes. A refused message is withdrawn, so no later attempt takes it; if an attempt already took it, the door answers `continuing` instead of refusing.
 
-The door decides from server state only: the row is the one whose run link names the request's session, and the session to resume is the one the harness confirmed on the run record.
+The door ignores everything in the request except `message`: it works on the task whose run link names the calling session.
 
 ## The deadline
 

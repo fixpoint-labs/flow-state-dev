@@ -116,7 +116,7 @@ Answer it and the run picks up **the same coding session** — not a new one tol
 
 A person can send a running coding run a message. The run stops where it is, and its next attempt continues **the same coding session** with the message added to its prompt. The checkout and the harness's memory of the conversation both carry over, so the run picks up with what it had already read and tried, plus what you said.
 
-The manager builds the action that does this, which we call its door. Declare it on the flow whose board runs the coding work. The door also needs a way to start the next attempt, so give the flow an `internal` entry that runs the board's drain and pass its name. Internal entries can't be called from outside; the door dispatches this one into the session that claimed the task, which keeps every attempt of the run in the same session:
+The manager builds the action that does this, which we call its door. Declare it on the flow whose board runs the coding work. The door also needs a way to start the next attempt, so give the flow an `internal` entry that runs the board's drain and pass its name. The door runs that entry in the session that claimed the task, which keeps every attempt of the run in the same session. Internal entries can't be called from outside, so only the door can start the next attempt:
 
 ```ts
 const manager = harnessManager({ /* … */ });
@@ -130,7 +130,7 @@ defineFlow({
 });
 ```
 
-If the board is drained by a different flow, one that hands its rows to this flow, declare the `resume` entry on that flow instead and pass its instance id: `manager.messageDoor({ drain: "resume", flowKind: "coordinator" })`.
+If the board is drained by a different flow, one that hands its rows to this flow, declare the `resume` entry on that flow instead and pass that flow's id as `flowKind` (for a flow with one instance, its kind): `manager.messageDoor({ drain: "resume", flowKind: "coordinator" })`.
 
 Call `message` with `{ message }` on the run's own session, the one the board row's run link names. The person's words go into that session as a user message the moment the action starts, so a UI can show them as delivered by reading the session, not by trusting the response.
 
@@ -144,7 +144,9 @@ What happens depends on where the task is:
 | Waiting on its own question, or between attempts | Kept, and given to the next attempt. The action answers `kept` |
 | Not started, or finished | Refused, with the reason |
 
-A refusal fails the request rather than answering with a value, so a request that completed is one whose message landed. A refused message is never handed to a later attempt either.
+A request that completes answers `{ outcome: "continuing" | "kept", taskId }`.
+
+A refusal fails the request rather than answering with a value, so a request that completed is one whose message landed. The error's message is the reason in words, such as "A finished task takes no message.", and its cause is the door's `TurnRefused` error. A refused message is never handed to a later attempt either.
 
 **A message doesn't spend a retry.** The run parks for your turn and comes back without being charged an attempt, so talking to a run never makes it fail sooner.
 
@@ -152,7 +154,7 @@ A refusal fails the request rather than answering with a value, so a request tha
 
 **Only the run's own person can send one.** The session belongs to them, so anyone else is refused before the message is written.
 
-The stop costs the step the run was in the middle of. A harness that could take a message mid-step without stopping isn't used that way yet.
+The stop costs the step the run was in the middle of.
 
 ## The checkout
 
