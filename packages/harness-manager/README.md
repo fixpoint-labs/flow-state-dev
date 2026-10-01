@@ -111,7 +111,8 @@ The vendor options differ because they are the factory's business, not the manag
 ```ts
 {
   phase: "implement",
-  buildPrompt: (run) => `Implement ${run.issue} in ${run.workspacePath}.`,
+  buildPrompt: (run) =>
+    `${run.task.goal}\n\nWork in ${run.workspacePath}, on branch ${run.branch}.`,
   isDone:      (run) =>
     run.stopReport === "stopped-at-limit" ? false : pullRequestExists(run.branch),
   validate:    (workspace) => checkWhateverThisPhaseNeeds(workspace),  // optional
@@ -119,6 +120,8 @@ The vendor options differ because they are the factory's business, not the manag
 ```
 
 `buildPrompt` is rebuilt on every attempt from current state. `isDone` is consulted only after a successful verdict, which the manager reads from the handle's `status`. Completion is a conjunction, never an alternative route. `validate` runs once at construction and whatever it returns reaches the phase's own hooks, which is how a phase carries something it learned at startup into a run.
+
+`run.task` is the claimed row's brief as the board packed it: `goal`, plus `title`, `context`, `input`, `deps` and `priorWork` when present. Build the prompt from it rather than from `run.issue`, which is only the row's identity.
 
 `isDone` gets one fact `buildPrompt` does not: `run.stopReport`, how the run said it stopped, in the framework's own vocabulary (`"finished"`, `"stopped-at-limit"`, `"failed"`) and exactly as the harness reported it. A value this version of the framework doesn't define reaches `isDone` unchanged, and never as `"finished"`. `null` means no terminal result was reported at all. What "done" means is entirely the phase's call.
 
