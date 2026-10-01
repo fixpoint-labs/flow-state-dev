@@ -1,12 +1,13 @@
 /**
- * Lease-store conformance on the Postgres lease store (PGlite), through two
- * executors: a plain one, and one that implements `beginTx` the way a
- * `pg.Pool`-backed executor does. Acquire must stay exclusive on both.
+ * Regression guard: Postgres lease acquire stays exclusive on plain and
+ * transaction-capable executors (PGlite). Both registrations run the shared
+ * lease-store conformance cases.
  *
- * PGlite is a single connection, so the `beginTx` executor's transactions
- * share it: statements from concurrent acquirers interleave the way two
- * READ COMMITTED transactions' statements do when neither holds a row lock,
- * which is the state a `SELECT ... FOR UPDATE` on a missing row leaves.
+ * The transaction-capable executor implements `beginTx` the way a
+ * `pg.Pool`-backed executor does, and is the one that reproduced the double
+ * grant: PGlite is a single connection, so concurrent acquirers' statements
+ * interleave and each can read "no lease" before either writes. Acquire must
+ * not depend on the executor having transactions to stay exclusive.
  */
 import type { PGlite } from "@electric-sql/pglite";
 import { createLeaseStoreConformanceTests } from "@flow-state-dev/engine/testing";
