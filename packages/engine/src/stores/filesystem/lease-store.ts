@@ -4,6 +4,7 @@
  * Stores each lease as a JSON file: rootDir/{encodeURIComponent(requestId)}.json
  * One active lease per request at a time.
  */
+import { randomUUID } from "node:crypto";
 import { readdir, readFile, rm, mkdir, open } from "node:fs/promises";
 import path from "node:path";
 import type { Lease, LeaseOptions } from "../../durability/types";
@@ -12,8 +13,6 @@ import type { LeaseStore } from "../types";
 function leaseFilename(requestId: string): string {
   return `${encodeURIComponent(requestId)}.json`;
 }
-
-let leaseCounter = 0;
 
 export class FilesystemLeaseStore implements LeaseStore {
   private readonly rootDir: string;
@@ -71,7 +70,7 @@ export class FilesystemLeaseStore implements LeaseStore {
     const now = Date.now();
     const lease: Lease = {
       requestId,
-      leaseId: `lease_${++leaseCounter}_${now}`,
+      leaseId: randomUUID(),
       holder: options.holder,
       acquiredAt: now,
       expiresAt: now + options.durationMs
