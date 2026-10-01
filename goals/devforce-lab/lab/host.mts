@@ -267,6 +267,11 @@ export interface OpenLabOptions {
    * the mutated set and reads it back through its own config.
    */
   mutateSkills?: (seatId: string, skills: SeatSkill[]) => SeatSkill[];
+  /**
+   * Build the phase so its prompt builder ignores the task the manager hands
+   * it. The red state of "a run is handed the work a person approved".
+   */
+  dropTask?: boolean;
 }
 
 /** One skill on a worker record, as the loader shapes it. */
@@ -459,7 +464,20 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ...(emRecords[0] === undefined ? {} : { coordinatorSeatId: emRecords[0].id }),
     harness: options.harness,
     workspace: options.workspace,
-    phase: defineImplementPhase({ requireAcceptance: options.requireAcceptance === true }),
+    // The channel's charter and members, resolved once here so the prompt
+    // builder stays a function of the run and these options. Not the whole
+    // manifest: the charter is the only channel content a run is handed.
+    // Known limit: this is a snapshot, so a charter edited while the lab is
+    // open does not reach later prompts. A real host should read it per run.
+    phase: defineImplementPhase({
+      requireAcceptance: options.requireAcceptance === true,
+      channel: {
+        id: channel.id,
+        charter: channel.body,
+        members: (channel.declared.members as string[] | undefined) ?? [],
+      },
+      ...(options.dropTask === true ? { dropTask: true } : {}),
+    }),
     runTimeoutMs: options.runTimeoutMs ?? 60_000,
     resources,
   });

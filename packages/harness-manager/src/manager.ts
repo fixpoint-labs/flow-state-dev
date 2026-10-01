@@ -148,15 +148,32 @@ export interface AnsweredQuestion {
 }
 
 /**
- * What a prompt builder gets on top of {@link PhaseRunContext}: the two things
- * the ask adds.
+ * What a prompt builder gets on top of {@link PhaseRunContext}: the task it was
+ * claimed for, and the two things the ask adds.
  *
  * Separate from `PhaseRunContext` rather than optional fields on it. The
- * done-condition needs neither, and a field that is sometimes absent is the
+ * done-condition needs none of them, and a field that is sometimes absent is the
  * silent-partial shape this lab exists to remove — a builder cannot tell "no
  * answers" from "nobody read them" if the same `undefined` means both.
  */
 export interface PromptRunContext extends PhaseRunContext {
+  /**
+   * The task this attempt was claimed for, as the board packed it: its `goal`,
+   * and its `title`, `context`, `input`, `deps` and `priorWork` when the row has
+   * them. A field the row lacks is an absent key, never `undefined`.
+   *
+   * The same on every attempt, so a retry or the attempt after a person's
+   * message starts from the same work. Build the prompt from this rather than
+   * from {@link PhaseRunContext.issue}, which is only the row's identity.
+   * `metadata` is left out: it is the board's bookkeeping, not the brief.
+   *
+   * A `Pick` of the board's worker-input schema, so its fields keep the
+   * board's names and there is no second field list to drift.
+   */
+  task: Pick<
+    z.infer<typeof taskWorkerInputSchema>,
+    "goal" | "title" | "context" | "input" | "deps" | "priorWork"
+  >;
   /**
    * Every ANSWERED question for this issue-phase, oldest first — across all
    * attempts, deliberately. That is the question history, not a freshness
@@ -1344,6 +1361,14 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         branch: state.branch!,
         ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
         ctx,
+        task: {
+          goal: input.goal,
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.context !== undefined ? { context: input.context } : {}),
+          ...(input.input !== undefined ? { input: input.input } : {}),
+          ...(input.deps !== undefined ? { deps: input.deps } : {}),
+          ...(input.priorWork !== undefined ? { priorWork: input.priorWork } : {}),
+        },
         answers,
         // The prompt is the only place this path is named, which is what makes
         // the ask FORCED rather than spontaneous — the harness offers no seam

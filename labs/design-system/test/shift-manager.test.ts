@@ -47,7 +47,7 @@ describe("both variants", () => {
   it("names the fonts and squares the corners", () => {
     expect(light["--font-sans"]).toMatch(/^"Space Grotesk"/);
     expect(light["--font-mono"]).toMatch(/^"IBM Plex Mono"/);
-    expect(light["--font-display"]).toMatch(/^"Archivo"/);
+    expect(light["--font-display"]).toMatch(/^"Space Grotesk"/);
     for (const [prop, value] of Object.entries(light)) if (prop.startsWith("--radius")) expect(value, prop).toBe("0");
   });
 

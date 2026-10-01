@@ -82,13 +82,18 @@ A phase is the part that knows what the work *is*. Three values:
 ```ts
 const implementPhase = {
   phase: "implement",
-  buildPrompt: (run) => `Implement ${run.issue} in ${run.workspacePath}.`,
+  buildPrompt: (run) =>
+    `${run.task.goal}\n\nWork in ${run.workspacePath}, on branch ${run.branch}.`,
   isDone: (run) =>
     run.stopReport === "stopped-at-limit" ? false : pullRequestExists(run.branch),
 };
 ```
 
 `buildPrompt` runs on every attempt, rebuilt from current state rather than computed once when the row was filed. `isDone` answers whether the job is actually finished — and it is consulted only *after* a successful verdict, never as an alternative route to completion. Both halves have to hold.
+
+`run.task` is the row the manager claimed, as the board handed it over: its `goal`, and its `title`, `context`, `input`, `deps` and `priorWork` when the row has them. A field the row doesn't have is absent, not empty. `isDone` doesn't receive `run.task`.
+
+It's the same on every attempt, so a retry or a run that resumes after someone's message starts from the same task. If a run needs something said in a conversation, write it on the task's `context` when you file it.
 
 `isDone` gets one fact `buildPrompt` does not: `run.stopReport`, how the run itself said it stopped. It is the handle's `outcome`, `"finished"`, `"stopped-at-limit"` or `"failed"`, and it arrives exactly as the harness reported it. A value this version of the framework doesn't define reaches `isDone` unchanged, and never as `"finished"`. `null` means the run reported no terminal result at all, which is a different fact from finishing. What "done" means is entirely the phase's call.
 

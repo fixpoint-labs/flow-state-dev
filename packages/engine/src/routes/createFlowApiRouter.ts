@@ -214,16 +214,17 @@ export type CreateFlowApiRouterOptions = {
   debugAllowedOrigins?: string[];
 
   /**
-   * Permit requests with no `Origin` header (e.g. curl, server-side fetches)
-   * to reach debug endpoints when the gate is enabled. Default `true` —
-   * curl-friendly for local debugging.
+   * Permit requests with no `Origin` header (e.g. curl, server-side fetches,
+   * same-origin browser GETs) to reach debug endpoints when the gate is
+   * enabled. Default `false`; when unset, falls back to the
+   * `FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL=1` env flag. `fsdev dev` opts in,
+   * since it binds 127.0.0.1 and its DevTool's same-origin GETs send no
+   * `Origin`.
    *
    * Security note: the origin gate is light defense-in-depth, not strong
-   * auth. When the env flag is enabled on a non-localhost-bound server,
-   * any headerless client can reach the surface regardless of physical
-   * location. The deploying team owns the binding (the spec assumes
-   * `fsdev dev` semantics: localhost-only). Set this to `false` to require
-   * a browser-enforced `Origin` header that matches the allowlist.
+   * auth. With this on, any headerless client that can reach the server
+   * reaches the surface regardless of physical location, so only turn it
+   * on for a server bound to loopback.
    */
   debugAllowAnonymousLocal?: boolean;
 

@@ -13,12 +13,15 @@ const getRuntimeThrowsDir = resolve(import.meta.dirname, "fixtures-config", "get
 
 let savedDebug: string | undefined;
 let savedTracing: string | undefined;
+let savedAnon: string | undefined;
 
 beforeEach(() => {
   savedDebug = process.env.FSDEV_DEBUG_ENDPOINTS;
   savedTracing = process.env.FSDEV_TRACING_LEVEL;
+  savedAnon = process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL;
   delete process.env.FSDEV_DEBUG_ENDPOINTS;
   delete process.env.FSDEV_TRACING_LEVEL;
+  delete process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL;
 });
 
 afterEach(() => {
@@ -26,6 +29,8 @@ afterEach(() => {
   else process.env.FSDEV_DEBUG_ENDPOINTS = savedDebug;
   if (savedTracing === undefined) delete process.env.FSDEV_TRACING_LEVEL;
   else process.env.FSDEV_TRACING_LEVEL = savedTracing;
+  if (savedAnon === undefined) delete process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL;
+  else process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL = savedAnon;
 });
 
 describe("fsdev dev with fsdev.config.ts", () => {
@@ -37,6 +42,10 @@ describe("fsdev dev with fsdev.config.ts", () => {
     // surface and verbose tracing are enabled when the app's router builds.
     expect(process.env.FSDEV_DEBUG_ENDPOINTS).toBe("1");
     expect(process.env.FSDEV_TRACING_LEVEL).toBe("verbose");
+    // The engine closes the debug surface to Origin-less requests by default;
+    // the DevTool's same-origin GETs send no Origin, so the dev server (bound
+    // to 127.0.0.1) opts back in or its Resources panel would 403.
+    expect(process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL).toBe("1");
   });
 
   it("rejects --flow-dir combined with a config", async () => {

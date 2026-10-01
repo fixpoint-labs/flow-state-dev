@@ -58,6 +58,7 @@ async function bootApp(flows: Record<string, () => unknown>, stores: ReturnType<
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),
     debugEndpointsEnabled: true,
+    debugAllowAnonymousLocal: true,
   });
   const router = (await state.getRouter()) as Router;
   const runtime = await state.getRuntime();

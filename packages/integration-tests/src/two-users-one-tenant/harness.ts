@@ -107,7 +107,12 @@ export async function startTwoUserServer(
     adapters: options.adapters,
     ...(options.debugEndpointsEnabled === undefined
       ? {}
-      : { debugEndpointsEnabled: options.debugEndpointsEnabled }),
+      : {
+          debugEndpointsEnabled: options.debugEndpointsEnabled,
+          // The harness's fetches carry no Origin header, as `fsdev dev`'s
+          // same-origin DevTool reads don't; it admits those the same way.
+          debugAllowAnonymousLocal: true
+        }),
     resolvePrincipal: (context) => {
       const userId = context.request?.headers.get(USER_HEADER);
       if (userId == null || userId === "") return null;

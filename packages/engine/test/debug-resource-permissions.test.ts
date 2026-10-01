@@ -129,7 +129,7 @@ async function listResources(): Promise<DebugResourceEntry[]> {
     {
       registry,
       stores,
-      debug: resolveDebugConfig({ debugEndpointsEnabled: true })
+      debug: resolveDebugConfig({ debugEndpointsEnabled: true, debugAllowAnonymousLocal: true })
     } as never
   );
   expect(res.status).toBe(200);

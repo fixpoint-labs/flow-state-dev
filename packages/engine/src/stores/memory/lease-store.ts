@@ -2,12 +2,12 @@
  * In-memory LeaseStore implementation for development and testing.
  */
 
+import { randomUUID } from "node:crypto";
 import type { Lease, LeaseOptions } from "../../durability/types";
 import type { LeaseStore } from "../types";
 
 export class InMemoryLeaseStore implements LeaseStore {
   private readonly data = new Map<string, Lease>();
-  private leaseCounter = 0;
 
   async acquire(
     requestId: string,
@@ -22,7 +22,7 @@ export class InMemoryLeaseStore implements LeaseStore {
 
     const lease: Lease = {
       requestId,
-      leaseId: `lease_${++this.leaseCounter}`,
+      leaseId: randomUUID(),
       holder: options.holder,
       acquiredAt: now,
       expiresAt: now + options.durationMs,
