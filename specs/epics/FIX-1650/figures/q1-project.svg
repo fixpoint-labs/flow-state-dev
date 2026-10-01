@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 422" role="img" aria-label="Q1, decided by Jake on 1 October 2026: what is a project? Chosen, as recommended: a project is a channel of its own, whose charter is the brief and whose transcript is the project stream, and that its workstream channels name. Beside it: a project is a team; a project is a named pack of channels. It comes down to the first row, where the project&#x27;s stream and brief come from: a project channel already has a transcript and a charter; a team has a brief in TEAM.md but no transcript; a pack has neither and needs a brief document. Second row, one team on several projects: a project channel and a pack allow it; a team per project means a second project needs a second team of the same seats. The price, third row: a project channel needs one new key on a workstream&#x27;s CHANNEL.md, a team needs nothing new, and a pack needs a key and a document. Locks in: FIX-1718 builds the project channel. Flips if Jake comes to see a project as one team&#x27;s body of work, one team per project."
+<svg viewBox="0 0 940 422" role="img" aria-label="Q1, decided by Jake on 1 October 2026 and shaped by the FIX-1728 spike: what is a project? Chosen: an org resource, a row in an org collection that CoS creates, with a talk channel per person minted from a template and linked both ways. Beside it: a project as a channel of its own, the recommendation this epic merged with, which Jake held; and one project room shared by everyone. It comes down to the first row, where the project&#x27;s data lives: on the row only, where a project channel keeps it in a CHANNEL.md file, and a shared room keeps it in a session, mixing directory with runtime. Second row, who creates one: CoS at runtime for the org row and for the shared room, where a project channel is an author&#x27;s file and a restart. The price, third row: the chosen shape needs Layer 2 only, a bind entry, join and one CHANNEL.md key; a project channel needs one key; a shared room needs a Layer 1 session-access change, a security change. Locks in: FIX-1718 lists project rows, not channels, and its spec is rewritten on this. Flips if two people must read one thread; then posts kept on the resource, all Layer 2."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -25,7 +25,6 @@
     .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
     .plus   { fill:var(--code); }
     .minus  { fill:var(--gone); }
-    .tie    { fill:var(--ink-3); }
     .c-code { fill:var(--code); }
     .c-mute { fill:var(--ink-3); }
     .c-lost { fill:var(--ink-2); }
@@ -35,51 +34,51 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">Q1 &#183; DECIDED &#183; JAKE, 1 OCTOBER 2026</text>
-    <text class="t-q" x="32" y="52">What is a project: its own channel, a team, or a pack of channels?</text>
+    <text class="t-lbl" x="32" y="32">Q1 &#183; DECIDED &#183; JAKE, 2026-10-01 &#183; SHAPED BY THE FIX-1728 SPIKE</text>
+    <text class="t-q" x="32" y="52">What is a project?</text>
   </g>
 
   <g id="options">
     <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Its own channel</text>
+    <text class="t-h c-code" x="228" y="112">An org row, own talk</text>
     <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="468" y="112">A team</text>
+    <text class="t-tag c-mute" x="468" y="93">INSTEAD OF &#183; HELD</text>
+    <text class="t-h c-lost" x="468" y="112">Its own channel</text>
     <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-mute" x="708" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="708" y="112">A pack of channels</text>
+    <text class="t-h c-lost" x="708" y="112">One shared project room</text>
   </g>
 
   <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">STREAM AND</text>
-    <text class="t-lbl" x="32" y="169">BRIEF</text>
+    <text class="t-lbl" x="32" y="156">WHERE ITS</text>
+    <text class="t-lbl" x="32" y="169">DATA LIVES</text>
     <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Transcript and charter</text>
-    <text class="t-s" x="248" y="179">both already exist</text>
+    <text class="t-b" x="248" y="161">On the row, only</text>
+    <text class="t-s" x="248" y="179">talk is about it, never it</text>
     <text class="mark minus" x="468" y="162">&#8722;</text>
-    <text class="t-b" x="488" y="161">Brief, no stream</text>
-    <text class="t-s" x="488" y="179">TEAM.md has no transcript</text>
+    <text class="t-b" x="488" y="161">In a CHANNEL.md</text>
+    <text class="t-s" x="488" y="179">the channel is the project</text>
     <text class="mark minus" x="708" y="162">&#8722;</text>
-    <text class="t-b" x="728" y="161">Neither</text>
-    <text class="t-s" x="728" y="179">a brief needs a document</text>
+    <text class="t-b" x="728" y="161">In a session</text>
+    <text class="t-s" x="728" y="179">directory mixed with runtime</text>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="218">ONE TEAM,</text>
-    <text class="t-lbl" x="32" y="231">MANY PROJECTS</text>
+    <text class="t-lbl" x="32" y="218">WHO CREATES</text>
+    <text class="t-lbl" x="32" y="231">ONE</text>
     <text class="mark plus" x="228" y="224">+</text>
-    <text class="t-b" x="248" y="223">Yes</text>
-    <text class="t-s" x="248" y="241">teams work across projects</text>
+    <text class="t-b" x="248" y="223">CoS, at runtime</text>
+    <text class="t-s" x="248" y="241">no file, no restart</text>
     <text class="mark minus" x="468" y="224">&#8722;</text>
-    <text class="t-b" x="488" y="223">No</text>
-    <text class="t-s" x="488" y="241">a team per project</text>
+    <text class="t-b" x="488" y="223">An author, on disk</text>
+    <text class="t-s" x="488" y="241">a file and a restart</text>
     <text class="mark plus" x="708" y="224">+</text>
-    <text class="t-b" x="728" y="223">Yes</text>
-    <text class="t-s" x="728" y="241">any channel can join</text>
+    <text class="t-b" x="728" y="223">CoS, at runtime</text>
+    <text class="t-s" x="728" y="241">once sessions can be shared</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
 
@@ -87,28 +86,28 @@
     <text class="t-lbl" x="32" y="276">WHAT IS</text>
     <text class="t-lbl" x="32" y="289">NEW</text>
     <text class="mark minus" x="228" y="282">&#8722;</text>
-    <text class="t-b" x="248" y="281">One channel key</text>
-    <text class="t-s" x="248" y="299">naming the project</text>
+    <text class="t-b" x="248" y="281">Layer 2 only</text>
+    <text class="t-s" x="248" y="299">bind, join, one CHANNEL.md key</text>
     <text class="mark plus" x="468" y="282">+</text>
-    <text class="t-b" x="488" y="281">Nothing</text>
-    <text class="t-s" x="488" y="299">teams already exist</text>
+    <text class="t-b" x="488" y="281">One channel key</text>
+    <text class="t-s" x="488" y="299">naming the project</text>
     <text class="mark minus" x="708" y="282">&#8722;</text>
-    <text class="t-b" x="728" y="281">A key and a doc</text>
-    <text class="t-s" x="728" y="299">per project</text>
+    <text class="t-b" x="728" y="281">An L1 access change</text>
+    <text class="t-s" x="728" y="299">a security change</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="353">LOCKS IN</text>
-    <text class="t-b" x="32" y="373">FIX-1718 builds the project channel</text>
-    <text class="t-s" x="32" y="391">a CHANNEL.md key; the session side is open</text>
+    <text class="t-b" x="32" y="373">FIX-1718 lists project rows, not channels</text>
+    <text class="t-s" x="32" y="391">its spec, #2625, is rewritten on this</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="353">FLIPS IF</text>
-    <text class="t-b" x="494" y="373">Jake sees a project as one team's work</text>
-    <text class="t-s" x="494" y="391">then a project is a team</text>
+    <text class="t-b" x="494" y="373">Two people must read one thread</text>
+    <text class="t-s" x="494" y="391">then posts kept on the resource, all Layer 2</text>
   </g>
 </svg>

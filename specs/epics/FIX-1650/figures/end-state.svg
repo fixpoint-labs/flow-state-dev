@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 392" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box, three issues: projects in Shift Manager, where workstreams sit under the project the Lab declares and the project's stream, board, workstreams and brief read from the tree, FIX-1718, whose Q1 Jake answered on 1 October 2026; the CoS org seat, one document a Lab opts into on the built-in agent kind, declared under org/workers and booted by a Layer 2 change, the only seat that hires, hiring on its own and firing on the person's approval, FIX-1719, whose Q2 Jake answered on 1 October 2026; and orphan repair, which finds stored seats whose kind is gone and retires or re-hires each on approval, FIX-1621, which starts at the gate. Composed from what already ships: channels and CHANNEL.md, boards, teams and TEAM.md, the inventory, durable hire and the seat-hire capability, plane isolation, the agent kind, and Shift Manager's frame. Owned elsewhere: what sits on a workstream's board, FIX-1651; attention, FIX-1652; wake and principal, FIX-1637 and FIX-1645; runtime channel admin, parked under FIX-1415 and FIX-1341; the org subscription registry, FIX-1550. Not built, below a fence: workforce/projects or workforce/agents folders; Layer 1 Agent, Team, Channel, Project or Workstream; a CoS or admin-seat type; a second hire store; an org-owned hire cell; an automatic mapping of a cut kind onto another; multi-user org productization; Heartbeats or Paperclip; a CHANNELS.md convention.">
+     aria-label="What's in the box. In the box, three issues: projects in Shift Manager, where a project is a row in an org collection that CoS creates, each person gets their own talk channel about it, minted when it is created, and workstreams sit under it with no new folder, FIX-1718, whose Q1 Jake answered on 1 October 2026; the CoS org seat, one document a Lab opts into on the built-in agent kind, declared under org/workers and booted by a Layer 2 change, the only seat that hires, hiring on its own and firing on the person's approval, FIX-1719, whose Q2 Jake answered on 1 October 2026; and orphan repair, which finds stored seats whose kind is gone and retires or re-hires each on approval, FIX-1621, which starts at the gate. Composed from what already ships: channels and CHANNEL.md, boards, teams and TEAM.md, the inventory, durable hire and the seat-hire capability, plane isolation, the agent kind, org resource collections and their reactions, and Shift Manager's frame. Owned elsewhere: what sits on a workstream's board, FIX-1651; attention, FIX-1652; wake and principal, FIX-1637 and FIX-1645; retiring, inviting to and renaming channels, parked under FIX-1415 and FIX-1341; the org subscription registry, FIX-1550. Not built, below a fence: workforce/projects or workforce/agents folders; Layer 1 Agent, Team, Channel, Project or Workstream; a CoS or admin-seat type; a second hire store; an org-owned hire cell; an automatic mapping of a cut kind onto another; multi-user org productization; Heartbeats or Paperclip; a CHANNELS.md convention; retiring, inviting to or renaming a channel at runtime; a session shared across users; project data in session state.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -25,12 +25,12 @@
 
   <g id="in-the-box">
     <rect class="box" x="16" y="24" width="908" height="140" rx="5"/>
-    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; WHAT ONE PERSON GETS FROM THE LAB'S OWN TREE</text>
+    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; WHAT ONE PERSON GETS FROM THEIR LAB</text>
     <rect class="held" x="32" y="56" width="284" height="96" rx="4"/>
     <text class="t-b" x="44" y="78">projects in Shift Manager</text>
-    <text class="t-s" x="44" y="96">workstreams under their project</text>
-    <text class="t-s" x="44" y="111">stream &#183; board &#183; workstreams &#183; brief</text>
-    <text class="t-s" x="44" y="126">read from the tree, no new folder</text>
+    <text class="t-s" x="44" y="96">a project: an org row CoS creates</text>
+    <text class="t-s" x="44" y="111">your own talk channel, minted on create</text>
+    <text class="t-s" x="44" y="126">workstreams under it &#183; no new folder</text>
     <text class="t-s" x="44" y="143">FIX-1718 &#183; Q1 answered</text>
     <rect class="held" x="328" y="56" width="284" height="96" rx="4"/>
     <text class="t-b" x="340" y="78">Chief of Staff &#183; one org seat</text>
@@ -51,7 +51,7 @@
     <text class="t-lbl" x="32" y="196">COMPOSED FROM WHAT ALREADY SHIPS</text>
     <text class="t-s" x="32" y="216">channels, CHANNEL.md &#183; boards &#183; teams, TEAM.md</text>
     <text class="t-s" x="32" y="232">the inventory &#183; durable hire &#183; seat-hire capability</text>
-    <text class="t-s" x="32" y="248">plane isolation &#183; the agent kind</text>
+    <text class="t-s" x="32" y="248">plane isolation &#183; the agent kind &#183; org collections, reactTo</text>
     <text class="t-s" x="32" y="264">Shift Manager's frame and its named empty states</text>
   </g>
 
@@ -60,7 +60,7 @@
     <text class="t-lbl" x="494" y="196">OWNED ELSEWHERE, CONSUMED OR LEFT ALONE</text>
     <text class="t-s" x="494" y="216">what sits on a workstream's board &#183; FIX-1651</text>
     <text class="t-s" x="494" y="232">attention &#183; FIX-1652 &#183; wake, principal &#183; FIX-1637, 1645</text>
-    <text class="t-s" x="494" y="248">runtime channel admin &#183; parked, FIX-1415, 1341</text>
+    <text class="t-s" x="494" y="248">retire, invite, rename &#183; parked, FIX-1415, 1341</text>
     <text class="t-s" x="494" y="264">org subscription registry &#183; FIX-1550</text>
   </g>
 
@@ -69,6 +69,6 @@
     <text class="t-non" x="32" y="310">NOT BUILT &#8212; THE INVENT-KILLS</text>
     <text class="t-s" x="32" y="332">no workforce/projects/ or workforce/agents/ &#183; no L1 Agent, Team, Channel, Project or Workstream &#183; no CoS or admin-seat type</text>
     <text class="t-s" x="32" y="348">no second hire store &#183; no org-owned hire cell &#183; no automatic mapping of a cut kind onto another &#183; no CHANNELS.md</text>
-    <text class="t-s" x="32" y="364">no multi-user org product &#183; no Heartbeats or Paperclip &#183; no runtime channel open, retire or invite</text>
+    <text class="t-s" x="32" y="364">no multi-user org product &#183; no Heartbeats or Paperclip &#183; no runtime retire, invite or rename &#183; no shared session &#183; no project data in session state</text>
   </g>
 </svg>

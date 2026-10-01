@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 310" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 1 October 2026, in phases rather than dates, because implementation timing is Jake's call and Cycle PM has not scheduled it. Now is this epic spec in review. Jake answered Q1 and Q2 on 1 October 2026. FIX-1621, orphan repair: its spec starts at the gate, then its build. FIX-1718, projects: its spec starts once the amendment recording Q1's answer merges, then its build. FIX-1719, Chief of Staff: its spec starts once the amendment recording Q2's answer merges, and its build waits for FIX-1621's build. FIX-1720, the closure: its QA plan is written beside the others, then its run after all three merge. FIX-1621 finishes before the FIX-1719 build starts. The critical path runs the gate, FIX-1621's spec and build, the FIX-1719 build, and the closure run.">
+     aria-label="The path as of 1 October 2026, in phases rather than dates, because implementation timing is Jake's call and Cycle PM has not scheduled it. Now is this epic spec's Q1 amendment in review. Jake answered Q1 and Q2 on 1 October 2026. FIX-1621, orphan repair: its spec starts at the gate, then its build. FIX-1718, projects: its spec, rewritten on Q1's answer and the FIX-1728 spike's convention, starts once the amendment recording it merges, then its build. FIX-1719, Chief of Staff: its spec starts once the amendment recording Q2's answer merges, and its build waits for FIX-1621's build. FIX-1720, the closure: its QA plan is written beside the others, then its run after all three merge. FIX-1621 finishes before the FIX-1719 build starts. The critical path runs the gate, FIX-1621's spec and build, the FIX-1719 build, and the closure run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -43,7 +43,7 @@
   <g id="projects">
     <text class="t-ln" x="16" y="156">FIX-1718 &#183; projects</text>
     <rect class="todo" x="296" y="142" width="150" height="22" rx="3"/>
-    <text class="t-s" x="304" y="157">spec, Q1 answered</text>
+    <text class="t-s" x="304" y="157">spec, rewritten on Q1</text>
     <rect class="todo" x="454" y="142" width="110" height="22" rx="3"/>
     <text class="t-s" x="462" y="157">build</text>
   </g>
