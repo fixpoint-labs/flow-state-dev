@@ -74,6 +74,14 @@ export const GAPS = {
     /** `@name` that names no member of this workstream. Drawn after the name. */
     noWorker: "is not a worker in this workstream.",
   },
+  /** Roster's gaps, and the partial mark every status screen shares (FIX-1723). */
+  roster: {
+    watches:
+      "What a worker is on call for beyond you, such as webhooks, schedules and other standing watches, arrives with FIX-1675. Until then on call means waiting on you, and a worker that only waits for a webhook reads off shift.",
+    seatMatch:
+      "Which worker holds a task is a best match on the task's assignee: its id, then a unique name, then who is in the task's workstream. A task whose assignee matches no single worker counts for no one. A declared map arrives with FIX-1672.",
+    partial: "Asks did not load, so on call may be missing workers waiting on you.",
+  },
   resources: "This Lab serves no documents to the browser, so there is nothing to open here yet.",
   inboxScope:
     "Inbox lists the asks in sessions you started, and in the runs those started. Asks in another member's sessions are not listed; an organization-wide view is FIX-1652's call.",

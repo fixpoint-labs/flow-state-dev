@@ -11,6 +11,7 @@
  *     /w/<channelId>/<stream|board|brief|results>
  *     /p/<projectId>/<stream|board|workstreams|brief>
  *     /r/<sessionId>/<resourceRef>   a declared document, read-only
+ *     /roster[?team=<teamId>]        every worker, or one team's (pinned, FIX-1723)
  */
 import { useSyncExternalStore } from "react";
 
@@ -37,7 +38,9 @@ export type Route =
   | { level: "task"; boardRef: string; taskId: string; tab: TaskTab }
   | { level: "workstream"; channelId: string; tab: WorkstreamTab }
   | { level: "project"; projectId: string; tab: ProjectTab }
-  | { level: "resource"; sessionId: string; ref: string };
+  | { level: "resource"; sessionId: string; ref: string }
+  /** `team: null` is All. */
+  | { level: "roster"; team: string | null };
 
 function oneOf<T extends string>(values: readonly T[], value: string | undefined, fallback: T): T {
   return values.includes(value as T) ? (value as T) : fallback;
@@ -56,6 +59,7 @@ export function parseRoute(pathname: string, search = ""): Route {
   if (head === "w" && a !== undefined) return { level: "workstream", channelId: a, tab: oneOf(WORKSTREAM_TABS, b, "stream") };
   if (head === "p" && a !== undefined) return { level: "project", projectId: a, tab: oneOf(PROJECT_TABS, b, "stream") };
   if (head === "r" && a !== undefined && b !== undefined) return { level: "resource", sessionId: a, ref: b };
+  if (head === "roster") return { level: "roster", team: new URLSearchParams(search).get("team") || null };
   return { level: "inbox", suspensionId: head === "inbox" && a !== undefined ? a : null };
 }
 
@@ -75,6 +79,8 @@ export function pathFor(route: Route): string {
       return `/p/${e(route.projectId)}/${route.tab}`;
     case "resource":
       return `/r/${e(route.sessionId)}/${e(route.ref)}`;
+    case "roster":
+      return route.team === null ? "/roster" : `/roster?team=${e(route.team)}`;
   }
 }
 

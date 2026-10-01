@@ -1,31 +1,35 @@
 /**
- * The sidebar (S5): in order, the organization, Jump to, Inbox and Tasks with
- * their counts, PROJECTS, TEAMS, and a footer (BR-6) that ends in the Day
- * shift / Night shift switch.
+ * The sidebar (S5): in order, the organization, Jump to, Inbox, Tasks and
+ * Roster with their counts, PROJECTS, TEAMS, and a footer (BR-6) with the
+ * on-shift and on-call counts that ends in the Day shift / Night shift switch.
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
- * opens always agree. PROJECTS lists the workstreams directly while no
- * projects ship (BR-9); TEAMS lists each team in the seat inventory with
- * exactly its seats (BR-7). A failed read shows its section's Retry and
- * nothing else changes (BR-11).
+ * opens always agree; every status and status count from its one
+ * `seatStates` result, so they agree with Roster. PROJECTS lists the
+ * workstreams directly while no projects ship (BR-9); TEAMS is one row per
+ * team with a status square per seat, opening Roster for that team. A failed
+ * read shows its section's Retry and nothing else changes (BR-11).
  */
-import { useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import type { ColorScheme, ShiftLook } from "../lib/color-scheme";
 import { navigate, NO_PROJECT, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
-import { allRows, openRows, rosterOf, teamsOf, workerStatus, type LoadedSnapshot } from "../lib/derive";
-import { SectionFailure, StatusWord } from "../components/ui";
+import { openRows, seatStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { PartialMark, SectionFailure, ShiftMark } from "../components/ui";
 import type { Gaps } from "../gaps";
 
 function NavItem({
   label,
   count,
+  mark,
   active,
   onClick,
   testId,
 }: {
   label: string;
   count?: number | string;
+  /** Drawn after the count. */
+  mark?: ReactNode;
   active: boolean;
   onClick: () => void;
   testId: string;
@@ -46,6 +50,7 @@ function NavItem({
           {count}
         </span>
       )}
+      {mark}
     </button>
   );
 }
@@ -137,6 +142,9 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
   const inboxCount = loaded === undefined ? "…" : loaded.asks.ok ? loaded.asks.value.length : "!";
   const tasksCount = loaded === undefined ? "…" : openRows(loaded).length;
   const liveSessions = loaded === undefined ? null : loaded.sessions.length;
+  const states = loaded === undefined || !loaded.inventory.ok ? undefined : seatStates(loaded);
+  const counts = states === undefined ? undefined : shiftCounts(states);
+  const partial = states?.partial === true ? <PartialMark title={gaps.roster.partial} /> : null;
 
   return (
     <nav aria-label="Shift Manager" className="flex h-full w-64 shrink-0 flex-col border-r bg-card" data-testid="sidebar">
@@ -167,6 +175,14 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
             onClick={() => navigate({ level: "tasks", by: "state" })}
             testId="nav-tasks"
           />
+          <NavItem
+            label="Roster"
+            count={counts === undefined ? undefined : `${counts["on shift"]}·${counts["on call"]}`}
+            mark={partial}
+            active={route.level === "roster" && route.team === null}
+            onClick={() => navigate({ level: "roster", team: null })}
+            testId="nav-roster"
+          />
         </div>
 
         <Heading testId="projects-heading" onClick={() => navigate({ level: "project", projectId: NO_PROJECT, tab: "stream" })}>
@@ -195,30 +211,32 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
         <div data-testid="teams">
           {loaded === undefined ? null : loaded.inventory.ok ? (
             teamsOf(loaded.inventory.value.seats).map(({ team, seats }) => (
-              <div key={team} className="mb-2" data-testid="team" data-team={team}>
-                <p className="px-2 py-1 text-sm font-medium">{team}</p>
-                <ul>
-                  {seats.map((seat) => (
-                    <li key={seat.id} className="px-2 py-1" data-testid="worker" data-seat-id={seat.id}>
-                      <button
-                        type="button"
-                        className="flex w-full items-center justify-between gap-2 text-left text-sm hover:underline"
-                        onClick={() => navigate({ level: "tasks", by: "worker" })}
-                      >
-                        <span className="truncate">{seat.name}</span>
-                        <StatusWord status={workerStatus(seat, allRows(loaded), rosterOf(loaded))} />
-                      </button>
-                      <p className="text-xs text-muted-foreground">
-                        <span data-testid="worker-kind">{seat.kind ?? "unknown kind"}</span>
-                        {" · "}
-                        <span title={gaps.harness} data-testid="worker-harness">
-                          —
-                        </span>
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <button
+                key={team}
+                type="button"
+                aria-current={route.level === "roster" && route.team === team ? "page" : undefined}
+                onClick={() => navigate({ level: "roster", team })}
+                data-testid="team"
+                data-team={team}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
+                  route.level === "roster" && route.team === team ? "bg-accent font-medium text-accent-foreground" : "hover:bg-accent/60"
+                }`}
+              >
+                <span className="flex-1 truncate">{team}</span>
+                <span className="flex gap-0.5">
+                  {seats.map((seat) => {
+                    const status = states?.seats.get(seat.id)?.status ?? "off shift";
+                    return (
+                      <span key={seat.id} title={`${seat.name} · ${status}`} data-testid="worker" data-seat-id={seat.id} data-status={status}>
+                        <ShiftMark status={status} className="block size-2" />
+                      </span>
+                    );
+                  })}
+                </span>
+                <span className="w-8 text-right text-xs tabular-nums text-muted-foreground" data-testid="team-on-shift">
+                  {seats.filter((seat) => states?.seats.get(seat.id)?.status === "on shift").length}/{seats.length}
+                </span>
+              </button>
             ))
           ) : (
             <SectionFailure what="Teams" failure={loaded.inventory.failure} onRetry={retry} testId="teams-failure" />
@@ -226,6 +244,19 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
         </div>
       </div>
       <footer className="border-t px-3 py-2 text-xs text-muted-foreground" data-testid="sidebar-footer">
+        {counts === undefined ? null : (
+          <p className="mb-1 flex items-center gap-3">
+            <span className="inline-flex items-center gap-1.5">
+              <ShiftMark status="on shift" />
+              <span data-testid="footer-on-shift">{counts["on shift"]} on shift</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <ShiftMark status="on call" />
+              <span data-testid="footer-on-call">{counts["on call"]} on call</span>
+            </span>
+            {partial}
+          </p>
+        )}
         <span data-testid="sessions-live">{liveSessions === null ? "sessions unknown" : `${liveSessions} sessions`}</span>
         {" · "}
         <span data-testid="current-user">{clients.userId}</span>
