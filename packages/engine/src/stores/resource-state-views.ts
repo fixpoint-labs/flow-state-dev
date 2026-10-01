@@ -52,7 +52,10 @@ export function toBareState<T extends JsonObject = JsonObject>(
 export function toBareStates<T extends JsonObject = JsonObject>(
   entries: Record<string, VersionedResourceState>
 ): Record<string, T> {
-  const result: Record<string, T> = {};
+  // Null-prototype: keys are author-supplied storage keys (FIX-1254). A
+  // `__proto__` key would otherwise hit the inherited setter, and `toString`
+  // would read back as present.
+  const result: Record<string, T> = Object.create(null);
   for (const [key, entry] of Object.entries(entries)) {
     result[key] = entry.state as T;
   }
@@ -71,7 +74,9 @@ export function toBareStates<T extends JsonObject = JsonObject>(
 export function toVersions(
   entries: Record<string, VersionedResourceState>
 ): Record<string, number> {
-  const result: Record<string, number> = {};
+  // Null-prototype, as above: an inherited `toString` here would become the
+  // `expectedVersion` of a write instead of `0`.
+  const result: Record<string, number> = Object.create(null);
   for (const [key, entry] of Object.entries(entries)) {
     result[key] = entry.version;
   }

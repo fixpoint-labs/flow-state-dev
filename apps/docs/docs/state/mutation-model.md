@@ -162,6 +162,8 @@ A whole-row `.catch()` fallback — including one sitting under `.nullable()`, `
 
 `setState(null)` on a `.nullable()` resource is not a schema failure. The store holds JSON objects, so that write persists as `{}` — the same cleared form an unwritten nullable single already surfaces as.
 
+That reset applies only when you write `null`. If your schema turns a non-null value into `null`, for example a `.transform()` that returns `null` for an empty object, the write is refused with `ValidationError` and stored state is unchanged. Write `null` to clear the resource, or have the schema return an object for that value.
+
 The message is:
 
 ```
@@ -207,7 +209,7 @@ A schema that collapses its own output — one whose second parse returns `null`
 
 Every resource write clears this bar: the six mutators above on singles and collection instances, `collection.create()` and `upsert`, and the client create route.
 
-Creates clear it on the value they seed. The client route carries no initial state, so it seeds the row from the schema's parse of `{}`; a schema that cannot produce a valid, settled object from `{}` answers [`400`](/docs/resources/client-access#what-the-write-endpoints-refuse) rather than creating a row every later write would reject. A required field with no `.default()` is the usual cause; give it one. `collection.create(key, seed)` is refused on the same grounds when the schema parses `seed` away to `null` and its parse of `{}` produces an object that does not settle, which is the answer a bare `collection.create(key)` gives.
+Creates clear it on the value they seed. The client route carries no initial state, so it seeds the row from the schema's parse of `{}`; a schema that cannot produce a valid, settled object from `{}` answers [`400`](/docs/resources/client-access#what-the-write-endpoints-refuse) rather than creating a row every later write would reject. A required field with no `.default()` is the usual cause; give it one. `collection.create(key, seed)` is refused with `ValidationError`, and no row is stored, whenever the schema parses `seed` to `null`. A bare `collection.create(key)` seeds from the schema's parse of `{}`, the same as the client route. If your seed parses to `null` and the parse of `{}` doesn't settle either, the error reports the settle failure rather than the `null`, so it can name a field your seed never set.
 
 An ordinary `z.object({…}).nullable()` parses `{}` to `{}`, so the `setState(null)` reset above is unaffected.
 

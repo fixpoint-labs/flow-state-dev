@@ -64,7 +64,10 @@ separates them is whether the hint carries a *delta* or an *absolute* value.
   `incState` given a **single** field. The hint carries the delta itself — `hint.delta` for
   `incField`, `hint.values` for `pushToArray` — so the store adds to, or appends to, whatever it
   finds. Two concurrent writers to the same field both survive; for an append, order affects
-  position only.
+  position only. A field holding the wrong kind of value is refused, not coerced: `incField` throws
+  unless the field is a number, absent or `null` (the last two start from `0`), `pushToArray`
+  unless it is an array or absent, and the record is left untouched. The container's own mutator
+  applies the same `incState` refusal, so a multi-field call or a scope with no store refuses too.
 - **Unchecked but *not* commutative** (same adapter condition): `setStateRecord` and
   `deleteStateRecord` always, and `patchState` given exactly one **literal** field. The hint carries
   no delta — `createScopePersist` reads an *absolute* value out of the mutator's `nextState` to send

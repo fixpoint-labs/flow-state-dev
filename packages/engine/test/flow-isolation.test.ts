@@ -1004,12 +1004,9 @@ describe("cross-flow resource schema validation", () => {
       // resource never got a handle at all: `get()` handed back
       // `Object.prototype` and `list()` omitted it.
       //
-      // NOT yet end-to-end. This resource's state does not round-trip — the
-      // default is not seeded and `patchState` throws
-      // `expectedVersion ... received NaN`, because the normalizers and the
-      // version map are keyed the same way and are still plain objects. Those
-      // are FIX-1254's. Asserted here is only what this change fixes: lookup
-      // resolves the declaration instead of a builtin.
+      // Asserted here is only lookup: it resolves the declaration instead of a
+      // builtin. The state round-trip (seeded default, versioned writes, reload)
+      // is covered in `prototype-named-resources.test.ts`.
       const resource = defineResource({
         scope: "user",
         stateSchema: z.object({ theme: z.string().default("dark") }),
