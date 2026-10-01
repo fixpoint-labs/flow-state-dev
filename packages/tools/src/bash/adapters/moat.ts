@@ -856,6 +856,20 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
     }
   }
 
+  // The mount's real path is fixed for the life of the handle; resolve it
+  // once, on the first host fast-path call. A failed lookup is not cached.
+  let cachedRealRoot: string | undefined;
+  async function mountRealRoot(): Promise<string> {
+    if (cachedRealRoot !== undefined) return cachedRealRoot;
+    const source = handle.mountSource as string;
+    try {
+      cachedRealRoot = await realpath(source);
+      return cachedRealRoot;
+    } catch {
+      return path.resolve(source);
+    }
+  }
+
   /**
    * Resolve symlinks in a host path from `toHostPath` and return the real
    * path when it is still inside the bind mount, or null when it is not.
@@ -872,8 +886,7 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
    * covered; `moat exec` is the path with no host exposure at all.
    */
   async function containHostPath(hostPath: string): Promise<string | null> {
-    const source = handle.mountSource as string;
-    const realRoot = await realpath(source).catch(() => path.resolve(source));
+    const realRoot = await mountRealRoot();
     const missing: string[] = [];
     let probe = hostPath;
     let real: string;
@@ -896,7 +909,8 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
       }
     }
     const resolved = path.join(real, ...missing);
-    if (resolved !== realRoot && !resolved.startsWith(realRoot + path.sep)) return null;
+    const rel = path.relative(realRoot, resolved);
+    if (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
     return resolved;
   }
 

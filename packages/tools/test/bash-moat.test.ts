@@ -27,6 +27,7 @@ import {
   MoatGrantsError,
   MoatRunStoppedError,
   MoatBinaryReadError,
+  MoatPathEscapeError,
   type SpawnFn as MoatSpawnFn,
   type SpawnResult as MoatSpawnResult,
 } from "../src/bash/adapters/moat";
@@ -804,11 +805,11 @@ describe("createMoatAdapter host-fs containment", () => {
       // The bash tool builds `${destination}/${modelPath}`, so a model path
       // of `../outside/secret.txt` arrives exactly like this.
       await expect(sandbox.readFile("/workspace/../outside/secret.txt")).rejects.toThrow(
-        /outside the workspace/,
+        MoatPathEscapeError,
       );
       await expect(
         sandbox.readFile("/workspace/sub/../../outside/secret.txt"),
-      ).rejects.toThrow(/outside the workspace/);
+      ).rejects.toThrow(MoatPathEscapeError);
       expect(execCalls()).toHaveLength(0);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -820,7 +821,7 @@ describe("createMoatAdapter host-fs containment", () => {
     try {
       await expect(
         sandbox.writeFile("/workspace/../outside/pwned.txt", "x"),
-      ).rejects.toThrow(/outside the workspace/);
+      ).rejects.toThrow(MoatPathEscapeError);
       expect(existsSync(path.join(outside, "pwned.txt"))).toBe(false);
       expect(execCalls()).toHaveLength(0);
     } finally {
