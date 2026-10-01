@@ -224,7 +224,8 @@ export function createPgRecordStore<
    *
    * Mirrors `assertDeltaExpectedVersion` in the engine's
    * `stores/scope-write-predicate` module — restated rather than imported
-   * because this package depends on `@flow-state-dev/engine` type-only, and
+   * (this package may value-import the engine; store-sqlite may not, and the
+   * two SQL adapters keep matching copies), and
    * pinned across all four adapters by the shared scope-store conformance
    * suite. Delta verbs read-modify-write an existing record, so `"absent"` is
    * a programming error at the call site and not a lost race.

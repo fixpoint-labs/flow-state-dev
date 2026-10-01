@@ -12,8 +12,8 @@ import type {
  * filter passes everything; an empty array passes nothing.
  *
  * The in-memory and filesystem stores call this directly; the SQL adapters
- * mirror it as `status = ?` / `status IN (…)` because they cannot import
- * across the type-only package boundary.
+ * mirror it as `status = ?` / `status IN (…)` because the filter has to be a
+ * SQL clause there.
  */
 export function matchesRequestStatusFilter(
   filter: RequestStatus | readonly RequestStatus[] | undefined,

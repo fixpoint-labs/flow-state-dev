@@ -3,8 +3,8 @@
  * additive `parent_session_id` migration.
  *
  * The mode matrix mirrors `packages/engine/test/session-parentage-listing.test.ts`
- * and the SQLite suite case for case. This adapter cannot import the shared
- * `matchesParentageFilter` predicate (type-only package boundary), so it
+ * and the SQLite suite case for case. The shared `matchesParentageFilter`
+ * predicate is JavaScript and can't run inside the SQL `WHERE`, so this adapter
  * reproduces it in the `WHERE` builder — an adapter that diverges is the exact
  * failure this coverage exists to catch.
  */
