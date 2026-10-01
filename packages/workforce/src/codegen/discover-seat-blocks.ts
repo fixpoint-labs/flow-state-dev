@@ -42,6 +42,7 @@ import {
   validateSegment,
   walkTeams,
 } from "../loader";
+import { typescriptExtension } from "./typescript-module";
 
 /** The folder a block file sits in, at every level it may sit at. */
 export const BLOCKS_SLOT = "blocks";
@@ -65,9 +66,6 @@ export const SEAT_BLOCK_SLOT_PATTERNS: readonly string[] = Object.freeze([
   `teams/*/${WORKERS_LEVEL}/*/${BLOCKS_SLOT}`,
 ]);
 
-/** Extensions that denote a TypeScript module. Anything else in the folder is a note beside the code. */
-const TYPESCRIPT_EXTENSIONS = [".ts", ".tsx"];
-
 /** One block registered for one seat. A team-level file produces one of these per seat on the team. */
 export interface DiscoveredSeatBlock {
   /** The seat it is registered for — `<team>.<worker>`, the worker id. */
@@ -88,11 +86,6 @@ export interface SeatBlockDiscovery {
   seatBlocks: DiscoveredSeatBlock[];
   /** Each refusal, in the order the walk met it. */
   problems: string[];
-}
-
-/** The TypeScript extension this entry carries, or `undefined` when it is not a TypeScript module. */
-function typescriptExtension(entry: string): string | undefined {
-  return TYPESCRIPT_EXTENSIONS.find((extension) => entry.endsWith(extension));
 }
 
 /** One file found in a `blocks/` slot, before it is attached to any seat or package. */
