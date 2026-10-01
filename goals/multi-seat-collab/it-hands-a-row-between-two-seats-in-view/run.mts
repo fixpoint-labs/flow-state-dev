@@ -340,15 +340,9 @@ async function main() {
     } catch (error) {
       fail("V4", `the second person's delivery never reached the server: ${error instanceof Error ? error.message : String(error)}`);
     }
-    // The positive record first: the delivery reached the server, either as a
-    // request on the owning seat or as an explicit refusal at the door. Only
-    // then is its fate judged. An explicit 401/403 is a loud refusal, so it
-    // counts. So does the engine's own answer for another user's session: a
-    // 404 naming that session, at admission, with nothing written — the same
-    // answer an unused id gets, so it is judged below only once the owner's
-    // own delivery to the very same session is admitted, which is what tells
-    // "refused this caller" from "no such session". Anything else that is not
-    // a 202 with a request id proves nothing about the fence.
+    // 401/403 counts. A 404 counts only when it names this session, and only
+    // after the owner's own delivery to that same session is admitted — an
+    // unused id gets the same 404. Anything else needs a 202 with a request id.
     let hiddenFromOther: string | undefined;
     if (otherPerson !== undefined) {
       if (otherPerson.httpStatus === 401 || otherPerson.httpStatus === 403) {

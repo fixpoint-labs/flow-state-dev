@@ -534,11 +534,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
    * carries one from the verified principal instead (FIX-1442). This stand-in
    * for the session route binds what that route binds, which is the lab's own
    * org, and is the only reason an `orgId` is written at all.
-   *
-   * Shaped after `goals/manager-queue-lab/lab/host.mts`. The reference for how
-   * a lab gives `openChannels` the right org is `goals/pentest-lab/lab/host.mts`:
-   * a host `resolvePrincipal`, with channels opened through the real session
-   * routes.
    */
   const sessionClient = {
     createSession: async (create: {
