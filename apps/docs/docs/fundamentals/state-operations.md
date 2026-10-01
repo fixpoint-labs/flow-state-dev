@@ -181,7 +181,7 @@ A write is also refused, and returns `false`, in these cases:
 
 - **A write with no version fell back to a full-record write and lost.** When the store doesn't offer the matching operation, the runtime writes the whole record at the version this run last read, in one attempt with no retry. Lose that race and the call returns `false` against a record that still exists — a lost delete looks exactly like a delete that had nothing to do. See [the store has to offer the operation](#the-store-has-to-offer-the-operation).
 
-- **A field `incState` targets holds something other than a number.** This one doesn't return `false`: the call throws and writes nothing. See [`incState`](#incstateincrements).
+`incState` on a field that holds a non-number doesn't return `false` at all. It throws and writes nothing. See [`incState`](#incstateincrements).
 
 So read `false` as "nothing was written", never as "the state already matched". When you need to know what is stored, read it back from something other than this context's cache. Neither the stale-cache no-op nor the lost fallback write refreshes `ctx.<scope>.state`, so reading it back there hands you the same copy the call was decided against.
 
