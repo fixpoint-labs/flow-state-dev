@@ -342,8 +342,10 @@ describe("the disabled acts and empty tabs carry their gap lines (BR-15 to BR-17
       expect((el as HTMLButtonElement).disabled).toBe(true);
       expect(el.getAttribute("data-gap")).toBe(GAPS.task.handOff);
     }
+    // This Lab's kinds declare no door, so the composer says the worker takes
+    // no message, once it has read the run (BR-18).
     expect((screen.getByTestId("task-composer-input") as HTMLTextAreaElement).disabled).toBe(true);
-    expect(screen.getByTestId("task-composer-gap").textContent).toBe(GAPS.task.composer);
+    await waitFor(() => expect(screen.getByTestId("task-composer-blocked").textContent).toContain(GAPS.turn.noDoor));
     expect((screen.getByTestId("task-also-post") as HTMLInputElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("tab", { name: "checks" }));
     expect((await screen.findByTestId("task-checks-empty")).textContent).toContain(GAPS.task.checks.body);

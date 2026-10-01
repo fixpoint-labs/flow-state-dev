@@ -147,11 +147,15 @@ describe("SQLite adapter — delta verb contract (FIX-405)", () => {
       expect((await store.get("s1"))?.state).toEqual({ count: 3 });
     });
 
-    it("treats a non-numeric field as 0", async () => {
+    it("refuses a non-numeric field, leaving it intact", async () => {
       const store = freshStore();
       await seed(store, "s1", { count: "not-a-number" });
-      await store.incField!("s1", ["count"], 7, 0, Date.now());
-      expect((await store.get("s1"))?.state).toEqual({ count: 7 });
+      await expect(store.incField!("s1", ["count"], 7, 0, Date.now())).rejects.toThrow(
+        /not a number/
+      );
+      const after = await store.get("s1");
+      expect(after?.state).toEqual({ count: "not-a-number" });
+      expect(after?.version).toBe(0);
     });
 
     it("supports negative deltas and decimals", async () => {

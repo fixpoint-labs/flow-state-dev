@@ -347,6 +347,43 @@ export function createPgRecordStore<
     return loadConflict(id);
   }
 
+  type StateRow = { state?: Record<string, unknown>; version: number };
+
+  /**
+   * Run one delta `apply`, and on a miss let `refuse` throw if the row this
+   * write targeted holds the wrong kind of value at `field`. `"any"` retries a
+   * miss once: the field may have been the wrong type at UPDATE time and a
+   * concurrent writer has since made it valid, and a conflict is a silent
+   * no-op upstream (runCommutative), so the write must not be dropped.
+   */
+  async function commitOrRefuse(
+    expectedVersion: ExpectedVersion,
+    apply: () => Promise<SetResult<TRecord>>,
+    field: string,
+    refuse: (existing: unknown) => void
+  ): Promise<SetResult<TRecord>> {
+    const onMiss = (current: StateRow | undefined): void => {
+      if (
+        current &&
+        (expectedVersion === "any" || current.version === expectedVersion)
+      ) {
+        refuse(current.state?.[field]);
+      }
+    };
+
+    let result = await apply();
+    if (!result.ok) {
+      onMiss(result.conflict.currentValue as StateRow | undefined);
+      if (expectedVersion === "any") {
+        result = await apply();
+        if (!result.ok) {
+          onMiss(result.conflict.currentValue as StateRow | undefined);
+        }
+      }
+    }
+    return result;
+  }
+
   return {
     async get(id: string): Promise<TRecord | undefined> {
       const result = await executor.query(getSQL, [id]);
@@ -457,14 +494,30 @@ export function createPgRecordStore<
       if (path.length !== 1) {
         throw new Error(`incField only supports depth-1 paths; received path of length ${path.length}`);
       }
-      return runDeltaUpdate(
-        id,
-        statePath(path),
-        "to_jsonb(CASE WHEN jsonb_typeof(data #> $1::text[]) = 'number' THEN (data #>> $1::text[])::numeric ELSE 0 END + $2::numeric)",
-        [delta],
+      return commitOrRefuse(
         expectedVersion,
-        updatedAt,
-        "incField"
+        () =>
+          runDeltaUpdate(
+            id,
+            statePath(path),
+            // Missing key (SQL NULL at the path) or JSON null starts from 0. A
+            // present non-number is excluded by extraWhere so this expression
+            // never coerces it to 0 and overwrites it.
+            "to_jsonb(CASE WHEN jsonb_typeof(data #> $1::text[]) = 'number' THEN (data #>> $1::text[])::numeric ELSE 0 END + $2::numeric)",
+            [delta],
+            expectedVersion,
+            updatedAt,
+            "incField",
+            "data #> $1::text[] IS NULL OR jsonb_typeof(data #> $1::text[]) IN ('number', 'null')"
+          ),
+        path[0],
+        (existing) => {
+          if (existing !== undefined && existing !== null && typeof existing !== "number") {
+            throw new Error(
+              `incField target at path[${path[0]}] is not a number (got ${Array.isArray(existing) ? "array" : typeof existing})`
+            );
+          }
+        }
       );
     },
 
@@ -478,62 +531,31 @@ export function createPgRecordStore<
       if (path.length !== 1) {
         throw new Error(`pushToArray only supports depth-1 paths; received path of length ${path.length}`);
       }
-      const apply = () =>
-        runDeltaUpdate(
-          id,
-          statePath(path),
-          // Missing key (SQL NULL at the path) becomes the pushed values.
-          // A present array is concatenated. A present non-array is excluded
-          // by extraWhere so this expression never wraps a scalar.
-          "CASE WHEN data #> $1::text[] IS NULL THEN $2::jsonb ELSE (data #> $1::text[]) || $2::jsonb END",
-          [JSON.stringify(values)],
-          expectedVersion,
-          updatedAt,
-          "pushToArray",
-          "data #> $1::text[] IS NULL OR jsonb_typeof(data #> $1::text[]) = 'array'"
-        );
-
-      const throwIfPresentNonArray = (
-        current:
-          | { state?: Record<string, unknown>; version: number }
-          | undefined
-      ): void => {
-        if (
-          current &&
-          (expectedVersion === "any" || current.version === expectedVersion)
-        ) {
-          const existing = current.state?.[path[0]];
+      return commitOrRefuse(
+        expectedVersion,
+        () =>
+          runDeltaUpdate(
+            id,
+            statePath(path),
+            // Missing key (SQL NULL at the path) becomes the pushed values.
+            // A present array is concatenated. A present non-array is excluded
+            // by extraWhere so this expression never wraps a scalar.
+            "CASE WHEN data #> $1::text[] IS NULL THEN $2::jsonb ELSE (data #> $1::text[]) || $2::jsonb END",
+            [JSON.stringify(values)],
+            expectedVersion,
+            updatedAt,
+            "pushToArray",
+            "data #> $1::text[] IS NULL OR jsonb_typeof(data #> $1::text[]) = 'array'"
+          ),
+        path[0],
+        (existing) => {
           if (existing !== undefined && !Array.isArray(existing)) {
             throw new Error(
               `pushToArray target at path[${path[0]}] is not an array (got ${typeof existing})`
             );
           }
         }
-      };
-
-      let result = await apply();
-      if (!result.ok) {
-        throwIfPresentNonArray(
-          result.conflict.currentValue as
-            | { state?: Record<string, unknown>; version: number }
-            | undefined
-        );
-        // "any" missed because the field was a non-array at UPDATE time. If a
-        // concurrent writer has since made the shape valid, retry once so the
-        // push is not dropped as a conflict (runCommutative treats conflict
-        // as a silent no-op).
-        if (expectedVersion === "any") {
-          result = await apply();
-          if (!result.ok) {
-            throwIfPresentNonArray(
-              result.conflict.currentValue as
-                | { state?: Record<string, unknown>; version: number }
-                | undefined
-            );
-          }
-        }
-      }
-      return result;
+      );
     },
 
     async deleteField(

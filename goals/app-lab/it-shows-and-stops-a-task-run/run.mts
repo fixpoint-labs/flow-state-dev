@@ -28,9 +28,10 @@
  *   inspector     worker, start time and recorded plan and files equal the
  *                 store's; the trace link is the devtool App Lab serves,
  *                 opening the run's session, and following it lands there
- *   gaps          Diff, Checks, Hand off, reassign, Open PR, the composer and
+ *   gaps          Diff, Checks, Hand off, reassign, Open PR, *also post* and
  *                 the inspector's unread values each carry a gap line naming
- *                 its owner, or saying it is not planned in the first cut
+ *                 its owner, or saying it is not planned in the first cut; the
+ *                 composer is disabled because this Lab's kinds take no message
  *   no run        the unclaimed row says no run has started and can't be stopped
  *   reach         the page throws nothing
  *
@@ -438,8 +439,10 @@ async function checkGaps({ page, fail }: Ctx): Promise<void> {
   };
   await owned("task-disabled-action", true);
   if ((await page.getByTestId("task-disabled-action").count()) !== 3) fail("gaps", "Hand off, reassign and Open PR are not all there");
+  // No kind in this Lab declares a door, so the composer says the worker takes no message.
   if (!(await page.getByTestId("task-composer-input").isDisabled())) fail("gaps", "the composer is enabled");
-  await owned("task-composer-gap", false);
+  const blocked = (await page.getByTestId("task-composer-blocked").textContent().catch(() => null)) ?? "";
+  if (!blocked.includes("takes no message.")) fail("gaps", `the composer doesn't say the worker takes no message: "${blocked}"`);
   await owned("task-also-post", true);
   await owned("inspector-harness-gap", false);
   await owned("inspector-acceptance-gap", false);

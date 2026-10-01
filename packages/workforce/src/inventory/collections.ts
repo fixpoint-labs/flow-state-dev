@@ -77,6 +77,14 @@ export const seatInventoryRowSchema = z.object({
   id: z.string().min(1),
   /** The flow kind this seat was hired into, e.g. the built-in `"agent"`. */
   kind: z.string().min(1),
+  /**
+   * The seat's door: the one public action its kind declares that takes a
+   * person's message (`userMessage`, `{ message }` input). `null` when the
+   * kind has none, or declares two (a hire problem). Defaulted so a row
+   * written before doors were published reads as no door (BP-030); the next
+   * boot rewrites it.
+   */
+  door: z.string().nullable().default(null),
 });
 
 /** One row of the seat inventory. @see seatInventoryRowSchema */
@@ -149,7 +157,7 @@ const SHARED_ACROSS_FLOWS = false;
  * schema declares today, named rather than defaulted (BP-015). A key a later
  * change adds to a row stays server-side until it is added here too.
  */
-const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind"] as const;
+const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */
 const CHANNEL_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */

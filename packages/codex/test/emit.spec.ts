@@ -134,3 +134,110 @@ describe("reasoning item shape", () => {
     expect(state.finalMessage).toBe("all done");
   });
 });
+
+// Characterization of the task scope every item carries: which of `taskId` and
+// `ownedBy` are present, and with what value, for each identity the runtime can
+// hand over, on every item kind and every close path. Asserted on the item's
+// key list read off the raw `item.added` / `item.done` events, because a key
+// set to `undefined` and an absent key are different items once persisted.
+describe("scope characterization", () => {
+  type Identity = { taskId?: string; ownedBy?: string };
+
+  const IDENTITIES: Array<[string, Identity]> = [
+    ["none", {}],
+    ["task only", { taskId: "task_42" }],
+    ["owner only", { ownedBy: "container_7" }],
+    ["task and owner", { taskId: "task_42", ownedBy: "container_7" }],
+    ["empty-string task", { taskId: "" }],
+  ];
+
+  /** A context that records every raw emitted event, standing in the given identity. */
+  function recordingContext(identity: Identity) {
+    const events: Array<{ type: string; item?: Record<string, unknown> & { id: string; type: string } }> = [];
+    const ids = new Set<string>();
+    const ctx = {
+      request: { identity: { id: "req_1" } },
+      response: {
+        emit: async (e: (typeof events)[number]) => {
+          events.push(e);
+          if (e.item) ids.add(e.item.id);
+        },
+        getItemCount: () => ids.size,
+      },
+      emit: { status: () => {} },
+      _blockIdentity: { blockName: "codex-agent", blockInstanceId: "codex-agent_1", phase: "main", ...identity },
+    };
+    return { ctx, events };
+  }
+
+  /**
+   * Every item kind and close path: message, reasoning, a tool opened and
+   * settled, an orphan failed result, an error, and a tool left open and closed
+   * at stream end.
+   */
+  async function runScript(identity: Identity) {
+    const { ctx, events } = recordingContext(identity);
+    const state = createEmitState();
+    for (const event of [
+      { kind: "message", text: "done" },
+      { kind: "reasoning", text: "thinking" },
+      { kind: "tool_call", callId: "c1", name: "command_execution", arguments: "{}" },
+      { kind: "tool_result", callId: "c1", name: "command_execution", arguments: "{}", output: "ok", isError: false },
+      { kind: "tool_result", callId: "c-orphan", name: "command_execution", arguments: "{}", output: "bad", isError: true },
+      { kind: "error", message: "transient" },
+      { kind: "tool_call", callId: "c2", name: "command_execution", arguments: "{}" },
+    ] as const) {
+      await emitTranslatedEvent(event, ctx as never, state, "codex-agent");
+    }
+    await finalizeOpenItems(ctx as never, state, "codex-agent");
+    return events
+      .filter((e) => e.type === "item.added" || e.type === "item.done")
+      .map((e) => ({ event: e.type, item: e.item! }));
+  }
+
+  function expectedScope(identity: Identity): Record<string, string> {
+    return {
+      ...(identity.taskId !== undefined ? { taskId: identity.taskId } : {}),
+      ...(identity.ownedBy !== undefined ? { ownedBy: identity.ownedBy } : {}),
+    };
+  }
+
+  /** The scope keys an item actually carries, absent keys omitted. */
+  function actualScope(item: Record<string, unknown>): Record<string, unknown> {
+    return Object.fromEntries(Object.entries(item).filter(([k]) => k === "taskId" || k === "ownedBy"));
+  }
+
+  it("covers every item kind on both open and close", async () => {
+    const versions = await runScript({});
+    const seen = new Set(versions.map((v) => `${v.item.type}:${v.event}:${String(v.item.status)}`));
+    for (const key of [
+      "message:item.added:in_progress",
+      "message:item.done:completed",
+      "reasoning:item.added:in_progress",
+      "reasoning:item.done:completed",
+      "tool_output:item.added:in_progress",
+      "tool_output:item.done:completed",
+      "tool_output:item.added:failed",
+      "tool_output:item.done:failed",
+      "tool_output:item.done:incomplete",
+      "error:item.added:failed",
+      "error:item.done:failed",
+    ]) {
+      expect(seen).toContain(key);
+    }
+  });
+
+  for (const [label, identity] of IDENTITIES) {
+    it(`stamps exactly the identity's scope keys on every item version (identity: ${label})`, async () => {
+      const versions = await runScript(identity);
+      expect(versions.length).toBeGreaterThan(0);
+      for (const { event, item } of versions) {
+        expect({ type: item.type, event, scope: actualScope(item) }).toEqual({
+          type: item.type,
+          event,
+          scope: expectedScope(identity),
+        });
+      }
+    });
+  }
+});

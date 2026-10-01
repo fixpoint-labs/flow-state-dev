@@ -121,6 +121,8 @@ import {
   routeFailure,
   assertTransitionFrom,
   transitionDeclineReason,
+  parkPatch,
+  unparkPatch,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
@@ -808,12 +810,18 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // Writes `feedback` unconditionally, the way `unpark` does: a park with
       // no reason clears the note, so a failed attempt's text never reads as
       // why the task is waiting on a person.
+      // A park for a person's turn is fenced to a running attempt: a row that
+      // settled or re-pended first declines naming what it found, instead of
+      // being parked behind the attempt that already ended it. `ifAllowed` is
+      // forced on that path only, the way `unpark` forces its own fence.
+      const forTurn = options?.forTurn === true;
       return transitionRef(
         id,
         "parked",
         "review_requested",
-        () => ({ feedback }),
-        options
+        () => parkPatch(feedback, forTurn) as Partial<Task<TInput, TOutput>>,
+        forTurn ? { ...options, ifAllowed: true } : options,
+        forTurn ? "in_progress" : undefined
       );
     },
 
@@ -829,11 +837,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         id,
         "pending",
         "resumed",
-        () => ({
-          feedback: feedback ?? undefined,
-          leaseUntil: undefined,
-          claimedBy: undefined,
-        }),
+        (task) => unparkPatch(task as Task, feedback) as Partial<Task<TInput, TOutput>>,
         { ...options, ifAllowed: true },
         "parked"
       );

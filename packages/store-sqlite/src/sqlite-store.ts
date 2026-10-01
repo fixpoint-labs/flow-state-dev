@@ -360,6 +360,11 @@ export function createSQLiteRecordStore<
       }
       return runDelta(id, path, expectedVersion, updatedAt, "incField", (_current, record, p) => {
         const existing = record.state[p[0]];
+        if (existing !== undefined && existing !== null && typeof existing !== "number") {
+          throw new Error(
+            `incField target at path[${p[0]}] is not a number (got ${Array.isArray(existing) ? "array" : typeof existing})`
+          );
+        }
         record.state[p[0]] = (typeof existing === "number" ? existing : 0) + delta;
       });
     },

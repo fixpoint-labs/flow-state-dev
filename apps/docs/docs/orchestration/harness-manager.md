@@ -112,6 +112,50 @@ Answer it and the run picks up **the same coding session** — not a new one tol
 
 **A lost session heals rather than failing.** The manager records the session the harness *confirmed* it was in, clears it at the start of every attempt, and never writes back an id it merely sent. So if the agent can no longer find a session, that attempt ends without naming one, and the next starts fresh instead of asking for a dead conversation forever.
 
+## Talking to a run
+
+A person can send a running coding run a message. The run stops where it is, and its next attempt continues **the same coding session** with the message added to its prompt. The checkout and the harness's memory of the conversation both carry over, so the run picks up with what it had already read and tried, plus what you said.
+
+The manager builds the action that does this, which we call its door. Declare it on the flow whose board runs the coding work. The door also needs a way to start the next attempt, so give the flow an `internal` entry that runs the board's drain and pass its name. The door runs that entry in the session that claimed the task, which keeps every attempt of the run in the same session. Internal entries can't be called from outside, so only the door can start the next attempt:
+
+```ts
+const manager = harnessManager({ /* … */ });
+const board = taskBoard({ /* … the board whose rows the manager works */ });
+
+defineFlow({
+  kind: "coder",
+  internal: { actions: { resume: { block: board.drain } } },
+  actions: { message: manager.messageDoor({ drain: "resume" }) },
+  task: { actions: { work: { block: manager } } },
+});
+```
+
+If the board is drained by a different flow, one that hands its rows to this flow, declare the `resume` entry on that flow instead and pass that flow's id as `flowKind` (for a flow with one instance, its kind): `manager.messageDoor({ drain: "resume", flowKind: "coordinator" })`.
+
+Call `message` with `{ message }` on the run's own session, the one the board row's run link names. The person's words go into that session as a user message the moment the action starts, so a UI can show them as delivered by reading the session, not by trusting the response.
+
+What happens depends on where the task is:
+
+| The task is | Your message |
+|---|---|
+| Running | Stops the attempt and continues the session with your message. The action answers `continuing` |
+| Running, but it didn't stop in time or couldn't be restarted | Kept, and given to the next attempt. The action answers `kept` |
+| About to start an attempt | Kept, and given to that attempt. The action answers `kept` |
+| Waiting on its own question, or between attempts | Kept, and given to the next attempt. The action answers `kept` |
+| Not started, or finished | Refused, with the reason |
+
+A request that completes answers `{ outcome: "continuing" | "kept", taskId }`.
+
+A refusal fails the request rather than answering with a value, so a request that completed is one whose message landed. The error's message is the reason in words, such as "A finished task takes no message.", and its cause is the door's `TurnRefused` error. A refused message is never handed to a later attempt either.
+
+**A message doesn't spend a retry.** The run parks for your turn and comes back without being charged an attempt, so talking to a run never makes it fail sooner.
+
+**A message isn't an answer.** If the run is waiting on its own question, your message is kept for later but the question still needs answering.
+
+**Only the run's own person can send one.** The session belongs to them, so anyone else is refused before the message is written.
+
+The stop costs the step the run was in the middle of.
+
 ## The checkout
 
 Each task gets its own directory, derived from who the run belongs to plus the board, the issue and the phase. Deriving rather than storing is what lets any later session resolve the same path.
@@ -179,6 +223,7 @@ record instead of deriving them again.
 
 - **One host's storage.** Checkouts and their leases are on a local filesystem, so a retry inherits the last attempt's work because that work is on disk. On a multi-host deployment the recorded checkout names nothing on the machine that picks the retry up.
 - **No retention policy.** Run records and question rows grow without bound. Fine for a board driving a few tasks; a long-lived one needs pruning, which is not built.
+- **A harness that can't resume can't be sent a message.** A run on Claude Code's cloud dispatch, which never names a coding session, is refused with *this run's harness can't continue with a message*.
 - **Git worktrees specifically.** The checkout is cut with `git worktree add`. A different strategy — a fresh clone per run, a projected workspace — is not pluggable today.
 
 ## Related pages

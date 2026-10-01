@@ -62,6 +62,12 @@ export type Seat = {
   id: string;
   /** The kind the seat was hired from; `null` on a row that has none. */
   kind: string | null;
+  /**
+   * The action that takes a person's message into this seat's sessions, as
+   * the hire published it; `null` when its kind takes none, or on a row
+   * written before doors were published.
+   */
+  door: string | null;
   team: string;
   name: string;
 };
@@ -252,7 +258,7 @@ export function toSeat(row: unknown): Seat | undefined {
   const dot = id.indexOf(".");
   const team = dot > 0 ? id.slice(0, dot) : id;
   const name = dot > 0 ? id.slice(dot + 1) : id;
-  return { id, kind: text(field(row, "kind")), team, name };
+  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), team, name };
 }
 
 /** A channel inventory row. A row written before `members` existed reads as none (BP-030). */

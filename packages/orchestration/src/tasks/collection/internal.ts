@@ -118,6 +118,42 @@ export function readAbandonments(task: Task): number {
 }
 
 /**
+ * How many times this row re-entered after a person's turn stopped its worker
+ * (FIX-1690). **Absent reads as zero** (BP-030), as {@link readAbandonments}.
+ */
+export function readTurnReentries(task: Task): number {
+  return task.turnReentries ?? 0;
+}
+
+/**
+ * The fields `awaitReview` writes besides the status. `feedback` is written
+ * unconditionally (a park with no reason clears the note), and the turn mark
+ * is set only for a park a person's turn caused, so a question park never
+ * inherits an earlier one.
+ */
+export function parkPatch(
+  feedback: string | undefined,
+  forTurn: boolean | undefined
+): Partial<Task> {
+  return { feedback, parkedForTurn: forTurn === true ? true : undefined };
+}
+
+/**
+ * The fields `unpark` writes besides the status. Clears the lease, the claim
+ * coordinate and the turn mark; a row that was parked for a turn counts one
+ * more turn re-entry, so the claim that follows is not charged (FIX-1690).
+ */
+export function unparkPatch(task: Task, feedback: string | undefined): Partial<Task> {
+  return {
+    feedback: feedback ?? undefined,
+    leaseUntil: undefined,
+    claimedBy: undefined,
+    parkedForTurn: undefined,
+    ...(task.parkedForTurn === true ? { turnReentries: readTurnReentries(task) + 1 } : {}),
+  };
+}
+
+/**
  * How many times a task's work may be handed back out after its worker died
  * before the substrate stops recovering it and settles the row `errored`
  * (FIX-1005).
@@ -150,10 +186,14 @@ export const DEFAULT_MAX_ABANDONMENTS = 3;
  * the discount a crashed machine would silently spend the retries the caller
  * configured for real failures. `attempts - abandonments` is the count of
  * attempts this task actually got to run out of its own budget.
+ *
+ * **So are re-entries after a person's turn (FIX-1690)**, for the same
+ * reason: the claim after a turn advances `attempts`, and the budget prices
+ * failures, not conversation.
  */
 export function shouldRetryOnFail(task: Task): boolean {
   if (task.maxAttempts === undefined) return false;
-  return task.attempts - readAbandonments(task) < task.maxAttempts;
+  return task.attempts - readAbandonments(task) - readTurnReentries(task) < task.maxAttempts;
 }
 
 /**

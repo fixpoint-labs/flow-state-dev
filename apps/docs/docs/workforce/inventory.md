@@ -80,9 +80,9 @@ The writer needs both halves:
 
 Leave both out and channels work without an inventory. Nothing is declared, nothing is written, and the three collection factories return collections whose keys resolve empty.
 
-### The action door
+### The `run` callback
 
-`run` is your app's door into a flow. It takes the action request `openInventory` builds, runs it through your runtime, and rejects when the action fails:
+`run` is the callback your app hands `openInventory` to run an action. It takes the action request `openInventory` builds, runs it through your runtime, and rejects when the action fails:
 
 ```ts
 const run = async (request) => {
@@ -104,9 +104,9 @@ const run = async (request) => {
 };
 ```
 
-The door has to reject. One that hands back a failed run as an ordinary value reports every channel registered while writing nothing.
+The `run` callback has to reject. One that hands back a failed run as an ordinary value reports every channel registered while writing nothing.
 
-It has to forward `source` as well. The seat write is a boot-only action: its request carries `source: "internal"`, and it runs only when that value reaches `runAction`. A door that drops `source` makes the seat write fail, and `problems` names it.
+It has to forward `source` as well. The seat write is a boot-only action: its request carries `source: "internal"`, and it runs only when that value reaches `runAction`. A `run` callback that drops `source` makes the seat write fail, and `problems` names it.
 
 ### Where the seat rows go
 
@@ -174,8 +174,12 @@ const seatChannels = handler({
 **Seat:**
 
 ```ts
-{ id: "engineering.lead", kind: "agent" }
+{ id: "engineering.lead", kind: "agent", door: "run" }
 ```
+
+`door` names an action on the seat's flow: the one that takes a person's message for this seat. It is the kind's one public action that declares `userMessage` and takes `{ message }`. The built-in worker's is named `run`, which is unrelated to the `run` callback above. A kind with no such action gets `door: null`, and an app should say that seat takes no message rather than guess. A kind with two gets `null` too, and the hire warns, naming both: `hireWorkforce` logs it as a `[workforce]` console warning, and a seat hired at runtime returns it in the hire's `warnings`.
+
+`openInventory` reads the door from each seat's `actions`, so pass it the seats `hireWorkforce` returned. A seat you build by hand needs `actions` too; pass `{}` for one that takes no message.
 
 **Channel:**
 
