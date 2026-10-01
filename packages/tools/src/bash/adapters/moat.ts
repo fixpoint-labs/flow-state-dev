@@ -22,11 +22,12 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { constants as fsConstants, existsSync, readFileSync } from "node:fs";
+import { lstat, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Sandbox, CommandResult } from "../types";
+import { resolveWithinWorkspace } from "./workspace-guards";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -99,6 +100,22 @@ export class FileNotFoundError extends MoatError {
   constructor(filePath: string) {
     super(`File not found: ${filePath}`);
     this.name = "FileNotFoundError";
+  }
+}
+
+// Open flags for the host-fs fast path: never follow a symlink in the final
+// path component (see `containHostPath`). `O_NOFOLLOW` is POSIX; it is
+// undefined on Windows, where MOAT does not run.
+const O_NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0;
+const NO_FOLLOW_READ = fsConstants.O_RDONLY | O_NOFOLLOW;
+const NO_FOLLOW_WRITE =
+  fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_TRUNC | O_NOFOLLOW;
+
+/** A path under the bind-mount target whose `..` segments climb out of it. */
+export class MoatPathEscapeError extends MoatError {
+  constructor(filePath: string, mountTarget: string) {
+    super(`Path "${filePath}" resolves outside the workspace bind mount (${mountTarget}).`);
+    this.name = "MoatPathEscapeError";
   }
 }
 
@@ -818,6 +835,10 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
   /**
    * Translate a container-side path under `mountTarget` to its host
    * counterpart, or null if the path is outside the bind mount.
+   *
+   * The host path is used on the HOST, outside the container, so it must
+   * stay inside `mountSource`: a path written under the mount whose `..`
+   * segments climb out of it throws instead of reaching the host.
    */
   function toHostPath(containerPath: string): string | null {
     if (!handle.mountSource) return null;
@@ -825,8 +846,58 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
     if (containerPath === target) return handle.mountSource;
     const targetWithSlash = target.endsWith("/") ? target : target + "/";
     if (!containerPath.startsWith(targetWithSlash)) return null;
-    const rel = containerPath.slice(targetWithSlash.length);
-    return path.join(handle.mountSource, rel);
+    // Extra leading slashes (`/workspace//a`) collapse as they do in the
+    // container, rather than reading as a host-absolute path.
+    const rel = containerPath.slice(targetWithSlash.length).replace(/^\/+/, "");
+    try {
+      return resolveWithinWorkspace(handle.mountSource, rel);
+    } catch {
+      throw new MoatPathEscapeError(containerPath, target);
+    }
+  }
+
+  /**
+   * Resolve symlinks in a host path from `toHostPath` and return the real
+   * path when it is still inside the bind mount, or null when it is not.
+   *
+   * The bind mount is writable from inside the container, so the model can
+   * plant a symlink there (`ln -s / /workspace/root`). Inside the container
+   * that link reaches container files only; followed on the host it reaches
+   * the developer's machine. A null sends the operation through `moat exec`,
+   * where the link resolves in the container's namespace.
+   *
+   * Callers open the returned real path with `O_NOFOLLOW`, so a final
+   * component swapped for a symlink after this check fails instead of being
+   * followed. An intermediate directory swapped in that window is not
+   * covered; `moat exec` is the path with no host exposure at all.
+   */
+  async function containHostPath(hostPath: string): Promise<string | null> {
+    const source = handle.mountSource as string;
+    const realRoot = await realpath(source).catch(() => path.resolve(source));
+    const missing: string[] = [];
+    let probe = hostPath;
+    let real: string;
+    for (;;) {
+      try {
+        real = await realpath(probe);
+        break;
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        // A symlink loop has no host answer; let the container report it.
+        if (code === "ELOOP") return null;
+        if (code !== "ENOENT" && code !== "ENOTDIR") throw err;
+        // A dangling symlink also reports ENOENT; writing to it would create
+        // its target, which may be anywhere on the host.
+        if (await lstat(probe).then(() => true, () => false)) return null;
+        const parent = path.dirname(probe);
+        if (parent === probe) return null;
+        missing.unshift(path.basename(probe));
+        probe = parent;
+      }
+    }
+    const resolved = path.join(real, ...missing);
+    if (resolved !== realRoot && !resolved.startsWith(realRoot + path.sep)) return null;
+    return resolved;
   }
 
   return {
@@ -856,11 +927,12 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
 
     async readFile(filePath: string): Promise<string> {
       ensureLive();
-      const hostPath = toHostPath(filePath);
+      const lexical = toHostPath(filePath);
+      const hostPath = lexical === null ? null : await containHostPath(lexical);
       if (hostPath !== null) {
         let bytes: Buffer;
         try {
-          bytes = await readFile(hostPath);
+          bytes = await readFile(hostPath, { flag: NO_FOLLOW_READ });
         } catch (err) {
           if ((err as NodeJS.ErrnoException).code === "ENOENT") {
             throw new FileNotFoundError(filePath);
@@ -898,10 +970,11 @@ export function createMoatAdapter(handle: MoatRunHandle): Sandbox {
 
     async writeFile(filePath: string, content: string): Promise<void> {
       ensureLive();
-      const hostPath = toHostPath(filePath);
+      const lexical = toHostPath(filePath);
+      const hostPath = lexical === null ? null : await containHostPath(lexical);
       if (hostPath !== null) {
         await mkdir(path.dirname(hostPath), { recursive: true });
-        await writeFile(hostPath, content, "utf-8");
+        await writeFile(hostPath, content, { encoding: "utf-8", flag: NO_FOLLOW_WRITE });
         return;
       }
       // Fallback: path is outside the bind mount. Go through `moat exec`.

@@ -863,6 +863,21 @@ describe("createMoatAdapter host-fs containment", () => {
     }
   });
 
+  it("does not create a host file through a planted dangling symlink", async () => {
+    const { root, ws, outside, sandbox, execCalls } = await setup();
+    try {
+      // The target doesn't exist yet: writing through the link on the host
+      // would create it outside the mount.
+      await symlink(path.join(outside, "new.txt"), path.join(ws, "draft.txt"));
+
+      await sandbox.writeFile("/workspace/draft.txt", "x");
+      expect(existsSync(path.join(outside, "new.txt"))).toBe(false);
+      expect(execCalls()).toHaveLength(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("still serves symlinks that stay inside the bind mount from the host", async () => {
     const { root, ws, sandbox, execCalls } = await setup();
     try {
