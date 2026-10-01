@@ -33,10 +33,9 @@
  * or icon set; a host themes through the `--fsd-panel-*` custom properties,
  * the same contract `Roster` and `BoardColumns` theme under.
  */
-import { createElement, useMemo, type ReactNode } from "react";
-import { createResourceClient } from "@flow-state-dev/client";
-import { useFlowContext } from "../../context/FlowContext";
+import { createElement, type ReactNode } from "react";
 import { usePanelItem, type PanelItemSource } from "./reads";
+import { usePanelSource } from "./usePanelSource";
 import { DEFAULT_ROSTER_REF, isSeat, normalizeSeat, type RosterSeat } from "./Roster";
 import { note, noteStyle, panelStyle, retryLine } from "./chrome";
 
@@ -111,12 +110,7 @@ function Instructions(props: {
 export function SeatDetail(props: SeatDetailProps): ReactNode {
   const { sessionId, kind, seatId, collectionRef = DEFAULT_ROSTER_REF, resourceClient } = props;
 
-  const context = useFlowContext();
-  const baseUrl = context.baseUrl;
-  // Only built when the host supplied none — the unauthenticated case, same
-  // as `Roster` and `BoardColumns`.
-  const fallback = useMemo(() => createResourceClient({ baseUrl }), [baseUrl]);
-  const source = resourceClient ?? fallback;
+  const source = usePanelSource(resourceClient);
 
   return createElement(
     "div",

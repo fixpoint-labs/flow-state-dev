@@ -1,7 +1,9 @@
 /**
  * V8, static: App Lab's source names nothing from a Lab's tree (BR-5), draws
  * no literal colour outside its token definitions, and its registry copies
- * are byte-equal to their source.
+ * are byte-equal to their source. Its copies are exactly what its install list
+ * (`pnpm ui:add`) ships, its token definitions are the registry's `tokens`
+ * item unedited, and its look is the design-system package's one import.
  *
  * The tree names are read from the two goal trees themselves, so a seat or
  * channel added there is checked too. Each check is shown to reach the code
@@ -17,7 +19,10 @@ const pkg = fileURLToPath(new URL("../", import.meta.url));
 const repo = join(pkg, "../..");
 const src = join(pkg, "src");
 const copies = join(src, "components/flow-state");
+/** The shadcn primitives the registry copies import, installed with them. */
+const primitives = join(src, "components/ui");
 const registry = join(repo, "packages/ui/registry/components");
+const styles = readFileSync(join(src, "styles.css"), "utf8");
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -71,11 +76,16 @@ const PALETTE =
   /\b(?:bg|text|border|ring|fill|stroke|from|to|via|outline|decoration|divide|shadow|accent|caret)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)(?:-\d{2,3})?\b/;
 const LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color)\(/;
 
-/** Literal colours in App Lab's own source: everything but the token definitions and the registry copies. */
+/**
+ * Literal colours in App Lab's own source: everything but the token
+ * definitions, the registry copies and the primitives they import. Those two
+ * are installed, not written here; the registry's palette census covers the
+ * copies.
+ */
 function literalColours(file: string, text: string): string[] {
-  if (file.startsWith(copies)) return [];
+  if (file.startsWith(copies) || file.startsWith(primitives + "/")) return [];
   const scanned = file.endsWith("styles.css")
-    ? text.replace(/@theme \{[\s\S]*?\/\* End of token definitions\. \*\//, "")
+    ? text.replace(/\/\* Token definitions[\s\S]*?\/\* End of token definitions\. \*\//, "")
     : text;
   return scanned
     .split("\n")
@@ -101,7 +111,7 @@ describe("V8", () => {
     // Planted: a palette class, a hex value, and a colour function outside the token block.
     expect(literalColours(join(src, "x.tsx"), `<p className="text-green-600" />`)).toHaveLength(1);
     expect(literalColours(join(src, "x.tsx"), `const c = "#ff0000";`)).toHaveLength(1);
-    expect(literalColours(join(src, "styles.css"), `@theme {\n--x: hsl(0 0% 0%);\n/* End of token definitions. */\n.a { color: hsl(1 1% 1%); }`)).toHaveLength(1);
+    expect(literalColours(join(src, "styles.css"), `/* Token definitions */\n--x: hsl(0 0% 0%);\n/* End of token definitions. */\n.a { color: hsl(1 1% 1%); }`)).toHaveLength(1);
   });
 
   it("makes no write from the task screen but the abort (ER-15, D2)", () => {
@@ -114,11 +124,66 @@ describe("V8", () => {
     expect(writes(`await clients.actions(f).sendAction("run", {});`)).toHaveLength(1);
   });
 
-  it("keeps every registry copy byte-equal to its source", () => {
-    const copied = walk(copies);
-    expect(copied.length).toBe(8);
-    for (const file of copied) {
-      expect(readFileSync(file), relative(pkg, file)).toEqual(readFileSync(join(registry, relative(copies, file))));
+  it("keeps every registry copy byte-equal to its source, and holds exactly what its install list ships", () => {
+    const shipped = installedFiles();
+    expect(shipped.size).toBeGreaterThan(8);
+    expect(walk(copies).map((file) => relative(copies, file)).sort()).toEqual([...shipped.keys()].sort());
+    for (const [copy, source] of shipped) {
+      expect(readFileSync(join(copies, copy)), copy).toEqual(readFileSync(join(repo, "packages/ui", source)));
     }
+    // The list reaches what it covers: an item it doesn't name ships nothing here.
+    expect(installedFiles(["approval"]).has("message.tsx")).toBe(false);
+  });
+
+  it("defines its tokens as the registry's tokens item, unedited", () => {
+    const tokens = registryItems().get("tokens")!;
+    const base = tokens.css!["@layer base"]!;
+    for (const [selector, values] of Object.entries(base)) {
+      for (const [name, value] of Object.entries(values)) {
+        expect(styles, `${selector} ${name}`).toMatch(new RegExp(`${selector.replace(".", "\\.")} \\{[^}]*${name}: ${value.replace(/[()%.]/g, "\\$&")};`));
+      }
+    }
+    for (const [name, value] of Object.entries(tokens.cssVars!.theme!)) expect(styles).toContain(`--${name}: ${value};`);
+  });
+
+  it("takes its look from the design-system package's one import (FIX-1688)", () => {
+    const pkgJson = JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")) as { dependencies: Record<string, string> };
+    expect(pkgJson.dependencies["@flow-state-dev/design-system"]).toBe("workspace:*");
+    expect(styles.match(/^@import "@flow-state-dev\/design-system\/app-lab\.css";$/gm)).toHaveLength(1);
   });
 });
+
+type RegistryItem = {
+  name: string;
+  registryDependencies?: string[];
+  files?: Array<{ path: string; target: string }>;
+  cssVars?: { theme?: Record<string, string> };
+  css?: { "@layer base"?: Record<string, Record<string, string>> };
+};
+
+function registryItems(): Map<string, RegistryItem> {
+  const manifest = JSON.parse(readFileSync(join(repo, "packages/ui/registry.json"), "utf8")) as { items: RegistryItem[] };
+  return new Map(manifest.items.map((item) => [item.name, item]));
+}
+
+/** The items `pnpm ui:add` installs, as its script names them. */
+function installList(): string[] {
+  const script = (JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")) as { scripts: Record<string, string> }).scripts["ui:add"];
+  return /^fsdev ui add ((?:[a-z-]+ ?)+)$/.exec(script ?? "")?.[1]!.trim().split(" ") ?? [];
+}
+
+/** Every registry file the listed items ship into `components/flow-state/`, through their registry dependencies, as copy → source. */
+function installedFiles(items = installList()): Map<string, string> {
+  const byName = registryItems();
+  const out = new Map<string, string>();
+  const seen = new Set<string>();
+  const visit = (name: string) => {
+    if (seen.has(name)) return;
+    seen.add(name);
+    const item = byName.get(name);
+    for (const file of item?.files ?? []) out.set(relative("components/flow-state", file.target), file.path);
+    for (const dep of item?.registryDependencies ?? []) visit(dep);
+  };
+  for (const item of items) visit(item);
+  return out;
+}

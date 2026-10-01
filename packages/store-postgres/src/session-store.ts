@@ -60,8 +60,8 @@ export function createPostgresSessionStore(executor: QueryExecutor): SessionStor
         p = org.nextParam;
       }
       // Parentage filter (FIX-1009). Mirrors the server-side
-      // `matchesParentageFilter` predicate, which is the source of truth — this
-      // package cannot import it across the type-only boundary. Note absence
+      // `matchesParentageFilter` predicate, which is the source of truth — a
+      // JS predicate can't run inside the SQL `WHERE`, so it is restated. Note absence
       // *narrows* here, the opposite of the tenant clause above: no `parentage`
       // means top-level only.
       const parentage = options?.parentage ?? "top-level";

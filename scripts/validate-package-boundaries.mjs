@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const rootDir = process.cwd();
-const packages = ["contracts", "core", "engine", "client", "react", "testing", "cli", "store-sqlite", "orchestration", "patterns", "workforce"];
+const packages = ["contracts", "core", "engine", "client", "react", "testing", "cli", "store-sqlite", "store-postgres", "orchestration", "patterns", "workforce"];
 
 const packageRules = {
   // The zero-dependency shared layer: imports no workspace package. Its
@@ -10,7 +10,7 @@ const packageRules = {
   contracts: {
     allow: new Set([]),
     typeOnly: new Set([]),
-    deny: new Set(["core", "engine", "client", "react", "testing", "cli", "store-sqlite"])
+    deny: new Set(["core", "engine", "client", "react", "testing", "cli", "store-sqlite", "store-postgres"])
   },
   core: {
     allow: new Set(["contracts"]),
@@ -50,6 +50,17 @@ const packageRules = {
   "store-sqlite": {
     allow: new Set(["contracts", "core", "engine"]),
     typeOnly: new Set(["engine"]),
+    deny: new Set(["client", "react"])
+  },
+  // Same layer as store-sqlite, minus one constraint: store-postgres value-imports
+  // engine runtime (its in-memory trace store and the live-tail helpers, including
+  // the StoreSubscriptionError it throws to callers), where store-sqlite keeps local
+  // copies. Making it type-only would mean copying that code and changing the error
+  // callers catch. `scheduled` imports are unchecked for both adapters, since
+  // `scheduled` is not in `packages`.
+  "store-postgres": {
+    allow: new Set(["contracts", "core", "engine"]),
+    typeOnly: new Set([]),
     deny: new Set(["client", "react"])
   },
   // Core-layer orchestration substrate: depends only on core. Must never

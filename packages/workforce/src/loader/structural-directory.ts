@@ -367,9 +367,11 @@ export interface WalkedTeam {
  * Walk `<root>/teams/` and yield every team folder a reader may descend into.
  *
  * The seam this package's readers share: they agree exactly down to the team
- * folder and diverge immediately after it, so the walk stops here. Which slot a
- * team holds, and what a thing inside that slot has to be, is the reader's own
- * and stays in the reader's own loop.
+ * folder and diverge immediately after it, so this walk stops here. Which slot
+ * a team holds, and what a thing inside that slot has to be, is the reader's own
+ * and stays in the reader's own loop. The one exception is the resources walk
+ * (`./resource-walk`), which continues from here into each team's workers on
+ * behalf of both `resources/` doors, because those two agree further down.
  *
  * Yields only folders that can actually be descended into. A symlinked or
  * unreadable team is reported through `report` and skipped, because the things

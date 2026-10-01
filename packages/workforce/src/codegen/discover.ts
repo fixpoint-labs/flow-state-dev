@@ -32,8 +32,8 @@ import {
   validateSegment,
   type SegmentLabel,
 } from "../loader";
+import { RESOURCE_SLOT_PATTERNS } from "../loader/resource-walk";
 import {
-  RESOURCE_SLOT_PATTERNS,
   discoverResourceModules,
   type DiscoveredResourceModule,
 } from "./discover-resource-modules";
@@ -47,6 +47,7 @@ import {
   discoverPackageBlocks,
   type DiscoveredPackageBlock,
 } from "./discover-package-blocks";
+import { typescriptExtension } from "./typescript-module";
 
 /** Which locked folder a discovered file came from. */
 export type CodeSlotId = "worker" | "channel" | "block";
@@ -84,12 +85,6 @@ export const CODE_SLOTS: readonly CodeSlot[] = Object.freeze([
   Object.freeze({ id: "channel", dir: "flows/channels", exportName: "channelKinds", label: "Kind" }),
   Object.freeze({ id: "block", dir: "blocks", exportName: "blocks", label: "Block" }),
 ] as const);
-
-/**
- * Extensions that denote a TypeScript module. Anything else in a locked folder
- * is a note beside the code rather than a declaration.
- */
-const TYPESCRIPT_EXTENSIONS = [".ts", ".tsx"];
 
 /** One file the walk found, and where it will be imported from. */
 export interface DiscoveredFile {
@@ -147,11 +142,6 @@ export class WorkforceCodeError extends Error {
     this.name = "WorkforceCodeError";
     this.problems = problems;
   }
-}
-
-/** The TypeScript extension this entry carries, or `undefined` when it is not a TypeScript module. */
-function typescriptExtension(entry: string): string | undefined {
-  return TYPESCRIPT_EXTENSIONS.find((extension) => entry.endsWith(extension));
 }
 
 /**

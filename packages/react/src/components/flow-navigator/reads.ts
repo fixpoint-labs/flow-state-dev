@@ -8,9 +8,12 @@
  *
  * Both are fenced on their identity, which includes the client they read
  * through: a host that rebuilds its transport on a token or `baseUrl` change
- * must not have the previous backend's rows land afterwards.
+ * must not have the previous backend's rows land afterwards. The fenced read
+ * itself is the package's internal `useFencedRead`
+ * (`internal/useFencedRead.ts`), shared with the workforce panels, so a fix to
+ * how these reads guard against late or racing responses is made there.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import {
   sessionQueryFor,
   type Client,
@@ -18,7 +21,7 @@ import {
   type SessionClient,
   type SessionSummary
 } from "@flow-state-dev/client";
-import { useReadFence } from "../../hooks/useReadFence";
+import { useFencedRead } from "../../internal/useFencedRead";
 import type { FlowNavigatorLeaf } from "./grouping";
 
 /**
@@ -32,12 +35,6 @@ export type FlowNavigatorSessionSource = Pick<SessionClient, "listSessions">;
 /** Stable empty lists, so a stale hold hands back the same reference each render. */
 const EMPTY_FLOWS: FlowListEntry[] = [];
 const EMPTY_SESSIONS: SessionSummary[] = [];
-
-function describe(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message.trim().length > 0
-    ? error.message
-    : fallback;
-}
 
 export type FlowInventory = {
   readonly flows: readonly FlowListEntry[];
@@ -54,47 +51,13 @@ export type FlowInventory = {
  * would turn one request into one per row.
  */
 export function useFlowInventory(source: FlowNavigatorFlowSource): FlowInventory {
-  const [flows, setFlows] = useState<readonly FlowListEntry[]>(EMPTY_FLOWS);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
-
-  const fence = useReadFence([source], () => {
-    setFlows(EMPTY_FLOWS);
-    setError(null);
-    setIsLoading(true);
-    setHeldIdentity(null);
-  });
-  const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
-
-  const read = useCallback(async () => {
-    const stillCurrent = fence.begin();
-    if (stillCurrent === null) return;
-    setIsLoading(true);
-    setError(null);
-    setHeldIdentity(fence.identity);
-    try {
-      const next = await source.listFlows();
-      if (!stillCurrent()) return;
-      setFlows(next);
-    } catch (err) {
-      if (!stillCurrent()) return;
-      setError(describe(err, "Failed to load flows"));
-    } finally {
-      if (stillCurrent()) setIsLoading(false);
-    }
-  }, [fence, source]);
-
-  useEffect(() => {
-    void read();
-  }, [read]);
-
-  return {
-    flows: holdsCurrent ? flows : EMPTY_FLOWS,
-    isLoading: holdsCurrent ? isLoading : true,
-    error: holdsCurrent ? error : null,
-    refresh: () => void read()
-  };
+  const { data, isLoading, error, refresh } = useFencedRead<readonly FlowListEntry[]>(
+    [source],
+    EMPTY_FLOWS,
+    "Failed to load flows",
+    () => source.listFlows()
+  );
+  return { flows: data, isLoading, error, refresh };
 }
 
 export type LeafSessions = {
@@ -136,11 +99,6 @@ export function useLeafSessions(
   /** Whether the leaf is open. A closed leaf reads nothing and holds nothing. */
   isOpen: boolean
 ): LeafSessions {
-  const [sessions, setSessions] = useState<readonly SessionSummary[]>(EMPTY_SESSIONS);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
-
   const { address, cardinality } = leaf;
 
   // One token per opening, `null` while closed. `isOpen` alone repeats — every
@@ -154,26 +112,12 @@ export function useLeafSessions(
   }));
   if (visit.open !== isOpen) setVisit({ open: isOpen, token: isOpen ? {} : null });
 
-  const fence = useReadFence(
+  const { data, isLoading, error, refresh } = useFencedRead<readonly SessionSummary[]>(
     [source, address, cardinality, userId, includeDispatchRuns, visit.token],
-    () => {
-      setSessions(EMPTY_SESSIONS);
-      setError(null);
-      setIsLoading(true);
-      setHeldIdentity(null);
-    }
-  );
-  const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
-
-  const read = useCallback(async () => {
-    if (visit.token === null) return;
-    const stillCurrent = fence.begin();
-    if (stillCurrent === null) return;
-    setIsLoading(true);
-    setError(null);
-    setHeldIdentity(fence.identity);
-    try {
-      const next = await source.listSessions({
+    EMPTY_SESSIONS,
+    "Failed to load sessions",
+    () =>
+      source.listSessions({
         // The branch itself is `client`'s, written once there. This passes the
         // one entry it already knows about, which is all the helper reads.
         ...sessionQueryFor(address, [{ id: address, cardinality }]),
@@ -181,25 +125,10 @@ export function useLeafSessions(
         // Omitted unless asked for, so the request this hook has always sent
         // is the request it still sends by default.
         ...(includeDispatchRuns ? { include: "dispatch-runs" as const } : {})
-      });
-      if (!stillCurrent()) return;
-      setSessions(next);
-    } catch (err) {
-      if (!stillCurrent()) return;
-      setError(describe(err, "Failed to load sessions"));
-    } finally {
-      if (stillCurrent()) setIsLoading(false);
-    }
-  }, [fence, visit.token, source, address, cardinality, userId, includeDispatchRuns]);
-
-  useEffect(() => {
-    void read();
-  }, [read]);
-
-  return {
-    sessions: holdsCurrent ? sessions : EMPTY_SESSIONS,
-    isLoading: holdsCurrent ? isLoading : true,
-    error: holdsCurrent ? error : null,
-    refresh: () => void read()
-  };
+      }),
+    // A closed leaf asks for nothing, a refresh included. The visit token in
+    // the identity is what starts a fresh read when it opens.
+    { enabled: visit.token !== null }
+  );
+  return { sessions: data, isLoading, error, refresh };
 }

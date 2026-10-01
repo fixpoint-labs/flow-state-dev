@@ -19,6 +19,11 @@
  *   the one session that seat keeps, so that session is shared;
  * - one **waiting** row, filed after the drain, so nothing ever claims it.
  *
+ * Every run opens as a coding harness does: a message, a reasoning item, and
+ * one tool call with its result, each stamped with the task the way the
+ * framework's own emit sites stamp theirs, so the Session draws each kind of
+ * item a harness run stores.
+ *
  * Every run emits a keyed progress snapshot as it starts and again as it
  * finishes, so a finished run's session stores two versions of one snapshot
  * and a screen must draw only the latest.
@@ -31,7 +36,7 @@
  * board hands rows to.
  */
 import { DEFAULT_ORG_ID, defineFlow, dispatcher, handler } from "@flow-state-dev/core";
-import type { FlowInstance } from "@flow-state-dev/core/types";
+import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
 import {
   OBSERVED_FILE_OPS,
   OBSERVED_PLAN,
@@ -96,6 +101,32 @@ const sleep = (ms: number, signal: AbortSignal) =>
 type Upsertable = { upsert(key: string, state: Record<string, unknown>): Promise<unknown> };
 
 /**
+ * What a coding harness stores as it starts: its reasoning, then one tool call
+ * and its result. Written as whole items through `ctx.response.emit`, the way a
+ * harness adapter writes them, and stamped with the run's task and provenance
+ * the way the framework's own emit sites stamp theirs.
+ */
+async function emitHarnessOpening(ctx: BlockContext): Promise<void> {
+  const identity = (ctx as { _blockIdentity?: { taskId?: string; blockInstanceId?: string } })._blockIdentity;
+  const base = (kind: string) => ({
+    id: `item_${kind}_${ctx.request.identity.id}`,
+    requestId: ctx.request.identity.id,
+    itemIndex: ctx.response.getItemCount(),
+    provenance: { blockName: "run-lab-scripted-run", blockInstanceId: identity?.blockInstanceId ?? "run-lab-scripted-run", phase: "main" as const },
+    ts: Date.now(),
+    itemVisibility: { client: true, history: true },
+    ...(identity?.taskId !== undefined ? { taskId: identity.taskId } : {}),
+  });
+  const reasoning = { ...base("reasoning"), type: "reasoning" as const, summary: [{ type: "reasoning_text" as const, text: "The task names one note. Read it before writing." }] };
+  await ctx.response.emit({ type: "item.added", item: { ...reasoning, status: "in_progress" } });
+  await ctx.response.emit({ type: "item.done", item: { ...reasoning, status: "completed" } });
+  const toolCall = { callId: `${ctx.request.identity.id}/read`, name: "read_file", arguments: JSON.stringify({ path: "notes/audit.md" }), generatorBlock: "run-lab-scripted-run" };
+  const tool = { ...base("tool"), type: "tool_output" as const, blockName: "read_file", toolCall };
+  await ctx.response.emit({ type: "item.added", item: { ...tool, status: "in_progress", output: null } });
+  await ctx.response.emit({ type: "item.done", item: { ...tool, status: "completed", output: { lines: 0, note: "notes/audit.md is empty" } } });
+}
+
+/**
  * The scripted run: narrate, record what a recording harness records when the
  * flow declares it, then one step per {@link STEP_MS} until the script's steps
  * run out, the hold passes, or the request is aborted.
@@ -107,6 +138,7 @@ const scriptedRun = handler({
   execute: async (input: TaskWorkerInput, ctx) => {
     const script = (input.input ?? {}) as RunScript;
     ctx.emit.message(`Reading the task: ${input.goal ?? input.taskId}`);
+    await emitHarnessOpening(ctx);
 
     const resources = (ctx as { resources?: Record<string, unknown> }).resources ?? {};
     const plan = resources[OBSERVED_PLAN] as Upsertable | undefined;

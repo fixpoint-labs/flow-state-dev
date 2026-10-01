@@ -2,9 +2,10 @@
  * App Lab's frame (S4): three columns, the sidebar, the centre at the level
  * and tab the URL names, and the right panel's slot for that level.
  *
- * A Lab that refuses the first read for want of a verified organization gets
- * the refusal screen and nothing else (BR-3): the sidebar, the tree and every
- * other read wait behind it.
+ * A Lab that refuses the first read for want of a verified organization, or
+ * that names no organization for the person, gets the refusal screen and
+ * nothing else (BR-3): the sidebar, the tree and every other read wait behind
+ * it.
  */
 import { useEffect, useState } from "react";
 import { GAPS, type Gaps } from "./gaps";
@@ -26,8 +27,8 @@ import { Tasks } from "./surfaces/Tasks";
 import { findWorkstream, WorkstreamPanel, WorkstreamView } from "./surfaces/Workstream";
 
 /**
- * @param devtoolUrl The devtool App Lab was started with (`--devtool`), for a
- *   task's trace link. Absent: the link is off and says how to turn it on.
+ * @param devtoolUrl The devtool a task's trace link opens: the one App Lab
+ *   serves, or `--devtool`. Absent: the link is off and says how to turn it on.
  */
 export function App({ clients, gaps = GAPS, devtoolUrl }: { clients: LabClients; gaps?: Gaps; devtoolUrl?: string }) {
   return (
@@ -37,27 +38,51 @@ export function App({ clients, gaps = GAPS, devtoolUrl }: { clients: LabClients;
   );
 }
 
-/** The screen a refused first read gets, and the only one. */
+/**
+ * The screen a Lab gets when App Lab has no organization to open it under, and
+ * the only one: the Lab refused the first read, or served nothing that names
+ * the person's organization.
+ */
 function Refusal({ failure }: { failure: Failure }) {
   return (
     <main className="flex h-screen items-center justify-center p-6" data-testid="refusal">
       <div className="max-w-md">
         <h1 className="text-lg font-semibold">This Lab won't let App Lab in</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          The Lab's server refused the first read because the request carried no verified organization. App Lab shows
-          nothing from the Lab until it does. Check that the Lab's config hands App Lab a credential (its devtool
-          block) and that App Lab is opened on the address its start script printed.
+          {failure.httpStatus === undefined
+            ? "App Lab opens a Lab only under an organization, and this Lab doesn't say which one you're in. App Lab shows nothing from the Lab until it does."
+            : "The Lab's server refused the first read because the request carried no verified organization. App Lab shows nothing from the Lab until it does. Check that the Lab's config hands App Lab a credential (its devtool block) and that App Lab is opened on the address its start script printed."}
         </p>
         <p className="mt-3 rounded-md bg-muted px-3 py-2 font-mono text-xs" data-testid="refusal-message">
-          {failure.httpStatus ?? "?"} · {failure.message}
+          {failure.httpStatus === undefined ? failure.message : `${failure.httpStatus} · ${failure.message}`}
         </p>
       </div>
     </main>
   );
 }
 
+/** The screen a first read that failed for another reason gets: what the Lab answered, and Retry. */
+function Unreachable({ failure, onRetry }: { failure: Failure; onRetry: () => void }) {
+  return (
+    <main className="flex h-screen items-center justify-center p-6" data-testid="unreachable">
+      <div className="max-w-md">
+        <h1 className="text-lg font-semibold">App Lab couldn't reach the Lab</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The first read failed before the Lab said who you are. Check that the Lab's server is running, then retry.
+        </p>
+        <p className="mt-3 rounded-md bg-muted px-3 py-2 font-mono text-xs" data-testid="unreachable-message">
+          {failure.httpStatus === undefined ? failure.message : `${failure.httpStatus} · ${failure.message}`}
+        </p>
+        <button type="button" onClick={onRetry} className="mt-3 rounded-md border px-3 py-1.5 text-sm" data-testid="unreachable-retry">
+          Retry
+        </button>
+      </div>
+    </main>
+  );
+}
+
 function Shell({ gaps, devtoolUrl }: { gaps: Gaps; devtoolUrl: string | undefined }) {
-  const { snapshot } = useLab();
+  const { snapshot, refresh } = useLab();
   const route = useRoute();
   const [jumping, setJumping] = useState(false);
 
@@ -76,6 +101,7 @@ function Shell({ gaps, devtoolUrl }: { gaps: Gaps; devtoolUrl: string | undefine
     return <p className="p-6 text-sm text-muted-foreground" data-testid="loading">Reading the Lab…</p>;
   }
   if (snapshot.refused !== undefined) return <Refusal failure={snapshot.refused} />;
+  if (snapshot.unreachable !== undefined) return <Unreachable failure={snapshot.unreachable} onRetry={() => void refresh()} />;
 
   const levels = (
     <>

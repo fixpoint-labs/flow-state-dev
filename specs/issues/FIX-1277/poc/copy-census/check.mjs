@@ -111,7 +111,15 @@ function check(files, expectMode) {
     if (found.length !== 1 || !found[0].startsWith("packages/contracts/src/")) {
       failures.push(`expected exactly one defining file under packages/contracts/src, found: ${found.join(", ") || "none"}`);
     }
-    const carriers = Object.keys(files).filter((f) => MESSAGES.some((m) => files[f].includes(m))).sort();
+    // The shared conformance suites ship from `src/**/testing/` (they are test
+    // code published through `@flow-state-dev/engine/testing`), and PLAN S0's
+    // characterization case asserts the guards' text there on purpose. That is
+    // an expectation, not a copy of the guard, so the text probe skips it; the
+    // name scan above still covers those files.
+    const carriers = Object.keys(files)
+      .filter((f) => !f.includes("/testing/"))
+      .filter((f) => MESSAGES.some((m) => files[f].includes(m)))
+      .sort();
     if (carriers.length !== 1 || !carriers[0].startsWith("packages/contracts/src/")) {
       failures.push(`expected the guards' error text in exactly one file under packages/contracts/src, found: ${carriers.join(", ") || "none"}`);
     }

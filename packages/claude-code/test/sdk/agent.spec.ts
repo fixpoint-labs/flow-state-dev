@@ -7,7 +7,7 @@ import { isAbsolute, join, relative, win32 } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
 import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
-import { defineCapability, isAbortLike } from "@flow-state-dev/core";
+import { defineCapability, handler, isAbortLike, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   claudeCodeAgent,
@@ -1062,6 +1062,69 @@ describe("claudeCodeAgent", () => {
  * `resume`. A polarity slip reverses behaviour with no type error, since
  * `boolean | undefined` accepts either sense of the flag.
  */
+describe("claudeCodeAgent — task attribution", () => {
+  // A run inside a task-board task entry: the entry's leading tap marks the task
+  // scope, and the agent runs as a later step. Every item the run produces must
+  // carry that taskId, or it is missing from the task's own view (App Lab's task
+  // screen reads items by taskId). Driven through the real block over a
+  // scripted SDK stream, so every emit site the stream reaches is covered, not
+  // just the ones a per-site test happens to name.
+  it("stamps the task's id on every item of a run, in the state each item settles in", async () => {
+    const messages: SdkMessageLike[] = [
+      { type: "system", subtype: "init", session_id: "sess_task" },
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "plan" } } },
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "work" } } },
+      {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "thinking", thinking: "plan" },
+            { type: "text", text: "working" },
+            { type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "ls" } },
+            { type: "tool_use", id: "toolu_agent", name: "Agent", input: { task: "sub" } },
+          ],
+        },
+      },
+      {
+        type: "assistant",
+        parent_tool_use_id: "toolu_agent",
+        message: { content: [{ type: "tool_use", id: "toolu_inner", name: "Read", input: { path: "a" } }] },
+      },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "ok" }] } },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_orphan", content: "late" }] } },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_agent", content: "child done" }] } },
+      RESULT_OK,
+    ];
+    const markTask = handler({
+      name: "mark-task",
+      inputSchema: z.object({ prompt: z.string() }),
+      execute: (_input, ctx) => {
+        (ctx as { _markTaskScope?: (taskId: string) => void })._markTaskScope?.("row-7--implement");
+      },
+    });
+    const entry = sequencer({ name: "task-entry", inputSchema: z.object({ prompt: z.string() }) })
+      .tap(markTask)
+      .step(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages) }));
+
+    const { items, error } = await testBlock(entry, { input: { prompt: "do the thing" } });
+
+    expect(error).toBeNull();
+    // The run's own items; the framework's status/trace items are not this emitter's.
+    const RUN_TYPES = new Set(["message", "reasoning", "tool_output", "container", "error"]);
+    const runItems = items.filter((i) => RUN_TYPES.has(i.type));
+    expect(new Set(runItems.map((i) => i.type))).toEqual(
+      new Set(["message", "reasoning", "tool_output", "container"]),
+    );
+    for (const item of runItems) {
+      expect({ id: item.id, type: item.type, taskId: item.taskId }).toEqual({
+        id: item.id,
+        type: item.type,
+        taskId: "row-7--implement",
+      });
+    }
+  });
+});
+
 describe("claudeCodeAgent — detached", () => {
   /** The read the board's refusal performs, spelled the same way. */
   function authoredSessionStateSchema(block: unknown): unknown {

@@ -325,7 +325,7 @@ export function matchesOrgFilter(
  * Parentage list-filter predicate (FIX-1009). The canonical definition of the
  * three modes; the memory and filesystem session stores call it directly, and
  * the SQLite / Postgres adapters mirror it in their `WHERE` builders because
- * they cannot import across the type-only package boundary.
+ * the filter has to be a SQL clause there.
  *
  * Absence narrows: no `parentage` (and an explicit `undefined`) means
  * `"top-level"`, so a caller that passes no filter gets only the sessions a

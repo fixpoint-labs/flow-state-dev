@@ -18,8 +18,10 @@
  *   page through the `devtool` block, which the host injects on a loopback
  *   bind only. A request with no bearer is refused, as in the checks.
  *
- * The harness is the lab's scripted stub: no model, and a run that changes
- * nothing in its checkout. The stores are in memory, so every start is fresh.
+ * The harness is picked by `DEVFORCE_LAB_HARNESS` (see `harness.mts`): the
+ * lab's scripted run by default, no model, which says what it is doing in the
+ * run's session and commits one file so the row settles; or `claude-code`, a
+ * real coding agent. The stores are in memory, so every start is fresh.
  *
  * Which seat is the EM and which seat a row is handed to are read off the
  * tree, by the kind each `WORKER.md` names. No seat, channel or board is named
@@ -31,7 +33,7 @@ import { inMemoryStores } from "@flow-state-dev/engine";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "./ask.mts";
 import { ASSIGNEE } from "./board.mts";
-import { harnessStub } from "./harness-stub.mts";
+import { selectHarness } from "./harness.mts";
 import { LAB_TREE, openLab } from "./host.mts";
 import { createNotifyLog } from "./notify.mts";
 import { BASE_REF, createScratchRepo } from "./scratch-repo.mts";
@@ -60,10 +62,12 @@ const members = (roster.channels[0]?.declared.members as string[] | undefined) ?
 const addresses = Object.fromEntries(members.filter((m) => kindOf(m) === EM_KIND).map((m) => [m, m]));
 
 const scratch = createScratchRepo("app-lab");
+const harness = selectHarness();
 
 const lab = await openLab({
   stores: inMemoryStores(),
-  harness: harnessStub().slot,
+  harness: harness.slot,
+  runTimeoutMs: harness.runTimeoutMs,
   workspace: { root: scratch.root, sourceRepo: scratch.sourceRepo, baseRef: BASE_REF },
   coderSeatId,
   channels: { addresses, log: createNotifyLog() },

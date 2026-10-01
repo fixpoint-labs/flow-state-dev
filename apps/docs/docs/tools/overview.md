@@ -128,7 +128,6 @@ npm install @mendable/firecrawl-js  # only if using Firecrawl
 - [Crawl tool](/docs/tools/crawl) — multi-page site crawling
 - [Bash tool](/docs/tools/bash) — sandboxed command execution with resource sync
 - [Coding agents](/docs/tools/coding-agents) — what a harness is, the handle every one of them returns, and which ones ship
-- [Claude Code remote dispatch](/docs/tools/claude-code-cli) — dispatch a cloud coding task via the local `claude` CLI (separate `@flow-state-dev/claude-code` package)
 - [Claude Code SDK agent](/docs/tools/claude-code-sdk) — run a Claude Code agent in-process with streaming items and a persistent session (separate `@flow-state-dev/claude-code` package, optional `@anthropic-ai/claude-agent-sdk` peer)
 - [Codex SDK agent](/docs/tools/codex) — run OpenAI's Codex agent the same way, returning the same handle (separate `@flow-state-dev/codex` package, exact-pinned `@openai/codex-sdk` peer)
 - [Cursor SDK agent](/docs/tools/cursor) — run Cursor's coding agent the same way, returning the same handle (separate `@flow-state-dev/cursor` package, exact-pinned `@cursor/sdk` peer)
