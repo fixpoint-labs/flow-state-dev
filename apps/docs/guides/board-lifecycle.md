@@ -122,16 +122,15 @@ out after it, from ordinary blocks.
 ## Backings set the lifetime
 
 The collection's **backing** decides how long the task state lives. This is the
-lever for "when is the board's state still around". These are the board's words;
-`getOrCreateTaskCollection` above uses its own (`backing: "state"`, the atomic state
-the tasks live in), and a board on `request` is what it resolves when you pass no
-`state`:
+lever for "when is the board's state still around":
 
 | Backing | Lives for | Reach for it when |
 |---------|-----------|-------------------|
 | `request` (default) | the whole request | most work: a seed/read block outside `board.drain` shares the collection, or an outer loop re-enters `board.drain` to drain freshly added tasks — and it works when `collection` is omitted entirely |
 | `sequencer` | the `board.drain` sequencer's own invocation | you specifically want per-invocation isolation: the board seeds, drains, and is read within one block slot and two calls should not share state. Opt in with `{ backing: "sequencer", collectionId }` |
 | `resource` (scope `session`/`user`/`org`) | across requests | the tasks are a durable queue or list that must outlive the request that created them |
+
+The table uses `taskBoard`'s option names. The snippet above reaches the same request-backed tasks with `getOrCreateTaskCollection({ backing: "state" })` and no `state` field.
 
 The default is `request`, and that's usually right — a block outside the drain
 (or a later drain in a replan loop) can see the same tasks. Opt into `sequencer`

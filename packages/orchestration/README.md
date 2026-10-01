@@ -72,7 +72,7 @@ denied.
 ### TaskCollection
 
 `getOrCreateTaskCollection` resolves a `TaskCollectionRef` over one of two backings.
-`backing: "state"` keeps tasks in atomic state: on the request when you pass no `state`
+`backing: "state"` keeps tasks in block or request state: on the request when you pass no `state`
 (the `taskBoard` default; survives block boundaries within a request), or on a state ref you
 pass, such as `ctx.sequencer` for one board invocation. `backing: "resource"` outlives the
 request: a user's queue, an org work pool, declared with `defineTaskCollection`. Every

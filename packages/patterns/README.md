@@ -326,7 +326,7 @@ Workers emit `message`, `source`, `tool_call`, and `reasoning` items naturally a
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 
 // inside a block's async execute(input, ctx):
-// The board's `request` backing is `backing: "state"` with no `state` at the collection layer.
+// Reaches a default board's tasks: `backing: "state"` with no `state` field means the request.
 const collection = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "my-plan" });
 
 for (const task of collection.list({ status: "completed" })) {
