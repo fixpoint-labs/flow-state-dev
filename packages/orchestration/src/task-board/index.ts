@@ -312,7 +312,7 @@ export interface TaskBoardRequestCollectionSpec {
 
 /**
  * Sequencer-state-backed collection spec — explicit opt-in. Wires
- * `getOrCreateTaskCollection({ backing: "sequencer", sequencer:
+ * `getOrCreateTaskCollection({ backing: "state", state:
  * <board-state-ref> })` at runtime. The outer sequencer's `stateSchema` must
  * include a `Record<string, Task>` slot at `[stateKey]` (default `"tasks"`) —
  * `taskBoardStateSchema` is the canonical shape.
@@ -1374,7 +1374,7 @@ function resolveBoardCaps(
       throw new Error(
         `[task-board] "${name}" cannot take maxTotalTasks/maxEnqueuedTasks/maxTotalRetries ` +
           `together with a supplied collection — caps belong to the collection, so configure ` +
-          `them where it is created (e.g. getOrCreateTaskCollection({ backing: "sequencer", ` +
+          `them where it is created (e.g. getOrCreateTaskCollection({ backing: "state", ` +
           `maxTotalTasks })). A board only applies caps to a collection it constructs itself.`
       );
     }
@@ -1430,8 +1430,8 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
  *   via an internal resource-declaring capability (distinct name) threaded onto
  *   both `board.capability`'s and the drain's `uses`; resolves from
  *   `ctx.resources`.
- * - sequencer spec — `getOrCreateTaskCollection({ backing: "sequencer" })`
- *   against `ctx.getTarget(boardName)` (falling back to `ctx.sequencer` for the
+ * - sequencer spec — `getOrCreateTaskCollection({ backing: "state" })` with
+ *   `state: ctx.getTarget(boardName)` (falling back to `ctx.sequencer` for the
  *   top-level seed handler).
  * - factory — caller-supplied `(ctx) => collection`, passed through unchanged.
  *
@@ -1518,9 +1518,9 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
       }
       return getOrCreateTaskCollection<TInput, TOutput>({
         ctx,
-        backing: "sequencer",
+        backing: "state",
         collectionId,
-        sequencer: stateRef,
+        state: stateRef,
         stateKey,
         ...caps,
       });
@@ -1546,7 +1546,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
   const collectionFactory = (ctx: BlockContext) =>
     getOrCreateTaskCollection<TInput, TOutput>({
       ctx,
-      backing: "request",
+      backing: "state",
       collectionId,
       stateKey,
       ...caps,

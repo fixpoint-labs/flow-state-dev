@@ -37,7 +37,7 @@ const seedTasks = handler({
   execute: async (input, ctx) => {
     const collection = await getOrCreateTaskCollection({
       ctx,
-      backing: "request",
+      backing: "state",
       collectionId: COLLECTION_ID,
     });
     for (const [i, text] of input.items.entries()) {
@@ -69,7 +69,7 @@ const readResults = handler({
   execute: async (_input, ctx) => {
     const collection = await getOrCreateTaskCollection({
       ctx,
-      backing: "request",
+      backing: "state",
       collectionId: COLLECTION_ID,
     });
     const tasks = collection.list().map((task: Task) => ({

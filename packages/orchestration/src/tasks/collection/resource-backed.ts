@@ -733,7 +733,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // optional, is stated once in `task-caps.ts` → "Lifetime" →
       // Resource-backed. Don't restate it here.
       //
-      // `options` must reach BOTH branches — see the sequencer backing's
+      // `options` must reach BOTH branches — see the state backing's
       // `fail` for why the status-blind retry predicate makes this the most
       // likely place to ship a partial fix.
       const candidateRef = mirror.get(id);

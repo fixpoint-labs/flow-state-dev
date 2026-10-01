@@ -65,7 +65,7 @@ export function planMapReduce<TResult>(
     execute: async (input, ctx) => {
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "request",
+        backing: "state",
         collectionId,
       });
       for (const item of input.items) {
@@ -89,7 +89,7 @@ export function planMapReduce<TResult>(
     execute: async (_input, ctx) => {
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "request",
+        backing: "state",
         collectionId,
       });
       const outputs = collection

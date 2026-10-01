@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   type Task,
   type TaskCollectionRef,
 } from "../../src/tasks";
@@ -29,9 +29,9 @@ function makeCollection(
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
     tasks: seed,
   });
-  return createSequencerBackedTaskCollection({
+  return createStateBackedTaskCollection({
     collectionId: "budgeted",
-    sequencer,
+    state: sequencer,
     ...caps,
   });
 }
@@ -259,9 +259,9 @@ describe("retry budget — the terminal settlement is honest", () => {
     const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
       tasks: {},
     });
-    const collection = createSequencerBackedTaskCollection({
+    const collection = createStateBackedTaskCollection({
       collectionId: "budgeted",
-      sequencer,
+      state: sequencer,
       maxTotalRetries: 0,
       onChange: captured.onChange,
     });

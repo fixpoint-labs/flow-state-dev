@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   TaskCapExceededError,
   type TaskCollectionRef,
 } from "../../src/tasks";
@@ -24,9 +24,9 @@ function makeCollection(
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
     tasks: {},
   });
-  return createSequencerBackedTaskCollection({
+  return createStateBackedTaskCollection({
     collectionId: "capped",
-    sequencer,
+    state: sequencer,
     ...caps,
   });
 }

@@ -86,7 +86,7 @@ async function seedWith(
         if (!(err instanceof TaskCapExceededError)) throw err;
         refused = true;
       }
-      const view = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId });
+      const view = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId });
       return { refused, count: view.count() };
     },
   });
@@ -166,7 +166,7 @@ describe("eventActors fan-out — all-or-nothing at the cap boundary", () => {
       inputSchema: z.any(),
       outputSchema: z.any(),
       execute: async (input, ctx) => {
-        const c = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId });
+        const c = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId });
         await c.addTasks(
           Array.from({ length: 99 }, (_, i) => ({ id: `pre-${i}`, goal: `pre ${i}` })),
         );

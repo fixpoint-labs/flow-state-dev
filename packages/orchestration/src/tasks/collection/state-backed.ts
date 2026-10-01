@@ -1,16 +1,18 @@
 /**
- * Sequencer-state-backed TaskCollection (FIX-443 §3.1, default backing).
+ * State-backed TaskCollection (FIX-443 §3.1).
  *
- * Tasks live as a `Record<id, Task>` on the outer sequencer's state. All
- * lifecycle mutations go through `sequencer.atomicState` so two workers
+ * Tasks live as a `Record<id, Task>` on an atomic state you pass — a
+ * sequencer's state, a generator's own state, or the request (adapted by
+ * `getOrCreateTaskCollection` when `backing: "state"` omits `state`). All
+ * lifecycle mutations go through `state.atomicState` so two workers
  * contending for the same task cannot both win — `atomicState` is
  * CAS-guarded by core's state container and retries on conflict.
  *
- * Why default: locality. Each sequencer instance owns its own tasks
- * without manufacturing unique resource keys, and nested patterns
- * automatically get isolated collections. Durability follows the
- * sequencer's checkpoint contract (FIX-401, latest-only with always-on
- * default).
+ * Locality: each state owns its own tasks without manufacturing unique
+ * resource keys, and nested patterns automatically get isolated collections.
+ * Durability follows the ref you pass, and only a sequencer's state is
+ * checkpointed (FIX-401, latest-only with always-on default); a generator's
+ * own state and the request are not restored on resume.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { StateRef } from "@flow-state-dev/core/types";
@@ -62,12 +64,13 @@ import {
   type TaskCapOptions,
 } from "./task-caps";
 
-export interface SequencerBackedOptions extends TaskCapOptions {
+/** Options for {@link createStateBackedTaskCollection}. */
+export interface StateBackedOptions extends TaskCapOptions {
   collectionId: string;
-  /** Sequencer state ref — typically `ctx.sequencer`. The sequencer's stateSchema
-   *  must include a record at `[stateKey]`, e.g. `tasks: z.record(taskSchema)`. */
-  sequencer: StateRef<Record<string, unknown>>;
-  /** Key on sequencer state that holds the `Record<id, Task>`. Default: `"tasks"`. */
+  /** The atomic state that holds the tasks — e.g. `ctx.sequencer`. Its state
+   *  schema must include a record at `[stateKey]`, e.g. `tasks: z.record(taskSchema)`. */
+  state: StateRef<Record<string, unknown>>;
+  /** Key on the state that holds the `Record<id, Task>`. Default: `"tasks"`. */
   stateKey?: string;
   /**
    * Optional callback fired after every successful task mutation. The
@@ -103,9 +106,9 @@ function ownTask<T>(tasks: Record<string, T>, id: string): T | undefined {
   return Object.hasOwn(tasks, id) ? tasks[id] : undefined;
 }
 
-/** Create a `TaskCollectionRef` backed by a sequencer's state record. */
-export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = unknown>(
-  options: SequencerBackedOptions
+/** Create a `TaskCollectionRef` backed by a record on an atomic state. */
+export function createStateBackedTaskCollection<TInput = unknown, TOutput = unknown>(
+  options: StateBackedOptions
 ): TaskCollectionRef<TInput, TOutput> {
   const stateKey = options.stateKey ?? "tasks";
   const now = options.now ?? Date.now;
@@ -126,7 +129,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
 
   /**
    * The read boundary for this backing — same job as the resource backing's
-   * `readTaskState`. Sequencer state is stored, not parsed, so a row written
+   * `readTaskState`. Atomic state is stored, not parsed, so a row written
    * before the `parked` rename arrives carrying the legacy status and is
    * mapped forward here, before any filter or the transition guard sees it.
    *
@@ -147,7 +150,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
   }
 
   function readTasks(): Record<string, Task<TInput, TOutput>> {
-    const raw = options.sequencer.state as Record<string, unknown>;
+    const raw = options.state.state as Record<string, unknown>;
     return migrateTasks(raw[stateKey]);
   }
 
@@ -174,7 +177,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       tasks: Readonly<Record<string, Task<TInput, TOutput>>>
     ) => Record<string, Task<TInput, TOutput>> | undefined
   ): Promise<void> {
-    await options.sequencer.atomicState((state) => {
+    await options.state.atomicState((state) => {
       const raw = state as Record<string, unknown>;
       // Through the same boundary as `readTasks`: the mutator re-reads
       // committed state on every CAS retry, so a legacy row would otherwise

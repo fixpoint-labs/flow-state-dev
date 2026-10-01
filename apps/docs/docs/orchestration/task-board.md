@@ -574,28 +574,26 @@ When a board's completion item reports `terminationReason: "retry-budget-exhaust
 
 No count is a stored counter. All three are read off the board's stored task map at the moment the bound is checked: the total is that map's size, the enqueue count is how many of its tasks are `pending`, and the retry count is the sum of every task's `retryLedger.granted`. The two creation counts are read when a task is created; the retry count is read when a task fails. All three last exactly as long as the map does, which depends on the backing:
 
-- **Request-backed** (the default) — the tasks live on the request, so a new request starts empty and all three counts start from zero.
-- **Sequencer-backed, resumed from a checkpoint** — the sequencer restores its whole state on resume, and the task map is part of that state. All three counts come back with it, retries included, so work after a resume is checked against the tasks that were already there, not against an empty board.
+- **On the request** (the default) — the tasks live on the request, so a new request starts empty and all three counts start from zero.
+- **On a state you pass** — the counts last as long as that state does. A sequencer's state is restored from its checkpoint on resume, task map included, so work after a resume is checked against the tasks already there. A generator's own state is not checkpointed, so a delegation board's tasks and counts start from zero after a resume. See [Block State → The durability boundary](../advanced/block-state#the-durability-boundary).
 - **Durable (resource-backed)** — no bound is enforced. What the resource layer gives you instead is `maxInstances` on `defineTaskCollection`, and that is a capacity limit rather than a lifetime ceiling: it caps how many task instances the collection **holds at once**, and creating one past it throws. Deleting an instance through the resource collection frees the slot again, so a board that deletes and re-queues can create more tasks over its life than `maxInstances` ever allows at one moment. Creation here also goes one instance at a time, so a batch that crosses the limit stops partway and the tasks made before it stay; the all-or-nothing behavior above belongs to the request and sequencer backings only.
-
-`backing: "sequencer"` names the shape of the state reference the tasks are stored in, not the kind of block it hangs off. Any block that holds its own state can supply one, and only a sequencer block checkpoints. See [Block State → The durability boundary](../advanced/block-state#the-durability-boundary).
-
-A delegation board is where the two come apart: it uses the sequencer backing, but its tasks live on the coordinator generator's own state rather than a sequencer's. It does not checkpoint, so its tasks and counts start from zero after a resume.
 
 ### One writer, or hand every writer the bounds
 
-The bounds are carried by the collection reference the board resolved. Resolving the same storage a second time gives you a *different* reference, and it enforces only what it was built with. So a block that calls `getOrCreateTaskCollection` itself, against a board's `collectionId`, writes past the board's bounds unless it is given them:
+The bounds are carried by the collection reference the board resolved. Resolving the same storage a second time gives you a *different* reference, and it enforces only what it was built with. So a block that calls `getOrCreateTaskCollection` itself, against a board's `collectionId`, writes past the board's bounds unless it is given them.
+
+The two layers use different words. A board is configured with `collection: { backing: "sequencer" | "request" }`, which chooses where the board's drain keeps its work. `getOrCreateTaskCollection` takes `backing: "state"` or `"resource"`, which chooses the atomic state the tasks live in; `backing: "state"` with no `state` field keeps them on the request, which is where a default board keeps them:
 
 ```ts
 const board = taskBoard({ name: "research", workers });
 
 // This second reference is unbounded, even though the board has bounds.
-const loose = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "research" });
+const loose = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "research" });
 
 // Hand it the board's own resolved bounds and it enforces them.
 const bounded = await getOrCreateTaskCollection({
   ctx,
-  backing: "request",
+  backing: "state",
   collectionId: "research",
   ...board.caps,
 });
@@ -617,16 +615,16 @@ The bounds belong to the collection, so the board applies them only to a collect
 ```ts
 const tasks = await getOrCreateTaskCollection({
   ctx,
-  backing: "sequencer",
+  backing: "state",
+  state: ctx.sequencer!,
   collectionId: "my-board",
-  sequencer: ctx.sequencer!,
   maxTotalTasks: 2000,
 });
 ```
 
 Which state ref to pass depends on where your code runs, and getting it wrong fails quietly rather than loudly: you get a working collection over the wrong slot. From a block *inside* the sequencer, pass `ctx.sequencer`. From a tool running as a child of a generator that owns the board, pass `ctx.parent` (see [wiring a bounded board by hand](../skills/delegation#board-and-overrides)).
 
-The cap options exist on the sequencer and request backing specs only. Passing `maxTotalTasks` or `maxEnqueuedTasks` with `backing: "resource"` is a TypeScript error, not a ceiling that quietly does nothing.
+The cap options exist on `backing: "state"` only. Passing `maxTotalTasks` or `maxEnqueuedTasks` with `backing: "resource"` is a TypeScript error, not a ceiling that quietly does nothing.
 
 ### If the defaults are too low for your board
 

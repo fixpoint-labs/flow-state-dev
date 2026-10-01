@@ -3,7 +3,7 @@
  * primitives (FIX-443 / FIX-444).
  *
  * Exports the Task schema, the uniform `TaskCollectionRef` API across
- * both backings (sequencer-state, resource-collection), the standard
+ * both backings (atomic state, resource collection), the standard
  * dispatcher catalog, the worker contract, and the canonical helpers
  * for composing task loops inside sequencer patterns.
  *
@@ -76,8 +76,8 @@ export type {
   TaskWriteOutcome,
   TaskWriteDeclineReason,
 } from "./collection/types";
-export { createSequencerBackedTaskCollection } from "./collection/sequencer-backed";
-export type { SequencerBackedOptions } from "./collection/sequencer-backed";
+export { createStateBackedTaskCollection } from "./collection/state-backed";
+export type { StateBackedOptions } from "./collection/state-backed";
 export { createResourceBackedTaskCollection } from "./collection/resource-backed";
 export type { ResourceBackedOptions } from "./collection/resource-backed";
 // Claimability and the lease (FIX-1005). `isClaimable` is THE admission
@@ -115,8 +115,7 @@ export {
   getOrCreateTaskCollection,
   TASK_CHANGE_COMPONENT_TYPE,
   type GetOrCreateTaskCollectionOptions,
-  type SequencerBackingSpec,
-  type RequestBackingSpec,
+  type StateBackingSpec,
   type ResourceBackingSpec,
 } from "./collection/get-or-create";
 

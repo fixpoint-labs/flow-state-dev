@@ -457,7 +457,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * enforcement lives, rather than derived from the board's own config, because
    * a board handed a collection it did not construct knows nothing about that
    * collection's caps — and a caller who builds one deliberately
-   * (`getOrCreateTaskCollection({ backing: "request", maxTotalRetries: 5 })`)
+   * (`getOrCreateTaskCollection({ backing: "state", maxTotalRetries: 5 })`)
    * would otherwise be told "no limit" about a limit they set themselves.
    *
    * `null` means exactly one thing everywhere: no limit is in force. That covers

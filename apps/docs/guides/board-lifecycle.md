@@ -100,7 +100,7 @@ collection is addressed by id, and any block can resolve it:
 ```ts
 const collection = await getOrCreateTaskCollection({
   ctx,
-  backing: "request",
+  backing: "state", // no `state` field: the tasks live on the request
   collectionId: "queue",
 });
 
@@ -122,7 +122,10 @@ out after it, from ordinary blocks.
 ## Backings set the lifetime
 
 The collection's **backing** decides how long the task state lives. This is the
-lever for "when is the board's state still around":
+lever for "when is the board's state still around". These are the board's words;
+`getOrCreateTaskCollection` above uses its own (`backing: "state"`, the atomic state
+the tasks live in), and a board on `request` is what it resolves when you pass no
+`state`:
 
 | Backing | Lives for | Reach for it when |
 |---------|-----------|-------------------|

@@ -26,7 +26,7 @@
 import { describe, expect, it } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   leaseLapsed,
   type Task,
   type TaskCollectionRef,
@@ -49,9 +49,9 @@ function clockedCollection(): {
 } {
   seq += 1;
   let t = 1_000_000;
-  const collection = createSequencerBackedTaskCollection({
+  const collection = createStateBackedTaskCollection({
     collectionId: `park-report-clock-${seq}`,
-    sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+    state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
     now: () => t,
   });
   return {
@@ -64,9 +64,9 @@ function clockedCollection(): {
 
 function freshCollection(caps?: { maxTotalRetries?: number | null }): TaskCollectionRef {
   seq += 1;
-  return createSequencerBackedTaskCollection({
+  return createStateBackedTaskCollection({
     collectionId: `park-report-${seq}`,
-    sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+    state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
     ...caps,
   });
 }

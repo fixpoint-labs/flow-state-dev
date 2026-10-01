@@ -558,7 +558,7 @@ describe("goalSeekLoop - construction guards", () => {
     const board = taskBoard({
       name: "fac-board",
       collection: (ctx) =>
-        getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "fac" }),
+        getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "fac" }),
       workers: completingWorker("fac-w"),
     });
     expect(() =>
