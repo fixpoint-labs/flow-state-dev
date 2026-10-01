@@ -262,6 +262,15 @@ which serializes one process, or the one a queue adapter supplies as
 `WorkerAdapter.leaseBackend`, which every process of the deployment shares.
 Only then is an external dispatch arbitrated: its place rides the job as
 `DispatchEnvelope.leasePlace`, and the worker waits its turn and gives it back.
+`bullmqWorker` supplies one on its Redis (`createRedisLeaseBackend`).
+
+A shared backend's places expire unless renewed. A waiter whose place the
+backend dropped (`isMyTurn` answers `"missing"`) takes a new place at the back
+of the line, in the arbiter's wait and in the BullMQ worker alike. A run holding
+its turn whose place can no longer be kept (a renewal answers `false`, or none
+lands for half the backend's `leaseMs`) is stopped through
+`ConcurrencyAdmission.lost`, which the host folds into the run's signal; the
+BullMQ worker does the same with `holdLeasePlace`.
 
 `host.resolvePrincipal` is the auth integration point. Per-flow
 `authentication.resolvePrincipal` (set on `defineFlow`) wins over the

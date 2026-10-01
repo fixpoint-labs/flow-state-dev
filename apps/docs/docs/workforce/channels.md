@@ -529,7 +529,7 @@ its view. A seat woken in an unrouted channel, or talked to directly, gets no li
 - One model per channel kind. Two channels on the same kind route with the same model.
 - A change to `routing:` waits for the next start.
 - It needs dispatch in the same process, or queue workers that share a lease backend. Behind a
-  dispatcher that hands work to an external queue without one, such as BullMQ today, a post is
+  dispatcher that hands work to an external queue without one, a post is
   written but no member is picked or woken, and nothing answers. See
   [Where posting from another flow works](#where-posting-from-another-flow-works-and-where-it-doesnt).
 
@@ -673,7 +673,7 @@ const fileOntoDesk = dispatcher({
 
 The model picks the board and writes the goal. The `author` is the seat's own `seatId`, which hiring gives every seat, not something the model chooses. The tool's result is the dispatch, not the row: the row is written when the channel runs `fileTask`, a moment later. If the channel refuses it, say because the author is not a member, the model has already been told the filing was sent, and the refusal is a failed request on the channel's session.
 
-The dispatch goes into an existing session by its id, which needs the in-process dispatcher or queue workers that share a lease backend. Under an external dispatcher without one, such as BullMQ today, it is refused with a `DispatchRefusedError` whose `refused` is `"external-dispatcher"`. To tell the model the board is unavailable rather than letting the tool fail, put the dispatcher in a sequencer and handle the error in the sequencer's `.rescue()`.
+The dispatch goes into an existing session by its id, which needs the in-process dispatcher or queue workers that share a lease backend. Under an external dispatcher without one, it is refused with a `DispatchRefusedError` whose `refused` is `"external-dispatcher"`. To tell the model the board is unavailable rather than letting the tool fail, put the dispatcher in a sequencer and handle the error in the sequencer's `.rescue()`.
 
 `readBoard` gives back every row on one board. The channel's own `read` lists what it holds, by name:
 

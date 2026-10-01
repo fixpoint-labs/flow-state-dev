@@ -11,6 +11,8 @@ export { applyRetentionPolicy, resolveRetentionPolicy } from "./retention";
 export type { ResolvedRetentionPolicy } from "./retention";
 export { runAction } from "./runAction";
 export { continueRequest } from "./request-continuation";
+export { settleUnstartedRequest } from "./settle-unstarted-request";
+export type { UnstartedRequestEnding } from "./settle-unstarted-request";
 export type {
   ContinueRequestOptions,
   ContinueRequestResult

@@ -2780,7 +2780,7 @@ export async function createExecutionContext<
           await response.emit({ type: "item.done", item });
         },
         async emitItemUpdated(itemId: string, patch: Record<string, unknown>) {
-          await response.emit({ type: "item.updated", id: itemId, patch });
+          await response.emit({ type: "item.updated", itemId, patch });
         }
       };
 

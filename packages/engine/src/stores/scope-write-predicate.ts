@@ -14,8 +14,8 @@
  * single atomic statement anyway rather than a read followed by a decision.
  * The scope-store conformance suite (`stores/testing/scope-store-conformance`)
  * is what keeps all four honest — it is the reason this arrangement is safe,
- * and it mirrors how `resource-state-predicate.ts` relates to its own two SQL
- * copies.
+ * and it mirrors how `checkWriteVersion` (`resource-state-predicate.ts`)
+ * relates to the compare inside the two SQL stores' write statements.
  *
  * ## What `0` means here, and why `"absent"` exists
  *
@@ -33,8 +33,8 @@
  * is **not** an alias for that store's `0`. A tombstone is a record, so
  * `"absent"` refuses one where `0` admits it — the gap that lets the resource
  * side tell a never-written key from a deleted one. Its `delete` still rejects
- * the word outright (`assertDeleteExpectedVersion` in
- * `resource-state-predicate.ts`), because `0` already covers "no live row, so
+ * the word outright (`assertDeleteExpectedVersion`, the shared write-version
+ * rule in `@flow-state-dev/contracts`), because `0` already covers "no live row, so
  * the terminal state holds" and the stricter form asks nothing on top of it.
  * Keeping the refusal to that one verb is what stops the sentinel acquiring a
  * second, verb-dependent meaning.
@@ -84,7 +84,7 @@ export function checkScopeWriteVersion<TRecord extends { version: number }>(
  * Every delta verb read-modify-writes an **existing** record, so "only if this
  * record does not exist" is unsatisfiable by construction rather than a race
  * that might go the caller's way. It throws for the same reason
- * `assertSetExpectedVersion` (`resource-state-predicate.ts`) throws on a
+ * `assertSetExpectedVersion` (`@flow-state-dev/contracts`) throws on a
  * negative version: returning a conflict would report a concurrency outcome the
  * store never observed and send the caller into a retry loop that can never
  * converge. `set(id, record, "absent")` is how a record gets created.

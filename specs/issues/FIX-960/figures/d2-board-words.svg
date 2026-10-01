@@ -1,0 +1,99 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="D2, whether the task-board layer is renamed too. Chosen: keep the board's words. Instead of: rename the board layer in the same PR. It comes down to the first row: the board's two arms really differ in behaviour, so keeping them is a pure rename, while folding them would change what a board does. Second row: the board's sequencer word names the board's real sequencer, so it is true where it stands, against a new word for something already accurate. Third row, the price: two vocabularies side by side, against one vocabulary everywhere. Locks in: two words on neighbouring layers until a follow-up. Flips if: readers conflate the board layer with the collection layer."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Does the task-board layer lose "sequencer" and "request" too?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="340" height="46" rx="5"/>
+    <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="226" y="112">Keep the board's words</text>
+    <rect class="lost" x="568" y="76" width="356" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="582" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="582" y="112">Rename the board layer in this PR</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">THE BOARD'S ARMS</text>
+    <text class="t-lbl" x="32" y="169">REALLY DIFFER</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="226" y="162">+</text>
+    <text class="t-b" x="244" y="161">A pure rename stays pure</text>
+    <text class="t-s" x="244" y="179">no board changes what it does</text>
+    <text class="mark minus" x="582" y="162">−</text>
+    <text class="t-b" x="600" y="161">A fold there changes behaviour</text>
+    <text class="t-s" x="600" y="179">subtree scoping, re-drain, goal-seek support</text>
+  </g>
+
+  <g id="row-truth">
+    <text class="t-lbl" x="32" y="222">IS THE WORD TRUE</text>
+    <text class="mark plus" x="226" y="224">+</text>
+    <text class="t-b" x="244" y="223">Yes, where it stands</text>
+    <text class="t-s" x="244" y="241">it names the board's own sequencer</text>
+    <text class="mark minus" x="582" y="224">−</text>
+    <text class="t-b" x="600" y="223">Replaces an accurate word</text>
+    <text class="t-s" x="600" y="241">churn with no lie to fix</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="row-price">
+    <text class="t-lbl" x="32" y="280">VOCABULARY</text>
+    <text class="mark minus" x="226" y="282">−</text>
+    <text class="t-b" x="244" y="281">Two words, neighbouring layers</text>
+    <text class="t-s" x="244" y="299">a board says sequencer, its collection says state</text>
+    <text class="mark plus" x="582" y="282">+</text>
+    <text class="t-b" x="600" y="281">One word everywhere</text>
+    <text class="t-s" x="600" y="299">at the cost of a second breaking change now</text>
+    <line class="row" x1="16" y1="314" x2="924" y2="314"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="326" width="446" height="62" rx="5"/>
+    <text class="t-lbl" x="32" y="346">LOCKS IN</text>
+    <text class="t-b" x="32" y="364">Two vocabularies until a follow-up</text>
+    <text class="t-s" x="32" y="380">renaming the board's later is its own breaking change</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="326" width="446" height="62" rx="5"/>
+    <text class="t-lbl" x="494" y="346">FLIPS IF</text>
+    <text class="t-b" x="494" y="364">Readers conflate the two layers</text>
+    <text class="t-s" x="494" y="380">then rename the board's words in a follow-up</text>
+  </g>
+</svg>

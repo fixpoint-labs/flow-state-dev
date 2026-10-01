@@ -122,7 +122,13 @@ A refusal at run time throws `DispatchRefusedError`, with `code:
 | `key-occupied` | The `key` derived a session id already held by a record that is not this conversation's run |
 | `no-dispatch-operation` | This process runs requests but was not set up to dispatch one |
 | `dispatch-rejected` | The entry's `concurrency` policy is `reject` and its key is held |
-| `external-dispatcher` | A delivery into an existing session, by `id` or a `{ from: true }` reply, from a process that hands work to an external queue. A reply from a run on a `worker-only` worker goes in process. A `key` dispatch is unaffected |
+| `external-dispatcher` | A delivery into an existing session, by `id` or a `{ from: true }` reply, from a process whose dispatcher hands work to another process and can't hold a session's concurrency policy across processes: a dispatcher passed directly, or a `worker` adapter that doesn't supply one. `bullmqWorker` supplies one, so it doesn't refuse. A reply from a run on a `worker-only` worker goes in process. A `key` dispatch is unaffected |
+
+On a queue-backed deployment, an `id` delivery runs in whichever worker picks it
+up, and it waits for the recipient session's concurrency policy like any other
+run into that session. If the session is deleted and created again while the
+delivery waits in the queue, the worker drops the delivery rather than run it in
+the new session.
 
 Every refusal is decided before anything starts, so a `.rescue()` on the
 dispatcher can branch on `refused` knowing no run has started. A `key` or

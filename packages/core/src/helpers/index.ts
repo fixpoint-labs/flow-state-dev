@@ -40,3 +40,11 @@ export {
 export { toError } from "./to-error";
 export { isWindowsReservedName } from "./windows-reserved-name";
 export { withTimeout } from "./with-timeout";
+export {
+  assertSetExpectedVersion,
+  assertDeleteExpectedVersion,
+  resourceStateConflict,
+  type ExpectedVersion,
+  type VersionedRow,
+  type VersionConflict,
+} from "./write-version";

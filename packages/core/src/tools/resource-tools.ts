@@ -3,6 +3,12 @@ import type { BlockContext } from "../types/block";
 import type { ResourceRef } from "../types/resource";
 import type { ResourceCollectionRef } from "../types/resource-collection";
 import { handler } from "../blocks/handler";
+import {
+  extractBareTopic,
+  isParameterizedPattern,
+  matchesPattern,
+  normalizeResourcePath,
+} from "../types/collection-patterns";
 
 type CollectionEntry = {
   name: string;
@@ -175,7 +181,7 @@ export function resourceTools() {
 /**
  * Unified path lookup spanning single resources and collection instances.
  * Tries single resources by `ResourceRef.path`, then collections via the
- * existing `resolvePathToCollection` matcher (+ `nsRef.get(key)`). Returns
+ * same matcher as the CRUD tools (`matchCollectionKey`, + `nsRef.get(key)`). Returns
  * a `ResourceRef` (collection instances are themselves `ResourceRef`s, so
  * `readContent()` is uniform). Returns `undefined` on a miss.
  */
@@ -195,7 +201,7 @@ export async function resolveResourceByPath(
 
   const collections = collectCollections(ctx);
   for (const ns of collections) {
-    const { key } = tryMatchPath(ns, path);
+    const key = matchCollectionKey(ns, path);
     if (key !== undefined) {
       try {
         return await ns.ref.get(key);
@@ -283,7 +289,7 @@ export async function resolveResourceByUri(
 
   for (const ns of collectCollections(ctx)) {
     if (ns.scope !== scope) continue;
-    const { key } = tryMatchPath(ns, path);
+    const key = matchCollectionKey(ns, path);
     if (key === undefined) continue;
     const ref = await ns.ref.getOptional(key);
     if (ref !== undefined && ref.uri === uri) return ref;
@@ -294,7 +300,7 @@ export async function resolveResourceByUri(
   // `getOptional` — the ref already renders content — no list/enumeration.
   for (const ns of collectProjectedCollections(ctx)) {
     if (ns.scope !== scope) continue;
-    const { key } = tryMatchPath(ns, path);
+    const key = matchCollectionKey(ns, path);
     if (key === undefined) continue;
     const ref = await ns.ref.getOptional(key);
     if (ref !== undefined && ref.uri === uri) return ref;
@@ -305,66 +311,53 @@ export async function resolveResourceByUri(
 function resolvePathToCollection(
   path: string,
   ctx: BlockContext
-): { nsRef: ResourceCollectionRef<any>; key: string } {
+): { nsRef: ResourceCollectionRef<any>; key: string | Record<string, string> } {
   const collections = collectCollections(ctx);
 
   for (const ns of collections) {
-    const { nsRef, key } = tryMatchPath(ns, path);
+    const key = matchCollectionKey(ns, path);
     if (key !== undefined) {
-      return { nsRef, key };
+      return { nsRef: ns.ref, key };
     }
   }
 
   throw new Error(`No resource collection found matching path: ${path}`);
 }
 
-function tryMatchPath(
+/**
+ * The key that addresses `path` in collection `ns`, or `undefined` when the
+ * path is not one of its instances.
+ *
+ * A collection instance's path is its storage key, so a path belongs to a
+ * collection exactly when the collection's own rule (`matchesPattern`) accepts
+ * it: `*` is one segment, `**` is any depth, `[param]` is one segment bound to
+ * that param. The path is normalized first, the same way a string key is, so
+ * separator noise (`files//a`, `files/a/`) still lands; a path that can't be
+ * normalized (empty, `..`) matches nothing.
+ *
+ * Returns the bare key for a wildcard pattern and the param object for a
+ * parameterized one: the two key shapes `resolveCollectionKey` accepts.
+ */
+function matchCollectionKey(
   ns: CollectionEntry,
   path: string
-): { nsRef: ResourceCollectionRef<any>; key: string | undefined } {
-  const { ref } = ns;
-  const pattern = ref.pattern;
-
-  // For wildcard patterns, check if the path starts with the prefix
-  if (pattern.includes("*")) {
-    const prefix = pattern.replace(/\/?\*+$/, "");
-    if (path.startsWith(prefix + "/")) {
-      const key = path.slice(prefix.length + 1);
-      return { nsRef: ref, key };
-    }
-    return { nsRef: ref, key: undefined };
+): string | Record<string, string> | undefined {
+  const pattern = ns.ref.pattern;
+  let storageKey: string;
+  try {
+    storageKey = normalizeResourcePath(path);
+  } catch {
+    return undefined;
   }
+  if (!matchesPattern(pattern, storageKey)) return undefined;
 
-  // For parameterized patterns, check if the path matches
-  if (pattern.includes("[")) {
-    // Extract param names from pattern segments
-    const patternSegments = pattern.split("/");
-    const pathSegments = path.split("/");
+  if (!isParameterizedPattern(pattern)) return extractBareTopic(pattern, storageKey);
 
-    if (patternSegments.length !== pathSegments.length) {
-      return { nsRef: ref, key: undefined };
-    }
-
-    const params: Record<string, string> = {};
-    let matches = true;
-
-    for (let i = 0; i < patternSegments.length; i++) {
-      const pSeg = patternSegments[i]!;
-      const vSeg = pathSegments[i]!;
-      const paramMatch = pSeg.match(/^\[([a-zA-Z0-9_]+)\]$/);
-      if (paramMatch) {
-        params[paramMatch[1]!] = vSeg;
-      } else if (pSeg !== vSeg) {
-        matches = false;
-        break;
-      }
-    }
-
-    if (matches) {
-      return { nsRef: ref, key: path };
-    }
-    return { nsRef: ref, key: undefined };
-  }
-
-  return { nsRef: ref, key: undefined };
+  const params: Record<string, string> = {};
+  const keySegments = storageKey.split("/");
+  pattern.split("/").forEach((segment, i) => {
+    const param = segment.match(/^\[([a-zA-Z0-9_]+)\]$/);
+    if (param) params[param[1]!] = keySegments[i]!;
+  });
+  return params;
 }
