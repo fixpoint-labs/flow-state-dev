@@ -10,7 +10,7 @@ from the PRD and the Architect's signed guidance on FIX-1649.
 
 ```mermaid
 flowchart TD
-  E["FIX-1649"] --> D1["D1 · three issues and a closure"]
+  E["FIX-1649"] --> D1["D1 · split at the task level and at Chief of Staff and Roster"]
   D1 -.->|"rejected"| X1["one child per region or destination"]
   D1 -.->|"rejected"| X1b["FIX-1662 carries every level"]
   E --> D2["D2 · one skin through the existing theme contracts"]
@@ -21,13 +21,17 @@ flowchart TD
 ```
 
 <a name="d1"></a>
-## D1 · Three issues and a closure: the shell splits at the task level; the shell owns how surfaces are reached and look, the siblings own what they mean
+## D1 · The shell splits at the task level, and at each later destination with reads of its own; the shell owns how surfaces are reached and look, the siblings own what they mean
 
 | | |
 |---|---|
 | **Instead of** | FIX-1662 carrying every level, as the set did before the hand-back · one child per region or per destination |
 | **Because** | The hand-back turned four regions into three centre levels (project, workstream, task), each with four tabs, and a right panel that changes with the level. As one child that is one spec of twelve tabs and two panel modes, past what a review holds. The task level is the clean cut: it reads one harness session (its transcript, diff and checks) and carries the session writes (a turn, Interrupt, Hand off), where the project board is the workstream board in swimlanes, so those two stay together. Meaning still lives in FIX-1650, 1651 and 1652, so a child per destination would still draw a sibling's model or wait on it |
-| **Locks in** | **FIX-1662:** the frame (sidebar, Jump to, routes, the right panel's slot), the Inbox and Tasks destinations, the project and workstream levels, and the workstream's panel. **FIX-1664:** the task level and the task inspector, inside that frame; its spec runs beside FIX-1662's, and its build merges after FIX-1662. The split trigger still stands for anything further: a level that needs a read no shipped surface exposes splits out rather than inventing the read |
+| **Locks in** | **FIX-1662:** the frame (sidebar, Jump to, routes, the right panel's slot), the Inbox and Tasks destinations, the project and workstream levels, and the workstream's panel. **FIX-1664:** the task level and the task inspector, inside that frame; its spec runs beside FIX-1662's, and its build merges after FIX-1662. The split trigger still stands for anything further: a level that needs a read no shipped surface exposes splits out rather than inventing the read. **Amended 2026-10-01:** that trigger fired twice for design v2. Chief of
+Staff (**FIX-1722**) reads the CoS seat's session; Roster (**FIX-1723**) derives each worker's
+status. Both are destinations inside FIX-1662's frame, filed as their own children so their spec and
+build PRs run in parallel. The Day/Night
+switch (**FIX-1725**) is a direct-route child: look only |
 
 **What would change my mind:** FIX-1664's spec finding the task level reads mostly what the
 workstream level already reads. Then it folds back into FIX-1662.
@@ -82,9 +86,11 @@ It comes down to what a Lab is: a tree needs no app of its own.
 
 ## Who owns what
 
-![Who owns what: nine cross-cutting rules by FIX-1655, FIX-1662, FIX-1664 and FIX-1663, one owner per rule](figures/ownership.svg)
+![Who owns what: nine cross-cutting rules by FIX-1655, FIX-1662, FIX-1664, FIX-1722, FIX-1723 and FIX-1663, one owner per rule](figures/ownership.svg)
 
-Every rule has one owner. A *consumes* cell is a place a child must not re-decide: FIX-1662
+Every rule has one owner. FIX-1722 and FIX-1723 own none of these: they fill destinations
+FIX-1662's routes reach, and FIX-1722's composer writes into a session under ER-15. FIX-1725,
+look only, consumes ER-2, ER-3 and ER-9 as FIX-1662 does. A *consumes* cell is a place a child must not re-decide: FIX-1662
 consumes the token set and the hand-back rule; it does not choose colours. FIX-1662 owns reach,
 so FIX-1664's tabs hang off FIX-1662's routes; FIX-1664 owns how a session is written to, so
 the workstream composer's `@worker` and Inbox's reply go through the same operation.
@@ -96,7 +102,9 @@ ships, or to the sibling that will ship it; until then, the surface shows its na
 
 | Surface in the design | What it means comes from |
 |---|---|
-| TEAMS, each team's workers, a worker's harness and status | Workforce as shipped: the tree's teams and seats, and the seat's run |
+| TEAMS, each team's workers, a worker's harness | Workforce as shipped: the tree's teams and seats, and the seat's run. The org seats (CoS, Ops) and the seat inventory the Roster reads: FIX-1719 (FIX-1650 epic) |
+| A worker's shift status (on shift, on call, off shift) and its slots in use | FIX-1723, derived in Shift Manager from board rows and pending asks over Workforce's records; no field in Workforce, nothing in Core or Engine |
+| Chief of Staff: which seat is the CoS, and what it can do | FIX-1719: the seat and its tools. The view and its shift summary are FIX-1722's, drawn from the shell's own reads |
 | The PROJECTS tree's projects, the project level | FIX-1650 · org primitives |
 | A workstream itself: the channel, its flow, and that it exists | FIX-1650 · org primitives |
 | What a workstream holds, across its Board, Brief and Results tabs: tasks, a board row, the brief, results, a task's acceptance criteria and harness plan | FIX-1651 · eng workstream kit |
@@ -107,10 +115,13 @@ ships, or to the sibling that will ship it; until then, the surface shows its na
 ## Decided in review, recorded so no child reopens them
 
 - **The structure is the hand-back v1's, not the wireframes'** ([`assets/design/`](assets/design/DESIGN.md), Sep 30).
-  One sidebar replaces the rail and sidebar: the org switcher, Jump to (⌘K), Inbox and Tasks
-  (which replaced v1's NEEDS YOU section: owner input, screens 04 and 05), the PROJECTS tree (a project, then its workstreams as `#channels` with progress), TEAMS, and a
-  footer with the sessions live and the user. **Under TEAMS, each team lists its workers below
-  it** (seat, harness, status): Jake's correction, which the screens don't draw yet. Three
+  One sidebar replaces the rail and sidebar: the org switcher, Jump to (⌘K), Chief of Staff,
+  Inbox and Tasks (which replaced v1's NEEDS YOU section: owner input, screens 04 and 05),
+  Roster, the PROJECTS tree (a project, then its workstreams as `#channels` with progress),
+  TEAMS, the Day/Night switch, and a footer with the sessions live and the user.
+  **TEAMS is one row per team of status squares, one per worker, opening Roster filtered to that
+  team**: v2's answer to Jake's v1 correction (workers listed below each team), adopted
+  2026-10-01 ([EVOLUTION.md](EVOLUTION.md#amendment--2026-10-01--design-v2s-structure)). Three
   centre levels: project (Stream, Board, Workstreams, Brief; one swimlane per workstream,
   columns QUEUED, RUNNING, IN REVIEW, NEEDS YOU, DONE; a team roster strip), workstream (Stream,
   Board, Brief, Results; the stream's cards for a task assignment, a review result, a live
@@ -122,6 +133,16 @@ ships, or to the sibling that will ship it; until then, the surface shows its na
   worker's session as a turn. Attention is **Inbox**, and **Tasks** is added: every task in
   flight, across streams. **Resources has no place in v1**: it is
   reached from Jump to until [design pass 2](#design-pass-2) gives it one.
+- **Chief of Staff and Roster are destinations of their own, inside FIX-1662's frame**
+  (amended 2026-10-01). Chief of Staff (FIX-1722) is where every Lab opens: a shift summary the
+  shell draws from its own reads, and a conversation with the Lab's CoS seat through its door.
+  Roster (FIX-1723) lists every worker on shift, on call or off shift, its slots in use and the
+  tasks it holds; one status rule decides those words for every screen that shows them.
+- **v2's removed tabs and actions are not adopted.** The workstream keeps Brief and Results, the
+  task Diff, Checks and Brief, the project Stream, Workstreams and Brief, with Open PR, Pause
+  stream, + Team and + Workstream. Out of scope for this amendment; the shell keeps them.
+- **The theme's light and dark variants switch live from the sidebar** (FIX-1725): look only.
+  The switch never swaps the Lab tree a shift boots.
 - **Inbox and Tasks are shell destinations, owned by FIX-1662; FIX-1664 keeps the task
   screen.** Tasks lists every task across streams (group by State, Worker or Stream; queued
   shown or hidden), and a row opens the task screen. Inbox is a list of asks beside the selected
@@ -164,7 +185,6 @@ until it returns. Kept in step with [`assets/design/DESIGN.md`](assets/design/DE
 |---|---|
 | **Where resources live** | Reached from Jump to, as a list of what the tree declares |
 | **The light variant** (the ticket's beige, black and yellow) | FIX-1655 drafts it from the ticket; no final value merges |
-| **TEAMS with workers below each team** (Jake's correction) | Built as the correction says, on the v1 look |
 | **Tabs not drawn:** workstream Board, Brief, Results; project Stream, Workstreams, Brief; task Diff, Checks, Brief | Built from the wireframes' surfaces in the v1 look |
 | **Empty, loading and failed states** in the v1 look | The wireframes' states: a named empty state, a per-section Retry |
 | **The right panel at a project** (v1's board has none) | The board takes the full width |
@@ -198,3 +218,6 @@ and reach), and the one code seam, tokens mapped onto `--fsd-nav-*`, already wor
 - **Amendment (Sep 30), found by the project-spec refresh**: the workstreams row was split to match
   FIX-1649's Linear map and FIX-1650's scope: FIX-1650 owns the workstream itself (its channel,
   its flow, that it exists), FIX-1651 what sits on its board; nothing the shell builds changed.
+- **Amendment (Oct 1), ER-10, Jake's call "handle them here"**: design v2's Chief of Staff
+  (FIX-1722), Roster with TEAMS as status squares (FIX-1723) and the Day/Night switch (FIX-1725)
+  joined the set; v2's removed tabs did not. [EVOLUTION.md](EVOLUTION.md#amendment--2026-10-01--design-v2s-structure).
