@@ -85,7 +85,7 @@ export function createLeaseStoreConformanceTests(
       });
     });
 
-    it("an expired lease can be taken over by another holder", async () => {
+    it("an expired lease can be taken over, and the old release does not free it", async () => {
       await withStore(async (store) => {
         const stale = await store.acquire("req_takeover", { holder: "w1", durationMs: SHORT_MS });
         expect(stale).not.toBeNull();
@@ -94,22 +94,12 @@ export function createLeaseStoreConformanceTests(
         expect(fresh).not.toBeNull();
         expect(fresh!.holder).toBe("w2");
         expect(fresh!.leaseId).not.toBe(stale!.leaseId);
-      });
-    });
 
-    it("a stale holder's release does not free the newer holder's lease", async () => {
-      await withStore(async (store) => {
-        const stale = await store.acquire("req_stale", { holder: "w1", durationMs: SHORT_MS });
-        expect(stale).not.toBeNull();
-        await sleep(SHORT_MS * 2);
-        const fresh = await store.acquire("req_stale", { holder: "w2", durationMs: LONG_MS });
-        expect(fresh).not.toBeNull();
+        await store.release("req_takeover", stale!.leaseId);
 
-        await store.release("req_stale", stale!.leaseId);
-
-        const current = await store.get("req_stale");
+        const current = await store.get("req_takeover");
         expect(current?.leaseId).toBe(fresh!.leaseId);
-        expect(await store.acquire("req_stale", { holder: "w3", durationMs: LONG_MS })).toBeNull();
+        expect(await store.acquire("req_takeover", { holder: "w3", durationMs: LONG_MS })).toBeNull();
       });
     });
 
