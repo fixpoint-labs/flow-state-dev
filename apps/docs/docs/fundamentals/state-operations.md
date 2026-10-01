@@ -151,7 +151,7 @@ A write issued from a context whose cache predates a concurrent writer is still 
 
 ### `false` doesn't mean the store already holds your value {#when-false-doesnt-mean-already-correct}
 
-The usual cause of `false` is a redundant write. When the update you propose is structurally equal to the state this context last read, it's skipped before the store is called, so idempotent writes don't need manual identity checks:
+The usual cause of `false` is a redundant write. When the update you propose is structurally equal to the current state, it's skipped, so idempotent writes don't need manual identity checks:
 
 ```ts
 // Safe to call repeatedly. If `mode` is already "agent", nothing happens.
@@ -160,13 +160,25 @@ await ctx.session.patchState({ mode: "agent" });
 
 The comparison uses `Object.is` for primitives (NaN-equal-NaN, `+0 != -0`) and recursive structural equality for plain objects and arrays.
 
-That comparison runs against the state **this context last read**, before anything reaches the store. It is not a check that the store agrees. If another context has changed the field since your last read, and your write happens to match your own stale copy, the write is skipped and the other context's value stays stored:
+What "current state" means depends on [which kind of write](#cas-semantics) you made.
+
+A version-checked write confirms the match with the store before skipping. The runtime re-reads the record, and skips only if the store still holds the version this context read. If another context has moved it since, the runtime refreshes and runs your update again against the stored value, the same as after a conflict. A write that only matches your own stale copy still lands:
 
 ```ts
 // this context last read mode: "chat". Another context has since stored "agent".
 const changed = await ctx.session.atomicState(() => ({ mode: "chat" }));
-// false. Stored mode is still "agent" — the write was never sent.
+// true. Stored mode is "chat".
 ```
+
+A write with no version doesn't confirm. Its comparison runs against the state **this context last read**, before anything reaches the store. If your write happens to match that stale copy, it's skipped and the other context's value stays stored:
+
+```ts
+// this context last read mode: "chat". Another context has since stored "agent".
+const changed = await ctx.session.patchState({ mode: "chat" });
+// false. Stored mode is still "agent". The write was never sent.
+```
+
+When a write has to land even if it matches what you last read, make it version-checked: `atomicState(() => ({ mode: "chat" }))` rather than `patchState({ mode: "chat" })`.
 
 A write is also refused, and returns `false`, in these cases:
 

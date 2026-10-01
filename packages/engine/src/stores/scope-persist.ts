@@ -15,7 +15,7 @@
  * current record so the next CAS attempt sees a fresh baseline.
  */
 
-import type { CASPersist, CASPersistResult } from "./cas";
+import type { CASPersist, CASPersistResult, CASReread } from "./cas";
 import { isCommutativeHint } from "./cas";
 import type { CASMutationHint } from "./cas";
 import type {
@@ -147,5 +147,30 @@ export function createScopePersist<
     const nextRecord = buildSetRecord(expectedVersion, state);
     const result = await store.set(id, nextRecord, expectedVersion);
     return handleResult(result, () => nextRecord);
+  };
+}
+
+/**
+ * Builds the `reread` callback that lets the CAS path verify a no-op against
+ * the stored record (see `runWithCAS`). When the stored version has moved,
+ * `ref.current` is refreshed from it, as the conflict path does, so the retry
+ * builds its `set` record from the store's record rather than a stale one.
+ */
+export function createScopeReread<
+  TState,
+  TRecord extends { id: string; state: unknown; version: number }
+>(
+  ref: { current: TRecord },
+  store: { get(id: string): Promise<TRecord | undefined> }
+): CASReread<TState> {
+  return async () => {
+    const record = await store.get(ref.current.id);
+    if (record === undefined) {
+      return undefined;
+    }
+    if (record.version !== ref.current.version) {
+      ref.current = record;
+    }
+    return { state: record.state as TState, version: record.version };
   };
 }

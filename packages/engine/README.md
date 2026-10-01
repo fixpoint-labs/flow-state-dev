@@ -805,7 +805,7 @@ Conflicts report what actually happened rather than collapsing into one error:
 | A delete's version check failed against a live row | `ConcurrentModificationError` — nothing was deleted |
 | Retry budget exhausted | `ConcurrentModificationError` |
 
-The driver is deliberately separate from the one the four scope stores use (`runWithCAS`), which treats every conflict as retryable, suppresses a no-op before checking any version, and has no cancellation. The full policy table lives in the `stores/resource-cas.ts` module header. Resource writes honour the request's background abort signal, so a user-requested abort stops them — while a client disconnect does not, since background `.sideChain()` tasks keep running and their writes must land.
+The driver is deliberately separate from the one the four scope stores use (`runWithCAS`), which treats every conflict as retryable and has no cancellation. Both suppress a no-op only after re-reading the stored version. The full policy table lives in the `stores/resource-cas.ts` module header. Resource writes honour the request's background abort signal, so a user-requested abort stops them — while a client disconnect does not, since background `.sideChain()` tasks keep running and their writes must land.
 
 ### A resource `stateSchema` must parse its own output unchanged
 
@@ -1132,7 +1132,7 @@ A store has to implement the matching operation for the write to go the right-ha
 
 Every store refuses a write against a record that does not exist before it compares versions, unchecked writes included. So an increment against a deleted scope record returns `false` and creates nothing.
 
-`false` from a mutator means "nothing was written". It does not mean the store already holds the value. Three things produce it: the proposed state matched what **this container last read** (the deep-equal short-circuit runs against the cached read, ahead of any store round-trip), the record no longer exists, or a full-record fallback write lost its version check.
+`false` from a mutator means "nothing was written". It does not mean the store already holds the value. Three things produce it: the proposed state matched the current state, the record no longer exists, or a full-record fallback write lost its version check. On a version-checked write the match is confirmed against the store: the record is re-read, and if its version moved since this container read it, the mutator re-runs against the stored value and the write lands. On an unchecked write the match is against what **this container last read**, ahead of any store round-trip, so a write that only equals a stale cache is skipped.
 
 The table above is scope state. Every *state* mutation through a resource handle takes the version check; `writeContent` carries no version and overwrites the stored body.
 
