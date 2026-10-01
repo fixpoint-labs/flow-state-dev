@@ -19,7 +19,7 @@ import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
 import { harnessRunHandleSchema, harnessRunInputSchema } from "@flow-state-dev/core";
 import type { HarnessBlock } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { defineTaskCollection, ticketForClaim, type Task } from "@flow-state-dev/orchestration/tasks";
+import { defineTaskCollection, type Task } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import {
   harnessManager,
