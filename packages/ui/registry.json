@@ -484,7 +484,7 @@
       "title": "JSX Preview",
       "type": "registry:component",
       "description": "Live JSX/TSX renderer with streaming support and error fallback.",
-      "dependencies": ["react-jsx-parser", "lucide-react"],
+      "dependencies": ["react-jsx-parser", "acorn", "acorn-jsx", "lucide-react"],
       "registryDependencies": [],
       "files": [{
         "type": "registry:component",
