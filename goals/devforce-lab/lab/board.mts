@@ -8,7 +8,7 @@
  * so no file in the tree, and no line of this lab, writes that id.
  * The host resolves the ledger with `channelBoard(channel.id, boardName)`,
  * reading both off the tree, and hands it to the two kinds below. The ledger
- * is kept per organization, which is what lets App Lab show the workstream's
+ * is kept per organization, which is what lets Shift Manager show the workstream's
  * board to everyone working it.
  *
  * Two shapes, because the row crosses flows (D1 of the lab's own spec):

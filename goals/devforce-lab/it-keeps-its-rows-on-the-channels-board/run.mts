@@ -2,7 +2,7 @@
  * Goal check — the DevForce feature channel carries the board its rows sit on.
  *
  * A line posted on the feature channel ends as one completed row, and that row
- * is read back where App Lab reads a workstream: through the channel's own
+ * is read back where Shift Manager reads a workstream: through the channel's own
  * `read` and `readBoard`, through the HTTP door a browser uses, and from the
  * organization's storage under the id the framework minted. Nothing here reads
  * the drain's report, the run record or the EM's output — all three are green

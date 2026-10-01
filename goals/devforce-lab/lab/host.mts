@@ -218,7 +218,7 @@ export interface OpenLabOptions {
   ask?: AskFeature;
   /**
    * Open the organization's seat and channel inventory after the channels, the
-   * collections App Lab's TEAMS and PROJECTS read. Needs `channels`: the
+   * collections Shift Manager's TEAMS and PROJECTS read. Needs `channels`: the
    * inventory's writer is the channel kind, built with `inventory: true`.
    *
    * **Absent means absent**: the channel kind is built without the writer and
@@ -228,7 +228,7 @@ export interface OpenLabOptions {
   /**
    * Hand a page the lab's user and verified bearer through the `devtool`
    * connection config, which the host injects on a loopback bind only. For a
-   * long-lived server a browser reads (App Lab, the DevTool). Absent for the
+   * long-lived server a browser reads (Shift Manager, the DevTool). Absent for the
    * checks, which read in-process.
    */
   devtool?: boolean;
@@ -328,7 +328,7 @@ export interface Lab {
   transcript?(): Promise<ChannelTranscriptLine[]>;
   /**
    * Run one of the channel's own actions (`read`, `readBoard`) — the reads
-   * App Lab makes of a workstream. Absent when no channel was opened.
+   * Shift Manager makes of a workstream. Absent when no channel was opened.
    */
   channelAct?(actionName: string, input: unknown): Promise<{ output?: unknown; error?: string }>;
   /**
