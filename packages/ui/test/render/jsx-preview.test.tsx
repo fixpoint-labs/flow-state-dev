@@ -18,8 +18,16 @@
  * vitest config aliases those to Storybook's stubs.
  */
 import { cleanup, render } from "@testing-library/react";
+import { useState } from "react";
+import JsxParser from "react-jsx-parser";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { JSXPreview, JSXPreviewContent, JSXPreviewError } from "../../registry/components/jsx-preview";
+import {
+  checkExpressions,
+  JSXPreview,
+  JSXPreviewContent,
+  JSXPreviewError,
+  MAX_JSX_LENGTH,
+} from "../../registry/components/jsx-preview";
 
 afterEach(cleanup);
 
@@ -95,6 +103,35 @@ describe("untrusted JSX cannot execute or embed content", () => {
     expect(img.getAttribute("alt")).toBe("x");
   });
 
+  it("drops srcset, whose later candidates a scheme check on the first would miss", () => {
+    const { container } = render(<Preview jsx={`<img src="/a.png" srcSet="/a.png 1x, javascript:alert(1) 2x" alt="a" />`} />);
+    const img = container.querySelector("img")!;
+    expect(img.hasAttribute("srcset")).toBe(false);
+    expect(img.getAttribute("src")).toBe("/a.png");
+  });
+
+  // A dotted tag resolves through the component map, so `div.displayName`
+  // reaches the string "div" and renders a raw intrinsic with unsanitized
+  // props, and `div.name` renders a custom element the allowlist never saw.
+  const memberTags: Array<[string, string]> = [
+    ["a component's displayName", `<div.displayName dangerouslySetInnerHTML={{ __html: '<img id="pwn" src="x">' }} />`],
+    ["a component's function name", `<div.name dangerouslySetInnerHTML={{ __html: '<img id="pwn" src="x">' }} />`],
+    ["a host component's function name", `<Badge.name dangerouslySetInnerHTML={{ __html: '<img id="pwn" src="x">' }} />`],
+  ];
+
+  it.each(memberTags)("does not render a tag reached through %s", (_label, jsx) => {
+    const Badge = () => <span>badge</span>;
+    const { container } = render(<Preview jsx={jsx} components={{ Badge }} />);
+    expect(container.querySelector("#pwn")).toBeNull();
+    expect(container.querySelector(".text-destructive")?.textContent).toMatch(/not allowed in a preview/);
+  });
+
+  it("still renders a host's compound component reached through a dotted tag", () => {
+    const Card = Object.assign(() => <div data-testid="card" />, { Header: () => <h3 data-testid="card-header">h</h3> });
+    const { getByTestId } = render(<Preview jsx={`<Card.Header />`} components={{ Card }} />);
+    expect(getByTestId("card-header").textContent).toBe("h");
+  });
+
   it("drops a javascript: target reached through a spread binding", () => {
     const { container } = render(
       <Preview jsx={`<a {...link}>x</a>`} bindings={{ link: { href: "javascript:alert(1)", title: "t" } }} />,
@@ -124,6 +161,45 @@ describe("untrusted JSX cannot run script through an expression", () => {
     const { container } = render(<Preview jsx={`<div>${expr}</div>`} />);
     expect((globalThis as Record<string, unknown>).__fsdPwned).toBe(0);
     expect(container.querySelector(".text-destructive")?.textContent).toMatch(/not allowed|unexpected/i);
+  });
+
+  it("does not run code reached from an attribute expression", () => {
+    const { container } = render(
+      <Preview jsx={`<a title={"".constructor.constructor("globalThis.__fsdPwned = 1")()}>x</a>`} />,
+    );
+    expect((globalThis as Record<string, unknown>).__fsdPwned).toBe(0);
+    expect(container.querySelector(".text-destructive")?.textContent).toMatch(/not allowed/i);
+  });
+
+  // The guard admits only the expression shapes previews use. Each of these
+  // is refused by the guard itself, before the parser sees it, so a parser
+  // release that starts evaluating one cannot open a path. Bindings give the
+  // payloads real values to work on.
+  const refused: Array<[string, string]> = [
+    ["this", `{this.props.bindings.secret}`],
+    ["optional chaining to a denied name", `{a?.constructor}`],
+    ["optional chaining to a denied computed key", `{a?.["constructor"]}`],
+    ["a destructuring parameter", `{(({ constructor: c }) => c)(a)}`],
+    ["a denied name inside a template literal", "{`${a.constructor}`}"],
+    ["a tagged template", "{tag`x`}"],
+    ["new", `{new F("globalThis.__fsdPwned = 1")}`],
+    ["a denied name spread into a call", `{f(...[a.constructor])}`],
+    ["an assignment", `{secret = 1}`],
+    ["a sequence", `{(f(), secret)}`],
+  ];
+
+  it.each(refused)("refuses %s", (_label, expr) => {
+    const bindings = { a: "", secret: "s3cret", tag: () => "t", F: Function, f: (...xs: unknown[]) => xs.length };
+    const { container } = render(<Preview jsx={`<p>${expr}</p>`} bindings={bindings} />);
+    expect((globalThis as Record<string, unknown>).__fsdPwned).toBe(0);
+    expect(container.textContent).not.toContain("s3cret");
+    expect(container.querySelector(".text-destructive")?.textContent).toMatch(/not allowed in a preview/);
+  });
+
+  it("refuses input longer than the size cap before parsing it", () => {
+    const { container } = render(<Preview jsx={`<p>${"x".repeat(MAX_JSX_LENGTH)}</p>`} />);
+    expect(container.querySelector("p")).toBeNull();
+    expect(container.querySelector(".text-destructive")?.textContent).toMatch(/longer than/);
   });
 
   it("does not crash on a tag named after an Object.prototype member", () => {
@@ -170,6 +246,13 @@ describe("safe content still renders", () => {
     expect(container.querySelector("svg path")?.getAttribute("d")).toBe("M0 0L10 10");
   });
 
+  it("renders a host-supplied component under an allowlisted tag's name, since the host chose it", () => {
+    const Trusted = (props: { href?: string; children?: React.ReactNode }) => <a data-testid="trusted" data-href={props.href}>{props.children}</a>;
+    const { getByTestId } = render(<Preview jsx={`<a href="javascript:void(0)">x</a>`} components={{ a: Trusted }} />);
+    // The host's component received the raw prop: no sanitizing sits between them.
+    expect(getByTestId("trusted").getAttribute("data-href")).toBe("javascript:void(0)");
+  });
+
   it("renders host-supplied components with their props", () => {
     const Badge = ({ label }: { label: string }) => <span data-testid="badge">{label}</span>;
     const { getByTestId } = render(<Preview jsx={`<Badge label="ok" />`} components={{ Badge }} />);
@@ -195,6 +278,55 @@ describe("the error banner is derived from the input", () => {
     expect(messages.filter((m) => /Cannot update a component|while rendering a different component/.test(m))).toEqual([]);
   });
 
+  // A host usually passes an inline handler, a new function every render. If
+  // that handler sets host state, notifying on every new handler would
+  // re-render the host, pass another new handler, and notify again: the
+  // render loop the derived error exists to remove, one level up. The cap
+  // keeps a regression from hanging the run; the count shows it.
+  it("calls an inline onError that sets host state once per distinct error, without looping", () => {
+    let calls = 0;
+    function Host({ jsx }: { jsx: string }) {
+      const [, setSeen] = useState(0);
+      return (
+        <Preview
+          jsx={jsx}
+          onError={() => {
+            calls += 1;
+            if (calls < 25) setSeen((n) => n + 1);
+          }}
+        />
+      );
+    }
+    const { rerender } = render(<Host jsx={broken} />);
+    expect(calls).toBe(1);
+    rerender(<Host jsx={broken} />);
+    expect(calls).toBe(1);
+    rerender(<Host jsx={`<p>ok</p><div className=>oops</div>`} />);
+    expect(calls).toBe(2);
+    rerender(<Host jsx={`<p>fixed</p>`} />);
+    rerender(<Host jsx={broken} />);
+    expect(calls).toBe(3);
+  });
+
+  it("does not loop when inline bindings re-derive the same error on every host render", () => {
+    let calls = 0;
+    function Host() {
+      const [, setSeen] = useState(0);
+      return (
+        <Preview
+          jsx={broken}
+          bindings={{ name: "x" }}
+          onError={() => {
+            calls += 1;
+            if (calls < 25) setSeen((n) => n + 1);
+          }}
+        />
+      );
+    }
+    render(<Host />);
+    expect(calls).toBe(1);
+  });
+
   it("clears the error once the JSX parses again", () => {
     const { container, rerender } = render(<Preview jsx={broken} />);
     expect(container.querySelector(".text-destructive")).not.toBeNull();
@@ -208,5 +340,60 @@ describe("the error banner is derived from the input", () => {
     expect(container.querySelector("p")?.textContent).toBe("first");
     rerender(<Preview jsx={`<p>first</p><div className=`} isStreaming />);
     expect(container.querySelector("p")?.textContent).toBe("first");
+  });
+});
+
+describe("the guard and the renderer agree on what parses", () => {
+  // The guard re-parses the input to check it before the renderer evaluates
+  // it, so the two must read the same input the same way: a string the guard
+  // rejects but the renderer accepts would render unchecked. This corpus
+  // covers what the guard mirrors by hand (DOCTYPE stripping, the <root>
+  // wrapper, unclosed void tags) plus entities; a react-jsx-parser upgrade
+  // that changes any of it turns this red.
+  const corpus = [
+    `<!DOCTYPE html><p>x</p>`,
+    `<p>a<br>b<hr></p>`,
+    `<img src="/a.png">`,
+    `<input></input>`,
+    `<br/>`,
+    `<root><p>x</p></root>`,
+    `x</root><root>y`,
+    `</root><p>x</p><root>`,
+    `<p>&amp; &lt; &copy; &#x3C;script&#x3E;</p>`,
+    `<p>&notanentity;</p>`,
+    `   <p>padded</p>   `,
+    `<div className=>oops</div>`,
+    `<p>{</p>`,
+    `<p>unclosed`,
+    `<p>{1 + }</p>`,
+    `<></>`,
+  ];
+
+  const components = new Proxy({} as Record<string, unknown>, { get: () => "span" });
+
+  function rendererAccepts(jsx: string): boolean {
+    let rejected = false;
+    new JsxParser({
+      ...JsxParser.defaultProps,
+      jsx,
+      components,
+      componentsOnly: true,
+      renderInWrapper: false,
+      autoCloseVoidElements: true,
+      renderError: () => {
+        rejected = true;
+        return null;
+      },
+    }).render();
+    return !rejected;
+  }
+
+  it.each(corpus)("agrees on %j", (jsx) => {
+    expect(checkExpressions(jsx) === null).toBe(rendererAccepts(jsx));
+  });
+
+  it("the corpus has both outcomes, so agreement is not vacuous", () => {
+    const outcomes = new Set(corpus.map(rendererAccepts));
+    expect(outcomes).toEqual(new Set([true, false]));
   });
 });
