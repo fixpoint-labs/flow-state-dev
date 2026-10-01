@@ -74,12 +74,22 @@ It comes down to what exists: hire ships, channel admin is a parked explore.
 <a name="q1"></a>
 ## Q1 · decided · a project is a channel of its own
 
-**Jake, 2026-10-01**, in the project thread (19:57Z): "A project is a channel session." That
-is the project channel, the recommendation below: a channel's charter is the project brief, its
-conversation is the project stream, and workstream channels name their project with one new key
-on `CHANNEL.md`. FIX-1718's spec starts from it ([ER-1](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
+**What it settles.** A project is a channel resource: durable, and discoverable by everyone in
+the Lab. A session is a participation handle onto it, not the project, and the link between them
+is explicit. There is no second project store. The declared `CHANNEL.md` record is the durable
+resource the fence names, and FIX-1718 builds on it: a project channel's charter is the project
+brief, its conversation is the project stream, and workstream channels name their project with
+one new key on `CHANNEL.md` ([ER-1](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
 
-He refined it two minutes later (19:59Z):
+**The session side is not built, and it is open.** Today a channel is one shared session whose
+id is the channel id (`packages/workforce/src/manifest.ts:145`): there are no per-person
+sessions and no `resourceId` link. Whether per-person participation sessions linked by
+`resourceId` are built in this epic is pending Jake's answer. Until then it is assigned to no
+child, and FIX-1718 stores no session link.
+
+**In his words** (Jake, 2026-10-01, the project thread). At 19:57Z: "A project is a channel
+session." Two minutes later he refined it, and **the refinement supersedes that literal first
+line**: the session is not the project. Both are kept as the record.
 
 > A project (or channel) should be a durable resource everyone in the Lab can discover and act
 > on. The flow session is the person's (or seat's) live handle onto that resource — membership,
@@ -89,10 +99,6 @@ He refined it two minutes later (19:59Z):
 > Practical fence: resource owns identity and org policy; session owns participation and
 > runtime; link is explicit (resourceId on the session / sessions listed on the resource). Don't
 > make the session the resource, and don't invent a second project store beside channels.
-
-**What it settles.** A project is a channel resource: durable, and discoverable by everyone in
-the Lab. Sessions are participation handles onto it, linked explicitly. There is no second
-project store.
 
 The question as it was put to him, kept as the record:
 
@@ -110,16 +116,18 @@ workstreams. Nothing new, but a team has no conversation of its own, and a secon
 a second team of the same people. A **pack**: a key that groups channels by name. Teams can
 span projects, but there is no stream, and the brief needs a document.
 
-**My recommendation:** a project channel. It is the only option where the project stream is a
+**The recommendation, as put to Jake:** a project channel. It is the only option where the project stream is a
 real conversation the CoS can post to, and it keeps teams free to work across projects, as
 DevForce's design (D-12) already assumes.
 
 **What would change my mind:** if you think of a project as one team's body of work, one team
 per project. Then a team is simpler and adds nothing.
 
-**What being wrong costs:** about one issue's rework (FIX-1718), no stored data: the link is a
-key in `CHANNEL.md` files. None of the three needs a folder or an L1 type, so none is an
-escalation.
+**What being wrong costs:** about one issue's rework (FIX-1718). The workstream-to-project link
+is a key in `CHANNEL.md` files, so changing it touches the tree, not stored data. The
+session-to-channel link, once built, is stored runtime state, as Jake's fence puts it; changing
+it then is a migration of stored sessions (BP-030), not a file edit. None of the three needs a
+folder or an L1 type, so none is an escalation.
 
 ![Q1 decided: its own channel, chosen, beside a team and a pack of channels; decided by where the project stream and brief come from](figures/q1-project.svg)
 
@@ -190,21 +198,9 @@ project's channel the way FIX-1718 defines it. The closure only checks.
   FIX-1719's first design question.
 - **Q2 is answered** (Jake, 2026-10-01): CoS is the one admin seat and hires without asking; fire and retire still ask
   in Inbox. The answer and the defaults I picked around it are [Q2](#q2).
-- **Q1 is answered** (Jake, 2026-10-01, the project thread): "A project is a channel
-  session." A project is a channel of its own, and its workstreams name it by one key on
-  `CHANNEL.md`. He refined it the same day:
-
-  > A project (or channel) should be a durable resource everyone in the Lab can discover and act
-  > on. The flow session is the person's (or seat's) live handle onto that resource — membership,
-  > wake surface, unread, "I'm in this room." Treating the session itself as the discoverable
-  > thing mixes directory with runtime and forces every consumer to invent the same join.
-  >
-  > Practical fence: resource owns identity and org policy; session owns participation and
-  > runtime; link is explicit (resourceId on the session / sessions listed on the resource). Don't
-  > make the session the resource, and don't invent a second project store beside channels.
-
-  So a project is a channel resource; sessions are participation handles with an explicit link;
-  there is no second project store. FIX-1718's spec starts from it; the answer is [Q1](#q1).
+- **Q1 is answered** (Jake, 2026-10-01): a project is a channel resource, the declared
+  `CHANNEL.md` record; sessions are participation handles, not the project, and that side is
+  open. The answer, both quotes and what is open are [Q1](#q1).
 - **No team named `org`.** An org seat in a `teams/org/` team would need no loader change, and
   forks the locked tree (`workforce/org/{resources,skills,channels,workers}/`). Rejected.
 

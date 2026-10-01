@@ -102,7 +102,7 @@
     <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="353">LOCKS IN</text>
     <text class="t-b" x="32" y="373">FIX-1718 builds the project channel</text>
-    <text class="t-s" x="32" y="391">nothing on disk beyond CHANNEL.md keys</text>
+    <text class="t-s" x="32" y="391">a CHANNEL.md key; the session side is open</text>
   </g>
 
   <g id="flips-if">

@@ -69,7 +69,7 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1718](https://linear.app/fixpoint-labs/issue/FIX-1718) · projects | A project as the tree declares it, a channel of its own ([Q1](DECISIONS.md#q1)); the project level and the PROJECTS tree filled; what a workstream is, written down | Half the goal: the shell's project level is empty | Backlog · spec route · Q1 answered 2026-10-01 |
+| [FIX-1718](https://linear.app/fixpoint-labs/issue/FIX-1718) · projects | A project as the declared `CHANNEL.md` resource, its workstreams naming it by a key ([Q1](DECISIONS.md#q1)); no session link, which is open; the project level and the PROJECTS tree filled; what a workstream is, written down | Half the goal: the shell's project level is empty | Backlog · spec route · Q1 answered 2026-10-01 |
 | [FIX-1621](https://linear.app/fixpoint-labs/issue/FIX-1621) · orphan repair | Finds stored seats whose kind is gone, names the reason, retires or re-hires each on approval | Without it, a cut kind leaves a broken seat nobody can clear, and CoS would invent its own detector | Backlog · spec route · adopted from Workforce L2 |
 | [FIX-1719](https://linear.app/fixpoint-labs/issue/FIX-1719) · Chief of Staff | One org admin seat a Lab opts into, booted from `org/workers/`; it hires on its own, fires on approval and calls FIX-1621's repair; other seats ask it by message | The other half: who works here, changed without a file edit | Backlog · spec route · Q2 answered 2026-10-01 · blocked by FIX-1621 |
 | [FIX-1720](https://linear.app/fixpoint-labs/issue/FIX-1720) · closure · **required** | The QA plan and its runs on one `main` commit | Proves the whole | Backlog · blocked by FIX-1718, FIX-1621, FIX-1719 |
@@ -118,7 +118,7 @@ people are still managed by editing files.
 3. **[D3](DECISIONS.md#d3) · Channels stay declared in this epic.** If wrong: a new workstream
    costs a file and a restart until channel admin ships.
 
-**Open: none.** [Q1](DECISIONS.md#q1) is answered: a project is a channel of its own, its charter the brief and its conversation the project stream.
+**Open: one, with Jake.** [Q1](DECISIONS.md#q1) is answered: a project is a channel resource, its charter the brief and its conversation the project stream. Whether per-person sessions linked to it are built in this epic is pending his answer; no child holds it.
 [Q2](DECISIONS.md#q2) is answered: CoS is the one admin seat and hires without asking; a fire still asks in Inbox,
 my default for him to reverse. The seat set is pending his direct confirmation. Rules: [BUSINESS-RULES.md](BUSINESS-RULES.md). Order:
 [PLAN.md](PLAN.md).
