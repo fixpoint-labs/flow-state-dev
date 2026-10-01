@@ -195,7 +195,10 @@ describe("V22 · every admin token is bound to kitchen-sink", () => {
     expect(runtime.registry.get(seat)).toBeDefined();
 
     const fired = await act(router, "workforce-admin", "fire", "admin-fire", { seatId: "support.pat" }, {}, { authorization: "Bearer t2" });
-    expect(fired.text).toContain('"released":true');
+    // The action's `{ released }` result is a block output, which a client
+    // stream never carries; the registry below is the evidence it fired.
+    expect(fired.status, fired.text).toBe(200);
+    expect(fired.text).not.toMatch(/"type":"error"/);
     expect(runtime.registry.get(seat)).toBeUndefined();
   });
 });
