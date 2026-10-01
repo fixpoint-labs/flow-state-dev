@@ -1203,8 +1203,13 @@ it reaches Node built-ins through the packages it builds on. A browser component
 
 ### Posting and reading
 
-`post` and `read` are declared both as public actions and as internal entries, so a client and
-another flow reach the same blocks. A post addresses the channel's **session id**:
+`post` and `read` are both reachable by a client and by another flow, and a dispatched
+`post` is the same kind of line as a client `post`. Neither sets `seatAuthored`, so hearing
+members wake whether or not the payload sets `author`. A seat's `post-to-channel` tool and a
+routed answer are the lines with `seatAuthored: true`, and `wakeMemberSeats` wakes nobody for
+those. A woken seat of the built-in `agent` kind sees the writer as `author`, or as `principal`
+when there is no `author`. `read` is the same call either way. A post addresses the
+channel's **session id**:
 
 ```ts
 const postToStandup = dispatcher({
@@ -1232,8 +1237,10 @@ boundness, not existence, is what makes a session a channel.
 
 Each post leaves one `channel-post` item on the channel's session, and that item is the line.
 A page renders the channel from those items; `read` is for models and other flows, returns the
-lines inside the session's history window, and never reaches a browser. A person posting from
-a page sends no `author`, since they are not a member. The line's `principal` names them.
+lines inside the session's history window, and never reaches a browser. `author` on a client
+`post` is an optional unverified label, stored with `authorVerified: false`. A name that is not a
+declared member is refused (`author-not-a-member`) and nothing is written. It does not decide who
+`wakeMemberSeats` wakes. `principal` is the channel session's user, the same on every line.
 
 ### Holding a board
 
@@ -1252,8 +1259,9 @@ and a name carrying one would address another channel's board. `lock` is reserve
 mint an id ending in `.lock`, which a git branch can't carry, so a coding run could never work that
 board.
 
-A channel holding one or more boards declares two more actions, `fileTask` and `readBoard`, public
-and internal like `post` and `read`. Both take the board's **local** name; `fileTask` hands back
+A channel holding one or more boards declares two more actions, `fileTask` and `readBoard`,
+reachable by a client and by another flow. Unlike `post`, each is the same block either way. Both
+take the board's **local** name; `fileTask` hands back
 `{ board, boardId, taskId, status }`, and the row's id is minted rather than chosen. Naming a board
 the channel does not hold refuses `board-not-declared` and lists what it does hold; naming another
 channel's board refuses the same way. `read` gains a `boards` key listing the local names; a channel
@@ -1318,34 +1326,43 @@ that moved.
 ### What a transcript proves
 
 A session is bound to one user, so **every line of a given channel carries the same `principal`**,
-the server-derived identity the post ran under. The optional `author` is a label the poster supplied,
-stored beside `authorVerified: false`, and it is the only thing distinguishing participants. The
-members check on `author` is a validity check against the declared roster, not authentication. Build
-an audit or approval flow on this and you get a far weaker guarantee than the field names suggest.
+the server-derived identity the post ran under. It does not name the poster. The optional `author`
+is an unverified label, stored beside `authorVerified: false`, and `authorVerified` is always
+`false`. There is no verified per-participant identity on a line. The members check on `author` is
+a validity check against the declared roster, not authentication. A line a seat wrote also has
+`seatAuthored: true`. A client `post` never does, including one that sets `author`. Build an audit
+or approval flow on these fields and you get a far weaker guarantee than the names suggest.
 
 ### Waking members
 
 `defineChannelFlow({ notify })` takes a block run once per declared member per post. The roster it
-walks is the whole declared list, the poster included, so a block that should not wake the writer
-compares the delivery's `author` against the `member` it was handed and returns without delivering.
-It runs in its own request, outside the post's turn, so a slow delivery never delays the next post. A delivery that
+walks is the whole declared list, the poster included. A block that should skip a seat's own post
+reads `input.seatAuthored === true`. Comparing `author` to `member` only skips a delivery when the
+caller claimed that name. `author` is an unverified claim. `principal` is the channel session's
+user and is the same on every line, so it does not name the poster.
+The delivery runs in its own request, outside the post's turn, so a slow delivery never delays the next post. A delivery that
 fails is recorded; the post stays written and membership is unchanged. Without a slot, posts land and
 nobody is woken.
 
 The framework carries the policy and your app supplies the addresses: the framework will not pick a
 dispatch target out of stored data, so a notify block declares its own recipients.
 
-`wakeMemberSeats(seats, { fallback? })` returns a notify block that wakes each member whose hired
-seat declares the internal `onChannelPost` entry, once per post, in one conversation per seat per
-channel. A post with an `author` wakes nobody. Members whose seat can't hear a post get
-`fallback`, or nothing. Pass the seats `hireWorkforce` returned, and hire before you build
-channels. The built-in `agent` kind declares `onChannelPost`; a kind of your own hears posts by
-declaring it too. See the channels guide, "Waking agent seats".
+`wakeMemberSeats(seats, { fallback? })` is the notify block for `defineChannelFlow({ notify })`.
+It wakes each member whose hired seat declares the internal `onChannelPost` entry, once per post,
+in one conversation per seat per channel. A seat's line (`seatAuthored: true`) wakes nobody. A
+client `post` wakes each hearing member whether or not it sets `author`. Members whose seat can't
+hear a post get `fallback`, or nothing, including on a seat's line. The fallback is not sent to a
+member who would have been woken. Pass the seats
+`hireWorkforce` returned, and hire before you build channels. The built-in `agent` kind declares
+`onChannelPost`; a kind of your own hears posts by declaring it too. See the channels guide,
+"Waking agent seats".
 
 ### Routing a channel
 
-A channel whose file declares `routing:` with a `fallback:` member sends each post from a person
-to one member instead of waking them all. Build the kind with a route:
+A channel whose file declares `routing:` with a `fallback:` member sends each client `post` to one
+member instead of waking them all, including a post that sets `author`. A seat's line
+(`seatAuthored: true`) is not routed, and `wakeMemberSeats` wakes nobody for it. Build the kind
+with a route:
 
 ```ts
 defineChannelFlow({
@@ -1354,8 +1371,8 @@ defineChannelFlow({
 });
 ```
 
-`routeByPurpose(seats, { model })` places each post in this order: the member the person's last
-post was routed to by the evaluator or the fallback, until it answers (a post held this way holds
+`routeByPurpose(seats, { model })` places each client `post` in this order: the member the last
+client `post` was routed to by the evaluator or the fallback, until it answers (a post held this way holds
 nothing, and neither does one whose route isn't recorded yet); else one evaluator call (block name
 `channel-route`) choosing among the members whose seat hears posts and has a description, each
 described by its `WORKER.md` `description:`; else the `fallback:` member, when that call fails or
@@ -1375,7 +1392,7 @@ and the person's last post with where it went, in its session state under `chann
 whether or not its `CHANNEL.md` declares `routing:`. Each post updates it. So neither the lines a
 routed member sees nor the hold is limited by the session's history window. The exception is the first post after a channel's kind gains a route: its first post on a kind built with one, or its first after the channel was posted to while the app ran its kind without a route. That post is never held, and its member sees only the earlier
 lines still inside the history window, which can be fewer than 20. Removing `routing:` from a
-channel's file and restoring it loses no lines. A person's post made while it was removed holds
+channel's file and restoring it loses no lines. A client `post` made while it was removed holds
 nothing, so the next routed post after it is placed by the evaluator or the fallback. A channel on a
 kind built without a route keeps no record.
 
@@ -1707,9 +1724,11 @@ with `defineAgentWorkerFlow({ uses: [channelPostCapability] })`, and a seat name
 `tools:` to use it. Its input is `{ channel, body }` and nothing else, so an `author` from the
 model is refused.
 
-Outside a routed turn (below), the line is posted through the built-in channel kind's `post`, with
-the seat's `seatId` (its record id, as `members:` lists it) as `author`, so the channel's member
-check applies and the fan-out can see a seat wrote it. `hireWorkforce` writes `seatId` on every
+Outside a routed turn (below), the tool posts through the built-in channel kind with the seat's
+`seatId` (its record id, as `members:` lists it) as `author`, so the channel's member check applies.
+The line has `seatAuthored: true`, so `wakeMemberSeats` wakes nobody for it. A client `post` that
+sets `author` to the same seat id wakes hearing members. `hireWorkforce`
+writes `seatId` on every
 seat it mints. A seat minted without one is refused, and the error names `seatId`. Every seat of
 the built-in `agent` kind is refused when its flow is built, whether or not it names the tool. A
 seat of any other kind carrying the capability is refused when a turn would offer the tool, before
@@ -1727,11 +1746,12 @@ the channel as its answer, whether or not it calls the tool. A tool call into th
 the turn is handed over as the answer first, and the reply lands only if the tool's answer didn't,
 for instance because the channel failed to write it. A second tool call there posts nothing and
 tells the model its answer was already handed to the channel. A call into any other channel during
-that turn goes through `post`. An empty reply posts nothing, and fails the run unless the tool
+that turn goes through `seatPost`. An empty reply posts nothing, and fails the run unless the tool
 handed an answer over in that turn.
 
 The reply and the tool's answer both land through an internal entry of the channel kind, one only a
-dispatch can reach, never a client. It applies `post`'s member check and the same `seatId` author.
+dispatch can reach, never a client. It applies `post`'s member check and the same `seatId` author,
+and the line has `seatAuthored: true`.
 Each post gets at most one answer line. Once one lands, any other answer to that post lands
 nothing, even one sent at the same moment. An answer the channel refuses writes nothing and doesn't
 use up the post's one answer line; the refusal is a failed request on the channel's session. A kind
@@ -2135,8 +2155,8 @@ before fire removed inventory rows is left out that way.
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
 | `SeatCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that seat wants. Read by the built-in `agent` kind; validated at the hire. |
 | `defineChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. `options.route` is the route from `routeByPurpose`. |
-| `wakeMemberSeats(seats, options?)` | The notify block that wakes each member seat declaring `onChannelPost`, never on a post with an `author`. `options.fallback` runs for members whose seat can't hear a post. |
-| `routeByPurpose(seats, { model })` | The route a channel kind takes as `defineChannelFlow({ route })`. For a channel that declares `routing:`, each post from a person goes to one member: the member the person's last post was routed to, until it answers (a held post holds nothing), else one evaluator call's pick among the members with a description (block name `channel-route`), else the declared fallback. A member of the built-in `agent` kind answers with the channel's last 20 lines in view, and its reply is posted into the channel as its line, once per post. Needs in-process dispatch or queue workers that share a lease backend. Throws without a `model`. |
+| `wakeMemberSeats(seats, options?)` | The notify block for `defineChannelFlow({ notify })`. Wakes each member whose hired seat declares `onChannelPost`, once per post, and never on a seat's line (`seatAuthored: true`). A client `post` wakes hearing members whether or not it sets `author`. `options.fallback` runs for members whose seat can't hear a post, including on a seat's line. |
+| `routeByPurpose(seats, { model })` | The route a channel kind takes as `defineChannelFlow({ route })`. For a channel that declares `routing:`, each client `post` goes to one member: the member the last client `post` was routed to, until it answers (a held post holds nothing), else one evaluator call's pick among the members with a description (block name `channel-route`), else the declared fallback. A seat's line (`seatAuthored: true`) is not routed. A member of the built-in `agent` kind answers with the channel's last 20 lines in view, and its reply is posted into the channel as its line, once per post. Needs in-process dispatch or queue workers that share a lease backend. Throws without a `model`. |
 | `channelRouteRecordSchema` / `ChannelRouteRecord` / `CHANNEL_ROUTE_COMPONENT` / `CHANNEL_ROUTE_EVALUATOR` | One route decision as it is kept on the channel's session (`{ postId, by, member?, reason? }`, where `by` is `held`, `evaluated`, `fallback` or `failed`), the component name it is kept under, and the route evaluator's block name. Both names are `"channel-route"`. |
 | `ChannelRoute` / `ChannelRouting` | What `routeByPurpose` returns, and a channel file's `routing:` as read (`{ fallback }`). |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |

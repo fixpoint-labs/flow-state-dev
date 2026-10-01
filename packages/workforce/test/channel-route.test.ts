@@ -25,7 +25,8 @@
  *   BR-6  a fallback the caller cannot reach, or that is not a member of the open
  *         channel, runs nobody, recorded as failed;
  *   BR-7  nobody else receives a routed post;
- *   BR-8  a post with an `author` takes no route and no call;
+ *   BR-8  a post on the internal seat entry takes no route and no call;
+ *         a public post that only claims an `author` still takes the route;
  *   BR-18 a channel without `routing:` on a routed kind wakes every member;
  *   BR-19 `routing:` added to an open channel's file routes it from the next
  *         boot, its lines kept;
@@ -193,16 +194,24 @@ async function bind(stores: StoreRegistry, sessionId: string, members: string[],
   );
 }
 
-async function post(runtime: FlowStateRuntime, channel: FlowInstance, sessionId: string, body: string, author?: string) {
+async function post(
+  runtime: FlowStateRuntime,
+  channel: FlowInstance,
+  sessionId: string,
+  body: string,
+  author?: string,
+  mode?: "seat" | "internal"
+) {
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
     flow: channel,
-    actionName: "post",
+    actionName: mode === "seat" ? "seatPost" : "post",
     input: author === undefined ? { body } : { body, author },
     userId: USER_ID,
     sessionId,
     stores: runtime.stores,
-    runtimeConfig: { ...runtime.runtimeConfig }
+    runtimeConfig: { ...runtime.runtimeConfig },
+    ...(mode === undefined ? {} : { source: "internal" as const })
   });
   expect(result.error).toBeUndefined();
 }
@@ -375,7 +384,7 @@ describe("a person's post to a routed channel", () => {
         .member;
       expect(question.criteria).toEqual(DESCRIPTIONS);
 
-      await post(runtime, channel, HELP, "Try forgetting the network.", "support.devices");
+      await post(runtime, channel, HELP, "Try forgetting the network.", "support.devices", "seat");
       await settle(runtime, HELP, 2);
       await post(runtime, channel, HELP, "who do I ask about a parking pass?");
       await settle(runtime, HELP, 3);
@@ -428,7 +437,7 @@ describe("a person's post to a routed channel", () => {
       expect(callsFor(route, "charged twice")).toHaveLength(1);
 
       // accounts answers in the channel; the follow-up takes the call, with that line in view.
-      await post(runtime, channel, HELP, "Which card was charged?", "support.accounts");
+      await post(runtime, channel, HELP, "Which card was charged?", "support.accounts", "seat");
       await settle(runtime, HELP, 4);
       await post(runtime, channel, HELP, "[route:support.accounts] the visa one");
       await settle(runtime, HELP, 5);
@@ -450,7 +459,7 @@ describe("a person's post to a routed channel", () => {
       await bind(runtime.stores, HELP, MEMBERS);
       await post(runtime, channel, HELP, "[route:support.devices] my laptop won't join the wifi");
       await settle(runtime, HELP, 1);
-      await post(runtime, channel, HELP, "Does it see the network?", "support.devices");
+      await post(runtime, channel, HELP, "Does it see the network?", "support.devices", "seat");
       await settle(runtime, HELP, 2);
       await post(runtime, channel, HELP, "[route:support.general] where can I buy it?");
       await settle(runtime, HELP, 3);
@@ -536,7 +545,7 @@ describe("a person's post to a routed channel", () => {
       await bind(runtime.stores, HELP, MEMBERS);
       const notes = Array.from({ length: 21 }, (_, i) => `note ${i + 1}`);
       for (const [i, note] of notes.entries()) {
-        await post(runtime, channel, HELP, note, "support.notes");
+        await post(runtime, channel, HELP, note, "support.notes", "seat");
         await settle(runtime, HELP, i + 1);
       }
       for (let i = 0; i < 60; i += 1) await readChannel(runtime, channel, HELP);
@@ -604,7 +613,7 @@ describe("a person's post to a routed channel", () => {
       await bind(runtime.stores, HELP, MEMBERS);
       await post(runtime, channel, HELP, "who do I ask about a parking pass?");
       await settle(runtime, HELP, 1);
-      await post(runtime, channel, HELP, "Parking is at reception.", "support.general");
+      await post(runtime, channel, HELP, "Parking is at reception.", "support.general", "seat");
       await settle(runtime, HELP, 2);
       await post(runtime, channel, HELP, "[route:off-list] and the gym?");
       await settle(runtime, HELP, 3);
@@ -844,12 +853,42 @@ describe("posts the route does not place", () => {
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, HELP, MEMBERS);
-      await post(runtime, channel, HELP, "[route:support.devices] I looked; it is fine.", "support.accounts");
+      await post(runtime, channel, HELP, "[route:support.devices] I looked; it is fine.", "support.accounts", "seat");
       await settle(runtime, HELP, 1);
 
       expect(heard).toEqual([]);
       expect(route.calls).toHaveLength(0);
       expect(await routeRecords(runtime.stores, HELP)).toEqual([]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("still routes a dispatched post that claims a member as author", async () => {
+    const { channel, state, heard, route } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP, MEMBERS);
+      await post(runtime, channel, HELP, "[route:support.devices] I looked; it is fine.", "support.accounts", "internal");
+      await settle(runtime, HELP, 1);
+
+      expect(who(heard, "I looked")).toEqual(["support.devices"]);
+      expect(route.calls).toHaveLength(1);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("still routes a public post that claims a member as author", async () => {
+    const { channel, state, heard, route } = host();
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, HELP, MEMBERS);
+      await post(runtime, channel, HELP, "[route:support.devices] I looked; it is fine.", "support.accounts");
+      await settle(runtime, HELP, 1);
+
+      expect(who(heard, "I looked")).toEqual(["support.devices"]);
+      expect(route.calls).toHaveLength(1);
     } finally {
       await state.dispose();
     }

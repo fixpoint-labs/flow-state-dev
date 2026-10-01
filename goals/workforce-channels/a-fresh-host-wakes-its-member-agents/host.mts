@@ -51,6 +51,8 @@ export interface FreshHost {
   router: Awaited<ReturnType<FlowState["getRouter"]>>;
   seats: FlowInstance[];
   channels: ChannelManifest[];
+  /** The built channel kind, so a check can post on the internal seat entry. */
+  channel: FlowInstance;
 }
 
 /**
@@ -111,5 +113,5 @@ export async function startFreshHost(
   });
   await openChannels(channels, { client: sessions, userId: CHANNEL_OWNER });
 
-  return { state, router, seats, channels };
+  return { state, router, seats, channels, channel: channelFlows[0]! };
 }

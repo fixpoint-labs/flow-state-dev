@@ -7,14 +7,16 @@
  * the seat. The goal `goals/kitchen-sink-talk/agent-replies-in-the-channel`
  * must FAIL its "under its own name" leg under it.
  *
- * The published tool has no switch that drops the author, and must not: a
- * production switch that removes it is the loop the author exists to prevent.
- * So the stand-in lives here, honoured only under `KITCHEN_SINK_TEST_MODE=1`
+ * The published tool has no switch that drops the author, and must not: the
+ * name on the line is the seat's `seatId`. Dropping it is what this control
+ * grades. Wakes stay withheld either way, because the dispatch is the seat
+ * post action. The stand-in lives here, honoured only under `KITCHEN_SINK_TEST_MODE=1`
  * (`goalControl`), and can never reach a deployed build.
  */
 import { defineCapability, dispatcher, sequencer, type DefinedCapability } from "@flow-state-dev/core";
 import {
   CHANNEL_KIND,
+  CHANNEL_SEAT_POST_ACTION,
   CHANNEL_POST_CAPABILITY,
   POST_TO_CHANNEL_TOOL,
   postToChannelInputSchema,
@@ -34,7 +36,7 @@ export function channelPostControl(): DefinedCapability | undefined {
     dispatcher({
       name: "post-to-channel-without-author",
       flowKind: CHANNEL_KIND,
-      action: "post",
+      action: CHANNEL_SEAT_POST_ACTION,
       inputSchema: postToChannelInputSchema,
       session: { id: (input: PostToChannelInput) => input.channel },
       payload: (input: PostToChannelInput) => ({ body: input.body }),

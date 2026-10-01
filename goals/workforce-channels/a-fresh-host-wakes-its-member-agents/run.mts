@@ -24,12 +24,13 @@
  *
  * Run:      pnpm tsx goals/workforce-channels/a-fresh-host-wakes-its-member-agents/run.mts
  * Controls: GOAL_CONTROL=no-wake           (no notify block: must FAIL at woken, and nothing else)
- *           GOAL_CONTROL=no-author-filter  (author stripped before the helper: must FAIL at seat-post, and nothing else)
+ *           GOAL_CONTROL=no-author-filter  (seat mark stripped before the helper: must FAIL at seat-post, and nothing else)
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import type { BlockDefinition } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, type BlockDefinition } from "@flow-state-dev/core";
+import { runAction } from "@flow-state-dev/engine";
 import type { ChannelNotifyInput } from "@flow-state-dev/workforce";
 import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 import { KITCHEN_SINK, runGoal } from "../../lib/index.mts";
@@ -42,7 +43,7 @@ const CONTROL = process.env.GOAL_CONTROL ?? "";
 const EXPECTED: Record<string, string[]> = {
   // No notify block: a post reaches no seat.
   "no-wake": ["woken"],
-  // The host strips `author` before the helper: an agent's own post wakes the agents.
+  // The host strips `seatAuthored` before the helper: an agent's own post wakes the agents.
   "no-author-filter": ["seat-post"],
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
@@ -53,7 +54,7 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
 function adaptNotify(wake: BlockDefinition<any, any>): BlockDefinition<any, any> | undefined {
   if (CONTROL === "no-wake") return undefined;
   if (CONTROL === "no-author-filter") {
-    return wake.connectInput(({ author: _author, ...post }: ChannelNotifyInput) => post);
+    return wake.connectInput(({ seatAuthored: _seatAuthored, ...post }: ChannelNotifyInput) => post);
   }
   return wake;
 }
@@ -161,8 +162,21 @@ await runGoal(async () => {
       await post(`${token} can someone look at the refund queue?`);
       await settle(() => answered(token), 5_000);
     }
-    // An agent member speaks in the channel, as a seat would: with its author.
-    await post(`${seatToken} I looked; it is empty.`, agents[0]);
+    // An agent member speaks through `seatPost`, the door the seat's own
+    // post uses. A public or dispatched `post` is not that door.
+    const runtime = await app.state.getRuntime();
+    const seatPost = await runAction({
+      source: "internal",
+      orgId: DEFAULT_ORG_ID,
+      flow: app.channel,
+      actionName: "seatPost",
+      input: { body: `${seatToken} I looked; it is empty.`, author: agents[0] },
+      userId: CHANNEL_OWNER,
+      sessionId: channel.id,
+      stores: runtime.stores,
+      runtimeConfig: { ...runtime.runtimeConfig },
+    });
+    if (seatPost.error !== undefined) throw new Error(`seat post refused: ${String(seatPost.error)}`);
     // Give a wrongly woken seat time to run, so its absence is not a race.
     await new Promise((r) => setTimeout(r, 1_500));
 
