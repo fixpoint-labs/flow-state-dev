@@ -22,9 +22,9 @@ The channel record, charter included (`ChannelManifest.body`), is already in `op
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `harness-manager` · the builder's run context | Add `task` to `PhaseRunContext`: `goal`, plus `title`, `context`, `input`, `deps`, `priorWork` each only when the worker input has it. Filled in `prepare` from the input it already validated. `isDone` gets it too, at no cost (D2) | BR-2 BR-10 BR-11 BR-12 |
+| S1 | `harness-manager` · the builder's run context | Add `task` to `PromptRunContext`, beside `answers` and `askMarkerPath`, typed `Pick<z.infer<typeof taskWorkerInputSchema>, "goal" \| "title" \| "context" \| "input" \| "deps" \| "priorWork">` so the board's schema stays the only field list. Filled in `prepare` from the input it already validated, each optional field an absent key when the input lacks it. **Not on `PhaseRunContext`:** `isDone`'s context is built by hand in the completion step (`manager.ts:1624`), which holds no worker input, and `PromptRunContext`'s doc comment refuses optional fields on the base type. **`metadata` is left out:** it is the board's bookkeeping (the run-owner record at `run-owner.ts:25`), patchable through `updateTask`, not the brief a person wrote (D2) | BR-2 BR-10 BR-11 BR-12 |
 | S2 | DevTeam Lab · `phase.mts` builder | Lead with a task section from `run.task`. Keep the seat's three sections. Add the charter section when given one and the seat is a member. Replace `# This row`'s id-only line with the run's terms, naming the acceptance check when the phase requires it. **Remove** the id as the task's only description | BR-1 BR-3 BR-4 BR-6 |
-| S3 | DevTeam Lab · `host.mts` | Hand the phase the channel record the host already resolved: id, charter, members. The membership test reads the woken seat's own id at run time | BR-3 BR-4 |
+| S3 | DevTeam Lab · `host.mts` | Resolve the channel's charter body and member ids once in `openLab` and pass them as `defineImplementPhase` options, so `buildSeatPrompt` stays a pure function of the run and its options. Not the whole channel manifest. The membership test reads the woken seat's own id at run time | BR-3 BR-4 |
 | S4 | DevTeam Lab · coder `WORKER.md` | **Remove** "Read your own feature brief for what the feature is". Say the row's task is the job and the brief is the team's standing contract. Keep `CODER-INSTRUCTIONS-B42D9` | BR-1 |
 | S5 | Goal check · `goals/shift-manager/it-hands-a-run-the-work-it-approved/` | New. Leg a model-free with the lab's stub, leg b a real coding harness, control `drop-task`. Boots through `openLab` with the ask and the channel door on, as the `devteam` profile does. Leg a also files a second held-out feature by a post | BR-1 BR-3 BR-4 BR-6 BR-7 BR-8 BR-13 |
 | S6 | Docs | [DOCS.md](DOCS.md) operations · one `minor` changeset for `@flow-state-dev/harness-manager` | — |
@@ -58,7 +58,7 @@ Write leg a first and watch it FAIL on `main` on "the prompt does not carry the 
 
 | Where | Name | Why pinned |
 |---|---|---|
-| The builder's run context | `task` | Public on a published package (D2). Its fields keep the board's own names: `goal`, `title`, `context`, `input`, `deps`, `priorWork` |
+| The prompt builder's run context | `task` | Public on a published package (D2). A `Pick` of the board's worker-input schema, so its fields keep the board's own names: `goal`, `title`, `context`, `input`, `deps`, `priorWork` |
 | Goal check control | `drop-task` | The spec's control; the PR must show its FAIL |
 
 Everything else is yours to name.
@@ -95,7 +95,8 @@ DevTeam's builder:
 approval path, model-free, and prints the prompt the run was handed. On `main` `85caed1e4` it
 reports CONFIRMED: the row holds the approved goal, the prompt holds the seat's instructions token
 (the positive control) but neither the goal nor the charter token. `AFTER=1` grades the target
-state and FAILS today. It is the draft of S5's leg a.
+state and FAILS today. It is the draft of S5's leg a. `AFTER=1` stays in this retained POC only;
+the goal check does not carry it ([Notes from review](#notes-from-review)).
 
 ## At implement time
 
@@ -104,6 +105,20 @@ state and FAILS today. It is the draft of S5's leg a.
 - The `devteam` profile's ask fixture names night mode while its scratch repository and brief are
   about a greeting module. That's fine for leg a. Leg b's fixture should name one file and one token, so
   the commit is gradable without judging the model's code.
+
+## Notes from review
+
+From Cursor on #2603, verbatim, for the implementer. The `TaskBrief` pick note is folded into S1.
+
+- "**Promote to S5:** `AFTER=1` is fine for retained spec evidence, but the goal check should use
+  `GOAL_CONTROL=drop-task` only (per pinned names + sibling goals). When moving this under
+  `goals/shift-manager/…`, mirror `it-waits-for-a-person-before-it-files` / `goals/lib` rather
+  than copying `AFTER=1`."
+- "**BR-4 cost:** 'Tree copy with coder removed from `members`' is clear but heavy. If maintainers
+  feel the pain later, an env-driven roster patch inside the same goal (parallel to
+  `GOAL_CONTROL`) might prove membership without a second tree — *optional*; current plan is
+  defensible." The siblings support it: `it-wakes-the-seat-a-file-declared` gates its controls on
+  `GOAL_CONTROL` and edits a copied tree (`perturbedTree`).
 
 ## Follow-ups
 

@@ -23,7 +23,8 @@ const implementPhase = {
 `run.task` is the row the manager claimed, as the board handed it over: its `goal`, and its
 `title`, `context`, `input`, `deps` and `priorWork` when the row has them. A field the row doesn't
 have is absent, not empty. It's the same on every attempt, so a retry or a run that resumes after
-someone's message starts from the same task. What goes into a run's prompt is the row and
+someone's message starts from the same task. `isDone` doesn't get it: whether a run is done is
+read off the run's checkout, not its brief. What goes into a run's prompt is the row and
 whatever your phase adds, nothing else. If a run needs something that was said in a conversation,
 write it on the task's `context` when you file it.
 
@@ -63,7 +64,7 @@ Another Lab decides its own prompt. Every Lab's prompt builder is handed the tas
 "@flow-state-dev/harness-manager": minor
 ---
 
-A phase's `buildPrompt` and `isDone` now receive `run.task`: the claimed row's goal, plus its title, context, input, dependency outputs and selected prior work when present. Prompt builders that only read `run.issue` keep working unchanged.
+A phase's `buildPrompt` now receives `run.task`: the claimed row's goal, plus its title, context, input, dependency outputs and selected prior work when present. Prompt builders that only read `run.issue` keep working unchanged.
 ```
 
 ## Voice notes for the publisher

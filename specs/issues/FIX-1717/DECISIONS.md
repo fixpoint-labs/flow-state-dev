@@ -41,7 +41,7 @@ filer, not a transcript dump.
 |---|---|
 | **Instead of** | Fixing only DevTeam: its prompt builder reads the row back off its own board by id |
 | **Because** | The worker is already handed the whole task by the board, goal included, and drops everything but the id before calling the builder. Every Lab that codes writes a builder, and the documented example builds its prompt from the id alone, so the next Lab would ship the same bug. Passing on what it already holds is the owning-layer fix (tenet 5), and it adds no concept: a task is task-board vocabulary, not a Workforce one |
-| **Locks in** | A promise to anyone using `@flow-state-dev/harness-manager`: the prompt builder sees the task exactly as the board packed it, on every attempt. Additive, with a minor release note. Removing it later is a breaking change |
+| **Locks in** | A promise to anyone using `@flow-state-dev/harness-manager`: the prompt builder sees the task's brief (its goal, and title, context, input, dependency outputs and prior work when present) exactly as the board packed it, on every attempt. The row's `metadata` stays out: it is the board's bookkeeping, not the brief. Additive, with a minor release note. Removing it later is a breaking change |
 
 ![Where the fix lives: every Lab, by the worker handing the task over, chosen, beside only DevTeam reading its board. Decides it: the next Lab that codes gets the task for free. Price: one new field on a published type](figures/d2-every-lab.svg)
 
@@ -64,6 +64,10 @@ It comes down to the next Lab: with a DevTeam-only fix it builds from the row id
 - **The run's terms stay in the prompt; session policy does not.** Which session a run continues is
   the worker's resume feed, not prompt text.
 - **Each optional task field is an absent key when the row lacks it**, as the board packs it.
+- **Only the prompt builder gets the task, not the done-condition.** `isDone` is called from a
+  different step with a context built by hand, and whether a run is done is read off its
+  checkout. The task's type is a `Pick` of the board's worker-input schema, so there is no second
+  field list to drift.
 
 ## Considered and dropped
 

@@ -38,7 +38,7 @@ The cases, written as rules. Each says what a person or the system does and what
 
 Nothing new is fatal. A task always has a goal: the board refuses one without, and the
 coordinator's schemas require it. A seat naming a document it doesn't hold still fails loudly,
-as today. A Lab with no channel record to hand the builder gets no charter section, which is
+as today. A Lab that passes its phase no charter gets no charter section, which is
 BR-4's outcome, not an error. Retries are the board's, unchanged.
 
 ## Acceptance criteria this issue owns
