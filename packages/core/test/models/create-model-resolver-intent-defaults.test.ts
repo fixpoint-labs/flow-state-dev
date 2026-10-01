@@ -60,7 +60,7 @@ describe("createModelResolver — intentDefaults construction validation", () =>
     expect(() =>
       createModelResolver({
         intents: {
-          plan: ["anthropic/claude-opus-4.7"],
+          plan: ["anthropic/claude-opus-4-7"],
           utility: ["openai/gpt-5.4"],
         },
         defaultModel: "openai/gpt-5.4",
@@ -77,7 +77,7 @@ describe("createModelResolver — intentDefaults resolution", () => {
   it("applies the intent's providerOptions when the resolved provider matches", async () => {
     const { factory, captured } = capturingProvider();
     const resolver = createModelResolver({
-      intents: { plan: ["anthropic/claude-opus-4.7"] },
+      intents: { plan: ["anthropic/claude-opus-4-7"] },
       defaultModel: "openai/gpt-5.4",
       intentDefaults: {
         plan: {
@@ -101,7 +101,7 @@ describe("createModelResolver — intentDefaults resolution", () => {
     const { factory, captured } = capturingProvider();
     // Anthropic candidate is unavailable (no anthropic provider); OpenAI wins.
     const resolver = createModelResolver({
-      intents: { plan: ["anthropic/claude-opus-4.7", "openai/gpt-5.5"] },
+      intents: { plan: ["anthropic/claude-opus-4-7", "openai/gpt-5.5"] },
       defaultModel: "openai/gpt-5.4",
       intentDefaults: {
         plan: {
@@ -123,7 +123,7 @@ describe("createModelResolver — intentDefaults resolution", () => {
   it("call-site providerOptions wins on key collisions", async () => {
     const { factory, captured } = capturingProvider();
     const resolver = createModelResolver({
-      intents: { plan: ["anthropic/claude-opus-4.7"] },
+      intents: { plan: ["anthropic/claude-opus-4-7"] },
       defaultModel: "openai/gpt-5.4",
       intentDefaults: {
         plan: {
@@ -153,7 +153,7 @@ describe("createModelResolver — intentDefaults resolution", () => {
   it("deep-merges non-conflicting nested keys", async () => {
     const { factory, captured } = capturingProvider();
     const resolver = createModelResolver({
-      intents: { plan: ["anthropic/claude-opus-4.7"] },
+      intents: { plan: ["anthropic/claude-opus-4-7"] },
       defaultModel: "openai/gpt-5.4",
       intentDefaults: {
         plan: {
@@ -187,7 +187,7 @@ describe("createModelResolver — intentDefaults resolution", () => {
     // → falls through to defaultModel (openai/gpt-5.4). Intent defaults must
     // NOT apply because the defaultModel has no associated intent context.
     const resolver = createModelResolver({
-      intents: { plan: ["anthropic/claude-opus-4.7"] },
+      intents: { plan: ["anthropic/claude-opus-4-7"] },
       defaultModel: "openai/gpt-5.4",
       intentDefaults: {
         plan: {
@@ -210,7 +210,7 @@ describe("createModelResolver — intentDefaults resolution", () => {
   it("filters multi-provider intent defaults to the resolved provider only", async () => {
     const { factory, captured } = capturingProvider();
     const resolver = createModelResolver({
-      intents: { plan: ["anthropic/claude-opus-4.7", "openai/gpt-5.5"] },
+      intents: { plan: ["anthropic/claude-opus-4-7", "openai/gpt-5.5"] },
       defaultModel: "openai/gpt-5.4",
       intentDefaults: {
         plan: {
