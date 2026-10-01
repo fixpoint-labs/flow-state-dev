@@ -47,7 +47,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `task-plan` | Section-grouped renderer for a TaskCollection. Subscribes to `task-change` and `task-board-meta` |
 | `artifact` | Composable artifact viewer shell with header, actions, and content areas |
 | `file-tree` | Tree-structured file and folder display with expand/collapse and selection |
-| `jsx-preview` | Live JSX/TSX renderer with streaming support and error fallback |
+| `jsx-preview` | Live JSX/TSX renderer for untrusted JSX, with streaming support and error fallback. Renders only presentational HTML and static SVG tags, and drops `on*` handlers, `dangerouslySetInnerHTML`, `srcDoc`, `form` and non-http(s)/mailto/tel URLs. Components passed in `components` are trusted and render as given |
 | `sandbox` | Source/preview tab wrapper for JSX artifacts using JSXPreview and CodeBlock |
 | `info-card` | Generative-UI info card: title, optional image, fact rows. Pairs with `emitInfoCard` |
 | `link-card` | Generative-UI link card: rich preview for an external URL. Pairs with `emitLinkCard` |

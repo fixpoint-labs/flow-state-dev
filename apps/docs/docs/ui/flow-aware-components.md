@@ -129,6 +129,8 @@ fsdev ui add file-tree
 
 Live JSX/TSX renderer with streaming support and an error fallback. Renders a JSX string while it's still streaming in.
 
+The JSX is treated as untrusted. Only presentational HTML and static SVG tags render, so `<script>`, `<iframe>`, `<form>` and the like don't. Event-handler props (`on*`), `dangerouslySetInnerHTML`, `srcDoc` and `form` are dropped, and URL attributes such as `href` and `src` keep only `http`, `https`, `mailto`, `tel` or relative URLs. A `{...}` expression that could reach a constructor or prototype is refused and reported as an error, and so is a property key computed at runtime (`items[i]`). Literal indexes like `items[0]` and `.map()` work. When the input fails to parse (a half-streamed chunk, say) or is refused, the last good render stays on screen and the error clears once the input renders again. Components you pass in `components` skip all of these checks and render as given, so pass only components you trust.
+
 ```bash
 fsdev ui add jsx-preview
 ```
