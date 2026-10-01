@@ -1,4 +1,4 @@
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, handler, sequencer, type StopRequestOutcome } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { afterEach, describe, expect, it, beforeEach, vi } from "vitest";
@@ -982,10 +982,29 @@ async function recordAbortIntent(
 }
 
 /**
+ * Resolves `"completed naturally"` after `afterMs`, or rejects when `signal`
+ * aborts. `addEventListener` does not fire for an already-aborted signal, and
+ * a cross-process abort can land before the block starts, so the signal is
+ * checked first. The self-completion is what makes "did the abort actually
+ * stop it?" falsifiable.
+ */
+function completedNaturallyUnlessAborted(signal: AbortSignal, afterMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(() => resolve("completed naturally"), afterMs);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    });
+  });
+}
+
+/**
  * A flow whose action blocks until its signal fires, or resolves on its own
- * after `selfCompleteAfterMs`. The self-completion is what makes "did the
- * abort actually stop it?" falsifiable — without it a hung test and a
- * successful cancel look the same.
+ * after `selfCompleteAfterMs`.
  */
 function makeBlockingFlow(options: {
   kind: string;
@@ -1006,25 +1025,7 @@ function makeBlockingFlow(options: {
           inputSchema: z.object({}).passthrough(),
           outputSchema: z.string(),
           execute: async (_input, ctx) =>
-            new Promise<string>((resolve, reject) => {
-              // `addEventListener` does not fire for an ALREADY-aborted signal,
-              // and a cross-process abort can be delivered before this block
-              // starts. Checking up front is what a block that honours its
-              // signal does; without it the run would sit out its full delay
-              // and look like a delivery failure.
-              if (ctx.signal.aborted) {
-                reject(new DOMException("Aborted", "AbortError"));
-                return;
-              }
-              const timer = setTimeout(
-                () => resolve("completed naturally"),
-                options.selfCompleteAfterMs ?? 3_000
-              );
-              ctx.signal.addEventListener("abort", () => {
-                clearTimeout(timer);
-                reject(new DOMException("Aborted", "AbortError"));
-              });
-            })
+            completedNaturallyUnlessAborted(ctx.signal, options.selfCompleteAfterMs ?? 3_000)
         })
       }
     }
@@ -3740,21 +3741,7 @@ describe("a run's abort controller carries the incarnation it executes as", () =
   });
 });
 
-// ---------------------------------------------------------------------------
-// A block stopping another request in its own session (`ctx.session.stopRequest`)
-//
-// The same stop the abort route records, reached from code: the target reads
-// `aborted` and its signal fires, here or (through the heartbeat) in another
-// process. A request outside the caller's session is refused the way the
-// route refuses an unreachable one: no write, and an answer that does not
-// tell it apart from an unknown id.
-// ---------------------------------------------------------------------------
-
-type StopOutcome = Awaited<
-  ReturnType<import("@flow-state-dev/core").SessionScopeHandle["stopRequest"]>
->;
-
-/** A flow with a `run` that waits for its signal, and a `stop` that stops another request. */
+/** `makeBlockingFlow`'s wait, plus a `stop` action that calls `ctx.session.stopRequest`. */
 function makeStoppableFlow(kind: string) {
   return defineFlow({
     kind,
@@ -3766,20 +3753,7 @@ function makeStoppableFlow(kind: string) {
           name: "waits-for-stop",
           inputSchema: z.object({}).passthrough(),
           outputSchema: z.string(),
-          execute: async (_input, ctx) =>
-            new Promise<string>((resolve, reject) => {
-              if (ctx.signal.aborted) {
-                reject(new DOMException("Aborted", "AbortError"));
-                return;
-              }
-              // Completes on its own, so a stop that never lands reads
-              // `completed`, not a hung test.
-              const timer = setTimeout(() => resolve("completed naturally"), 1_500);
-              ctx.signal.addEventListener("abort", () => {
-                clearTimeout(timer);
-                reject(new DOMException("Aborted", "AbortError"));
-              });
-            })
+          execute: async (_input, ctx) => completedNaturallyUnlessAborted(ctx.signal, 1_500)
         })
       },
       stop: {
@@ -3835,7 +3809,7 @@ describe("ctx.session.stopRequest — a block stops a request in its own session
     flow: ReturnType<typeof makeStoppableFlow>,
     targetId: string,
     where: { sessionId: string; tenantId?: string; userId?: string; requestId: string }
-  ): Promise<StopOutcome> {
+  ): Promise<StopRequestOutcome> {
     const result = await run({
       orgId: DEFAULT_ORG_ID,
       flow,
@@ -3849,7 +3823,7 @@ describe("ctx.session.stopRequest — a block stops a request in its own session
       runtimeConfig: {}
     });
     expect(result.error).toBeUndefined();
-    return (result.output as { outcome: StopOutcome }).outcome;
+    return (result.output as { outcome: StopRequestOutcome }).outcome;
   }
 
   it("stops a running request in the same session, in this process", async () => {
