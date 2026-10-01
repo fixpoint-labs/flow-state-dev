@@ -457,15 +457,61 @@ export function createPgRecordStore<
       if (path.length !== 1) {
         throw new Error(`incField only supports depth-1 paths; received path of length ${path.length}`);
       }
-      return runDeltaUpdate(
-        id,
-        statePath(path),
-        "to_jsonb(CASE WHEN jsonb_typeof(data #> $1::text[]) = 'number' THEN (data #>> $1::text[])::numeric ELSE 0 END + $2::numeric)",
-        [delta],
-        expectedVersion,
-        updatedAt,
-        "incField"
-      );
+      const apply = () =>
+        runDeltaUpdate(
+          id,
+          statePath(path),
+          // Missing key (SQL NULL at the path) or JSON null starts from 0. A
+          // present non-number is excluded by extraWhere so this expression
+          // never coerces it to 0 and overwrites it.
+          "to_jsonb(CASE WHEN jsonb_typeof(data #> $1::text[]) = 'number' THEN (data #>> $1::text[])::numeric ELSE 0 END + $2::numeric)",
+          [delta],
+          expectedVersion,
+          updatedAt,
+          "incField",
+          "data #> $1::text[] IS NULL OR jsonb_typeof(data #> $1::text[]) IN ('number', 'null')"
+        );
+
+      const throwIfPresentNonNumber = (
+        current:
+          | { state?: Record<string, unknown>; version: number }
+          | undefined
+      ): void => {
+        if (
+          current &&
+          (expectedVersion === "any" || current.version === expectedVersion)
+        ) {
+          const existing = current.state?.[path[0]];
+          if (existing !== undefined && existing !== null && typeof existing !== "number") {
+            throw new Error(
+              `incField target at path[${path[0]}] is not a number (got ${Array.isArray(existing) ? "array" : typeof existing})`
+            );
+          }
+        }
+      };
+
+      let result = await apply();
+      if (!result.ok) {
+        throwIfPresentNonNumber(
+          result.conflict.currentValue as
+            | { state?: Record<string, unknown>; version: number }
+            | undefined
+        );
+        // Same once-retry as pushToArray: "any" missed because the field was
+        // a non-number at UPDATE time, and a concurrent writer has since made
+        // it valid — don't drop the increment as a silent conflict.
+        if (expectedVersion === "any") {
+          result = await apply();
+          if (!result.ok) {
+            throwIfPresentNonNumber(
+              result.conflict.currentValue as
+                | { state?: Record<string, unknown>; version: number }
+                | undefined
+            );
+          }
+        }
+      }
+      return result;
     },
 
     async pushToArray(

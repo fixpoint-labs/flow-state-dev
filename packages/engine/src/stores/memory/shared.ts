@@ -126,9 +126,15 @@ export function incFieldInMap<TRecord extends DeltaRecord>(
     throw new Error(`incField only supports depth-1 paths; received path of length ${path.length}`);
   }
 
+  const existing = (current as TRecord).state?.[path[0]];
+  if (existing !== undefined && existing !== null && typeof existing !== "number") {
+    throw new Error(
+      `incField target at path[${path[0]}] is not a number (got ${Array.isArray(existing) ? "array" : typeof existing})`
+    );
+  }
+
   const next = clone(current as TRecord);
   const newVersion = (current as TRecord).version + 1;
-  const existing = (current as TRecord).state?.[path[0]];
   const baseline = typeof existing === "number" ? existing : 0;
   next.state = {
     ...((current as TRecord).state ?? {}),

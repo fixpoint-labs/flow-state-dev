@@ -51,7 +51,9 @@ Atomically add to numeric fields:
 await ctx.session.incState({ messageCount: 1, errorCount: 0 });
 ```
 
-Each entry is added to the current value. Negative numbers decrement. Fields that don't exist start from `0`.
+Each entry is added to the current value. Negative numbers decrement. Fields that don't exist, or hold `null`, start from `0`.
+
+A field that holds anything else, such as a string or an object, is refused: the call throws and the stored value is left as it was. That applies to the whole call, so if one field in a multi-field `incState` is the wrong kind, none of the increments land.
 
 ### `pushState(field, value)`
 
