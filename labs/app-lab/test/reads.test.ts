@@ -35,6 +35,7 @@ async function lab(options: Parameters<typeof openAskLab>[0] = {}) {
 
 function loaded(snapshot: LabSnapshot): LoadedSnapshot {
   if (snapshot.refused !== undefined) throw new Error(`refused: ${snapshot.refused.message}`);
+  if (snapshot.unreachable !== undefined) throw new Error(`unreachable: ${snapshot.unreachable.message}`);
   return snapshot;
 }
 
@@ -92,6 +93,45 @@ describe("the refusal (V2, BR-3)", () => {
     expect(snapshot.refused?.message).toMatch(/no organization/);
     expect(snapshot.refused?.message).toContain(ASK_LAB_USER_ID);
     expect(seen).toEqual(["GET /api/flows/sessions"]);
+  });
+
+  it("refuses when the person's session carries no organization", async () => {
+    const { baseUrl } = await lab();
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const response = await real(input, init);
+      if (!/\/api\/flows\/sessions\/[^/]+$/.test(new URL(String(input instanceof Request ? input.url : input)).pathname)) {
+        return response;
+      }
+      const body = (await response.json()) as { session?: Record<string, unknown> } & Record<string, unknown>;
+      const strip = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== "orgId"));
+      const stripped = body.session === undefined ? strip(body) : { ...body, session: strip(body.session) };
+      return new Response(JSON.stringify(stripped), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    expect(snapshot.unreachable).toBeUndefined();
+    expect(snapshot.refused?.message).toMatch(/no organization/);
+  });
+
+  it("a first read that fails for another reason is unreachable, not a refusal, and nothing else is read", async () => {
+    const { baseUrl } = await lab();
+    const seen: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      seen.push(new URL(String(input instanceof Request ? input.url : input)).pathname);
+      return Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 }));
+    });
+    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    expect(snapshot.refused).toBeUndefined();
+    expect(snapshot.unreachable).toMatchObject({ httpStatus: 503, message: "store offline" });
+    expect(seen).toEqual(["/api/flows/sessions"]);
+  });
+
+  it("a network failure on the first read is unreachable, not a refusal", async () => {
+    const { baseUrl } = await lab();
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("fetch failed"));
+    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    expect(snapshot.refused).toBeUndefined();
+    expect(snapshot.unreachable?.message).toMatch(/fetch failed/);
   });
 });
 

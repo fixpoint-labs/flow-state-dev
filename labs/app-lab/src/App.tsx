@@ -61,8 +61,28 @@ function Refusal({ failure }: { failure: Failure }) {
   );
 }
 
+/** The screen a first read that failed for another reason gets: what the Lab answered, and Retry. */
+function Unreachable({ failure, onRetry }: { failure: Failure; onRetry: () => void }) {
+  return (
+    <main className="flex h-screen items-center justify-center p-6" data-testid="unreachable">
+      <div className="max-w-md">
+        <h1 className="text-lg font-semibold">App Lab couldn't reach the Lab</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The first read failed before the Lab said who you are. Check that the Lab's server is running, then retry.
+        </p>
+        <p className="mt-3 rounded-md bg-muted px-3 py-2 font-mono text-xs" data-testid="unreachable-message">
+          {failure.httpStatus === undefined ? failure.message : `${failure.httpStatus} · ${failure.message}`}
+        </p>
+        <button type="button" onClick={onRetry} className="mt-3 rounded-md border px-3 py-1.5 text-sm" data-testid="unreachable-retry">
+          Retry
+        </button>
+      </div>
+    </main>
+  );
+}
+
 function Shell({ gaps, devtoolUrl }: { gaps: Gaps; devtoolUrl: string | undefined }) {
-  const { snapshot } = useLab();
+  const { snapshot, refresh } = useLab();
   const route = useRoute();
   const [jumping, setJumping] = useState(false);
 
@@ -81,6 +101,7 @@ function Shell({ gaps, devtoolUrl }: { gaps: Gaps; devtoolUrl: string | undefine
     return <p className="p-6 text-sm text-muted-foreground" data-testid="loading">Reading the Lab…</p>;
   }
   if (snapshot.refused !== undefined) return <Refusal failure={snapshot.refused} />;
+  if (snapshot.unreachable !== undefined) return <Unreachable failure={snapshot.unreachable} onRetry={() => void refresh()} />;
 
   const levels = (
     <>

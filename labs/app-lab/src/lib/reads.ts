@@ -180,9 +180,13 @@ export type DeclaredResource = { ref: string; sessionId: string };
 
 /** Everything one refresh read. */
 export type LabSnapshot =
-  | { refused: Failure }
+  /** No organization to open the Lab under: the Lab said no, or named none. */
+  | { refused: Failure; unreachable?: undefined }
+  /** The first read failed for another reason (a 5xx, the network). Retrying may help. */
+  | { unreachable: Failure; refused?: undefined }
   | {
       refused?: undefined;
+      unreachable?: undefined;
       /** When this refresh finished, epoch ms. */
       readAt: number;
       /** The person's listed sessions, dispatch runs included. */
@@ -514,17 +518,21 @@ export function createLabReader(clients: LabClients): LabReader {
 
   const read = async (): Promise<LabSnapshot> => {
     // The first read, and the organization off it, before anything from the
-    // tree is read. Either failing is the refusal and the whole snapshot.
+    // tree is read. A 401/403, no session, or a session with no organization is
+    // the refusal; any other failure means the Lab couldn't be reached. Either
+    // is the whole snapshot.
     let sessions: SessionSummary[];
-    let orgId: string;
+    let orgId: string | undefined;
     try {
       sessions = await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" });
       const first = sessions[0];
       if (first === undefined) return { refused: { message: noOrganization(clients.userId) } };
       orgId = (await clients.sessions.getSession(first.id)).orgId;
     } catch (error) {
-      return { refused: describeFailure(error) };
+      const failure = describeFailure(error);
+      return failure.httpStatus === 401 || failure.httpStatus === 403 ? { refused: failure } : { unreachable: failure };
     }
+    if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(clients.userId) } };
 
     const inventory = await readInventory(sessions);
 

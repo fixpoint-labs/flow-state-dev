@@ -70,7 +70,7 @@ A Lab with no resolver runs in the framework's development organization, `DEFAUL
 
 **Open channels.** Call `openChannels` at boot with the same `userId` you give App Lab in `devtool: { userId }` (below). Each channel is a workstream. App Lab reads the organization off that user's sessions, so a Lab that holds none for them opens to a screen saying it names no organization, in place of the Lab.
 
-**An open inventory.** The inventory is the organization's record of its seats and channels. TEAMS and PROJECTS list it, and Inbox and the boards find seats and workstreams through it. It takes two steps:
+**An open inventory.** The [inventory](../../apps/docs/docs/workforce/inventory.md) is the organization's record of its seats and channels. TEAMS and PROJECTS list it, and Inbox and the boards find seats and workstreams through it. It takes two steps:
 
 1. Build the channel flow with the actions that write the inventory: `defineChannelFlow({ notify, inventory: true })` for a channel kind of your own, or `channelInstances(channels, { inventory: true })` for the built-in one.
 2. Call `openInventory` once `openChannels` has returned, under the organization your resolver names.

@@ -55,6 +55,25 @@ describe("the refusal (V2, BR-3)", () => {
   });
 });
 
+describe("a Lab App Lab can't reach", () => {
+  it("shows what the Lab answered with Retry, not the refusal, and Retry opens the Lab once it answers", async () => {
+    const real = globalThis.fetch;
+    let down = true;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+      down ? Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 })) : real(input, init),
+    );
+    await openApp("/inbox");
+    const screenEl = await screen.findByTestId("unreachable");
+    expect(screen.getByTestId("unreachable-message").textContent).toMatch(/503.*store offline/);
+    expect(screen.queryByTestId("refusal")).toBeNull();
+    expect(screen.queryByTestId("sidebar")).toBeNull();
+    expect(screenEl.textContent).not.toMatch(/organization/);
+    down = false;
+    act(() => fireEvent.click(screen.getByTestId("unreachable-retry")));
+    await screen.findByTestId("sidebar");
+  });
+});
+
 describe("a Lab booted without its inventory (V3, BR-4)", () => {
   it("fails TEAMS and PROJECTS by name with Retry, and the rest still renders", async () => {
     await openApp("/inbox", { inventory: false });

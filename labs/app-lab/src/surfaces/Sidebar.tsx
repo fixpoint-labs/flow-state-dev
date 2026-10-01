@@ -101,7 +101,7 @@ function OrgSwitcher({ orgId, onSwitch }: { orgId: string; onSwitch: () => void 
 
 export function Sidebar({ route, gaps, onJump }: { route: Route; gaps: Gaps; onJump: () => void }) {
   const { snapshot, refresh, clients } = useLab();
-  const loaded = snapshot !== undefined && snapshot.refused === undefined ? (snapshot as LoadedSnapshot) : undefined;
+  const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
   const retry = () => void refresh();
 
   const inboxCount = loaded === undefined ? "…" : loaded.asks.ok ? loaded.asks.value.length : "!";

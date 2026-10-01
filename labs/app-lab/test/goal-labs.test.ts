@@ -13,6 +13,7 @@ import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workfor
 import { createLabClients, type LabClients } from "../src/lib/connection";
 import { createLabReader } from "../src/lib/reads";
 import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
+import { declaredBrowserReadable } from "./helpers/documents";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
@@ -31,6 +32,7 @@ async function open(configPath: string, treePath: string): Promise<Opened> {
   });
   const snapshot = await createLabReader(clients).read();
   if (snapshot.refused !== undefined) throw new Error(`refused: ${snapshot.refused.message}`);
+  if (snapshot.unreachable !== undefined) throw new Error(`unreachable: ${snapshot.unreachable.message}`);
   return { lab, roster: await readDeclaredRoster(`${repo}/${treePath}`), snapshot, clients };
 }
 
@@ -92,9 +94,7 @@ describe.each([
   it("Jump to finds exactly the declared documents the tree lets a browser read, and each opens with the file's body", async () => {
     const { snapshot, roster, clients } = opened;
     if (!snapshot.resources.ok) throw new Error(snapshot.resources.failure.message);
-    const readable = roster.documents.filter(
-      (doc) => (doc.declared.client as { content?: { read?: unknown } } | undefined)?.content?.read === true,
-    );
+    const readable = roster.documents.filter(declaredBrowserReadable);
     expect(snapshot.resources.value.map((r) => r.ref).sort()).toEqual(readable.map((doc) => doc.ref).sort());
     for (const found of snapshot.resources.value) {
       const read = await clients.resources.getResourceContent(found.sessionId, found.ref);
