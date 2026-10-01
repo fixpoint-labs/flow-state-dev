@@ -19,6 +19,7 @@
 import { getPatternPrefix } from "@flow-state-dev/core/types";
 import { isCollectionConfig } from "./is-collection-config";
 import { resourceStorageKeys } from "./storage-keys";
+import { ownKeyRecord } from "./own-key-record";
 import type { StorageScopeType } from "../stores/types";
 import { resolveLineageId } from "../stores/scope-keys";
 
@@ -261,7 +262,7 @@ export async function readSessionScopeWithLineage<T>(
     readAll(sessionStorageScope(session, lineageScopeId(session)), lineageScopeId(session))
   ]);
 
-  const merged: Record<string, T> = {};
+  const merged = ownKeyRecord<T>();
   for (const [key, value] of Object.entries(own)) {
     if (isShared(key)) continue;
     merged[key] = value;
