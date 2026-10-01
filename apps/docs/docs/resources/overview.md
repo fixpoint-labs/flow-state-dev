@@ -33,7 +33,7 @@ const artifactResource = defineResource({
 
 `defineResource() requires an explicit scope of "session", "user", or "org" (got …)`
 
-The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. Both are versioned, both support atomic operations. A state write persists only when the result satisfies `stateSchema` and is a JSON object. See [Writing resource state](#writing-resource-state) for the write methods, and [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes) for what a rejected write does.
+The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. Both are versioned, both support atomic operations. A state write persists only when the result satisfies `stateSchema` and is an object, not an array (see [What gets stored](#what-gets-stored) for how its values are saved). See [Writing resource state](#writing-resource-state) for the write methods, and [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes) for what a rejected write does.
 
 Config options:
 
@@ -163,7 +163,9 @@ await readme.incState({ views: 1 });
 
 Resource state is saved as JSON, and every store saves the same thing for the same write. That includes the in-memory store, so a flow you test on memory reads back what it will read on SQLite, Postgres, or the filesystem.
 
-A value JSON can't represent comes back in its JSON form. A `Date` becomes its ISO string, a `Map` or `Set` becomes `{}`, and `Infinity` and `NaN` become `null`. An `undefined` field or a function is dropped. A `bigint`, or an object that refers to itself, can't be written at all: the write fails with a `TypeError` and nothing is stored.
+A value with no JSON equivalent is stored the way `JSON.stringify` writes it. A `Date` becomes its ISO string, a `Map` or `Set` becomes `{}`, and `Infinity` and `NaN` become `null`. An `undefined` field or a function is dropped. A `bigint`, or an object that refers to itself, can't be written at all: the write fails with a `TypeError` and nothing is stored.
+
+The stored form shows up on the next read from the store. Within the request that made the write, `ref.state` can still hold the value as you wrote it, so a `Date` you just patched in still reads as a `Date` there. A field declared `z.date()` won't parse the stored string on that next read, so it comes back as its default.
 
 So keep `stateSchema` to JSON types. Store a date as a string, a set as an array.
 
@@ -214,7 +216,7 @@ An absent field, and a field holding `null`, are that field's empty state rather
 
 One `incState` call is one write. If any field in a multi-field call is wrong-typed, none of the call applies.
 
-`incState` also refuses a result that isn't finite. `z.number()` accepts `Infinity`, so the schema won't catch one, and no store can keep it: state is saved as JSON, which writes `null` in its place. Two finite numbers can reach it, since adding `Number.MAX_VALUE` to a field already holding `Number.MAX_VALUE` overflows. The check is on the result, so a delta that is a perfectly ordinary number can still be turned away.
+`incState` also refuses a result that isn't finite. `z.number()` accepts `Infinity`, so the schema won't catch one, and a stored `Infinity` would read back as `null` (see [What gets stored](#what-gets-stored)). Two finite numbers can reach it, since adding `Number.MAX_VALUE` to a field already holding `Number.MAX_VALUE` overflows. The check is on the result, so a delta that is an ordinary number can still be turned away.
 
 A delta that commits is validated against `stateSchema` like every other state write. `incState({ retries: -1 })` on a `z.number().nonnegative()` field throws and stores nothing; see [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes). And a resource declared `writable: false` refuses `incState` and `pushState` alongside `patchState`, `setState`, and `updateState`.
 
