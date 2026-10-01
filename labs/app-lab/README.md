@@ -97,7 +97,7 @@ Each of these is drawn as a named empty state or a disabled control:
 
 ## How it looks
 
-App Lab's look comes from the [design-system](../design-system) package, through one import in `src/styles.css`. The light theme shows by default, and the dark one applies under a `dark` class on an ancestor element. App Lab has no switch between them yet. Remove that import and every screen falls back to the registry's neutral defaults.
+App Lab's look comes from the [design-system](../design-system) package, through one import in `src/styles.css`. It follows your operating system's light or dark setting, and switches when you change it. Remove that import and every screen falls back to the registry's neutral defaults.
 
 The cards in a task's Session, and the ask cards in Inbox and in a workstream's Stream, are App Lab's copies of `@flow-state-dev/ui` registry components, kept unedited. The `ui:add` script in `package.json` names what was installed (`chat-assistant`, which brings the message, reasoning, tool, code block, task plan and ask cards with it). A test checks that the copies are exactly what that list ships, byte for byte.
 
