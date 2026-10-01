@@ -4,7 +4,7 @@
 
 **Outcome:** A person runs Shift Manager's start command over a Lab's own `fsdev.config.mts`, one it was never told about, and every screen they reach shows what that Lab holds. The sidebar lists the Lab's teams and seats and its workstreams. Each workstream's board shows the rows its channel's board holds, at their stored status. Tasks lists the rows that aren't done, and Inbox lists what is waiting on them or says plainly that nothing is. A line they post appears once the channel has kept it, and it is still there after a reload.
 
-**Input:** the two goal Labs as they stand, DevForce (bearer-authenticated, in-memory) and multi-seat-collab (SQLite, no auth). Their configs are not edited. The fixture (`fixtures/input.json`) holds the composer line, the DevForce filing post, and the multi-seat-collab piece of work. It is held out: other text, another issue slug, or another desk the Lab routes must still pass a correct Shift Manager. Every seat, channel and board name is read from the trees at run time.
+**Input:** the two goal Labs as they stand, DevTeam (bearer-authenticated, in-memory) and multi-seat-collab (SQLite, no auth). Their configs are not edited. The fixture (`fixtures/input.json`) holds the composer line, the DevTeam filing post, and the multi-seat-collab piece of work. It is held out: other text, another issue slug, or another desk the Lab routes must still pass a correct Shift Manager. Every seat, channel and board name is read from the trees at run time.
 
 **Signal:** per Lab, each failure tagged `[<lab>] <leg>`:
 
@@ -17,21 +17,21 @@
 - **reach**: every level, tab and panel opens (Inbox, Tasks, the project level's four tabs, each workstream's four tabs and panel, and the task frame's four tabs and panel slot). Every empty one names what will be there. The page throws nothing.
 - **the post appears on screen**: a composer post on the first workstream is drawn.
 - **the post is in the stored transcript**: the channel's session holds exactly one `channel-post` with that body, and a reload draws it once.
-- **an answer from Inbox lands in the store**: when an ask is pending (DevForce's EM seat raises one at boot), Shift Manager offers Approve on at least one pending ask, and Approve on Inbox leaves one fewer pending suspension in the store. Asks pending with an answer offered on none is a failure.
+- **an answer from Inbox lands in the store**: when an ask is pending (DevTeam's EM seat raises one at boot), Shift Manager offers Approve on at least one pending ask, and Approve on Inbox leaves one fewer pending suspension in the store. Asks pending with an answer offered on none is a failure.
 
-The rows come from the Lab's own doors. On multi-seat-collab, the planner files through its action, and the worker seats drain until the row parks. On DevForce, a `<issue>: <text>` post on the channel wakes the EM, which files the row.
+The rows come from the Lab's own doors. On multi-seat-collab, the planner files through its action, and the worker seats drain until the row parks. On DevTeam, a `<issue>: <text>` post on the channel wakes the EM, which files the row.
 
 **Anti-game:** a hollow pass would be a Shift Manager that draws names it was built with, draws a post before the channel keeps it, or is graded against its own reads. So the check never asserts on Shift Manager's own data module. The oracles are the tree on disk (`readDeclaredRoster`) and the store, read through the Lab's HTTP routes by this script's own requests, with the bearer the page was handed. The store is read after the page's refresh, so a UI that invents rows or drops them fails. Each control proves one leg can go red.
 
-**Model:** n/a (model-free: the DevForce harness is the lab's scripted stub, and multi-seat-collab has no model)
+**Model:** n/a (model-free: the DevTeam harness is the lab's scripted stub, and multi-seat-collab has no model)
 
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-opens-a-lab/run.mts`
 
 **Controls:** each control rebuilds Shift Manager with one source module swapped for a module under `controls/`. The build fails if the swap never fired.
 
-- `GOAL_CONTROL=static-names`: the seat list is written in from the DevForce tree. Must fail at **TEAMS equals the store's seats** on multi-seat-collab, naming the missing seats.
+- `GOAL_CONTROL=static-names`: the seat list is written in from the DevTeam tree. Must fail at **TEAMS equals the store's seats** on multi-seat-collab, naming the missing seats.
 - `GOAL_CONTROL=optimistic-post`: the composer draws its own line and sends nothing. Must fail at **the post is in the stored transcript** on both Labs.
-- `GOAL_CONTROL=unanswerable-asks`: every ask is marked as one the Lab won't reopen, so no card offers an answer. Must fail at **an answer from Inbox lands in the store** on DevForce.
+- `GOAL_CONTROL=unanswerable-asks`: every ask is marked as one the Lab won't reopen, so no card offers an answer. Must fail at **an answer from Inbox lands in the store** on DevTeam.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |

@@ -1,9 +1,9 @@
 /**
- * DevForce, served for this goal: the DevForce Lab's own tree and `openLab`,
+ * DevTeam, served for this goal: the DevForce lab's tree and `openLab`,
  * with this goal's recording harness in the `coder` kind's slot
  * (`recording-harness.mts`) and two rows already running on the coder seat.
  *
- * What it adds over `goals/devforce-lab/lab/fsdev.config.mts`, and nothing
+ * What it adds over `labs/shift-manager/teams/devteam/fsdev.config.mts`, and nothing
  * else:
  *
  * - **The harness.** Every attempt records what it was handed to the file
@@ -16,7 +16,7 @@
  *   actions, so the coder has two running tasks: one for the task composer,
  *   and a second for `@coder`'s picker.
  *
- * The EM seat's ask is raised as DevForce raises it, so Inbox shows an ask on
+ * The EM seat's ask is raised as DevTeam raises it, so Inbox shows an ask on
  * a seat whose kind takes no message. Which seat is which is read off the
  * tree by the kind each `WORKER.md` names.
  */
@@ -46,7 +46,7 @@ const ASK_FEATURE = (
 const roster = await readDeclaredRoster(LAB_TREE);
 const kindOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const coderSeatId = roster.workers.find((w) => w.declared.flow === CODER_KIND && w.id.endsWith(`.${ASSIGNEE}`))?.id;
-if (coderSeatId === undefined) throw new Error("the DevForce tree declares no coder seat the board's rows are handed to");
+if (coderSeatId === undefined) throw new Error("the DevTeam tree declares no coder seat the board's rows are handed to");
 const members = (roster.channels[0]?.declared.members as string[] | undefined) ?? [];
 const emSeats = members.filter((m) => kindOf(m) === EM_KIND);
 if (emSeats.length !== 1) throw new Error(`wanted one EM seat in the channel, found ${emSeats.length}`);

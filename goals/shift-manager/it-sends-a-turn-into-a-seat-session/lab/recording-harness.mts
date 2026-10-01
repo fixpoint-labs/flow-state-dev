@@ -1,5 +1,5 @@
 /**
- * The scripted harness this goal puts in the DevForce `coder` kind's slot.
+ * The scripted harness this goal puts in the DevTeam `coder` kind's slot.
  *
  * No model. Each attempt writes down what the harness manager handed it, one
  * JSON line per attempt to the file {@link RUNS_ENV} names: the prompt, the

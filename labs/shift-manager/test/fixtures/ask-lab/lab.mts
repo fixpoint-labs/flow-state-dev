@@ -60,7 +60,7 @@ export const ASK_LAB_ORG_ID = "org_ask_lab";
 
 /**
  * A fail-closed resolver: the bearer's principal, or a 401 when none was
- * presented. The shape a Lab with verified identity has (the DevForce lab's).
+ * presented. The shape a Lab with verified identity has (the DevTeam profile's).
  */
 function bearerOnly(secret: string): PrincipalResolver {
   const verify = createBearerSecretPrincipalResolver({

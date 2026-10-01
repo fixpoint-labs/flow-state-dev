@@ -10,18 +10,20 @@ It is research software. Several screens are drawn as placeholders that name wha
 
 ## Run it
 
-Build the pages once, then start Shift Manager over a Lab's config:
+Build the pages once, then start Shift Manager over a team profile or a Lab's config:
 
 ```bash
 pnpm --filter @flow-state-dev/shift-manager build
-pnpm --filter @flow-state-dev/shift-manager start --config goals/devforce-lab/lab/fsdev.config.mts
+pnpm --filter @flow-state-dev/shift-manager start --team devteam
+pnpm --filter @flow-state-dev/shift-manager start --config <path to a Lab's fsdev.config.mts>
 ```
 
 It prints the address, `http://127.0.0.1:4300` by default. One process serves the Lab's API under `/api/flows` and Shift Manager's pages beside it. It also serves the devtool over the same Lab, on a port of its own, and prints that address too. The Lab's config is loaded as-is. Nothing in it is edited or wrapped.
 
 | Option | Default | What it does |
 |--------|---------|--------------|
-| `--config <path>` | required | The Lab's `fsdev.config.mts`. Relative paths resolve from the directory you ran the command in. |
+| `--config <path>` | | The Lab's `fsdev.config.mts`. Relative paths resolve from the directory you ran the command in. |
+| `--team <name>` | | A team profile from `teams/`, by folder name. Give `--team` or `--config`, not both. |
 | `--port <n>` | `4300` | `0` picks a free port. |
 | `--host <host>` | `127.0.0.1` | A non-loopback host is refused unless the Lab authenticates requests. |
 | `--assets <dir>` | `dist/` | Serve a different build of the pages. |
@@ -32,6 +34,14 @@ It prints the address, `http://127.0.0.1:4300` by default. One process serves th
 The process runs from the directory you started it in, so a Lab's relative paths, such as a SQLite file, land where they would under `fsdev dev`.
 
 A config that doesn't load, or doesn't default-export a `FlowState`, stops the command with the loader's own message.
+
+### Team profiles
+
+A team profile is a Lab's config kept in this package, under `teams/<name>/fsdev.config.mts`, so you can open it by name. There is one so far:
+
+- **`devteam`** is a software team. An EM seat files features as rows on the team's board, a coder seat runs each row as a supervised coding run, and a reviewer seat is declared but never woken. On start the EM asks you to approve one feature, so Inbox has something in it. Rows run on a scripted harness with no model unless `DEVFORCE_LAB_HARNESS=claude-code` is set. Its tree and the checks behind it are in [`goals/devforce-lab/lab/`](../../goals/devforce-lab/lab/README.md).
+
+One process opens one team. Starting with a second `--team` or `--config` is refused.
 
 ### Working on the pages
 

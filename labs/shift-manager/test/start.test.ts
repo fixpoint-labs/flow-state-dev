@@ -21,11 +21,14 @@ afterEach(() => {
   for (const child of running.splice(0)) child.kill("SIGTERM");
 });
 
-/** Run the start script from the repo root, the way `pnpm --filter … start` does. */
-function start(config: string, extra: string[] = [], host = "127.0.0.1", env: Record<string, string | undefined> = {}) {
+/**
+ * Run the start script from the repo root, the way `pnpm --filter … start`
+ * does, over a config path or a team profile by name.
+ */
+function start(config: string | { team: string }, extra: string[] = [], host = "127.0.0.1", env: Record<string, string | undefined> = {}) {
   const child = spawn(
     process.execPath,
-    ["--import", "tsx", "bin/start.mts", "--config", config, "--port", "0", "--host", host, "--assets", assets, "--devtool-assets", devtoolAssets, ...extra],
+    ["--import", "tsx", "bin/start.mts", ...(typeof config === "string" ? ["--config", config] : ["--team", config.team]), "--port", "0", "--host", host, "--assets", assets, "--devtool-assets", devtoolAssets, ...extra],
     { cwd: pkg, env: { ...process.env, SHIFT_MANAGER_SHIFT: undefined, INIT_CWD: repo, ...env }, stdio: ["ignore", "pipe", "pipe"] },
   );
   running.push(child);
@@ -68,7 +71,7 @@ describe("the start command", () => {
     // The trace link only works when the devtool reads the store the run is
     // in. Two processes over an in-memory Lab never do, so the default is a
     // devtool this process serves, over this FlowState, on its own port.
-    const config = "goals/devforce-lab/lab/fsdev.config.mts";
+    const config = "labs/shift-manager/teams/devteam/fsdev.config.mts";
     const app = start(config);
     const origin = await app.listening;
     const page = await (await fetch(`${origin}/tasks`)).text();
@@ -131,7 +134,7 @@ describe("the start command", () => {
   }, 120_000);
 
   it("hands the page the Lab's bearer on a loopback host, and refuses a network host outright", async () => {
-    const config = "goals/devforce-lab/lab/fsdev.config.mts";
+    const config = "labs/shift-manager/teams/devteam/fsdev.config.mts";
     const loopback = await start(config).listening;
     const local = await (await fetch(`${loopback}/inbox`)).text();
     expect(local).toContain("__FSD_DEVTOOL_CONFIG__");
@@ -163,6 +166,33 @@ describe("the start command", () => {
     expect(await refused.exited).not.toBe(0);
     expect(refused.output()).toMatch(/No shift "dusk".*day, night/);
   }, 180_000);
+
+  it("opens the DevTeam team profile by name, the same team its config path opens", async () => {
+    // The profile is the team's own config: a bearer-authenticated Lab whose
+    // EM seat raises one ask at boot.
+    const origin = await start({ team: "devteam" }).listening;
+    const page = await (await fetch(`${origin}/inbox`)).text();
+    const config_ = JSON.parse(/__FSD_DEVTOOL_CONFIG__\s*=\s*(\{.*?\});?<\/script>/s.exec(page)![1]!) as { userId: string; bearerToken?: string };
+    expect(config_.bearerToken).toBeTruthy();
+    const unauthenticated = await fetch(`${origin}/api/flows/sessions?userId=${encodeURIComponent(config_.userId)}`);
+    expect(unauthenticated.status).toBe(401);
+    const sessions = await fetch(`${origin}/api/flows/sessions?userId=${encodeURIComponent(config_.userId)}`, {
+      headers: { authorization: `Bearer ${config_.bearerToken}` },
+    });
+    expect(sessions.status).toBe(200);
+    expect(((await sessions.json()) as { sessions: unknown[] }).sessions.length).toBeGreaterThan(0);
+  }, 120_000);
+
+  it("refuses a team it has no profile for, naming the ones it has, and a second team or config", async () => {
+    const unknown = start({ team: "nightwatch" });
+    expect(await unknown.exited).not.toBe(0);
+    expect(unknown.output()).toMatch(/No team profile "nightwatch". Known teams: devteam\./);
+
+    const both = start({ team: "devteam" }, ["--config", "goals/multi-seat-collab/lab/fsdev.config.mts"]);
+    expect(await both.exited).not.toBe(0);
+    expect(both.output()).toMatch(/one team per process/);
+    expect(both.output()).not.toMatch(/Shift Manager: http/);
+  }, 60_000);
 
   it("refuses a config path with nothing at it, with the loader's message", async () => {
     const app = start("labs/shift-manager/test/fixtures/missing/fsdev.config.mts");

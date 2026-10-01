@@ -1,5 +1,6 @@
 /**
  * `pnpm --filter @flow-state-dev/shift-manager start --config <path>` — open a Lab in Shift Manager.
+ * `pnpm --filter @flow-state-dev/shift-manager start --team <name>` — open one of this package's team profiles.
  *
  * Loads the Lab's own `fsdev` config (the file `fsdev dev` already serves) with
  * the CLI's loader, and hands the `FlowState` it default-exports to the shipped
@@ -22,7 +23,10 @@
  * under `fsdev dev` started from the same place.
  *
  * Options:
- *   --config <path>   the Lab's fsdev config (required)
+ *   --config <path>   the Lab's fsdev config
+ *   --team <name>     a team profile from this package's `teams/`: the config at
+ *                     `teams/<name>/fsdev.config.mts`. One of `--config` and
+ *                     `--team` is required, and one process opens one team.
  *   --port <n>        default 4300; 0 picks a free port
  *   --host <host>     default 127.0.0.1
  *   --assets <dir>    serve a different build of Shift Manager's pages (default: this package's dist/)
@@ -65,6 +69,9 @@ const DEFAULT_ASSETS = fileURLToPath(new URL("../dist", import.meta.url));
 /** The shift profiles `--shift` picks from, one `<name>.json` each. */
 const PROFILES = fileURLToPath(new URL("../profiles", import.meta.url));
 
+/** The team profiles `--team` picks from, one `<name>/fsdev.config.mts` each. */
+const TEAMS = fileURLToPath(new URL("../teams", import.meta.url));
+
 /** The environment variable `--shift` falls back to. */
 const SHIFT_ENV = "SHIFT_MANAGER_SHIFT";
 
@@ -86,7 +93,8 @@ function fail(message: string, code = EXIT_CONFIG_ERROR): never {
 
 const { values } = parseArgs({
   options: {
-    config: { type: "string" },
+    config: { type: "string", multiple: true },
+    team: { type: "string", multiple: true },
     port: { type: "string", default: "4300" },
     host: { type: "string", default: "127.0.0.1" },
     assets: { type: "string" },
@@ -100,9 +108,29 @@ const { values } = parseArgs({
 const invokedFrom = process.env.INIT_CWD ?? process.cwd();
 const from = (path: string): string => (isAbsolute(path) ? path : resolve(invokedFrom, path));
 
-if (values.config === undefined) {
-  fail("Shift Manager needs a Lab to open: pass --config <path to the Lab's fsdev config>.");
+/**
+ * The one config this process opens: `--config`'s path, or the profile
+ * `--team` names. A second team, by either flag, is refused rather than
+ * dropped.
+ */
+function configPath(): string {
+  const configs = values.config ?? [];
+  const teams = values.team ?? [];
+  if (configs.length + teams.length === 0) {
+    fail("Shift Manager needs a Lab to open: pass --config <path to the Lab's fsdev config> or --team <profile>.");
+  }
+  if (configs.length + teams.length > 1) {
+    fail(`Shift Manager opens one team per process; got ${[...configs.map((c) => `--config ${c}`), ...teams.map((t) => `--team ${t}`)].join(", ")}.`);
+  }
+  if (configs.length === 1) return configs[0]!;
+  const known = readdirSync(TEAMS, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && existsSync(join(TEAMS, d.name, "fsdev.config.mts")))
+    .map((d) => d.name)
+    .sort();
+  if (!known.includes(teams[0]!)) fail(`No team profile "${teams[0]}". Known teams: ${known.join(", ")}.`);
+  return join(TEAMS, teams[0]!, "fsdev.config.mts");
 }
+const config = configPath();
 const port = /^\d+$/.test(values.port!) ? Number(values.port) : NaN;
 if (!Number.isInteger(port) || port > 65535) fail(`Invalid port: ${values.port}`);
 
@@ -190,12 +218,12 @@ process.chdir(invokedFrom);
 
 let loaded: Awaited<ReturnType<typeof loadFsdevConfig>>;
 try {
-  loaded = await loadFsdevConfig({ cwd: invokedFrom, configPath: values.config });
+  loaded = await loadFsdevConfig({ cwd: invokedFrom, configPath: config });
 } catch (error) {
   const code = (error as { exitCode?: unknown }).exitCode;
   fail(error instanceof Error ? error.message : String(error), typeof code === "number" ? code : EXIT_CONFIG_ERROR);
 }
-if (loaded === undefined) fail(`No fsdev config at ${values.config}.`);
+if (loaded === undefined) fail(`No fsdev config at ${config}.`);
 const flowState = loaded.flowState;
 
 const host = values.host!;

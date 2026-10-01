@@ -6,7 +6,7 @@
 
 **Input:** two Labs, each served by Shift Manager's start script.
 
-- DevForce's own tree and `openLab`, configured by `lab/fsdev.config.mts`. The coder seat's harness slot holds this goal's recording harness (`lab/recording-harness.mts`). There is no model. Every attempt writes down what it was handed and holds until it is stopped. At boot the Lab files two rows (`lab/rows.mts`) through the EM seat and drains them, so the coder has two running tasks. The store is a SQLite file. DevForce raises the EM seat's ask, as its own config does.
+- DevTeam's own tree and `openLab`, configured by `lab/fsdev.config.mts`. The coder seat's harness slot holds this goal's recording harness (`lab/recording-harness.mts`). There is no model. Every attempt writes down what it was handed and holds until it is stopped. At boot the Lab files two rows (`lab/rows.mts`) through the EM seat and drains them, so the coder has two running tasks. The store is a SQLite file. DevTeam raises the EM seat's ask, as its own config does.
 - The fixture Lab under `lab/asker/`: one seat whose kind asks a person, and whose `message` door says what it heard.
 
 **Signal:** each failure is tagged `[<route>] <leg>`. A fresh token is typed for each route.
@@ -16,7 +16,7 @@
 - **continued**: the harness's own record on disk has a next attempt on that row. Its prompt holds the token, and its resume id equals the coding session the previous attempt named.
 - **standing**: once the next attempt is claimed, the stored row's retry standing is unchanged (`attempts − abandonments − turnReentries`).
 - **picker**: `@coder` asks which of the coder's two running tasks the line is for. The line reaches the chosen task, not the other.
-- **no door**: on DevForce's EM ask, Inbox's reply box is disabled. Its line names the seat.
+- **no door**: on DevTeam's EM ask, Inbox's reply box is disabled. Its line names the seat.
 - **heard**: on the fixture seat's ask, Inbox's reply is a user item in the ask's own session, and the seat says *Heard: <token>* there.
 - **reach**: the pages throw nothing.
 
@@ -25,7 +25,7 @@ Routes: **task composer** (the first row, reached from Tasks by clicking), **@co
 **Anti-game:** the check never reads Shift Manager's state.
 - Its oracles are the stores and the harness's record:
   - each Lab's store, read through its routes with the check's own requests;
-  - DevForce's store file, for the retry counters, which the board's browser view doesn't carry;
+  - DevTeam's store file, for the retry counters, which the board's browser view doesn't carry;
   - the file the harness appends each attempt to.
 - The resume id and the prompt come from what the harness was handed, not from the manager's record of it.
 - Tokens are fresh every run.

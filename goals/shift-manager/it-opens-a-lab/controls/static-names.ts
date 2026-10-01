@@ -5,7 +5,7 @@
  * Built into the control page in place of `src/lib/reads.ts`. Everything is
  * the real module except `createLabReader`, whose snapshot has its seats
  * replaced by one Lab's seat list fixed at build time (`__STATIC_SEATS__`,
- * the DevForce tree's seats). Opened over DevForce it looks right; opened over
+ * the DevTeam tree's seats). Opened over DevTeam it looks right; opened over
  * any other Lab, TEAMS lists seats that Lab doesn't have. The goal must fail
  * at "TEAMS equals the store's seats", naming the missing seats.
  */

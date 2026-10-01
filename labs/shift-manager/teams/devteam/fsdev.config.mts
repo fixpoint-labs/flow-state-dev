@@ -1,10 +1,14 @@
 /**
- * The DevForce lab as a server: the config `fsdev dev` and Shift Manager load.
+ * The DevTeam team profile: a software team (an EM seat that files features, a
+ * coder seat that runs them, a reviewer) as a server Shift Manager and
+ * `fsdev dev` load.
  *
- *     pnpm --filter @flow-state-dev/shift-manager start --config goals/devforce-lab/lab/fsdev.config.mts
+ *     pnpm --filter @flow-state-dev/shift-manager start --team devteam
  *
- * One `FlowState`, default-exported, opened through the same `openLab` the
- * lab's checks use, so a server and a check boot the same tree the same way.
+ * The team is the DevForce lab's tree (`goals/devforce-lab/lab/`), where the
+ * checks that prove it live. One `FlowState`, default-exported, opened through
+ * the same `openLab` those checks use, so a server and a check boot the same
+ * tree the same way.
  * What a long-lived server asks of it that a check doesn't:
  *
  * - **The channel and the inventory.** The feature channel is opened with its
@@ -31,14 +35,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { inMemoryStores } from "@flow-state-dev/engine";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import type { AskFeature } from "./ask.mts";
-import { ASSIGNEE } from "./board.mts";
-import { selectHarness } from "./harness.mts";
-import { LAB_TREE, openLab } from "./host.mts";
-import { createNotifyLog } from "./notify.mts";
-import { BASE_REF, createScratchRepo } from "./scratch-repo.mts";
-import { CODER_KIND } from "./workforce/flows/workers/coder.mts";
-import { EM_KIND } from "./workforce/flows/workers/em.mts";
+import type { AskFeature } from "../../../../goals/devforce-lab/lab/ask.mts";
+import { ASSIGNEE } from "../../../../goals/devforce-lab/lab/board.mts";
+import { selectHarness } from "../../../../goals/devforce-lab/lab/harness.mts";
+import { LAB_TREE, openLab } from "../../../../goals/devforce-lab/lab/host.mts";
+import { createNotifyLog } from "../../../../goals/devforce-lab/lab/notify.mts";
+import { BASE_REF, createScratchRepo } from "../../../../goals/devforce-lab/lab/scratch-repo.mts";
+import { CODER_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/coder.mts";
+import { EM_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/em.mts";
 
 /**
  * The feature the EM seat asks a person to approve when the server opens: the
@@ -48,7 +52,7 @@ import { EM_KIND } from "./workforce/flows/workers/em.mts";
  */
 const ASK_FEATURE = (
   JSON.parse(
-    readFileSync(fileURLToPath(new URL("../it-waits-for-a-person-before-it-files/fixtures/input.json", import.meta.url)), "utf8"),
+    readFileSync(fileURLToPath(new URL("../../../../goals/devforce-lab/it-waits-for-a-person-before-it-files/fixtures/input.json", import.meta.url)), "utf8"),
   ) as { feature: AskFeature }
 ).feature;
 
@@ -57,7 +61,7 @@ const ASK_FEATURE = (
 const roster = await readDeclaredRoster(LAB_TREE);
 const kindOf = (id: string) => roster.workers.find((w) => w.id === id)?.declared.flow;
 const coderSeatId = roster.workers.find((w) => w.declared.flow === CODER_KIND && w.id.endsWith(`.${ASSIGNEE}`))?.id;
-if (coderSeatId === undefined) throw new Error("the DevForce tree declares no coder seat the board's rows are handed to");
+if (coderSeatId === undefined) throw new Error("the DevTeam tree declares no coder seat the board's rows are handed to");
 const members = (roster.channels[0]?.declared.members as string[] | undefined) ?? [];
 const addresses = Object.fromEntries(members.filter((m) => kindOf(m) === EM_KIND).map((m) => [m, m]));
 

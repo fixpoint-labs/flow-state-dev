@@ -4,7 +4,7 @@
  * session with the line. See goal.md for the contract.
  *
  * Real path, no model. Shift Manager is built with Vite and served by its own start
- * script over two Labs: DevForce on this goal's recording harness
+ * script over two Labs: DevTeam on this goal's recording harness
  * (`lab/fsdev.config.mts`), with two coder rows running, and a fixture Lab
  * whose one seat asks and hears (`lab/asker/`). Chromium sends a fresh token
  * three ways: the task composer, `@coder` in the workstream, and Inbox's
@@ -25,7 +25,7 @@
  *                the stored row
  *   picker       `@coder` asks which of the coder's two tasks, and the line
  *                reaches the one chosen and not the other
- *   no door      Inbox's reply to DevForce's EM ask is disabled, naming the seat
+ *   no door      Inbox's reply to DevTeam's EM ask is disabled, naming the seat
  *   heard        Inbox's reply to the fixture seat's ask is in the ask's
  *                session, and the seat says it heard it
  *   reach        the pages throw nothing
@@ -75,9 +75,9 @@ const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-turn");
 const RUNS_FILE = join(SCRATCH, `runs-${Date.now()}.ndjson`);
-const STORE_FILE = join(SCRATCH, `devforce-${Date.now()}.db`);
+const STORE_FILE = join(SCRATCH, `devteam-${Date.now()}.db`);
 const LABS = {
-  devforce: { config: join(HERE, "lab", "fsdev.config.mts"), tree: join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce") },
+  devteam: { config: join(HERE, "lab", "fsdev.config.mts"), tree: join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce") },
   asker: { config: join(HERE, "lab", "asker", "fsdev.config.mts"), tree: join(HERE, "lab", "asker", "workforce") },
 } as const;
 type LabName = keyof typeof LABS;
@@ -225,7 +225,7 @@ function labApi(origin: string, bearer: string | undefined) {
 }
 type LabApi = ReturnType<typeof labApi>;
 
-/** The stored row's retry counters, read from DevForce's store file. */
+/** The stored row's retry counters, read from DevTeam's store file. */
 type Counters = { attempts: number; abandonments: number; turnReentries: number };
 /** Retry standing: the attempts the row has been charged for (BR-9). */
 const standing = (c: Counters) => c.attempts - c.abandonments - c.turnReentries;
@@ -375,18 +375,18 @@ async function grade(
 // ---- the goal ----------------------------------------------------------------
 
 await runGoal(async () => {
-  const devforce = await readDeclaredRoster(LABS.devforce.tree);
-  const channel = devforce.channels[0]!;
+  const devteam = await readDeclaredRoster(LABS.devteam.tree);
+  const channel = devteam.channels[0]!;
   const boardName = (channel.declared.boards as string[])[0]!;
   const where: Where = { channelId: channel.id, boardRef: `${channel.id}.${boardName}`, ledgerId: channelBoard(channel.id, boardName).id };
-  const coder = devforce.workers.find((w) => w.declared.flow === "coder" && (channel.declared.members as string[]).includes(w.id) && w.id.endsWith(".coder"))!;
-  const em = devforce.workers.find((w) => w.declared.flow === "em")!;
+  const coder = devteam.workers.find((w) => w.declared.flow === "coder" && (channel.declared.members as string[]).includes(w.id) && w.id.endsWith(".coder"))!;
+  const em = devteam.workers.find((w) => w.declared.flow === "em")!;
   const asker = (await readDeclaredRoster(LABS.asker.tree)).workers[0]!;
 
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL));
   const failures: string[] = [];
   const evidence: string[] = [];
-  const served = { devforce: await startLab("devforce", pages), asker: await startLab("asker", pages) };
+  const served = { devteam: await startLab("devteam", pages), asker: await startLab("asker", pages) };
   const browser = await launchChromium();
   try {
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
@@ -394,10 +394,10 @@ await runGoal(async () => {
     page.on("pageerror", (e) => pageErrors.push(e.message));
     page.setDefaultTimeout(10_000);
 
-    // ---- DevForce ------------------------------------------------------------
-    await open(page, served.devforce.origin, "/tasks");
+    // ---- DevTeam ------------------------------------------------------------
+    await open(page, served.devteam.origin, "/tasks");
     const injected = (await page.evaluate(() => (window as any).__FSD_DEVTOOL_CONFIG__ ?? null)) as { bearerToken?: string } | null;
-    const api = labApi(served.devforce.origin, injected?.bearerToken);
+    const api = labApi(served.devteam.origin, injected?.bearerToken);
     for (let waited = 0; waited < 60_000; waited += 250) {
       const running = (await api.rows(where.channelId, where.boardRef)).filter((r) => r.status === "in_progress" && r.run !== null);
       if (running.length === ROWS.length && ROWS.every((r) => attemptsOf(r.issue).length > 0)) break;
@@ -446,9 +446,9 @@ await runGoal(async () => {
       if (await api.holds(other.run!.sessionId, "user", turn.line)) fail("picker", `the line also reached ${other.id}, which was not chosen`);
     });
 
-    // Inbox, on DevForce's EM ask: a seat whose kind takes no message.
+    // Inbox, on DevTeam's EM ask: a seat whose kind takes no message.
     await leg("Inbox, no door", async (fail) => {
-      await open(page, served.devforce.origin, "/inbox");
+      await open(page, served.devteam.origin, "/inbox");
       await page.getByTestId("inbox-item").first().click();
       const input = page.getByTestId("inbox-reply-input");
       await input.waitFor();
@@ -490,6 +490,6 @@ await runGoal(async () => {
   }
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-    evidence: `Shift Manager built with Vite and served by its start script over DevForce (recording harness) and the fixture asker; each line typed in Chromium and graded against the store and the harness's own record. ${evidence.join("; ")}`,
+    evidence: `Shift Manager built with Vite and served by its start script over DevTeam (recording harness) and the fixture asker; each line typed in Chromium and graded against the store and the harness's own record. ${evidence.join("; ")}`,
   };
 });

@@ -48,7 +48,7 @@ function declaredTeams(roster: DeclaredRoster): Record<string, string[]> {
 
 describe.each([
   ["multi-seat-collab", "goals/multi-seat-collab/lab/fsdev.config.mts", "goals/multi-seat-collab/lab/workforce"],
-  ["devforce-lab", "goals/devforce-lab/lab/fsdev.config.mts", "goals/devforce-lab/lab/workforce"],
+  ["devteam", "labs/shift-manager/teams/devteam/fsdev.config.mts", "goals/devforce-lab/lab/workforce"],
 ])("%s", (name, configPath, treePath) => {
   let opened: Opened;
   beforeAll(async () => {
@@ -106,30 +106,30 @@ describe.each([
 
   // The Lab the epic pins for the closure's leg a: Jump to reaches a declared
   // document on it, so the resources destination is never empty there.
-  it.runIf(name === "devforce-lab")("serves at least one declared document to Jump to", () => {
+  it.runIf(name === "devteam")("serves at least one declared document to Jump to", () => {
     const { snapshot } = opened;
     if (!snapshot.resources.ok) throw new Error(snapshot.resources.failure.message);
     expect(snapshot.resources.value.length).toBeGreaterThan(0);
   });
 });
 
-// Approve & run on the DevForce tree, the way Shift Manager does it (FIX-1692). The
+// Approve & run on the DevTeam tree, the way Shift Manager does it (FIX-1692). The
 // Lab's own config is loaded as the start script loads it, the waiting ask is
 // answered through Shift Manager's one answer path, and the row and its run are read
 // through the reads the task screen uses. Before the fix the config's harness
 // could never finish the phase: the run recorded no step and the row went back
 // to pending with nothing left to run it.
-/** The DevForce Lab's step-pace override (`STEP_MS_ENV` in its `harness.mts`). */
+/** The DevTeam profile's step-pace override (`STEP_MS_ENV` in its `harness.mts`). */
 const STEP_MS_ENV = "DEVFORCE_LAB_STEP_MS";
 
-describe("devforce-lab: an approved task's run", () => {
+describe("devteam: an approved task's run", () => {
   let opened: Opened;
   beforeAll(async () => {
     // Settling is what this checks, so the scripted run does not wait out the
     // pacing a person watching needs. The it-shows-and-stops goal keeps it.
     process.env[STEP_MS_ENV] = "0";
     try {
-      opened = await open("goals/devforce-lab/lab/fsdev.config.mts", "goals/devforce-lab/lab/workforce");
+      opened = await open("labs/shift-manager/teams/devteam/fsdev.config.mts", "goals/devforce-lab/lab/workforce");
     } finally {
       delete process.env[STEP_MS_ENV];
     }

@@ -5,7 +5,7 @@
  * Real path, no model, out of CI. See goal.md for the contract.
  *
  * Shift Manager is built with Vite into a scratch directory, then served by its own
- * start script over each goal Lab's unedited `fsdev.config.mts`: DevForce
+ * start script over each goal Lab's unedited `fsdev.config.mts`: DevTeam
  * (bearer-authenticated, in-memory) and multi-seat-collab (SQLite, no auth).
  * The driver puts one row on each Lab's board through the Lab's own action
  * routes, then Chromium walks every level. What the page draws is graded
@@ -28,12 +28,12 @@
  * `controls/` (a Vite `resolveId` plugin; the build fails if the swap never
  * fired):
  *
- *   static-names     seats written in from the DevForce tree. Must fail at
+ *   static-names     seats written in from the DevTeam tree. Must fail at
  *                    "TEAMS equals the store's seats" on multi-seat-collab.
  *   optimistic-post  the composer draws its own line and sends nothing. Must
  *                    fail at "the post is in the stored transcript".
  *   unanswerable-asks  every ask is marked unanswerable. Must fail at "an
- *                    answer from Inbox lands in the store" on DevForce.
+ *                    answer from Inbox lands in the store" on DevTeam.
  *
  * Run:      pnpm tsx goals/shift-manager/it-opens-a-lab/run.mts
  * Control:  GOAL_CONTROL=static-names pnpm tsx goals/shift-manager/it-opens-a-lab/run.mts
@@ -64,7 +64,7 @@ if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
 
 const fixture = loadFixture<{
   line: string;
-  devforce: { issue: string; text: string };
+  devteam: { issue: string; text: string };
   multiSeatCollab: { goal: string; desk: string; asks: string };
 }>(import.meta.url);
 
@@ -74,8 +74,8 @@ const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager");
 
 const LABS = {
-  devforce: {
-    config: join(REPO_ROOT, "goals", "devforce-lab", "lab", "fsdev.config.mts"),
+  devteam: {
+    config: join(REPO_ROOT, "labs", "shift-manager", "teams", "devteam", "fsdev.config.mts"),
     tree: join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce"),
   },
   "multi-seat-collab": {
@@ -124,7 +124,7 @@ async function buildShiftManager(control: string): Promise<string> {
   let swapped = 0;
   const staticSeats =
     control === "static-names"
-      ? (await readDeclaredRoster(LABS.devforce.tree)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }))
+      ? (await readDeclaredRoster(LABS.devteam.tree)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }))
       : [];
   await vite.build({
     root: SHIFT_MANAGER,
@@ -408,7 +408,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       const channel = tree.channels[0]!;
       const kind = (await readStore(api, tree, userId)).channels.find((c) => c.id === channel.id)?.kind;
       if (kind === undefined) throw new Error(`${name}: the inventory registers no channel ${channel.id}`);
-      const status = await act(api, kind, channel.id, "post", { body: `${fixture.devforce.issue}: ${fixture.devforce.text}` }, userId);
+      const status = await act(api, kind, channel.id, "post", { body: `${fixture.devteam.issue}: ${fixture.devteam.text}` }, userId);
       if (status !== "completed") throw new Error(`${name}: the filing post ended ${status}`);
       if (!(await waitForRow(api, tree, () => true, userId))) throw new Error(`${name}: the post filed no row`);
     }

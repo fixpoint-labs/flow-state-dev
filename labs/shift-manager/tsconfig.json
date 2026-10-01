@@ -14,6 +14,6 @@
     // package exports instead.
     "paths": { "@/*": ["./labs/shift-manager/src/*"] }
   },
-  "include": ["src/**/*", "test/**/*", "bin/**/*.mts", "vite.config.ts", "vitest.config.ts"],
+  "include": ["src/**/*", "test/**/*", "bin/**/*.mts", "teams/**/*.mts", "vite.config.ts", "vitest.config.ts"],
   "exclude": ["node_modules", "dist"]
 }
