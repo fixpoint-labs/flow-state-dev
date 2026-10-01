@@ -166,7 +166,7 @@ export async function emitToolOutputAround(
     if (modelOutput !== undefined) item.modelOutput = modelOutput;
     await ctx.response.emit({
       type: "item.updated",
-      id: itemId,
+      itemId,
       patch: { status: "completed", output, ...(modelOutput !== undefined ? { modelOutput } : {}) },
     });
     await ctx.response.emit({ type: "item.done", item });
@@ -195,7 +195,7 @@ export async function emitToolOutputAround(
     };
     await ctx.response.emit({
       type: "item.updated",
-      id: itemId,
+      itemId,
       patch: { status: "failed", output: undefined, error: item.error },
     });
     await ctx.response.emit({ type: "item.done", item });

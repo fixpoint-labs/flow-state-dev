@@ -28,7 +28,7 @@
  * is not optional in practice — see the note on `createSharedPair`.
  */
 import { describe, expect, it } from "vitest";
-import type { JsonObject } from "@flow-state-dev/core/types";
+import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
 import type { ExpectedVersion, SessionRecord, SetResult } from "../types";
 
 /**
@@ -356,6 +356,77 @@ export function createScopeStoreConformanceTests(
           expect(fetched?.version).toBe(0);
         });
       });
+    });
+
+    describe("incField value-type contract", () => {
+      // Missing or null → starts from 0 (a field's empty state: BP-023 state
+      // fields default to null, so an untouched counter reads as null);
+      // existing number → add; any other present value (string, boolean,
+      // object, array) → throw, and the record is left alone. Coercing it to
+      // 0 would replace the stored value with the delta and report success.
+
+      it("treats a missing field as 0", async () => {
+        await withStore(async (store) => {
+          if (store.incField === undefined) return;
+          await store.set("s1", makeSession("s1", 0, {}), "absent");
+
+          const result = await store.incField("s1", ["count"], 3, 0, Date.now());
+
+          expect(result.ok).toBe(true);
+          expect((await store.get("s1"))?.state).toEqual({ count: 3 });
+        });
+      });
+
+      it("treats a null field as 0", async () => {
+        await withStore(async (store) => {
+          if (store.incField === undefined) return;
+          await store.set("s1", makeSession("s1", 0, { count: null }), "absent");
+
+          const result = await store.incField("s1", ["count"], 3, 0, Date.now());
+
+          expect(result.ok).toBe(true);
+          expect((await store.get("s1"))?.state).toEqual({ count: 3 });
+        });
+      });
+
+      it("adds onto an existing number", async () => {
+        await withStore(async (store) => {
+          if (store.incField === undefined) return;
+          await store.set("s1", makeSession("s1", 0, { count: 4 }), "absent");
+
+          const result = await store.incField("s1", ["count"], 3, 0, Date.now());
+
+          expect(result.ok).toBe(true);
+          expect((await store.get("s1"))?.state).toEqual({ count: 7 });
+        });
+      });
+
+      const wrongTyped: Array<[string, JsonValue]> = [
+        ["string", "hello"],
+        ["numeric-looking string", "5"],
+        ["boolean", true],
+        ["object", { nested: 1 }],
+        ["array", [1, 2]]
+      ];
+
+      for (const [label, value] of wrongTyped) {
+        for (const expectedVersion of [0, "any"] as const) {
+          it(`throws on a ${label} target (expectedVersion ${String(expectedVersion)}), leaving the record untouched`, async () => {
+            await withStore(async (store) => {
+              if (store.incField === undefined) return;
+              await store.set("s1", makeSession("s1", 0, { count: value }), "absent");
+
+              await expect(
+                store.incField("s1", ["count"], 1, expectedVersion, Date.now())
+              ).rejects.toThrow(/not a number/);
+
+              const fetched = await store.get("s1");
+              expect(fetched?.state).toEqual({ count: value });
+              expect(fetched?.version).toBe(0);
+            });
+          });
+        }
+      }
     });
 
     describe.runIf(createSharedPair !== undefined)("across two connections", () => {

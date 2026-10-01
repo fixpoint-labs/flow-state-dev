@@ -301,7 +301,10 @@ function assertStableResourceState(
  * (`setState(null)`). The store holds `JsonObject`, so that write persists as
  * `{}` — the same cleared form an unwritten nullable single already surfaces
  * as — and that `{}` is held to the same stability bar, because it is what the
- * next read parses. A schema-valid string or other non-object still throws.
+ * next read parses. The reset applies only when the caller wrote `null`: a
+ * non-null write the schema parses to `null` throws, because storing `{}` for
+ * it would discard the write while reporting success. A schema-valid string or
+ * other non-object still throws.
  *
  * `resourceLabel` is the storage key (or accessor) named in the error.
  */
@@ -315,8 +318,7 @@ export function parseResourceWriteState(
     return assertStableResourceState(stateSchema, parsed.data, value, resourceLabel);
   }
 
-  // Cleared nullable: schema accepted null. Persist the store's empty object,
-  // not a default that would look like surviving data.
+  // The schema accepted the write and produced null (or undefined).
   if (parsed.success && parsed.data == null) {
     // `{}` is what lands in the store and what the next read parses, so `{}` —
     // not the `null` this parse produced — is the value that has to be a fixed
@@ -324,20 +326,35 @@ export function parseResourceWriteState(
     // to null seed a row here that every later mutation verb refuses: without
     // this, `create(key, seed)` succeeds while a bare `create(key)` (which
     // seeds from `{}` and so lands above) is refused — the same verb reaching
-    // the same row and answering two different ways.
+    // the same row and answering two different ways. Checked first, so a schema
+    // that cannot settle is named the same way whichever branch a write takes.
     //
-    // Only the object case, deliberately. When `{}` fails the schema or parses
-    // to a non-object there is no seed either, but that is a separate and older
-    // defect with a different failure mode — the write reports success and
-    // stores nothing, rather than being refused — which predates this guard and
-    // is filed on its own. Widening the condition here would quietly fold that
-    // fix into this one; it stays narrow until that issue lands.
+    // Only the object case. When `{}` fails the schema or parses to a
+    // non-object, a reset still stores `{}` and the read path normalizes it to
+    // the resource's default — the caller asked for a cleared resource and
+    // reads one back.
     // Same peel as the candidate parse above: a top-level catch must not make
     // `{}` look like a successful clear-normalization via its fallback.
     const cleared = writeValidationSchema(stateSchema).safeParse({});
     if (cleared.success && isJsonObject(cleared.data)) {
       assertStableResourceState(stateSchema, cleared.data, {}, resourceLabel);
     }
+
+    // Storing `{}` is the reset only when the caller wrote null. A non-null
+    // write the schema sends to null (e.g. a transform reading "no `phase` yet"
+    // as no state) would report success with the caller's value gone, and the
+    // read-back would show the cleared form, so nothing would surface the loss.
+    if (value != null) {
+      throw new ValidationError(
+        `Resource "${resourceLabel}" write failed stateSchema validation: the schema parsed ` +
+          `a non-null write to ${parsed.data === null ? "null" : "undefined"}, so storing it ` +
+          `would discard the write. Write null to clear the resource, or make the schema ` +
+          `return an object for this value.`
+      );
+    }
+
+    // Cleared nullable: the caller wrote null. Persist the store's empty object,
+    // not a default that would look like surviving data.
     return {};
   }
 

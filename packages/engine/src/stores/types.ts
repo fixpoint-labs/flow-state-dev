@@ -609,8 +609,9 @@ export interface DeltaStoreOps<TRecord> {
 
   /**
    * Atomically add `delta` to the numeric value at `path` inside `state`.
-   * Treats a missing or non-numeric value as `0`. Other record fields are
-   * preserved unchanged.
+   * Treats a missing key or `null` as `0`; throws via the adapter's normal
+   * error surface, writing nothing, if a value is already present and is not
+   * a number. Other record fields are preserved unchanged.
    */
   incField?(
     id: string,

@@ -51,7 +51,9 @@ Atomically add to numeric fields:
 await ctx.session.incState({ messageCount: 1, errorCount: 0 });
 ```
 
-Each entry is added to the current value. Negative numbers decrement. Fields that don't exist start from `0`.
+Each entry is added to the current value. Negative numbers decrement. Fields that don't exist, or hold `null`, start from `0`.
+
+A field that holds anything else, such as a string or an object, makes the call throw instead of returning `false`, and the stored value is left as it was. That applies to the whole call, so if one field in a multi-field `incState` holds a non-number, none of the increments land. The error is a plain `Error` with no dedicated class to check for. Its message names the field and says it is not a number.
 
 ### `pushState(field, value)`
 
@@ -178,6 +180,8 @@ A write is also refused, and returns `false`, in these cases:
   ```
 
 - **A write with no version fell back to a full-record write and lost.** When the store doesn't offer the matching operation, the runtime writes the whole record at the version this run last read, in one attempt with no retry. Lose that race and the call returns `false` against a record that still exists — a lost delete looks exactly like a delete that had nothing to do. See [the store has to offer the operation](#the-store-has-to-offer-the-operation).
+
+`incState` on a field that holds a non-number doesn't return `false` at all. It throws and writes nothing. See [`incState`](#incstateincrements).
 
 So read `false` as "nothing was written", never as "the state already matched". When you need to know what is stored, read it back from something other than this context's cache. Neither the stale-cache no-op nor the lost fallback write refreshes `ctx.<scope>.state`, so reading it back there hands you the same copy the call was decided against.
 
