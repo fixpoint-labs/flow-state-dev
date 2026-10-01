@@ -308,6 +308,7 @@ export type {
   SessionMetadata,
   SessionMetadataInput,
   SessionScopeHandle,
+  StopRequestOutcome,
   UserScopeHandle
 } from "./scope";
 

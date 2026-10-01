@@ -2,9 +2,8 @@
  * Abort route handler for cancelling in-flight requests.
  */
 import type { StoreRegistry } from "../stores/types";
-import { resolveRequestIncarnation } from "../stores/scope-keys";
 import type { ResolvedPrincipal } from "../transports/types";
-import { abortRequest } from "../execution/abort-registry";
+import { recordRequestStop } from "../execution/record-request-stop";
 import { callerReachesRequest, jsonResponse, unknownRequestResponse } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -46,41 +45,17 @@ export async function handleAbortRequest(
     return unknownRequestResponse(requestId);
   }
 
-  // The request the owner check above read. Everything below acts on it and
-  // on nothing else that later takes the id.
-  const incarnation = resolveRequestIncarnation(record);
-
-  // One atomic step: record the intent only while the request is still
-  // running. A read-then-write cannot express this — the worker can commit a
-  // terminal status between the two, and writing afterwards would restore an
-  // `in_progress` record over a finished one. Fenced to the checked request by
-  // its incarnation: if the id was deleted and taken by someone else since,
-  // the write misses and the caller gets the unused-id answer; if the owner's
-  // own retry handed the record off, the incarnation held and the write lands.
-  const result = await ctx.stores.request.setFieldsIfStatus(
-    requestId,
-    { abortRequested: true },
-    ["in_progress"],
-    Date.now(),
-    incarnation
-  );
-
-  if (result.status === undefined) {
-    return unknownRequestResponse(requestId);
+  const stop = await recordRequestStop(ctx.stores.request, record);
+  switch (stop.kind) {
+    case "gone":
+      return unknownRequestResponse(requestId);
+    case "finished":
+      return jsonResponse(409, {
+        error: `Request "${requestId}" is already in terminal state "${stop.status}"`
+      });
+    case "fired":
+      return new Response(null, { status: 204 });
+    case "recorded":
+      return new Response(null, { status: 202 });
   }
-
-  if (!result.applied) {
-    return jsonResponse(409, {
-      error: `Request "${requestId}" is already in terminal state "${result.status}"`
-    });
-  }
-
-  // Fire the in-memory controller if the checked request runs in this
-  // process. A controller of a later request under the id is not it; that
-  // request never received the intent, so it is left running.
-  if (abortRequest(requestId, incarnation)) {
-    return new Response(null, { status: 204 });
-  }
-
-  return new Response(null, { status: 202 });
 }

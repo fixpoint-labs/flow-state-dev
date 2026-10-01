@@ -16,6 +16,7 @@ import type {
   SessionItemViews,
   SessionMetadataInput,
   SessionScopeHandle,
+  StopRequestOutcome,
   UserScopeHandle,
   TokenCounter
 } from "@flow-state-dev/core/types";
@@ -114,7 +115,8 @@ import {
   type RequestPrincipal
 } from "./request-principal";
 import { refuseInstancePin } from "./instance-pin";
-import { sessionRequestScope } from "./session-request-scope";
+import { requestInSessionScope, sessionRequestScope } from "./session-request-scope";
+import { recordRequestStop } from "../execution/record-request-stop";
 import { ownerKeyMaySeed } from "../resources/owner-private";
 import {
   outputItemToSessionItem,
@@ -2664,6 +2666,28 @@ export async function createExecutionContext<
           ...(input.tags !== undefined ? { tags: input.tags } : {}),
           ...(input.metadata !== undefined ? { metadata: input.metadata } : {})
         });
+      },
+      stopRequest: async (targetId: string): Promise<StopRequestOutcome> => {
+        const target = await stores.request.get(targetId);
+        // Only a request this session's own reads would show; anything else
+        // gets the answer an unknown id gets, so the reply says nothing about
+        // another session's requests.
+        if (
+          target === undefined ||
+          !requestInSessionScope(
+            target,
+            sessionRequestScope(sessionId, sessionRef.current, options.tenantId)
+          )
+        ) {
+          return "not-in-this-session";
+        }
+        // The abort route's own write (`recordRequestStop`), not a copy of it.
+        const stop = await recordRequestStop(stores.request, target);
+        // Gone between the read and the write: answered like an unknown id,
+        // as the abort route answers it 404.
+        if (stop.kind === "gone") return "not-in-this-session";
+        if (stop.kind === "finished") return "already-finished";
+        return "stopped";
       },
       ...sessionOpsEmitting
     },
