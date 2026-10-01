@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, who decides which owner a harness item gets. Chosen: each emitter decides, the reader returns both fields. Instead of: A, Claude Code nests its top-level items under the runtime owner, or B, the reader returns the task id only and Codex and Cursor stop stamping the owner. It comes down to the first row, what gets stamped: the chosen option changes nothing; A changes Claude Code's items, which is a bug fix; B changes Codex and Cursor's items and breaks the documented container promise. The price is the second row: Claude Code's nesting stays wrong for now, where A fixes it and B makes all three consistently wrong. Locks in: Claude Code runs inside a container show top-level steps outside it until its bug ships. Flips if: the product owner wants that bug fixed in this same change."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, who decides which owner a Claude Code item gets. Chosen: A, as the product owner chose: all three emitters stamp the runtime owner, so Claude Code's top-level items nest under their container. Instead of: keeping Claude Code task-only and fixing its nesting later, or B, the reader returns the task id only and Codex and Cursor stop stamping the owner. It comes down to the first row, Claude Code in a container: A nests it now and matches the docs; keeping it task-only leaves it outside until a later fix; B puts all three outside. The price is the second row: A changes Claude Code's items, isolated in one step with its own failing test; keeping it task-only changes nothing; B changes Codex and Cursor and breaks the documented promise. Locks in: one behaviour change, in its own step after the characterization. Flips if: the owned-container test shows nesting hides a step a renderer relies on."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -34,17 +34,17 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Who decides which owner a harness item is stamped with?</text>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL · OWNER CHOSE A</text>
+    <text class="t-q" x="32" y="52">Which owner does a Claude Code item get inside a container?</text>
   </g>
 
   <g id="options">
     <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
-    <text class="t-tag c-code" x="226" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="226" y="112">Each emitter chooses</text>
+    <text class="t-tag c-code" x="226" y="93">CHOSEN · A</text>
+    <text class="t-h c-code" x="226" y="112">All three stamp the owner</text>
     <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="466" y="93">INSTEAD OF · A</text>
-    <text class="t-h c-lost" x="466" y="112">Claude Code nests too</text>
+    <text class="t-tag c-mute" x="466" y="93">INSTEAD OF · DRAFT</text>
+    <text class="t-h c-lost" x="466" y="112">Claude Code task-only</text>
     <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-mute" x="706" y="93">INSTEAD OF · B</text>
     <text class="t-h c-lost" x="706" y="112">Reader gives task only</text>
@@ -53,43 +53,43 @@
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">WHAT GETS</text>
-    <text class="t-lbl" x="32" y="169">STAMPED</text>
+    <text class="t-lbl" x="32" y="156">CLAUDE CODE IN</text>
+    <text class="t-lbl" x="32" y="169">A CONTAINER</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="226" y="162">+</text>
-    <text class="t-b" x="244" y="161">Nothing changes</text>
-    <text class="t-s" x="244" y="179">a refactor stays a refactor</text>
+    <text class="t-b" x="244" y="161">Nests inside it</text>
+    <text class="t-s" x="244" y="179">matches the docs</text>
     <text class="mark minus" x="466" y="162">−</text>
-    <text class="t-b" x="484" y="161">Claude Code's items change</text>
-    <text class="t-s" x="484" y="179">a bug fix, not a refactor</text>
+    <text class="t-b" x="484" y="161">Shows outside it</text>
+    <text class="t-s" x="484" y="179">until a later fix</text>
     <text class="mark minus" x="706" y="162">−</text>
-    <text class="t-b" x="724" y="161">Codex, Cursor change</text>
-    <text class="t-s" x="724" y="179">breaks the documented promise</text>
+    <text class="t-b" x="724" y="161">All three show outside</text>
+    <text class="t-s" x="724" y="179">consistent, and wrong</text>
   </g>
 
   <g id="row-price">
-    <text class="t-lbl" x="32" y="222">CLAUDE CODE IN</text>
-    <text class="t-lbl" x="32" y="235">A CONTAINER</text>
+    <text class="t-lbl" x="32" y="222">WHAT GETS</text>
+    <text class="t-lbl" x="32" y="235">STAMPED</text>
     <text class="mark minus" x="226" y="224">−</text>
-    <text class="t-b" x="244" y="223">Still shows outside it</text>
-    <text class="t-s" x="244" y="241">until its own bug ships</text>
+    <text class="t-b" x="244" y="223">Claude Code's items change</text>
+    <text class="t-s" x="244" y="241">one step, its own red test</text>
     <text class="mark plus" x="466" y="224">+</text>
-    <text class="t-b" x="484" y="223">Nests correctly</text>
-    <text class="t-s" x="484" y="241">matches the docs</text>
+    <text class="t-b" x="484" y="223">Nothing changes</text>
+    <text class="t-s" x="484" y="241">a pure refactor</text>
     <text class="mark minus" x="706" y="224">−</text>
-    <text class="t-b" x="724" y="223">All three show outside</text>
-    <text class="t-s" x="724" y="241">consistent, and wrong</text>
+    <text class="t-b" x="724" y="223">Codex, Cursor change</text>
+    <text class="t-s" x="724" y="241">breaks the documented promise</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
 
   <g id="row-next">
     <text class="t-lbl" x="32" y="280">THE NEXT HARNESS</text>
     <text class="mark plus" x="226" y="282">+</text>
-    <text class="t-b" x="244" y="281">Gets both, chooses</text>
-    <text class="t-s" x="244" y="299">the docs say: stamp both</text>
-    <text class="mark plus" x="466" y="282">+</text>
-    <text class="t-b" x="484" y="281">Gets both, stamps both</text>
-    <text class="t-s" x="484" y="299">one rule for all</text>
+    <text class="t-b" x="244" y="281">Gets both, stamps both</text>
+    <text class="t-s" x="244" y="299">one rule for all</text>
+    <text class="mark minus" x="466" y="282">−</text>
+    <text class="t-b" x="484" y="281">Gets both, chooses</text>
+    <text class="t-s" x="484" y="299">two shapes to copy from</text>
     <text class="mark minus" x="706" y="282">−</text>
     <text class="t-b" x="724" y="281">Never sees the owner</text>
     <text class="t-s" x="724" y="299">nesting lost by default</text>
@@ -99,14 +99,14 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Claude Code nesting stays wrong, for now</text>
-    <text class="t-s" x="32" y="389">pinned by name; its bug fix flips one assertion</text>
+    <text class="t-b" x="32" y="371">One behaviour change, in its own step</text>
+    <text class="t-s" x="32" y="389">characterization first, then the flip and an owned-container test</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">You want the nesting bug fixed in this change</text>
-    <text class="t-s" x="494" y="389">then A, on a bug-fix desk, with an owned-container test</text>
+    <text class="t-b" x="494" y="371">Nesting hides a step a renderer relies on</text>
+    <text class="t-s" x="494" y="389">then back to the pure extract, with the bug filed apart</text>
   </g>
 </svg>

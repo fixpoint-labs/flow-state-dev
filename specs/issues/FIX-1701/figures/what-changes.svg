@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 344" role="img" aria-label="Before and after. Before: the Claude Code, Codex and Cursor emitters each read the runtime identity themselves; Claude Code takes the task id only, Codex and Cursor take the task id and the owner. After: one core reader beside the identity type returns the task id and the owner; Codex and Cursor stamp both, as before; Claude Code stamps the task id and keeps its own sub-agent owner, as before. What is stamped on each item is identical before and after."
+<svg viewBox="0 0 940 344" role="img" aria-label="Before and after. Before: the Claude Code, Codex and Cursor emitters each read the runtime identity themselves; Claude Code takes the task id only, so its top-level steps escape the container they run in; Codex and Cursor take the task id and the owner. After: one core reader beside the identity type returns the task id and the owner; all three emitters stamp both, so Claude Code nests like the others; items inside a Claude Code sub-agent keep that sub-agent as their owner. Every other stamped field is identical before and after."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -32,7 +32,7 @@
     <rect class="copy" x="24" y="124" width="132" height="70" rx="5"/>
     <text class="t-b" x="36" y="146">Claude Code</text>
     <text class="t-s" x="36" y="164">own read</text>
-    <text class="t-s c-gone" x="36" y="182">task only</text>
+    <text class="t-s c-gone" x="36" y="182">task only · escapes</text>
     <rect class="copy" x="168" y="124" width="132" height="70" rx="5"/>
     <text class="t-b" x="180" y="146">Codex</text>
     <text class="t-s" x="180" y="164">own read</text>
@@ -42,7 +42,7 @@
     <text class="t-s" x="324" y="164">copy of Codex's</text>
     <text class="t-s c-gone" x="324" y="182">task + owner</text>
     <text class="t-s" x="24" y="222">A fourth harness copies one of these,</text>
-    <text class="t-s" x="24" y="238">and can forget the task, as Claude Code did.</text>
+    <text class="t-s" x="24" y="238">and can forget the task, or the owner, as Claude Code did.</text>
   </g>
 
   <line class="divd" x1="470" y1="20" x2="470" y2="330"/>
@@ -59,15 +59,15 @@
     <path class="edge" d="M640 160 L566 204 M706 160 V204 M772 160 L846 204"/>
     <rect class="n-box" x="496" y="204" width="132" height="70" rx="5"/>
     <text class="t-b" x="508" y="226">Claude Code</text>
-    <text class="t-s" x="508" y="244">task</text>
-    <text class="t-s" x="508" y="262">owner: sub-agent's</text>
+    <text class="t-s c-code" x="508" y="244">task + owner</text>
+    <text class="t-s" x="508" y="262">sub-agent: its own</text>
     <rect class="n-box" x="640" y="204" width="132" height="70" rx="5"/>
     <text class="t-b" x="652" y="226">Codex</text>
     <text class="t-s" x="652" y="244">task + owner</text>
     <rect class="n-box" x="784" y="204" width="132" height="70" rx="5"/>
     <text class="t-b" x="796" y="226">Cursor</text>
     <text class="t-s" x="796" y="244">task + owner</text>
-    <text class="t-s" x="496" y="304">Each emitter still chooses what it stamps, at its own call site.</text>
-    <text class="t-s c-code" x="496" y="322">Every stamped field identical to today, pinned before the move.</text>
+    <text class="t-s c-code" x="496" y="304">Claude Code now stamps the owner, so it nests like the others.</text>
+    <text class="t-s" x="496" y="322">Every other stamped field identical to today, pinned before the move.</text>
   </g>
 </svg>
