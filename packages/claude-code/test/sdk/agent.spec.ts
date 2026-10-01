@@ -1125,6 +1125,86 @@ describe("claudeCodeAgent — task attribution", () => {
   });
 });
 
+describe("claudeCodeAgent — inside an owned container", () => {
+  // The Container Ownership contract (`docs/architecture/streaming.md`): every
+  // item emitted inside a container carries that container's `ownedBy`, and a
+  // nested container's own item carries the outer owner. A Claude Code run
+  // placed inside a container must show its steps inside it, as Codex and
+  // Cursor runs do; a sub-agent's own steps still show inside the sub-agent.
+  // Driven through the real block inside a real sequencer that declares a
+  // container, so the owner comes from the runtime, not a hand-built identity.
+  it("stamps the container's owner on every top-level item and sub-agent box, and the sub-agent's on its own items", async () => {
+    const messages: SdkMessageLike[] = [
+      { type: "system", subtype: "init", session_id: "sess_owned" },
+      {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "thinking", thinking: "plan" },
+            { type: "text", text: "working" },
+            { type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "ls" } },
+          ],
+        },
+      },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "ok" }] } },
+      {
+        type: "assistant",
+        message: { content: [{ type: "tool_use", id: "toolu_agent", name: "Agent", input: { task: "sub" } }] },
+      },
+      {
+        type: "assistant",
+        parent_tool_use_id: "toolu_agent",
+        message: { content: [{ type: "tool_use", id: "toolu_inner", name: "Read", input: { path: "a" } }] },
+      },
+      {
+        type: "user",
+        parent_tool_use_id: "toolu_agent",
+        message: { content: [{ type: "tool_result", tool_use_id: "toolu_inner", content: "ok" }] },
+      },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_agent", content: "child done" }] } },
+      { type: "result", subtype: "error_max_turns", result: "too many turns", session_id: "sess_owned" },
+    ];
+    const owned = sequencer({
+      name: "owned-run",
+      inputSchema: z.object({ prompt: z.string() }),
+      container: { component: "harness-run" },
+    }).step(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages), includePartialMessages: false }));
+
+    const { items, error } = await testBlock(owned, { input: { prompt: "do the thing" } });
+
+    expect(error).toBeNull();
+    const outer = items.find((i) => i.type === "container" && i.blockName === "owned-run") as
+      | { provenance: { blockInstanceId: string } }
+      | undefined;
+    expect(outer).toBeDefined();
+    const outerOwner = outer!.provenance.blockInstanceId;
+    const subagent = items.find((i) => i.type === "container" && i.blockName === "Agent") as
+      | { provenance: { blockInstanceId: string } }
+      | undefined;
+    expect(subagent).toBeDefined();
+    const subagentOwner = subagent!.provenance.blockInstanceId;
+
+    const RUN_TYPES = new Set(["message", "reasoning", "tool_output", "container", "error"]);
+    const runItems = items.filter((i) => RUN_TYPES.has(i.type) && i !== outer);
+    expect(new Set(runItems.map((i) => i.type))).toEqual(
+      new Set(["message", "reasoning", "tool_output", "container", "error"]),
+    );
+    const innerCallIds = new Set(["toolu_inner"]);
+    const ownership = runItems.map((i) => {
+      const callId = (i as { toolCall?: { callId?: string } }).toolCall?.callId;
+      return { type: i.type, callId, ownedBy: (i as { ownedBy?: string }).ownedBy };
+    });
+    expect(ownership).toEqual(
+      ownership.map(({ type, callId }) => ({
+        type,
+        callId,
+        ownedBy: callId !== undefined && innerCallIds.has(callId) ? subagentOwner : outerOwner,
+      })),
+    );
+    expect(ownership.some((o) => o.ownedBy === subagentOwner)).toBe(true);
+  });
+});
+
 describe("claudeCodeAgent — detached", () => {
   /** The read the board's refusal performs, spelled the same way. */
   function authoredSessionStateSchema(block: unknown): unknown {

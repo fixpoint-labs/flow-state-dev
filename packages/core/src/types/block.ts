@@ -1218,6 +1218,27 @@ export function asRuntime<
   return block as BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput>;
 }
 
+/**
+ * The task scope an emitted item carries, read off the runtime identity
+ * (`ctx._blockIdentity`): the task the item belongs to and the container that
+ * owns it. Each key is present only when the identity defines it
+ * (`!== undefined`, so an empty string is kept); an absent key is omitted, not
+ * set to `undefined`. Harness emitters spread or stamp what this returns; it
+ * decides nothing about which owner wins when an emitter has its own nesting.
+ *
+ * @internal
+ */
+export function itemScope(ctx: Pick<BlockContext, "_blockIdentity">): {
+  taskId?: string;
+  ownedBy?: string;
+} {
+  const identity = ctx._blockIdentity;
+  return {
+    ...(identity?.taskId !== undefined ? { taskId: identity.taskId } : {}),
+    ...(identity?.ownedBy !== undefined ? { ownedBy: identity.ownedBy } : {}),
+  };
+}
+
 export interface RescueHandlerSpec {
   when?: Array<new (...args: any[]) => Error>;
   block: BlockDefinition<any, any>;

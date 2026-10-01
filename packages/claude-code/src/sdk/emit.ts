@@ -14,7 +14,7 @@
  * the message's `parent_tool_use_id`); tools surface as `tool_output` items
  * correlated by SDK tool-use id.
  */
-import type { BlockContext } from "@flow-state-dev/core/types";
+import { itemScope, type BlockContext } from "@flow-state-dev/core/types";
 import type { TranslatedEvent } from "./types";
 
 /** Provenance shape derived once per run and stamped on every emitted item. */
@@ -34,10 +34,10 @@ interface EmitProvenance {
  */
 export interface EmitState {
   /** Item id + accumulated text of the in-progress streamed message, if any.
-   *  `ownedBy` (when set) nests the item under a sub-agent container. */
+   *  `ownedBy` (when set) is the owner the open carried; the close keeps it. */
   message: { id: string; contentIndex: number; text: string; ownedBy?: string } | null;
   /** Item id + accumulated text of the in-progress streamed reasoning, if any.
-   *  `ownedBy` (when set) nests the item under a sub-agent container. */
+   *  `ownedBy` (when set) is the owner the open carried; the close keeps it. */
   reasoning: { id: string; contentIndex: number; text: string; ownedBy?: string } | null;
   /** Open tool_output items keyed by SDK tool-use callId. */
   readonly openTools: Map<
@@ -103,37 +103,48 @@ function mintId(kind: string): string {
 
 /**
  * Fields every item carries besides its id. A close reuses the id from
- * `item.added`, so it cannot go through {@link buildBase}. The task id is
- * stamped here once and omitted outside a task scope.
+ * `item.added`, so it cannot go through {@link buildBase}. Task and runtime
+ * owner come from {@link itemScope}. `ownedBy`, when passed, replaces the
+ * runtime owner (a sub-agent's id, or the owner the open stored).
  */
-function itemFields(ctx: BlockContext, provenance: EmitProvenance) {
-  const taskId = (ctx as { _blockIdentity?: { taskId?: string } })._blockIdentity?.taskId;
+function itemFields(ctx: BlockContext, provenance: EmitProvenance, ownedBy?: string) {
+  const scope = itemScope(ctx);
+  const owner = ownedBy ?? scope.ownedBy;
   return {
     requestId: ctx.request.identity.id,
     itemIndex: ctx.response.getItemCount(),
     provenance,
     ts: Date.now(),
-    ...(taskId === undefined ? {} : { taskId }),
+    ...(scope.taskId !== undefined ? { taskId: scope.taskId } : {}),
+    ...(owner !== undefined ? { ownedBy: owner } : {}),
   };
 }
 
 /** Per-item base for a newly opened item: a fresh id plus {@link itemFields}. */
-function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) {
-  return { id: mintId(kind), ...itemFields(ctx, provenance) };
+function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string, ownedBy?: string) {
+  return { id: mintId(kind), ...itemFields(ctx, provenance, ownedBy) };
 }
 
 const CONVERSATIONAL_VISIBILITY = { client: true, history: true } as const;
 
 /**
- * Resolve the `ownedBy` value for an item produced inside a sub-agent.
- * `parentCallId` is the sub-agent's tool-use id (from the SDK message's
- * `parent_tool_use_id`); when a container is open for it, the item nests under
- * that container by carrying its `provenance.blockInstanceId` (the framework's
- * container-ownership key). Returns `undefined` for top-level items.
+ * Resolve the `ownedBy` value for an item. `parentCallId` is the sub-agent's
+ * tool-use id (from the SDK message's `parent_tool_use_id`); when a container
+ * is open for it, the item nests under that container by carrying its
+ * `provenance.blockInstanceId` (the framework's container-ownership key). The
+ * sub-agent's owner wins inside it; every other item takes the owner of the
+ * container this run sits in, as the runtime describes it, so a run inside a
+ * container shows its steps inside that container
+ * (`docs/architecture/streaming.md` → "Container Ownership").
  */
-function resolveOwnedBy(state: EmitState, parentCallId: string | undefined): string | undefined {
-  if (parentCallId === undefined) return undefined;
-  return state.openSubagents.get(parentCallId)?.instanceId;
+function resolveOwnedBy(
+  ctx: BlockContext,
+  state: EmitState,
+  parentCallId: string | undefined,
+): string | undefined {
+  const subAgentOwner =
+    parentCallId === undefined ? undefined : state.openSubagents.get(parentCallId)?.instanceId;
+  return subAgentOwner ?? itemScope(ctx).ownedBy;
 }
 
 /**
@@ -196,15 +207,14 @@ async function emitMessageDelta(
   if (state.message === null) {
     // A reasoning item streaming before the first text closes here.
     await closeStreamingReasoning(ctx, state, provenance.blockName);
-    const ownedBy = resolveOwnedBy(state, parentCallId);
-    const base = buildBase(ctx, provenance, "msg");
+    const ownedBy = resolveOwnedBy(ctx, state, parentCallId);
+    const base = buildBase(ctx, provenance, "msg", ownedBy);
     const item = {
       ...base,
       type: "message" as const,
       role: "assistant" as const,
       status: "in_progress" as const,
       itemVisibility: CONVERSATIONAL_VISIBILITY,
-      ...(ownedBy ? { ownedBy } : {}),
       content: [{ type: "output_text" as const, text: "" }],
     };
     await ctx.response.emit({ type: "item.added", item });
@@ -262,9 +272,8 @@ async function closeStreamingMessage(
       type: "message",
       role: "assistant",
       status: "completed",
-      ...itemFields(ctx, deriveProvenance(ctx, blockName)),
+      ...itemFields(ctx, deriveProvenance(ctx, blockName), ownedBy),
       itemVisibility: CONVERSATIONAL_VISIBILITY,
-      ...(ownedBy ? { ownedBy } : {}),
       content: [{ type: "output_text", text }],
     },
   });
@@ -283,15 +292,14 @@ async function emitMessageComplete(
   provenance: EmitProvenance,
   parentCallId: string | undefined,
 ): Promise<void> {
-  const ownedBy = resolveOwnedBy(state, parentCallId);
-  const base = buildBase(ctx, provenance, "msg");
+  const ownedBy = resolveOwnedBy(ctx, state, parentCallId);
+  const base = buildBase(ctx, provenance, "msg", ownedBy);
   const inProgress = {
     ...base,
     type: "message" as const,
     role: "assistant" as const,
     status: "in_progress" as const,
     itemVisibility: CONVERSATIONAL_VISIBILITY,
-    ...(ownedBy ? { ownedBy } : {}),
     content: [{ type: "output_text" as const, text: "" }],
   };
   await ctx.response.emit({ type: "item.added", item: inProgress });
@@ -323,14 +331,13 @@ async function emitReasoningDelta(
   parentCallId: string | undefined,
 ): Promise<void> {
   if (state.reasoning === null) {
-    const ownedBy = resolveOwnedBy(state, parentCallId);
-    const base = buildBase(ctx, provenance, "reasoning");
+    const ownedBy = resolveOwnedBy(ctx, state, parentCallId);
+    const base = buildBase(ctx, provenance, "reasoning", ownedBy);
     const item = {
       ...base,
       type: "reasoning" as const,
       status: "in_progress" as const,
       itemVisibility: CONVERSATIONAL_VISIBILITY,
-      ...(ownedBy ? { ownedBy } : {}),
       summary: [{ type: "reasoning_text" as const, text: "" }],
     };
     await ctx.response.emit({ type: "item.added", item });
@@ -371,9 +378,8 @@ async function closeStreamingReasoning(
       id,
       type: "reasoning",
       status: "completed",
-      ...itemFields(ctx, deriveProvenance(ctx, blockName)),
+      ...itemFields(ctx, deriveProvenance(ctx, blockName), ownedBy),
       itemVisibility: CONVERSATIONAL_VISIBILITY,
-      ...(ownedBy ? { ownedBy } : {}),
       summary: [{ type: "reasoning_text", text }],
     },
   });
@@ -388,14 +394,13 @@ async function emitReasoningComplete(
   provenance: EmitProvenance,
   parentCallId: string | undefined,
 ): Promise<void> {
-  const ownedBy = resolveOwnedBy(state, parentCallId);
-  const base = buildBase(ctx, provenance, "reasoning");
+  const ownedBy = resolveOwnedBy(ctx, state, parentCallId);
+  const base = buildBase(ctx, provenance, "reasoning", ownedBy);
   const inProgress = {
     ...base,
     type: "reasoning" as const,
     status: "in_progress" as const,
     itemVisibility: CONVERSATIONAL_VISIBILITY,
-    ...(ownedBy ? { ownedBy } : {}),
     summary: [{ type: "reasoning_text" as const, text: "" }],
   };
   await ctx.response.emit({ type: "item.added", item: inProgress });
@@ -429,8 +434,8 @@ async function emitToolCall(
   await closeStreamingMessage(ctx, state, provenance.blockName);
   await closeStreamingReasoning(ctx, state, provenance.blockName);
   if (!state.toolsObserved.includes(event.name)) state.toolsObserved.push(event.name);
-  const ownedBy = resolveOwnedBy(state, event.parentCallId);
-  const base = buildBase(ctx, provenance, "tool");
+  const ownedBy = resolveOwnedBy(ctx, state, event.parentCallId);
+  const base = buildBase(ctx, provenance, "tool", ownedBy);
   const item = {
     ...base,
     type: "tool_output" as const,
@@ -444,14 +449,13 @@ async function emitToolCall(
       generatorBlock: blockName,
     },
     itemVisibility: CONVERSATIONAL_VISIBILITY,
-    ...(ownedBy ? { ownedBy } : {}),
   };
   await ctx.response.emit({ type: "item.added", item });
   state.openTools.set(event.callId, {
     id: base.id,
     name: event.name,
     arguments: event.arguments,
-    ...(ownedBy ? { ownedBy } : {}),
+    ownedBy,
   });
 }
 
@@ -473,12 +477,12 @@ async function emitToolResult(
   const id = open?.id ?? mintId("tool");
   const toolName = open?.name ?? blockName;
   const toolArgs = open?.arguments ?? "{}";
-  const ownedBy = open?.ownedBy ?? resolveOwnedBy(state, event.parentCallId);
+  const ownedBy = open?.ownedBy ?? resolveOwnedBy(ctx, state, event.parentCallId);
   const item = {
     id,
     type: "tool_output" as const,
     status: event.isError ? ("failed" as const) : ("completed" as const),
-    ...itemFields(ctx, provenance),
+    ...itemFields(ctx, provenance, ownedBy),
     blockName: toolName,
     output: event.output,
     toolCall: {
@@ -488,7 +492,6 @@ async function emitToolResult(
       generatorBlock: blockName,
     },
     itemVisibility: CONVERSATIONAL_VISIBILITY,
-    ...(ownedBy ? { ownedBy } : {}),
     ...(event.isError ? { error: { message: String(event.output) } } : {}),
   };
   if (isOrphan) {
@@ -592,7 +595,7 @@ export async function finalizeOpenItems(
         id: open.id,
         type: "tool_output",
         status: "incomplete",
-        ...itemFields(ctx, deriveProvenance(ctx, blockName)),
+        ...itemFields(ctx, deriveProvenance(ctx, blockName), open.ownedBy),
         blockName: open.name,
         output: null,
         toolCall: {
@@ -602,7 +605,6 @@ export async function finalizeOpenItems(
           generatorBlock: blockName,
         },
         itemVisibility: CONVERSATIONAL_VISIBILITY,
-        ...(open.ownedBy ? { ownedBy: open.ownedBy } : {}),
       },
     });
   }
