@@ -9,6 +9,7 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { createLabClients } from "../src/lib/connection";
+import { ASKER_REFUSED_LINE } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -151,13 +152,126 @@ describe("the composer (V6)", () => {
     expect(screen.queryByText("refused line", { selector: "[data-testid=transcript-line-body]" })).toBeNull();
   });
 
-  it("disables addressing a worker, which isn't built, and says so", async () => {
-    await openApp("/w/ops.side/stream");
+  it("@worker with no task in this workstream disables Send and says so, and posts nothing (BR-19)", async () => {
+    const { clients } = await openApp("/w/ops.side/stream");
     const input = await screen.findByTestId("composer-input");
-    fireEvent.change(input, { target: { value: "@someone please" } });
+    fireEvent.change(input, { target: { value: "@asker please look" } });
+    await waitFor(() => expect(screen.getByTestId("composer-status").textContent).toBe(`ops.asker ${GAPS.turn.noTask}`));
     expect((screen.getByTestId("composer-send") as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId("composer-status").textContent).toBe(GAPS.addressWorker);
-    expect(GAPS.addressWorker).toMatch(/isn't built yet/);
+    expect(screen.getByTestId("composer-send").textContent).toBe("Send");
+
+    fireEvent.change(input, { target: { value: "@nobody please" } });
+    expect(screen.getByTestId("composer-status").textContent).toBe(`@nobody ${GAPS.turn.noWorker}`);
+    expect((screen.getByTestId("composer-send") as HTMLButtonElement).disabled).toBe(true);
+
+    const state = await clients.sessions.getSessionState("ops.side", { includeItems: true, itemTypes: ["component"] });
+    expect(JSON.stringify(state.items ?? [])).not.toContain("please");
+  });
+});
+
+describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
+  /** An ask in the asker's session, then Inbox open on it. */
+  async function openOnAsk(options: Parameters<typeof openAskLab>[0] = {}) {
+    const lab = await serveLab((await openAskLab(options)).flowState);
+    served.push(lab);
+    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    await clients.actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    const item = await screen.findByTestId("inbox-item");
+    act(() => fireEvent.click(item));
+    await screen.findByTestId("inbox-reply");
+    return { clients };
+  }
+
+  /** The user lines a session holds. */
+  async function userLines(clients: ReturnType<typeof createLabClients>, sessionId: string): Promise<string> {
+    const state = await clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["message"] });
+    return JSON.stringify((state.items ?? []).filter((item) => (item as { role?: string }).role === "user"));
+  }
+
+  it("shows delivered only once the seat's session holds the line, through its door", async () => {
+    const { clients } = await openOnAsk();
+    const input = screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement;
+    expect(input.disabled).toBe(false);
+    // Hold the door's request open: nothing may read delivered while it is.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+      if (String(i instanceof Request ? i.url : i).includes("/status")) await held;
+      return real(i, init);
+    });
+    fireEvent.change(input, { target: { value: "a reply line" } });
+    fireEvent.click(screen.getByTestId("inbox-reply-send"));
+    await waitFor(() => expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("sending"));
+    expect(input.value).toBe("a reply line");
+    release();
+    await waitFor(() => expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("delivered"));
+    expect(input.value).toBe("");
+    expect(await userLines(clients, "s_ops_asker")).toContain("a reply line");
+    // The ask is untouched: a reply isn't an answer.
+    expect(screen.getByTestId("inbox-detail").textContent).toMatch(/Approve/);
+  });
+
+  it("keeps the draft and shows the seat's own reason when its door refuses", async () => {
+    await openOnAsk();
+    const input = screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: ASKER_REFUSED_LINE } });
+    fireEvent.click(screen.getByTestId("inbox-reply-send"));
+    expect((await screen.findByTestId("inbox-reply-error", {}, { timeout: 5_000 })).textContent).toBe("This seat won't take that line.");
+    expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("refused");
+    expect(input.value).toBe(ASKER_REFUSED_LINE);
+    expect(screen.queryByTestId("inbox-reply-retry")).toBeNull();
+  });
+
+  it("says not sent, with Retry, when the line never reached the Lab", async () => {
+    const { clients } = await openOnAsk();
+    const input = screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement;
+    const real = globalThis.fetch;
+    let down = true;
+    vi.spyOn(globalThis, "fetch").mockImplementation((i, init) =>
+      down && String(i instanceof Request ? i.url : i).includes("/actions/message")
+        ? Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 }))
+        : real(i, init),
+    );
+    fireEvent.change(input, { target: { value: "try again" } });
+    fireEvent.click(screen.getByTestId("inbox-reply-send"));
+    expect((await screen.findByTestId("inbox-reply-error")).textContent).toMatch(/^Not sent: .*store offline/);
+    expect(input.value).toBe("try again");
+    down = false;
+    act(() => fireEvent.click(screen.getByTestId("inbox-reply-retry")));
+    await waitFor(() => expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("delivered"));
+    expect(await userLines(clients, "s_ops_asker")).toContain("try again");
+  });
+
+  it("keeps the draft and offers no Retry when it can't confirm the line arrived", async () => {
+    const { clients } = await openOnAsk();
+    const input = screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement;
+    const real = globalThis.fetch;
+    // The door takes the line, then reading the session back fails.
+    vi.spyOn(globalThis, "fetch").mockImplementation((i, init) =>
+      String(i instanceof Request ? i.url : i).includes("item_types=message")
+        ? Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 }))
+        : real(i, init),
+    );
+    fireEvent.change(input, { target: { value: "did it land" } });
+    fireEvent.click(screen.getByTestId("inbox-reply-send"));
+    expect((await screen.findByTestId("inbox-reply-error", {}, { timeout: 5_000 })).textContent).toMatch(/Check the worker's session/);
+    expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("unconfirmed");
+    expect(input.value).toBe("did it land");
+    // A resend here would put the line in the session twice.
+    expect(screen.queryByTestId("inbox-reply-retry")).toBeNull();
+    vi.restoreAllMocks();
+    expect(await userLines(clients, "s_ops_asker")).toContain("did it land");
+  });
+
+  it("is disabled for a seat whose kind has no door, and Approve still answers (BR-22)", async () => {
+    await openOnAsk({ doors: false });
+    expect((screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement).disabled).toBe(true);
+    expect(screen.getByTestId("inbox-reply-blocked").textContent).toBe(`ops.asker ${GAPS.turn.replyNoDoor}`);
+    const approve = within(screen.getByTestId("inbox-detail")).getByRole("button", { name: "Approve" });
+    expect((approve as HTMLButtonElement).disabled).toBe(false);
   });
 });
 

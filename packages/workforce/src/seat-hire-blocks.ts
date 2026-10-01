@@ -21,6 +21,7 @@ import type {
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "./seat-hire-keys";
+import { seatDoorOf } from "./seat-door";
 import { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
 import type { HiredSeatRow } from "./roster/collections";
 import { hiredSeatOwnerPinFromRosterOwner, registerHiredSeat } from "./roster/register-hired-seat";
@@ -244,10 +245,14 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         throw error;
       }
 
+      const door = seatDoorOf(seat);
       const inventory = collectionOf(ctx, SEAT_INVENTORY_RESOURCE);
-      await inventory.upsert(address, { id: address, kind: input.flow });
+      await inventory.upsert(address, { id: address, kind: input.flow, door: door.door });
 
-      const warnings = unattendedBoardWarnings(options.channelBoards ?? [], [seat]);
+      const warnings = [
+        ...unattendedBoardWarnings(options.channelBoards ?? [], [seat]),
+        ...(door.problem === undefined ? [] : [door.problem]),
+      ];
       return {
         seatId: input.seatId,
         address,

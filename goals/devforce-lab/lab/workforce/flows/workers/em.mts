@@ -31,6 +31,7 @@ import {
   coordinatorBoard,
   type FeatureLedger,
   type FeatureRow,
+  RESUME_ENTRY,
 } from "../../../board.mts";
 import {
   ASK_ENTRY,
@@ -370,6 +371,10 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
         // ever posting, which is the thing the channel leg exists to prove is
         // not how work starts.
         [POST_ENTRY]: { block: fileFromPost, inputSchema: postInputSchema },
+        // The coder seat's message door re-runs the board here after it stops
+        // a run for a person's message, in the session that claimed the row:
+        // the hand-off then lands in the run's own session again.
+        [RESUME_ENTRY]: { block: board.drain },
       },
     },
   } as never);

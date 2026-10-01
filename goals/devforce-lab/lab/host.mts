@@ -447,8 +447,16 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ledger,
     ...(options.fileBeforeAsking === true ? { fileBeforeAsking: true } : {}),
   });
+  // The coordinator a coder seat's message door re-runs the board on, read off
+  // the tree like the board. Two would be a guess, so the lab refuses; none
+  // leaves the coder with no door, since nothing re-runs its board.
+  const emRecords = roster.workers.filter((worker) => worker.declared.flow === EM_KIND);
+  if (emRecords.length > 1) {
+    throw new Error(`the tree declares ${emRecords.length} EM seats; this lab runs one`);
+  }
   const coderKind = defineCoderWorkerFlow({
     ledger,
+    ...(emRecords[0] === undefined ? {} : { coordinatorSeatId: emRecords[0].id }),
     harness: options.harness,
     workspace: options.workspace,
     phase: defineImplementPhase({ requireAcceptance: options.requireAcceptance === true }),
@@ -616,7 +624,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       return result;
     };
     const opened = await openInventory(
-      { seats: hired.map((seat) => ({ id: seat.id, kind: seat.kind })), channels: roster.channels },
+      { seats: hired, channels: roster.channels },
       { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
     );
     if (opened.problems.length > 0) {

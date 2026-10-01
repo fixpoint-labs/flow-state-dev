@@ -316,7 +316,7 @@ export async function openRunLab() {
   };
 
   const inventory = await openInventory(
-    { seats: hired.map((seat) => ({ id: seat.id, kind: seat.kind })), channels: tree.channels },
+    { seats: hired, channels: tree.channels },
     {
       run: (request: InventoryActionRequest) => act(flows[request.flowKind]!, request.sessionId, request.action, request.input, request.source),
       seatWriter: { flowKind: CHANNEL_KIND },
