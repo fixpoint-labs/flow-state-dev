@@ -1,15 +1,21 @@
 // @vitest-environment happy-dom
 /**
- * Shift Manager's look follows the OS setting: `dark` on the root element while the
- * OS prefers dark, off while it prefers light, and switched live when the
- * setting changes. A shift the page was served with (`--shift day|night`)
- * overrides the OS setting for as long as the page is open.
+ * Shift Manager's look, by precedence: the shift a person picked in the
+ * sidebar's switch (kept for that browser), else the shift the page was served
+ * with (`--shift day|night`), else the OS setting, followed live. Whichever
+ * holds, the switch flips the `dark` class on the root element at once.
+ *
+ * Each precedence case runs against the OPPOSITE answer from every source
+ * below it, so a look that skipped the winning source would fail it.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { bootColorScheme, followColorScheme, readServedColorScheme } from "../src/lib/color-scheme";
+import { bootColorScheme, readServedColorScheme } from "../src/lib/color-scheme";
 
-/** A `matchMedia` whose answer the test flips, as the OS setting would. */
-function osSetting(dark: boolean) {
+/** The browser storage key the switch keeps a person's pick under. */
+const KEY = "shift-manager:shift";
+
+/** A `matchMedia` whose answer the test flips, as the OS setting would, plus a storage the test can preload. */
+function browser(dark: boolean, stored: Record<string, string> = {}) {
   const listeners = new Set<() => void>();
   const media = {
     get matches() {
@@ -18,48 +24,37 @@ function osSetting(dark: boolean) {
     addEventListener: (_: string, fn: () => void) => void listeners.add(fn),
     removeEventListener: (_: string, fn: () => void) => void listeners.delete(fn),
   };
+  const saved = new Map(Object.entries(stored));
+  const localStorage = {
+    getItem: (k: string) => saved.get(k) ?? null,
+    setItem: (k: string, v: string) => void saved.set(k, String(v)),
+  };
   return {
-    win: { matchMedia: (query: string) => (query === "(prefers-color-scheme: dark)" ? media : { ...media, matches: false }) } as unknown as Window,
-    set(next: boolean) {
+    win: {
+      matchMedia: (query: string) => (query === "(prefers-color-scheme: dark)" ? media : { ...media, matches: false }),
+      localStorage,
+    } as unknown as Window,
+    setOs(next: boolean) {
       dark = next;
       for (const fn of listeners) fn();
     },
     listening: () => listeners.size,
+    saved,
   };
 }
 
+/** A browser whose storage throws on every touch, as a private window or blocked site data can. */
+function lockedBrowser(dark: boolean) {
+  const b = browser(dark);
+  const refuse = () => {
+    throw new Error("SecurityError: storage is blocked");
+  };
+  Object.defineProperty(b.win, "localStorage", { get: refuse });
+  return b;
+}
+
 const root = () => document.documentElement;
-
-afterEach(() => {
-  root().classList.remove("dark");
-  document.head.querySelectorAll("meta").forEach((m) => m.remove());
-});
-
-describe("the look follows the OS setting", () => {
-  it("is light when the OS prefers light", () => {
-    root().classList.add("dark");
-    followColorScheme(osSetting(false).win);
-    expect(root().classList.contains("dark")).toBe(false);
-  });
-
-  it("is dark when the OS prefers dark", () => {
-    followColorScheme(osSetting(true).win);
-    expect(root().classList.contains("dark")).toBe(true);
-  });
-
-  it("switches live when the setting changes, and stops when told to", () => {
-    const os = osSetting(false);
-    const stop = followColorScheme(os.win);
-    os.set(true);
-    expect(root().classList.contains("dark")).toBe(true);
-    os.set(false);
-    expect(root().classList.contains("dark")).toBe(false);
-    stop();
-    expect(os.listening()).toBe(0);
-    os.set(true);
-    expect(root().classList.contains("dark")).toBe(false);
-  });
-});
+const isDark = () => root().classList.contains("dark");
 
 /** The meta the start script writes a forced shift into. */
 function served(scheme: string | undefined) {
@@ -70,42 +65,149 @@ function served(scheme: string | undefined) {
   document.head.appendChild(meta);
 }
 
-describe("a shift forced at boot", () => {
-  // Each forced case runs against the OPPOSITE OS setting, so a page that
-  // ignored the shift and followed the OS would fail it.
+afterEach(() => {
+  root().classList.remove("dark");
+  document.head.querySelectorAll("meta").forEach((m) => m.remove());
+});
+
+describe("with no pick and no shift served, the look follows the OS setting", () => {
+  it("is light when the OS prefers light", () => {
+    root().classList.add("dark");
+    const look = bootColorScheme(undefined, browser(false).win);
+    expect(isDark()).toBe(false);
+    expect(look.current()).toBe("light");
+  });
+
+  it("is dark when the OS prefers dark", () => {
+    const look = bootColorScheme(undefined, browser(true).win);
+    expect(isDark()).toBe(true);
+    expect(look.current()).toBe("dark");
+  });
+
+  it("switches live when the setting changes, and stops when told to", () => {
+    const b = browser(false);
+    const look = bootColorScheme(undefined, b.win);
+    b.setOs(true);
+    expect(isDark()).toBe(true);
+    b.setOs(false);
+    expect(isDark()).toBe(false);
+    look.stop();
+    expect(b.listening()).toBe(0);
+    b.setOs(true);
+    expect(isDark()).toBe(false);
+  });
+});
+
+describe("a shift served at boot", () => {
   it("night is dark while the OS prefers light, and stays dark when the OS changes", () => {
     served("dark");
-    const os = osSetting(false);
-    bootColorScheme(readServedColorScheme(), os.win);
-    expect(root().classList.contains("dark")).toBe(true);
-    os.set(false);
-    expect(root().classList.contains("dark")).toBe(true);
-    expect(os.listening()).toBe(0);
+    const b = browser(false);
+    bootColorScheme(readServedColorScheme(), b.win);
+    expect(isDark()).toBe(true);
+    b.setOs(false);
+    expect(isDark()).toBe(true);
+    expect(b.listening()).toBe(0);
   });
 
   it("day is light while the OS prefers dark, and stays light when the OS changes", () => {
     root().classList.add("dark");
     served("light");
-    const os = osSetting(true);
-    bootColorScheme(readServedColorScheme(), os.win);
-    expect(root().classList.contains("dark")).toBe(false);
-    os.set(true);
-    expect(root().classList.contains("dark")).toBe(false);
-    expect(os.listening()).toBe(0);
+    const b = browser(true);
+    bootColorScheme(readServedColorScheme(), b.win);
+    expect(isDark()).toBe(false);
+    b.setOs(true);
+    expect(isDark()).toBe(false);
+    expect(b.listening()).toBe(0);
   });
 
-  it("with no shift served, follows the OS setting as before", () => {
-    served(undefined);
-    const os = osSetting(true);
-    expect(readServedColorScheme()).toBeUndefined();
-    bootColorScheme(readServedColorScheme(), os.win);
-    expect(root().classList.contains("dark")).toBe(true);
-    os.set(false);
-    expect(root().classList.contains("dark")).toBe(false);
-  });
-
-  it("ignores a served value that is neither light nor dark, and follows the OS", () => {
+  it("ignores a served value that is neither light nor dark", () => {
     served("dusk");
     expect(readServedColorScheme()).toBeUndefined();
+  });
+});
+
+describe("a pick in the switch", () => {
+  it("flips the look live both ways, tells subscribers, and is kept for this browser", () => {
+    const b = browser(false);
+    const look = bootColorScheme(undefined, b.win);
+    let heard = 0;
+    look.subscribe(() => (heard += 1));
+
+    look.choose("dark");
+    expect(isDark()).toBe(true);
+    expect(look.current()).toBe("dark");
+    expect(b.saved.get(KEY)).toBe("dark");
+
+    look.choose("light");
+    expect(isDark()).toBe(false);
+    expect(look.current()).toBe("light");
+    expect(b.saved.get(KEY)).toBe("light");
+    expect(heard).toBe(2);
+  });
+
+  it("stops the OS setting from changing the look once made", () => {
+    const b = browser(false);
+    const look = bootColorScheme(undefined, b.win);
+    look.choose("light");
+    b.setOs(true);
+    expect(isDark()).toBe(false);
+    expect(b.listening()).toBe(0);
+  });
+
+  it("overrides a served shift on the page it was made on", () => {
+    served("light");
+    const look = bootColorScheme(readServedColorScheme(), browser(false).win);
+    look.choose("dark");
+    expect(isDark()).toBe(true);
+  });
+});
+
+describe("a kept pick wins at the next boot", () => {
+  it("a kept night beats a served day and an OS that prefers light", () => {
+    served("light");
+    const look = bootColorScheme(readServedColorScheme(), browser(false, { [KEY]: "dark" }).win);
+    expect(isDark()).toBe(true);
+    expect(look.current()).toBe("dark");
+  });
+
+  it("a kept day beats a served night and an OS that prefers dark", () => {
+    root().classList.add("dark");
+    served("dark");
+    const b = browser(true, { [KEY]: "light" });
+    bootColorScheme(readServedColorScheme(), b.win);
+    expect(isDark()).toBe(false);
+    b.setOs(true);
+    expect(isDark()).toBe(false);
+    expect(b.listening()).toBe(0);
+  });
+
+  it("a kept pick beats the OS setting when no shift is served", () => {
+    const b = browser(true, { [KEY]: "light" });
+    bootColorScheme(undefined, b.win);
+    expect(isDark()).toBe(false);
+  });
+
+  it("a kept value that is neither light nor dark is ignored, and the served shift holds", () => {
+    served("dark");
+    bootColorScheme(readServedColorScheme(), browser(false, { [KEY]: "dusk" }).win);
+    expect(isDark()).toBe(true);
+  });
+});
+
+describe("with browser storage blocked", () => {
+  it("boots on the served shift, then the OS, as if nothing were kept", () => {
+    served("dark");
+    bootColorScheme(readServedColorScheme(), lockedBrowser(false).win);
+    expect(isDark()).toBe(true);
+    document.head.querySelectorAll("meta").forEach((m) => m.remove());
+    root().classList.remove("dark");
+    bootColorScheme(readServedColorScheme(), lockedBrowser(true).win);
+    expect(isDark()).toBe(true);
+  });
+
+  it("still flips the look live; the pick just isn't kept", () => {
+    const look = bootColorScheme(undefined, lockedBrowser(false).win);
+    expect(() => look.choose("dark")).not.toThrow();
+    expect(isDark()).toBe(true);
   });
 });

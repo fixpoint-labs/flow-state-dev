@@ -1,6 +1,7 @@
 /**
  * The sidebar (S5): in order, the organization, Jump to, Inbox and Tasks with
- * their counts, PROJECTS, TEAMS, and a footer (BR-6).
+ * their counts, PROJECTS, TEAMS, and a footer (BR-6) that ends in the Day
+ * shift / Night shift switch.
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
  * opens always agree. PROJECTS lists the workstreams directly while no
@@ -8,7 +9,8 @@
  * exactly its seats (BR-7). A failed read shows its section's Retry and
  * nothing else changes (BR-11).
  */
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import type { ColorScheme, ShiftLook } from "../lib/color-scheme";
 import { navigate, NO_PROJECT, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { allRows, openRows, rosterOf, teamsOf, workerStatus, type LoadedSnapshot } from "../lib/derive";
@@ -99,7 +101,35 @@ function OrgSwitcher({ orgId, onSwitch }: { orgId: string; onSwitch: () => void 
   );
 }
 
-export function Sidebar({ route, gaps, onJump }: { route: Route; gaps: Gaps; onJump: () => void }) {
+const SHIFTS: Array<{ scheme: ColorScheme; label: string }> = [
+  { scheme: "light", label: "Day shift" },
+  { scheme: "dark", label: "Night shift" },
+];
+
+/** Day shift / Night shift: shows the look the page is in, and a click switches it. */
+function ShiftSwitch({ look }: { look: ShiftLook }) {
+  const current = useSyncExternalStore(look.subscribe, look.current);
+  return (
+    <div role="group" aria-label="Shift" className="mt-2 grid grid-cols-2 border border-foreground font-mono text-[11px]" data-testid="shift-switch">
+      {SHIFTS.map(({ scheme, label }, i) => (
+        <button
+          key={scheme}
+          type="button"
+          aria-pressed={current === scheme}
+          onClick={() => look.choose(scheme)}
+          data-testid={`shift-${scheme === "light" ? "day" : "night"}`}
+          className={`py-1 text-center ${i > 0 ? "border-l border-foreground" : ""} ${
+            current === scheme ? "bg-foreground text-background" : "text-foreground"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gaps; onJump: () => void; look?: ShiftLook }) {
   const { snapshot, refresh, clients } = useLab();
   const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
   const retry = () => void refresh();
@@ -199,6 +229,7 @@ export function Sidebar({ route, gaps, onJump }: { route: Route; gaps: Gaps; onJ
         <span data-testid="sessions-live">{liveSessions === null ? "sessions unknown" : `${liveSessions} sessions`}</span>
         {" · "}
         <span data-testid="current-user">{clients.userId}</span>
+        {look === undefined ? null : <ShiftSwitch look={look} />}
       </footer>
     </nav>
   );
