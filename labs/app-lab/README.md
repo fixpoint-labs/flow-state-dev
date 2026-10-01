@@ -17,7 +17,7 @@ pnpm --filter @flow-state-dev/app-lab build
 pnpm --filter @flow-state-dev/app-lab start --config goals/devforce-lab/lab/fsdev.config.mts
 ```
 
-It prints the address, `http://127.0.0.1:4300` by default. One process serves the Lab's API under `/api/flows` and App Lab's pages beside it. The Lab's config is loaded as-is. Nothing in it is edited or wrapped.
+It prints the address, `http://127.0.0.1:4300` by default. One process serves the Lab's API under `/api/flows` and App Lab's pages beside it. It also serves the devtool over the same Lab, on a port of its own, and prints that address too. The Lab's config is loaded as-is. Nothing in it is edited or wrapped.
 
 | Option | Default | What it does |
 |--------|---------|--------------|
@@ -25,7 +25,8 @@ It prints the address, `http://127.0.0.1:4300` by default. One process serves th
 | `--port <n>` | `4300` | `0` picks a free port. |
 | `--host <host>` | `127.0.0.1` | A non-loopback host is refused unless the Lab authenticates requests. |
 | `--assets <dir>` | `dist/` | Serve a different build of the pages. |
-| `--devtool <url>` | none | Where the devtool runs, for a task's *Open trace* link. Must be an `http(s)` address. Without it the link is off and says how to turn it on. |
+| `--devtool <url>` | the devtool App Lab serves | Point a task's *Open trace* link at a devtool you run yourself instead. Must be an `http(s)` address. App Lab then serves no devtool of its own. |
+| `--devtool-assets <dir>` | the `@flow-state-dev/devtool` build | Serve a different build of the devtool's pages. |
 
 The process runs from the directory you started it in, so a Lab's relative paths, such as a SQLite file, land where they would under `fsdev dev`.
 
@@ -148,13 +149,17 @@ Open a task from Tasks or from a card on a board. The Session tab is that task's
 
 **Interrupt** stops the run (Esc does the same while the Session has focus). The screen says *interrupted* once the run has actually stopped. What happens to the task afterwards, whether it's retried or left, is up to the board, not App Lab.
 
-The panel on the right shows who is on it and when it started. If the harness records its plan and the files it touched, as Claude Code does, they're listed. Otherwise the panel says so. *Open trace* opens the devtool for the full detail. Tell App Lab where it runs:
+The panel on the right shows who is on it and when it started. If the harness records its plan and the files it touched, as Claude Code does, they're listed. Otherwise the panel says so. *Open trace* opens the run's session in the devtool, for the full detail, with the session id beside the link.
+
+The devtool it opens is the one App Lab serves: the same pages `fsdev dev` serves, over the same Lab, in the same process. That matters because the devtool can only show a run from the store the run is in. A Lab whose stores are in memory lives only in App Lab's process, so a devtool started separately has its own empty store. The link adds `?session=<id>`, and the devtool opens the session under the flow that owns it.
+
+The devtool's pages ship prebuilt in the published `@flow-state-dev/devtool` package. In this repository, build them once with `pnpm build:assets`. Without them App Lab still starts, says so, and the link is off.
+
+To use a devtool you run yourself, pass its address. It has to read the same store as App Lab, as the same user, so this suits a Lab with a persistent store, such as SQLite:
 
 ```bash
 pnpm --filter @flow-state-dev/app-lab start --config <your config> --devtool http://localhost:4000
 ```
-
-The run's session id sits beside the link. The devtool doesn't open a session from its address yet, so paste it there.
 
 ### Not there yet
 

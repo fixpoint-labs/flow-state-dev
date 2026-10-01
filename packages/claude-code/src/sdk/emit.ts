@@ -101,15 +101,25 @@ function mintId(kind: string): string {
   return `item_${kind}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-/** Build the per-item base fields, reading a fresh `itemIndex` each call. */
-function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) {
+/**
+ * Fields every item carries besides its id. A close reuses the id from
+ * `item.added`, so it cannot go through {@link buildBase}. The task id is
+ * stamped here once and omitted outside a task scope.
+ */
+function itemFields(ctx: BlockContext, provenance: EmitProvenance) {
+  const taskId = (ctx as { _blockIdentity?: { taskId?: string } })._blockIdentity?.taskId;
   return {
-    id: mintId(kind),
     requestId: ctx.request.identity.id,
     itemIndex: ctx.response.getItemCount(),
     provenance,
     ts: Date.now(),
+    ...(taskId === undefined ? {} : { taskId }),
   };
+}
+
+/** Per-item base for a newly opened item: a fresh id plus {@link itemFields}. */
+function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) {
+  return { id: mintId(kind), ...itemFields(ctx, provenance) };
 }
 
 const CONVERSATIONAL_VISIBILITY = { client: true, history: true } as const;
@@ -252,10 +262,7 @@ async function closeStreamingMessage(
       type: "message",
       role: "assistant",
       status: "completed",
-      requestId: ctx.request.identity.id,
-      itemIndex: ctx.response.getItemCount(),
-      provenance: deriveProvenance(ctx, blockName),
-      ts: Date.now(),
+      ...itemFields(ctx, deriveProvenance(ctx, blockName)),
       itemVisibility: CONVERSATIONAL_VISIBILITY,
       ...(ownedBy ? { ownedBy } : {}),
       content: [{ type: "output_text", text }],
@@ -364,10 +371,7 @@ async function closeStreamingReasoning(
       id,
       type: "reasoning",
       status: "completed",
-      requestId: ctx.request.identity.id,
-      itemIndex: ctx.response.getItemCount(),
-      provenance: deriveProvenance(ctx, blockName),
-      ts: Date.now(),
+      ...itemFields(ctx, deriveProvenance(ctx, blockName)),
       itemVisibility: CONVERSATIONAL_VISIBILITY,
       ...(ownedBy ? { ownedBy } : {}),
       summary: [{ type: "reasoning_text", text }],
@@ -474,10 +478,7 @@ async function emitToolResult(
     id,
     type: "tool_output" as const,
     status: event.isError ? ("failed" as const) : ("completed" as const),
-    requestId: ctx.request.identity.id,
-    itemIndex: ctx.response.getItemCount(),
-    provenance,
-    ts: Date.now(),
+    ...itemFields(ctx, provenance),
     blockName: toolName,
     output: event.output,
     toolCall: {
@@ -542,10 +543,7 @@ async function emitSubagentClose(
       id: open.itemId,
       type: "container",
       status: event.isError ? "failed" : "completed",
-      requestId: ctx.request.identity.id,
-      itemIndex: ctx.response.getItemCount(),
-      provenance: { ...deriveProvenance(ctx, blockName), blockInstanceId: open.instanceId },
-      ts: Date.now(),
+      ...itemFields(ctx, { ...deriveProvenance(ctx, blockName), blockInstanceId: open.instanceId }),
       blockName: open.name,
       label: open.label,
       startedAt: open.startedAt,
@@ -594,10 +592,7 @@ export async function finalizeOpenItems(
         id: open.id,
         type: "tool_output",
         status: "incomplete",
-        requestId: ctx.request.identity.id,
-        itemIndex: ctx.response.getItemCount(),
-        provenance: deriveProvenance(ctx, blockName),
-        ts: Date.now(),
+        ...itemFields(ctx, deriveProvenance(ctx, blockName)),
         blockName: open.name,
         output: null,
         toolCall: {
@@ -620,10 +615,7 @@ export async function finalizeOpenItems(
         id: open.itemId,
         type: "container",
         status: "incomplete",
-        requestId: ctx.request.identity.id,
-        itemIndex: ctx.response.getItemCount(),
-        provenance: { ...deriveProvenance(ctx, blockName), blockInstanceId: open.instanceId },
-        ts: Date.now(),
+        ...itemFields(ctx, { ...deriveProvenance(ctx, blockName), blockInstanceId: open.instanceId }),
         blockName: open.name,
         label: open.label,
         startedAt: open.startedAt,

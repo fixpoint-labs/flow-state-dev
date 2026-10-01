@@ -36,6 +36,7 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import type { Client, FlowListEntry, RecoveryClient, ResourceClient, SessionClient } from "@flow-state-dev/client";
@@ -46,7 +47,7 @@ import {
   createDevToolSessionClient,
   type DevToolConfig,
 } from "../lib/client";
-import { isConclusiveRefusal, recordBelongsTo } from "../lib/instance-ownership";
+import { describeReadError, isConclusiveRefusal, recordBelongsTo } from "../lib/instance-ownership";
 import {
   clearLegacySingletonSessionHint,
   readLegacySingletonSessionHint,
@@ -72,6 +73,8 @@ type DevToolState = {
   /** Bumped on every workspace transition; see the header. */
   workspaceToken: number;
   flows: FlowListEntry[];
+  /** True once the catalog has been read at least once, empty or not. */
+  flowsLoaded: boolean;
   flowsLoading: boolean;
   flowsError: string | null;
 };
@@ -164,7 +167,7 @@ function reducer(state: DevToolState, action: Action): DevToolState {
         workspaceToken: state.workspaceToken + 1,
       };
     case "SET_FLOWS": {
-      const next = { ...state, flows: action.flows, flowsLoading: false, flowsError: null };
+      const next = { ...state, flows: action.flows, flowsLoaded: true, flowsLoading: false, flowsError: null };
       if (state.activeFlowId === null) return next;
       // The selected copy is gone from the catalog. There is no same-kind peer
       // to fall back to — a peer is a different instance with different work —
@@ -206,6 +209,12 @@ type DevToolContextValue = DevToolState & {
   selectSession: (sessionId: string | null) => void;
   /** Move instance and session together — following a child into its owner. */
   selectWorkspace: (flowId: string, sessionId: string) => void;
+  /**
+   * Why the session named by `openSessionId` was not opened, or `null`. Set
+   * only when the address could not be followed; the panel says so rather than
+   * opening on nothing.
+   */
+  sessionAddressError: string | null;
 };
 
 const DevToolContext = createContext<DevToolContextValue | null>(null);
@@ -218,6 +227,7 @@ function createInitialState(initialConfig: DevToolConfig, baseUrl: string | unde
     activeSessionId: null,
     workspaceToken: 0,
     flows: [],
+    flowsLoaded: false,
     flowsLoading: false,
     flowsError: null,
   };
@@ -232,6 +242,13 @@ export type DevToolProviderProps = {
   autoRecoverInterrupted?: boolean;
   /** When "host", SettingsSheet hides the userId field. Default "internal". */
   userIdControl?: UserIdControl;
+  /**
+   * A session to open once the catalog loads — a link to one run, such as the
+   * standalone shell's `?session=<id>`. The panel reads the session, finds the
+   * instance that owns it, and opens both together. Nothing is opened on the
+   * strength of the id alone.
+   */
+  openSessionId?: string;
   children: ReactNode;
 };
 
@@ -240,11 +257,26 @@ export function DevToolProvider({
   baseUrl,
   autoRecoverInterrupted = false,
   userIdControl = "internal",
+  openSessionId,
   children,
 }: DevToolProviderProps) {
   const [state, dispatch] = useReducer(reducer, null, () =>
     createInitialState(initialConfig, baseUrl),
   );
+  const [sessionAddressError, setSessionAddressError] = useState<string | null>(null);
+  // Following a link (`openSessionId`); see the address effect below.
+  const [addressPending, setAddressPending] = useState(
+    () => openSessionId !== undefined && openSessionId.length > 0,
+  );
+  // Keyed per (address, user), joined on the `\0` escape as the restore key is.
+  const addressAttempt =
+    openSessionId !== undefined && openSessionId.length > 0
+      ? `${openSessionId}\0${state.config.userId}`
+      : null;
+  const addressAttemptRef = useRef(addressAttempt);
+  addressAttemptRef.current = addressAttempt;
+  const addressSettledRef = useRef<string | null>(null);
+  const addressReadRef = useRef(0);
 
   const activeFlow = useMemo(
     () => state.flows.find((flow) => flow.id === state.activeFlowId),
@@ -291,20 +323,30 @@ export function DevToolProvider({
     [baseUrl, state.config.userId],
   );
 
+  // The operator's own pick: it cancels a link still being read and retires the
+  // reason a link failed (see the address effect below).
+  const notePick = useCallback(() => {
+    addressSettledRef.current = addressAttemptRef.current;
+    setAddressPending(false);
+    setSessionAddressError(null);
+  }, []);
+
   const selectSession = useCallback(
     (sessionId: string | null) => {
+      notePick();
       rememberSession(state.activeFlowId, sessionId);
       dispatch({ type: "SELECT_SESSION", sessionId });
     },
-    [rememberSession, state.activeFlowId],
+    [notePick, rememberSession, state.activeFlowId],
   );
 
   const selectWorkspace = useCallback(
     (flowId: string, sessionId: string) => {
+      notePick();
       rememberSession(flowId, sessionId);
       dispatch({ type: "SELECT_WORKSPACE", flowId, sessionId });
     },
-    [rememberSession],
+    [notePick, rememberSession],
   );
 
   useEffect(() => {
@@ -327,6 +369,9 @@ export function DevToolProvider({
   useEffect(() => {
     const instance = activeFlow;
     if (instance === undefined || state.activeSessionId !== null) return;
+    // A link being followed decides the workspace first; restoring now would
+    // put a saved session in its place (see the address effect below).
+    if (addressPending) return;
     // Joined on a separator no instance id or user id can contain, so two
     // different attempts cannot spell the same key. Written as the `\0` ESCAPE,
     // never as a literal NUL byte: git sniffs a file's first 8000 bytes for one
@@ -383,12 +428,73 @@ export function DevToolProvider({
     })();
   }, [
     activeFlow,
+    addressPending,
     baseUrl,
     state.activeSessionId,
     state.config.userId,
     state.sessionClient,
     state.workspaceToken,
   ]);
+
+  // Open the session a link named (`openSessionId`), once the catalog is in.
+  //
+  // The same rule as the restore above: the id is only an address. The session
+  // is read, the instance that owns it is found by the one ownership predicate,
+  // and only then do instance and session move together. A session nobody in
+  // the catalog owns, or one the server refuses, opens nothing and says why.
+  //
+  // The link wins over a saved session: while it is pending the restore above
+  // stands aside, so opening the owning row first cannot put the operator's old
+  // session where the link's should be. Only the operator's own session pick
+  // (`selectSession` / `selectWorkspace`) cancels it — that is them choosing
+  // somewhere else, and they are not dragged back.
+  //
+  // Settled once per (address, user) on a conclusive answer. A read that failed
+  // for a reason that may pass leaves it pending and says so, and the next
+  // catalog load or credential change tries again. The catalog itself is not
+  // user-scoped (`GET /api/flows` takes no user), so a user change needs no
+  // catalog refetch before the new attempt.
+  const { flows, flowsLoaded, sessionClient } = state;
+  const addressUserId = state.config.userId;
+  useEffect(() => {
+    const attempt = addressAttempt;
+    if (openSessionId === undefined || attempt === null || !flowsLoaded) return;
+    if (addressSettledRef.current === attempt) return;
+    const read = ++addressReadRef.current;
+    void (async () => {
+      let owner: FlowListEntry | undefined;
+      let failure: unknown;
+      try {
+        const detail = await sessionClient.getSession(openSessionId);
+        owner = detail.userId === addressUserId ? flows.find((flow) => recordBelongsTo(detail, flow)) : undefined;
+      } catch (err) {
+        failure = err;
+      }
+      // A newer read (another catalog, user or credential) supersedes this
+      // one, and an operator's pick in the meantime settled the link.
+      if (addressReadRef.current !== read || addressSettledRef.current === attempt) return;
+      const reason = describeReadError(failure, "the read failed.");
+      if (failure !== undefined && !isConclusiveRefusal(failure)) {
+        setSessionAddressError(`Session ${openSessionId} could not be opened yet: ${reason}`);
+        return;
+      }
+      addressSettledRef.current = attempt;
+      setAddressPending(false);
+      if (owner === undefined) {
+        setSessionAddressError(
+          failure === undefined
+            ? `Session ${openSessionId} belongs to no flow this DevTool lists for ${addressUserId}.`
+            : `Session ${openSessionId} could not be opened: ${reason}`,
+        );
+        return;
+      }
+      setSessionAddressError(null);
+      // Also remembered as the owner's last session, so a reload of the plain
+      // devtool lands back on the run the link opened.
+      writeSessionHint({ baseUrl, userId: addressUserId, flowId: owner.id }, openSessionId);
+      dispatch({ type: "SELECT_WORKSPACE", flowId: owner.id, sessionId: openSessionId });
+    })();
+  }, [openSessionId, addressAttempt, baseUrl, flows, flowsLoaded, sessionClient, addressUserId]);
 
   // Propagate EXTERNAL config changes (a new `initialConfig`/`baseUrl` prop from
   // the standalone shell's focus re-read or a host swapping identity/token) into
@@ -441,6 +547,7 @@ export function DevToolProvider({
       selectInstance,
       selectSession,
       selectWorkspace,
+      sessionAddressError,
     }),
     [
       state,
@@ -454,6 +561,7 @@ export function DevToolProvider({
       selectInstance,
       selectSession,
       selectWorkspace,
+      sessionAddressError,
     ],
   );
 
