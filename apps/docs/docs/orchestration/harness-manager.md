@@ -130,6 +130,8 @@ defineFlow({
 });
 ```
 
+If the board is drained by a different flow, one that hands its rows to this flow, declare the `resume` entry on that flow instead and pass its instance id: `manager.messageDoor({ drain: "resume", flowKind: "coordinator" })`.
+
 Call `message` with `{ message }` on the run's own session, the one the board row's run link names. The person's words go into that session as a user message the moment the action starts, so a UI can show them as delivered by reading the session, not by trusting the response.
 
 What happens depends on where the task is:

@@ -171,6 +171,13 @@ export interface MessageDoorOptions {
    * dispatches it into the session that claimed the row.
    */
   drain: string;
+  /**
+   * The flow instance that declares `drain`, when the board is drained from
+   * another flow than this one: the flow whose drain hands rows to this one
+   * across flows. Its sessions are the ones that claim the rows. Absent is
+   * this flow.
+   */
+  flowKind?: string;
 }
 
 /** The action entry a kind declares. */
@@ -365,6 +372,7 @@ async function requeue(
     const drained = await dispatchThroughSeam(ctx, {
       type: "internal",
       action: options.drain,
+      ...(options.flowKind !== undefined ? { flowKind: options.flowKind } : {}),
       session: { id: decided.resumeIn },
       payload: {},
       from: `${deps.name}-message-requeue`,
@@ -398,7 +406,11 @@ function buildDoorSequencer(deps: MessageDoorDeps, options: MessageDoorOptions) 
     execute: async (decided, ctx: BlockContext) => requeue(deps, options, decided, ctx),
   });
   // So `defineFlow` checks the flow declares the drain entry.
-  markDispatcher(requeueStep, { type: "internal", action: options.drain });
+  markDispatcher(requeueStep, {
+    type: "internal",
+    action: options.drain,
+    ...(options.flowKind !== undefined ? { flowKind: options.flowKind } : {}),
+  });
 
   return sequencer({
     name: `${deps.name}-message`,
