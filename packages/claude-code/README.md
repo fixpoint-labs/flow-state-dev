@@ -5,13 +5,14 @@ in-process and streams its work through the flow's item stream, backed by the op
 `@anthropic-ai/claude-agent-sdk` peer dependency.
 
 It is a **harness**: a coding agent driven as a block, returning the neutral run handle declared
-in `@flow-state-dev/core`. [`@flow-state-dev/codex`](../codex) is another, and
-[`@flow-state-dev/harness-manager`](../harness-manager) drives either from a task board.
+in `@flow-state-dev/core`. [`@flow-state-dev/codex`](../codex) and [`@flow-state-dev/cursor`](../cursor)
+are the other two, and [`@flow-state-dev/harness-manager`](../harness-manager) drives any of them from
+a task board.
 
-The `/cli` entry exports a small resolver seam for hosts that run the local `claude` binary
-themselves: `defaultResolveClaudeCli`, `defaultClaudeCliExec`, and their types. A resolver
-supplies the binary path, working directory, environment and the function that runs it, so the
-subprocess stays host-controlled and mockable.
+The `/cli` entry exports `defaultResolveClaudeCli` and `defaultClaudeCliExec`, with their types, for
+hosts that run the local `claude` binary themselves. The resolver returns the binary path, working
+directory and environment, plus the function that runs the binary. Swap that function out to mock
+the subprocess in tests.
 
 ## Installation
 
@@ -50,7 +51,7 @@ for the full surface.
 
 ## Working with SDK runs
 
-### Running as background work (`/sdk`)
+### Running as background work
 
 The SDK agent keeps its own session state — `sdkSessionId` (the run it resumes)
 and `sdkAgentRuns` (the handles it has returned). Pass `detached: true` to run it
@@ -96,7 +97,7 @@ starts fresh instead of re-sending a session that is gone.
 Both are background-path only. In session the block already resumes and records
 the id itself, so passing either without `detached: true` throws at construction.
 
-### Giving a run its own working directory (`/sdk`)
+### Giving a run its own working directory
 
 By default a run works in whatever directory the server process is running in.
 Pass `cwd` to point it somewhere else:
@@ -136,7 +137,7 @@ The run's file tools address relative paths inside that directory, and so does
 boundary — a run can still reach an absolute path outside it, and that operation
 is recorded at the path it reached.
 
-### Controlling what a run reads and what it runs in (`/sdk`)
+### Controlling what a run reads and what it runs in
 
 Four more options travel alongside `cwd`:
 
@@ -324,7 +325,7 @@ Full behaviour, including what an empty or symlinked directory does, is on the
 `cwd` option's own docs in `src/sdk/agent.ts` and in the
 [SDK agent guide](https://flow-state.dev/docs/tools/claude-code-sdk#where-the-run-works).
 
-### Recording what a run did (`/sdk`)
+### Recording what a run did
 
 `recordWork: true` records the run's file operations and its own to-do list as
 state you can read afterwards. Off by default; on, the agent declares three
@@ -368,7 +369,7 @@ fails the run: what it cannot handle becomes a gap row.
 needs it — the capability declares the collections itself, because a block in a
 capability's `tools` contributes no resource declarations to the flow.
 
-### A run whose files are resources (`/sdk`)
+### A run whose files are resources
 
 `cwd` hands a run a directory. It doesn't put anything in it, and it doesn't
 bring anything back. `createWorkspaceAgentCapability` does both:

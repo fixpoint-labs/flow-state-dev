@@ -44,7 +44,7 @@ agent produced the run:
 | Field | What it holds |
 |---|---|---|
 | `source` | Which agent and entry point produced the run, as `<package>/<door>` — `claude-code/sdk`, `codex/sdk`, `cursor/sdk`. |
-| `status` | `running`, `completed`, or `errored`. The schema also admits `dispatched`, which only a fire-and-forget door reports. Switch exhaustively on all four. |
+| `status` | `running`, `completed`, or `errored`. The schema also admits `dispatched`, for a run that was handed off and not awaited. None of the harnesses on this page report it, but switch exhaustively on all four. |
 | `sessionId`, `url`, `dispatchedAt` | The run's own id, a link to it when there is one, and when it started. |
 | `outcome` | How it ended: `finished`, `stopped-at-limit` (it hit a turn or budget cap), or `failed`. `null` while unknown. |
 | `finalMessage` | The last assistant message, or `null`. |
