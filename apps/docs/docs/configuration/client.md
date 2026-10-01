@@ -23,7 +23,7 @@ const client = createClient({
 
 ### Choosing `baseUrl`
 
-Every request path the client builds already starts with `/api/flows`, and the client puts `baseUrl` in front of it as given (only a trailing slash is dropped). So `baseUrl` is where your app's FlowState routes are mounted, minus that `/api/flows` suffix: the origin, plus the deployment's base path if it has one (a Next.js `basePath`, a gateway prefix). A base path here means a prefix in front of the standard `/api/flows` mount. A server that replaces the mount itself, such as `@flow-state-dev/node` with `basePath`, can't be targeted with `baseUrl` alone.
+Every request path the client builds already starts with `/api/flows`, and the client puts `baseUrl` in front of it as given (only a trailing slash is dropped). So `baseUrl` is where your app's FlowState routes are mounted, minus that `/api/flows` suffix: the origin, plus the deployment's base path if it has one (a Next.js `basePath`, a gateway prefix). A base path here means a prefix in front of the API's mount. When the server mounts the API somewhere other than `/api/flows`, keep `baseUrl` as described here and name the mount in [`apiPath`](#choosing-apipath).
 
 - **Origin.** Required anywhere without a page to resolve a relative path against: Node, a worker, a test, a Next.js server component or route handler. Without it `fetch` rejects every request with an invalid-URL error. Also required when the API is on another origin than the page.
 - **Base path.** Include it whenever the routes live below one, in every runtime. If the API answers at `https://api.example.com/portal/api/flows/…`, pass `https://api.example.com/portal`. Passing only the origin drops `/portal` and every request 404s.
@@ -51,6 +51,24 @@ const client = createClient({
 
 The same rule applies to `createSessionClient`, `createRecoveryClient`, `createResourceClient`, and `FlowProvider`. `createSSEClient` and `createUserSSEClient` follow only the prefix half: `baseUrl` is still the origin plus any base path, but nothing is appended, so their `url` must already hold the full route, `/api/flows/…` included.
 
+### Choosing `apiPath`
+
+`apiPath` is where the server mounts the flow API. It defaults to `/api/flows`, the mount every FSD server uses unless told otherwise, so most apps never set it. Set it when the server mounts the API somewhere else, such as a Node host started with `basePath`. Give it the same value the server uses.
+
+```ts
+// Server: serve(flowstate, { basePath: "/flows" }) answers at http://localhost:3000/flows/…
+const client = createClient({
+  flowKind: "hello-chat",
+  userId: "devuser",
+  baseUrl: "http://localhost:3000",
+  apiPath: "/flows",
+});
+```
+
+A request goes to `baseUrl`, then `apiPath`, then the route, so the action above is sent to `http://localhost:3000/flows/hello-chat/actions/…`. `baseUrl` keeps its meaning: the origin plus any prefix in front of the mount. Don't repeat the mount in `baseUrl`.
+
+Every client accepts `apiPath`: `createClient`, `createTypedClient`, `createSessionClient`, `createRecoveryClient`, `createResourceClient`, `createSessionSSEClient`, and `transcribe`. `createSSEClient` and `createUserSSEClient` take it too; write their `url` with the usual `/api/flows/…` prefix and the client swaps it for `apiPath`. In React, set it once on `FlowProvider`.
+
 ### Fields
 
 | Field | Type | Default | What it does |
@@ -58,6 +76,7 @@ The same rule applies to `createSessionClient`, `createRecoveryClient`, `createR
 | `flowKind` | `string` | required | The flow instance to call: its `kind` for an ordinary flow, the copy's own id for a flow that runs as several copies. See [Flows](/docs/fundamentals/flows#how-an-instance-is-addressed). |
 | `userId` | `string` | required | Caller identity sent on every request. The server still resolves the principal from your auth hook; this is the client's claim. |
 | `baseUrl` | `string` | page origin (browser only) | Where the FlowState routes are mounted, minus `/api/flows`: the origin plus any base path. Omit it in a browser on the same origin with no base path; pass an absolute URL such as `http://localhost:3000` in Node. The client appends `/api/flows` itself. See [Choosing `baseUrl`](#choosing-baseurl). |
+| `apiPath` | `string` | `"/api/flows"` | Where the server mounts the flow API. Set it to the server's mount when that differs, such as a Node host's `basePath`. See [Choosing `apiPath`](#choosing-apipath). |
 | `fetcher` | `typeof fetch` | global `fetch` | Custom fetch (tests, extra headers). |
 
 `createTypedClient({ flow, userId, ... })` adds the same connection fields and types `sendAction` from the flow instance.
@@ -88,6 +107,7 @@ import { FlowProvider } from "@flow-state-dev/react";
 | `userId` | `string` | Default caller id. |
 | `sessionId` | `string` | Default session. `useFlow({ autoCreateSession: true })` can mint one instead. |
 | `baseUrl` | `string` | Forwarded to the client. Omit it on the same origin with no base path; under a base path, pass it (`"/portal"`); for another origin, pass that origin plus any prefix. See [Choosing `baseUrl`](#choosing-baseurl). A nested provider inherits its parent's `baseUrl`, so pass `baseUrl=""` to reset it to same-origin. |
+| `apiPath` | `string` | Where the server mounts the flow API. Default `"/api/flows"`. Every hook and component under the provider uses it. It is set here, not per hook; `useVoice`, which takes its connection options directly, has its own `apiPath`. A nested provider inherits its parent's. See [Choosing `apiPath`](#choosing-apipath). |
 | `renderers` | `RendererRegistry` | Custom item renderers. Nested providers merge; child keys override. |
 | `children` | `ReactNode` | The tree that may call hooks. |
 

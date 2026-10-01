@@ -24,6 +24,12 @@ import type {
 export type CreateSSEClientOptions = RequestSSECallbacks & {
   url: string;
   baseUrl?: string;
+  /**
+   * Where the server mounts the flow API, after `baseUrl`. Default
+   * `"/api/flows"`. Set it to the server's mount when that differs, such as
+   * the Node host's `basePath`.
+   */
+  apiPath?: string;
   fetcher?: ClientFetch;
   lastEventId?: string;
   startingAfter?: number;
@@ -36,6 +42,12 @@ export type CreateSSEClientOptions = RequestSSECallbacks & {
 export type CreateUserSSEClientOptions = UserSSECallbacks & {
   url: string;
   baseUrl?: string;
+  /**
+   * Where the server mounts the flow API, after `baseUrl`. Default
+   * `"/api/flows"`. Set it to the server's mount when that differs, such as
+   * the Node host's `basePath`.
+   */
+  apiPath?: string;
   fetcher?: ClientFetch;
   lastEventId?: string;
   startingAfter?: number;
@@ -187,6 +199,7 @@ export function createSSEClient(options: CreateSSEClientOptions): RequestStreamH
 
   const url = buildFlowApiUrl({
     baseUrl: options.baseUrl,
+    apiPath: options.apiPath,
     path: options.url,
     query:
       options.startingAfter === undefined
@@ -275,6 +288,7 @@ export function createUserSSEClient(
 
   const url = buildFlowApiUrl({
     baseUrl: options.baseUrl,
+    apiPath: options.apiPath,
     path: options.url,
     query:
       options.startingAfter === undefined
@@ -349,6 +363,12 @@ export function createUserSSEClient(
 export type CreateSessionSSEClientOptions = SessionSSECallbacks & {
   sessionId: string;
   baseUrl?: string;
+  /**
+   * Where the server mounts the flow API, after `baseUrl`. Default
+   * `"/api/flows"`. Set it to the server's mount when that differs, such as
+   * the Node host's `basePath`.
+   */
+  apiPath?: string;
   fetcher?: ClientFetch;
   /**
    * A server time to start from: one an earlier connection heard
@@ -430,6 +450,7 @@ export function createSessionSSEClient(
       const response = await fetcher(
         buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path,
           query: { since: lastAt, session_created_at: options.sessionCreatedAt, item_types: itemTypes }
         }),

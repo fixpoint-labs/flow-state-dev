@@ -44,6 +44,18 @@ const { app } = createServerApp(flowstate);
 
 It deliberately does not serve static assets. Static and SPA-fallback serving (for the DevTool UI) is a long-lived-host concern that lives in `serve()`, so the portable app stays importable from any runtime.
 
+### Where the API is mounted
+
+Both `serve()` and `createServerApp()` mount the flow API at `/api/flows`. Pass `basePath` to mount it somewhere else. The value replaces `/api/flows`, so `basePath: "/flows"` serves the API at `/flows/…`.
+
+```ts
+import { serve } from "@flow-state-dev/node";
+
+await serve(flowstate, { basePath: "/flows" });
+```
+
+The client and React hooks reach a custom mount when you give them the same value as `apiPath`: `createClient({ ..., apiPath: "/flows" })` or `<FlowProvider apiPath="/flows">`. See [Choosing `apiPath`](/docs/configuration/client#choosing-apipath).
+
 ---
 
 ## Choosing an adapter

@@ -62,6 +62,7 @@ const MAX_PAGES = 1000;
 /** Where a live read hears about changes, and the transport the stream is sent with. */
 export type PanelLive = {
   readonly baseUrl?: string;
+  readonly apiPath?: string;
   readonly fetcher?: ClientFetch;
 };
 
@@ -101,6 +102,7 @@ function liveBoardDriver(sessionId: string, boardRef: string, live: PanelLive): 
     const close = followSession({
       sessionId,
       baseUrl: live.baseUrl,
+      apiPath: live.apiPath,
       fetcher: live.fetcher,
       itemTypes: ["component"],
       onItem: ({ requestId, item }) => {
@@ -147,12 +149,15 @@ export function usePanelRows<TClient = unknown>(
   live?: PanelLive
 ): PanelRows<TClient> {
   const liveBaseUrl = live?.baseUrl;
+  const liveApiPath = live?.apiPath;
   const liveFetcher = live?.fetcher;
   const isLive = live !== undefined;
   const driver = useMemo(
     () =>
-      isLive ? liveBoardDriver(sessionId, ref, { baseUrl: liveBaseUrl, fetcher: liveFetcher }) : undefined,
-    [isLive, sessionId, ref, liveBaseUrl, liveFetcher]
+      isLive
+        ? liveBoardDriver(sessionId, ref, { baseUrl: liveBaseUrl, apiPath: liveApiPath, fetcher: liveFetcher })
+        : undefined,
+    [isLive, sessionId, ref, liveBaseUrl, liveApiPath, liveFetcher]
   );
   const { data, isLoading, error, refresh } = useFencedRead<readonly PanelRow<TClient>[]>(
     [source, sessionId, ref, limit],

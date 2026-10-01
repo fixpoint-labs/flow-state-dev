@@ -22,6 +22,8 @@ export type UseVoiceOptions = {
   buildInput?: (text: string) => unknown;
   /** Base URL for the transcription endpoint. */
   baseUrl?: string;
+  /** Where the server mounts the flow API. Default `"/api/flows"`. */
+  apiPath?: string;
   /** Language for SpeechRecognition. Default: "en-US" */
   language?: string;
   /** Auto-play TTS audio from assistant messages. Default: true */
@@ -199,8 +201,8 @@ export function useVoice(
   }, [session.items, autoPlayTTS]);
 
   const transcribeOptions: TranscribeOptions = useMemo(
-    () => ({ baseUrl: options.baseUrl }),
-    [options.baseUrl]
+    () => ({ baseUrl: options.baseUrl, apiPath: options.apiPath }),
+    [options.baseUrl, options.apiPath]
   );
 
   const startListening = useCallback(async () => {

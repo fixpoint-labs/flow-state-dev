@@ -7,6 +7,12 @@ import type { ClientFetch } from "../types";
 
 export type TranscribeOptions = {
   baseUrl?: string;
+  /**
+   * Where the server mounts the flow API, after `baseUrl`. Default
+   * `"/api/flows"`. Set it to the server's mount when that differs, such as
+   * the Node host's `basePath`.
+   */
+  apiPath?: string;
   fetcher?: ClientFetch;
 };
 
@@ -42,6 +48,7 @@ export async function transcribe(
     fetcher,
     url: buildFlowApiUrl({
       baseUrl: options?.baseUrl,
+      apiPath: options?.apiPath,
       path: "/api/flows/transcribe",
       query: {
         userId: request.userId,

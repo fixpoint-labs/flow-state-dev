@@ -14,6 +14,12 @@ import type {
  */
 export type CreateResourceClientOptions = {
   baseUrl?: string;
+  /**
+   * Where the server mounts the flow API, after `baseUrl`. Default
+   * `"/api/flows"`. Set it to the server's mount when that differs, such as
+   * the Node host's `basePath`.
+   */
+  apiPath?: string;
   fetcher?: ClientFetch;
 };
 
@@ -147,6 +153,7 @@ export function createResourceClient(
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${enc(sessionId)}/resources/${enc(ref)}/content`
       })
     });
@@ -161,6 +168,7 @@ export function createResourceClient(
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${enc(sessionId)}/resources/${enc(ref)}/${enc(topic)}/content`
       })
     });
@@ -175,6 +183,7 @@ export function createResourceClient(
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${enc(sessionId)}/resources/${enc(ref)}`
       }),
       init: {
@@ -195,6 +204,7 @@ export function createResourceClient(
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${enc(sessionId)}/resources/${enc(ref)}/${enc(topic)}/content`
       }),
       init: {
@@ -214,6 +224,7 @@ export function createResourceClient(
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${enc(sessionId)}/resources/${enc(ref)}/${enc(topic)}`
       }),
       init: {
@@ -242,6 +253,7 @@ export function createResourceClient(
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${enc(sessionId)}/resources/${enc(ref)}${suffix}`
       })
     });
@@ -256,6 +268,7 @@ export function createResourceClient(
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${enc(sessionId)}/resources/${enc(ref)}/${enc(topic)}`
       })
     });
@@ -268,6 +281,7 @@ export function createResourceClient(
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${enc(sessionId)}/manifest`
       })
     });

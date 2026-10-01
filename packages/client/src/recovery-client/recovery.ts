@@ -16,6 +16,12 @@ const RESUME_ACTIONS: readonly ResumeAction[] = ["approve", "reject", "submit", 
 
 export type CreateRecoveryClientOptions = {
   baseUrl?: string;
+  /**
+   * Where the server mounts the flow API, after `baseUrl`. Default
+   * `"/api/flows"`. Set it to the server's mount when that differs, such as
+   * the Node host's `basePath`.
+   */
+  apiPath?: string;
   fetcher?: ClientFetch;
 };
 
@@ -188,6 +194,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
         fetcher,
         url: buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path: `/api/flows/users/${encodeURIComponent(trimmed)}/check-interrupted`,
           query: { staleThresholdMs }
         }),
@@ -212,6 +219,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
         fetcher,
         url: buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path: `/api/flows/${encodeURIComponent(flowKind)}/sessions/${encodeURIComponent(sessionId)}/requests/${encodeURIComponent(requestId)}/retry`
         }),
         init
@@ -236,6 +244,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
         fetcher,
         url: buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path: `/api/flows/${encodeURIComponent(flowKind)}/sessions/${encodeURIComponent(sessionId)}/requests/${encodeURIComponent(requestId)}/continue`
         }),
         init: { method: "POST" }
@@ -252,6 +261,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
       const response = await fetcher(
         buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path: `/api/flows/${encodeURIComponent(flowKind)}/sessions/${encodeURIComponent(sessionId)}/requests/${encodeURIComponent(requestId)}/continue`,
           query: includeTrace ? { include: "trace" } : undefined
         }),
@@ -279,6 +289,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
         fetcher,
         url: buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/resume`
         }),
         init: {
@@ -298,6 +309,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
       const response = await fetcher(
         buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/resume`
         }),
         {
