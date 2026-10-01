@@ -141,9 +141,11 @@ No reader-facing change. [DOCS.md](DOCS.md) says what the run follows.
 - Re-read FIX-1655's, FIX-1662's, FIX-1664's and FIX-1690's merged specs and their amendments;
   take every name from them, and from `labs/shift-manager/README.md` where the rename
   (#2588) changed a name after those specs merged.
-- Confirm D1's gaps still exist before the first run, and whether its children closed them:
-  `grep -rniE "approv|needsApproval" goals/devforce-lab/lab` (no hit on `main` at 904c81b78) and
-  `goals/devforce-lab/lab/workforce/teams/eng/channels/feature/CHANNEL.md` (no board at that commit).
+- D1's children are merged on `main` at 0c49e70: FIX-1666 raises the EM's ask
+  (`goals/devforce-lab/lab/ask.mts`; check `goals/devforce-lab/it-waits-for-a-person-before-it-files/`)
+  and FIX-1667 attaches the board to the feature channel (`boards: [work]` in
+  `goals/devforce-lab/lab/workforce/teams/eng/channels/feature/CHANNEL.md`; check
+  `goals/devforce-lab/it-keeps-its-rows-on-the-channels-board/`). Both checks run in P3.2.
 - Build once for the legs (`pnpm --filter @flow-state-dev/shift-manager build`, and
   `pnpm build:assets` for the devtool pages a2's link opens); one extra build per scratch patch; restart the server per `GOAL_CONTROL`.
 - Leg a needs a key and a model that can run the DevForce `coder` kind; the report names both.
