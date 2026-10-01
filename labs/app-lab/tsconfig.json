@@ -7,7 +7,12 @@
     "sourceMap": false,
     "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
-    "types": ["node", "vite/client"]
+    "types": ["node", "vite/client"],
+    // The registry copies import `@/…` (components.json's aliases). Relative to
+    // the base config's baseUrl, the repo root. Setting `paths` here replaces
+    // the base's source mappings, so workspace packages resolve through their
+    // package exports instead.
+    "paths": { "@/*": ["./labs/app-lab/src/*"] }
   },
   "include": ["src/**/*", "test/**/*", "bin/**/*.mts", "vite.config.ts", "vitest.config.ts"],
   "exclude": ["node_modules", "dist"]
