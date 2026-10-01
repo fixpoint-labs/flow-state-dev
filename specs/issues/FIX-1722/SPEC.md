@@ -10,7 +10,7 @@
 | **has asks waiting** | Opens Inbox and answers each there | Answers them from the summary with the same card Inbox draws; answering in one place clears both |
 | **wants to tell the operation something** | Picks a worker and a task, or types `@worker` in a workstream | Types to the CoS seat. The line goes in through the seat's own door and shows *delivered* only once the seat's session holds it; the reply is whatever that session stores |
 | **runs a Lab with no CoS seat** (DevTeam today) | n/a | Still lands on Chief of Staff and sees the summary; the conversation is a named state saying the Lab declares no chief of staff and how to add one |
-| **builds FIX-1719** (the CoS and Ops seats) | Has no screen where the CoS meets the person | Fills a view that already exists: the shell finds the CoS through one rule, and the seat's tools decide what it can do |
+| **builds FIX-1719** (the CoS and Ops seats) | Has no screen where the CoS meets the person | Fills a view that already exists: the shell finds the CoS through one rule; what the seat can do is FIX-1726's |
 
 ## The goal, and how we'll know it's met
 
@@ -22,7 +22,7 @@ can talk to the Lab's CoS seat, with every line and reply being what that seat's
 |---|---|
 | **The real need** | The issue: *"A Lab opened in Shift Manager lands on Chief of Staff, shows its briefing, and a person can send the CoS seat a message and see its reply."* v2 makes it the default screen: *"a conversation with a chief-of-staff worker who briefs you on what needs you, lets you answer asks inline, and routes requests to workers"* |
 | **Smaller, and rejected** | "The screen renders v2's layout." Met by drawing a canned brief and echoing the person's line locally, which is the shell inventing a colleague (epic ER-5, ER-15) |
-| **Bigger, and not this issue's** | What the CoS *can do*: create tasks, message workers, resolve asks, reassign (its tools and seat, FIX-1719) · on shift and on call (FIX-1723) · v2's removed tabs and the rest of v2's structure (the epic's amendment) |
+| **Bigger, and not this issue's** | What the CoS *can do*: create tasks, message workers, resolve asks, reassign (its tools, [FIX-1726](https://linear.app/fixpoint-labs/issue/FIX-1726), blocked by FIX-1671 and FIX-1719) · the CoS seat itself (FIX-1719) · on shift and on call (FIX-1723) · v2's removed tabs and the rest of v2's structure (the epic's amendment) |
 | **Not done if** | A Lab opens anywhere but Chief of Staff · the summary's counts differ from what Inbox, Tasks and the store hold · an ask answered from the summary still shows in Inbox, or the other way round · a line shows *delivered* before the CoS session holds it · a reply is drawn that the session doesn't hold · a Lab with no CoS seat breaks the screen or hides the summary · anything new lands in Core or Engine |
 
 ```mermaid
@@ -85,8 +85,9 @@ an ordinary session of the CoS seat, written through the send path every compose
 - **The send path** ([FIX-1690](https://linear.app/fixpoint-labs/issue/FIX-1690)): the CoS
   composer is one more caller of it, with its *delivered*, refused, not-sent and unconfirmed
   states.
-- **What the CoS can do.** Its instructions and tools are the Lab's, and FIX-1719's for the
-  default seat. This view grants it nothing.
+- **What the CoS can do.** Its instructions and tools are the Lab's; for the default seat, its
+  tools are [FIX-1726](https://linear.app/fixpoint-labs/issue/FIX-1726)'s. This view grants it nothing and doesn't wait on FIX-1726: it shows
+  whatever the session stores.
 - **v2's removed tabs** (workstream Brief and Results, the task's tabs, the project's tabs):
   not needed for the landing, so not touched here.
 

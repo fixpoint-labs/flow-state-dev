@@ -77,7 +77,7 @@ one function. Before FIX-1719, the interim team seat moves to `org/workers/` wit
   merges, a named gap naming FIX-1723. The summary's sentence leaves out *workers on call* until
   then.
 - **Left out of v2's drawing:** the suggestion chips (they promise actions the CoS's tools
-  decide, FIX-1719's), the person's name in the greeting (Shift Manager knows a user id, not a
+  decide, FIX-1726's), the person's name in the greeting (Shift Manager knows a user id, not a
   name), the composer's *I'll route it* placeholder (also a promise about its tools; the
   placeholder names the CoS instead), and the entry's status dot (no defined meaning).
 - **The sidebar is shared with FIX-1723.** This issue adds the Chief of Staff entry above Inbox;
