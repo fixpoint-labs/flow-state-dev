@@ -988,7 +988,7 @@ const provider = createCheckpointDurabilityProvider({
 
 The interface methods are `saveCheckpoint`, `loadCheckpoint`, `suspend`, `loadSuspension`, `listSuspended`, `acquireLease`, `releaseLease`, `cleanup`, plus the retention seams `cleanupCheckpoints` (delegates to `CheckpointStore.deleteForRequest`) and `pruneSuspensions` (delegates to `SuspensionStore.pruneTerminalBefore`). `createCheckpointDurabilityProvider` delegates each to the matching store from `StoreRegistry`.
 
-`SuspensionStore` and `LeaseStore` ship with in-memory, filesystem, SQLite, and Postgres adapters. See the [Durable Execution guide](https://flow-state.dev/docs/advanced/durable-execution) for usage patterns.
+`SuspensionStore` and `LeaseStore` ship with in-memory, filesystem, SQLite, and Postgres adapters. A custom `LeaseStore` can run `createLeaseStoreConformanceTests({ name, createStore })`, from `@flow-state-dev/engine/testing`. It checks that concurrent acquires of one key grant exactly one lease, that each lease id is a fresh UUID, and that a holder whose lease expired can't release the lease that replaced it. See the [Durable Execution guide](https://flow-state.dev/docs/advanced/durable-execution) for usage patterns.
 
 A suspension inside a router's chosen branch resumes the same branch: the recorded `router_decision` is validated against the re-run selector before dispatch (a mismatch fails with `RouteUnavailableError`), and completed work inside the branch replays from the durable log instead of re-executing.
 
