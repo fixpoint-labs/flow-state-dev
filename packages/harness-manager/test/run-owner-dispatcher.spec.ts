@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
 import { HARNESS_RUN_OWNER_KEY, runOwnerDispatcher } from "../src";
@@ -46,9 +46,9 @@ function fakeSequencerState(): unknown {
 
 function board(): TaskCollectionRef {
   let clock = 0;
-  return createSequencerBackedTaskCollection({
+  return createStateBackedTaskCollection({
     collectionId: "eng.feature.work",
-    sequencer: fakeSequencerState() as never,
+    state: fakeSequencerState() as never,
     onChange: () => undefined,
     now: () => ++clock,
   });

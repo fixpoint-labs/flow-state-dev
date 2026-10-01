@@ -38,7 +38,7 @@ function reader(name: string, taskId: string) {
     execute: async (_input, ctx) => {
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "request",
+        backing: "state",
         collectionId: COLLECTION,
       });
       const task = collection.get(taskId);
@@ -54,7 +54,7 @@ const seed = handler({
   execute: async (_input, ctx) => {
     const collection = await getOrCreateTaskCollection({
       ctx,
-      backing: "request",
+      backing: "state",
       collectionId: COLLECTION,
     });
     await collection.addTask({ id: "a", goal: "a" });
@@ -72,7 +72,7 @@ const addDependentOfSkipped = handler({
   execute: async (_input, ctx) => {
     const collection = await getOrCreateTaskCollection({
       ctx,
-      backing: "request",
+      backing: "state",
       collectionId: COLLECTION,
     });
     await collection.addTask({ id: "c", goal: "c", deps: ["b"] });

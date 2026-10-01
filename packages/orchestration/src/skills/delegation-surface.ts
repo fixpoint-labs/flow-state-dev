@@ -826,8 +826,8 @@ async function buildTools(
   // which is what makes the caps hold.
   const boardCollection = (): Promise<TaskCollectionRef> =>
     getOrCreateTaskCollection({
-      backing: "sequencer",
-      sequencer: self,
+      backing: "state",
+      state: self,
       stateKey: DELEGATION_BOARD_FIELD,
       collectionId: DELEGATION_BOARD_FIELD,
       ctx,

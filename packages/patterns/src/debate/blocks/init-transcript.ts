@@ -23,9 +23,9 @@ export function createInitTranscript(opts: {
       } as Parameters<typeof ctx.resources.transcript.setState>[0]);
       getOrCreateTaskCollection({
         ctx: ctx as unknown as BlockContext,
-        backing: "sequencer",
+        backing: "state",
         collectionId: opts.collectionId,
-        sequencer: ctx.sequencer!,
+        state: ctx.sequencer!,
       });
     },
   });

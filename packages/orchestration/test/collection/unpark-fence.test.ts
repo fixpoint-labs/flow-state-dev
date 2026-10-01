@@ -27,7 +27,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   createResourceBackedTaskCollection,
   taskStatusSchema,
   type Task,
@@ -64,9 +64,9 @@ const sequencerBacking: BackingFactory = async (seed, concurrent) => {
   const captured = createCapturedChanges();
   const seedState = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
   await seed(
-    createSequencerBackedTaskCollection({
+    createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer: seedState,
+      state: seedState,
       now: () => 1000,
     })
   );
@@ -87,9 +87,9 @@ const sequencerBacking: BackingFactory = async (seed, concurrent) => {
   );
 
   return {
-    collection: createSequencerBackedTaskCollection({
+    collection: createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer: state,
+      state: state,
       onChange: captured.onChange,
       now: () => 1000,
     }),

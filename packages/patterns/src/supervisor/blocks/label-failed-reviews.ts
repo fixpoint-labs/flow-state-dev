@@ -35,7 +35,7 @@ export function createLabelFailedReviews(options: LabelFailedReviewsOptions) {
     execute: async (_input, ctx) => {
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "request",
+        backing: "state",
         collectionId,
       });
       // Look up the supervisor sequencer by name (same approach as

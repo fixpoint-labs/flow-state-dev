@@ -26,7 +26,7 @@ import {
   createRecordSuccess,
 } from "../../src/task-board/blocks/record-result";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   startLeaseRenewal,
   ticketForClaim,
   type RenewalTimer,
@@ -78,9 +78,9 @@ async function claimedUnderRenewal(): Promise<Fixture> {
   const state = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
     tasks: {},
   });
-  const inner = createSequencerBackedTaskCollection({
+  const inner = createStateBackedTaskCollection({
     collectionId: "tasks",
-    sequencer: state,
+    state: state,
   });
   await inner.addTask({ id: "t", goal: "work" });
   const task = (await inner.claim("w", { leaseDurationMs: 30_000 }))!;

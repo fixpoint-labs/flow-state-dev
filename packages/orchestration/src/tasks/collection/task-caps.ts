@@ -52,17 +52,18 @@
  * Either way the derivation is over the ledger, so all three persist exactly as
  * far as the ledger does, and no further:
  *
- * - **Request-backed** — the ledger lives on `ctx.request`, so it ends with the
- *   request. A new request starts empty and both counts start from zero.
- * - **Sequencer-backed, resumed from a checkpoint** — the sequencer restores its
+ * - **On the request** (`backing: "state"`, no `state`) — the ledger lives on
+ *   `ctx.request`, so it ends with the request. A new request starts empty and
+ *   both counts start from zero.
+ * - **On a sequencer's state, resumed from a checkpoint** — the sequencer restores its
  *   whole accumulator on resume (`ctx.sequencer.setState(resumeState.state)` in
  *   `packages/core/src/blocks/sequencer.ts`), and the task map is part of it. The
  *   counts come back with the ledger; a post-resume wave is checked against the
  *   pre-suspension tasks, NOT against an empty board.
  *
- *   The trap, because this bullet gets cited: `backing: "sequencer"` names the
- *   STATE REF's shape, not the block it hangs off. `SequencerBackingSpec.sequencer`
- *   accepts any `StateRef` (`get-or-create.ts`), and the delegation surface passes
+ *   The trap, because this bullet gets cited: `backing: "state"` takes any
+ *   `StateRef`, not only a sequencer's. `StateBackingSpec.state` accepts any
+ *   `StateRef` (`get-or-create.ts`), and the delegation surface passes
  *   `ctx.self` — the executive GENERATOR's own state (`delegation-surface.ts`).
  *   Only a sequencer block checkpoints: the lone `state_snapshot` emitter bails
  *   when `ctx.sequencer` is undefined, and that resolves only through a parent
@@ -81,13 +82,13 @@
  *   Neither is it all-or-nothing: resource-backed `addTasks` awaits one
  *   `collection.create` per task (`resource-backed.ts`), so a batch crossing the
  *   limit leaves every task before the throw in place — unlike the single CAS
- *   write that makes this file's caps atomic on the sequencer/request backings.
+ *   write that makes this file's caps atomic on the state backing.
  *   Bounding the `pending` subset stays deferred: the registry counts instances
  *   and has no notion of a task's status (see FIX-939).
  *
  *   **Counting and enforcing are separate on this backing, and the distinction
  *   is deliberate.** The retry COUNT is maintained here — `fail()`'s retry patch
- *   increments the granted count exactly as the sequencer backing does — because
+ *   increments the granted count exactly as the state backing does — because
  *   the count is a public `Task` field feeding the board's report, and a durable
  *   board reporting zero retries having actually retried is a false statement,
  *   not a coverage gap. What is absent is ENFORCEMENT: the budget check must be
@@ -183,8 +184,8 @@ export interface TaskCapOptions {
    * {@link DEFAULT_MAX_TOTAL_RETRIES}: `taskBoard`'s declarative branch, the
    * task-board capability, and the delegation surface — everything that routes
    * through {@link resolveTaskCapDefaults}. Constructing a collection DIRECTLY
-   * (`createSequencerBackedTaskCollection`, `getOrCreateTaskCollection({ backing:
-   * "sequencer" | "request" })`) applies no default: an omitted axis is passed
+   * (`createStateBackedTaskCollection`, `getOrCreateTaskCollection({ backing:
+   * "state" })`) applies no default: an omitted axis is passed
    * through as `undefined`, and `routeFailure` reads `undefined` as unbounded.
    * So a direct caller who omits this option gets NO cumulative retry bound, not
    * 50. Pass the value you want, or `resolveTaskCapDefaults` first.
@@ -207,7 +208,7 @@ export interface TaskCapOptions {
    *   `reclaim` also return a task to `pending` and do NOT consume the budget.
    *
    * Enforced only on the backings that can check atomically against the whole
-   * ledger (sequencer / request). The resource backing still COUNTS retries but
+   * ledger (`backing: "state"`). The resource backing still COUNTS retries but
    * does not enforce, and reports `maxTotalRetries: null` so a caller can never
    * read a non-zero count as evidence a budget applied.
    */

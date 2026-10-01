@@ -36,7 +36,7 @@ import {
   TaskBoardReportFailureError,
 } from "../../src/task-board/blocks/recorder-failure";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   startLeaseRenewal,
   ticketForClaim,
   type RenewalTimer,
@@ -127,9 +127,9 @@ async function fixture(opts: FixtureOptions = {}): Promise<Fixture> {
   const state = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
     tasks: {},
   });
-  const inner = createSequencerBackedTaskCollection({
+  const inner = createStateBackedTaskCollection({
     collectionId: "tasks",
-    sequencer: state,
+    state: state,
   });
   await inner.addTask({ id: "t", goal: "work" });
   const task = (await inner.claim("w", { leaseDurationMs: 30_000 }))!;

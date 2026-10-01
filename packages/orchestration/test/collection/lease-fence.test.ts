@@ -23,7 +23,7 @@ import { describe, expect, it } from "vitest";
 import {
   committedLeaseSpan,
   createResourceBackedTaskCollection,
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   ticketForClaim,
   type Task,
   type TaskClaimTicket,
@@ -42,9 +42,9 @@ async function sequencerBacking(): Promise<Backing> {
     tasks: {},
   });
   return {
-    collection: createSequencerBackedTaskCollection({
+    collection: createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer,
+      state: sequencer,
       now: () => clock,
     }),
     setNow: (n) => {

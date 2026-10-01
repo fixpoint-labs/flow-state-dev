@@ -2,7 +2,8 @@
  * `TaskCollectionRef` — uniform API across both backings (FIX-443 §3.3).
  *
  * The same shape is returned from `getOrCreateTaskCollection` regardless
- * of how the collection is stored (sequencer-state vs resource-collection).
+ * of how the collection is stored (atomic state — a ref, or the request — vs
+ * resource).
  * Patterns and dispatchers consume `TaskCollectionRef` and never reach for
  * the underlying storage directly.
  */
@@ -475,7 +476,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * enforcement lives, rather than derived from the board's own config, because
    * a board handed a collection it did not construct knows nothing about that
    * collection's caps — and a caller who builds one deliberately
-   * (`getOrCreateTaskCollection({ backing: "request", maxTotalRetries: 5 })`)
+   * (`getOrCreateTaskCollection({ backing: "state", maxTotalRetries: 5 })`)
    * would otherwise be told "no limit" about a limit they set themselves.
    *
    * `null` means exactly one thing everywhere: no limit is in force. That covers

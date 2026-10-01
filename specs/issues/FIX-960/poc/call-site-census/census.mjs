@@ -2,8 +2,10 @@
 /**
  * FIX-960 call-site census — re-derives the spec's counted facts from the tree.
  *
- * Every `backing: "sequencer" | "request"` literal in tracked TypeScript is
- * classified by the call, property or annotation that encloses it:
+ * Every `backing: "sequencer" | "request" | "state"` literal in tracked
+ * TypeScript is classified by the call, property or annotation that encloses it
+ * (`"state"` is the folded spelling the implementation PR introduced; counting it
+ * lets the same run describe the tree before and after):
  *   collection — an argument to getOrCreateTaskCollection (in scope: renamed/folded)
  *   board      — the task-board layer's own vocabulary (out of scope, D2)
  * Totality: a literal that is neither fails the run (exit 1), so a site nobody
@@ -72,7 +74,7 @@ function mask(src) {
 
 const COLLECTION_CALLEES = new Set(["getOrCreateTaskCollection"]);
 const BOARD_CALLEES = new Set(["createTaskBoardCapability", "buildTaskBoardAccessor"]);
-const COLLECTION_TYPES = /GetOrCreateTaskCollectionOptions|SequencerBackingSpec|RequestBackingSpec/;
+const COLLECTION_TYPES = /GetOrCreateTaskCollectionOptions|SequencerBackingSpec|RequestBackingSpec|StateBackingSpec/;
 const BOARD_TYPES = /TaskBoard\w*(Spec|Options)/;
 
 // Sites the syntactic rules can't see, each classified by hand with the reason.
@@ -86,7 +88,15 @@ const OVERRIDES = [
   { file: "packages/orchestration/src/task-board/index.ts", tail: /return$/, kind: "board", why: "resolved board config (TaskBoardBacking)" },
 ];
 
-const LITERAL = /backing\s*:\s*"(sequencer|request)"/g;
+// Deliberate old-spelling sites: checks that the removed literals are REJECTED
+// (the type-test's @ts-expect-error rows, the runtime-rejection unit test).
+// Counted apart as `negativeControl`, never as a live collection site.
+const NEGATIVE_CONTROL_FILES = [
+  "packages/orchestration/src/tasks/collection/tests/task-caps.type-test.ts",
+  "packages/orchestration/test/collection/state-backing.test.ts",
+];
+
+const LITERAL = /backing\s*:\s*"(sequencer|request|state)"/g;
 const sites = [];
 const unclassified = [];
 
@@ -133,6 +143,10 @@ for (const file of files) {
       via = `interface ${iface[1]}`;
       if (COLLECTION_TYPES.test(iface[1])) kind = "collection-decl";
       else if (BOARD_TYPES.test(iface[1])) kind = "board";
+    }
+    if (hit[1] !== "state" && NEGATIVE_CONTROL_FILES.includes(file)) {
+      kind = "negative-control";
+      via = "asserts the removed literal is rejected";
     }
     if (!kind) {
       const o = OVERRIDES.find((o) => file.endsWith(o.file) && o.tail.test(before));
@@ -183,12 +197,19 @@ const report = {
     sourceByArm: {
       sequencer: count((s) => src(s) && s.arm === "sequencer"),
       request: count((s) => src(s) && s.arm === "request"),
+      state: count((s) => src(s) && s.arm === "state"),
+    },
+    testByArm: {
+      sequencer: count((s) => s.kind === "collection" && s.area === "test" && s.arm === "sequencer"),
+      request: count((s) => s.kind === "collection" && s.area === "test" && s.arm === "request"),
+      state: count((s) => s.kind === "collection" && s.area === "test" && s.arm === "state"),
     },
   },
   board: {
     source: count((s) => s.kind === "board" && s.area === "source"),
     test: count((s) => s.kind === "board" && s.area === "test"),
   },
+  negativeControl: count((s) => s.kind === "negative-control"),
   exportedNamesRenamed: exported,
   references,
   unclassified: unclassified.map((u) => `${u.file}:${u.line} (${u.via || "?"}) …${u.context}`),

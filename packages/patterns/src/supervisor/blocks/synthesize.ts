@@ -48,7 +48,7 @@ export function createSynthesize(options: CreateSynthesizeOptions) {
     execute: async (_input, ctx) => {
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "request",
+        backing: "state",
         collectionId,
       });
       const goal = ctx.sequencer!.state.goal ?? "";

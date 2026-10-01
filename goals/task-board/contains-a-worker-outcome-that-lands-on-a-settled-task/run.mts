@@ -70,7 +70,7 @@ await runGoal(async () => {
       // not the exotic one.
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "request",
+        backing: "state",
         collectionId: COLLECTION_ID,
       });
       await collection.cancel(input.taskId, fixture.settleReason);

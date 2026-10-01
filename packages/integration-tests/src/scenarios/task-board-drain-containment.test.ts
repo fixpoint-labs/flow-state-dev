@@ -66,7 +66,7 @@ function buildFlow(poisonBehaviour: "throw" | "return", onError: "skip" | "fail"
       // the worker itself through its task tools.
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "request",
+        backing: "state",
         collectionId: COLLECTION_ID,
       });
       await collection.cancel(input.taskId, "settled mid-flight");
@@ -192,7 +192,7 @@ describe("FIX-951: task-board drain containment on a settled task", () => {
         dispatches++;
         const collection = await getOrCreateTaskCollection({
           ctx,
-          backing: "request",
+          backing: "state",
           collectionId: "spin-board",
         });
         // Re-queue every in-progress task, including this worker's own.
@@ -309,7 +309,7 @@ function buildLegacyStoreFlow(misbehaviour: "ignores-guards" | "unreachable") {
       // where every decision is made.
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "request",
+        backing: "state",
         collectionId: LEGACY_COLLECTION_ID,
       });
       await collection.cancel(input.taskId, "settled mid-flight");
@@ -323,7 +323,7 @@ function buildLegacyStoreFlow(misbehaviour: "ignores-guards" | "unreachable") {
       customStore(
         await getOrCreateTaskCollection({
           ctx,
-          backing: "request",
+          backing: "state",
           collectionId: LEGACY_COLLECTION_ID,
         }),
         misbehaviour

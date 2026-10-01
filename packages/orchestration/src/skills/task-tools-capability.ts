@@ -132,8 +132,8 @@ export const defaultOwnStateResolver: TaskCollectionResolver = async (ctx) => {
   if (state === null || typeof state !== "object") return undefined;
   if (!(DELEGATION_BOARD_FIELD in state)) return undefined;
   return getOrCreateTaskCollection({
-    backing: "sequencer",
-    sequencer: parent as StateRef<Record<string, unknown>>,
+    backing: "state",
+    state: parent as StateRef<Record<string, unknown>>,
     stateKey: DELEGATION_BOARD_FIELD,
     collectionId: DELEGATION_BOARD_FIELD,
     ctx,
