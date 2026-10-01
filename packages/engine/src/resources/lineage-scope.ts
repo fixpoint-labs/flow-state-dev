@@ -1,12 +1,13 @@
 /**
- * Where a session-scoped resource STORES, for readers outside execution (FIX-1068).
+ * Where a session-scoped resource STORES, for execution and the HTTP routes alike (FIX-1068).
  *
  * A resource declaring `sharedToLineage: true` has one identity across a
  * session lineage: it resolves against the lineage ROOT rather than the running
  * session, so a conversation and the background sessions under it address the
  * same rows. `createExecutionContext` applies that rule on the execution path;
  * the HTTP read/write routes need the same answer, and this module is the one
- * place both derive it from so they cannot disagree.
+ * place both derive it from so they cannot disagree: {@link sessionRoutingIndex}
+ * walks a flow's session declarations once, and both paths read that walk.
  *
  * The address comes off the session record (`SessionRecord.lineageId`), minted
  * at session creation and inherited verbatim by every descendant — so the id is
@@ -38,6 +39,15 @@ export type LineageSession = {
 type SharedFlag = { sharedToLineage?: boolean };
 
 /**
+ * Whether a session-scoped declaration is shared across its lineage. The one
+ * reading of the flag: only an explicit `true` shares, so an absent or
+ * malformed value keeps the resource on the running session.
+ */
+export function isSharedToLineage(config: unknown): boolean {
+  return (config as SharedFlag | null | undefined)?.sharedToLineage === true;
+}
+
+/**
  * Storage `scopeId` for one session-scoped resource or collection.
  *
  * Pass the resource's own declaration — a caller holding a config never needs
@@ -49,7 +59,7 @@ export function sessionResourceScopeId(
   config: SharedFlag | undefined,
   tenantId: string | undefined
 ): string {
-  if (config?.sharedToLineage !== true) return session.id;
+  if (!isSharedToLineage(config)) return session.id;
   return lineageScopeId(session);
 }
 
@@ -70,7 +80,7 @@ export function sessionKeyScopeId(
   storageKey: string,
   tenantId: string | undefined
 ): string {
-  const { buckets } = sessionOwnership(flowResources);
+  const { buckets } = sessionRoutingIndex(flowResources);
   return resolveOwnershipFlag(buckets, storageKey) === true
     ? lineageScopeId(session)
     : session.id;
@@ -153,39 +163,66 @@ export function resolveOwnershipFlag(
   return flag;
 }
 
-/**
- * Ownership buckets for a flow's session scope, over **every** session-scoped
- * declaration rather than only the shared ones.
- *
- * Reading only the shared declarations is what makes a private resource look
- * shared: with nothing representing it, any shared prefix that happens to match
- * its key claims it, and an empty prefix matches every key there is.
- */
-function sessionOwnership(flowResources: unknown): {
+/** Where a flow's session-scoped keys route, walked once from its declarations. */
+export type SessionRoutingIndex = {
+  /** Every session declaration's routing flag: singles by storage key, collections by prefix. */
   buckets: OwnershipBuckets;
+  /** Whether any session declaration is shared, so a whole-scope read needs the lineage bucket. */
   anyShared: boolean;
-} {
+  /**
+   * Collection storage prefixes whose collections disagree on
+   * `sharedToLineage`, in the order each disagreement is first seen. Two
+   * collections on one prefix share one storage slot, so they cannot live at
+   * two addresses. Reported, not thrown: execution refuses such a flow, while
+   * the HTTP helpers still answer it with the first declaration winning.
+   */
+  conflicts: ReadonlyArray<string>;
+};
+
+/**
+ * The session routing index for a flow's resources: the one walk of its
+ * session-scoped declarations that both the HTTP helpers and
+ * `createExecutionContext` route from.
+ *
+ * It covers **every** session-scoped declaration rather than only the shared
+ * ones. Reading only the shared declarations is what makes a private resource
+ * look shared: with nothing representing it, any shared prefix that happens to
+ * match its key claims it, and an empty prefix matches every key there is.
+ *
+ * Collection prefixes stay in declaration order, duplicates included: for a
+ * conflicting prefix {@link resolveOwnershipFlag} lets the first declaration
+ * win, and that tie-break is observable over HTTP. Singles key on the canonical
+ * storage key resolved from the full session config map, so an unaliased single
+ * lands on the slot execution uses.
+ */
+export function sessionRoutingIndex(flowResources: unknown): SessionRoutingIndex {
   const singles = new Map<string, boolean>();
   const prefixes: Array<{ prefix: string; flag: boolean }> = [];
+  const conflicts: string[] = [];
   let anyShared = false;
   if (typeof flowResources !== "object" || flowResources === null) {
-    return { buckets: { singles, prefixes }, anyShared };
+    return { buckets: { singles, prefixes }, anyShared, conflicts };
   }
   const entries = Object.entries(flowResources as Record<string, unknown>).filter(
     ([, def]) => (def as { scope?: string } | null)?.scope === "session"
   );
   const storageKeys = resourceStorageKeys(Object.fromEntries(entries));
+  const prefixFlag = new Map<string, boolean>();
   for (const [accessor, def] of entries) {
-    const flag = (def as SharedFlag).sharedToLineage === true;
+    const flag = isSharedToLineage(def);
     if (flag) anyShared = true;
     if (isCollectionConfig(def)) {
-      const prefix = getPatternPrefix(def.pattern);
-      prefixes.push({ prefix: prefix === "" ? "" : `${prefix}/`, flag });
+      const rawPrefix = getPatternPrefix(def.pattern);
+      const prefix = rawPrefix === "" ? "" : `${rawPrefix}/`;
+      const existing = prefixFlag.get(prefix);
+      if (existing === undefined) prefixFlag.set(prefix, flag);
+      else if (existing !== flag && !conflicts.includes(prefix)) conflicts.push(prefix);
+      prefixes.push({ prefix, flag });
     } else {
       singles.set(storageKeys[accessor] ?? accessor, flag);
     }
   }
-  return { buckets: { singles, prefixes }, anyShared };
+  return { buckets: { singles, prefixes }, anyShared, conflicts };
 }
 
 /**
@@ -206,7 +243,7 @@ export async function readSessionScopeWithLineage<T>(
   tenantId: string | undefined,
   readAll: (scopeType: StorageScopeType, scopeId: string) => Promise<Record<string, T>>
 ): Promise<Record<string, T>> {
-  const { buckets, anyShared } = sessionOwnership(flowResources);
+  const { buckets, anyShared } = sessionRoutingIndex(flowResources);
   // Nothing shared means one bucket, which is every flow that never asked for
   // this. The second read below is not paid for by flows that don't use it.
   if (!anyShared) return readAll("session", session.id);

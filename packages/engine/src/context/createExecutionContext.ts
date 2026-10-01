@@ -92,7 +92,12 @@ import {
   tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
-import { resolveOwnershipFlag } from "../resources/lineage-scope";
+import {
+  isSharedToLineage,
+  resolveOwnershipFlag,
+  sessionRoutingIndex,
+  type OwnershipBuckets
+} from "../resources/lineage-scope";
 import type { StorageScopeType } from "../stores/types";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 import { createInitialRequestRecord } from "./initial-request-record";
@@ -1091,27 +1096,36 @@ export async function createExecutionContext<
   // user/org route on `flowIsolation` (bare identity vs `${id}:${flow.id}`,
   // FIX-735); session routes on `sharedToLineage` (this session vs the
   // lineage root, FIX-1068).
-  type ScopeBuckets = {
-    singles: Map<string, boolean>;
-    prefixes: Array<{ prefix: string; flag: boolean }>;
-  };
-  const buildScopeBuckets = (
+  //
+  // FIX-735: collection storage is keyed by pattern prefix (load waves,
+  // `getByPrefix`, single-flight tokens, and the loaded-prefix cache all key
+  // on it). Two collections that share a prefix therefore share one storage
+  // slot and MUST share a bucket — otherwise one would silently shadow the
+  // other's loads/writes. Patterns whose first segment is a
+  // parameter/wildcard collapse to the empty prefix (whole-scope scan), so
+  // this most often bites two parameterized collections at one scope. Reject
+  // the conflict loudly at setup rather than mis-route data.
+  const conflictingPrefixError = (
     scope: ContentScopeType,
+    keyPrefix: string,
+    flagName: string
+  ): Error =>
+    new Error(
+      `Flow "${flow.kind}": ${scope}-scoped collections sharing storage prefix ` +
+        `"${keyPrefix || "(whole scope)"}" declare conflicting ${flagName}. ` +
+        `Collections that share a storage prefix must share a storage bucket — ` +
+        `give them distinct static prefixes or matching ${flagName} (FIX-735).`
+    );
+  // User and org buckets route on `flowIsolation` and are built here.
+  const buildScopeBuckets = (
+    scope: "user" | "org",
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>,
     flagOf: (config: ResourceConfig | ResourceCollectionConfig) => boolean,
     flagName: string
-  ): ScopeBuckets => {
+  ): OwnershipBuckets => {
     const keys = scopeStorageKeyMaps[scope];
     const singles = new Map<string, boolean>();
     const prefixes: Array<{ prefix: string; flag: boolean }> = [];
-    // FIX-735: collection storage is keyed by pattern prefix (load waves,
-    // `getByPrefix`, single-flight tokens, and the loaded-prefix cache all key
-    // on it). Two collections that share a prefix therefore share one storage
-    // slot and MUST share a bucket — otherwise one would silently shadow the
-    // other's loads/writes. Patterns whose first segment is a
-    // parameter/wildcard collapse to the empty prefix (whole-scope scan), so
-    // this most often bites two parameterized collections at one scope. Reject
-    // the conflict loudly at setup rather than mis-route data.
     const prefixFlag = new Map<string, boolean>();
     for (const [accessor, config] of Object.entries(configs)) {
       const flag = flagOf(config);
@@ -1120,12 +1134,7 @@ export async function createExecutionContext<
         const keyPrefix = rawPrefix === "" ? "" : `${rawPrefix}/`;
         const existing = prefixFlag.get(keyPrefix);
         if (existing !== undefined && existing !== flag) {
-          throw new Error(
-            `Flow "${flow.kind}": ${scope}-scoped collections sharing storage prefix ` +
-              `"${keyPrefix || "(whole scope)"}" declare conflicting ${flagName}. ` +
-              `Collections that share a storage prefix must share a storage bucket — ` +
-              `give them distinct static prefixes or matching ${flagName} (FIX-735).`
-          );
+          throw conflictingPrefixError(scope, keyPrefix, flagName);
         }
         prefixFlag.set(keyPrefix, flag);
         prefixes.push({ prefix: keyPrefix, flag });
@@ -1139,16 +1148,17 @@ export async function createExecutionContext<
     (scope: "user" | "org") =>
     (config: ResourceConfig | ResourceCollectionConfig): boolean =>
       resolveResourceIsolation((config as { flowIsolation?: boolean }).flowIsolation, flow, scope);
-  const sharedToLineageFlagOf = (
-    config: ResourceConfig | ResourceCollectionConfig
-  ): boolean => (config as { sharedToLineage?: boolean }).sharedToLineage === true;
-  const scopeBuckets: Record<ContentScopeType, ScopeBuckets> = {
-    session: buildScopeBuckets(
-      "session",
-      sessionResourceConfigs,
-      sharedToLineageFlagOf,
-      "sharedToLineage"
-    ),
+  // Session buckets come from the session routing index, the one walk of the
+  // session declarations the HTTP routes read too, so a change to that rule
+  // reaches both paths. Execution alone refuses a conflicting prefix; the HTTP
+  // helpers keep answering such a flow.
+  const sessionIndex = sessionRoutingIndex(flatFlowResources);
+  const [sessionConflict] = sessionIndex.conflicts;
+  if (sessionConflict !== undefined) {
+    throw conflictingPrefixError("session", sessionConflict, "sharedToLineage");
+  }
+  const scopeBuckets: Record<ContentScopeType, OwnershipBuckets> = {
+    session: sessionIndex.buckets,
     user: buildScopeBuckets("user", userResourceConfigs, isolationFlagOf("user"), "flowIsolation"),
     org: buildScopeBuckets("org", orgResourceConfigs, isolationFlagOf("org"), "flowIsolation")
   };
@@ -1166,7 +1176,7 @@ export async function createExecutionContext<
     // the lineage root, so a parent and its child sessions resolve one resource.
     // Everything else stays on the running session, unchanged.
     if (scope === "session") {
-      return sharedToLineageFlagOf(config) ? lineageId : sessionKey;
+      return isSharedToLineage(config) ? lineageId : sessionKey;
     }
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
