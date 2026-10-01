@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 380" role="img" aria-label="What changes, today on the left and after on the right. Today: a WORKER.md under org/workers is passed over and no seat exists, team seats boot, and a person edits files and restarts to change who works there. After: org seats chief-of-staff and ops boot from the tree beside the team seats; a person asks Ops; a hire goes straight to a roster row in the person's own organization; a fire goes to an approval in Inbox first, and only Approve removes the seat; both are read back after a restart."
+<svg viewBox="0 0 940 380" role="img" aria-label="What changes, today on the left and after on the right. Today: a WORKER.md under org/workers is passed over and no seat exists, team seats boot, and a person edits files and restarts to change who works there. After: the chief-of-staff org seat boots from the tree beside the team seats; a person, or another seat by message, asks it; a hire goes straight to a roster row in the person's own organization; a fire goes to an approval in Inbox first, and only Approve removes the seat; both are read back after a restart."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -37,7 +37,7 @@
     <text class="t-s" x="46" y="72">teams/eng/workers/*/WORKER.md</text>
     <text class="t-b" x="46" y="92">booted: eng.em, eng.coder, …</text>
     <rect class="lost" x="32" y="120" width="308" height="52" rx="5"/>
-    <text class="t-s" x="46" y="140">org/workers/ops/WORKER.md</text>
+    <text class="t-s" x="46" y="140">org/workers/chief-of-staff/WORKER.md</text>
     <text class="t-gone" x="46" y="160">passed over: no seat, no error</text>
     <rect class="n-box" x="32" y="214" width="308" height="64" rx="5"/>
     <text class="t-lbl" x="46" y="234">A PERSON CHANGES THE ROSTER</text>
@@ -52,14 +52,14 @@
     <text class="t-s" x="402" y="72">teams/eng/workers/*</text>
     <text class="t-b" x="402" y="92">booted, unchanged</text>
     <rect class="new" x="652" y="52" width="256" height="52" rx="5"/>
-    <text class="t-s" x="666" y="72">org/workers/{chief-of-staff,ops}</text>
-    <text class="t-b" x="666" y="92">booted: chief-of-staff, ops</text>
+    <text class="t-s" x="666" y="72">org/workers/chief-of-staff</text>
+    <text class="t-b" x="666" y="92">booted: chief-of-staff</text>
 
     <rect class="n-box" x="388" y="132" width="160" height="44" rx="5"/>
-    <text class="t-b" x="402" y="159">a person asks Ops</text>
+    <text class="t-b" x="402" y="159">a person, or a seat</text>
     <path class="arrow" d="M548,154 L600,154"/>
     <rect class="new" x="604" y="132" width="120" height="44" rx="5"/>
-    <text class="t-b" x="618" y="159">Ops · agent</text>
+    <text class="t-b" x="618" y="159">CoS · agent</text>
 
     <path class="arrow" d="M664,176 L664,214 L560,214 L560,232"/>
     <text class="t-lbl" x="572" y="208">HIRE</text>

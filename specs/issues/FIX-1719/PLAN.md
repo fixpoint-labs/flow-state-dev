@@ -24,11 +24,11 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 | S1 | 1 | `workforce` loader · roster reader | Walk `org/workers/<name>/` beside the team walk, same slot rules, same refusals, reusing the worker-slot walk `resource-walk.ts` already has (`walkWorkers`, which takes `teamId: undefined` for the org level) so the roster and the resources never disagree on what a slot is. Mint the bare name. **Remove** "an org-level `workers/` is passed over in silence" from the header and docs | BR-1 BR-3 BR-4 BR-6 |
 | S2 | 1 | `workforce` · the three IN readers, plus skills | One exported parser, `parseDeclaredSeatId` (pinned), turns a declared id into `{ team?, name }`: dotless is an org seat, `<team>.<name>` a team seat. `splitWorkerId`, `resolveHeldPackages`, `placeOfSeat` and `readSeatSkills` all call it; none splits on its own. `placeOfSeat` returns `{ team: undefined, worker }` for an org seat, and the parser's tests sit with `placeOfSeat`'s, since both are public. An org seat reads org level, then its own folder | BR-5 |
 | S3 | 1 | `workforce` test · published tree | Delete the `build` row from `KNOWN_UNRESOLVABLE_REFS`; the docs example gains `org/workers/build/WORKER.md` | BR-7 |
-| S4 | 2 | `workforce` · seat-hire capability | `askBefore` option on `createSeatHireCapability`, default `[]`. The tool path validates, raises `human_approval` with `data: { verb, seatId, kind }`, then on Approve re-validates and applies; on Deny returns a denial result. Refuses a gated verb when `ctx.suspend` is absent. The blocks themselves stay ungated | BR-10 BR-12 BR-13 BR-15 BR-16 BR-17 BR-18 |
-| S5 | 2 | `workforce` · fire | Fire calls FIX-1621's one remove path. If FIX-1621 has not merged, stop: this surface waits | BR-11 ER-19 |
-| S6 | 2 | DevTeam Lab · tree | `org/workers/chief-of-staff/WORKER.md` (`flow: agent`, discover, post) and `org/workers/ops/WORKER.md` (`flow: agent`, `tools: [hire, fire]`), each with a brief | BR-20 BR-21 |
+| S4 | 2 | `workforce` · seat-hire capability | `askBefore` option on `createSeatHireCapability`, default `[]`. The tool path validates, raises `human_approval` with `data: { verb, seatId, kind }`, then on Approve re-validates and applies; on Deny returns a denial result. Refuses a gated verb when `ctx.suspend` is absent. Refuses a hire whose seat id a declared seat holds, via `kindAt` on the bare id. Mounts FIX-1621's `rehire` (always gated) and `brokenSeats`. The blocks themselves stay ungated | BR-10 BR-12 BR-13 BR-15 BR-16 BR-17 BR-18 BR-20 |
+| S5 | 2 | `workforce` · fire | The gated tool calls the `fire` block, which FIX-1621 makes the one remove path (roster row, address, inventory row). No CoS-specific remove. If FIX-1621 has not merged, stop: this surface waits | BR-11 ER-19 |
+| S6 | 2 | DevTeam Lab · tree | `org/workers/chief-of-staff/WORKER.md` (`flow: agent`, `tools: [hire, fire, rehire]`, discover, post), with a brief that covers both jobs: answering the person, and deciding on hires a person or a seat asks for. No team seat's `tools:` names a hire tool | BR-21 BR-22 BR-23 |
 | S7 | 2 | DevTeam Lab · host and profile | Install `createWorkforceCapability`, channel post and `createSeatHireCapability({ askBefore: ["fire"], allowKinds })` on the agent kind. The profile gets a store that survives a restart and reloads hired seats at boot | BR-8 BR-9 BR-19 |
-| S8 | 2 | Goal check · `goals/org-seats/ops-changes-the-roster/` | New. Control `deny-fire` | Goal |
+| S8 | 2 | Goal check · `goals/org-seats/cos-changes-the-roster/` | New. Control `deny-fire` | Goal |
 | S9 | 1 and 2 | Docs | [DOCS.md](DOCS.md) operations; one `minor` changeset for `@flow-state-dev/workforce` in each PR | — |
 
 ## Sequence
@@ -62,10 +62,10 @@ flowchart TD
 
 | Where | Name | Why pinned |
 |---|---|---|
-| `createSeatHireCapability` option | `askBefore: readonly ("hire" \| "fire")[]` | Public. FIX-1621 adds its verbs to the union |
+| `createSeatHireCapability` option | `askBefore: readonly ("hire" \| "fire")[]` | Public. DevTeam passes `["fire"]`: hire proceeds, fire asks. `rehire` asks regardless |
 | Declared-seat id parser | `parseDeclaredSeatId` · exported beside `placeOfSeat` | The one teamless rule every IN reader uses (S2) |
 | Suspension `data` | `{ verb, seatId, kind }` | Inbox and FIX-1722 read it ([downstream reads](BUSINESS-RULES.md#appendix--downstream-reads-fix-17221723)) |
-| Template seat ids | `chief-of-staff`, `ops` | The screens find them |
+| Template seat id | `chief-of-staff` | The screens find it |
 | Goal control | `deny-fire` | The spec's control |
 
 ## Guardrails
@@ -73,7 +73,7 @@ flowchart TD
 | Rule | Because |
 |---|---|
 | Every id reader goes through `parseDeclaredSeatId`; `check.mjs` stays green | An invariant loosened at one reader is found by review at the next (tenet 5) |
-| Nothing in `core` or `engine` changes; no CoS, Ops, project or org-seat type | ER-6, ER-10, ER-11 |
+| Nothing in `core` or `engine` changes; no CoS, admin, project or org-seat type | ER-6, ER-10, ER-11 |
 | The ask is raised only for a change that would succeed, and re-checked on resume | A person approving a change that then fails is worse than no ask |
 | Org comes from the principal, never the request body | ER-7, BP-031 |
 | `askBefore` omitted is today, byte for byte | Existing apps on the capability (BP-035: test the off state) |
@@ -101,13 +101,14 @@ FAILS. It answers "which readers assume a team"; it does not change behaviour.
 
 ## At implement time
 
-- Re-read FIX-1621's merged spec: its remove path's name, and whether its repair verbs live on
-  this capability. S4's union grows by them.
+- FIX-1621's spec is on `main`: `fire` is its one remove path, and it pins `brokenSeats` and
+  `rehire` on `createSeatHireBlocks` for this issue to mount. Its prose still says "Ops" where it
+  means the admin seat; read that as CoS.
 - Shift Manager's `toSeat` (`labs/shift-manager/src/lib/reads.ts:258`) reads a dotless id as its
   own team. FIX-1723 owns that screen; tell its thread, don't edit it.
 - Check whether `createFlowState` refuses two flows with one key. If it overwrites, the DevTeam
   host refuses an org seat named like a channel kind.
-- The epic's closure control still reads "Deny the hire". The amendment recording Q2 changes it.
+- The epic's closure control still reads "Deny the hire". The amendment recording Q2 (#2609) changes it.
 
 ## Notes from review
 

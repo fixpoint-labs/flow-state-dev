@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, how a declared CoS or Ops seat starts. Chosen: booted from the tree at start, like team seats. Instead of: the hire tool naming the declared seat. It comes down to the first row: booting needs nobody to hire Ops first, while hiring it needs a hirer that isn&#x27;t Ops. The price is the second row: adding Ops to a running Lab needs a restart. Third row: booting stores nothing new, while a hired row copies a file that keeps changing. Locks in: an org seat&#x27;s id is its folder name, and Ops cannot fire CoS or itself. Flips if a Lab must add Ops without a restart."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, how a declared chief of staff starts. Chosen: booted from the tree at start, like team seats. Instead of: the hire tool naming the declared seat. It comes down to the first row: booting needs nobody to hire CoS first, while hiring it needs a hirer other than CoS, which is the hirer. The price is the second row: adding CoS to a running Lab needs a restart. Third row: booting stores nothing new, while a hired row copies a file that keeps changing. Locks in: an org seat&#x27;s id is its folder name, and CoS cannot fire itself. Flips if a Lab must add CoS without a restart."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,7 +36,7 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
-    <text class="t-q" x="32" y="52">How does a declared CoS or Ops seat start running?</text>
+    <text class="t-q" x="32" y="52">How does a declared chief of staff start running?</text>
   </g>
 
   <g id="options">
@@ -52,20 +52,20 @@
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
     <text class="t-lbl" x="32" y="156">WHO STARTS</text>
-    <text class="t-lbl" x="32" y="169">OPS</text>
+    <text class="t-lbl" x="32" y="169">COS</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
     <text class="t-b" x="248" y="161">The app, at boot</text>
     <text class="t-s" x="248" y="179">nothing has to hire it first</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Someone must hire Ops</text>
-    <text class="t-s" x="612" y="179">and Ops can&#x27;t hire itself</text>
+    <text class="t-b" x="612" y="161">Someone must hire CoS</text>
+    <text class="t-s" x="612" y="179">and CoS is the hirer</text>
   </g>
 
   <g id="row-2">
     <text class="t-lbl" x="32" y="222">RUNNING LAB</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Adding Ops needs a restart</text>
+    <text class="t-b" x="248" y="223">Adding CoS needs a restart</text>
     <text class="t-s" x="248" y="241">as for any declared seat</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">Hired without a restart</text>
@@ -77,7 +77,7 @@
     <text class="t-lbl" x="32" y="280">WHAT IS STORED</text>
     <text class="mark plus" x="228" y="282">+</text>
     <text class="t-b" x="248" y="281">Nothing new</text>
-    <text class="t-s" x="248" y="299">the files are the seat</text>
+    <text class="t-s" x="248" y="299">the file is the seat</text>
     <text class="mark minus" x="592" y="282">−</text>
     <text class="t-b" x="612" y="281">A row copying a file</text>
     <text class="t-s" x="612" y="299">the two drift, or reload reads files</text>
@@ -88,13 +88,13 @@
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
     <text class="t-b" x="32" y="371">An org seat&#x27;s id is its folder name</text>
-    <text class="t-s" x="32" y="389">Ops can&#x27;t fire CoS or itself; edit the folder</text>
+    <text class="t-s" x="32" y="389">CoS can&#x27;t fire itself; edit the folder</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">A Lab must add Ops with no restart</text>
+    <text class="t-b" x="494" y="371">A Lab must add CoS with no restart</text>
     <text class="t-s" x="494" y="389">then hire gains a declared-seat input, on top</text>
   </g>
 </svg>

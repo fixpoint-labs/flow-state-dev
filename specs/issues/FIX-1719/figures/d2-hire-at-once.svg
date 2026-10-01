@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, which roster changes wait for the person. Chosen: a fire asks in Inbox and a hire happens at once. Instead of: every hire and fire asks. It comes down to the first row: Jake asked for Ops to hire without asking. The price is the second row: a model can add a seat nobody clicked, though TEAMS shows it at once. Third row is a tie: ending a seat waits for Approve either way. Locks in: one list on the hire capability says which changes ask, and leaving it out keeps today&#x27;s behaviour. Flips if Ops hires seats nobody wanted; then hire goes on the list."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, which roster changes wait for the person. Chosen: a fire asks in Inbox and a hire happens at once. Instead of: every hire and fire asks. It comes down to the first row: Jake asked for hires without asking. The price is the second row: a model can add a seat nobody clicked, though TEAMS shows it at once. Third row is a tie: ending a seat waits for Approve either way. Locks in: one list on the hire capability says which changes ask, and leaving it out keeps today&#x27;s behaviour. Flips if CoS hires seats nobody wanted; then hire goes on the list."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -55,7 +55,7 @@
     <text class="t-lbl" x="32" y="169">ASKED FOR</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Ops hires without asking</text>
+    <text class="t-b" x="248" y="161">CoS hires without asking</text>
     <text class="t-s" x="248" y="179">his answer to the epic&#x27;s Q2</text>
     <text class="mark minus" x="592" y="162">−</text>
     <text class="t-b" x="612" y="161">A click for every hire</text>
@@ -94,7 +94,7 @@
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">Ops hires seats nobody wanted</text>
+    <text class="t-b" x="494" y="371">CoS hires seats nobody wanted</text>
     <text class="t-s" x="494" y="389">add hire to the list; hired seats stay</text>
   </g>
 </svg>

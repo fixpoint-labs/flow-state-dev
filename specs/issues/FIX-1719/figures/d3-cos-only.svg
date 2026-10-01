@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D3, how the build is split. Chosen: two PRs, org seats first and Ops after FIX-1621. Instead of: one PR after FIX-1621. It comes down to the first row: with two, only the fire waits on FIX-1621. The price is the second row: two reviews instead of one. Third row: PR 1 alone closes the published document address that names no seat. Locks in: PR 1 ships org seats with no Ops and no gate. Flips if FIX-1621 merges before PR 1 is ready."
+<svg viewBox="0 0 940 420" role="img" aria-label="D3, which seat may hire and fire. Chosen: the chief of staff only, with other seats asking it by message. Instead of: a separate Ops seat. It comes down to the first row: Jake decided on one admin seat. The price is the second row: the person&#x27;s contact also carries the roster. Third row is a tie: a seat&#x27;s request is a message to a door either way. Locks in: CoS is the only door to hire and fire, and fire still asks the person. Flips if CoS&#x27;s turns get crowded by roster work."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,65 +36,65 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D3 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Does the loader work wait on FIX-1621?</text>
+    <text class="t-q" x="32" y="52">Which seat may hire and fire?</text>
   </g>
 
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Two PRs: org seats, then Ops</text>
+    <text class="t-h c-code" x="228" y="112">CoS only; other seats message it</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">One PR, after FIX-1621</text>
+    <text class="t-h c-lost" x="592" y="112">A separate Ops seat</text>
   </g>
 
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">WHAT WAITS ON</text>
-    <text class="t-lbl" x="32" y="169">FIX-1621</text>
+    <text class="t-lbl" x="32" y="156">WHAT JAKE</text>
+    <text class="t-lbl" x="32" y="169">DECIDED</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">Only the fire</text>
-    <text class="t-s" x="248" y="179">the loader ships when ready</text>
+    <text class="t-b" x="248" y="161">One admin seat</text>
+    <text class="t-s" x="248" y="179">other seats ask CoS, and it decides</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">Everything</text>
-    <text class="t-s" x="612" y="179">loader work idles behind the fire path</text>
+    <text class="t-b" x="612" y="161">A second org seat</text>
+    <text class="t-s" x="612" y="179">dropped: we probably don&#x27;t need Ops</text>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="222">REVIEW</text>
+    <text class="t-lbl" x="32" y="222">THE PERSON&#x27;S CONTACT</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Two reviews</text>
-    <text class="t-s" x="248" y="241">and two release notes</text>
+    <text class="t-b" x="248" y="223">Carries the roster too</text>
+    <text class="t-s" x="248" y="241">CoS&#x27;s brief covers both jobs</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">One review</text>
-    <text class="t-s" x="612" y="241">one change set</text>
+    <text class="t-b" x="612" y="223">Stays just a contact</text>
+    <text class="t-s" x="612" y="241">roster work goes elsewhere</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="280">PUBLISHED GAP</text>
-    <text class="mark plus" x="228" y="282">+</text>
-    <text class="t-b" x="248" y="281">Closed by PR 1</text>
-    <text class="t-s" x="248" y="299">a document address that names no seat</text>
-    <text class="mark minus" x="592" y="282">−</text>
-    <text class="t-b" x="612" y="281">Open until both land</text>
-    <text class="t-s" x="612" y="299">the same address, still unresolved</text>
+    <text class="t-lbl" x="32" y="280">A SEAT&#x27;S REQUEST</text>
+    <text class="mark tie" x="228" y="282">=</text>
+    <text class="t-b" x="248" y="281">A message to a door</text>
+    <text class="t-s" x="248" y="299">nothing new carries it</text>
+    <text class="mark tie" x="592" y="282">=</text>
+    <text class="t-b" x="612" y="281">A message to a door</text>
+    <text class="t-s" x="612" y="299">the same, to Ops</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">PR 1 ships org seats with no Ops, no gate</text>
-    <text class="t-s" x="32" y="389">PR 2: gate, templates, profile, goal check</text>
+    <text class="t-b" x="32" y="371">CoS is the only door to hire and fire</text>
+    <text class="t-s" x="32" y="389">fire still asks the person; never alone</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">FIX-1621 merges before PR 1 is ready</text>
-    <text class="t-s" x="494" y="389">then one PR is simpler</text>
+    <text class="t-b" x="494" y="371">CoS&#x27;s turns get crowded by roster work</text>
+    <text class="t-s" x="494" y="389">then hiring moves to a second seat</text>
   </g>
 </svg>
