@@ -165,9 +165,9 @@ Resource state is saved as JSON, and every store saves the same thing for the sa
 
 A value with no JSON equivalent is stored the way `JSON.stringify` writes it. A `Date` becomes its ISO string, a `Map` or `Set` becomes `{}`, and `Infinity` and `NaN` become `null`. An `undefined` field or a function is dropped. A `bigint`, or an object that refers to itself, can't be written at all: the write fails with a `TypeError` and nothing is stored.
 
-The stored form shows up on the next read from the store. Within the request that made the write, `ref.state` can still hold the value as you wrote it, so a `Date` you just patched in still reads as a `Date` there. A field declared `z.date()` won't parse the stored string on that next read, so it comes back as its default.
+The stored form shows up on the next read from the store. Within the request that made the write, `ref.state` can still hold the value as you wrote it, so a `Date` you just patched in still reads as a `Date` there. A field declared `z.date()` won't parse the stored string on that next read, and when any field fails `stateSchema` there, the whole state reads back as the resource's default, not just that field. Nothing is thrown or logged. A later write builds on that default, so it saves the loss, or is refused if the default leaves a required field missing.
 
-So keep `stateSchema` to JSON types. Store a date as a string, a set as an array.
+So keep `stateSchema` to JSON types, and store a set as an array. For a date on a single resource, declare it `z.coerce.date()` so it reads back as a `Date`. A collection instance isn't parsed on read, so a date there comes back as an ISO string: store it and declare it as a string.
 
 ### Deltas and concurrent writers
 
