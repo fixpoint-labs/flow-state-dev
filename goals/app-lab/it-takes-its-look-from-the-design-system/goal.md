@@ -6,7 +6,7 @@
 
 **Input:** App Lab as checked out, copied to a scratch directory and built twice: as written, and with the line `@import "@flow-state-dev/design-system/app-lab.css";` removed from `src/styles.css`. Each build is served by App Lab's start script over the run-lab (`goals/app-lab/it-shows-and-stops-a-task-run/lab/`), whose runs store a message, a reasoning item and a tool call with its result. App Lab's theme values and font families are read from `labs/design-system/app-lab.css` at run time.
 
-**Signal:** Chromium opens a running task from Tasks by clicking, opens its tool card and reasoning, and reads the computed colour, background, border, outline, svg stroke and fill, and font of every visible element on the shell and inside each swept card. Two passes per build: light, then with `dark` on the root element. Each failure is tagged `<leg> [<build> <variant>]`.
+**Signal:** Chromium opens a running task from Tasks by clicking, opens its tool card and reasoning, and reads the computed colour, background, border, outline, svg stroke and fill, and font of every visible element on the shell and inside each swept card. Two passes per build: with the browser set to light, then to dark (App Lab follows that setting). Each failure is tagged `<leg> [<build> <variant>]`.
 
 - **reach**: the Session draws each swept registry part (message, reasoning, tool, code block) at least once.
 - **themed**: on the build as written, every painted colour is one of App Lab's values for that variant (to within 3 per channel), and every font is one of its families.
@@ -30,3 +30,5 @@
 | 2026-10-01 | a25134ebd (main) + this check | n/a | FAIL (before, expected) | App Lab as on `main`. **neutral** can't run: `src/styles.css` has no design-system import to remove. **reach**: the Session drew no registry message, reasoning, tool or code block. **themed**: the shell paints the neutral defaults (`#ffffff`, `#e4e4e7`; dark `#09090b`, `#27272a`), 200+ samples per variant. |
 | 2026-10-01 | fix-1688-app-lab-skin (pre-PR) | n/a | PASS | Light: shell 129, message 8, reasoning 16, tool 51, code block 32 elements, 360 colours; dark the same parts, 370 colours. No-theme light 365 colours, dark 375, none an App Lab value. |
 | 2026-10-01 | fix-1688-app-lab-skin (pre-PR), `GOAL_CONTROL=hardcoded-accent` | n/a | FAIL (expected) | Only **neutral**, on `tool` (`svg.lucide-circle-check-big` stroke `#e8f551`), light and dark. reach and themed pass. |
+| 2026-10-01 | fix-1688 follow-up (App Lab follows the OS setting; passes set the browser's colour scheme) | n/a | PASS | Light: shell 129, message 8, reasoning 16, tool 51, code block 32 elements, 360 colours; dark: message 12, 365 colours. No-theme light 360, dark 365, none an App Lab value. |
+| 2026-10-01 | fix-1688 follow-up, `GOAL_CONTROL=hardcoded-accent` | n/a | FAIL (expected) | Only **neutral**, on `tool` (`svg.lucide-circle-check-big` stroke `#e8f551`), light and dark. |

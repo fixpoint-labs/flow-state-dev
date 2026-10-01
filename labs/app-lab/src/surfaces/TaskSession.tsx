@@ -137,8 +137,7 @@ function RunItems({ run }: { run: OpenRun }) {
     if (stored === undefined) return undefined;
     const mine = taskItems(stored.items, task.boardRef, task.taskId);
     const items = buildItemRenderStream(mine.items, renderers).flatMap((segment) => (segment.kind === "item" ? [segment.item] : segment.items));
-    // The task plan card reads the whole session's task changes, not only this task's items.
-    return { items, shared: mine.shared, session: stored.items };
+    return { items, shared: mine.shared };
   }, [stored, task.boardRef, task.taskId, renderers]);
 
   if (failure !== undefined) {
@@ -148,7 +147,7 @@ function RunItems({ run }: { run: OpenRun }) {
       </div>
     );
   }
-  if (shown === undefined) return <p className="p-4 text-sm text-muted-foreground">Reading the run…</p>;
+  if (stored === undefined || shown === undefined) return <p className="p-4 text-sm text-muted-foreground">Reading the run…</p>;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" data-testid="session" data-session-id={run.sessionId} data-request-id={run.requestId}>
@@ -162,7 +161,8 @@ function RunItems({ run }: { run: OpenRun }) {
           More than shown: this session holds more steps than one read returns.
         </p>
       ) : null}
-      <SessionItemsProvider value={shown.session}>
+      {/* The whole session, not only this task's items: the task plan card reads every task change in it. */}
+      <SessionItemsProvider value={stored.items}>
         <ol className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-4" data-testid="session-items">
           {shown.items.map((item) => (
             <li key={`${item.requestId}/${item.id}`} data-testid="session-item" data-item-id={item.id} data-item-type={item.type}>

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Reject removed model-configuration syntax in prose and examples (FIX-1126).
+ * Reject removed model-configuration syntax, and direct model ids spelled in a
+ * form the provider does not serve, in prose and examples (FIX-1126).
  *
  * `preset/*` model strings and the `presets` resolver option were removed in
  * favour of intents. Both `throw` at runtime — `parseModelString` rejects the
@@ -43,6 +44,21 @@
  *
  *   "preset/small"                     a quoted model string
  *   createModelResolver({ presets: … }) the removed resolver option
+ *
+ * A third rule is not about removed syntax but fails the same way, on the
+ * reader's first run: a direct Anthropic id spelled with a dot.
+ *
+ *   "anthropic/claude-haiku-4.5"       a direct id in the gateway's spelling
+ *
+ * The resolver hands a direct model id to the provider unchanged, and
+ * Anthropic spells its ids with hyphens (`claude-haiku-4-5`). The Vercel
+ * gateway spells the same model with a dot, so the dotted form is correct
+ * behind `vercel/` and an unknown model behind a bare `anthropic/`. The rule
+ * is textual rather than a catalog of valid ids on purpose: every id in
+ * Anthropic's current catalog is hyphen-only, so "no dot in the version" holds
+ * without a list that goes stale with each release. It matches only a quote
+ * directly before `anthropic/`, so a `vercel/` or `openrouter/` prefix, where
+ * the dot is right, never fires it.
  *
  * **Quoted, deliberately.** Naming `preset/*` as a rejected value is true and
  * has to stay sayable: `fundamentals/models.md` carries the migration table
@@ -146,6 +162,13 @@ export function isScannedPath(relPath) {
  */
 const QUOTED_PRESET = /["']preset\/[a-zA-Z0-9_-]+["']/;
 
+/**
+ * A quoted direct `anthropic/claude-…` id with a dotted version (`4.5`). The
+ * quote must sit directly before `anthropic/`, which is what keeps gateway
+ * strings (`"vercel/anthropic/claude-haiku-4.5"`) out.
+ */
+const QUOTED_DOTTED_ANTHROPIC = /["']anthropic\/claude-[a-z0-9-]*\d\.\d[a-z0-9.-]*["']/;
+
 /** The removed resolver option, recognised only near a resolver construction. */
 const RESOLVER_CALL = /createModelResolver\s*\(/;
 const PRESETS_OPTION = /(^|[\s{,])presets\s*:/;
@@ -210,6 +233,10 @@ export function scanSources(sources) {
         hits.push({ file: path, line: index + 1, text: text.trim(), rule: "preset-string" });
       }
 
+      if (QUOTED_DOTTED_ANTHROPIC.test(text)) {
+        hits.push({ file: path, line: index + 1, text: text.trim(), rule: "dotted-anthropic-id" });
+      }
+
       if (RESOLVER_CALL.test(text)) resolverWindow = RESOLVER_WINDOW;
 
       if (resolverWindow > 0 && PRESETS_OPTION.test(text)) {
@@ -246,6 +273,15 @@ const RULES = [
     fix:
       `  createModelResolver rejects 'presets' by name. Declare 'intents'` +
       `\n  plus the required 'defaultModel' instead.`,
+  },
+  {
+    rule: "dotted-anthropic-id",
+    heading: (n) => `${n} direct Anthropic model id(s) spelled with a dot`,
+    fix:
+      `  A direct "anthropic/…" id reaches Anthropic as written, and Anthropic` +
+      `\n  spells its ids with hyphens: "anthropic/claude-haiku-4-5", not` +
+      `\n  "anthropic/claude-haiku-4.5". The dotted spelling belongs behind a` +
+      `\n  gateway prefix: "vercel/anthropic/claude-haiku-4.5".`,
   },
 ];
 

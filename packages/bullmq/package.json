@@ -88,7 +88,7 @@
     "@flow-state-dev/scheduled": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
-    "vitest": "latest"
+    "vitest": "^3.2.4"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && node ../../scripts/add-esm-extensions.mjs dist",

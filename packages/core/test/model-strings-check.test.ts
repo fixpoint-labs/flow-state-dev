@@ -86,6 +86,43 @@ describe("the removed 'presets' resolver option", () => {
 });
 
 /**
+ * The resolver passes a direct model id to the provider untouched. Anthropic
+ * spells its ids with hyphens; the Vercel gateway spells the same models with
+ * a dot. So the dotted form is correct behind `vercel/` and an unknown model
+ * behind a bare `anthropic/`. The rule has to tell those two apart by the
+ * prefix alone, or it either misses the broken example or flags every correct
+ * gateway string in the docs.
+ */
+describe("direct Anthropic ids — hyphens direct, dots only behind a gateway", () => {
+  it("flags a dotted id in a direct position, the shape that reaches Anthropic unknown", () => {
+    expect(rules(`defaultModel: "anthropic/claude-haiku-4.5",`)).toEqual(["dotted-anthropic-id"]);
+  });
+
+  it("flags it inside an intent list, where it is just as direct", () => {
+    expect(rules(`plan: ['anthropic/claude-opus-4.7', "openai/gpt-5.5"],`)).toEqual([
+      "dotted-anthropic-id",
+    ]);
+  });
+
+  it("accepts the hyphenated id Anthropic serves", () => {
+    expect(rules(`defaultModel: "anthropic/claude-haiku-4-5",`)).toEqual([]);
+  });
+
+  it("accepts the dotted id behind a gateway prefix, where the dot is correct", () => {
+    expect(rules(`chat: ["vercel/anthropic/claude-sonnet-4.6"],`)).toEqual([]);
+    expect(rules(`model: "openrouter/anthropic/claude-sonnet-4.6",`)).toEqual([]);
+  });
+
+  it("ignores a backticked dotted id, how prose names the gateway spelling", () => {
+    expect(rules("The gateway writes `anthropic/claude-sonnet-4.6` with a dot.")).toEqual([]);
+  });
+
+  it("leaves other providers' dotted versions alone", () => {
+    expect(rules(`model: "openai/gpt-5.4-mini",`)).toEqual([]);
+  });
+});
+
+/**
  * The surface is defined by exclusion, and these cases are why.
  *
  * An inclusion list was wrong twice — it missed `.agents`, where a skill is a
