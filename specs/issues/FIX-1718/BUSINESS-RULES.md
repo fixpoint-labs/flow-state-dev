@@ -29,8 +29,9 @@ marked *(Q1)* or *(Q3)* hold under the recommended answer on Jake's card.
 | BR-12 | A post wakes seats, or a session shows its charter | Seats and charter are read from the template's kind as built at the last boot, never from session state, so an edit lands on every project at the next restart (D2) | Workforce spec over a store that survives a restart |
 | BR-13 | A talk session's state carries a `resourceId` | It grants nothing. A caller can write session state at create, so every room entry checks the row, never the state (BP-031) | Workforce spec: a session created with a forged `resourceId` by a non-member is refused · goal |
 | BR-14 | A talk session calls `read` or `post` | Allowed only when the session's owner, as the engine recorded it, is in the row's `members`. Otherwise refused `not-a-member`, and nothing is written *(Q3)* | Workforce spec · goal, and its `no-gate` control |
-| BR-15 | A line is posted | A `room-lines` row is created, never edited, with the next `seq`. Its `userId` is the session owner and never a field the caller sends. A seat's answer carries its `author` | Workforce spec · goal |
+| BR-15 | A line is posted | A `room-lines` row is created, never edited, with the next `seq`. Its `userId` is the session owner and never a field the caller sends. A seat's answer carries its `author`. Project talk lives in these rows only: no `channel-post` item is written for it, in any session | Workforce spec · goal |
 | BR-16 | Several members post at once | Every post lands. The room retries the sequence counter after a lost race. A sequence number whose line was never written leaves a gap, and readers skip it | Workforce spec · goal, and its `no-retry` control |
+| BR-16a | Several members join at once, or one member joins twice at once | Each member ends with exactly one talk session on the row, and no entry is lost. `join` returns the session the row already lists for that member; otherwise it mints, then appends with the same retry as the counter, and a mint that loses the race to its own member's earlier entry is discarded in favour of it | Workforce spec: a parallel join burst · goal |
 | BR-17 | A session reads `after` a cursor | Lines with a greater `seq`, in order, and the next cursor. Reads load by key prefix, never every line | Workforce spec · goal |
 | BR-18 | A post wakes a seat | Once, under the poster: one seat conversation per person per room. The seat is given the room's recent lines, and its answer goes into the room for every member | Workforce spec · goal |
 | BR-19 | Someone reads or posts into another person's talk session | 404, as for any session not theirs | Engine, unchanged; FIX-1729's N1 |
@@ -62,7 +63,7 @@ marked *(Q1)* or *(Q3)* hold under the recommended answer on Jake's card.
 - a bad `bind`;
 - a non-member's `read` or `post`.
 
-A lost race on the sequence counter is retried by the room.
+A lost race on the sequence counter or on `sessions` is retried by the room.
 
 **Read:** neither of these is an error:
 - a stale workstream id is shown as gone;

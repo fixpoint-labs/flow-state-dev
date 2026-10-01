@@ -43,7 +43,7 @@ project folder, no project field in anyone's session, and no talk session in the
 | **The real need** | The issue's title, under Jake's direction: grouping, plus the project level FIX-1662 drew empty, with a conversation the project's people share |
 | **Smaller, and rejected** | A private thread per person. It's smaller now, but moving to a room later leaves the old lines private (FIX-1729, fork 1) |
 | **Bigger, and not this issue's** | [Not here](#not-here): live push, unread counts, invites, the chief of staff's tools, Linear sync |
-| **Not done if** | Any of these: <br/>· a project tab still shows "arrives with FIX-1650" <br/>· a Lab with no projects fails to start <br/>· a non-member reads or posts a room <br/>· a burst of posts loses one <br/>· a talk session shows up in the channel inventory <br/>· project data is read from a session |
+| **Not done if** | Any of these: <br/>· a project tab still shows "arrives with FIX-1650" <br/>· a Lab with no projects fails to start <br/>· a non-member reads or posts a room <br/>· a burst of posts or joins loses one <br/>· a talk session shows up in the channel inventory <br/>· project data is read from a session |
 
 ```mermaid
 flowchart LR
@@ -59,7 +59,7 @@ flowchart LR
 |---|---|
 | **Goal check** | `goals/shift-manager/it-groups-workstreams-under-their-projects/`, built like `it-opens-a-lab`. No model, out of CI. The implementer runs it, and the verdict goes in the implementation PR |
 | **Signal · screens** | Chromium walks the built Shift Manager over the DevTeam profile, graded against the store. PROJECTS equals the `projects` rows, each with exactly the workstreams it lists, then No project. For every project, **all four tabs** open: <br/>· Brief equals the row's brief <br/>· a line posted in Stream is in `room-lines` <br/>· Board draws a lane per board-holding workstream <br/>· Workstreams lists the row's workstreams <br/>· no gap copy is reachable |
-| **Signal · room** | Over HTTP as three verified users: <br/>· two members, each through their own talk session, read each other's lines by cursor <br/>· a seat's answer is in the room for both <br/>· the outsider's `read` and `post` are refused, even from a session it created with the project's `resourceId` in its state <br/>· two members post a parallel burst, and every post lands <br/>· the channel inventory equals the tree's declared channels |
+| **Signal · room** | Over HTTP as three verified users: <br/>· two members, each through their own talk session, read each other's lines by cursor <br/>· a seat's answer is in the room for both <br/>· the outsider's `read` and `post` are refused, even from a session it created with the project's `resourceId` in its state <br/>· two members post a parallel burst, and every post lands <br/>· a parallel burst of joins leaves exactly one session per member on the row <br/>· the channel inventory equals the tree's declared channels |
 | **Input** | The DevTeam profile ([PLAN S12](PLAN.md#surfaces)), with its two default projects and three bearer users, on a fresh store |
 | **Anti-game** | Expected values come from the store, never from the check. Rows are written by the profile's own code, through the entries the chief of staff will use. Posts go through the composer and the talk session |
 | **Controls that must fail** | Today's `main` fails all of these: <br/>· `unread`: the project reader becomes `main`'s flat list, so PROJECTS fails <br/>· `gap-tabs`: the project level becomes `main`'s, so the four-tab leg fails <br/>· `no-gate`: the membership check is removed, so the outsider leg fails <br/>· `no-retry`: the room's sequence retry is removed, so the burst loses a post |
@@ -116,7 +116,6 @@ Nobody's session is shared. The room is org data, and the gate is the project ro
 | Editing a project after create, beyond its workstreams; a Linear pointer | A follow-up |
 | What sits on a board | FIX-1651 |
 | Retiring or renaming a room | Parked (FIX-1341's lane; epic D3 as amended) |
-| One transcript home for channels and rooms | Flagged for `audit-coherence`: channels keep items, rooms keep rows |
 
 ## Sign off
 

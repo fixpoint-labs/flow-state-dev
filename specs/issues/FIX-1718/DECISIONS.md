@@ -149,6 +149,8 @@ is written to the recommendation for each.
   are listed under Not here.
 - **The row's `members` is written only by trusted code:** the app at boot, or the chief of
   staff at create. `join` never adds its caller. A non-member who calls `join` gets nothing.
+- **Concurrent joins: `join` is idempotent and retried, not `sessions` as rows.** It returns the caller's listed session, or mints and appends with the counter's retry. Simpler than a third collection, and the pinned row shape stays (BR-16a).
+- **Project talk is room rows only.** No `channel-post` mirror in anyone's session.
 - **The room's sequence counter is a row of its own,** so editing a project never contends with
   posts. The room retries the counter after a lost race. The engine's three retries lost a post
   in the spike.
@@ -189,7 +191,7 @@ These were run on `main` `1e51ab9f`.
 - Two members read each other's lines by cursor, each through their own session (S3, S4).
 - Seats wake under the poster (S5).
 - A non-member is refused even with a forged `resourceId`, and the browser route gives 403 (N1).
-- A ten-post burst lands whole with the room's retry, and loses one without it (C1).
+- A ten-post burst lands whole with the room's retry, and loses one without it (C1). Concurrent joins weren't run; BR-16a's V2 burst covers them.
 
 ## How it got here
 

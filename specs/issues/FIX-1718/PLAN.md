@@ -36,14 +36,14 @@ sketches of PR 1 and PR 2:
 | S3 | 1 | `workforce` · room store | `room-lines` (one row per line, keys prefixed by project, `prefetchMode: "lazy"`, no browser read) and `room-seq` (one counter row per project, no browser read) | BR-15 BR-17 BR-20 |
 | S4 | 1 | `workforce` · the gate | One module: `isMember(row, sessionOwner)`, where the owner comes from the engine's session record. Every room entry calls it. It never reads session state or input | BR-13 BR-14 |
 | S5 | 1 | `workforce` · the sequence | One module allocates the next `seq` from `room-seq`, retrying after a lost race past the engine's three; readers skip gaps | BR-16 |
-| S6 | 1 | `workforce` · talk kind | The channel kind gains an optional `resourceId` on its state (nullable, default null; BP-030) and five entries. `bind` (internal): writes `resourceId` and appends to `sessions`, refusing per BR-10. `post`, `read { after }` and `answer`: run the gate, then the room store. `join`: members only, and returns an existing session | BR-10 BR-11 BR-15 BR-17 |
+| S6 | 1 | `workforce` · talk kind | The channel kind gains an optional `resourceId` on its state (nullable, default null; BP-030) and five entries. `bind` (internal): writes `resourceId` and appends to `sessions`, refusing per BR-10. `post`, `read { after }` and `answer`: run the gate, then the room store. `join`: members only and idempotent: it returns the session the row lists for the caller; otherwise it mints and appends to `sessions` with S5's retry, keeping the earlier entry if its own member won the race. No entry writes a `channel-post` item | BR-10 BR-11 BR-15 BR-16a BR-17 |
 | S7 | 2 | `workforce` · binder | `mintFor` joins `DECLARABLE_KEYS`. A template is not opened and not registered. It's refused with `boards:` or with an unknown collection. The binder installs `reactTo.created` on the named collection, which dispatches to `bind` keyed on the row id | BR-6 to BR-9 |
 | S8 | 2 | `workforce` · template kind and wakes | When `resourceId` is set, seats and charter come from the template built onto the kind (`withTemplate`, beside `withBoards`). A post wakes seats once, under the poster, keyed per room, and passes the room's recent lines as context | BR-12 BR-18 |
 | S9 | 3 | Shift Manager · reads | `reads.ts` reads `projects/*` once per refresh, beside the inventory. `projectsOf` lives in `derive.ts`, beside `teamsOf`, and groups from the snapshot only | BR-5 BR-22 BR-30 |
 | S10 | 3 | Shift Manager · PROJECTS and the project level | PROJECTS draws `projectsOf`. Brief comes from the row, Board from lanes, and Workstreams from the row's list. Stream is `talkFor(project, viewer)`: the viewer's session from `sessions`, then the room read by cursor (kept in the view) on open, on focus and after its own post's wake; or Join; or the members-only state. Named states cover No project and an unknown id. **Remove** the four `project*` entries from `gaps.ts` | BR-23 to BR-29 BR-31 |
 | S11 | 3 | DevTeam tree | Adds `org/resources/projects.ts`, `teams/eng/channels/project-talk/CHANNEL.md` (`mintFor: projects`, with the EM as its seat), and one board-less workstream | Goal |
 | S12 | 3 | DevTeam profile and host | Bearer auth maps three secrets to three users: the owner, a second member, and an outsider. At boot, the profile creates the two default rows if they're absent, with the first two users as members, and calls `bind` for the owner. `openLab` refuses unless exactly one channel holds a board, and the profile picks that channel, not `channels[0]` | Goal |
-| S13 | 3 | Goal check | `goals/shift-manager/it-groups-workstreams-under-their-projects/`, on `it-opens-a-lab`'s harness. It has a browser leg and an HTTP room leg. Controls `unread` and `gap-tabs` swap a Shift Manager module, as that harness does. Controls `no-gate` and `no-retry` swap S4's or S5's module in the served host; the run fails if a swap never fired | Goal |
+| S13 | 3 | Goal check | `goals/shift-manager/it-groups-workstreams-under-their-projects/`, on `it-opens-a-lab`'s harness. It has a browser leg and an HTTP room leg. Controls `unread` and `gap-tabs` swap a Shift Manager module, as that harness does. Controls `no-gate` and `no-retry` swap S4's or S5's module (`no-retry` also drops the `sessions` retry, so the join burst fails too) in the served host; the run fails if a swap never fired | Goal |
 | S14 | all | Docs | [DOCS.md](DOCS.md); one `minor` changeset for `@flow-state-dev/workforce` in each of PR 1 and PR 2. Shift Manager is private, so it gets none | — |
 
 ## Sequence
@@ -73,7 +73,7 @@ flowchart TD
 | ID | Runs after | Passes when |
 |---|---|---|
 | V1 | S1 S2 | Workforce spec covers the row writes. Each of these is refused, and a refused write leaves the row unchanged: a duplicate id; `unassigned`; an unknown workstream; a workstream that's held. A second user in the org lists the row |
-| V2 | S3 to S6 | Workforce spec, FIX-1729's legs made real: <br/>· two members read each other's lines by cursor <br/>· a non-member is refused `read` and `post`, including from a session it created with a forged `resourceId` (BR-13's red state comes first) <br/>· a parallel burst lands whole with the retry, and loses a post with the retry stubbed out <br/>· a line's `userId` ignores any body field <br/>· the browser can't read either collection |
+| V2 | S3 to S6 | Workforce spec, FIX-1729's legs made real: <br/>· two members read each other's lines by cursor <br/>· a non-member is refused `read` and `post`, including from a session it created with a forged `resourceId` (BR-13's red state comes first) <br/>· a parallel burst lands whole with the retry, and loses a post with the retry stubbed out <br/>· a parallel burst of joins by two members, each joining twice, leaves exactly one session per member on the row; with the retry stubbed out, an entry is lost <br/>· no session holds a `channel-post` item for project talk <br/>· a line's `userId` ignores any body field <br/>· the browser can't read either collection |
 | V3 | S7 S8 | Workforce spec: <br/>· create mints in the same turn, and both sides of the link agree <br/>· outside a turn, nothing mints <br/>· a post wakes the seat once, under the poster, with recent lines <br/>· a seat edit plus a restart reaches an existing talk session <br/>· the inventory has no talk row <br/>· a roster with no `mintFor:` binds as today |
 | V4 | S9 S10 | Shell specs in jsdom over a snapshot cover BR-22 to BR-31. `gaps.ts` differs from `main` only in the four project entries. `projectsOf` makes no read |
 | V5 | S11 S12 | The five devforce-lab checks and the `labs/shift-manager` tests pass on the new tree. A second boot on a surviving store mints nothing new |
@@ -101,6 +101,7 @@ flowchart TD
 | `members` is written only by trusted code; `join` never adds its caller | Otherwise joining would grant itself access |
 | No project field in any session's state; a talk session holds `resourceId` only | Jake's fence |
 | Nothing registers a talk session in `inventory/channels/*` | The Lab's channel list stays its declared channels |
+| Project talk is written to `room-lines` only, never mirrored as `channel-post` items | One home for a project's conversation; a mirror would be a second transcript to keep in step |
 | The gate and the sequence allocator are each a module of their own | So the `no-gate` and `no-retry` controls can swap exactly one thing |
 | The conversation is swappable. Shift Manager reaches a project's conversation only through `talkFor(project, viewer)`, and Workforce reaches the room only through the talk entries | If Jake's Q1 card says no, private threads replace these, and the row and grouping stay |
 | `projectsOf` derives only from the snapshot. It makes no read of its own, and never reads a room or a talk session to group | One read per refresh (tenet 5); grouping never depends on membership |
@@ -128,8 +129,6 @@ screen:  talkFor(project, viewer) → read on open, focus, after own post's wake
 
 - FIX-1722's PR #2621 edits `gaps.ts`, `reads.ts`, `derive.ts`, `routes.ts` and `Sidebar.tsx`.
   Sequence PR 3 after it, or rebase keeping its entries.
-- Appending to `sessions` on the project row also contends. Two joins at once need the same
-  retry as the counter.
 - The minted session is a child of the session whose turn created the row, and it outlives that
   session.
 - How many recent lines a seat gets on a wake is the implementer's call. Keep it bounded.
@@ -147,9 +146,6 @@ screen:  talkFor(project, viewer) → read on open, focus, after own post's wake
 
 ## Follow-ups
 
-- **One home for a conversation (coherence, not a blocker).** Channels keep their transcript as
-  items in the session; rooms keep theirs as rows. Flagged by FIX-1729 and the Architect for
-  `audit-coherence`: pick one when channels next change.
 - **Live push of other members' lines.** In v1, the UI reads the room on focus or after a wake,
   because there is no cross-user push.
 - Unread counts and a stored read cursor (a user-scoped collection keyed by project, per
