@@ -52,12 +52,13 @@ export function readConnection(): Connection {
   return { userId: readUserId(), ...(bearerToken === undefined ? {} : { bearerToken }) };
 }
 
-/** The page meta the start script writes the `--devtool` address into. */
+/** The page meta the start script writes the devtool's address into. */
 const DEVTOOL_META = "app-lab-devtool";
 
 /**
- * The devtool App Lab was started with (`--devtool <url>`), or `undefined`.
- * Only an http(s) address is taken.
+ * The devtool a task's trace link opens: the one App Lab serves, or the one
+ * `--devtool <url>` named. `undefined` when there is neither. Only an http(s)
+ * address is taken.
  */
 export function readDevtoolUrl(): string | undefined {
   const value = document.querySelector<HTMLMetaElement>(`meta[name="${DEVTOOL_META}"]`)?.content.trim();

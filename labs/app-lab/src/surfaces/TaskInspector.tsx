@@ -4,8 +4,8 @@
  * Worker and team from the seat inventory, started from the row, the plan and
  * files the run recorded under its own request (read once per open, no
  * stream), the rows it waits on and the rows waiting on it from the same board
- * read, and a link that opens the run's session in the devtool the page was
- * started with. Harness, tokens,
+ * read, and a link that opens the run's session in the devtool App Lab serves
+ * (or the one `--devtool` names). Harness, tokens,
  * cost, acceptance and *review by* are named gaps from the gap registry.
  */
 import { useEffect, useState, type ReactNode } from "react";
@@ -195,7 +195,8 @@ function Trace() {
   if (task.devtoolUrl === undefined) {
     return (
       <p className="text-xs text-muted-foreground" data-testid="inspector-trace-off">
-        Open trace is off. Start App Lab with <code>--devtool &lt;url&gt;</code> to link the devtool here.
+        Open trace is off: App Lab is serving no devtool. Build its pages with{" "}
+        <code>pnpm build:assets</code> and restart, or start App Lab with <code>--devtool &lt;url&gt;</code>.
       </p>
     );
   }
@@ -216,7 +217,8 @@ function Trace() {
 /**
  * The devtool address that opens the run's session: `?session=<id>`, which the
  * devtool follows to the session and the flow that owns it. With no run yet,
- * the devtool itself.
+ * the devtool itself. `devtoolUrl` parses: `readDevtoolUrl` takes only an
+ * http(s) address, and the start script wrote it from a parsed URL.
  */
 function traceHref(devtoolUrl: string, sessionId: string | undefined): string {
   if (sessionId === undefined) return devtoolUrl;

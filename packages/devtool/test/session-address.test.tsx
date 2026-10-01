@@ -23,7 +23,7 @@ vi.mock("../src/react/lib/client", () => ({
 }));
 
 import { DevToolProvider, useDevTool } from "../src/react/context/devtool-context";
-import { readSessionAddress } from "../src/react/config";
+import { readSessionAddress, writeSessionHint } from "../src/react/config";
 
 const seatA: FlowListEntry = { id: "eng.em", kind: "em", cardinality: "collection", requireUser: false, actions: [] };
 const seatB: FlowListEntry = { id: "eng.coder", kind: "coder", cardinality: "collection", requireUser: false, actions: [] };
@@ -32,6 +32,20 @@ let ctx: ReturnType<typeof useDevTool>;
 function Probe() {
   ctx = useDevTool();
   return null;
+}
+
+async function settle() {
+  await act(async () => {
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
 }
 
 async function mount(openSessionId?: string, userId = "u1") {
@@ -50,7 +64,8 @@ async function mount(openSessionId?: string, userId = "u1") {
 describe("opening a session from its address", () => {
   beforeEach(() => {
     localStorage.clear();
-    listFlows.mockReset().mockResolvedValue([seatA, seatB]);
+    // A fresh array per read, as the wire gives one.
+    listFlows.mockReset().mockImplementation(async () => [seatA, seatB]);
     getSession.mockReset();
   });
 
@@ -91,6 +106,115 @@ describe("opening a session from its address", () => {
 
     expect(ctx.activeSessionId).toBeNull();
     expect(ctx.sessionAddressError).toMatch(/dsx_/);
+  });
+
+  it("wins over a saved session for the owning instance, even when that instance opens first", async () => {
+    // The operator was last on dsx_old under the coder seat. The link names
+    // dsx_run under the same seat. The saved session must not take the
+    // workspace while the link's read is still in flight.
+    writeSessionHint({ baseUrl: undefined, userId: "u1", flowId: "eng.coder" }, "dsx_old");
+    const linkRead = deferred<unknown>();
+    getSession.mockImplementation((id: string) =>
+      id === "dsx_run"
+        ? linkRead.promise
+        : Promise.resolve({ id, flowId: "eng.coder", flowKind: "coder", userId: "u1" }),
+    );
+
+    await mount("dsx_run");
+    // Opening the owning row is what would restore its saved session.
+    act(() => ctx.selectInstance("eng.coder"));
+    await settle();
+    expect(ctx.activeSessionId).toBeNull();
+
+    linkRead.resolve({ id: "dsx_run", flowId: "eng.coder", flowKind: "coder", userId: "u1" });
+    await settle();
+
+    expect(ctx.activeFlowId).toBe("eng.coder");
+    expect(ctx.activeSessionId).toBe("dsx_run");
+  });
+
+  it("restores the saved session once the link has settled without opening anything", async () => {
+    writeSessionHint({ baseUrl: undefined, userId: "u1", flowId: "eng.coder" }, "dsx_old");
+    getSession.mockImplementation((id: string) =>
+      id === "dsx_gone"
+        ? Promise.reject(new ClientHttpError("session not found", { status: 404, body: null }))
+        : Promise.resolve({ id, flowId: "eng.coder", flowKind: "coder", userId: "u1" }),
+    );
+
+    await mount("dsx_gone");
+    act(() => ctx.selectInstance("eng.coder"));
+    await settle();
+
+    expect(ctx.activeSessionId).toBe("dsx_old");
+  });
+
+  it("leaves the link to the operator when they pick a session while it is being read", async () => {
+    const linkRead = deferred<unknown>();
+    getSession.mockImplementation(() => linkRead.promise);
+
+    await mount("dsx_run");
+    act(() => ctx.selectWorkspace("eng.em", "dsx_mine"));
+    linkRead.resolve({ id: "dsx_run", flowId: "eng.coder", flowKind: "coder", userId: "u1" });
+    await settle();
+
+    expect(ctx.activeSessionId).toBe("dsx_mine");
+  });
+
+  it("does not give up on a read that failed for a reason that may pass, and retries when the catalog reloads", async () => {
+    getSession
+      .mockRejectedValueOnce(new ClientHttpError("unavailable", { status: 503, body: null }))
+      .mockResolvedValue({ id: "dsx_run", flowId: "eng.coder", flowKind: "coder", userId: "u1" });
+
+    await mount("dsx_run");
+    expect(ctx.activeSessionId).toBeNull();
+    expect(ctx.sessionAddressError).toMatch(/dsx_run/);
+
+    await act(async () => {
+      await ctx.refreshFlows();
+    });
+    await settle();
+
+    expect(ctx.activeSessionId).toBe("dsx_run");
+    expect(ctx.sessionAddressError).toBeNull();
+  });
+
+  it("stops retrying once the operator picks a session after a read that may pass", async () => {
+    getSession
+      .mockRejectedValueOnce(new ClientHttpError("unavailable", { status: 503, body: null }))
+      .mockResolvedValue({ id: "dsx_run", flowId: "eng.coder", flowKind: "coder", userId: "u1" });
+
+    await mount("dsx_run");
+    act(() => ctx.selectWorkspace("eng.em", "dsx_mine"));
+    await act(async () => {
+      await ctx.refreshFlows();
+    });
+    await settle();
+
+    expect(getSession).toHaveBeenCalledTimes(1);
+    expect(ctx.activeSessionId).toBe("dsx_mine");
+  });
+
+  it("treats a refusal as final: a catalog reload does not read the session again", async () => {
+    getSession.mockRejectedValue(new ClientHttpError("session not found", { status: 404, body: null }));
+
+    await mount("dsx_gone");
+    await act(async () => {
+      await ctx.refreshFlows();
+    });
+    await settle();
+
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the reason the link failed once the operator picks a session", async () => {
+    getSession.mockRejectedValue(new ClientHttpError("session not found", { status: 404, body: null }));
+
+    await mount("dsx_gone");
+    expect(ctx.sessionAddressError).toMatch(/dsx_gone/);
+
+    act(() => ctx.selectWorkspace("eng.em", "dsx_mine"));
+
+    expect(ctx.sessionAddressError).toBeNull();
   });
 
   it("reads nothing and opens nothing without an address", async () => {

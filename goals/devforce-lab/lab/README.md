@@ -143,6 +143,9 @@ what runs an approved row (`harness.mts`):
 | unset or `stub` | The scripted run, no model. It says what it's doing in the run's session and commits one file, so the row settles `completed`. |
 | `claude-code` | Claude Code through its Agent SDK, set up as the honesty check sets it up. Needs a signed-in SDK or an Anthropic key. Nothing falls back to the stub. |
 
+The scripted run pauses 2 s before each of its five steps so you can watch them arrive.
+`DEVFORCE_LAB_STEP_MS` changes the pause; a test that only needs the row to settle sets it to `0`.
+
 ```bash
 DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/app-lab start \
   --config goals/devforce-lab/lab/fsdev.config.mts

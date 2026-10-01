@@ -6,7 +6,7 @@
  * Real path, no model, out of CI. See goal.md for the contract.
  *
  * App Lab is built with Vite into a scratch directory and served by its own
- * start script (with `--devtool`) over the run-lab's `fsdev.config.mts`: a
+ * start script over the run-lab's `fsdev.config.mts`, devtool included: a
  * channel-attached board whose rows hand off to scripted runs that narrate a
  * step a second and hold until aborted. Chromium reaches each row by clicking,
  * from Tasks or from a board card. What the page draws is graded against the
@@ -26,8 +26,8 @@
  *                 after Interrupt, the view reads *interrupted* only once the
  *                 request record, read through its own flow, is `aborted`
  *   inspector     worker, start time and recorded plan and files equal the
- *                 store's; the trace link is the --devtool address opening
- *                 the run's session
+ *                 store's; the trace link is the devtool App Lab serves,
+ *                 opening the run's session, and following it lands there
  *   gaps          Diff, Checks, Hand off, reassign, Open PR, the composer and
  *                 the inspector's unread values each carry a gap line naming
  *                 its owner, or saying it is not planned in the first cut
@@ -79,7 +79,6 @@ const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("app-lab-task-run");
 const CONFIG = join(HERE, "lab", "fsdev.config.mts");
 const TREE = join(HERE, "lab", "workforce");
-const DEVTOOL = "http://127.0.0.1:4000/";
 /** A gap line names who ships the missing piece, or says it isn't coming in the first cut. */
 const OWNED = /\bFIX-\d+\b|not planned in the first cut/;
 /** How soon a stored item must be drawn. */
@@ -139,13 +138,13 @@ async function buildAppLab(control: string, boardFlow: string): Promise<string> 
 
 // ---- serving the Lab ---------------------------------------------------------
 
-type Running = { origin: string; child: ChildProcess; exited: Promise<void> };
+type Running = { origin: string; devtool: string; child: ChildProcess; exited: Promise<void> };
 
 async function startLab(pages: string): Promise<Running> {
   mkdirSync(join(SCRATCH, "labs"), { recursive: true });
   const workDir = mkdtempSync(join(SCRATCH, "labs", "run-lab-"));
   let log = "";
-  const child = spawn(TSX, [join(APP_LAB, "bin", "start.mts"), "--config", CONFIG, "--port", "0", "--assets", pages, "--devtool", DEVTOOL], {
+  const child = spawn(TSX, [join(APP_LAB, "bin", "start.mts"), "--config", CONFIG, "--port", "0", "--assets", pages], {
     cwd: workDir,
     env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "" }),
     stdio: ["ignore", "pipe", "pipe"],
@@ -161,7 +160,12 @@ async function startLab(pages: string): Promise<Running> {
   );
   for (let waited = 0; waited < 90_000; waited += 250) {
     const match = /App Lab: (http:\/\/\S+)/.exec(log);
-    if (match !== null) return { origin: match[1]!, child, exited };
+    const devtool = /Devtool: (http:\/\/\S+)/.exec(log);
+    if (match !== null && devtool === null) {
+      child.kill("SIGTERM");
+      throw new Error(`App Lab served no devtool; build its pages with pnpm build:assets. Log tail:\n${log.slice(-2000)}`);
+    }
+    if (match !== null) return { origin: match[1]!, devtool: devtool![1]!, child, exited };
     if (gone) break;
     await sleep(250);
   }
@@ -295,7 +299,7 @@ async function reach(page: Page, origin: string, tree: Tree, row: Row) {
 
 // ---- one row -----------------------------------------------------------------
 
-type Ctx = { page: Page; origin: string; api: LabApi; tree: Tree; fail: (leg: string, why: string) => void; evidence: string[] };
+type Ctx = { page: Page; origin: string; devtool: string; api: LabApi; tree: Tree; fail: (leg: string, why: string) => void; evidence: string[] };
 
 async function checkItems({ page, origin, api, tree, fail }: Ctx, row: Row, running: boolean): Promise<void> {
   if (!(await visible(page, "session", 15_000))) {
@@ -367,7 +371,7 @@ async function checkInterrupt({ page, api, fail }: Ctx, row: Row): Promise<void>
   if (word !== "interrupted") fail("the request reads aborted first", `the view's word is "${word}"`);
 }
 
-async function checkInspector({ page, api, tree, fail }: Ctx, row: Row): Promise<void> {
+async function checkInspector({ page, devtool, api, tree, fail }: Ctx, row: Row): Promise<void> {
   const seat = tree.members.find((m) => m.split(".").at(-1) === row.assignee);
   const shownSeat = await page.getByTestId("inspector-worker-id").getAttribute("data-seat-id");
   if (shownSeat !== seat) fail("inspector", `worker ${shownSeat}, the row is assigned ${seat}`);
@@ -395,10 +399,29 @@ async function checkInspector({ page, api, tree, fail }: Ctx, row: Row): Promise
   // The link opens the run's session in the devtool (`?session=<id>`), not the
   // devtool's front page with the id left to paste.
   const href = await page.getByTestId("inspector-trace-link").getAttribute("href").catch(() => null);
-  const wanted = `${DEVTOOL}?session=${encodeURIComponent(row.run!.sessionId)}`;
-  if (href !== wanted) fail("inspector", `the trace link is ${href}, wanted ${wanted} (--devtool ${DEVTOOL} plus the run's session)`);
+  const wanted = `${devtool}?session=${encodeURIComponent(row.run!.sessionId)}`;
+  if (href !== wanted) fail("inspector", `the trace link is ${href}, wanted ${wanted} (the devtool App Lab serves, plus the run's session)`);
   const traced = await page.getByTestId("inspector-trace-session").textContent().catch(() => null);
   if (traced !== row.run!.sessionId) fail("inspector", `the trace names session ${traced}, the run's is ${row.run!.sessionId}`);
+
+  // Following the link lands on the run: the devtool opens the run's session,
+  // which it can only do reading the store the run is in.
+  if (href !== wanted) return;
+  const [opened] = await Promise.all([
+    page.context().waitForEvent("page", { timeout: 10_000 }),
+    page.getByTestId("inspector-trace-link").click(),
+  ]);
+  try {
+    const badge = opened.locator(`button[title^="Session ID: ${row.run!.sessionId}"]`);
+    const refused = opened.getByTestId("session-address-error");
+    const landed = await Promise.race([
+      badge.waitFor({ timeout: 15_000 }).then(() => "opened" as const),
+      refused.waitFor({ timeout: 15_000 }).then(async () => `refused: ${await refused.textContent()}`),
+    ]).catch(() => "nothing within 15 s");
+    if (landed !== "opened") fail("inspector", `following Open trace did not open session ${row.run!.sessionId} in the devtool (${landed})`);
+  } finally {
+    await opened.close();
+  }
 }
 
 async function checkGaps({ page, fail }: Ctx): Promise<void> {
@@ -486,7 +509,7 @@ await runGoal(async () => {
     };
     for (const { name, row, running } of cases) {
       const fail = (leg: string, why: string) => failures.push(`[${name}] ${leg}: ${why}`);
-      const ctx: Ctx = { page, origin: served.origin, api, tree, fail, evidence };
+      const ctx: Ctx = { page, origin: served.origin, devtool: served.devtool, api, tree, fail, evidence };
       await reach(page, served.origin, tree, row);
       await leg(fail, "items equal the run session's", () => checkItems(ctx, row, running));
       await leg(fail, "inspector", () => checkInspector(ctx, row));

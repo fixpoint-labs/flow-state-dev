@@ -92,12 +92,25 @@ function commitScriptedWork(run: StubRun): void {
 export const SCRIPTED_STEP_MS = 2_000;
 
 /**
+ * Overrides {@link SCRIPTED_STEP_MS}, in milliseconds. A test that only needs
+ * the run to settle sets it to `0` so it does not wait out the pacing.
+ */
+export const STEP_MS_ENV = "DEVFORCE_LAB_STEP_MS";
+
+/** How long one scripted run may take: five paced steps and a commit. */
+export const SCRIPTED_RUN_TIMEOUT_MS = 60_000;
+
+/** How long one Claude Code run may take. */
+export const CLAUDE_CODE_RUN_TIMEOUT_MS = 10 * 60_000;
+
+/**
  * The scripted run a served Lab uses by default: narrates a step every
- * {@link SCRIPTED_STEP_MS}, commits, finishes.
+ * `stepEveryMs`, commits, finishes.
  *
+ * @param stepEveryMs The pause before each step; {@link SCRIPTED_STEP_MS} by default.
  * @returns The stub, whose `runs` log what each attempt was handed.
  */
-export function scriptedHarness() {
+export function scriptedHarness(stepEveryMs: number = SCRIPTED_STEP_MS) {
   return harnessStub({
     steps: [
       "Reading the seat's instructions, brief and conventions.",
@@ -106,7 +119,7 @@ export function scriptedHarness() {
       "Checking the checkout before committing.",
       "Committing the work on the row's branch.",
     ],
-    stepEveryMs: SCRIPTED_STEP_MS,
+    stepEveryMs,
     duringRun: commitScriptedWork,
   });
 }
@@ -116,19 +129,34 @@ export function scriptedHarness() {
  *
  * @param value The raw choice, `process.env[HARNESS_ENV]` by default. Empty or
  *   absent means `stub`.
+ * @param stepMs The stub's step pause, `process.env[STEP_MS_ENV]` by default.
+ *   Empty or absent means {@link SCRIPTED_STEP_MS}.
  * @returns The chosen harness.
- * @throws When the value names no harness this Lab can run.
+ * @throws When the value names no harness this Lab can run, or `stepMs` is not
+ *   a whole number of milliseconds.
  */
-export function selectHarness(value: string | undefined = process.env[HARNESS_ENV]): SelectedHarness {
+export function selectHarness(
+  value: string | undefined = process.env[HARNESS_ENV],
+  stepMs: string | undefined = process.env[STEP_MS_ENV],
+): SelectedHarness {
   const choice = value === undefined || value.trim() === "" ? "stub" : value.trim();
   switch (choice) {
     case "stub":
-      return { name: "stub", slot: scriptedHarness().slot, runTimeoutMs: 60_000 };
+      return { name: "stub", slot: scriptedHarness(readStepMs(stepMs)).slot, runTimeoutMs: SCRIPTED_RUN_TIMEOUT_MS };
     case "claude-code":
-      return { name: "claude-code", slot: claudeCodeHarness, runTimeoutMs: 10 * 60_000 };
+      return { name: "claude-code", slot: claudeCodeHarness, runTimeoutMs: CLAUDE_CODE_RUN_TIMEOUT_MS };
     default:
       throw new Error(
         `${HARNESS_ENV}="${choice}" names no harness this Lab can run; use one of ${HARNESS_CHOICES.join(", ")}.`,
       );
   }
+}
+
+/** The step pause {@link STEP_MS_ENV} asks for, refused rather than guessed when malformed. */
+function readStepMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return SCRIPTED_STEP_MS;
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new Error(`${STEP_MS_ENV}="${raw}" is not a whole number of milliseconds.`);
+  }
+  return Number(raw.trim());
 }
