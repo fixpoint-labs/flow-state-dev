@@ -58,9 +58,9 @@ makes its PASS mean the person still holds the hard-to-undo direction.
 
 ## What's in the box
 
-![What's in the box: projects in Shift Manager (FIX-1718, waits for Q1), the CoS org seat, hiring on its own and firing on approval (FIX-1719, Q2 answered) and orphan repair (FIX-1621, starts at the gate); composed from channels, boards, teams, the inventory, durable hire, the seat-hire capability, plane isolation and the agent kind; owned elsewhere: board contents, attention, wake, runtime channel admin, the org subscription registry; the invent-kills fenced off below](figures/end-state.svg)
+![What's in the box: projects in Shift Manager (FIX-1718, Q1 answered), the CoS org seat, hiring on its own and firing on approval (FIX-1719, Q2 answered) and orphan repair (FIX-1621, starts at the gate); composed from channels, boards, teams, the inventory, durable hire, the seat-hire capability, plane isolation and the agent kind; owned elsewhere: board contents, attention, wake, runtime channel admin, the org subscription registry; the invent-kills fenced off below](figures/end-state.svg)
 
-One box is dashed because it waits on Jake's answer to Q1; Q2 is answered. Everything the
+Jake has answered Q1 and Q2. Everything the
 three compose already ships, and the fence is the Architect's invent-kill list, where an org epic would drift.
 
 ## The set · as of 2026-10-01
@@ -69,7 +69,7 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1718](https://linear.app/fixpoint-labs/issue/FIX-1718) · projects | A project as the tree declares it ([Q1](DECISIONS.md#open)); the project level and the PROJECTS tree filled; what a workstream is, written down | Half the goal: the shell's project level is empty | Backlog · spec route · **holds for Q1** |
+| [FIX-1718](https://linear.app/fixpoint-labs/issue/FIX-1718) · projects | A project as the tree declares it, a channel of its own ([Q1](DECISIONS.md#q1)); the project level and the PROJECTS tree filled; what a workstream is, written down | Half the goal: the shell's project level is empty | Backlog · spec route · Q1 answered 2026-10-01 |
 | [FIX-1621](https://linear.app/fixpoint-labs/issue/FIX-1621) · orphan repair | Finds stored seats whose kind is gone, names the reason, retires or re-hires each on approval | Without it, a cut kind leaves a broken seat nobody can clear, and CoS would invent its own detector | Backlog · spec route · adopted from Workforce L2 |
 | [FIX-1719](https://linear.app/fixpoint-labs/issue/FIX-1719) · Chief of Staff | One org admin seat a Lab opts into, booted from `org/workers/`; it hires on its own, fires on approval and calls FIX-1621's repair; other seats ask it by message | The other half: who works here, changed without a file edit | Backlog · spec route · Q2 answered 2026-10-01 · blocked by FIX-1621 |
 | [FIX-1720](https://linear.app/fixpoint-labs/issue/FIX-1720) · closure · **required** | The QA plan and its runs on one `main` commit | Proves the whole | Backlog · blocked by FIX-1718, FIX-1621, FIX-1719 |
@@ -80,7 +80,7 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 
 ```mermaid
 flowchart LR
-  Q["Jake · Q1"] -.->|"what a project is"| A["FIX-1718 · projects"]
+  Q["Q1 · answered · a project is a channel"] -.->|"what a project is"| A["FIX-1718 · projects"]
   Q2["Q2 · answered · CoS hires unasked"] -.->|"the seat set and policy"| B["FIX-1719 · Chief of Staff"]
   R["FIX-1621 · orphan repair"] -->|"the orphan read"| B
   A --> Z["FIX-1720 · closure · required"]
@@ -89,8 +89,8 @@ flowchart LR
   S["FIX-1649 · Shift Manager"] -.->|"the frame and its gap entries"| A
 ```
 
-Dashed edges are inputs from outside the set. Jake's answer to Q1 holds FIX-1718's spec from
-starting, not a build from merging; Q2 is answered; FIX-1621 starts at the gate. Shift Manager is shipped, so FIX-1718 fills
+Dashed edges are inputs from outside the set. Q1 and Q2 are answered; FIX-1718's spec starts
+once the amendment recording Q1 merges; FIX-1621 starts at the gate. Shift Manager is shipped, so FIX-1718 fills
 its frame without waiting on it.
 
 ## What stays as it is
@@ -118,7 +118,7 @@ people are still managed by editing files.
 3. **[D3](DECISIONS.md#d3) · Channels stay declared in this epic.** If wrong: a new workstream
    costs a file and a restart until channel admin ships.
 
-**Open: one, for Jake.** [Q1](DECISIONS.md#open), what a project is, with a recommendation.
+**Open: none.** [Q1](DECISIONS.md#q1) is answered: a project is a channel of its own, its charter the brief and its conversation the project stream.
 [Q2](DECISIONS.md#q2) is answered: CoS is the one admin seat and hires without asking; a fire still asks in Inbox,
 my default for him to reverse. The seat set is pending his direct confirmation. Rules: [BUSINESS-RULES.md](BUSINESS-RULES.md). Order:
 [PLAN.md](PLAN.md).

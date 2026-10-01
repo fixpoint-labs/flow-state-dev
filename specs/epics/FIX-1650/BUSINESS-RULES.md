@@ -10,7 +10,7 @@ checks them. Each has one owner. ER-1 to ER-9, ER-19 and ER-20 are in
 
 | # | Rule | Owner | Checked at |
 |---|---|---|---|
-| ER-1 | A project, its workstreams, stream, board and brief are read from what the Lab's tree declares, as Q1's answer defines it. *Implementer note:* a new `CHANNEL.md` key is a persisted shape (BP-030); a channel without it reads as no project and has a defined place in the PROJECTS tree | FIX-1718 decides · FIX-1719 consumes | The closure's leg a |
+| ER-1 | A project, its workstreams, stream, board and brief are read from what the Lab's tree declares, as Q1's answer defines it: a project is a channel of its own, and a workstream names its project with one key on its `CHANNEL.md` ([Q1](DECISIONS.md#q1)). *Implementer note:* a new `CHANNEL.md` key is a persisted shape (BP-030); a channel without it reads as no project and has a defined place in the PROJECTS tree | FIX-1718 decides · FIX-1719 consumes | The closure's leg a |
 | ER-2 | A workstream is a declared channel with its kind and the boards it holds. There is no Workstream type | FIX-1718 decides · FIX-1719, FIX-1720 consume | FIX-1719's spec review |
 | ER-4 | CoS hires without asking ([Q2](DECISIONS.md#q2), Jake, 2026-10-01), only a kind the Lab registers, never a declared seat's id. No other seat hires; a seat that wants a hire messages CoS. Fires: [ER-20](#what-a-team-gets-and-what-it-doesnt). A repair's re-hire is a repair, so it asks ([ER-5](#what-a-team-gets-and-what-it-doesnt)) | FIX-1719 decides · FIX-1621 consumes for retire and re-hire | The closure's leg b and its control |
 | ER-5 | An orphan is a stored seat whose kind is not in the map the Lab boots with. It is named with the reason and repaired only on approval: retired, or re-hired onto a registered kind | FIX-1621 decides · FIX-1719 consumes | The closure's leg c |
@@ -34,7 +34,7 @@ checks them. Each has one owner. ER-1 to ER-9, ER-19 and ER-20 are in
 
 | # | Rule | Because |
 |---|---|---|
-| ER-14 | FIX-1718's spec starts only after Jake answers Q1, and FIX-1719's only after Q2 (answered 2026-10-01, recorded by amendment). FIX-1621 and the closure's QA plan start at the gate | [D1](DECISIONS.md#d1). An answer is recorded in *Decided in review* by an amendment before the held spec starts |
+| ER-14 | FIX-1718's spec starts only after Jake's answer to Q1 is recorded, and FIX-1719's only after Q2's (both answered 2026-10-01, recorded by amendment). FIX-1621 and the closure's QA plan start at the gate | [D1](DECISIONS.md#d1). An answer is recorded in *Decided in review* by an amendment before the held spec starts |
 | ER-15 | An answer that needs a folder or an L1 type comes back to this epic as an escalation | [D2](DECISIONS.md#d2) |
 | ER-16 | A cross-cutting question is raised to the epic coordinator, not decided in one child | The retained decisions are canonical; after merge, a change is a follow-up PR |
 | ER-17 | Implementation starts when Jake schedules it, not when this spec merges | Not Cycle 1; [PLAN.md](PLAN.md#timing) |

@@ -2,8 +2,8 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-The calls above any single issue. D1 to D3 are the sign-off surface. Q2 is answered (Jake,
-2026-10-01); Q1 stays open for Jake with a recommendation, and only FIX-1718 waits on it. Scope,
+The calls above any single issue. D1 to D3 are the sign-off surface. Q1 and Q2 are answered
+(Jake, 2026-10-01). Scope,
 vocabulary and invent-kills come from the Architect's guidance on FIX-1650; the prior locks on
 the open forks are only these: `workforce/projects/` is invent-killed, single-user comes first,
 project is product framing, and the org seat is composed from the existing seat and kind
@@ -19,7 +19,7 @@ flowchart TD
   D2 -.->|"rejected"| X2["a project folder or record"]
   E --> D3["D3 · channels stay declared"]
   D3 -.->|"rejected"| X3["CoS opens and retires channels"]
-  E --> Q1["Q1 · open · what a project is"]
+  E --> Q1["Q1 · decided · a project is its own channel"]
   E --> Q2["Q2 · decided · CoS hires, fires on approval"]
 ```
 
@@ -30,7 +30,7 @@ flowchart TD
 |---|---|
 | **Instead of** | One issue per noun: project, workstream, CoS, repair · or filing nothing until Jake answers |
 | **Because** | A workstream already is a declared channel with its boards: Shift Manager lists them today, so it needs a rule, not an issue. The CoS seat and its hire and fire policy are one template, so they are one spec. Orphan repair (FIX-1621, adopted) needs no answer from Jake and CoS consumes it, so it is the issue that starts at the gate. It stays apart from CoS's fire for that reason only: the two share one mutation path ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
-| **Locks in** | FIX-1621 starts at the gate. FIX-1718's spec starts when Q1 is answered and FIX-1719's when Q2 is (answered 2026-10-01, [below](#q2)). The workstream's definition is FIX-1718's to write ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
+| **Locks in** | FIX-1621 starts at the gate. FIX-1718's spec starts when Q1 is answered and FIX-1719's when Q2 is (both answered 2026-10-01, [Q1](#q1), [Q2](#q2)). The workstream's definition is FIX-1718's to write ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
 **What would change my mind:** Q2's answer giving CoS behaviour of its own (routing asks,
 standing reports). Then that behaviour splits from FIX-1719, as FIX-1726 now carries it.
@@ -71,11 +71,32 @@ this epic waits on FIX-1341 being un-parked, and that is his scheduling call.
 
 It comes down to what exists: hire ships, channel admin is a parked explore.
 
-<a name="open"></a>
-## Open · for Jake · Q1
-
 <a name="q1"></a>
-### Q1 · What is a project: a channel of its own, a team, or a named pack of channels?
+## Q1 · decided · a project is a channel of its own
+
+**Jake, 2026-10-01**, in the project thread (19:57Z): "A project is a channel session." That
+is the project channel, the recommendation below: a channel's charter is the project brief, its
+conversation is the project stream, and workstream channels name their project with one new key
+on `CHANNEL.md`. FIX-1718's spec starts from it ([ER-1](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
+
+He refined it two minutes later (19:59Z):
+
+> A project (or channel) should be a durable resource everyone in the Lab can discover and act
+> on. The flow session is the person's (or seat's) live handle onto that resource — membership,
+> wake surface, unread, "I'm in this room." Treating the session itself as the discoverable
+> thing mixes directory with runtime and forces every consumer to invent the same join.
+>
+> Practical fence: resource owns identity and org policy; session owns participation and
+> runtime; link is explicit (resourceId on the session / sessions listed on the resource). Don't
+> make the session the resource, and don't invent a second project store beside channels.
+
+**What it settles.** A project is a channel resource: durable, and discoverable by everyone in
+the Lab. Sessions are participation handles onto it, linked explicitly. There is no second
+project store.
+
+The question as it was put to him, kept as the record:
+
+**The question.** What is a project: a channel of its own, a team, or a named pack of channels?
 
 **In plain terms.** Shift Manager shows a project with a stream, a board, its workstreams and
 a brief. Something in the Lab's files has to say which workstreams belong to which project, and
@@ -100,7 +121,7 @@ per project. Then a team is simpler and adds nothing.
 key in `CHANNEL.md` files. None of the three needs a folder or an L1 type, so none is an
 escalation.
 
-![Q1: its own channel, recommended, beside a team and a pack of channels; decided by where the project stream and brief come from](figures/open-project.svg)
+![Q1 decided: its own channel, chosen, beside a team and a pack of channels; decided by where the project stream and brief come from](figures/q1-project.svg)
 
 It comes down to the project stream: only a channel already has a conversation.
 
@@ -169,6 +190,21 @@ project's channel the way FIX-1718 defines it. The closure only checks.
   FIX-1719's first design question.
 - **Q2 is answered** (Jake, 2026-10-01): CoS is the one admin seat and hires without asking; fire and retire still ask
   in Inbox. The answer and the defaults I picked around it are [Q2](#q2).
+- **Q1 is answered** (Jake, 2026-10-01, the project thread): "A project is a channel
+  session." A project is a channel of its own, and its workstreams name it by one key on
+  `CHANNEL.md`. He refined it the same day:
+
+  > A project (or channel) should be a durable resource everyone in the Lab can discover and act
+  > on. The flow session is the person's (or seat's) live handle onto that resource — membership,
+  > wake surface, unread, "I'm in this room." Treating the session itself as the discoverable
+  > thing mixes directory with runtime and forces every consumer to invent the same join.
+  >
+  > Practical fence: resource owns identity and org policy; session owns participation and
+  > runtime; link is explicit (resourceId on the session / sessions listed on the resource). Don't
+  > make the session the resource, and don't invent a second project store beside channels.
+
+  So a project is a channel resource; sessions are participation handles with an explicit link;
+  there is no second project store. FIX-1718's spec starts from it; the answer is [Q1](#q1).
 - **No team named `org`.** An org seat in a `teams/org/` team would need no loader change, and
   forks the locked tree (`workforce/org/{resources,skills,channels,workers}/`). Rejected.
 
@@ -192,3 +228,6 @@ No end-state POC. One claim was settled by a read-based check instead; its verdi
 - **Ops dropped (Oct 1)**: CoS is the one org admin seat and the only hire door; fire still asks.
   ER-4, ER-6, ER-20, Q2, the goal's leg b and the figures follow it; FIX-1719's spec carries
   the detail. Pending Jake's direct confirmation.
+- **Q1 answered (Oct 1)** by Jake, recorded by an amendment: a project is its own channel.
+  FIX-1718's spec no longer waits; ER-1, ER-14, the plan and the figures that showed it waiting
+  follow it.

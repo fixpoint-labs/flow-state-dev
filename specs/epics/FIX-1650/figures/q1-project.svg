@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 422" role="img" aria-label="Open question Q1, for Jake: what is a project? Recommended, not yet chosen: a project is a channel of its own, whose charter is the brief and whose transcript is the project stream, and that its workstream channels name. Beside it: a project is a team; a project is a named pack of channels. It comes down to the first row, where the project&#x27;s stream and brief come from: a project channel already has a transcript and a charter; a team has a brief in TEAM.md but no transcript; a pack has neither and needs a brief document. Second row, one team on several projects: a project channel and a pack allow it; a team per project means a second project needs a second team of the same seats. The price, third row: a project channel needs one new key on a workstream&#x27;s CHANNEL.md, a team needs nothing new, and a pack needs a key and a document. Locks in: FIX-1718 builds on whichever Jake picks. Flips if Jake sees a project as one team&#x27;s body of work, one team per project."
+<svg viewBox="0 0 940 422" role="img" aria-label="Q1, decided by Jake on 1 October 2026: what is a project? Chosen, as recommended: a project is a channel of its own, whose charter is the brief and whose transcript is the project stream, and that its workstream channels name. Beside it: a project is a team; a project is a named pack of channels. It comes down to the first row, where the project&#x27;s stream and brief come from: a project channel already has a transcript and a charter; a team has a brief in TEAM.md but no transcript; a pack has neither and needs a brief document. Second row, one team on several projects: a project channel and a pack allow it; a team per project means a second project needs a second team of the same seats. The price, third row: a project channel needs one new key on a workstream&#x27;s CHANNEL.md, a team needs nothing new, and a pack needs a key and a document. Locks in: FIX-1718 builds the project channel. Flips if Jake comes to see a project as one team&#x27;s body of work, one team per project."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -11,7 +11,6 @@
     .bg     { fill:var(--surface); }
     .ask    { fill:var(--surface-2); }
     .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
-    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:6 3; }
     .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
     .decide { fill:var(--accent-soft); }
     .bar    { fill:var(--accent); }
@@ -36,13 +35,13 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">Q1 &#183; OPEN &#183; FOR JAKE</text>
+    <text class="t-lbl" x="32" y="32">Q1 &#183; DECIDED &#183; JAKE, 1 OCTOBER 2026</text>
     <text class="t-q" x="32" y="52">What is a project: its own channel, a team, or a pack of channels?</text>
   </g>
 
   <g id="options">
-    <rect class="rec" x="212" y="76" width="224" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
+    <rect class="chosen" x="212" y="76" width="224" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
     <text class="t-h c-code" x="228" y="112">Its own channel</text>
     <rect class="lost" x="452" y="76" width="224" height="46" rx="5"/>
     <text class="t-tag c-mute" x="468" y="93">INSTEAD OF</text>
@@ -102,14 +101,14 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="353">LOCKS IN</text>
-    <text class="t-b" x="32" y="373">FIX-1718 builds on the answer</text>
+    <text class="t-b" x="32" y="373">FIX-1718 builds the project channel</text>
     <text class="t-s" x="32" y="391">nothing on disk beyond CHANNEL.md keys</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="353">FLIPS IF</text>
-    <text class="t-b" x="494" y="373">A project is one team's work</text>
+    <text class="t-b" x="494" y="373">Jake sees a project as one team's work</text>
     <text class="t-s" x="494" y="391">then a project is a team</text>
   </g>
 </svg>

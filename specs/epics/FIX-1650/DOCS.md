@@ -2,9 +2,8 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
-The shared story once, and who publishes each part. The drafts below assume the recommended
-answer to Q1 and Jake's answer to Q2; a different answer to Q1 rewrites the paragraph it touches
-before anything is published.
+The shared story once, and who publishes each part. The drafts below follow Jake's answers to
+Q1 and Q2.
 
 ## UPDATE · `apps/docs/docs/workforce/overview.md` · a new section after "Hire a roster"
 

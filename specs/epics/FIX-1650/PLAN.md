@@ -15,9 +15,9 @@ phases, not dates, and merging this spec schedules nothing ([ER-17](BUSINESS-RUL
 
 ## The path
 
-![The path in phases: Jake's answer to Q1 as an input lane, Q2 answered; this spec in review at the now line; FIX-1621's spec and build from the gate; FIX-1718's spec after Q1 and its build; FIX-1719's spec from the gate and its build after FIX-1621; the closure's QA plan written beside them and its run after all three; the critical path through FIX-1621, the FIX-1719 build and the closure run](figures/path.svg)
+![The path in phases: Q1 and Q2 answered; this spec in review at the now line; FIX-1621's spec and build from the gate; FIX-1718's spec once Q1's amendment merges, then its build; FIX-1719's spec from the gate and its build after FIX-1621; the closure's QA plan written beside them and its run after all three; the critical path through FIX-1621, the FIX-1719 build and the closure run](figures/path.svg)
 
-With Q2 answered, the critical path runs through FIX-1621 into FIX-1719's build: FIX-1719 is
+With Q1 and Q2 answered, the critical path runs through FIX-1621 into FIX-1719's build: FIX-1719 is
 the largest child, carrying the org-seat hire change, and the only one that consumes another. FIX-1621 is the one child that can start at the gate. The dependency graph is in
 [the spec](SPEC.md#how-the-issues-flow-into-each-other); this adds time to it.
 
@@ -26,7 +26,7 @@ the largest child, carrying the org-seat hire change, and the only one that cons
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
 | **FIX-1621** orphan repair | spec → impl PR | Durable hire (FIX-1475), plane isolation (FIX-1529), FIX-1611's degrade-by-name | The orphan read, its reason, retire and re-hire on approval; fire and retire as one path that removes the inventory row, older rows still read ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) | FIX-1719 | Medium |
-| **FIX-1718** projects | spec (after Q1) → impl PR | Q1's answer · channels, boards, teams · Shift Manager's frame and `gaps.ts` | A project as the tree declares it; the project level and PROJECTS tree filled; the workstream written down | The closure | Medium |
+| **FIX-1718** projects | spec (Q1 answered) → impl PR | Q1's answer · channels, boards, teams · Shift Manager's frame and `gaps.ts` | A project as the tree declares it; the project level and PROJECTS tree filled; the workstream written down | The closure | Medium |
 | **FIX-1719** Chief of Staff | spec (Q2 answered) → impl PR | Q2's answer · the `agent` kind, `createSeatHireCapability`, the inventory · FIX-1621's read · FIX-1718's project channel, if built first | CoS as one document a Lab opts into; a declared `org/workers/` seat booted in Layer 2 (the roster reader and a teamless id); CoS's unasked hire and approved fire, the only hire door ([ER-4](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), [ER-20](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); the DevTeam profile opted in | The closure | Large |
 | **FIX-1720** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit | The committed browser checks, a QA report, a bug child for every failure | The wrap | Medium, repeats per retest |
 
@@ -42,7 +42,8 @@ shipped.
 
 1. **This spec merges** → FIX-1621's spec and FIX-1720's QA plan start. Nothing builds until
    Jake schedules it.
-2. **Jake answers Q1** → recorded in *Decided in review* by an amendment → FIX-1718's spec starts.
+2. **Jake answered Q1** (2026-10-01) → recorded in *Decided in review* by an amendment →
+   FIX-1718's spec starts once that amendment merges.
 3. **Jake answered Q2** (2026-10-01) → recorded the same way → FIX-1719's spec starts once that
    amendment merges. Its build waits for FIX-1621 to merge.
 4. **An answer needs a folder or an L1 type** → it comes back here as an escalation
