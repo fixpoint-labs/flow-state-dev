@@ -10,14 +10,14 @@ when Jake schedules it ([ER-17](../../epics/FIX-1650/BUSINESS-RULES.md#how-the-s
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `workforce` · the per-row check inside `reloadHiredSeats` | Extract "does this row become a seat, and if not, which reason and what detail" into one function. The reload calls it per row; its output and wording are unchanged | BR-1 to BR-5 |
+| S1 | `workforce` · the per-row check inside `reloadHiredSeats` | Extract "does this row become a seat, and if not, which reason and what detail" into one function. `kind-gone` is decided before any mint, so a cut kind is never minted. The reload calls it per row; its output and wording are unchanged | BR-1 to BR-5 |
 | S2 | `workforce` · `brokenSeats`, a block on `createSeatHireBlocks` | Lists the org's roster rows through S1 with the kinds the blocks close over. Read-only. Org from the principal | BR-1 to BR-7 |
 | S3 | `workforce` · the removal, behind `fire` | After the roster delete and release, delete the seat's inventory row (keyed by its address). With no roster row and a leftover inventory row, remove it and answer "already gone". Fire's description and the file header change with it (D1) | BR-8 to BR-12 |
 | S4 | `workforce` · `rehire`, a block on `createSeatHireBlocks` | Refuse unless S1 says `kind-gone` or `refused`. Mint on the named kind first; replace the row in one version-checked write; register; on failure write the old row back; upsert the inventory row with the new kind (D2) | BR-14 to BR-19 |
-| S5 | `workforce/browser` · the team-list rule, a leaf | Given an org's inventory rows and roster rows: a hired seat's row is listed only when the roster backs it; a declared seat's row as today | BR-22 to BR-24 |
-| S6 | `shift-manager` lab · the TEAMS read | Read the roster beside the inventory when a listed flow declares it, and apply S5. Unreadable roster: hired seats unlisted, failure named | BR-22 to BR-24 |
+| S5 | `workforce/browser` · the team-list rule, a leaf | Given an org's inventory rows and roster rows: a hired seat's row is listed only when the roster backs it; a declared seat's row as today. S3 is authoritative for new fires; S5 is only the BP-030 hide for rows already on disk (and BR-10's crash residue). S6 applies it; no third filter | BR-22 to BR-24 |
+| S6 | `shift-manager` lab · the TEAMS read | Read the roster beside the inventory and apply S5 | BR-22 to BR-24 |
 | S7 | kitchen-sink · `workforce-admin` fire | Route through S3's removal, private rows included. Its hire writes no inventory row today; sharing the path keeps one writer | BR-13 |
-| S8 | `workforce` · contract text | Amend the "inventory row stays" sentences: roster and inventory collection headers, `openInventory`'s header (the binder still never deletes; fire does, for a hired seat) | D1 |
+| S8 | `workforce` · contract text | S3's change, stated in the roster, inventory and `openInventory` headers | D1 |
 | S9 | Docs | Publish [DOCS.md](DOCS.md) | — |
 | S10 | `goals/hire-plane/repairs-a-seat-whose-kind-was-cut/` | The goal check, with its control | The goal |
 
@@ -43,7 +43,7 @@ flowchart TD
 
 | ID | Runs after | Passes when |
 |---|---|---|
-| V1 | S1 | The reload's existing suite is green with no expectation changed; each reason maps from its refusal |
+| V1 | S1 | The reload's existing suite is green with no expectation changed; each reason maps from its refusal; a `kind-gone` row is classified without a mint, so BR-5's set equality compares outcomes, not mint calls |
 | V2 | S2 | BR-1 to BR-4, BR-6, BR-7. BR-5 as set equality: the read and the reload over the same rows name the same rows with the same detail |
 | V3 | S3 | BR-8, BR-9, BR-11, BR-12. BR-10 with a store that throws between the two deletes, then a second call |
 | V4 | S4 | BR-14 to BR-16, BR-18. BR-17 with a register that kills the run after the write, then a reload. BR-19 with two calls racing (D2) |
