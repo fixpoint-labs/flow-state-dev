@@ -2209,10 +2209,6 @@ export async function createExecutionContext<
         updatedAt: Date.now()
       })
     );
-    const rereadOrg = createScopeReread<TOrgState, OrgRecord>(
-      orgRef as { current: OrgRecord },
-      stores.org
-    );
     return createScopeStateOps(orgContainer, {
       cas: flow.org?.cas,
       persist: async (state, expectedVersion, hint) => {
@@ -2221,10 +2217,7 @@ export async function createExecutionContext<
         }
         return inner(state, expectedVersion, hint);
       },
-      // Same "org removed mid-execution" guard as `persist`: with no record
-      // there is nothing to verify against, and nothing to write to.
-      reread: async () =>
-        orgRef.current === undefined ? undefined : rereadOrg()
+      reread: createScopeReread<TOrgState, OrgRecord>(orgRef, stores.org)
     });
   })();
 

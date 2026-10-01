@@ -102,12 +102,7 @@ export type ScopeStateOpsOptions<TState extends object> = {
    * `ConcurrentModificationError`.
    */
   persist?: CASPersist<TState>;
-  /**
-   * Re-reads the stored state and version so the CAS path can verify a
-   * deep-equal no-op before skipping `persist` (see `runWithCAS`). Without
-   * it, a CAS write equal to the cached state is sent to `persist` rather
-   * than skipped. Ignored when `persist` is omitted.
-   */
+  /** See `RunWithCASOptions.reread`. Ignored when `persist` is omitted. */
   reread?: CASReread<TState>;
   /**
    * When true with `persist` set, mutators serialize through
