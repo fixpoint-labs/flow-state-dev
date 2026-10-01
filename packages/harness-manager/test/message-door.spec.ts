@@ -134,7 +134,19 @@ function stubHarness(
     }) as unknown as HarnessBlock;
 }
 
-function host(options: { script: Step[]; maxAttempts?: number; exitDelayMs?: number }) {
+/** What one call to the phase's prompt builder was handed, of the parts these specs read. */
+interface SeenBuild {
+  task: unknown;
+  feedback: string | undefined;
+}
+
+function host(options: {
+  script: Step[];
+  maxAttempts?: number;
+  exitDelayMs?: number;
+  /** Extra fields the seeded row carries. */
+  row?: Record<string, unknown>;
+}) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-door-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
@@ -147,6 +159,7 @@ function host(options: { script: Step[]; maxAttempts?: number; exitDelayMs?: num
     stateSchema: harnessTaskInputSchema,
   });
   const seen: SeenAttempt[] = [];
+  const builds: SeenBuild[] = [];
   let release!: () => void;
   const released = new Promise<void>((resolve) => {
     release = resolve;
@@ -157,13 +170,15 @@ function host(options: { script: Step[]; maxAttempts?: number; exitDelayMs?: num
     tenant: undefined,
     phase: {
       phase: PHASE,
-      buildPrompt: (run) =>
-        [
+      buildPrompt: (run) => {
+        builds.push({ task: run.task, feedback: run.feedback });
+        return [
           `Work on ${run.issue}, attempt ${run.attempt}.`,
           "To ask, write it as the entire contents of this file:",
           `  ${run.askMarkerPath}`,
           ...run.answers.map((a) => `Answered: ${a.answer}`),
-        ].join("\n"),
+        ].join("\n");
+      },
       isDone: () => true,
     },
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
@@ -196,6 +211,7 @@ function host(options: { script: Step[]; maxAttempts?: number; exitDelayMs?: num
           input: { issue: ISSUE, phase: PHASE },
           assignee: "coder",
           maxAttempts: options.maxAttempts ?? 3,
+          ...options.row,
         });
       }
       return { id: TASK_ID };
@@ -418,6 +434,7 @@ function host(options: { script: Step[]; maxAttempts?: number; exitDelayMs?: num
     request,
     userLines,
     seen,
+    builds,
     settleFirst,
     holdSecondDoorUntilFinished,
     holdStopUntilSettled,
@@ -820,5 +837,56 @@ describe("a turn and an Interrupt (BR-17)", () => {
     const row = await lab.row();
     expect(row.status).toBe("in_progress");
     expect(row.parkedForTurn).toBeUndefined();
+  }, 60_000);
+});
+
+describe("the claimed task, handed to the prompt builder", () => {
+  // A builder that only had the row's id would have to read the board back to
+  // learn what the work is, and could read a different row than the one
+  // claimed. It is handed the brief the board packed, on every attempt.
+  const seeded = { goal: "the feature", input: { issue: ISSUE, phase: PHASE } };
+
+  it("hands the task on the first attempt and again on a retry, beside why the last one stopped", async () => {
+    const lab = host({ script: ["failed", "finished"] });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    await lab.until((t) => t.status === "pending" && t.attempts === 1, "attempt 1 to fail");
+    await lab.act(ALICE, "drain");
+    await lab.until((t) => t.status === "completed", "the retry");
+
+    expect(lab.builds).toHaveLength(2);
+    expect(lab.builds[0]!.task).toEqual(seeded);
+    expect(lab.builds[0]!.feedback).toBeUndefined();
+    expect(lab.builds[1]!.task).toEqual(seeded);
+    expect(lab.builds[1]!.feedback).toEqual(expect.any(String));
+  }, 60_000);
+
+  it("hands the task to the attempt after a person's message, which still follows the prompt", async () => {
+    const lab = host({ script: ["hold", "finished"] });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    await lab.until((t) => t.status === "in_progress" && t.run !== undefined, "the run link");
+    await lab.until(() => lab.seen.length === 1, "attempt 1 to reach its harness");
+    await lab.send(ALICE, "please also update the README");
+    await lab.until((t) => t.status === "completed", "the next attempt");
+
+    expect(lab.builds).toHaveLength(2);
+    expect(lab.builds[1]!.task).toEqual(seeded);
+    expect(lab.seen[1]!.prompt).toContain("please also update the README");
+  }, 60_000);
+
+  it("carries the row's title and context when it has them, never its metadata, and no key it lacks", async () => {
+    const lab = host({
+      script: ["finished"],
+      row: { title: "Night mode", context: "Users asked for it twice.", metadata: { owner: "x" } },
+    });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    await lab.until((t) => t.status === "completed", "the attempt");
+
+    const task = lab.builds[0]!.task as Record<string, unknown>;
+    expect(task).toEqual({ ...seeded, title: "Night mode", context: "Users asked for it twice." });
+    // Absent, not present-and-undefined: the hand-off can cross a process boundary.
+    expect(Object.keys(task).sort()).toEqual(["context", "goal", "input", "title"]);
   }, 60_000);
 });
