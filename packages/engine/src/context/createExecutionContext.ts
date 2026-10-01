@@ -2673,6 +2673,8 @@ export async function createExecutionContext<
         }
         // The abort route's own write (`recordRequestStop`), not a copy of it.
         const stop = await recordRequestStop(stores.request, target);
+        // Gone between the read and the write: answered like an unknown id,
+        // as the abort route answers it 404.
         if (stop.kind === "gone") return "not-in-this-session";
         if (stop.kind === "finished") return "already-finished";
         return "stopped";

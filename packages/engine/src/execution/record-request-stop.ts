@@ -44,13 +44,8 @@ export async function recordRequestStop(
   // nothing else that later takes the id.
   const incarnation = resolveRequestIncarnation(record);
 
-  // One atomic step: record the intent only while the request is still
-  // running. A read-then-write cannot express this — the worker can commit a
-  // terminal status between the two, and writing afterwards would restore an
-  // `in_progress` record over a finished one. Fenced to the checked request by
-  // its incarnation: if the id was deleted and taken by someone else since,
-  // the write misses; if the owner's own retry handed the record off, the
-  // incarnation held and the write lands.
+  // Atomic and fenced: written only while still `in_progress`, and only to
+  // this incarnation, so a finished or re-taken id is never written.
   const result = await requests.setFieldsIfStatus(
     record.id,
     { abortRequested: true },
