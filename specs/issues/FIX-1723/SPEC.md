@@ -46,7 +46,7 @@ every worker the screen draws.
 |---|---|
 | **Goal check** | `goals/shift-manager/it-shows-who-is-on-shift/` · model n/a (scripted stub runs that hold until stopped) · real Chromium · run by the implementer at completion · verdict in the implementation PR |
 | **Signal** | Reached by clicking Roster, then each team. For every inventory seat: its group equals what [BR-1 to BR-4](BUSINESS-RULES.md#status) give from the stored rows and asks; its slots equal its held rows; its HOLDING chips and waits-on entries are exactly those rows and asks. Each team filter lists exactly its seats. The sidebar's counts equal the page's |
-| **Input** | A Lab of two teams with seats built into each state: a held run, a pending ask, a parked row, an unclaimed queued row, nothing. Another spread must pass too |
+| **Input** | A Lab of two teams and one org-level seat, with seats built into each state: a held run, a pending ask, a parked row, an unclaimed queued row, nothing. Another spread must pass too |
 | **Anti-game** | No assertion on Shift Manager's modules. The oracle is the store, read by the script |
 | **Control that must fail** | `GOAL_CONTROL=ignore-asks`: status reads board rows only. Must FAIL at *status equals the store's* on the asking seat. `GOAL_CONTROL=count-queued`: queued rows count as slots. Must FAIL at *slots equal held rows* on the queued seat. Today's `main` fails: there is no Roster |
 
