@@ -1,0 +1,102 @@
+<svg viewBox="0 0 940 416" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="Who owns what: nine cross-cutting rules by four issues, FIX-1718 projects, FIX-1621 repair, FIX-1719 CoS and Ops, and FIX-1720 the closure. Each rule has exactly one decides or builds cell. ER-1, a project is read from what the tree declares: FIX-1718 decides; FIX-1719 consumes; FIX-1720 checks. ER-2, a workstream is a declared channel and its boards: FIX-1718 decides; FIX-1719 consumes; FIX-1720 consumes. ER-3, no runtime channel open, retire or invite: FIX-1718 consumes; FIX-1719 builds; FIX-1720 checks. ER-4, every hire and fire is the person&#x27;s approval: FIX-1621 consumes; FIX-1719 decides; FIX-1720 checks. ER-5, an orphan is a stored seat its kind is gone from: FIX-1621 decides; FIX-1719 consumes; FIX-1720 checks. ER-6, CoS and Ops are opt-in documents on shipped kinds: FIX-1718 consumes; FIX-1719 decides. ER-7, every change lands in the principal&#x27;s own org: FIX-1621 builds; FIX-1719 consumes; FIX-1720 checks. ER-8, a shell gap entry goes only when its owner fills it: FIX-1718 builds; FIX-1719 consumes; FIX-1720 checks. ER-9, the goal check runs on one main commit: FIX-1720 decides.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg   { fill:var(--surface); }
+    .own  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .use  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .chk  { fill:var(--surface); stroke:var(--ink-3); stroke-width:1; stroke-dasharray:4 3; }
+    .row  { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.08em; }
+    .t-id { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; font-weight:600; }
+    .t-r  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:11.5px; }
+    .t-own { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-use { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-chk { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="416"/>
+  <g id="header">
+    <text class="t-lbl" x="16" y="24">WHO OWNS WHAT &#8212; ONE DECIDES OR BUILDS CELL PER RULE</text>
+    <text class="t-lbl" x="380" y="56">FIX-1718 &#183; projects</text>
+    <text class="t-lbl" x="518" y="56">FIX-1621 &#183; repair</text>
+    <text class="t-lbl" x="656" y="56">FIX-1719 &#183; CoS, Ops</text>
+    <text class="t-lbl" x="794" y="56">FIX-1720 &#183; closure</text>
+  </g>
+  <g id="er-1">
+    <line class="row" x1="16" y1="70" x2="924" y2="70"/>
+    <text class="t-id" x="16" y="91">ER-1</text>
+    <text class="t-r" x="58" y="91">a project is read from what the tree declares</text>
+    <rect class="own" x="376" y="77" width="126" height="20" rx="3"/><text class="t-own" x="386" y="91">decides</text>
+    <rect class="use" x="652" y="77" width="126" height="20" rx="3"/><text class="t-use" x="662" y="91">consumes</text>
+    <rect class="chk" x="790" y="77" width="126" height="20" rx="3"/><text class="t-chk" x="800" y="91">checks</text>
+  </g>
+  <g id="er-2">
+    <line class="row" x1="16" y1="104" x2="924" y2="104"/>
+    <text class="t-id" x="16" y="125">ER-2</text>
+    <text class="t-r" x="58" y="125">a workstream is a declared channel and its boards</text>
+    <rect class="own" x="376" y="111" width="126" height="20" rx="3"/><text class="t-own" x="386" y="125">decides</text>
+    <rect class="use" x="652" y="111" width="126" height="20" rx="3"/><text class="t-use" x="662" y="125">consumes</text>
+    <rect class="use" x="790" y="111" width="126" height="20" rx="3"/><text class="t-use" x="800" y="125">consumes</text>
+  </g>
+  <g id="er-3">
+    <line class="row" x1="16" y1="138" x2="924" y2="138"/>
+    <text class="t-id" x="16" y="159">ER-3</text>
+    <text class="t-r" x="58" y="159">no runtime channel open, retire or invite</text>
+    <rect class="use" x="376" y="145" width="126" height="20" rx="3"/><text class="t-use" x="386" y="159">consumes</text>
+    <rect class="own" x="652" y="145" width="126" height="20" rx="3"/><text class="t-own" x="662" y="159">builds</text>
+    <rect class="chk" x="790" y="145" width="126" height="20" rx="3"/><text class="t-chk" x="800" y="159">checks</text>
+  </g>
+  <g id="er-4">
+    <line class="row" x1="16" y1="172" x2="924" y2="172"/>
+    <text class="t-id" x="16" y="193">ER-4</text>
+    <text class="t-r" x="58" y="193">every hire and fire is the person&#x27;s approval</text>
+    <rect class="use" x="514" y="179" width="126" height="20" rx="3"/><text class="t-use" x="524" y="193">consumes</text>
+    <rect class="own" x="652" y="179" width="126" height="20" rx="3"/><text class="t-own" x="662" y="193">decides</text>
+    <rect class="chk" x="790" y="179" width="126" height="20" rx="3"/><text class="t-chk" x="800" y="193">checks</text>
+  </g>
+  <g id="er-5">
+    <line class="row" x1="16" y1="206" x2="924" y2="206"/>
+    <text class="t-id" x="16" y="227">ER-5</text>
+    <text class="t-r" x="58" y="227">an orphan is a stored seat its kind is gone from</text>
+    <rect class="own" x="514" y="213" width="126" height="20" rx="3"/><text class="t-own" x="524" y="227">decides</text>
+    <rect class="use" x="652" y="213" width="126" height="20" rx="3"/><text class="t-use" x="662" y="227">consumes</text>
+    <rect class="chk" x="790" y="213" width="126" height="20" rx="3"/><text class="t-chk" x="800" y="227">checks</text>
+  </g>
+  <g id="er-6">
+    <line class="row" x1="16" y1="240" x2="924" y2="240"/>
+    <text class="t-id" x="16" y="261">ER-6</text>
+    <text class="t-r" x="58" y="261">CoS and Ops are opt-in documents on shipped kinds</text>
+    <rect class="use" x="376" y="247" width="126" height="20" rx="3"/><text class="t-use" x="386" y="261">consumes</text>
+    <rect class="own" x="652" y="247" width="126" height="20" rx="3"/><text class="t-own" x="662" y="261">decides</text>
+  </g>
+  <g id="er-7">
+    <line class="row" x1="16" y1="274" x2="924" y2="274"/>
+    <text class="t-id" x="16" y="295">ER-7</text>
+    <text class="t-r" x="58" y="295">every change lands in the principal&#x27;s own org</text>
+    <rect class="own" x="514" y="281" width="126" height="20" rx="3"/><text class="t-own" x="524" y="295">builds</text>
+    <rect class="use" x="652" y="281" width="126" height="20" rx="3"/><text class="t-use" x="662" y="295">consumes</text>
+    <rect class="chk" x="790" y="281" width="126" height="20" rx="3"/><text class="t-chk" x="800" y="295">checks</text>
+  </g>
+  <g id="er-8">
+    <line class="row" x1="16" y1="308" x2="924" y2="308"/>
+    <text class="t-id" x="16" y="329">ER-8</text>
+    <text class="t-r" x="58" y="329">a shell gap entry goes only when its owner fills it</text>
+    <rect class="own" x="376" y="315" width="126" height="20" rx="3"/><text class="t-own" x="386" y="329">builds</text>
+    <rect class="use" x="652" y="315" width="126" height="20" rx="3"/><text class="t-use" x="662" y="329">consumes</text>
+    <rect class="chk" x="790" y="315" width="126" height="20" rx="3"/><text class="t-chk" x="800" y="329">checks</text>
+  </g>
+  <g id="er-9">
+    <line class="row" x1="16" y1="342" x2="924" y2="342"/>
+    <text class="t-id" x="16" y="363">ER-9</text>
+    <text class="t-r" x="58" y="363">the goal check runs on one main commit</text>
+    <rect class="own" x="790" y="349" width="126" height="20" rx="3"/><text class="t-own" x="800" y="363">decides</text>
+  </g>
+  <line class="row" x1="16" y1="376" x2="924" y2="376"/>
+  <text class="t-lbl" x="16" y="400">DECIDES / BUILDS: THE ONE OWNER &#183; CONSUMES: MUST NOT RE-DECIDE &#183; CHECKS: THE CLOSURE RUN EXERCISES IT</text>
+</svg>

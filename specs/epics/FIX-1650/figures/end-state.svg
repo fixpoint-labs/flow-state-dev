@@ -1,0 +1,75 @@
+<svg viewBox="0 0 940 392" role="img" xmlns="http://www.w3.org/2000/svg"
+     aria-label="What's in the box. In the box, three issues: projects in Shift Manager, where workstreams sit under the project the Lab declares and the project's stream, board, workstreams and brief read from the tree, FIX-1718, held on Jake's answer to Q1; the CoS and Ops org seats, documents a Lab opts into on the built-in agent kind, with Ops hiring and firing on the person's approval, FIX-1719, held on Q2; and orphan repair, which finds stored seats whose kind is gone and retires or re-hires each on approval, FIX-1621, which starts at the gate. Composed from what already ships: channels and CHANNEL.md, boards, teams and TEAM.md, the inventory, durable hire and the seat-hire capability, plane isolation, the agent kind, and Shift Manager's frame. Owned elsewhere: what sits on a workstream's board, FIX-1651; attention, FIX-1652; wake and principal, FIX-1637 and FIX-1645; runtime channel admin, parked under FIX-1415 and FIX-1341; the org subscription registry, FIX-1550. Not built, below a fence: workforce/projects or workforce/agents folders; Layer 1 Agent, Team, Channel, Project or Workstream; a CoS or Ops type; a second hire store; an automatic mapping of a cut kind onto another; multi-user org productization; Heartbeats or Paperclip; a CHANNELS.md convention.">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .box   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .held  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .wait  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; stroke-dasharray:5 3; }
+    .comp  { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1; }
+    .repl  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1; }
+    .fence { fill:none; stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-non { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+             font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="392"/>
+
+  <g id="in-the-box">
+    <rect class="box" x="16" y="24" width="908" height="140" rx="5"/>
+    <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; WHAT ONE PERSON GETS FROM THE LAB'S OWN TREE</text>
+    <rect class="wait" x="32" y="56" width="284" height="96" rx="4"/>
+    <text class="t-b" x="44" y="78">projects in Shift Manager</text>
+    <text class="t-s" x="44" y="96">workstreams under their project</text>
+    <text class="t-s" x="44" y="111">stream &#183; board &#183; workstreams &#183; brief</text>
+    <text class="t-s" x="44" y="126">read from the tree, no new folder</text>
+    <text class="t-s" x="44" y="143">FIX-1718 &#183; waits for Q1</text>
+    <rect class="wait" x="328" y="56" width="284" height="96" rx="4"/>
+    <text class="t-b" x="340" y="78">CoS and Ops &#183; org seats</text>
+    <text class="t-s" x="340" y="96">documents a Lab opts into</text>
+    <text class="t-s" x="340" y="111">on the agent kind and seat-hire</text>
+    <text class="t-s" x="340" y="126">Ops hires and fires on approval</text>
+    <text class="t-s" x="340" y="143">FIX-1719 &#183; waits for Q2</text>
+    <rect class="held" x="624" y="56" width="284" height="96" rx="4"/>
+    <text class="t-b" x="636" y="78">orphan repair</text>
+    <text class="t-s" x="636" y="96">stored seats whose kind is gone</text>
+    <text class="t-s" x="636" y="111">named, with the reason</text>
+    <text class="t-s" x="636" y="126">retired or re-hired on approval</text>
+    <text class="t-s" x="636" y="143">FIX-1621 &#183; starts at the gate</text>
+  </g>
+
+  <g id="composed">
+    <rect class="comp" x="16" y="176" width="446" height="96" rx="5"/>
+    <text class="t-lbl" x="32" y="196">COMPOSED FROM WHAT ALREADY SHIPS</text>
+    <text class="t-s" x="32" y="216">channels, CHANNEL.md &#183; boards &#183; teams, TEAM.md</text>
+    <text class="t-s" x="32" y="232">the inventory &#183; durable hire &#183; seat-hire capability</text>
+    <text class="t-s" x="32" y="248">plane isolation &#183; the agent kind</text>
+    <text class="t-s" x="32" y="264">Shift Manager's frame and its named empty states</text>
+  </g>
+
+  <g id="elsewhere">
+    <rect class="repl" x="478" y="176" width="446" height="96" rx="5"/>
+    <text class="t-lbl" x="494" y="196">OWNED ELSEWHERE, CONSUMED OR LEFT ALONE</text>
+    <text class="t-s" x="494" y="216">what sits on a workstream's board &#183; FIX-1651</text>
+    <text class="t-s" x="494" y="232">attention &#183; FIX-1652 &#183; wake, principal &#183; FIX-1637, 1645</text>
+    <text class="t-s" x="494" y="248">runtime channel admin &#183; parked, FIX-1415, 1341</text>
+    <text class="t-s" x="494" y="264">org subscription registry &#183; FIX-1550</text>
+  </g>
+
+  <g id="not-built">
+    <rect class="fence" x="16" y="290" width="908" height="84" rx="5"/>
+    <text class="t-non" x="32" y="310">NOT BUILT &#8212; THE INVENT-KILLS</text>
+    <text class="t-s" x="32" y="332">no workforce/projects/ or workforce/agents/ &#183; no L1 Agent, Team, Channel, Project or Workstream &#183; no CoS or Ops type</text>
+    <text class="t-s" x="32" y="348">no second hire store &#183; no automatic mapping of a cut kind onto another &#183; no CHANNELS.md</text>
+    <text class="t-s" x="32" y="364">no multi-user org product &#183; no Heartbeats or Paperclip &#183; no runtime channel open, retire or invite</text>
+  </g>
+</svg>
