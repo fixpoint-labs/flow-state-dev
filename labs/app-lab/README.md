@@ -4,7 +4,7 @@ App Lab is a browser app for looking into a running Lab: a set of Workforce seat
 
 A task shows one worker's run as it happens, and lets you stop it. The panel on the right follows along, with the team and its tasks at a workstream and the task's details at a task.
 
-It knows nothing about any particular Lab. Every name on screen is read from the Lab while it runs, so the same App Lab opens any Lab whose config default-exports a `FlowState`.
+It knows nothing about any particular Lab. Every name on screen is read from the Lab while it runs, so the same App Lab opens any Lab whose config provides what's listed under [What a Lab's config provides](#what-a-labs-config-provides).
 
 It is research software. Several screens are drawn as placeholders that name what will fill them. They're listed under [What isn't here yet](#what-isnt-here-yet).
 
@@ -17,7 +17,7 @@ pnpm --filter @flow-state-dev/app-lab build
 pnpm --filter @flow-state-dev/app-lab start --config goals/devforce-lab/lab/fsdev.config.mts
 ```
 
-It prints the address, `http://127.0.0.1:4300` by default. One process serves the Lab's API under `/api/flows` and App Lab's pages beside it. The Lab's config is loaded as-is. Nothing in it is edited or wrapped.
+It prints the address, `http://127.0.0.1:4300` by default. One process serves the Lab's API under `/api/flows` and App Lab's pages beside it. It also serves the devtool over the same Lab, on a port of its own, and prints that address too. The Lab's config is loaded as-is. Nothing in it is edited or wrapped.
 
 | Option | Default | What it does |
 |--------|---------|--------------|
@@ -25,15 +25,12 @@ It prints the address, `http://127.0.0.1:4300` by default. One process serves th
 | `--port <n>` | `4300` | `0` picks a free port. |
 | `--host <host>` | `127.0.0.1` | A non-loopback host is refused unless the Lab authenticates requests. |
 | `--assets <dir>` | `dist/` | Serve a different build of the pages. |
-| `--devtool <url>` | none | Where the devtool runs, for a task's *Open trace* link. Must be an `http(s)` address. Without it the link is off and says how to turn it on. |
+| `--devtool <url>` | the devtool App Lab serves | Point a task's *Open trace* link at a devtool you run yourself instead. Must be an `http(s)` address. App Lab then serves no devtool of its own. |
+| `--devtool-assets <dir>` | the `@flow-state-dev/devtool` build | Serve a different build of the devtool's pages. |
 
 The process runs from the directory you started it in, so a Lab's relative paths, such as a SQLite file, land where they would under `fsdev dev`.
 
 A config that doesn't load, or doesn't default-export a `FlowState`, stops the command with the loader's own message.
-
-### Who you are
-
-App Lab reads the same connection settings `fsdev dev` hands the DevTool. That is the Lab's `devtool.userId` and, if the Lab declares one, its `devtool.bearerToken`. They are injected into the page on a loopback bind only. If the Lab refuses your first read for want of a verified organization, App Lab shows that refusal and nothing else.
 
 ### Working on the pages
 
@@ -44,10 +41,99 @@ pnpm --filter @flow-state-dev/app-lab dev                            # Vite, pro
 
 Set `VITE_LAB_URL` to proxy to a Lab on another address.
 
+## What a Lab's config provides
+
+App Lab reads a Lab only through the routes its `FlowState` serves. It doesn't build anything for the Lab, so the config has to export a server that is already set up. The first five items below happen in the config, or in a module it imports, before the default export. The last is frontmatter in the Lab's documents.
+
+**A `FlowState`, as the default export.** Build it and finish the boot steps below first. An `.mts` config can use top-level `await`. If the Lab keeps its assembly in a host module, have that module return the `FlowState` so the config can export it:
+
+```ts title="fsdev.config.mts"
+import { openLab } from "./host.mts"; // the Lab's own assembly
+
+const lab = await openLab({ /* the Lab's own options */ });
+
+export default lab.state;
+```
+
+**An organization.** Every request a Lab serves runs in an organization, and App Lab shows it in the sidebar. A Lab names its own with `resolvePrincipal` on `createFlowState`, which returns who a request is:
+
+```ts
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+
+const state = createFlowState({
+  flows,
+  stores: { default: { primary: inMemoryStores() } },
+  resolvePrincipal: () => ({ userId: "u_lab", orgId: "org_lab" }),
+});
+```
+
+A Lab with no resolver runs in the framework's development organization, `DEFAULT_ORG_ID` from `@flow-state-dev/core`, and App Lab shows that id. Anything the boot writes under an organization, such as the inventory below, has to use the same one.
+
+**Open channels.** Call `openChannels` at boot with the same `userId` you give App Lab in `devtool: { userId }` (below). Each channel is a workstream. App Lab reads the organization off that user's sessions, so a Lab that holds none for them opens to a screen saying it names no organization, in place of the Lab.
+
+**An open inventory.** The [inventory](../../apps/docs/docs/workforce/inventory.md) is the organization's record of its seats and channels. TEAMS and PROJECTS list it, and Inbox and the boards find seats and workstreams through it. It takes two steps:
+
+1. Build the channel flow with the actions that write the inventory: `defineChannelFlow({ notify, inventory: true })` for a channel kind of your own, or `channelInstances(channels, { inventory: true })` for the built-in one.
+2. Call `openInventory` once `openChannels` has returned, under the organization your resolver names.
+
+```ts
+// `roster` is the tree read with `readDeclaredRoster`, `hired` the seats
+// `hireWorkforce` returned, and `client` the session client `openChannels` takes.
+await openChannels(roster.channels, { client, userId: "u_lab" });
+const opened = await openInventory(
+  { seats: hired.map((seat) => ({ id: seat.id, kind: seat.kind })), channels: roster.channels },
+  { run, seatWriter: { flowKind: "channel" }, userId: "u_lab", orgId: "org_lab" },
+);
+if (opened.problems.length > 0) throw new Error(opened.problems.join("; "));
+```
+
+`run` executes one action for `openInventory` and throws when it fails:
+
+```ts
+import { runAction } from "@flow-state-dev/engine";
+import type { InventoryActionRequest } from "@flow-state-dev/workforce";
+
+const runtime = await state.getRuntime();
+const run = async (request: InventoryActionRequest) => {
+  const result = await runAction({
+    flow: flowsByKind[request.flowKind], // the channel flow and each seat, by kind or id
+    actionName: request.action,
+    input: request.input,
+    userId: request.userId,
+    orgId: request.orgId,
+    sessionId: request.sessionId,
+    source: request.source, // the seat rows are written only when this reaches runAction
+    stores: runtime.stores,
+    runtimeConfig: runtime.runtimeConfig,
+  });
+  if (result?.error !== undefined) throw new Error(String(result.error));
+  return result;
+};
+```
+
+Without an inventory, TEAMS and PROJECTS each say there is none to read, and the other sections load. The [Inventory](../../apps/docs/docs/workforce/inventory.md) page covers both calls in full.
+
+**Who App Lab reads as.** Set `devtool: { userId }` on `createFlowState`, and add `bearerToken` when the resolver checks one. These are the settings `fsdev dev` hands the DevTool. App Lab passes them to the page only when `--host` is a loopback address. If the Lab turns down App Lab's first request because it carries no organization the resolver accepts, App Lab shows the Lab's answer in place of the Lab.
+
+**Documents a browser may read.** Jump to lists a declared document (a `.md` under a `resources/` folder of the Lab's tree) only when its frontmatter lets a browser read it:
+
+```md
+---
+description: How this team works.
+client:
+  content:
+    read: true
+---
+```
+
+It's listed once a session whose flow serves it exists. A document without that line stays out of Jump to.
+
+`test/fixtures/ask-lab/lab.mts` is a small Lab that does all of the above in one file.
+
 ## What you see
 
 - **Sidebar.** The organization, Jump to (⌘K), Inbox and Tasks with their counts, PROJECTS (the workstreams, until projects exist), and TEAMS: each team in the Lab's seat inventory, with exactly its seats.
-- **Jump to (⌘K).** Finds workstreams, seats, tasks and the Lab's declared documents. A document opens read-only. Only documents whose frontmatter lets a browser read them (`client: { content: { read: true } }`) are listed, and only once a session whose flow serves them exists.
+- **Jump to (⌘K).** Finds workstreams, seats, tasks and the Lab's [readable documents](#what-a-labs-config-provides). A document opens read-only.
 - **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
 - **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream.
 - **A workstream.** One channel and the boards attached to it. It has four tabs: Stream (the transcript, the composer, and its members' asks), Board (five columns: QUEUED, RUNNING, NEEDS YOU, IN REVIEW, DONE), Brief (the channel's charter) and Results. The right panel lists the channel's members with their status, and its rows by column.
@@ -63,13 +149,17 @@ Open a task from Tasks or from a card on a board. The Session tab is that task's
 
 **Interrupt** stops the run (Esc does the same while the Session has focus). The screen says *interrupted* once the run has actually stopped. What happens to the task afterwards, whether it's retried or left, is up to the board, not App Lab.
 
-The panel on the right shows who is on it and when it started. If the harness records its plan and the files it touched, as Claude Code does, they're listed. Otherwise the panel says so. *Open trace* opens the devtool for the full detail. Tell App Lab where it runs:
+The panel on the right shows who is on it and when it started. If the harness records its plan and the files it touched, as Claude Code does, they're listed. Otherwise the panel says so. *Open trace* opens the run's session in the devtool, for the full detail, with the session id beside the link.
+
+The devtool it opens is the one App Lab serves: the same pages `fsdev dev` serves, over the same Lab, in the same process. That matters because the devtool can only show a run from the store the run is in. A Lab whose stores are in memory lives only in App Lab's process, so a devtool started separately has its own empty store. The link adds `?session=<id>`, and the devtool opens the session under the flow that owns it.
+
+The devtool's pages ship prebuilt in the published `@flow-state-dev/devtool` package. In this repository, build them once with `pnpm build:assets`. Without them App Lab still starts, says so, and the link is off.
+
+To use a devtool you run yourself, pass its address. It has to read the same store as App Lab, as the same user, so this suits a Lab with a persistent store, such as SQLite:
 
 ```bash
 pnpm --filter @flow-state-dev/app-lab start --config <your config> --devtool http://localhost:4000
 ```
-
-The run's session id sits beside the link. The devtool doesn't open a session from its address yet, so paste it there.
 
 ### Not there yet
 
@@ -95,6 +185,12 @@ Each of these is drawn as a named empty state or a disabled control:
 - **Worker detail.** A seat's harness, and the NOW, TIME and COST columns on Tasks.
 - **IN REVIEW.** The column is drawn empty, because no row status means "in review" yet.
 
+## How it looks
+
+App Lab's look comes from the [design-system](../design-system) package, through one import in `src/styles.css`. It follows your operating system's light or dark setting, and switches when you change it. Remove that import and every screen falls back to the registry's neutral defaults.
+
+The cards in a task's Session, and the ask cards in Inbox and in a workstream's Stream, are App Lab's copies of `@flow-state-dev/ui` registry components, kept unedited. The `ui:add` script in `package.json` names what was installed (`chat-assistant`, which brings the message, reasoning, tool, code block, task plan and ask cards with it). A test checks that the copies are exactly what that list ships, byte for byte.
+
 ## Tests
 
 ```bash
@@ -112,4 +208,10 @@ A second goal check opens tasks on a Lab whose runs hold until stopped. It watch
 
 ```bash
 PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/app-lab/it-shows-and-stops-a-task-run/run.mts
+```
+
+A third builds App Lab twice, as written and with its theme import removed, and reads the colours and fonts Chromium paints on the shell and on each registry card in a task's Session. With the import, every one is an App Lab value. Without it, none is:
+
+```bash
+PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/app-lab/it-takes-its-look-from-the-design-system/run.mts
 ```

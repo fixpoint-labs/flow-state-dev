@@ -45,9 +45,8 @@ import type { AnyResourceRef } from "./resource";
  *
  * A plain string so a harness we do not ship can name itself — but every writer
  * of the field owes the `<package>/<door>` convention (`claude-code/sdk`,
- * `claude-code/cli-remote`, `codex/sdk`). The rule, not the type, is what keeps
- * the values comparable when something later checks that a run came from the
- * harness it dispatched. Nothing branches on the value today.
+ * `codex/sdk`). The rule, not the type, is what keeps the values comparable
+ * when something later checks that a run came from the harness it dispatched. Nothing branches on the value today.
  */
 export type HarnessSource = string;
 

@@ -1,7 +1,7 @@
 {
   "name": "@flow-state-dev/claude-code",
   "version": "0.1.3",
-  "description": "Claude Code integration for flow-state-dev: dispatch cloud coding tasks via the local claude CLI.",
+  "description": "Claude Code integration for flow-state-dev: run a Claude Code agent in-process as a block.",
   "keywords": [
     "ai",
     "agents",

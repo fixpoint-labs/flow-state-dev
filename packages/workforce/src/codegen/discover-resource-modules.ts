@@ -7,12 +7,15 @@
  * organisation's folder, a team's, and either level's workers' own. Until now a
  * `.ts` file there did nothing at all: no document, no error, no signal.
  *
- * A **separate reader** over the shared walk primitives, not a parameter on the
- * Markdown one — one reader holding two conventions is the mega-loader those
+ * A **separate reader** over the shared walk, not a parameter on the Markdown
+ * one — one reader holding two conventions is the mega-loader the walk
  * primitives were extracted to prevent. What the two doors are not allowed to
- * disagree about is where they look and what a file is called, which is why
- * both take their folder names, their document extension and their ref rule
- * from `../loader/resource-convention`.
+ * disagree about is where they look and what a file is called. So neither
+ * descends the tree itself: both iterate the places `../loader/resource-walk`
+ * yields, which also owns the list of places `fsdev gen` prints, and both take
+ * their folder names, their document extension and their ref rule from
+ * `../loader/resource-convention`. What this door does inside a folder, and the
+ * order it visits workers in, stay its own.
  *
  * It reads the **tree**, never the modules in it, exactly as the locked-folder
  * walk beside it does. Whether a module exports something usable — and whether
@@ -37,34 +40,14 @@ import {
   IGNORED_ENTRIES,
   REFERENCES_SLOT,
   RESOURCES_SLOT,
-  WORKERS_LEVEL,
   classify,
-  mintResourceRef,
-  openRoot,
   openStructuralDirectory,
   refusedSymlink,
   siblingSlotPath,
   unreadable,
-  walkTeams,
 } from "../loader";
-
-/**
- * The four places a `resources/` slot can be, as the command reports them.
- *
- * Patterns rather than the concrete folders walked: the concrete list is one
- * line per seat in the tree, and what an author wants to read back is where the
- * convention looks. Frozen, and never joined onto a path — the walk finds its
- * folders by walking, not by expanding these.
- */
-export const RESOURCE_SLOT_PATTERNS: readonly string[] = Object.freeze([
-  `org/${RESOURCES_SLOT}`,
-  `org/${WORKERS_LEVEL}/*/${RESOURCES_SLOT}`,
-  `teams/*/${RESOURCES_SLOT}`,
-  `teams/*/${WORKERS_LEVEL}/*/${RESOURCES_SLOT}`,
-]);
-
-/** Extensions that denote a TypeScript module. Anything else in the folder is Door A's, or nobody's. */
-const TYPESCRIPT_EXTENSIONS = [".ts", ".tsx"];
+import { walkResourcePlaces } from "../loader/resource-walk";
+import { typescriptExtension } from "./typescript-module";
 
 /** One module the walk found, and where it will be imported from. */
 export interface DiscoveredResourceModule {
@@ -95,11 +78,6 @@ export interface ResourceModuleDiscovery {
   problems: string[];
 }
 
-/** The TypeScript extension this entry carries, or `undefined` when it is not a TypeScript module. */
-function typescriptExtension(entry: string): string | undefined {
-  return TYPESCRIPT_EXTENSIONS.find((extension) => entry.endsWith(extension));
-}
-
 /** Everything reading one `resources/` slot needs that differs between the four places one can be. */
 interface SlotContext {
   modules: DiscoveredResourceModule[];
@@ -115,116 +93,49 @@ interface SlotContext {
  * Walk every `resources/` folder the convention reads and return the modules in
  * them.
  *
- * The root is opened here rather than left to the caller, for the reason the
- * locked-folder walk opens it: a symlinked root would put the whole walk
- * outside the configured tree.
+ * The root is opened by the walk rather than left to the caller, for the
+ * reason the locked-folder walk opens it: a symlinked root would put the whole
+ * walk outside the configured tree.
  *
  * @param root Path to the app's `workforce/` directory.
  * @returns Every discovered module, ordered by path, and every refusal.
  * @throws If the root is symlinked, missing or unreadable.
  */
 export async function discoverResourceModules(root: string): Promise<ResourceModuleDiscovery> {
-  await openRoot(root);
-
   const modules: DiscoveredResourceModule[] = [];
   const problems: string[] = [];
   const claimed = new Map<string, string>();
 
-  // Every refusal below names the path it was met at inside its own message —
-  // the shared wordings take the path as the thing they name — so the list is
-  // flat strings rather than the loader's `{ path, error }` records. That is
-  // the locked-folder walk's shape, and both halves land in one thrown list.
-  const report = (_at: string, error: Error): void => {
-    problems.push(error.message);
-  };
-
-  // The org root, opened structurally rather than merely classified so a
-  // symlinked or unreadable `org/` is reported the way `teams/` is. Absence is
-  // silent: an app may declare nothing at the organisation level.
-  const org = await openStructuralDirectory(path.join(root, "org"), "org");
-  if (org.refusal !== undefined) problems.push(org.refusal.error.message);
-  if (org.entries !== undefined) {
-    await readSlot(path.join(root, "org", RESOURCES_SLOT), `org/${RESOURCES_SLOT}`, {
+  // Every refusal names the path it was met at inside its own message — the
+  // shared wordings take the path as the thing they name — so the list is flat
+  // strings rather than the loader's `{ path, error }` records. That is the
+  // locked-folder walk's shape, and both halves land in one thrown list.
+  // Workers are visited sorted, so problems come in one order on any machine.
+  const places = walkResourcePlaces(root, { workerOrder: (entries) => [...entries].sort() });
+  for await (const step of places) {
+    if (step.type === "refused") {
+      problems.push(step.error.message);
+      continue;
+    }
+    // A refused worker folder is named by its full path here; the Markdown door
+    // names it by its folder name. Both are as they were, so neither moves.
+    if (step.type === "worker-refused") {
+      problems.push(step.refusal(step.path).message);
+      continue;
+    }
+    await readSlot(path.join(step.dir, RESOURCES_SLOT), `${step.path}/${RESOURCES_SLOT}`, {
       modules,
       problems,
       claimed,
-      atWorkerRoot: false,
-      mintRef: (name) => mintResourceRef(undefined, undefined, name),
+      atWorkerRoot: step.atWorkerRoot,
+      mintRef: step.mintRef,
     });
-    // An org worker's ref drops `org/`, exactly as an org document's does.
-    await walkWorkers(path.join(root, "org"), "org", undefined, { modules, problems, claimed });
-  }
-
-  for await (const team of walkTeams(root, report)) {
-    await readSlot(path.join(team.dir, RESOURCES_SLOT), `${team.path}/${RESOURCES_SLOT}`, {
-      modules,
-      problems,
-      claimed,
-      atWorkerRoot: false,
-      mintRef: (name) => mintResourceRef(team.id, undefined, name),
-    });
-    await walkWorkers(team.dir, team.path, team.id, { modules, problems, claimed });
   }
 
   // Ordered by path rather than by the order a directory listed, so a tree that
   // has not changed renders byte-identically on any machine.
   modules.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return { modules, problems };
-}
-
-/**
- * Read every worker's `resources/` slot under one parent — `org/` or a team
- * folder — and collect the modules in them.
- *
- * One function called twice rather than two copies: the two parents differ only
- * in the team id handed to the ref minter.
- *
- * This level is the worker reader's rule: a `workers/` level holds folders, so
- * a *file* in it occupies no slot and is passed over in silence.
- */
-async function walkWorkers(
-  parentDir: string,
-  parentPath: string,
-  teamId: string | undefined,
-  ctx: Omit<SlotContext, "mintRef" | "atWorkerRoot">,
-): Promise<void> {
-  const workersPath = `${parentPath}/${WORKERS_LEVEL}`;
-  const slots = await openStructuralDirectory(path.join(parentDir, WORKERS_LEVEL), workersPath);
-  if (slots.refusal !== undefined) ctx.problems.push(slots.refusal.error.message);
-  if (slots.entries === undefined) return;
-
-  for (const workerName of [...slots.entries].sort()) {
-    if (IGNORED_ENTRIES.has(workerName)) continue;
-
-    // No name is special at this level, including `resources`: a folder here is
-    // judged by the slot it occupies, not by what it looks like. That is the
-    // Markdown door's rule at this level, and the two doors have to descend
-    // into the same seats or a `.ts` file would be read in a folder whose `.md`
-    // neighbour is not, or the reverse.
-    const workerDir = path.join(parentDir, WORKERS_LEVEL, workerName);
-    const entryPath = `${workersPath}/${workerName}`;
-    const slot = await classify(workerDir);
-
-    if (slot.kind === "absent" || slot.kind === "file") continue;
-
-    // Both refusals are structural: the folder is there and the walk will not
-    // go through it, so every module under it is missing and none of them can
-    // be named individually.
-    if (slot.kind === "symlink") {
-      ctx.problems.push(refusedSymlink("worker folder", entryPath).message);
-      continue;
-    }
-    if (slot.kind === "unreadable") {
-      ctx.problems.push(unreadable("Worker folder", entryPath, slot.error).message);
-      continue;
-    }
-
-    await readSlot(path.join(workerDir, RESOURCES_SLOT), `${entryPath}/${RESOURCES_SLOT}`, {
-      ...ctx,
-      atWorkerRoot: true,
-      mintRef: (name) => mintResourceRef(teamId, workerName, name),
-    });
-  }
 }
 
 /**

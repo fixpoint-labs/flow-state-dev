@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
-import { createEmitState, emitTranslatedEvent } from "../../src/sdk/emit";
+import { closeStreamingItems, createEmitState, emitTranslatedEvent, finalizeOpenItems } from "../../src/sdk/emit";
 
 /**
  * Minimal fake block context that records the raw events emitted via
@@ -10,8 +10,8 @@ import { createEmitState, emitTranslatedEvent } from "../../src/sdk/emit";
  * without the full block harness (which exposes only tracked items, not the
  * underlying added/done event sequence).
  */
-function fakeEmitCtx() {
-  const events: Array<{ type: string; item?: { id?: string; type?: string } }> = [];
+function fakeEmitCtx(scope: { taskId?: string } = {}) {
+  const events: Array<{ type: string; item?: { id?: string; type?: string; taskId?: string } }> = [];
   let count = 0;
   const ctx = {
     request: { identity: { id: "req_1" } },
@@ -23,7 +23,7 @@ function fakeEmitCtx() {
       getItemCount: () => count,
     },
     emit: { status: () => {} },
-    _blockIdentity: { blockName: "claude-code-agent", blockInstanceId: "bi_1", phase: "main" },
+    _blockIdentity: { blockName: "claude-code-agent", blockInstanceId: "bi_1", phase: "main", ...scope },
   } as unknown as BlockContext;
   return { ctx, events };
 }
@@ -74,5 +74,45 @@ describe("emitTranslatedEvent", () => {
       .filter((e) => e.item?.type === "tool_output")
       .map((e) => e.type);
     expect(toolEventTypes).toEqual(["item.added", "item.done"]);
+  });
+});
+
+// A run inside a task scope (a board's gated task entry, as `harnessManager`
+// runs it) must put the task's id on every item it emits: it is what puts the
+// item in the task's own view, the Session tab a person opens on that task.
+// Without it a Claude Code run's steps are in the session but in no task's view.
+describe("task attribution", () => {
+  const BLOCK = "claude-code-agent";
+
+  it("stamps the scope's taskId on every item it adds and finishes", async () => {
+    const { ctx, events } = fakeEmitCtx({ taskId: "row-1--implement" });
+    const state = createEmitState();
+
+    await emitTranslatedEvent({ kind: "message_delta", text: "Reading" }, ctx, state, BLOCK);
+    await closeStreamingItems(ctx, state, BLOCK);
+    await emitTranslatedEvent({ kind: "message_complete", text: "Done." }, ctx, state, BLOCK);
+    await emitTranslatedEvent({ kind: "reasoning_complete", text: "Thinking" }, ctx, state, BLOCK);
+    await emitTranslatedEvent({ kind: "tool_call", callId: "t1", name: "Bash", arguments: "{}" }, ctx, state, BLOCK);
+    await emitTranslatedEvent({ kind: "tool_result", callId: "t1", output: "ok", isError: false }, ctx, state, BLOCK);
+    await emitTranslatedEvent({ kind: "tool_result", callId: "t-orphan", output: "ok", isError: false }, ctx, state, BLOCK);
+    await emitTranslatedEvent({ kind: "subagent_open", callId: "s1", name: "Task" }, ctx, state, BLOCK);
+    await emitTranslatedEvent({ kind: "tool_call", callId: "t2", name: "Read", arguments: "{}" }, ctx, state, BLOCK);
+    await emitTranslatedEvent({ kind: "error", message: "boom" }, ctx, state, BLOCK);
+    await finalizeOpenItems(ctx, state, BLOCK);
+
+    const items = events.filter((e) => e.item !== undefined).map((e) => e.item!);
+    expect(new Set(items.map((i) => i.type))).toEqual(new Set(["message", "reasoning", "tool_output", "container", "error"]));
+    for (const item of items) expect({ type: item.type, taskId: item.taskId }).toEqual({ type: item.type, taskId: "row-1--implement" });
+  });
+
+  it("puts no taskId key on an item emitted outside a task scope", async () => {
+    const { ctx, events } = fakeEmitCtx();
+    const state = createEmitState();
+
+    await emitTranslatedEvent({ kind: "message_complete", text: "Done." }, ctx, state, BLOCK);
+
+    const items = events.filter((e) => e.item !== undefined).map((e) => e.item!);
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) expect(Object.keys(item)).not.toContain("taskId");
   });
 });

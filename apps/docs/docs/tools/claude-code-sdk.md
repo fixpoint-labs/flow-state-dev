@@ -10,14 +10,10 @@ it work through your flow's item stream. The agent's messages, reasoning, tool
 calls, and sub-agents become flow-state-dev items as they happen, and its session
 carries across requests.
 
-This is the companion to [Claude Code remote dispatch](./claude-code-cli.md). That
-page hands a task to a cloud session and returns a handle. This page runs the
-agent locally, in your process, and streams everything it does.
-
-It is one of two harnesses flow-state-dev ships. [Coding agents](./coding-agents.md)
-covers what they have in common — the handle they both return, and the
+It is one of three harnesses flow-state-dev ships. [Coding agents](./coding-agents.md)
+covers what they have in common — the handle they all return, and the
 configuration contract underneath `cwd`, `resume` and `onSession`. [Codex](./codex.md)
-is the other one. This page is the Claude Code half.
+and [Cursor](./cursor.md) are the other two. This page is the Claude Code one.
 
 ## When to use it
 
@@ -680,8 +676,8 @@ are strings, not streamed input.
 ## Related
 
 - [Coding agents](./coding-agents.md) — the harness contract, and the handle this block returns
-- [Codex SDK agent](./codex.md) — the other harness, same handle
-- [Claude Code remote dispatch](./claude-code-cli.md) — the fire-and-forget cloud alternative
+- [Codex SDK agent](./codex.md) — another harness, same handle
+- [Cursor SDK agent](./cursor.md) — another harness, same handle
 - [Harness manager](/docs/orchestration/harness-manager) — driving this block from a task board
 - [Workspace projection](./workspace.md) — the package underneath the workspace capability
 - [Tools overview](./overview.md)
