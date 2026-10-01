@@ -12,7 +12,9 @@
  * So the folder names, the document extension and the ref rule live here, once.
  * Two spellings of one ref is how a module and a document silently overwrite
  * each other, and the check that refuses a basename claimed by both can only
- * refuse what both sides minted the same way.
+ * refuse what both sides minted the same way. Where the folders are — the walk
+ * both doors ride, and the list of places `fsdev gen` prints — lives beside
+ * this in `resource-walk.ts`.
  *
  * **Both slots mint into ONE namespace.** `references/handbook.md` and
  * `resources/handbook.md` at the same level are two spellings of the ref
