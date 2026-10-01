@@ -42,6 +42,10 @@ describe("the sidebar's shift switch", () => {
     try {
       render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} look={look} />);
       const day = await screen.findByTestId("shift-day");
+      // The sidebar can commit before its passive effects run, and the switch
+      // subscribes to the look in one. Flush them, so the first click can't
+      // land before the switch is listening.
+      await act(async () => {});
       const night = screen.getByTestId("shift-night");
       expect(within(screen.getByTestId("sidebar-footer")).getByTestId("shift-switch")).toBeTruthy();
       expect([day.textContent, night.textContent]).toEqual(["Day shift", "Night shift"]);
