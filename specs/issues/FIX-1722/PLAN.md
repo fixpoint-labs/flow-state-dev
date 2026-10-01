@@ -54,7 +54,7 @@ One PR; no PR plan.
 
 | From | What this issue reads | Before it merges |
 |---|---|---|
-| **FIX-1719** · the CoS and Ops seats | Which seat is the CoS (its identity on the inventory row), and that seat's kind and door. The field contract is FIX-1719's; this issue owns none of it | D2's interim: the seat named exactly `chief-of-staff`, in any team. The fixture declares one under a team. When FIX-1719 lands, S3 reads its contract, the fixture's seat moves to `org/workers/`, and nothing else changes. Org seats with no team must still read in TEAMS (BP-030: `Seat.team` may be absent then); that is FIX-1719's and FIX-1723's to land, and S3 must not assume a team |
+| **FIX-1719** · the CoS and Ops seats | The seat inventory contract, from FIX-1719 (#2613): rows `{ id, kind, door }`; org seats by bare folder name (`chief-of-staff`, `ops`) with no team; team seats `<team>.<name>`; Ops-hired seats `<org>.<seatId>`, split with `splitSeatAddress`; a fired seat has no row; the CoS reached through its door. This issue owns none of it | D2's rule needs nothing new: the name after `splitSeatAddress` is `chief-of-staff`. Org seats aren't hireable yet, so the fixture declares the CoS under a team; once FIX-1719 lands it moves to `org/workers/` and nothing in the shell changes. Org seats have no team: `Seat.team` becomes optional where the shell reads it (BP-030), and TEAMS listing teamless seats is FIX-1723's |
 | **FIX-1723** · Roster | The one on-call function it pins in `derive.ts` (on shift · on call · off shift), and its sidebar entries | ON CALL and the summary's on-call clause are named gaps (BR-9, BR-20). Whichever PR merges second rebases the shared sidebar and `derive.ts`; the entries don't overlap |
 | **FIX-1697** · v2 and the final theme (PR #2605) | The design-system tokens | The view uses tokens only, so it lands in either order. v2's hand-back is the final one, so ER-9 is met once #2605 merges |
 | **The epic** · ER-10 | An amendment adopting v2's Chief of Staff destination | Jake's 2026-10-01 call is the authority; the coordinator records the amendment. This PR doesn't merge before it |
@@ -64,7 +64,7 @@ One PR; no PR plan.
 | ID | Runs after | Passes when |
 |---|---|---|
 | V1 | S1, S2 | `/`, `/cos` and an unknown path parse to `cos`; every other route round-trips as before; the entry is first and current only on `cos` (BR-1, BR-2) |
-| V2 | S3 | One seat named `chief-of-staff` among others is found; none and two give their states; a seat named `chief-of-staffs` or `chief` is not found (BR-10 to BR-12) |
+| V2 | S3 | `chief-of-staff` (org) and `desk.chief-of-staff` (team) are each found; both together, or two teams, give the several state; none gives its state; `desk.chief-of-staffs` and `chief` are not; a teamless row reads without error (BR-10 to BR-12) |
 | V3 | S4, S5 | Against the in-process fixture Lab: the summary's numbers equal what Inbox and Tasks draw from the same snapshot; answering an ask from the summary clears it in Inbox and the other way round; a failed read draws only its section's failure (BR-4 to BR-8). Negative: a written-in count fails |
 | V4 | S6 | Of the person's sessions on the CoS flow, the newest with no parent is chosen; a channel-heard or child session is never chosen; with none, the target has no session (BR-14) |
 | V5 | S7 | A target with no session sends without one, takes the id from the answer and confirms delivery in that session; existing callers' tests pass unchanged (BR-15) |
@@ -78,7 +78,7 @@ One PR; no PR plan.
 | Where | Name | Why pinned |
 |---|---|---|
 | Route | `/cos` | Links and the goal check type it |
-| Interim CoS rule | a seat named exactly `chief-of-staff` | D2; a Lab names its seat by it until FIX-1719 lands |
+| CoS rule | the seat whose name after `splitSeatAddress` is exactly `chief-of-staff` | D2; FIX-1719's org seat id (#2613), and a Lab's team seat before it |
 | Goal check | `goals/shift-manager/it-briefs-and-talks-with-the-chief-of-staff/` | The epic's closure runs it |
 | Controls | `GOAL_CONTROL=optimistic-reply`, `GOAL_CONTROL=static-brief` | The goal names them |
 
@@ -130,9 +130,8 @@ session back (`labs/shift-manager/src/lib/send.ts`). V4 and V5 exercise them fir
 
 ## At implement time
 
-- **Read FIX-1719's merged spec, if any.** If its CoS contract has landed, S3 reads it and the
-  fixture's seat sits under `org/workers/`; skip the interim. If not, build the interim and leave a
-  one-line pointer to FIX-1719 at S3.
+- **Re-read FIX-1719's spec (#2613) as merged.** If the contract above changed, S3 follows it. If
+  org seats are hireable by then, the fixture's CoS sits under `org/workers/`.
 - **Read FIX-1723's merged spec or PR** for the on-call function's name. If it has merged, wire
   ON CALL and drop the two gap entries.
 - **Confirm a channel-heard CoS session has a parent** (or is otherwise told apart from a direct

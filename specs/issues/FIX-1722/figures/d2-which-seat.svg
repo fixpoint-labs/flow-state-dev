@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 422" role="img" aria-label="D2, which seat Shift Manager talks to as the Chief of Staff before FIX-1719 lands. Chosen: the seat FIX-1719 names, and until it merges, the one seat a Lab declares named chief-of-staff on the built-in agent kind, found by one rule in one place. Instead of: waiting for FIX-1719 before building the view. It comes down to the first row, when it can be built and proved: now, on the shipped door and send path, against waiting on FIX-1719&#x27;s spec and build. Second row, the price: a provisional naming rule FIX-1719 may change, against none. Third row is a tie: nothing goes into Core or Engine either way. Locks in: a Lab with no such seat, or two, sees the summary and a named state in place of the conversation. Flips if: FIX-1719 identifies the CoS by something the inventory row doesn&#x27;t carry; then that read joins the shell&#x27;s snapshot."
+<svg viewBox="0 0 940 422" role="img" aria-label="D2, which seat Shift Manager talks to as the Chief of Staff before FIX-1719 lands. Chosen: the seat FIX-1719 names, and until it merges, the one seat a Lab declares named chief-of-staff on the built-in agent kind, found by one rule in one place that also matches FIX-1719&#x27;s org seat. Instead of: waiting for FIX-1719 before building the view. It comes down to the first row, when it can be built and proved: now, on the shipped door and send path, against waiting on FIX-1719&#x27;s spec and build. Second row, the price: until org seats are hireable, the CoS is a team&#x27;s worker, against the org seat from day one; the rule finds both, so the shell doesn&#x27;t change when it moves. Third row is a tie: nothing goes into Core or Engine either way. Locks in: a Lab with no such seat, or two, sees the summary and a named state in place of the conversation. Flips if: FIX-1719 changes its contract to mark the CoS outside the inventory row; then that read joins the shell&#x27;s snapshot."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -63,14 +63,14 @@
     <text class="t-s" x="612" y="179">its spec has only just started</text>
   </g>
   <g id="row-1">
-    <text class="t-lbl" x="32" y="226">DRIFT FROM</text>
-    <text class="t-lbl" x="32" y="239">FIX-1719</text>
+    <text class="t-lbl" x="32" y="226">WHERE THE SEAT</text>
+    <text class="t-lbl" x="32" y="239">LIVES</text>
     <text class="mark minus" x="228" y="228">−</text>
-    <text class="t-b" x="248" y="227">A provisional naming rule</text>
-    <text class="t-s" x="248" y="245">swapped in one function when it lands</text>
+    <text class="t-b" x="248" y="227">In a team, for now</text>
+    <text class="t-s" x="248" y="245">moves to org/workers/ once org seats hire</text>
     <text class="mark plus" x="592" y="228">+</text>
-    <text class="t-b" x="612" y="227">None</text>
-    <text class="t-s" x="612" y="245">built on the final contract</text>
+    <text class="t-b" x="612" y="227">Under org/workers/</text>
+    <text class="t-s" x="612" y="245">as FIX-1719 declares it</text>
     <line class="row" x1="16" y1="258" x2="924" y2="258"/>
   </g>
   <g id="row-2">

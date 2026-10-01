@@ -30,7 +30,7 @@ adds. *Proved by* names the kind of check the plan runs.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-10 | The Lab's inventory holds exactly one seat that is the CoS ([D2](DECISIONS.md#d2)) and it has a door | The conversation and its composer show, headed with the seat's name. The composer's placeholder names the CoS and promises nothing about routing | Goal check |
-| BR-11 | The inventory holds no CoS seat | The summary shows; in place of the conversation, a named state: the Lab declares no chief of staff, and a seat named `chief-of-staff` on the `agent` kind adds one | Goal check (DevTeam) |
+| BR-11 | The inventory holds no CoS seat | The summary shows; in place of the conversation, a named state: the Lab declares no chief of staff, and a seat named `chief-of-staff` on the `agent` kind adds one (under `org/workers/` once FIX-1719 lands, a team's `workers/` before) | Goal check (DevTeam) |
 | BR-12 | The inventory holds two or more | A named state naming them; Shift Manager talks to neither | CI |
 | BR-13 | The CoS seat has no door | The conversation shows any stored items; the composer is disabled with *takes no message*, as other composers say it | CI |
 | BR-14 | The person has a direct session with the CoS seat | The view shows the newest one's items in stored order: their lines and the seat's replies and tool calls, drawn with the registry copies. A session a channel post or another run started is never this conversation | Goal check (**again**) · CI |

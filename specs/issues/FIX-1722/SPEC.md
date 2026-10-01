@@ -53,8 +53,9 @@ against Shift Manager's own state.
 The bottom row is all this issue adds: one entry, one view, and nothing outside the lab. The CoS
 seat is an input, drawn dashed.
 
-A Lab adds a CoS by declaring a seat. Until FIX-1719 lands, a team's worker does it
-([D2](DECISIONS.md#d2)); FIX-1719 then moves it to `org/workers/` and Shift Manager follows:
+A Lab adds a CoS by declaring a seat named `chief-of-staff`. Until FIX-1719 makes org seats
+hireable, a team's worker does it ([D2](DECISIONS.md#d2)); afterwards it lives under
+`org/workers/`, and Shift Manager finds it by the same rule:
 
 ```diff
   workforce/teams/desk/workers/
@@ -100,8 +101,8 @@ that looks like v2 and does nothing the store can confirm.
    voice. If wrong: the screen reads as a dashboard above a chat, and a CoS-written brief is
    added later beside it.
 2. **[D2](DECISIONS.md#d2) · The CoS is FIX-1719's seat; until it lands, the one seat a Lab
-   declares as `chief-of-staff`, found by one rule in one place.** If wrong: a Lab renames one
-   seat, and the rule changes in one function.
+   declares as `chief-of-staff`, found by one rule that also matches FIX-1719's org seat (#2613).**
+   If wrong: a Lab renames one seat, and the rule changes in one function.
 
 Open: none. The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 

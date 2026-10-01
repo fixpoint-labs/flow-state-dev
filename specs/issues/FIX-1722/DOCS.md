@@ -36,7 +36,8 @@ Chief of Staff, Inbox and Tasks with their counts, …"
 
 ## UPDATE · `labs/shift-manager/README.md` · What a Lab's config provides, a new last item
 
-> **A chief of staff, if you want one.** Shift Manager talks to the seat named `chief-of-staff`.
+> **A chief of staff, if you want one.** Shift Manager talks to the seat named `chief-of-staff`,
+> whether it's an org seat or a team's worker.
 > Declare it like any other worker, on the built-in `agent` kind, with instructions that say what
 > it should do for the person running the Lab:
 >

@@ -46,18 +46,18 @@ briefing you. A CoS-written brief is additive later; nothing here has to be remo
 | | |
 |---|---|
 | **Instead of** | Waiting for FIX-1719 to merge before building the view · a CoS flag on the inventory row, or a CoS type anywhere in Core or Engine |
-| **Because** | Everything the conversation needs already ships: a seat's door on its inventory row, the send path with its *delivered* rule (FIX-1690), and the session reads. The only thing missing is which seat is the CoS, and FIX-1719 owns that contract ([FIX-1650](../../epics/FIX-1650/DECISIONS.md#q2): an org seat under `org/workers/` on the `agent` kind). An org seat isn't hireable until FIX-1719 lands, so the interim is a team's worker named `chief-of-staff`. One function holds the rule; when FIX-1719 lands, that function changes and nothing else. A flag or a type would add a Workforce noun the layer rule forbids (epic ER-7) |
-| **Locks in** | The seat whose name is exactly `chief-of-staff`, in any team or, once FIX-1719 lands, the org. None: the summary shows, and the conversation is a named state saying the Lab declares no chief of staff. Two: a named state naming both, and no guess. The seat must have a door; one without says it takes no message |
+| **Because** | Everything the conversation needs already ships: a seat's door on its inventory row, the send path with its *delivered* rule (FIX-1690), and the session reads. The only thing missing is which seat is the CoS, and FIX-1719 owns that contract. Its contract, from FIX-1719 (#2613): an org seat's inventory row is `{ id, kind, door }` with its bare folder name as the id (`chief-of-staff`) and no team; a team seat is `<team>.<name>`; an Ops-hired one is `<org>.<seatId>`, split with `splitSeatAddress`; a fired seat has no row; the CoS is reached through its door like any other seat. So one rule serves both sides of FIX-1719 landing: **the seat whose name, after `splitSeatAddress`, is exactly `chief-of-staff`**. Before FIX-1719, an org seat isn't hireable, so a Lab declares it as a team's worker (`<team>.chief-of-staff`); after, under `org/workers/` (`chief-of-staff`). One function holds the rule. A flag or a type would add a Workforce noun the layer rule forbids (epic ER-7) |
+| **Locks in** | None: the summary shows, and the conversation is a named state saying the Lab declares no chief of staff. Two (an org seat and a team one, or two teams): a named state naming both, and no guess. The seat must have a door; one without says it takes no message. An org seat's row has no team, and the view must not assume one |
 
-![D2: which seat is the Chief of Staff before FIX-1719 lands? FIX-1719's seat, chief-of-staff until then, chosen, beside waiting for FIX-1719. Decides it: when it can be built and proved. Price: a provisional naming rule](figures/d2-which-seat.svg)
+![D2: which seat is the Chief of Staff before FIX-1719 lands? FIX-1719's seat, chief-of-staff until then, chosen, beside waiting for FIX-1719. Decides it: when it can be built and proved. Price: the CoS sits in a team until org seats hire](figures/d2-which-seat.svg)
 
 It comes down to timing: waiting blocks the view on a spec that has only just started.
 
-**What would change my mind:** FIX-1719 marking the CoS somewhere the inventory row doesn't
-carry. Then that read joins the shell's snapshot, and the function reads it.
+**What would change my mind:** FIX-1719 changing its contract to mark the CoS somewhere the
+inventory row doesn't carry. Then that read joins the shell's snapshot, and the function reads it.
 
 **If wrong:** a Lab that named its CoS otherwise renames one seat folder, and the rule changes in
-one function.
+one function. Before FIX-1719, the interim team seat moves to `org/workers/` with no shell change.
 
 ## Decided, not asked
 
