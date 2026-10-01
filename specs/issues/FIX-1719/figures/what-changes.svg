@@ -1,0 +1,81 @@
+<svg viewBox="0 0 940 380" role="img" aria-label="What changes, today on the left and after on the right. Today: a WORKER.md under org/workers is passed over and no seat exists, team seats boot, and a person edits files and restarts to change who works there. After: the chief-of-staff org seat boots from the tree beside the team seats; a person, or another seat by message, asks it; a hire goes straight to a roster row in the person's own organization; a fire goes to an approval in Inbox first, and only Approve removes the seat; both are read back after a restart."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .pane  { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .ask   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.6; }
+    .lost  { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; marker-end:url(#a); }
+    .arrow-acc { stroke:var(--accent); stroke-width:1.6; fill:none; marker-end:url(#a2); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .mk    { fill:var(--ink-3); }
+    .mk2   { fill:var(--accent); }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="mk" d="M0,0 L8,4 L0,8 z"/></marker>
+    <marker id="a2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="mk2" d="M0,0 L8,4 L0,8 z"/></marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="940" height="380"/>
+
+  <g id="today">
+    <rect class="pane" x="16" y="16" width="340" height="348" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY</text>
+    <rect class="n-box" x="32" y="52" width="308" height="52" rx="5"/>
+    <text class="t-s" x="46" y="72">teams/eng/workers/*/WORKER.md</text>
+    <text class="t-b" x="46" y="92">booted: eng.em, eng.coder, …</text>
+    <rect class="lost" x="32" y="120" width="308" height="52" rx="5"/>
+    <text class="t-s" x="46" y="140">org/workers/chief-of-staff/WORKER.md</text>
+    <text class="t-gone" x="46" y="160">passed over: no seat, no error</text>
+    <rect class="n-box" x="32" y="214" width="308" height="64" rx="5"/>
+    <text class="t-lbl" x="46" y="234">A PERSON CHANGES THE ROSTER</text>
+    <text class="t-b" x="46" y="254">edits a WORKER.md, restarts</text>
+    <text class="t-s" x="46" y="270">or writes and guards a hire action</text>
+  </g>
+
+  <g id="after">
+    <rect class="pane" x="372" y="16" width="552" height="348" rx="6"/>
+    <text class="t-lbl" x="388" y="38">AFTER</text>
+    <rect class="n-box" x="388" y="52" width="248" height="52" rx="5"/>
+    <text class="t-s" x="402" y="72">teams/eng/workers/*</text>
+    <text class="t-b" x="402" y="92">booted, unchanged</text>
+    <rect class="new" x="652" y="52" width="256" height="52" rx="5"/>
+    <text class="t-s" x="666" y="72">org/workers/chief-of-staff</text>
+    <text class="t-b" x="666" y="92">booted: chief-of-staff</text>
+
+    <rect class="n-box" x="388" y="132" width="160" height="44" rx="5"/>
+    <text class="t-b" x="402" y="159">a person, or a seat</text>
+    <path class="arrow" d="M548,154 L600,154"/>
+    <rect class="new" x="604" y="132" width="120" height="44" rx="5"/>
+    <text class="t-b" x="618" y="159">CoS · agent</text>
+
+    <path class="arrow" d="M664,176 L664,214 L560,214 L560,232"/>
+    <text class="t-lbl" x="572" y="208">HIRE</text>
+    <rect class="new" x="420" y="236" width="230" height="52" rx="5"/>
+    <text class="t-b" x="434" y="256">roster row, at once</text>
+    <text class="t-s" x="434" y="274">the person's own org cell</text>
+
+    <path class="arrow-acc" d="M690,176 L690,214 L790,214 L790,232"/>
+    <text class="t-acc" x="702" y="208">FIRE</text>
+    <rect class="ask" x="676" y="236" width="232" height="52" rx="5"/>
+    <text class="t-b" x="690" y="256">Inbox · human_approval</text>
+    <text class="t-s" x="690" y="274">Approve removes · Deny keeps</text>
+
+    <rect class="n-box" x="388" y="306" width="520" height="44" rx="5"/>
+    <text class="t-b" x="402" y="333">restart: hired seats read back; a fired one stays gone</text>
+    <path class="arrow" d="M535,288 L535,304"/>
+    <path class="arrow" d="M792,288 L792,304"/>
+  </g>
+</svg>
