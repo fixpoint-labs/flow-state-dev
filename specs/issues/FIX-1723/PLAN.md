@@ -11,7 +11,7 @@ and `goals/shift-manager`. No FSD package changes.
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
 | S0 | `shift-manager` · reads (`toSeat`) | Group a seat by its address per FIX-1719's BR-22: dotless → Staff; `<org>.<seatId>` → split with `splitSeatAddress` from `@flow-state-dev/workforce/browser`, then by the seat id; `<team>.<name>` → its team. Needs the snapshot's organization | BR-13a BR-13b |
-| S1 | `shift-manager` · the derive module (`src/lib/derive.ts`) | The one status rule: a seat's held tasks, pending asks and status from a loaded snapshot (D1). **Replaces** `workerStatus` and its `WorkerStatus` type; held excludes queued and errored | BR-1–BR-6 |
+| S1 | `shift-manager` · **extends** `src/lib/derive.ts` (no new module) | The one status rule, beside `seatFor` and `asksFor`: a seat's held tasks, pending asks and status from a loaded snapshot (D1). **Replaces** `workerStatus` and its `WorkerStatus` type; held excludes queued and errored | BR-1–BR-6 |
 | S2 | `shift-manager` · the status mark (`src/components/ui.tsx`) | **Replace** `StatusWord`'s three words with v2's three marks (on shift solid, on call half, off shift outline) and labels, from design-system tokens only | BR-6 |
 | S3 | `shift-manager` · routes | A `roster` level with an optional team, `/roster[?team=<id>]`; an unknown team reads as All | BR-8 BR-13 |
 | S4 | `shift-manager` · a Roster surface | The page: title, summary, team picker, three groups, worker rows with slots, HOLDING chips to the task route, waits-on, and the FIX-1675 and FIX-1652 gap lines (D2) | BR-7–BR-12 BR-18–BR-20 |
@@ -108,6 +108,14 @@ on today's snapshot; the goal check is the evidence.
   moved, S0 follows it. A team whose id equals the org id would read as hired: note, don't guard.
 - **FIX-1651 and FIX-1675.** If *in review* or standing watches have shipped, they join S1, in one
   place, and their gap lines go.
+
+## Notes from review
+
+- "This 'Decided, not asked' block largely restates BR-1–BR-6 / BR-9–BR-12 … keep *why* here and *when/then* only in BUSINESS-RULES, or add '→ BR-n' on each bullet so implementers have a single behavioral source." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2614#discussion_r4159236829))
+- "Prefer one pass that indexes rows (and asks) by resolved `seatId` then O(1) per seat for status, slots, holding, and waits-on; sidebar footer, TEAMS squares, and Roster should share one memoized result per snapshot refresh." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2614#discussion_r4159236821))
+- "Consider surfacing [the ER-10 / FIX-1649 amendment] under sign-off so spec approval records the epic gate, not only implementation-time PLAN notes." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2614#discussion_r4159236840)). The amendment is being written on `spec/FIX-1649-v2-amend`.
+
+These are inputs, not instructions. Adopt, adapt or discard them.
 
 ## Follow-ups
 

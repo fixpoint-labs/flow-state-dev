@@ -27,7 +27,7 @@ on you. *Pending ask* means an ask in Inbox whose session names the seat.
 | BR-9 | A worker row is drawn | Its name, team and kind; slots in use as a number and one square per held task; HOLDING as one chip per held task, each opening that task; waits-on as one entry per waiting task and per pending ask | Goal check |
 | BR-10 | A seat holds nothing / waits on nothing | *nothing assigned* / a dash, as v2 draws them | Goal check |
 | BR-11 | Any worker row is drawn | Standing watches carry the line that names FIX-1675; the harness carries its existing FIX-1652 line | Unit · goal check |
-| BR-12 | The summary is drawn | *N on shift · M on call · K off shift · J waiting on you*, and when the Lab was read | Goal check |
+| BR-12 | The summary is drawn | *N on shift · M on call · K off shift · J waiting on you*, and when the Lab was read. N, M and K count the shown workers in each group. J counts the waits-on entries across the shown workers: each parked task they hold plus each pending ask of theirs, so one worker can add several, and an on-shift worker's waiting entries count too | Unit · goal check |
 | BR-13 | The URL carries a team the inventory doesn't have | All, not an empty page and not an error | Unit |
 | BR-13a | A seat's id has no dot (an org seat: CoS, Ops) | It sits in one **Staff** group, first, on Roster and in TEAMS, never in a one-seat team of its own | Unit · goal check |
 | BR-13b | A seat's id is `<org>.<seatId>` for this Lab's organization (a hired seat) | It is grouped by the seat id that address holds, split the way Workforce splits it; a user-owned hired seat likewise | Unit |
