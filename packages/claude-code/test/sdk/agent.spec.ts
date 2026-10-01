@@ -1189,19 +1189,22 @@ describe("claudeCodeAgent — inside an owned container", () => {
     expect(new Set(runItems.map((i) => i.type))).toEqual(
       new Set(["message", "reasoning", "tool_output", "container", "error"]),
     );
-    const innerCallIds = new Set(["toolu_inner"]);
     const ownership = runItems.map((i) => {
       const callId = (i as { toolCall?: { callId?: string } }).toolCall?.callId;
       return { type: i.type, callId, ownedBy: (i as { ownedBy?: string }).ownedBy };
     });
-    expect(ownership).toEqual(
-      ownership.map(({ type, callId }) => ({
-        type,
-        callId,
-        ownedBy: callId !== undefined && innerCallIds.has(callId) ? subagentOwner : outerOwner,
-      })),
-    );
-    expect(ownership.some((o) => o.ownedBy === subagentOwner)).toBe(true);
+    // Spelled out from the script above, not derived from what was emitted: the
+    // sub-agent's own tool call (`toolu_inner`) sits in the sub-agent's box;
+    // every other step, and the sub-agent box itself, sits in the container.
+    const expectedOwnership = [
+      { type: "reasoning", callId: undefined, ownedBy: outerOwner },
+      { type: "message", callId: undefined, ownedBy: outerOwner },
+      { type: "tool_output", callId: "toolu_1", ownedBy: outerOwner },
+      { type: "container", callId: undefined, ownedBy: outerOwner },
+      { type: "tool_output", callId: "toolu_inner", ownedBy: subagentOwner },
+      { type: "error", callId: undefined, ownedBy: outerOwner },
+    ];
+    expect(ownership).toEqual(expectedOwnership);
   });
 });
 

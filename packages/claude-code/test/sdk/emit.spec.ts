@@ -129,7 +129,8 @@ describe("task attribution", () => {
 // item and the sub-agent box itself carry the runtime's owner.
 describe("scope characterization", () => {
   const BLOCK = "claude-code-agent";
-  const SUBAGENT_OWNER = "bi_1:subagent:s1";
+  /** The sub-agent box's own instance id: the run's instance id, then the script's sub-agent call id `s1`. */
+  const SUBAGENT_OWNER = `${fakeEmitCtx().ctx._blockIdentity!.blockInstanceId}:subagent:s1`;
 
   type Identity = { taskId?: string; ownedBy?: string };
   type Where = "top" | "inner" | "container";
@@ -142,19 +143,13 @@ describe("scope characterization", () => {
     ["empty-string task", { taskId: "" }],
   ];
 
-  /** The owner a top-level item carries: the runtime's. */
-  function topLevelOwner(identity: Identity): string | undefined {
-    return identity.ownedBy;
-  }
-
-  /** The owner a sub-agent container item carries: the runtime's, as a nested container's own item does. */
-  function containerOwner(identity: Identity): string | undefined {
-    return identity.ownedBy;
-  }
-
+  /**
+   * An item inside the sub-agent carries the sub-agent's owner; a top-level
+   * item and the sub-agent box itself carry the runtime's, as a nested
+   * container's own item does.
+   */
   function expectedScope(where: Where, identity: Identity): Record<string, string> {
-    const ownedBy =
-      where === "inner" ? SUBAGENT_OWNER : where === "container" ? containerOwner(identity) : topLevelOwner(identity);
+    const ownedBy = where === "inner" ? SUBAGENT_OWNER : identity.ownedBy;
     return {
       ...(identity.taskId !== undefined ? { taskId: identity.taskId } : {}),
       ...(ownedBy !== undefined ? { ownedBy } : {}),
