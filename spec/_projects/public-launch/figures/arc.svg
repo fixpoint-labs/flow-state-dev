@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 236" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The arc of Public Launch from August 1 to November 30, 2026, as of September 29. The first hour, FIX-1161, has an open in-flight bar from August 20 to the now line. The hard gates, FIX-1635, put its objective up for review on September 29 and has no bar yet. The docs, brand and demo bar and the launch cut are not filed and have empty lanes.">
+     aria-label="The arc of Public Launch from August 1 to November 30, 2026, as of October 1. The first hour, FIX-1161, has an open in-flight bar from August 20 to the now line. The hard gates, FIX-1635, has a short closed done bar from September 29 to October 1. The docs, brand and demo bar and the launch cut are not filed and have empty lanes.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -34,15 +34,16 @@
     <rect class="lane" x="16" y="34" width="904" height="42"/>
     <text class="t-b" x="28" y="54">first hour</text>
     <text class="t-s" x="28" y="68">FIX-1161 · in flight</text>
-    <rect class="flight" x="362.8" y="44" width="216.4" height="22" rx="3"/>
+    <rect class="flight" x="362.8" y="44" width="227.2" height="22" rx="3"/>
     <text class="t-s" x="370" y="59">since Aug 20 · open</text>
   </g>
 
   <g id="lane-hard-gates">
     <rect class="lane" x="16" y="80" width="904" height="42"/>
     <text class="t-b" x="28" y="100">hard gates</text>
-    <text class="t-s" x="28" y="114">FIX-1635 · not started</text>
-    <text class="t-s" x="585" y="105">objective in review · bar starts at approval</text>
+    <text class="t-s" x="28" y="114">FIX-1635 · done</text>
+    <rect class="done" x="579.2" y="90" width="10.8" height="22" rx="2"/>
+    <text class="t-s" x="598" y="105">Sep 29 to Oct 1 · wrapped</text>
   </g>
 
   <g id="lane-docs-bar">
@@ -58,7 +59,7 @@
   </g>
 
   <g id="now">
-    <path class="now" d="M579.2 30 V220"/>
-    <text class="t-now" x="584" y="230">now · Sep 29</text>
+    <path class="now" d="M590 30 V220"/>
+    <text class="t-now" x="595" y="230">now · Oct 1</text>
   </g>
 </svg>

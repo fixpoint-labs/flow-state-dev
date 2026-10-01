@@ -7,7 +7,7 @@ epic that implements and proves the rule. Every other epic inherits it.
 
 | | Rule | Owner | Checked where |
 |---|---|---|---|
-| **PR-1** | When a public package is published, a clean install of it imports under Node with no workspace present, and a package that ships built assets (devtool) ships them | FIX-1635 | FIX-1431's and FIX-1334's acceptance checks, and the closure run FIX-1636 (pack every package, install into an empty project, import each). FIX-1161's scaffold check inherits it: a stranger's first install is the same install |
+| **PR-1** | When a public package is published, a clean install of it imports under Node with no workspace present, and a package that ships built assets (devtool) ships them | FIX-1635 | The standing `packed-install` CI job (pack every package, install into an empty project, import each), landed by FIX-1431 and FIX-1334. The closure run FIX-1636 passed on it ([#2543](https://github.com/fixpoint-labs/flow-state-dev/pull/2543)). FIX-1161's scaffold check inherits it: a stranger's first install is the same install |
 
 PR-1 binds two epics because the first-hour scaffold installs from npm, so any package hard gates
 leaves unloadable breaks the first hour too. Hard gates owns the fix. The first hour owns only

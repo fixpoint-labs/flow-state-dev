@@ -5,12 +5,12 @@
 This file covers order, not how anything gets built. It says which order the epics run in, what
 each hands the next, and what is deliberately not next. Each epic's own plan owns its checks.
 
-## The arc — as of 2026-09-29
+## The arc — as of 2026-10-01
 
-![The arc from August to November 2026. The first hour has an open in-flight bar from Aug 20 to the now line on Sep 29. Hard gates has a lane marked objective in review since Sep 29 and no bar. The docs, brand and demo bar and the launch cut have empty dashed lanes.](figures/arc.svg)
+![The arc from August to November 2026. The first hour has an open in-flight bar from Aug 20 to the now line on Oct 1. Hard gates has a short closed bar from Sep 29 to Oct 1, marked wrapped. The docs, brand and demo bar and the launch cut have empty dashed lanes.](figures/arc.svg)
 
-The first hour is the only bar, and it has been open for six weeks. Hard gates' objective went up
-for review on Sep 29, and its bar starts when that objective is approved.
+Hard gates closed in three days. The first hour is now the only open bar, six weeks in, and it
+is what the launch cut waits on.
 
 | Epic | Consumes | Releases |
 |---|---|---|
@@ -20,7 +20,9 @@ for review on Sep 29, and its bar starts when that objective is approved.
 | **the launch cut** · *not filed* | All three above, plus the surface framework simplification ships | FIX-1187 the attended first publish, FIX-1192 the changeset repair, the go-live and the announcement |
 
 **Issues in the project with no epic.** The launch cut claims FIX-1187 and FIX-1192. The docs,
-brand and demo bar claims FIX-550, FIX-551 and FIX-601. Everything else waits in the
+brand and demo bar claims FIX-550, FIX-551 and FIX-601. FIX-1665 (request-id reuse across
+processes) left hard gates as a standalone follow-up. FIX-1658 (the lease backend's pushed-wake
+capability) is one too, and carries no Linear project. Everything else waits in the
 [Linear project](https://linear.app/fixpoint-labs/project/public-launch-2b35a5858733) until an
 epic claims it, and none of it is a hard gate unless Jake adds it (PD-2).
 
@@ -29,7 +31,7 @@ epic claims it, and none of it is a hard gate unless Jake adds it (PD-2).
 - **The launch cut.** It is filed only once hard gates and the first hour are both close to done.
   That is also when the launch surface (HN, X, a YC application) and the framework simplification
   cut line get asked. Both were open questions in the project's original content, and no epic
-needs either answer yet.
+  needs either answer yet.
 - **A second starter template.** One scaffold first. A menu of starters is FIX-548's follow-up if
   the single starter turns out to limit adoption.
 - **An L2 Workforce child for FIX-1634.** It is filed once the L1 shape lands.

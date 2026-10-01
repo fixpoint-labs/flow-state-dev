@@ -62,6 +62,18 @@ feature work into this project to make it launch-ready.
 - **Fixing a trust-boundary hole never reopens optional org.** Each auth child closes the hole
   it names under the principal-owned model (FIX-1442). This binds FIX-1635's children and any
   later epic that touches caller identity.
+- **The packed-install job proves the release, not the source, and stays.** Settled at FIX-1635's
+  wrap (FIX-1636, #2543). The standing `packed-install` CI job runs the two-users-one-tenant HTTP
+  suite against the installed tarballs, permanently. Its workspace-link control must fail. Its
+  queue leg (leg c) refuses to run without a Redis that answers, rather than skipping. A later
+  epic that adds an HTTP case adds it to this suite, and never weakens the control or the refusal.
+- **BullMQ deployments enforce session concurrency across workers through a Redis lease.**
+  Settled by FIX-1634. Any epic that puts work into an existing session on a queue host builds on
+  that lease backend instead of arbitrating concurrency its own way.
+- **Hard gates closed without request-id reuse across processes.** That defect is FIX-1665, now
+  outside the epic as a standalone Public Launch follow-up. FIX-1658 (the lease backend's public
+  pushed-wake capability) is likewise a standalone follow-up. Neither reopens FIX-1635, and
+  neither is a hard gate unless Jake adds it (PD-2).
 
 ## Open
 
@@ -74,13 +86,13 @@ changes are released as patch or minor, and FIX-1192 exists because two changes 
 bump.
 
 **The trade-off.** 1.0 is the stronger promise to early adopters and reads better in a launch
-post. It also makes every public API shape a launch gate, which widens FIX-1635 from known defects
-to a full API review before the doors open. With 0.x the launch comes sooner and the gate list
+post. It also makes every public API shape a launch gate, which widens the hard-gate bar from known
+defects to a full API review before the doors open. With 0.x the launch comes sooner and the gate list
 stays as it is, but some teams will wait for 1.0 before they build on it.
 
 ![Open fork: 0.x, recommended, beside 1.0. Decides it: FIX-1635 covers known defects under 0.x, and a full API review as well under 1.0. Price of 0.x: some teams wait for 1.0. Flips if someone needs a stability promise on day one](figures/open-launch-version.svg)
 
-It comes down to FIX-1635's scope: 1.0 turns a defect list into a full API review.
+It comes down to the hard-gate bar: 1.0 turns a defect list into a full API review.
 
 **My recommendation.** Launch as 0.x, say so plainly in the announcement, and make 1.0 its own
 milestone after the first cohort has used the API. Hard gates can then stay a defect list (PD-2).
@@ -90,4 +102,5 @@ enterprise pilot) that needs a stability promise on day one.
 
 **What being wrong costs.** It's reversible in one direction only. Going 0.x to 1.0 later is
 cheap. Launching 1.0 and then breaking an API costs trust with exactly the people we launched to.
-It also sets FIX-1635's scope before its objective gate, so it's worth deciding before that gate.
+FIX-1635 has wrapped as a defect list, so a 1.0 answer now means a separate API review before
+the cut, not a wider hard-gates epic.
