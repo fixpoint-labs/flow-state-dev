@@ -3,7 +3,7 @@
  */
 import { buildFlowApiUrl, requestJson, resolveFetch } from "../internal/http";
 import type {
-  ClientFetch,
+  ClientTransportOptions,
   DebugCollectionItemsResponse,
   DebugResourcesResponse,
   DebugSuspensionsResponse,
@@ -17,19 +17,7 @@ import type {
   ChildSessionSummary
 } from "../types";
 
-/**
- * Shared options for session API clients.
- */
-export type CreateSessionClientOptions = {
-  baseUrl?: string;
-  /**
-   * Where the server mounts the flow API, after `baseUrl`. Default
-   * `"/api/flows"`. Set it to the server's mount when that differs, such as
-   * the Node host's `basePath`.
-   */
-  apiPath?: string;
-  fetcher?: ClientFetch;
-};
+export type CreateSessionClientOptions = ClientTransportOptions;
 
 /**
  * Query options for listing sessions.
