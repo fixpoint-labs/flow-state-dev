@@ -1,512 +1,71 @@
 # Blocks
 
-Blocks are the execution units in Flow State Dev. Every piece of logic — from a simple data transform to a multi-turn LLM conversation — is a block.
+Exactly five block kinds: **handler**, **generator**, **evaluator**, **sequencer**, **router**. How to author each is in the user docs ([Blocks](../../apps/docs/docs/fundamentals/blocks.md), [Block options](../../apps/docs/docs/configuration/blocks.md)); full signatures are the published types in `@flow-state-dev/core`. This page holds the rules the types don't show.
 
-There are exactly five block kinds: **handler**, **generator**, **evaluator**, **sequencer**, and **router**.
+## Execution contract
 
-## Shared Contract
+- Every execution path invokes a block through `block.run(input, ctx)`. Never call `block.config.execute` directly; it skips the framework's wrapping (validation, tracing, retries, hooks).
+- Tools run the same way: a generator compiles tool blocks (of any kind) into provider tool definitions and invokes `tool.run(args, ctx)`.
+- Blocks are **silent by default**. Nothing reaches the client or the LLM unless a block emits it, or a generator has `itemVisibility` set.
+- A router's selected block runs with the router's own input, via `selected.run(input, ctx)`.
 
-All blocks implement `BlockDefinition<TInput, TOutput>`:
+## Context resolution
 
-```ts
-interface BlockDefinition<TInput, TOutput> {
-  kind: BlockKind;
-  name: string;
-  inputSchema?: ZodTypeAny;
-  outputSchema?: ZodTypeAny;
-  declaredResources?: DeclaredResources;
+- `ctx.sequencer` is the nearest enclosing sequencer on the execution stack, or `undefined`. Tool blocks inherit the chain: a tool inside a generator inside a sequencer sees that sequencer.
+- `getTarget(name)` resolves nearest-first in two passes: (1) already-dispatched siblings at the current execution level, most recent dispatch wins; (2) the ancestor chain. An unresolvable tie among ancestors throws `AmbiguousBlockNameError`. `ctx.targets.<name>` (typed by `targetStateSchemas`) uses the same lookup and is always `| undefined`, because availability depends on topology.
+- `getBlockOutput(block)` / `getBlockResult(block)` resolve **only** against already-dispatched siblings at the current level. They do not walk the ancestor chain. They take a block-definition reference, not a name.
+- `ctx.request.tokenUsage` aggregates by model from emitted generator `block_trace.modelUsage`; `costEstimate` exists only when the flow configures a `costEstimator`.
 
-  run(input: TInput, ctx: BlockContext): Promise<TOutput>;
-  connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<TFrom, TOutput>;
-  connectOutput<TTo>(mapper: (output: TOutput, ctx: BlockContext) => TTo): BlockDefinition<TInput, TTo>;
-}
-```
+### Naming
 
-**Execution rule:** All external execution paths must invoke blocks via `block.run(input, ctx)`. Never call `block.config.execute` directly — that's a framework internal.
+Names are flow-scoped, not unique. Duplicates are allowed; lookup cascades inner-to-outer, and only a same-precedence collision raises `AmbiguousBlockNameError`. Runtime identity is `blockInstanceId`, never `name`.
 
-## Block Context
+## Schema and resource bubbling
 
-Every block receives a `BlockContext` providing access to scopes, emission, and model resolution:
-
-```ts
-interface BlockContext {
-  request: RequestScopeHandle;
-  session: SessionScopeHandle;
-  user: UserScopeHandle;
-  org?: OrgScopeHandle;
-  sequencer?: StateRef;
-  resources: ResourceRegistry;
-
-  response: ResponseEmitterHandle;
-  signal: AbortSignal;
-  resolveModel: ModelResolver;
-
-  getTarget(name: string): StateRef | undefined;
-  targets: Record<string, StateRef | undefined>;
-
-  getBlockOutput(block: BlockDefinition): unknown | undefined;
-  getBlockResult(block: BlockDefinition):
-    | { status: "not_started" }
-    | { status: "running" }
-    | { status: "completed"; output: unknown }
-    | { status: "failed"; error: Error };
-
-  // Item emission
-  emit: {
-    message(text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string }): void;
-    component(component: string, data: Record<string, unknown>, options?: { key?: string; itemVisibility?: ItemVisibility; agentName?: string }): void;
-    status(message: string, options?: { blocked?: boolean; sideChainTasks?: number }): void;
-  };
-}
-```
-
-Each emitted item's visibility is derived from `(item.type, item.itemVisibility)` via `resolveItemVisibility(item)`. Generators declare visibility by setting `itemVisibility` on their config; conversational items (message, reasoning, tool_output) inherit visibility from that setting, structural items have fixed per-type defaults, and trace types are always `{ client: false, history: false }`. See the [item visibility](#item-visibility) section for the full model.
-
-Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
-
-
-`ctx.sequencer` resolves to the nearest enclosing sequencer in the execution stack. If that sequencer defines `stateSchema`, the returned `StateRef` is typed from the schema and exposes mutable instance state (`state`, `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`). Sequencer instance state initializes from `defaultState` when provided, otherwise from schema defaults (`safeParse(undefined)` / `safeParse({})`).
-
-When no enclosing sequencer exists, `ctx.sequencer` is `undefined`.
-
-`getTarget(name)` resolves nearest-first in two passes:
-1. Already-dispatched siblings at the current execution level (most-recent dispatch wins)
-2. Ancestor execution chain (parent-chain walk)
-
-If multiple ancestors match and precedence cannot resolve, runtime throws `AmbiguousBlockNameError`.
-
-### Sequencer state schema bubbling
-
-Handler, generator, and router blocks can declare `sequencerStateSchema`. This follows the same bubbling contract as request/session/user/org schemas:
-
-- block-level `sequencerStateSchema` declares what state shape a block requires
-- when composed inside a sequencer, that schema bubbles up to the enclosing sequencer's instance-state contract
-- sequencer-level `stateSchema` may be declared directly; when both are present they must be structurally compatible
-
-```ts
-const updateProgress = handler({
-  name: "update-progress",
-  sequencerStateSchema: z.object({ progress: z.number() }),
-  execute: async (input, ctx) => {
-    await ctx.sequencer?.patchState({ progress: input.progress });
-  },
-});
-
-const research = sequencer({
-  name: "research",
-  stateSchema: z.object({ progress: z.number().default(0) }),
-  defaultState: { progress: 0 },
-}).tap(updateProgress);
-```
-
-When sequencer state mutates, runtime emits a `state_change` item with `scope: "block_instance"` and the sequencer `blockInstanceId` in item provenance for client routing.
-
-Tool blocks inherit the same context chain: if a tool runs inside a generator inside a sequencer, the tool's `ctx.sequencer` points to that nearest sequencer and `ctx.getTarget("<sequencer-name>")` resolves to the same handle.
-
-For statically known target state coordination, handler/generator/router blocks can declare `targetStateSchemas` in config:
-
-```ts
-const validate = handler({
-  name: "validate",
-  targetStateSchemas: {
-    research: z.object({ progress: z.number() })
-  },
-  execute: async (_input, ctx) => {
-    await ctx.targets.research?.patchState({ progress: 50 });
-
-    // Dynamic fallback remains available: ctx.getTarget("research")
-  }
-});
-```
-
-`ctx.targets.<name>` resolves with the same runtime lookup as `ctx.getTarget(name)` and is always `| undefined` to reflect topology-dependent availability at runtime.
-
-### Block resource declarations
-
-Blocks declare resource dependencies with a flat `resources` map. Each entry is a `defineResource()` (or collection) value; the resource's own `scope` routes storage. Declarations surface on `BlockDefinition.declaredResources`:
-
-```ts
-import { defineResource, handler } from "@flow-state-dev/core";
-
-const planResource = defineResource({
-  scope: "session",
-  stateSchema: z.object({ steps: z.array(z.string()).default([]) }),
-  writable: true,
-});
-
-const planManager = handler({
-  name: "plan-manager",
-  resources: { plan: planResource },
-  execute: async (_input, ctx) => {
-    await ctx.resources.plan.patchState({ steps: ["step1"] });
-  },
-});
-
-// planManager.declaredResources === { plan: planResource }
-```
-
-Resource declarations are supported on all block kinds: handler, generator, and router. Sequencers automatically collect declared resources from all child blocks in the DSL chain. `defineFlow` merges block-declared resources into the flow's `resources` map from every block reachable from its actions, including blocks reached only through a generator's static `tools` array (a function-valued `tools` slot resolves per call, so its tools' declarations are not collected) — see [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
-
-## Handler
-
-The simplest block. Takes input, runs synchronous or async logic, returns output — unless it only mutates state, in which case it returns nothing, declares no `outputSchema`, and is chained with `.tap()` rather than `.step()` (BP-012, BP-014). The counter below is that shape.
-
-```ts
-import { handler } from "@flow-state-dev/core";
-import { z } from "zod";
-
-const incrementCounter = handler({
-  name: "increment-counter",
-  inputSchema: z.string(),
-  sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
-  execute: async (_input, ctx) => {
-    const count = ctx.session.state.messageCount ?? 0;
-    await ctx.session.patchState({ messageCount: count + 1 });
-  },
-});
-```
-
-Key properties:
-- `execute` is the user-provided logic
-- `validateChunk` (optional) validates input chunks before execution
-- `retry` (optional) configures retry policy
-- Handlers emit `block_trace` automatically (internal/devtools only)
-- Use `ctx.emit.message()` or `ctx.emit.component()` for client-visible output
+- Handler, generator and router blocks may declare `sequencerStateSchema`. It bubbles to the enclosing sequencer exactly as request/session/user/org schemas bubble to the flow. A sequencer's own `stateSchema` must be structurally compatible with what its children declare.
+- Sequencer instance state initialises from `defaultState`, else from schema defaults. A mutation emits a `state_change` item with `scope: "block_instance"` and the sequencer's `blockInstanceId` in provenance.
+- Resource declarations (`resources` map → `declaredResources`) are collected by sequencers from every child and merged by `defineFlow` from every reachable block, **including blocks reachable only through a generator's static `tools` array**. A function-valued `tools` slot resolves per call, so its tools' declarations are *not* collected; such a tool's resources must be declared somewhere static. Merge rules: [Resources and Client Data](./resources-and-client-data.md).
 
 ## Generator
 
-Loop-capable block that wraps LLM calls. The framework manages the model invocation, tool loop, streaming, and output parsing.
+- Message assembly order: `prompt` → `context` → `history` → `user`. Context object-form aggregation, tag normalisation and reserved names: [Generator context](../../apps/docs/docs/advanced/generator-context.md). Prompt files: [Prompts as Markdown](../../apps/docs/docs/advanced/generator-prompts-markdown.md).
+- Text output (default `z.string()`) streams and auto-emits a `message`. Custom `outputSchema` uses `generate()` and validates; `repair.mode` is `'auto'` (retry) / `'rescue'` / `'fail'`.
+- Auto-emission happens **only when `itemVisibility` is set**. Unset means the generator emits nothing but its `block_trace`.
 
-```ts
-import { generator } from "@flow-state-dev/core";
-import { z } from "zod";
+### Text across steps
 
-const chatGenerator = generator({
-  name: "chat-generator",
-  model: "openai/gpt-5.4-mini",
-  prompt: "You are a helpful, concise assistant.",
-  inputSchema: z.object({ message: z.string().min(1) }),
-  // Default outputSchema is z.string() — enables text streaming
-  history: true,
-  user: (input) => input.message,
-  tools: [searchTool, calculatorTool],
-  itemVisibility: { client: true, history: true },
-});
-```
+How text from several model steps is joined depends on the path that runs the turn. A turn streams only when its output is text, it has tools or `itemVisibility`, and the model has `streamStep` or `stream()`. Every other turn, including every structured-output turn, does not stream.
 
-### Generator Slots
+| Path | Joining |
+|---|---|
+| Owned streaming (`streamStep`; the built-in AI SDK adapter and fallback groups over it) | Each step that writes text after earlier text opens with `\n\n`, in the deltas, the `message` item and the return value alike |
+| Owned, not streaming (`generateStep`) | Text turn: same joined text as owned streaming. Structured turn: **final step's text only**, so pre-tool-call chatter can't corrupt a JSON answer |
+| Legacy streaming (`stream()`, no `streamStep`) | Exactly what the model streams; no break added, even if `generateStep` exists (it only runs non-streaming turns) |
+| Legacy, not streaming (no `generateStep`) | Whatever `generate({ maxSteps })` returns |
 
-Generators assemble model messages from four slots, resolved in order:
-
-1. **`prompt`** — System instruction (string or function)
-2. **`context`** — Additional context entries (via `contextFn()`, data)
-3. **`history`** — Prior conversation messages
-4. **`user`** — Current user input
-
-Each slot can be a string, object, array, or async function `(input, ctx) => value`.
-
-The `history` slot supports additional shorthands: `true` auto-fetches session history with defaults, and an options object (e.g. `{ limit: 8 }`) passes those options to `items.history()`. A function still works for full control.
-
-#### Object-form `context` (XML tag aggregation)
-
-`context` can be authored as an object whose keys become XML tag names in the rendered system message. When several sources (the generator's own config plus capabilities installed via `uses`) contribute to the same key, their values aggregate inside one tag rather than scattering across separate sections.
-
-```ts
-generator({
-  prompt: "You are a research assistant.",
-  context: {
-    documents: [doc1, doc2],
-    userPreferences: () => loadPrefs(),
-    memory: {
-      shortTerm: shortTermItems,
-      longTerm: () => loadLongTerm(),
-    },
-    placeholder: null, // reserves order; omitted from output if nobody fills it
-  },
-  uses: [capA, capB], // both may contribute additional `documents` entries
-});
-```
-
-Renders to one combined system message of the form:
-
-```
-You are a research assistant.
-
-<documents>
-  ...doc1...
-  ...doc2...
-  ...capA documents...
-  ...capB documents...
-</documents>
-<user-preferences>
-  ...
-</user-preferences>
-<memory>
-  <short-term>...</short-term>
-  <long-term>...</long-term>
-</memory>
-```
-
-Rules:
-
-- **Key normalization.** Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` — all normalize to kebab-case before aggregation, so contributions to the same logical name from different sources collapse into one tag.
-- **Value types.** String, string array, nested object (recursive), function returning any of those, and `null`/`undefined` (placeholder) are all permitted. Object values produce nested tags — wrap in `JSON.stringify(...)` if you want JSON content inside a tag.
-- **Aggregation.** Same-key string contributions concatenate inside the tag in author order. Same-key nested-object contributions deep-merge. Mixing scalar and nested-object contributions on the same key throws.
-- **Ordering.** Top-level tag positions follow first-insertion order across user config → static capability presets → dynamic capability resolvers. `null` placeholders reserve a slot up front for documentation-style ordering.
-- **String leaves are escaped.** `<`, `>`, and `&` in user data are HTML-escaped so they aren't read by the model as tags. Nested-tag emission is unaffected.
-- **Reserved tag names.** Names that collide with framework-emitted tags or model-conditioned protocol names (e.g., `tool_use`, `thinking`, `system`) error at render time. See `RESERVED_TAG_NAMES` in `@flow-state-dev/core/prompt`.
-
-The original array form continues to work unchanged. String entries in an array slot still emit as their own additional system messages, in author order, after the combined prompt+tagged-context message.
-
-#### Prompt files (`.md` authoring)
-
-A generator's `prompt` can be authored in a separate `.md` file rather than inline. `loadPromptFile(specifier, importerUrl, options?)` (Node, from `@flow-state-dev/engine/prompt-file`) reads the file and auto-registers sibling `.md` files in the same directory as partials; `parsePromptFile(text, options?)` (isomorphic, from `@flow-state-dev/core/prompt-file`) takes raw text plus an explicit `partials` map for browser/bundled consumers. `definePromptFile(pf)` turns the parsed result into the generator config fields it covers (`prompt`, `user`, `caching`, `maxTokens`, `temperature`, and optionally `name`/`description`) to spread into `generator({...})`.
-
-The file is YAML frontmatter (strict-validated) over a body split into line-anchored `<system>`, `<user>`, and `<context>` sections. The body is a LiquidJS template rendered against three top-level variables: `input` (the generator's typed input), `ctx` (the same block context a TS prompt function receives), and `config` (the post-resolution config view, including `config.context` — the aggregated tag map described above). `strictVariables` is on, so unknown references throw at render. A `<context>` section in the template suppresses the framework's default XML-tag append and lets the template own context position (reorder, conditionally include, drop unrendered keys). Partials compose via `{% render 'name' %}` (isolated scope) or `{% include 'name' %}` (caller scope); custom value transforms register per file through the `filters` option. See [Prompts as Markdown](../../apps/docs/docs/advanced/generator-prompts-markdown.md) for the full reference.
-
-### Tool Loop
-
-- Generator owns the tool loop internally — bounded by `maxIterations` (or runtime default)
-- Tools are authored as blocks, of any kind
-- Runtime compiles tool blocks into provider-native tool definitions internally
-- Tool execution invokes `tool.run(args, ctx)`, not direct function calls
-
-### Output Behavior
-
-- **Text output** (default `z.string()` or no `outputSchema`): Streams via `content.delta` events, auto-emits `message` item
-- **Text across steps**: how text from several steps is combined depends on which path runs the turn. A turn streams only when its output is text, it has tools or `itemVisibility`, and the model has `streamStep` or `stream()`. Every other turn, including every structured-output turn, runs without streaming.
-  - **Owned streaming** (the model has `streamStep`, which includes the built-in AI SDK adapter and fallback groups over it): each step that writes text after earlier text opens with a blank line (`\n\n`). The break is in the streamed deltas, the `message` item and the returned value alike.
-  - **Owned, not streaming** (the model has `generateStep`): a text turn returns the same joined text as owned streaming, in the `message` item and the returned value. A structured-output turn is not joined. Its text is the final step's alone, so chatter written before a tool call can't corrupt a JSON answer carried as text.
-  - **Legacy streaming** (the model has `stream()` but no `streamStep`): the text is exactly what the model streams, and no break is added. This holds even when the model also has `generateStep`, because `generateStep` only runs turns that don't stream.
-  - **Legacy, not streaming** (no `generateStep`): the text is whatever the model's `generate({ maxSteps })` returns.
-
-  Two rules apply on both owned paths. A step that writes no text adds nothing. A turn that resumes after a suspension starts its text at the step it resumed on: the steps recorded before the suspension seed the model's conversation but are not replayed into the output.
-- **Structured output** (custom `outputSchema`): Uses `generate()` (no streaming), parsed and validated against schema
-- **Repair**: `repair.mode` controls schema mismatch handling: `'auto'` (retry), `'rescue'` (route to rescue), `'fail'` (immediate)
-
-### Automatic Emissions
-
-Generators auto-emit items based on model output — but only when `itemVisibility` is set:
-- Reasoning/thinking → `reasoning` item
-- Text response → `message` item (role: "assistant"), streamed via `content.delta`
-- Tool invocation → `block_trace` with `toolCall` (two-phase: in_progress → completed)
-- Final return value → `block_trace` (internal/devtools only)
-
-To run a generator silently (no session items, only `block_trace` via graph edges), omit `itemVisibility`. See [Item Visibility](#item-visibility) for the visibility model.
+On both owned paths a step with no text adds nothing, and a turn resumed after a suspension starts its text at the resumed step: pre-suspension steps seed the conversation but are not replayed into the output.
 
 ## Evaluator
 
-An evaluator asks an evaluation model typed questions about one state and returns `{ answers }`, one answer per question id. It is a leaf like a handler, and it talks to a model like a generator, but it never generates: it makes exactly one AI SDK `experimental_evaluate` call.
+One `experimental_evaluate` call that answers typed questions and returns `{ answers }`. User-facing behaviour: [Evaluator](../../apps/docs/docs/fundamentals/blocks.md#evaluator).
 
-```ts
-const triage = evaluator({
-  name: "triage",
-  model: "typesafe-ai/jev",            // or an evaluation model instance
-  state: (input) => input.message,     // defaults to the input
-  questions: {
-    team: choice("Which team?", { billing: "…", technical: "…" }),
-    frustration: score("How frustrated?", ["Calm", "Annoyed", "Angry"]),
-    urgent: boolean("Urgent?"),
-  },
-});
-```
+- **Model fence.** An evaluation-model instance is used as given. A language model or FSD generator model is refused at build; so are intents, fallback arrays and `selectModel`. A model string resolves at first execution through the optional `ModelResolver.resolveEvaluationModel` hook. `createModelResolver` implements it with generator precedence (explicit provider → installed-and-keyed package → gateway) against each source's `evaluationModel(id)`. If an app's own resolver lacks the hook, the string is refused by name; the framework never substitutes its default resolver.
+- **One seam.** `packages/core/src/models/evaluate.ts` is the only importer of the SDK's evaluation types. It calls with `maxRetries: 0` and the request's abort signal. `confidence` comes only from `providerMetadata.typesafe.confidence[id]`; a boolean's `probability` is never copied into it.
+- **No policy inside.** No retry, fallback or gating. Branching belongs to routers and sequencer steps; recovery to `.rescue`.
 
-- **Model fence.** An evaluation model instance is used as given. A language model or FSD generator model is refused when the block is built; intents, fallback arrays and `selectModel` are refused too. A model string resolves at first execution through `ctx.resolveModel.resolveEvaluationModel`, the optional hook on `ModelResolver`. `createModelResolver` implements it with the generator precedence (explicit provider, installed-and-keyed package, gateway) against each source's `evaluationModel(id)`, and refuses a source without one before any provider call. When an app's own resolver has no hook, the string is refused naming it; the framework never substitutes its default resolver.
-- **The seam.** `packages/core/src/models/evaluate.ts` is the only importer of the SDK's evaluation types. It calls `experimental_evaluate` with `maxRetries: 0` and the request's abort signal, and maps the result into FSD's answer types (`types/evaluation.ts`). `confidence` is lifted from `providerMetadata.typesafe.confidence[id]` when present and is otherwise absent; a boolean's `probability` is never copied into it.
-- **No policy inside.** No retry, no fallback, no gating. Branching on answers belongs to routers and sequencer steps; recovery to `.rescue`.
-- **Trace.** The `block_trace` row carries `blockKind: "evaluator"`, `evaluator: { model, questions }`, the answers as `output`, and `model` / `modelUsage` reported through the same runtime hook a generator uses, top-level and nested.
+## Sequencer trace values
 
-## Sequencer
+Each DSL method writes a `BlockValue` of a fixed kind on its `block_trace` (union and resolution in [Items](./items.md)). "Passthrough" leaves the running descriptor unchanged: the last `ref` / `inline` / `structure` stays in effect.
 
-Fluent DSL for composing blocks into pipelines. The sequencer is the primary composition primitive.
+| `block_trace` kind | Methods |
+|---|---|
+| `ref` → child's item | `step`, `stepIf` (when taken; carries the prior descriptor when skipped), `doUntil` / `doWhile` (final iteration), `rescue` (branch taken), `branch`, `stepAny`, `race` (winner) |
+| `inline` | `map`; every generator and handler (leaves) |
+| `structure` | `parallel` (object of refs), `forEach` / `stepAll` (array of refs) |
+| passthrough | `forEachSideChain`, `loopBack`, `sideChain`, `waitForSideChain`, `tap`, `tapIf`, `exitIf` |
 
-```ts
-import { sequencer } from "@flow-state-dev/core";
+Routers always emit `ref` to the selected route. Method semantics: [Sequencer DSL](./sequencer-dsl.md).
 
-const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSchema })
-  .step(chatGenerator)
-  .tap(incrementCounter);
-```
+## Visibility
 
-### DSL Methods (20 total)
-
-Each method produces a `BlockValue<T>` of a specific kind on the emitted
-`block_trace` item (FIX-413). Refs and structures avoid duplicating content
-across the execution tree; see `docs/architecture/items.md` for the union
-definition and resolution semantics.
-
-| Method | Purpose | `block_trace` kind |
-|--------|---------|---------------------|
-| `step(block)` | Execute block, pass output to next step | `ref` → child's item |
-| `step(connector, block)` | Transform input before block execution | `ref` → child's item |
-| `stepIf(condition, block)` | Conditional step execution | `ref` if taken, carries prior descriptor if skipped |
-| `map(fn)` | Transform current value without a block | `inline` (novel content) |
-| `parallel(steps)` | Execute named steps concurrently | `structure` (object of refs) |
-| `forEach(block)` | Execute block for each array element | `structure` (array of refs) |
-| `forEachSideChain(block)` | Fire-and-forget fan-out per element | passthrough (value unchanged) |
-| `doUntil(condition, block)` | Loop until condition is true | `ref` → final iteration's item |
-| `doWhile(condition, block)` | Loop while condition is true | `ref` → final iteration's item |
-| `loopBack(stepName, opts)` | Jump back to a named step (bounded) | passthrough |
-| `sideChain(block)` | Queue non-aborting side-chain execution | passthrough |
-| `waitForSideChain(opts)` | Wait for queued side chains to complete | passthrough |
-| `tap(block)` | Side effect without changing payload | passthrough |
-| `tapIf(condition, block)` | Conditional side effect | passthrough |
-| `rescue(handlers)` | Error recovery by error type | `ref` → rescue branch's item (when taken) |
-| `branch(branches)` | Conditional multi-path execution | `ref` → selected branch's item |
-| `stepAll(blocks)` | Run array of blocks concurrently, collect all results | `structure` (array of refs) |
-| `stepAny(blocks)` | Try blocks sequentially, first success wins | `ref` → winning branch's item |
-| `race(blocks)` | Run blocks concurrently, first success wins | `ref` → winning branch's item |
-| `exitIf(condition)` | Conditional early exit from chain | passthrough |
-
-"passthrough" means the op does not change the sequencer's running descriptor —
-the last op that emitted `ref`, `inline`, or `structure` stays in effect.
-
-Routers always emit `ref` to the selected route's item. Generators and
-handlers always emit `inline` (they are leaves).
-
-### Work Semantics
-
-- `.sideChain(block)` is **non-aborting** — failures don't stop the main chain
-- `.waitForSideChain({ failOnError: true })` promotes side-chain failures to terminal errors
-- Use for background tasks like logging, analytics, or async notifications
-
-### Inline Block Definitions
-
-Steps support inline block creation:
-
-```ts
-pipeline
-  .step(handler, {
-    name: "validate",
-    outputSchema: z.string(),
-    execute: async (input, ctx) => { /* ... */ return input.trim(); }
-  });
-```
-
-See [Sequencer DSL](./sequencer-dsl.md) for the full method reference.
-
-## Router
-
-Selects one block at runtime based on input or state.
-
-```ts
-import { router } from "@flow-state-dev/core";
-
-const modeRouter = router({
-  name: "mode-router",
-  inputSchema: chatInputSchema,
-  routes: [planSequencer, editSequencer, reviewSequencer],
-  execute: async (input, ctx) => {
-    const mode = ctx.session.state.mode;
-    if (mode === "plan") return planSequencer;
-    if (mode === "edit") return editSequencer;
-    return reviewSequencer;
-  },
-});
-```
-
-- `routes` declares candidate blocks (used for type checking and devtools)
-- `execute` returns the selected block definition
-- The selected block is executed with the router's input via `selected.run(input, ctx)`
-
-## Connections
-
-All blocks support input/output transformation:
-
-```ts
-// Transform input before a block
-const adapted = myBlock.connectInput((rawInput, ctx) => ({ message: rawInput.text }));
-
-// Transform output after a block
-const mapped = myBlock.connectOutput((output, ctx) => output.summary);
-```
-
-Sequencer step-level connectors are preferred over `connectInput` for better type inference:
-
-```ts
-pipeline.step((output, ctx) => ({ query: output.text }), searchBlock);
-```
-
-## Block Naming
-
-- Names are **flow-scoped**, not globally unique
-- Duplicate names within a flow are allowed
-- Name resolution uses cascading precedence (inner to outer execution stack)
-- Ambiguous same-precedence collisions raise `AmbiguousBlockNameError`
-- Runtime identity uses `blockInstanceId`, not `name`
-
-## Item Visibility
-
-Visibility is a pure function of `(item.type, item.itemVisibility)` computed by `resolveItemVisibility(item)`. The `itemVisibility` field is the lever.
-
-### Generator visibility (`itemVisibility`)
-
-Every generator declares one of four stances:
-
-| `itemVisibility` | Client stream | LLM history | DevTool |
-|------------------|:-------------:|:-----------:|:-------:|
-| `{ client: true, history: true }` | ✓ | ✓ | ✓ |
-| `{ client: true, history: false }` | ✓ | — | ✓ |
-| `{ client: false, history: false }` | — | — | ✓ |
-| *unset* | *no auto-emission* — only `block_trace` flows via graph edges |
-
-No position-inferred default. Every generator declares its own visibility.
-
-```ts
-const researcher = generator({
-  name: "researcher",
-  itemVisibility: { client: true, history: false },  // visible to the user for observability,
-  agentName: "researcher",                            // not inherited by the orchestrator's history.
-  prompt: "Analyze and summarize.",
-  model: "anthropic/claude-sonnet-4-6",
-});
-```
-
-Structural item types (`component`, `status`, `container`, `source`, `state_change`, `resource_change`, `error`) have fixed per-type visibility. Trace types (`block_trace`, `router_decision`, `state_snapshot`) always resolve to `{ client: false, history: false }`. `itemVisibility` on a structural or trace item is metadata for filtering / rendering, not visibility.
-
-### `agentName`
-
-Stable name stamped on every emitted item. Defaults to the block's `name`. Generators that share an `agentName` represent one logical agent (collaborative parallel work); distinct names stay isolated.
-
-### Emission helpers
-
-- `ctx.emit.message(text | content[], options?)` — the primary way to emit assistant-visible content. Accepts optional `{ key?, itemVisibility?, agentName? }`. Without an explicit `itemVisibility`, a handler-emitted message defaults to `{ client: true, history: true }`.
-- `ctx.emit.component(component, data, options?)` — UI components. Accepts optional `{ key?, itemVisibility?, agentName? }`.
-- `ctx.emit.status(message, options?)` — transient progress indicators. Structural; `itemVisibility` does not affect visibility.
-
-Examples:
-
-```ts
-ctx.emit.message("Analysis complete.");
-// Default visibility (client + history).
-
-ctx.emit.message("Debug: classifier chose route A", {
-  itemVisibility: { client: false, history: false },
-  agentName: "classifier",
-});
-// Devtool-only observation — hidden from user and LLM.
-
-ctx.emit.message("Background audit complete.", {
-  itemVisibility: { client: true, history: false },
-  agentName: "auditor",
-});
-// Visible live but excluded from conversation history.
-```
-
-## Canonical Authority
-
-This document is authoritative for block contracts. For full type signatures, refer to the published types in `@flow-state-dev/core`.
-
-
-Output dependencies use block-definition references instead of name-based state handles:
-
-```ts
-const result = ctx.getBlockResult(validateBlock);
-const output = ctx.getBlockOutput(validateBlock);
-```
-
-These APIs resolve only against already-dispatched siblings at the current execution level. They do not walk the ancestor chain.
-
-
-`BlockContext.request` also exposes live `tokenUsage` and `costEstimate` rollups. `tokenUsage` is aggregated by model from emitted generator `block_trace.modelUsage`. `costEstimate` is computed when a flow `costEstimator` is configured.
-
+Item visibility is a pure function of `(item.type, item.itemVisibility)`; the full model is in [Items → Visibility](./items.md#visibility). Two block-level defaults to know: there is **no position-inferred default** for a generator (each declares its own), and a handler-emitted `ctx.emit.message` without `itemVisibility` defaults to `{ client: true, history: true }`. `agentName` defaults to the block name; generators sharing one represent one logical agent.

@@ -84,7 +84,7 @@ worked example. The examples are all the same issue — FIX-775, resuming an SSE
 disconnect — so the template reads end to end as a spec set.
 
 **Copy the shape, not the content.** FIX-775 is a fiction, reconstructed after the fact: resume
-already ships in some form (`docs/architecture/streaming.md` → "Resume Semantics"). The API
+already ships in some form (`docs/architecture/streaming.md`, the request/session stream table). The API
 shapes in the diff are real, because a surface that doesn't compile teaches the wrong thing; the
 outcomes are *what the spec proposes*, not what the code does today — which is true of every
 spec, since a spec describes behaviour that isn't built yet. Don't verify the example against

@@ -2337,7 +2337,7 @@ async function runActionAttempt<
 
     // Terminal success is only known here — after the drain, and after the
     // abort check above. `onCompleted` "fires only on terminal success"
-    // (docs/architecture/execution-and-errors.md, "Request Lifecycle"), so it
+    // (docs/architecture/execution-and-errors.md, "Request finalisation guarantees"), so it
     // cannot run any earlier: a cancel accepted during the drain ends this
     // request as `aborted`, and firing a success hook for it would commit
     // business side effects or send a success notification for a request whose

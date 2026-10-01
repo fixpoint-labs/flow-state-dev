@@ -194,7 +194,7 @@ export type SessionDetail = SessionSummary & {
  * finish, so there `"active"` may read as "working", which clears when the run
  * ends. A paused or stopped run reads the same.
  *
- * See `docs/architecture/server-and-client.md` § Background work (ChildSessions)
+ * See `docs/architecture/server-and-client.md` § Child sessions (background work)
  * for the full semantics, including why this is not `RequestStatus`.
  */
 export type ChildSessionStatus =

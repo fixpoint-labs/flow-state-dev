@@ -1,179 +1,53 @@
 # Architecture Quick Reference
 
-Compact reference for locked contracts and key decisions. For detailed explanations, see the full architecture docs in `docs/architecture/`.
+The traps most worth knowing before you change something, one line each, with the doc that owns the detail. Locked contracts and package boundaries are in [Architecture Overview](../architecture/overview.md); everything else in `docs/architecture/` is read when relevant.
 
-## Authority Order
+## Authority order
 
-1. `docs/architecture/*` — Reference docs (authoritative)
-2. `docs/contributing/best-practices.md` — Implementation standards
-3. `AGENTS.md` — Process protocol
+1. `docs/philosophy.md`
+2. `docs/architecture/*`
+3. `docs/contributing/best-practices.md`
+4. `AGENTS.md`
 
-Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.md` over a general statement in `overview.md`).
+The more specific reference wins (e.g. `streaming.md` over a general line in `overview.md`).
 
-## Locked Contracts (Phase 1)
+## State and resources
 
-- Block kinds only: `handler`, `generator`, `evaluator`, `sequencer`, `router` → [Blocks](../architecture/blocks.md)
-- Actions are flow-level only (`defineFlow({ actions })`) → [Flows](../architecture/flows-and-actions.md)
-- Required caller input: `userId`
-- Stream model: item/content lifecycle; no part-envelope model → [Streaming](../architecture/streaming.md)
-- Request-stream cursor: `${requestId}:${sequence_number}`
-- Request-stream resume paths: both `Last-Event-ID` and `starting_after`
-- Session-stream cursor: the event's `at` (a server time), handed back as `?since=`; no sequence number → [Streaming](../architecture/streaming.md#session-stream)
-- Generator provider boundary: Vercel AI SDK in Phase 1
-- `@flow-state-dev/client` required; `@flow-state-dev/react` wraps client (no transport logic)
-- Inbound transport contract: `InboundTransportAdapter`, `InboundRequestEnvelope`, `RequestRecord.source`
-  → [Inbound Transports](../architecture/inbound-transports.md)
-- MCP transport routes: shared mode (default) uses `/api/flows/:kind/mcp`;
-  `dedicatedBasePath: true` uses `<basePath>/:kind` with `/mcp` as its implicit
-  base. An adapter registers one layout, and outer hosts must forward that
-  prefix to the Flow State router.
-  → [MCP Server Adapter](../architecture/mcp-server.md)
-- MCP per-action session: `ActionMcpConfig.session?: string | { fromInput: string }` (`core`). Default (omitted) → stateless (fresh ephemeral session per `tools/call`). String = mint template (first `*` → random token, else appended); `{ fromInput }` = read the flow `sessionId` from that input field. The MCP adapter derives the dispatch `sessionId` from it (`deriveSessionId`). Flow session key, not protocol `Mcp-Session-Id`; principal still from `resolvePrincipal`. `fromInput` is caller-controlled → single-trusted-principal only until caller-supplied session keys are principal-namespaced (follow-up).
-- Action forms: every action shares `ActionCore` (handler `block` + execution policy). Caller-addressed = `ActionConfig` in `flow.actions`; event-addressed (webhook/scheduled) carries the core inline on its transport map and has no HTTP/MCP caller surface (no `internal` flag — the structural fact is the boundary); dispatched (`source: "task"` / `"internal"`) resolves `flow.task.actions` / `flow.internal.actions` by name. Resolution seam `resolveActionCore(flow, actionName, source, metadata)`: every source maps to a dispatch type (`dispatchTypeOf`) and `resolveEntry` reads that type's one map — a namespaced coordinate (`metadata.webhook` / `metadata.schedule.scheduleId`) gated on `source` (set only by adapters) for the event forms, the name for the rest — with **no fallback into `flow.actions` from any type**; an unresolved coordinate is refused by name. Dynamic schedules carry the core on `InboundRequestEnvelope.resolvedActionCore` (transient — not persisted, so durable dynamic schedules don't recover). Dispatched forms: `flow.internal.actions` and `flow.task.actions` (nested under `actions`; the flat spelling is refused) are reached only by a `dispatcher()` block, resolved by `resolveEntry(flow, type, name, coordinate?)` (`core/flow/resolve-entry.ts`) as one `(type, name)` lookup with **no fallback for any type**. `dispatcher()` is a handler sending through the factory-only `DISPATCH_SEAM`; `{ key }` mints/adopts a derived child (`dispatch` namespace), `{ id }` delivers into an existing same-flow same-principal session, is refused under an external dispatcher unless its worker adapter supplies a shared lease backend (`WorkerAdapter.leaseBackend`; then the delivery takes its place on the session's key before enqueue and the job carries it), and is dropped by the incarnation guard if that session was recreated between acceptance and run. `{ from: true }` is the same existing-session delivery, addressed at the seam-stamped sender (`readDispatchStamp` → `from.sessionId`); a request the runtime did not dispatch refuses `no-sender` (a caller-written stamp is not a sender). `settleParentTask` stays the board-row close and is not this path. **Cross-flow:** an `internal` address may carry `flowKind` (`task` may not — `dispatcher()` throws), making it `(type, target, flowKind)`; `defineFlow`'s walk skips it (it holds one flow's maps) and the seam resolves it against the host registry (`RequestHostConstructionInputs.resolveFlow`) — `flow-not-found` for an unregistered flow, `no-entry` for a registered one with no such entry, never a fallback to the sender's map. A cross-flow `{ key }` child takes the **target** flow's `flowKind` and `stateSchema` defaults, roots its **own** lineage (the lineage bucket has no flow in its key, so inheriting would share a `sharedToLineage` cell across flows), and frames the target kind into the child-key material (appended only when cross-flow, so same-flow ids are unchanged). The stamp gains `flowKind` / `flowId` (the resolved instance; addressing is by kind). Not a descendant for `isDescendantSession` → `livenessOf` does not answer for one. `concurrency` lives on `ActionCore` (every entry); the entry a `per-worker` or `{ key }` task dispatcher hands off to defaults to `queue`. A `task` dispatcher sits in a task board's `workers` under an assignee (`workers: { implement: dispatcher({ type: "task", target, session }) }`); the board binds its id and claim gate (`createTaskGate`) onto the hand-off, and `defineFlow` puts `flow.task.actions[target]` behind that gate and refuses an entry block that declares `sessionStateSchema`. The child settles its row through `ctx.requestHost.settleParentTask` — no `claim` parameter; the fence ticket is re-minted from the row the gate verified.
-- Public re-entry: `isPublicReentryAllowed(source, additionalSources?)` (`engine/routes/public-reentry.ts`) is an **allow-list** — `http` / `mcp` / `scheduled` — routed through by retry, continue and resume. Anything else gets the not-found shape. Replaces the three per-route webhook deny-lists, which admitted any source nobody named. A host extends it for its own out-of-tree transports with the `publicReentrySources` option on `createFlowState` / `createFlowApiRouter` (carried on `RuntimeConfig`); `webhook`, `task` and `internal` are never openable and `assertPublicReentrySources` throws at router construction if one is named.
-  → [Action Forms](../architecture/action-forms.md)
-- Scheduled actions: `schedules` config on `defineFlow` (`static` map + dynamic `resolve` hook). `ScheduleConfig = ActionCore & { cron; input?; principal?; ... }` — carries `block` inline (no `action: string`); `defineScheduleBinding` helper. Dynamic resolver via `createResourceCollectionScheduleResolver({ collection, blocks })` maps a persisted `kind` discriminator → block (`defineScheduleCollection` schema field renamed `action` → `kind`). Dispatch route `POST /api/flows/:kind/schedules/:scheduleId/dispatch`.
-  → [Scheduled Actions](../architecture/scheduled-actions.md)
-- Webhook receivers: `webhooks` config on `defineFlow` (`WebhookConfig` = per-provider `{ on }`, `WebhookSubscriptionConfig`, `WebhookEventBinding extends ActionCore` — the handler lives on `flow.webhooks`, never `flow.actions`), framework-owned `WebhookInboundEvent` (`core`), host-side `WebhookProviderDefinition` (`engine`, carries `verify` + crypto), route `POST /api/flows/:kind/webhooks/:provider`, `source: "webhook"`
-  → [Webhook Transport](../architecture/webhook-transport.md)
-- Concurrency policy: `concurrency` config on `ActionConfig` (per-action) and `RequestConfig` (flow default, `flow.request.concurrency`). `ConcurrencyConfig = "allow" | "queue" | "reject" | { policy; key? }` (`core`); `ConcurrencyKey = "session" | "user" | "none" | (ctx) => string | undefined`; `validateConcurrencyConfig` rejects reserved `debounce`/`restart` at definition time. v1 policy set is `allow` (default) / `queue` / `reject`. Resolution `action.concurrency ?? flow.request.concurrency ?? "allow"`; default key `"session"` (tenant-namespaced; `undefined` ⇒ no arbitration ⇒ runs as `allow`). Enforced once at the shared `host.dispatch` seam (every transport inherits it): `reject` claims the key and refuses with `ConcurrencyRejectedError` (409, in-flight `requestId`) before any record exists, thrown synchronously from `dispatch` over the in-memory default and through `accepted`/`finished` over a shared lease backend (every adapter maps both); `queue` defers the run start FIFO behind the key (over-wait ⇒ `ConcurrencyQueueTimeoutError`, 503); the key is acquired+released within one `dispatch` lifecycle, or handed to the enqueued job over a shared backend. Lines live in a `ConcurrencyLeaseBackend` (`take` / `isMyTurn` / `giveBack` / `renew`): in memory by default (in-process / single-instance, external dispatch unarbitrated), or the one `WorkerAdapter.leaseBackend` supplies, which every process shares; over it the place is taken only after the ownership read. Generalizes scheduled `onOverlap` (`skip` ≡ `reject`, `allow` ≡ `allow`).
-  → [Concurrency Policies](../../apps/docs/docs/advanced/concurrency-policies.md)
-- Default workforce agent kind: the built-in kind id is `agent`. It is on the roster without anyone registering it; a caller that passes `kinds: { agent: … }` replaces it outright, and that replacement must declare `kind: "agent"` **and** `cardinality: "collection"` (a plain `defineFlow` is a singleton, whose seats mint and are then refused at registration as `singleton-id-mismatch`).
-- Workforce admission rule — one gate, `hireWorkforce`: **absent `flow:` means the default; a `flow:` naming an unregistered kind is refused by name, listing the kinds that were passed.** Never a silent substitution, and adding the implicit default weakens no existing refusal (the mismatched-kind check still applies to `agent`). A seat's skills are stored per seat via `flowIsolation` on the seat's instance id, at organization scope — isolation separates the drawers, and an instance-specific seeding path is required to fill them. The organization is the principal's, so a request sends `userId` and does not carry an organization id.
-  → [Default Workforce Worker Kind](../architecture/workforce-default-worker-kind.md)
+- **Bag state verbs don't share one guarantee.** Same-path writes split three ways: commutative (single-field `incState`, `pushState`; both land), unchecked last-write-wins that still returns `true` (`setStateRecord`, `deleteStateRecord`, single literal-field `patchState`), and version-checked. `setState` is checked yet discards the other writer's change. → [Atomicity Guarantees](../architecture/state-and-scopes.md#atomicity-guarantees)
+- **Same names, different guarantees on resources.** Every resource *state* mutator is version-checked (including `incState`/`pushState`); `create(key, v, { replace: true })` on a writable collection and `writeContent` are not. → [CAS and Concurrency](../architecture/state-and-scopes.md#cas-and-concurrency)
+- **Session and request ids are addresses, not ownership**: a foreign one answers exactly like an unused one. → [State and Scopes](../architecture/state-and-scopes.md#a-session-id-is-an-address-not-an-ownership)
+- **Scope state is server-private**; only a scope's `client` (`expose` / `derived`) crosses. → [Resources and Client Data](../architecture/resources-and-client-data.md#client-data)
+- **A key segment beginning `~` belongs to an owner-private collection** in every app. → [Owner-private collections](../architecture/resources-and-client-data.md#owner-private-collections)
+- **Set `ref` on any non-session resource registered under two names**, or its storage key depends on declaration order. → [Resources](../architecture/resources-and-client-data.md#identity-and-storage-keys)
 
-## Sequencer Surface (21 methods)
+## Entry points and dispatch
 
-`step`, `stepIf`, `map`, `parallel`, `forEach`, `forEachSideChain`, `doUntil`, `doWhile`, `loopBack`, `sideChain`, `sideChainIf`, `waitForSideChain`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race`, `exitIf`
+- **One map per entry type, no fallback into `flow.actions`.** Event coordinates are read only for adapter-set sources. → [Action Forms](../architecture/action-forms.md)
+- **Public re-entry is an allow-list** (`http`, `mcp`, `scheduled`); `webhook`, `task`, `internal` can never be added. → [Action Forms](../architecture/action-forms.md#public-re-entry-is-an-allow-list)
+- **`internal` and `task` dispatchers may both address another flow** with `flowKind` (an instance id); misses are `flow-not-found` / `no-entry`, and a cross-flow child roots its own lineage. → [Dispatched Work](../architecture/dispatched-work.md#dispatching-into-another-flow)
+- **Locality is the effective dispatcher, not `worker.mode`.** `worker-only` runs dispatched work in-process and **not durably**. → [Dispatched Work](../architecture/dispatched-work.md#locality-the-effective-dispatcher-decides-not-workermode)
+- **`settleParentTask` takes no `claim`**; the fence ticket is re-minted from the verified row. → [The claim gate](../architecture/dispatched-work.md#the-claim-gate-and-the-fence-ticket)
+- **Concurrency policy is enforced once, at `host.dispatch`**, before any record exists; external dispatch is arbitrated only with a shared lease backend. → [Inbound Transports](../architecture/inbound-transports.md#concurrency-arbitration)
+- **MCP `session: { fromInput }` is caller-controlled**: single trusted principal only. → [MCP](../architecture/mcp-server.md#sessions-security)
+- **Dynamic schedules don't survive a crash** (their handler isn't persisted). → [Action Forms](../architecture/action-forms.md#dynamic-schedules-carry-their-core-so-they-dont-recover)
 
-- `.stepAll([...blocks])`: run array of blocks concurrently, collect all results as ordered array (like `Promise.all`)
-- `.stepAny([...blocks])`: try blocks sequentially in order, return first successful result; throws `AggregateError` if all fail
-- `.race([...blocks])`: run blocks concurrently, return first successful result, abort the rest; throws `AggregateError` if all fail
-- `.exitIf(condition)`: break out of sequencer chain early when condition is true; auto-await of background work still runs
+## Execution and streaming
 
-- `.sideChain(...)`: non-aborting by default
-- `.sideChainIf(condition, block)`: conditional variant of `.sideChain()` — dispatches sidechain only when condition is truthy; accepts static boolean or `(ctx) => boolean | Promise<boolean>`; complete no-op when falsy
-- `.forEachSideChain(...)`: fire-and-forget fan-out; dispatches each iteration as background work with configurable concurrency (default 16)
-- `.waitForSideChain({ failOnError: true })`: promote background failures to terminal request error
+- **Routers on a durable path must be pure**; resume re-runs the selector. → [Execution and Errors](../architecture/execution-and-errors.md#routers-under-resume)
+- **Background work is at-least-once across suspend/resume**; guard side effects with `ctx.runOnce`. → [Background work under replay](../architecture/execution-and-errors.md#background-work-under-replay-locked)
+- **`livenessOf` returning `false` never means "dead"**; don't re-dispatch on it alone. → [Liveness](../architecture/dispatched-work.md#liveness)
+- **Replayable events are persisted before they reach the wire**; deltas are never replayed. → [Streaming](../architecture/streaming.md#durability-ordering)
+- **Session stream: dedupe by `(requestId, item.id)`**, never `item.id`. → [Session stream](../architecture/streaming.md#session-stream)
+- **There is no block middleware.** → [Internal Execution Seams](../architecture/internal-execution-seams.md)
 
-→ [Sequencer DSL](../architecture/sequencer-dsl.md)
+## Workforce
 
-## Scopes and State
-
-- Hierarchy: `request → session → user → org` → [State and Scopes](../architecture/state-and-scopes.md)
-- Bag state ops (all seven): `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`
-- Against the resource handles those seven split three ways — shared (`patchState` / `setState` / `incState` / `pushState`), analogue-but-not-equivalent (`atomicState` ↔ `updateState`), and deliberately absent (`setStateRecord` / `deleteStateRecord`). A shared name is not a shared guarantee: on a bag `incState` / `pushState` are the unchecked commutative path, on a resource handle they are version-checked like every other state mutator there → [State and Scopes](../architecture/state-and-scopes.md#cas-and-concurrency)
-- Session metadata: `ctx.session.setMetadata({ title?, description?, tags?, metadata? })` — first-class fields, emits `session.metadata.changed` SSE event
-- Concurrency: bounded retries on the **version-checked** path only. Bag writes split three ways by hint shape, adapter and scope — genuinely commutative (single-field `incState` / `pushState`; both writers land), unchecked but *not* commutative (single-field literal `patchState`, `setStateRecord`, `deleteStateRecord`; last write wins, both calls still return `true`), and version-checked. The version check is **not** the safety property: `setState` is checked and still discards the other writer's change, because its retry re-applies the same whole state; only multi-field `incState`, the `patchState` updater form and `atomicState` re-run against the winner → [Atomicity Guarantees](../architecture/state-and-scopes.md#atomicity-guarantees) is the canonical enumeration. Through the resource handles, the **state** mutators (`patchState` / `setState` / `updateState` / `incState` / `pushState`, `create` as **create-if-absent**, the delete writers) are version-checked and can be refused — except `create(key, initial, { replace: true })` on a writable collection, which writes at `"any"`, cannot conflict, and overwrites a concurrent writer. On a `writable: false` collection that call uses create-if-absent instead: a missing key creates, and a live row throws the same read-only error as `setState` rather than overwriting; `writeContent` is **not** checked either — `ContentStore.set` takes no version predicate and overwrites
-- `getTarget(name)`: state-only escape hatch; resolves nearest-first across dispatched siblings at the current execution level, then falls back to the ancestor parent chain; may return `undefined` or throw `AmbiguousBlockNameError` when multiple ancestors share the same name
-- `targetStateSchemas`: typed declaration surface for `ctx.targets.<name>` state handles
-- `getBlockOutput(blockDef)`: returns completed output from already-dispatched sibling blocks at the current execution level, otherwise `undefined`
-- `getBlockResult(blockDef)`: returns `{status: not_started|running|completed|failed}` for already-dispatched sibling blocks at the current execution level (not ancestor chain), with output/error payload on terminal states
-
-## Dispatched work (child sessions)
-
-- Dispatched work runs in a **child session** (`dsx_` prefix, derived from tenant + principal + parent session + lineage + the session key), not a new scope level; `sharedToLineage` is how a session-scoped resource spans parent and children
-- `RequestHost` is three verbs: `parentTask`, `settleParentTask`, `livenessOf?` (absent when the liveness gate refused). Identity is never a parameter
-- Locality is decided by the effective dispatcher (`isInProcessDispatcher`), **not** by `worker.mode`
-- `worker-only` constructs no dispatcher → dispatched work runs **in-process and is not durable**
-- `dispose()`'s **drain** covers in-process dispatched children only, bounded by `dispatchDrainTimeoutMs` (the old `detachedDrainTimeoutMs` spelling is refused); a queued job is not drained — but closing the worker afterwards waits, unbounded, for any job this process has claimed (`colocated` and `worker-only` both consume)
-- Shutdown cancels rather than settling, with one exception today: a child still queued behind the concurrency gate is written `aborted` before it ever runs (FIX-1121)
-- Recovery is by re-claim, not by lease expiry alone — the next claim takes a lapsed task back as a fresh attempt and the row stays `in_progress` (`errored` only past the abandonment allowance); a sweep marks the request `interrupted`
-
-→ [Dispatched Work](../architecture/dispatched-work.md)
-
-## Streaming
-
-- SSE named events; a request stream orders deterministically by `sequence_number`
-- Request-stream replay correctness: persisted items + sequence ordering
-- Session stream: resumes from `at` with a read overlap, deduped by `(requestId, item.id)`; no sequence ordering
-- Event categories: request/item/content lifecycle, optional `resource.changed`, debug
-
-→ [Streaming](../architecture/streaming.md)
-
-## Block interception (internal-only)
-
-- There is **no** block-middleware system — no `middleware:` on
-  `createFlowApiRouter`, `defineFlow`, or `BlockConfig`, no `Middleware`
-  export, and no internal composition seam. The public contract was retracted
-  and the dormant internal seam removed with it (zero consumers).
-- Framework-internal interception flows through `InternalExecutionSeams`
-  (`interceptBlockInput` / `interceptBlockOutput` / `interceptNormalizedError`
-  / `onGeneratorLifecycle` / `onActionLifecycle`).
-- App authors use lifecycle hooks, `.tap()`, capabilities, the trace system, or
-  `errorCapture` instead. See
-  [`../architecture/internal-execution-seams.md`](../architecture/internal-execution-seams.md).
-
-→ [Internal Execution Seams](../architecture/internal-execution-seams.md)
-
-## Lifecycle Hooks
-
-| Hook | When |
-|------|------|
-| `onStarted` | Request begins |
-| `onCompleted` | Terminal success only |
-| `onErrored` | Terminal failure only |
-| `onFinished` | Always |
-| `onStepErrored` | Non-terminal step/work visibility |
-
-→ [Execution and Errors](../architecture/execution-and-errors.md)
-
-## Package Boundaries
-
-| Package | Role | Key constraint |
-|---------|------|----------------|
-| `contracts` | Zero-dep shared layer (item taxonomy + leaf types) | Imports no workspace package; declares no dependencies (guarded). `core` re-exports it |
-| `core` | Isomorphic builders/types/items | No platform-specific code; value-imports `contracts` |
-| `engine` | Execution/runtime/stores/streaming/routes | No dependency on react or client |
-| `client` | Transport + session/request APIs | No dependency on engine or react |
-| `react` | Hooks/renderers only | Wraps client; no transport logic |
-| `testing` | Deterministic harnesses + mocks | Uses core + engine |
-| `cli` | Run/inspect/scaffold flows | Uses core + engine + testing |
-| `apps/devtool` | Inspector app | Public APIs only (client + react) |
-
-→ [Architecture Overview](../architecture/overview.md)
-
-## Utility Blocks
-
-Eleven pre-built factories, exported from `packages/core/src/utility/index.ts`:
-
-| Kind | Factories |
-|------|-----------|
-| generator | `contextReducer`, `memoryExtractor`, `decomposer`, `summarizer`, `analyzer`, `intentClassifier` |
-| handler | `combiner`, `upsertResource` |
-| sequencer | `intentRouter`, `sessionTitleGenerator` |
-| router | `keyedRouter` |
-
-- Access via `utility.<name>(config)` — returns a standard `BlockDefinition`
-- All utilities accept an optional `outputSchema` override
-- Handler- and router-based utilities take no `model` (deterministic, no LLM)
-
-Purposes and default models live in the catalog — don't restate them here.
-
-> [Utility Blocks](../architecture/utility-blocks.md) · [Core Utilities (user docs)](../../apps/docs/docs/patterns/utility-blocks/core.md)
-
-## Resources and Client Data
-
-- Concrete resources are persisted, attached to scopes
-- Scope state is server-private by default; each scope's `client` block declares what crosses — `expose` (verbatim state fields) and `derived` (computed projections). Both land at `snapshot.clientData.<scope>.<name>`
-- `expose` and `derived` share one namespace per scope; colliding names throw at `defineFlow`
-- Each `derived` compute function receives only its own scope's state and resources (single-scope context)
-- Generator context uses `contextFn()` for typed scope access, not raw state dumps
-- `defineResource()` for portable resource declarations
-- Blocks and flows declare resources via a flat `resources` map (using `defineResource()` values); each resource's `scope` (`"session"` | `"user"` | `"org"`) routes storage. Access at runtime is `ctx.resources.<key>`
-- Sequencers collect `declaredResources` from all child blocks automatically
-- `defineFlow` merges block-declared resources into the flow's `resources` map; flow-level wins over block-level
-- Same `defineResource()` reference across blocks = no conflict; different references for same name = build-time error
-- Collection snapshots emit `count` always and `prefetched` when `prefetchWindow > 0`; per-item `clientData` is gated by `client.state.read`. Lazy reads via `GET /sessions/:id/resources/:ref` and a flow-static manifest at `GET /sessions/:id/manifest` (FIX-427).
-- A key segment beginning `~` belongs to an owner-private collection (`ownerPrivate: { param }`), in every app: no other collection reads or writes it, and a key's first one names its owner. A registry that has held one refuses, for good, any flow whose collection in the same scope can reach its keys, and every registry refuses a single resource whose key has a segment beginning `~` → [Resources and client data](../architecture/resources-and-client-data.md#owner-private-collections)
-
-→ [Resources and Client Data](../architecture/resources-and-client-data.md)
+- **`hireWorkforce` is the only admission gate**: absent `flow:` → built-in `agent`; an unregistered name is refused by name. A replacement `agent` must declare `kind: "agent"` and `cardinality: "collection"`. → [Workforce worker kind](../architecture/workforce-default-worker-kind.md)
 
 ## Definition of Done (Phase 1)
 
-- All package contracts compile + match canonical docs
-- Tests pass across packages
-- Example flows run with item-first streams + explicit `userId`
-- CLI commands work end-to-end
-- Dev tool runs actions, streams live, replays with both resume modes
-- No residual legacy part-model terminology
+- All package contracts compile and match the architecture docs.
+- Tests pass across packages.
+- Example flows run with item-first streams and explicit `userId`.
+- CLI commands work end-to-end.
+- DevTool runs actions, streams live, replays with both resume modes.

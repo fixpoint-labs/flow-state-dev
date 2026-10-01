@@ -7,8 +7,8 @@
  *
  * The contract — the route/subject/owner table, when enforcement is active,
  * and how cross-flow listings behave in a mixed app — is
- * `docs/architecture/authentication.md` → "Scope: the whole `/api/flows`
- * surface". Read that first; the invariants that are easy to break while
+ * `docs/architecture/authentication.md` → "The whole `/api/flows` surface
+ * is guarded". Read that first; the invariants that are easy to break while
  * editing this file are noted inline below.
  */
 import type { FlowRegistry } from "../registry/flow-registry";
