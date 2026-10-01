@@ -29,7 +29,7 @@ It prints the address, `http://127.0.0.1:4300` by default. One process serves th
 | `--assets <dir>` | `dist/` | Serve a different build of the pages. |
 | `--devtool <url>` | the devtool Shift Manager serves | Point a task's *Open trace* link at a devtool you run yourself instead. Must be an `http(s)` address. Shift Manager then serves no devtool of its own. |
 | `--devtool-assets <dir>` | the `@flow-state-dev/devtool` build | Serve a different build of the devtool's pages. |
-| `--shift <day\|night>` | `SHIFT_MANAGER_SHIFT`, else unset | Start on the light (`day`) or dark (`night`) look, whatever the OS setting. Unset, the page follows the OS. A shift picked in the sidebar's switch wins over both. See [How it looks](#how-it-looks). |
+| `--shift <day\|night>` | `SHIFT_MANAGER_SHIFT`, else unset | Start on the light (`day`) or dark (`night`) look, whatever the OS setting. Unset, the page follows the OS. A shift picked in the sidebar's switch wins over the flag and the variable. See [How it looks](#how-it-looks). |
 
 The process runs from the directory you started it in, so a Lab's relative paths, such as a SQLite file, land where they would under `fsdev dev`.
 
