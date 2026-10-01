@@ -19,9 +19,8 @@
  * fills its own affordances through slots.
  */
 import { createElement, useMemo, type ReactNode } from "react";
-import { createResourceClient } from "@flow-state-dev/client";
-import { useFlowContext } from "../../context/FlowContext";
 import { usePanelRows, type PanelRowSource } from "./reads";
+import { usePanelSource } from "./usePanelSource";
 import {
   bareList,
   headingStyle,
@@ -170,12 +169,7 @@ export function Roster(props: RosterProps): ReactNode {
     slots = {}
   } = props;
 
-  const context = useFlowContext();
-  const baseUrl = context.baseUrl;
-  // Only built when the host supplied none. A host with an authenticating
-  // deployment passes its own; this default is the unauthenticated case.
-  const fallback = useMemo(() => createResourceClient({ baseUrl }), [baseUrl]);
-  const source = resourceClient ?? fallback;
+  const source = usePanelSource(resourceClient);
 
   const state = usePanelRows<unknown>(
     source,

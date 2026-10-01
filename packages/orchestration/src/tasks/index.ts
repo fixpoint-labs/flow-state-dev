@@ -73,6 +73,7 @@ export type {
   ClaimOptions,
   TaskHandle,
   TaskTransitionOptions,
+  AwaitReviewOptions,
   TaskWriteOutcome,
   TaskWriteDeclineReason,
 } from "./collection/types";

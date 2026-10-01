@@ -247,6 +247,15 @@ When an action executes:
 4. The root block executes asynchronously
 5. Lifecycle hooks fire on completion or error
 
+A block can also stop another request running in its own session, the way the abort route does from outside. It's how an action that takes a message can make room for it:
+
+```ts
+const outcome = await ctx.session.stopRequest(requestId);
+// "stopped" | "already-finished" | "not-in-this-session"
+```
+
+The stop is recorded on the request, so it reaches a request running in another process on that process's next heartbeat, exactly like an abort. `"not-in-this-session"` is the answer for any id outside the session, including one that doesn't exist, so the call can't be used to learn about other sessions' requests.
+
 See [Actions](/docs/fundamentals/actions) for the full picture.
 
 ### Entries only the flow can reach

@@ -206,7 +206,7 @@ describe("createModelResolver — effective options after override", () => {
 
   it("FSDEV_INTENT_CHAT replaces the candidate list for intent/chat", async () => {
     const resolver = createModelResolver({
-      intents: { chat: ["anthropic/claude-sonnet-4.6"] },
+      intents: { chat: ["anthropic/claude-sonnet-4-6"] },
       defaultModel: "openai/gpt-5.4",
       env: { FSDEV_INTENT_CHAT: "openai/gpt-5-nano" },
       // Only openai is wired — if the override didn't take effect we'd fall
@@ -220,7 +220,7 @@ describe("createModelResolver — effective options after override", () => {
 
   it("resolver.resolveId reflects the env-var override", () => {
     const resolver = createModelResolver({
-      intents: { chat: ["anthropic/claude-sonnet-4.6"] },
+      intents: { chat: ["anthropic/claude-sonnet-4-6"] },
       defaultModel: "openai/gpt-5.4",
       env: { FSDEV_INTENT_CHAT: "openai/gpt-5-nano" },
       providers: { openai: mockProvider() },
@@ -288,7 +288,7 @@ describe("createModelResolver — effective options after override", () => {
   it("override composes with intentDefaults — mismatched provider keys drop silently", async () => {
     const { factory, captured } = capturingProvider();
     const resolver = createModelResolver({
-      intents: { chat: ["anthropic/claude-sonnet-4.6"] },
+      intents: { chat: ["anthropic/claude-sonnet-4-6"] },
       defaultModel: "openai/gpt-5.4",
       intentDefaults: {
         chat: {

@@ -201,6 +201,44 @@ describe("parseResourceWriteState", () => {
 });
 
 /**
+ * A schema that sends an object to `null` — here, "no `phase` yet" means no
+ * state. Before this was refused, the null took the documented-reset branch and
+ * every such write reported success while storing `{}`: the caller's value was
+ * gone, and reading back showed the cleared form, so nothing surfaced the loss.
+ */
+describe("parseResourceWriteState — a non-null write the schema parses to null", () => {
+  const phaseless = z
+    .object({ phase: z.number().optional(), tag: z.string().optional() })
+    .transform((value) => (value.phase === undefined ? null : value));
+
+  it("refuses the write instead of storing the cleared form", () => {
+    expect(() => parseResourceWriteState(phaseless, { tag: "x" }, "wizard")).toThrow(
+      ValidationError
+    );
+    expect(() => parseResourceWriteState(phaseless, { tag: "x" }, "wizard")).toThrow(
+      /Resource "wizard" write failed stateSchema validation: .*parsed .* to null/
+    );
+  });
+
+  it("refuses the empty object too — the seed a bare create supplies", () => {
+    expect(() => parseResourceWriteState(phaseless, {}, "wizard/a")).toThrow(ValidationError);
+  });
+
+  it("still stores a write the same schema parses to an object", () => {
+    expect(parseResourceWriteState(phaseless, { phase: 1, tag: "x" }, "wizard")).toEqual({
+      phase: 1,
+      tag: "x"
+    });
+  });
+
+  it("still treats an explicit `null` as the reset", () => {
+    // The caller asked for null and got the cleared form — nothing was lost.
+    const resettable = phaseless.nullable();
+    expect(parseResourceWriteState(resettable, null, "wizard")).toEqual({});
+  });
+});
+
+/**
  * The fixed-point guard, at unit tier and through the public write parse — the
  * seam every caller actually uses, so these fail if the guard stops being wired
  * as well as if it stops working. The drift suite drives the same guard through

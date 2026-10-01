@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const pkg = fileURLToPath(new URL("../", import.meta.url));
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const assets = fileURLToPath(new URL("./fixtures/assets", import.meta.url));
+const devtoolAssets = fileURLToPath(new URL("./fixtures/devtool-assets", import.meta.url));
 
 const running: ChildProcess[] = [];
 afterEach(() => {
@@ -24,7 +25,7 @@ afterEach(() => {
 function start(config: string, extra: string[] = [], host = "127.0.0.1") {
   const child = spawn(
     process.execPath,
-    ["--import", "tsx", "bin/start.mts", "--config", config, "--port", "0", "--host", host, "--assets", assets, ...extra],
+    ["--import", "tsx", "bin/start.mts", "--config", config, "--port", "0", "--host", host, "--assets", assets, "--devtool-assets", devtoolAssets, ...extra],
     { cwd: pkg, env: { ...process.env, INIT_CWD: repo }, stdio: ["ignore", "pipe", "pipe"] },
   );
   running.push(child);
@@ -63,14 +64,50 @@ describe("the start command", () => {
     expect(sessions.status).toBe(200);
   }, 90_000);
 
-  it("writes --devtool into the served pages for the trace link, and leaves it out without the flag (BR-23)", async () => {
+  it("serves the devtool from the same process by default, over the same Lab, and points the trace link at it (BR-23)", async () => {
+    // The trace link only works when the devtool reads the store the run is
+    // in. Two processes over an in-memory Lab never do, so the default is a
+    // devtool this process serves, over this FlowState, on its own port.
+    const config = "goals/devforce-lab/lab/fsdev.config.mts";
+    const app = start(config);
+    const origin = await app.listening;
+    const page = await (await fetch(`${origin}/tasks`)).text();
+    const devtool = /<meta name="app-lab-devtool" content="([^"]+)">/.exec(page)?.[1];
+    expect(devtool).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+    expect(devtool).not.toBe(`${origin}/`);
+
+    const devtoolPage = await (await fetch(devtool!)).text();
+    expect(devtoolPage).toContain("devtool-test-pages");
+    // Handed the same connection config `fsdev dev` hands its DevTool page.
+    expect(devtoolPage).toContain("__FSD_DEVTOOL_CONFIG__");
+
+    // One store: the session the Lab raised its approval in, read through the
+    // App Lab origin, is the same session the devtool's origin answers for.
+    const config_ = JSON.parse(/__FSD_DEVTOOL_CONFIG__\s*=\s*(\{.*?\});?<\/script>/s.exec(devtoolPage)![1]!) as {
+      userId: string;
+      bearerToken?: string;
+    };
+    const headers = config_.bearerToken === undefined ? undefined : { authorization: `Bearer ${config_.bearerToken}` };
+    const list = async (base: string) => {
+      const res = await fetch(new URL(`api/flows/sessions?userId=${encodeURIComponent(config_.userId)}`, base), { headers });
+      expect(res.status).toBe(200);
+      // The ids are seeded, so they would match across two stores. When a
+      // session was created and its lineage id would not.
+      return ((await res.json()) as { sessions: Array<{ id: string; createdAt: number; lineageId?: string }> }).sessions
+        .map((x) => `${x.id}@${x.createdAt}/${x.lineageId ?? ""}`)
+        .sort();
+    };
+    const fromApp = await list(`${origin}/`);
+    expect(fromApp.length).toBeGreaterThan(0);
+    expect(await list(devtool!)).toEqual(fromApp);
+  }, 120_000);
+
+  it("writes --devtool into the served pages for the trace link instead, and serves no devtool of its own (BR-23)", async () => {
     const withFlag = start("goals/multi-seat-collab/lab/fsdev.config.mts", ["--devtool", "http://127.0.0.1:4000"]);
     const page = await (await fetch(`${await withFlag.listening}/tasks`)).text();
     expect(page).toContain('<meta name="app-lab-devtool" content="http://127.0.0.1:4000/">');
     expect(page).toContain("app-lab-test-pages");
-
-    const without = start("goals/multi-seat-collab/lab/fsdev.config.mts");
-    expect(await (await fetch(`${await without.listening}/tasks`)).text()).not.toContain("app-lab-devtool");
+    expect(withFlag.output()).not.toMatch(/Devtool:/);
 
     const refused = start("goals/multi-seat-collab/lab/fsdev.config.mts", ["--devtool", "javascript:alert(1)"]);
     expect(await refused.exited).not.toBe(0);

@@ -1,7 +1,7 @@
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, handler, sequencer, type StopRequestOutcome } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
-import { afterEach, describe, expect, it, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, beforeEach, vi } from "vitest";
 import {
   continueRequest,
   createInMemoryStores,
@@ -991,6 +991,8 @@ function makeBlockingFlow(options: {
   kind: string;
   heartbeatIntervalMs?: number;
   selfCompleteAfterMs?: number;
+  /** Add a `stop` action that stops another request through `ctx.session.stopRequest`. */
+  withStop?: boolean;
 }) {
   return defineFlow({
     kind: options.kind,
@@ -1026,7 +1028,22 @@ function makeBlockingFlow(options: {
               });
             })
         })
-      }
+      },
+      ...(options.withStop === true
+        ? {
+            stop: {
+              inputSchema: z.object({ requestId: z.string() }),
+              block: handler({
+                name: "stops-another",
+                inputSchema: z.object({ requestId: z.string() }),
+                outputSchema: z.object({ outcome: z.string() }),
+                execute: async (input, ctx) => ({
+                  outcome: await ctx.session.stopRequest(input.requestId)
+                })
+              })
+            }
+          }
+        : {})
     }
   })();
 }
@@ -3737,5 +3754,217 @@ describe("a run's abort controller carries the incarnation it executes as", () =
         expect(seen.aborted).toBe(startsAborted);
       }
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A block stopping another request in its own session (`ctx.session.stopRequest`)
+//
+// The same stop the abort route records, reached from code: the target reads
+// `aborted` and its signal fires, here or (through the heartbeat) in another
+// process. A request outside the caller's session is refused the way the
+// route refuses an unreachable one: no write, and an answer that does not
+// tell it apart from an unknown id.
+// ---------------------------------------------------------------------------
+
+/** A blocking `run` that completes on its own after 1.5 s, and a `stop`. */
+function makeStoppableFlow(kind: string) {
+  return makeBlockingFlow({ kind, heartbeatIntervalMs: 20, selfCompleteAfterMs: 1_500, withStop: true });
+}
+
+describe("ctx.session.stopRequest — a block stops a request in its own session", () => {
+  type Run = typeof runAction;
+
+  async function startTarget(
+    run: Run,
+    stores: StoreRegistry,
+    flow: ReturnType<typeof makeStoppableFlow>,
+    requestId: string,
+    where: { sessionId: string; tenantId?: string; userId?: string }
+  ) {
+    const promise = run({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: where.userId ?? "u_stop",
+      sessionId: where.sessionId,
+      ...(where.tenantId !== undefined ? { tenantId: where.tenantId } : {}),
+      stores,
+      runtimeConfig: {}
+    });
+    // Running before the stop is sent.
+    for (let i = 0; i < 50; i += 1) {
+      if ((await stores.request.get(requestId))?.status === "in_progress") break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect((await stores.request.get(requestId))?.status).toBe("in_progress");
+    // Boxed, so awaiting the start does not also await the run.
+    return { done: promise };
+  }
+
+  async function stopFrom(
+    run: Run,
+    stores: StoreRegistry,
+    flow: ReturnType<typeof makeStoppableFlow>,
+    targetId: string,
+    where: { sessionId: string; tenantId?: string; userId?: string; requestId: string }
+  ): Promise<StopRequestOutcome> {
+    const result = await run({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "stop",
+      input: { requestId: targetId },
+      requestId: where.requestId,
+      userId: where.userId ?? "u_stop",
+      sessionId: where.sessionId,
+      ...(where.tenantId !== undefined ? { tenantId: where.tenantId } : {}),
+      stores,
+      runtimeConfig: {}
+    });
+    expect(result.error).toBeUndefined();
+    return (result.output as { outcome: StopRequestOutcome }).outcome;
+  }
+
+  it("stops a running request in the same session, in this process", async () => {
+    const stores = createInMemoryStores();
+    const flow = makeStoppableFlow("stop-hook-local");
+    const target = await startTarget(runAction, stores, flow, "req_stop_target", {
+      sessionId: "sess_stop"
+    });
+
+    const outcome = await stopFrom(runAction, stores, flow, "req_stop_target", {
+      sessionId: "sess_stop",
+      requestId: "req_stop_caller"
+    });
+    expect(outcome).toBe("stopped");
+
+    const result = await target.done;
+    expect(result.error).toBeUndefined();
+    expect(result.output).not.toBe("completed naturally");
+    const record = await stores.request.get("req_stop_target");
+    expect(record?.status).toBe("aborted");
+    expect(record?.abortRequested).toBe(true);
+  });
+
+  it("reaches a request running in another process through its heartbeat", async () => {
+    const stores = createInMemoryStores();
+    const flow = makeStoppableFlow("stop-hook-xproc");
+    const target = await startTarget(runAction, stores, flow, "req_stop_xproc", {
+      sessionId: "sess_stop_xproc"
+    });
+
+    // A fresh copy of the engine is a second process: its abort registry has
+    // never seen the target's controller, so only the stored intent and the
+    // target's own heartbeat can stop it.
+    vi.resetModules();
+    const other = (await import("../src")) as { runAction: Run };
+    const otherRegistry = await import("../src/execution/abort-registry");
+    expect(other.runAction).not.toBe(runAction);
+    // Precondition: the target's controller is visible here and not there.
+    expect(hasActiveAbortController("req_stop_xproc")).toBe(true);
+    expect(otherRegistry.hasActiveAbortController("req_stop_xproc")).toBe(false);
+
+    const outcome = await stopFrom(other.runAction, stores, flow, "req_stop_xproc", {
+      sessionId: "sess_stop_xproc",
+      requestId: "req_stop_xproc_caller"
+    });
+    expect(outcome).toBe("stopped");
+
+    await target.done;
+    const record = await stores.request.get("req_stop_xproc");
+    expect(record?.status).toBe("aborted");
+  });
+
+  it("refuses a running request of another session, and leaves it running", async () => {
+    const stores = createInMemoryStores();
+    const flow = makeStoppableFlow("stop-hook-other-session");
+    const target = await startTarget(runAction, stores, flow, "req_stop_other", {
+      sessionId: "sess_a"
+    });
+
+    const outcome = await stopFrom(runAction, stores, flow, "req_stop_other", {
+      sessionId: "sess_b",
+      requestId: "req_stop_other_caller"
+    });
+    expect(outcome).toBe("not-in-this-session");
+    const after = await stores.request.get("req_stop_other");
+    expect(after?.abortRequested).not.toBe(true);
+
+    expect((await target.done).output).toBe("completed naturally");
+    expect((await stores.request.get("req_stop_other"))?.status).toBe("completed");
+  });
+
+  it("refuses a running request of another tenant under the same session id", async () => {
+    const stores = createInMemoryStores();
+    const flow = makeStoppableFlow("stop-hook-other-tenant");
+    const target = await startTarget(runAction, stores, flow, "req_stop_tenant", {
+      sessionId: "sess_shared",
+      tenantId: "tenant_a"
+    });
+
+    const outcome = await stopFrom(runAction, stores, flow, "req_stop_tenant", {
+      sessionId: "sess_shared",
+      tenantId: "tenant_b",
+      requestId: "req_stop_tenant_caller"
+    });
+    expect(outcome).toBe("not-in-this-session");
+    expect((await stores.request.get("req_stop_tenant"))?.abortRequested).not.toBe(true);
+
+    expect((await target.done).output).toBe("completed naturally");
+  });
+
+  it("answers an unknown id as not in this session", async () => {
+    const stores = createInMemoryStores();
+    const flow = makeStoppableFlow("stop-hook-unknown");
+    const outcome = await stopFrom(runAction, stores, flow, "req_never_was", {
+      sessionId: "sess_unknown",
+      requestId: "req_unknown_caller"
+    });
+    expect(outcome).toBe("not-in-this-session");
+  });
+
+  it("stops the calling request itself when it names its own id", async () => {
+    // Not refused: the caller asked to stop a request in its own session, and
+    // its own is one. Pinned so the behaviour does not change by accident.
+    const stores = createInMemoryStores();
+    const flow = makeStoppableFlow("stop-hook-self");
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "stop",
+      input: { requestId: "req_stop_self" },
+      requestId: "req_stop_self",
+      userId: "u_stop",
+      sessionId: "sess_self",
+      stores,
+      runtimeConfig: {}
+    });
+    expect(result.output).toBeUndefined();
+    const record = await stores.request.get("req_stop_self");
+    expect(record?.status).toBe("aborted");
+    expect(record?.abortRequested).toBe(true);
+  });
+
+  it("reports a finished request as already finished, and writes nothing", async () => {
+    const stores = createInMemoryStores();
+    const flow = makeStoppableFlow("stop-hook-finished");
+    const target = await startTarget(runAction, stores, flow, "req_stop_done", {
+      sessionId: "sess_done"
+    });
+    await target.done;
+    const finished = await stores.request.get("req_stop_done");
+    expect(finished?.status).toBe("completed");
+
+    const outcome = await stopFrom(runAction, stores, flow, "req_stop_done", {
+      sessionId: "sess_done",
+      requestId: "req_stop_done_caller"
+    });
+    expect(outcome).toBe("already-finished");
+    const after = await stores.request.get("req_stop_done");
+    expect(after?.status).toBe("completed");
+    expect(after?.abortRequested).not.toBe(true);
+    expect(after?.version).toBe(finished?.version);
   });
 });

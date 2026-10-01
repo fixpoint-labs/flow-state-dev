@@ -294,6 +294,24 @@ describe("what the Session draws of the run's items", () => {
   }, 30_000);
 });
 
+describe("the Session draws with App Lab's registry copies (ER-6)", () => {
+  it("draws a run's message, reasoning and tool call with the registry's cards, not the bare fallbacks", async () => {
+    const opened = await openLab();
+    const row = await finishedRow(opened);
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+    await screen.findByTestId("session", {}, { timeout: 10_000 });
+    const drawn = (type: string) =>
+      screen.queryAllByTestId("session-item").filter((el) => el.getAttribute("data-item-type") === type);
+    await waitFor(() => expect(drawn("tool_output").length).toBeGreaterThan(0), { timeout: 5_000 });
+    // The registry's message card, and the collapsible reasoning and tool cards.
+    expect(drawn("message").every((li) => li.querySelector("[data-testid=message]") !== null)).toBe(true);
+    for (const type of ["reasoning", "tool_output"]) {
+      expect(drawn(type).length, type).toBeGreaterThan(0);
+      expect(drawn(type).every((li) => li.querySelector("[data-slot=collapsible]") !== null), type).toBe(true);
+    }
+  }, 30_000);
+});
+
 describe("the header's worker", () => {
   it("resolves a name two teams share to the seat in this row's channel, as the inspector does", async () => {
     const opened = await openLab();
@@ -324,8 +342,10 @@ describe("the disabled acts and empty tabs carry their gap lines (BR-15 to BR-17
       expect((el as HTMLButtonElement).disabled).toBe(true);
       expect(el.getAttribute("data-gap")).toBe(GAPS.task.handOff);
     }
+    // This Lab's kinds declare no door, so the composer says the worker takes
+    // no message, once it has read the run (BR-18).
     expect((screen.getByTestId("task-composer-input") as HTMLTextAreaElement).disabled).toBe(true);
-    expect(screen.getByTestId("task-composer-gap").textContent).toBe(GAPS.task.composer);
+    await waitFor(() => expect(screen.getByTestId("task-composer-blocked").textContent).toContain(GAPS.turn.noDoor));
     expect((screen.getByTestId("task-also-post") as HTMLInputElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("tab", { name: "checks" }));
     expect((await screen.findByTestId("task-checks-empty")).textContent).toContain(GAPS.task.checks.body);
@@ -356,7 +376,10 @@ describe("the inspector (BR-18 to BR-23)", () => {
     const files = await within(inspector).findAllByTestId("inspector-file", {}, { timeout: 10_000 });
     expect(files.map((f) => [f.getAttribute("data-path"), f.getAttribute("data-kind")])).toEqual([["notes/audit.md", "created"]]);
     expect(within(inspector).getAllByTestId("inspector-plan-step").map((s) => s.getAttribute("data-status"))).toEqual(["completed", "in_progress"]);
-    expect(within(inspector).getByTestId("inspector-trace-link").getAttribute("href")).toBe("http://127.0.0.1:4000");
+    // The link opens this run's session in the devtool: no paste step (FIX-1691).
+    expect(within(inspector).getByTestId("inspector-trace-link").getAttribute("href")).toBe(
+      `http://127.0.0.1:4000/?session=${encodeURIComponent(row.run!.sessionId)}`,
+    );
     expect(within(inspector).getByTestId("inspector-trace-session").textContent).toBe(row.run!.sessionId);
   }, 30_000);
 

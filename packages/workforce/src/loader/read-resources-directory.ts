@@ -29,11 +29,14 @@
  * install half points at and refuses a wider set of declarations. Both are the
  * caller's business, not this walk's.
  *
- * **This reader is one of two over the same folder.** A `resources/` folder
- * takes Markdown documents and TypeScript modules side by side; the `.ts` files
- * are the module walk's (`../codegen/discover-resource-modules`), which mints
- * their refs by the same rule this one does. So a non-`.md` entry is passed
- * over here because it is not a document, not because nobody meant it.
+ * **One walk, two doors.** A `resources/` folder takes Markdown documents and
+ * TypeScript modules side by side; the `.ts` files are the module walk's
+ * (`../codegen/discover-resource-modules`), which mints their refs by the same
+ * rule this one does. Neither door descends the tree itself: both iterate the
+ * places `./resource-walk` yields, so they cannot disagree about where a
+ * `resources/` folder may sit. What each does inside one stays its own, so a
+ * non-`.md` entry is passed over here because it is not a document, not
+ * because nobody meant it.
  *
  * **A resource is a file, not a folder** — which inverts the worker reader's
  * skip rule, deliberately. There, a *file* in the `workers/` slot does not
@@ -61,19 +64,16 @@ import {
   DOCUMENT_EXTENSION,
   REFERENCES_SLOT,
   RESOURCES_SLOT,
-  WORKERS_LEVEL,
   type DocumentSlot,
-  mintResourceRef,
 } from "./resource-convention";
+import { walkResourcePlaces } from "./resource-walk";
 import {
   IGNORED_ENTRIES,
   type PathReport,
   classify,
-  openRoot,
   openStructuralDirectory,
   refusedSymlink,
   unreadable,
-  walkTeams,
 } from "./structural-directory";
 
 /**
@@ -188,10 +188,12 @@ export async function readReferencesDirectory(
 }
 
 /**
- * The walk both readers are. Parameterized by the slot it looks in and the
- * declaration refusal that slot imposes; everything else — the four levels, the
+ * The reader both slots are. Parameterized by the slot it looks in and the
+ * declaration refusal that slot imposes; everything else — the four places, the
  * symlink rule, the directory-in-a-documents-slot report — is the convention's
- * and is shared by construction rather than by two copies kept in step.
+ * and is shared by construction rather than by two copies kept in step. Where
+ * the places are is `./resource-walk`'s, which the module walk rides too; this
+ * reader opens its slot at each one, in the order the directory lists workers.
  */
 async function readDocumentSlot(
   root: string,
@@ -202,162 +204,32 @@ async function readDocumentSlot(
   const documents: ResourceDoc[] = [];
   const errors: ResourceDocError[] = [];
 
-  await openRoot(root);
-
-  /** File a structural refusal met on the way to a slot, at either root. */
-  const report = (at: string, error: Error): void => {
-    errors.push({ path: at, error, kind: "unreadable-slot" });
-  };
-
-  // The org root. Opened structurally rather than merely classified, so a
-  // symlinked or unreadable `org/` is reported the way `teams/` is. It stays
-  // here rather than moving into the shared walk: it has one caller, and a
-  // shared open would hand the channels reader an `org/` scope it is not
-  // allowed to use.
-  const org = await openStructuralDirectory(path.join(root, "org"), "org");
-  if (org.refusal !== undefined) {
-    report("org", org.refusal.error);
-  }
-  if (org.entries !== undefined) {
-    await readSlot(path.join(root, "org", slot), `org/${slot}`, {
+  for await (const step of walkResourcePlaces(root, { workerOrder: (entries) => entries })) {
+    if (step.type === "refused") {
+      errors.push({ path: step.path, error: step.error, kind: "unreadable-slot" });
+      continue;
+    }
+    // A refused worker folder is named by its folder name here; the module
+    // walk names it by its full path. Both are as they were, so neither moves.
+    if (step.type === "worker-refused") {
+      errors.push({
+        path: step.path,
+        error: step.refusal(step.workerName),
+        kind: "unreadable-slot",
+      });
+      continue;
+    }
+    await readSlot(path.join(step.dir, slot), `${step.path}/${slot}`, {
       documents,
       errors,
       slot,
       refuseDeclaration,
       carriesFilePath,
-      mintRef: (name) => mintResourceRef(undefined, undefined, name),
-    });
-    // Org workers are rare shared-infra seats, and their documents load for the
-    // reason a team worker's do. Their ref drops `org/`, exactly as an org
-    // document's does. No seat can be hired at that address yet — the roster
-    // reader passes over `org/workers/` in silence and a worker id requires a
-    // team — which is a larger gap than this reader closes, and not a reason
-    // for the documents to go on being unread.
-    await walkWorkers(path.join(root, "org"), "org", undefined, {
-      documents,
-      errors,
-      slot,
-      refuseDeclaration,
-      carriesFilePath,
-    });
-  }
-
-  for await (const team of walkTeams(root, report)) {
-    await readSlot(path.join(team.dir, slot), `${team.path}/${slot}`, {
-      documents,
-      errors,
-      slot,
-      refuseDeclaration,
-      carriesFilePath,
-      mintRef: (name) => mintResourceRef(team.id, undefined, name),
-    });
-    await walkWorkers(team.dir, team.path, team.id, {
-      documents,
-      errors,
-      slot,
-      refuseDeclaration,
-      carriesFilePath,
+      mintRef: step.mintRef,
     });
   }
 
   return { documents, errors };
-}
-
-/**
- * Read every worker's `resources/` slot under one parent — `org/` or a team
- * folder — and collect what they hold.
- *
- * One function called twice rather than two copies: the two parents differ only
- * in the team id handed to the ref minter, and a second copy is how the levels
- * of a tree start disagreeing about what a symlink means.
- *
- * This level is the worker reader's rule, not this reader's: a `workers/` level
- * holds folders, so a *file* in it occupies no slot and is passed over in
- * silence. Inside a worker's `resources/` slot the rule inverts back, because
- * that is a documents slot and a directory in one is an author's mistake worth
- * reporting.
- *
- * What it does NOT do is open `WORKER.md`. Whether a folder describes a seat is
- * the roster reader's question, answered separately and already reported by the
- * reader whose job it is; this one is answering a question about a file.
- */
-async function walkWorkers(
-  parentDir: string,
-  parentPath: string,
-  teamId: string | undefined,
-  ctx: Omit<SlotContext, "mintRef">,
-): Promise<void> {
-  const workersPath = `${parentPath}/${WORKERS_LEVEL}`;
-  const slots = await openStructuralDirectory(
-    path.join(parentDir, WORKERS_LEVEL),
-    workersPath,
-  );
-  if (slots.refusal !== undefined) {
-    ctx.errors.push({
-      path: workersPath,
-      error: slots.refusal.error,
-      kind: "unreadable-slot",
-    });
-  }
-  if (slots.entries === undefined) return;
-
-  for (const workerName of slots.entries) {
-    if (IGNORED_ENTRIES.has(workerName)) continue;
-
-    // No name is special at this level — including `resources`. A folder here
-    // is judged by the slot it occupies, not by what it looks like, which is
-    // this module's second rule and the rule the other two readers already
-    // apply: `readWorkforceDirectory` hires `teams/<t>/workers/resources/` off
-    // its `WORKER.md`, and `readSeatSkills` reads that seat's own `skills/`.
-    // Skipping the name here would leave exactly one seat in the tree whose
-    // documents are read by nothing and reported by nothing — the silent drop
-    // this convention exists to remove, reintroduced one level down.
-    //
-    // It would also buy nothing. The author who writes a document one level too
-    // high, at `workers/resources/stray.md`, is not rescued by a skip: that file
-    // sits beside a `resources/` slot rather than in one, so the walk passes it
-    // over either way. What the skip cost was a real seat's documents.
-    const workerDir = path.join(parentDir, WORKERS_LEVEL, workerName);
-    const entryPath = `${workersPath}/${workerName}`;
-    const slot = await classify(workerDir);
-
-    // A file under `workers/` does not occupy a worker slot — a slot is a
-    // directory — so it is skipped rather than reported, the way the roster
-    // reader skips one.
-    if (slot.kind === "absent" || slot.kind === "file") continue;
-
-    // Both refusals are structural: the folder is there and the walk will not
-    // go through it, so every document under it is missing and none of them can
-    // be named individually. `absent` and `unreadable` stay apart here for the
-    // reason they do at every other level — folded together, a folder we cannot
-    // stat is skipped in silence and its documents disappear with `errors`
-    // empty for a caller's fatal check to look at.
-    if (slot.kind === "symlink") {
-      ctx.errors.push({
-        path: entryPath,
-        error: refusedSymlink("worker folder", workerName),
-        kind: "unreadable-slot",
-      });
-      continue;
-    }
-    if (slot.kind === "unreadable") {
-      ctx.errors.push({
-        path: entryPath,
-        error: unreadable("Worker folder", workerName, slot.error),
-        kind: "unreadable-slot",
-      });
-      continue;
-    }
-
-    await readSlot(path.join(workerDir, ctx.slot), `${entryPath}/${ctx.slot}`, {
-      documents: ctx.documents,
-      errors: ctx.errors,
-      slot: ctx.slot,
-      refuseDeclaration: ctx.refuseDeclaration,
-      carriesFilePath: ctx.carriesFilePath,
-      mintRef: (name) => mintResourceRef(teamId, workerName, name),
-    });
-  }
 }
 
 /** Everything reading one documents slot needs that differs between roots. */

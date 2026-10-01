@@ -95,6 +95,16 @@ const SPAWNING_FILES = [
     "answered-run-continues-its-session",
     "run.mts",
   ),
+  join(
+    __dirname,
+    "..",
+    "..",
+    "..",
+    "goals",
+    "harness-manager",
+    "a-persons-turn-continues-its-session",
+    "run.mts",
+  ),
 ];
 
 describe("every child process is bounded", () => {

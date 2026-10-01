@@ -186,7 +186,7 @@ pipeline
 Background `.sideChain()` tasks are decoupled from the request's transport-level abort signal (FIX-663). Each request has three `AbortController`s:
 
 - `registered`: the abort-registry controller, tagged with the incarnation of the request the run executes as. It fires on an explicit cancellation only, never on a transport signal. Three paths reach it:
-  - the `/abort` endpoint, when the request is running in this process. The fire is fenced on the incarnation it cancelled, so it does not reach a later request under the same id;
+  - the `/abort` endpoint, or a block's `ctx.session.stopRequest(id)` for a request in its own session (FIX-1690), when the request is running in this process. Both go through one write, `recordRequestStop` (`execution/record-request-stop.ts`); the route admits the caller by owner and tenant, the session hook by `requestInSessionScope`. The fire is fenced on the incarnation it cancelled, so it does not reach a later request under the same id;
   - the run's own reads of the request store: once as it starts, then on each heartbeat tick, when the intent was recorded by another process (FIX-1026). Both reads are fenced the same way;
   - an unfenced fire (host shutdown, the CLI stopping its turn), which stops whatever runs under the id.
 

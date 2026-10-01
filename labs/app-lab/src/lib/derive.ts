@@ -3,10 +3,10 @@
  * every surface computes it the same way.
  */
 import { columnFor, isDone, readStatus } from "./columns";
-import type { Ask, BoardRow, LabSnapshot, Seat, Workstream } from "./reads";
+import type { Ask, BoardRow, Failure, LabSnapshot, Seat, Workstream } from "./reads";
 
-/** A loaded snapshot (not a refusal). */
-export type LoadedSnapshot = Exclude<LabSnapshot, { refused: unknown }>;
+/** A loaded snapshot (not a refusal, not an unreachable Lab). */
+export type LoadedSnapshot = Exclude<LabSnapshot, { refused: Failure } | { unreachable: Failure }>;
 
 /** Every row on every attached board that loaded, across workstreams. */
 export function allRows(snapshot: LoadedSnapshot): BoardRow[] {
@@ -82,6 +82,37 @@ export function workstreamsOf(ask: Ask, workstreams: readonly Workstream[]): Wor
   const parent = workstreams.find((w) => w.id === ask.parentSessionId);
   if (parent !== undefined) return [parent];
   return ask.seatId === null ? [] : workstreams.filter((w) => w.members.includes(ask.seatId!));
+}
+
+/**
+ * The door of the flow that owns a session: the seat inventory row whose id is
+ * that flow's id names it. `null` when no seat row matches or its kind takes
+ * no message.
+ */
+export function doorOf(seats: readonly Seat[], flowId: string): string | null {
+  return seats.find((seat) => seat.id === flowId)?.door ?? null;
+}
+
+/**
+ * The rows a `@worker` line can go to (BR-19): the seat's rows on this
+ * workstream's boards that are running, parked, or pending with a run linked.
+ */
+export function messageableRows(roster: Roster, rows: readonly BoardRow[], seat: Seat): BoardRow[] {
+  return rows.filter((row) => {
+    if (seatFor(roster, row)?.id !== seat.id) return false;
+    const status = readStatus(row.status);
+    return status === "in_progress" || status === "parked" || (status === "pending" && row.run !== null);
+  });
+}
+
+/**
+ * The member a `@name` line addresses: a member of the workstream whose seat
+ * id, or whose own name, is `name`. `undefined` when none, or more than one.
+ */
+export function addressedSeat(roster: Roster, workstream: Workstream, name: string): Seat | undefined {
+  const members = new Set(workstream.members);
+  const found = roster.seats.filter((seat) => members.has(seat.id) && (seat.id === name || seat.name === name));
+  return found.length === 1 ? found[0] : undefined;
 }
 
 /** Rows grouped by column, in column order. */

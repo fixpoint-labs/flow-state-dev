@@ -6,15 +6,18 @@
  * (named empty states), and Brief (the row as stored).
  *
  * What the screen reads is held by {@link TaskProvider}; this file only draws
- * it. The only write the screen makes is the abort behind Interrupt.
+ * it. The screen writes twice: the abort behind Interrupt, and the composer's
+ * message, which goes through the one send path (`lib/send.ts`).
  */
 import { useEffect, useState } from "react";
 import { EmptyState, SectionFailure, Tabs } from "../components/ui";
-import { columnFor, readStatus } from "../lib/columns";
-import { rosterOf, seatFor, waited } from "../lib/derive";
+import { columnFor, isDone, readStatus } from "../lib/columns";
+import { doorOf, rosterOf, seatFor, waited } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
+import { sendTurn } from "../lib/send";
 import { channelOf, useTask } from "../lib/task";
+import { TurnComposer } from "../components/TurnComposer";
 import type { Gaps } from "../gaps";
 import { TaskSession } from "./TaskSession";
 
@@ -38,7 +41,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
 
   // The same resolver the inspector and Tasks use, so a name two teams share
   // resolves to the seat in this row's channel, or to no seat at all.
-  const seat = row === undefined || snapshot === undefined || snapshot.refused !== undefined ? undefined : seatFor(rosterOf(snapshot), row);
+  const seat = row === undefined || snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined ? undefined : seatFor(rosterOf(snapshot), row);
   const worker = row?.assignee == null ? null : (seat?.id ?? row.assignee);
 
   return (
@@ -82,7 +85,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
           <Brief gaps={gaps} />
         )}
       </div>
-      <Composer gaps={gaps} />
+      <Composer gaps={gaps} worker={worker ?? "This worker"} />
     </div>
   );
 }
@@ -193,30 +196,50 @@ function Brief({ gaps }: { gaps: Gaps }) {
   );
 }
 
-/** The composer: disabled until something sends a message into a running coding run (BR-16). */
-function Composer({ gaps }: { gaps: Gaps }) {
+/**
+ * The composer (BR-18): sends into the session the task's run link names,
+ * through the door of the flow that session records as its owner, never the
+ * board's. Says why when it can't.
+ */
+function Composer({ gaps, worker }: { gaps: Gaps; worker: string }) {
+  const task = useTask();
+  const { clients, snapshot } = useLab();
+  const { row } = task;
+  const seats =
+    snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined
+      ? []
+      : rosterOf(snapshot).seats;
+  const flowId = task.run.kind === "open" ? task.run.run.flowId : undefined;
+  const door = flowId === undefined ? null : doorOf(seats, flowId);
+  const blocked =
+    row === undefined
+      ? "This task isn't on its board yet."
+      : row.run === null
+        ? gaps.turn.notStarted
+        : isDone(row.status)
+          ? gaps.turn.finished
+          : task.run.kind === "failed"
+            ? task.run.failure.message
+            : flowId === undefined
+              ? "Reading the run…"
+              : door === null
+                ? `${worker} ${gaps.turn.noDoor}`
+                : null;
   return (
-    <div className="border-t p-3" data-testid="task-composer">
-      <textarea
-        disabled
-        rows={2}
-        placeholder="Message this worker…"
-        aria-label="Message this worker"
-        className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm opacity-60"
-        data-testid="task-composer-input"
-      />
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground" data-testid="task-composer-gap" data-gap={gaps.task.composer}>
-          {gaps.task.composer}
-        </p>
+    <TurnComposer
+      testId="task-composer"
+      label="Message this worker"
+      placeholder="Message this worker…"
+      blocked={blocked}
+      send={async (message) => {
+        await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message);
+      }}
+      extra={
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={gaps.task.alsoPost}>
           <input type="checkbox" disabled data-testid="task-also-post" data-gap={gaps.task.alsoPost} />
           Also post to the workstream
         </label>
-        <button type="button" disabled className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground opacity-50">
-          Send
-        </button>
-      </div>
-    </div>
+      }
+    />
   );
 }

@@ -26,6 +26,7 @@ import type {
   ResourceStateStore,
   ContentScopeType
 } from "../types";
+import { toStoredState } from "../resource-state-predicate";
 
 /** Structural shape of the last-write-wins keyed store (`ContentStore`). */
 type KeyedResourceStore<V> = {
@@ -326,6 +327,81 @@ export function createResourceStateStoreConformanceTests(
         expect((await store.get("user", "s1", "k"))?.state).toEqual(makeState(3));
       });
     });
+
+    // --- the stored form: one write, one value, whatever the adapter --------
+    //
+    // A `stateSchema` can accept values JSON cannot represent — a `z.date()`
+    // field, a `Set`, a transform that yields `Infinity`. Three of the four
+    // adapters serialize to JSON, so for them the stored value IS the JSON
+    // round-trip of what was written. The contract is that every adapter
+    // commits that same value: a deployment that tests on memory and runs on
+    // SQLite or Postgres reads back what it would have read in test, and a
+    // value JSON cannot serialize at all is refused on every adapter rather
+    // than kept by one and refused by the rest. One shape, asserted per member
+    // so a failure names the value kind, rather than a per-kind rule.
+
+    const flattenedStates: Array<[string, () => Record<string, unknown>]> = [
+      ["a Date", () => ({ v: new Date("2026-01-02T03:04:05.000Z") })],
+      ["a Map", () => ({ v: new Map([["a", 1]]) })],
+      ["a Set", () => ({ v: new Set([1, 2]) })],
+      ["a RegExp", () => ({ v: /a+/g })],
+      ["Infinity", () => ({ v: Infinity })],
+      ["-Infinity", () => ({ v: -Infinity })],
+      ["NaN", () => ({ v: NaN })],
+      ["-0", () => ({ v: -0 })],
+      ["an undefined field", () => ({ v: 1, gone: undefined })],
+      ["undefined in an array", () => ({ v: [1, undefined] })],
+      ["a sparse array hole", () => ({ v: [1, , 3] })],
+      ["a non-index property on an array", () => ({ v: Object.assign([1], { extra: true }) })],
+      ["a function field", () => ({ v: 1, fn: () => 1 })],
+      ["a function in an array", () => ({ v: [() => 1] })],
+      ["a symbol field", () => ({ v: 1, sym: Symbol("s") })]
+    ];
+
+    it.each(flattenedStates)(
+      "a state holding %s is stored as its JSON round-trip",
+      async (_kind, makeValue) => {
+        await withStore(async (store) => {
+          const written = makeValue();
+          const expected = toStoredState(written as JsonObject);
+          expect(await store.set("session", "s1", "k", written as JsonObject, 0)).toEqual({
+            ok: true,
+            version: 1
+          });
+          expect((await store.get("session", "s1", "k"))?.state).toStrictEqual(expected);
+          expect((await store.getAll("session", "s1")).k?.state).toStrictEqual(expected);
+        });
+      }
+    );
+
+    const unserializableStates: Array<[string, () => Record<string, unknown>]> = [
+      ["a bigint", () => ({ v: 1n })],
+      [
+        "a cycle",
+        () => {
+          const state: Record<string, unknown> = { v: 1 };
+          state.self = state;
+          return state;
+        }
+      ]
+    ];
+
+    it.each(unserializableStates)(
+      "a state holding %s is refused with a TypeError, and nothing is stored",
+      async (_kind, makeValue) => {
+        await withStore(async (store) => {
+          await expect(
+            store.set("session", "s1", "k", makeValue() as JsonObject, 0)
+          ).rejects.toThrow(TypeError);
+          expect(await store.get("session", "s1", "k")).toBeUndefined();
+          // No version was spent on the refused write.
+          expect(await store.set("session", "s1", "k", makeState(1), 0)).toEqual({
+            ok: true,
+            version: 1
+          });
+        });
+      }
+    );
 
     // --- snapshot isolation: a read is a copy, not a handle ----------------
     //
@@ -721,8 +797,7 @@ export function createResourceStateStoreConformanceTests(
         // at all", where `0` is "no live row"). `delete` refuses it: `0`
         // already means "no live row, so the terminal state already holds",
         // and "delete only if absent" asks nothing on top of that. Pinning
-        // both halves here keeps the three restated copies of this guard —
-        // one shared, one per SQL adapter — from drifting apart.
+        // both halves here holds every adapter to the same split.
         await expect(store.delete("session", "s1", "k", "absent")).rejects.toThrow(
           /expectedVersion/
         );
@@ -762,6 +837,65 @@ export function createResourceStateStoreConformanceTests(
             /expectedVersion/
           );
         }
+      });
+    });
+
+    it("a refused expectedVersion throws a TypeError with the same message on every adapter and every path", async () => {
+      await withStore(async (store) => {
+        await seed(store, "k", makeState(1));
+
+        // The case above pins *that* a non-version is refused. This one pins
+        // *how*: the error class and its exact text. A caller may match on
+        // either, so both are part of the contract, and every adapter has to
+        // produce them identically — including on the delete paths that answer
+        // without consulting the version (a key that never existed, a key
+        // already tombstoned), where a guard moved behind the early return
+        // would stop running without any other case noticing.
+        const numericMessage = (received: string): string =>
+          `expectedVersion must be a non-negative integer or "any", received ${received}`;
+        const deleteAbsentMessage =
+          'expectedVersion "absent" is not supported by ResourceStateStore.delete; use 0, which means "no live row" here';
+
+        const notVersions: Array<[ExpectedVersion, string]> = [
+          [-1, "-1"],
+          [-5, "-5"],
+          [1.5, "1.5"],
+          [Number.NaN, "NaN"],
+          [Number.POSITIVE_INFINITY, "Infinity"],
+          [Number.NEGATIVE_INFINITY, "-Infinity"]
+        ];
+
+        const refusal = async (write: Promise<unknown>): Promise<unknown> =>
+          write.then(
+            () => undefined,
+            (error: unknown) => error
+          );
+        const expectRefused = async (write: Promise<unknown>, message: string): Promise<void> => {
+          const error = await refusal(write);
+          expect(error).toBeInstanceOf(TypeError);
+          expect((error as TypeError).message).toBe(message);
+        };
+
+        // A live row, then the two early-answer delete paths.
+        for (const [invalid, received] of notVersions) {
+          await expectRefused(
+            store.set("session", "s1", "k", makeState(2), invalid),
+            numericMessage(received)
+          );
+          await expectRefused(store.delete("session", "s1", "k", invalid), numericMessage(received));
+          await expectRefused(
+            store.delete("session", "s1", "never", invalid),
+            numericMessage(received)
+          );
+        }
+        await expectRefused(store.delete("session", "s1", "k", "absent"), deleteAbsentMessage);
+        await expectRefused(store.delete("session", "s1", "never", "absent"), deleteAbsentMessage);
+
+        await store.delete("session", "s1", "k", 1);
+        for (const [invalid, received] of notVersions) {
+          await expectRefused(store.delete("session", "s1", "k", invalid), numericMessage(received));
+        }
+        await expectRefused(store.delete("session", "s1", "k", "absent"), deleteAbsentMessage);
       });
     });
 

@@ -22,8 +22,10 @@
  * single-threaded execution gives the compare-and-set its atomicity here —
  * there is no await between the read and the write.
  *
- * Every crossing of the store boundary is deep-copied via `cloneValue`, in both
- * directions. This adapter is the only one that keeps the caller's object graph
+ * Every crossing of the store boundary is deep-copied, in both directions: a
+ * write through `toStoredState` (the JSON round-trip, so this adapter commits
+ * the same value the serializing adapters do — FIX-1266), a read via
+ * `cloneValue`. This adapter is the only one that keeps the caller's object graph
  * alive between calls — the other three serialize (filesystem writes JSON, both
  * SQL adapters stringify on write and parse per read), so they get this for
  * free. Without the copies a caller could mutate a stored row through what
@@ -45,6 +47,7 @@ import {
   assertDeleteExpectedVersion,
   assertSetExpectedVersion,
   checkWriteVersion,
+  toStoredState,
   type ResourceStateRow
 } from "../resource-state-predicate";
 
@@ -119,7 +122,7 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     // A recreate continues from the tombstone's version, so a version is
     // never reused for a key that has been deleted and written again.
     const nextVersion = (row?.version ?? 0) + 1;
-    bucket.set(resourceKey, { state: cloneValue(state), version: nextVersion, lifecycle: "live" });
+    bucket.set(resourceKey, { state: toStoredState(state), version: nextVersion, lifecycle: "live" });
     return { ok: true, version: nextVersion };
   }
 

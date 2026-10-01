@@ -59,6 +59,13 @@ export const ASSIGNEE = "coder";
 export const WORK_ENTRY = "work";
 
 /**
+ * The coordinator's `internal` entry that runs its board's drain. The coder
+ * seat's message door dispatches it into the EM session that claimed a run's
+ * row, so the run's next attempt is handed off into the session it ran in.
+ */
+export const RESUME_ENTRY = "resume";
+
+/**
  * The ledger both declarations read and write, with the id it is registered
  * under.
  *

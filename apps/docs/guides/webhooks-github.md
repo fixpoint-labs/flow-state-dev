@@ -40,6 +40,7 @@ interface PullRequestEvent {
 
 export const repoFlow = defineFlow({
   kind: "repo",
+  actions: {}, // no caller-facing actions: webhooks are the only way in
   authentication: { defaultUserId: "github-bot", requireUser: false },
   webhooks: {
     github: {
@@ -82,7 +83,7 @@ import {
 import { repoFlow } from "@/flows/repo";
 
 export const flowstate = createFlowState({
-  flows: { repoFlow },
+  flows: { repo: repoFlow() },
   stores: { default: { primary: inMemoryStores() } },
   adapters: [
     createWebhookTransportAdapter({

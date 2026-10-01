@@ -265,7 +265,7 @@ export async function openLab(
   const seats = tree.roster.workers.map((worker) => {
     const seat = flows[worker.id];
     if (seat === undefined) throw new Error(`seat "${worker.id}" was not hired`);
-    return { id: seat.id, kind: seat.kind };
+    return seat;
   });
   const binding = await openInventory(
     { seats, channels: [tree.channel] },

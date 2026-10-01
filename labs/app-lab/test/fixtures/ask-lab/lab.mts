@@ -80,8 +80,26 @@ function bearerOnly(secret: string): PrincipalResolver {
 
 /** How to open the ask-lab. */
 export type AskLabOptions = {
+  /**
+   * Open the channels at boot. Default true. `false` opens nothing, so the
+   * person holds no session: a Lab with nothing to say which organization
+   * they are in. The inventory, which needs the channels, stays shut too.
+   */
+  channels?: boolean;
   /** Open the inventory at boot. Default true. */
   inventory?: boolean;
+  /**
+   * Register each seat with its actions, so its inventory row names its door.
+   * Default true. `false` registers id and kind only: every seat reads as a
+   * kind with no door.
+   */
+  doors?: boolean;
+  /**
+   * Build the channel kind with the inventory's collections. Default true.
+   * `false` is a Lab whose flows never declare an inventory, so no session it
+   * serves lists one. The inventory is not opened either.
+   */
+  inventoryDeclared?: boolean;
   /**
    * Require this bearer secret on every HTTP read, and bind the person to
    * {@link ASK_LAB_ORG_ID}. Absent: the development organization, no credential.
@@ -97,7 +115,8 @@ export async function openAskLab(options: AskLabOptions = {}) {
     kinds: { [ASKER_KIND]: defineAskerFlow(resourcesFromDocs(tree.documents)) as never },
     channelBoards: channelBoardIds(tree.channels),
   });
-  const channelKind = defineChannelFlow({ notify: wakeMemberSeats(seats), inventory: true });
+  const declared = options.inventoryDeclared !== false;
+  const channelKind = defineChannelFlow({ notify: wakeMemberSeats(seats), inventory: declared });
   const flows: Record<string, FlowInstance> = {
     ...Object.fromEntries(
       channelInstances(tree.channels, { kinds: { [CHANNEL_KIND]: channelKind as never } }).map((i) => [i.kind, i]),
@@ -143,9 +162,10 @@ export async function openAskLab(options: AskLabOptions = {}) {
       await call("DELETE", ["sessions", sessionId]);
     },
   };
+  if (options.channels === false) return { flowState, tree, flows };
   await openChannels(tree.channels, { client, userId: ASK_LAB_USER_ID });
 
-  if (options.inventory !== false) {
+  if (declared && options.inventory !== false) {
     const runtime = await flowState.getRuntime();
     const run = async (request: InventoryActionRequest): Promise<unknown> => {
       const flow = flows[request.flowKind];
@@ -165,7 +185,10 @@ export async function openAskLab(options: AskLabOptions = {}) {
       return result;
     };
     const binding = await openInventory(
-      { seats: seats.map((seat) => ({ id: seat.id, kind: seat.kind })), channels: tree.channels },
+      {
+        seats: options.doors === false ? seats.map((seat) => ({ id: seat.id, kind: seat.kind, actions: {} })) : seats,
+        channels: tree.channels,
+      },
       { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: ASK_LAB_USER_ID, orgId },
     );
     if (binding.problems.length > 0) throw new Error(binding.problems.join("; "));

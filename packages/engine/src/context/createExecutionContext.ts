@@ -16,6 +16,7 @@ import type {
   SessionItemViews,
   SessionMetadataInput,
   SessionScopeHandle,
+  StopRequestOutcome,
   UserScopeHandle,
   TokenCounter
 } from "@flow-state-dev/core/types";
@@ -92,7 +93,13 @@ import {
   tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
-import { resolveOwnershipFlag } from "../resources/lineage-scope";
+import { mergeOwnKeyRecords, ownKeyRecord } from "../resources/own-key-record";
+import {
+  isSharedToLineage,
+  resolveOwnershipFlag,
+  sessionRoutingIndex,
+  type OwnershipBuckets
+} from "../resources/lineage-scope";
 import type { StorageScopeType } from "../stores/types";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 import { createInitialRequestRecord } from "./initial-request-record";
@@ -109,7 +116,8 @@ import {
   type RequestPrincipal
 } from "./request-principal";
 import { refuseInstancePin } from "./instance-pin";
-import { sessionRequestScope } from "./session-request-scope";
+import { requestInSessionScope, sessionRequestScope } from "./session-request-scope";
+import { recordRequestStop } from "../execution/record-request-stop";
 import { ownerKeyMaySeed } from "../resources/owner-private";
 import {
   outputItemToSessionItem,
@@ -1091,27 +1099,36 @@ export async function createExecutionContext<
   // user/org route on `flowIsolation` (bare identity vs `${id}:${flow.id}`,
   // FIX-735); session routes on `sharedToLineage` (this session vs the
   // lineage root, FIX-1068).
-  type ScopeBuckets = {
-    singles: Map<string, boolean>;
-    prefixes: Array<{ prefix: string; flag: boolean }>;
-  };
-  const buildScopeBuckets = (
+  //
+  // FIX-735: collection storage is keyed by pattern prefix (load waves,
+  // `getByPrefix`, single-flight tokens, and the loaded-prefix cache all key
+  // on it). Two collections that share a prefix therefore share one storage
+  // slot and MUST share a bucket — otherwise one would silently shadow the
+  // other's loads/writes. Patterns whose first segment is a
+  // parameter/wildcard collapse to the empty prefix (whole-scope scan), so
+  // this most often bites two parameterized collections at one scope. Reject
+  // the conflict loudly at setup rather than mis-route data.
+  const conflictingPrefixError = (
     scope: ContentScopeType,
+    keyPrefix: string,
+    flagName: string
+  ): Error =>
+    new Error(
+      `Flow "${flow.kind}": ${scope}-scoped collections sharing storage prefix ` +
+        `"${keyPrefix || "(whole scope)"}" declare conflicting ${flagName}. ` +
+        `Collections that share a storage prefix must share a storage bucket — ` +
+        `give them distinct static prefixes or matching ${flagName} (FIX-735).`
+    );
+  // User and org buckets route on `flowIsolation` and are built here.
+  const buildScopeBuckets = (
+    scope: "user" | "org",
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>,
     flagOf: (config: ResourceConfig | ResourceCollectionConfig) => boolean,
     flagName: string
-  ): ScopeBuckets => {
+  ): OwnershipBuckets => {
     const keys = scopeStorageKeyMaps[scope];
     const singles = new Map<string, boolean>();
     const prefixes: Array<{ prefix: string; flag: boolean }> = [];
-    // FIX-735: collection storage is keyed by pattern prefix (load waves,
-    // `getByPrefix`, single-flight tokens, and the loaded-prefix cache all key
-    // on it). Two collections that share a prefix therefore share one storage
-    // slot and MUST share a bucket — otherwise one would silently shadow the
-    // other's loads/writes. Patterns whose first segment is a
-    // parameter/wildcard collapse to the empty prefix (whole-scope scan), so
-    // this most often bites two parameterized collections at one scope. Reject
-    // the conflict loudly at setup rather than mis-route data.
     const prefixFlag = new Map<string, boolean>();
     for (const [accessor, config] of Object.entries(configs)) {
       const flag = flagOf(config);
@@ -1120,12 +1137,7 @@ export async function createExecutionContext<
         const keyPrefix = rawPrefix === "" ? "" : `${rawPrefix}/`;
         const existing = prefixFlag.get(keyPrefix);
         if (existing !== undefined && existing !== flag) {
-          throw new Error(
-            `Flow "${flow.kind}": ${scope}-scoped collections sharing storage prefix ` +
-              `"${keyPrefix || "(whole scope)"}" declare conflicting ${flagName}. ` +
-              `Collections that share a storage prefix must share a storage bucket — ` +
-              `give them distinct static prefixes or matching ${flagName} (FIX-735).`
-          );
+          throw conflictingPrefixError(scope, keyPrefix, flagName);
         }
         prefixFlag.set(keyPrefix, flag);
         prefixes.push({ prefix: keyPrefix, flag });
@@ -1139,16 +1151,17 @@ export async function createExecutionContext<
     (scope: "user" | "org") =>
     (config: ResourceConfig | ResourceCollectionConfig): boolean =>
       resolveResourceIsolation((config as { flowIsolation?: boolean }).flowIsolation, flow, scope);
-  const sharedToLineageFlagOf = (
-    config: ResourceConfig | ResourceCollectionConfig
-  ): boolean => (config as { sharedToLineage?: boolean }).sharedToLineage === true;
-  const scopeBuckets: Record<ContentScopeType, ScopeBuckets> = {
-    session: buildScopeBuckets(
-      "session",
-      sessionResourceConfigs,
-      sharedToLineageFlagOf,
-      "sharedToLineage"
-    ),
+  // Session buckets come from the session routing index, the one walk of the
+  // session declarations the HTTP routes read too, so a change to that rule
+  // reaches both paths. Execution alone refuses a conflicting prefix; the HTTP
+  // helpers keep answering such a flow.
+  const sessionIndex = sessionRoutingIndex(flatFlowResources);
+  const [sessionConflict] = sessionIndex.conflicts;
+  if (sessionConflict !== undefined) {
+    throw conflictingPrefixError("session", sessionConflict, "sharedToLineage");
+  }
+  const scopeBuckets: Record<ContentScopeType, OwnershipBuckets> = {
+    session: sessionIndex.buckets,
     user: buildScopeBuckets("user", userResourceConfigs, isolationFlagOf("user"), "flowIsolation"),
     org: buildScopeBuckets("org", orgResourceConfigs, isolationFlagOf("org"), "flowIsolation")
   };
@@ -1166,7 +1179,7 @@ export async function createExecutionContext<
     // the lineage root, so a parent and its child sessions resolve one resource.
     // Everything else stays on the running session, unchanged.
     if (scope === "session") {
-      return sharedToLineageFlagOf(config) ? lineageId : sessionKey;
+      return isSharedToLineage(config) ? lineageId : sessionKey;
     }
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
@@ -1239,7 +1252,7 @@ export async function createExecutionContext<
     for (const [accessor, config] of Object.entries(configs)) {
       const scopeId = resolveConfigScopeId(scope, config);
       if (scopeId === undefined) continue;
-      const group = groups.get(scopeId) ?? {};
+      const group = groups.get(scopeId) ?? ownKeyRecord<ResourceConfig | ResourceCollectionConfig>();
       group[accessor] = config;
       groups.set(scopeId, group);
     }
@@ -1261,7 +1274,7 @@ export async function createExecutionContext<
     scopeId: string,
     rows: Record<string, T>
   ): Record<string, T> => {
-    const owned: Record<string, T> = {};
+    const owned = ownKeyRecord<T>();
     for (const [key, value] of Object.entries(rows)) {
       if (!ownerKeyMaySeed(key, userId)) continue;
       if (resolveResourceStorageScopeId(scope, key) === scopeId) owned[key] = value;
@@ -1294,10 +1307,7 @@ export async function createExecutionContext<
     if (scope !== "session" || scopeId !== lineageId) return loaded;
     if (scopeId === sessionKey) return loaded; // nothing moved
     const prior = retainOwnedKeys(scope, sessionKey, await read(sessionKey, sub));
-    const merged: Record<string, T> = {};
-    for (const [key, value] of Object.entries(prior)) merged[key] = value;
-    for (const [key, value] of Object.entries(loaded)) merged[key] = value;
-    return merged;
+    return mergeOwnKeyRecords(prior, loaded);
   };
 
   const loadScopeStateByBuckets = async (
@@ -1318,7 +1328,7 @@ export async function createExecutionContext<
         )
       )
     );
-    return Object.assign({}, ...results) as Record<string, VersionedResourceState>;
+    return mergeOwnKeyRecords(...results);
   };
 
   const loadScopeContentByBuckets = async (
@@ -1339,7 +1349,7 @@ export async function createExecutionContext<
         )
       )
     );
-    return Object.assign({}, ...results) as Record<string, string>;
+    return mergeOwnKeyRecords(...results);
   };
 
   const wave1Start = Date.now();
@@ -1549,7 +1559,7 @@ export async function createExecutionContext<
   };
   const withoutDeleted = <T>(snapshot: Record<string, T>, deleted: Set<string>): Record<string, T> => {
     if (deleted.size === 0) return snapshot;
-    const kept: Record<string, T> = {};
+    const kept = ownKeyRecord<T>();
     for (const [key, value] of Object.entries(snapshot)) {
       if (!deleted.has(key)) kept[key] = value;
     }
@@ -1652,7 +1662,7 @@ export async function createExecutionContext<
           fetched = true;
           const state = toBareState(row);
           if (state !== undefined) {
-            stateRef.current = { [storageKey]: state, ...stateRef.current };
+            stateRef.current = mergeOwnKeyRecords({ [storageKey]: state }, stateRef.current);
             // Record the version this read observed — without it a write to a
             // lazily-loaded key would have no basis to be conditional on.
             versionRef.current[storageKey] = row!.version;
@@ -1661,7 +1671,7 @@ export async function createExecutionContext<
             missingResourceKeys[scope].add(storageKey);
           }
           if (typeof content === "string") {
-            contentRef.current = { [storageKey]: content, ...contentRef.current };
+            contentRef.current = mergeOwnKeyRecords({ [storageKey]: content }, contentRef.current);
           }
         });
         return { fetched, durationMs };
@@ -1689,7 +1699,7 @@ export async function createExecutionContext<
           durationMs = Date.now() - started;
           fetched = true;
           const state = toBareStates(rows);
-          stateRef.current = { ...withoutDeleted(state, deletedStateKeys[scope]), ...stateRef.current };
+          stateRef.current = mergeOwnKeyRecords(withoutDeleted(state, deletedStateKeys[scope]), stateRef.current);
           // Versions for the keys this prefix read just brought in. Keys the
           // cache already held keep the version they were first read at, so a
           // later bulk load never silently re-bases an in-flight write.
@@ -1697,10 +1707,10 @@ export async function createExecutionContext<
             if (deletedStateKeys[scope].has(key)) continue;
             versionRef.current[key] ??= version;
           }
-          contentRef.current = {
-            ...withoutDeleted(content, deletedContentKeys[scope]),
-            ...contentRef.current
-          };
+          contentRef.current = mergeOwnKeyRecords(
+            withoutDeleted(content, deletedContentKeys[scope]),
+            contentRef.current
+          );
           loadedCollectionPrefixes[scope].add(coverageToken(scopeId, keyPrefix));
         });
         return { fetched, durationMs };
@@ -1776,14 +1786,14 @@ export async function createExecutionContext<
           if (deletedStateKeys[scope].has(key)) continue;
           versionRef.current[key] ??= version;
         }
-        stateRef.current = {
-          ...normalizeScopeResources(subConfig, toBareStates(stateSeed)),
-          ...stateRef.current
-        };
-        contentRef.current = {
-          ...normalizeScopeResourceContent(subConfig, contentSeed),
-          ...contentRef.current
-        };
+        stateRef.current = mergeOwnKeyRecords(
+          normalizeScopeResources(subConfig, toBareStates(stateSeed)),
+          stateRef.current
+        );
+        contentRef.current = mergeOwnKeyRecords(
+          normalizeScopeResourceContent(subConfig, contentSeed),
+          contentRef.current
+        );
       };
 
       if (isCollectionConfig(config)) {
@@ -2655,6 +2665,28 @@ export async function createExecutionContext<
           ...(input.metadata !== undefined ? { metadata: input.metadata } : {})
         });
       },
+      stopRequest: async (targetId: string): Promise<StopRequestOutcome> => {
+        const target = await stores.request.get(targetId);
+        // Only a request this session's own reads would show; anything else
+        // gets the answer an unknown id gets, so the reply says nothing about
+        // another session's requests.
+        if (
+          target === undefined ||
+          !requestInSessionScope(
+            target,
+            sessionRequestScope(sessionId, sessionRef.current, options.tenantId)
+          )
+        ) {
+          return "not-in-this-session";
+        }
+        // The abort route's own write (`recordRequestStop`), not a copy of it.
+        const stop = await recordRequestStop(stores.request, target);
+        // Gone between the read and the write: answered like an unknown id,
+        // as the abort route answers it 404.
+        if (stop.kind === "gone") return "not-in-this-session";
+        if (stop.kind === "finished") return "already-finished";
+        return "stopped";
+      },
       ...sessionOpsEmitting
     },
     () => sessionContainer.read()
@@ -2780,7 +2812,7 @@ export async function createExecutionContext<
           await response.emit({ type: "item.done", item });
         },
         async emitItemUpdated(itemId: string, patch: Record<string, unknown>) {
-          await response.emit({ type: "item.updated", id: itemId, patch });
+          await response.emit({ type: "item.updated", itemId, patch });
         }
       };
 

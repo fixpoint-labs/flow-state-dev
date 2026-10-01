@@ -22,8 +22,9 @@ that a worker or channel called `con` gets.**
 
 - **Smaller, and rejected:** record skills as exempt. The Architect's fence rules this out, and
   the tree would keep two different rules.
-- **Bigger, and not this issue's:** a single shared reserved-name list. That belongs to FIX-1428.
-  This issue adds a local copy of the list, and FIX-1428 absorbs it.
+- **Bigger, and not this issue's:** a single shared reserved-name list. That belongs to FIX-1428,
+  which has since landed it (#2499). This issue calls that shared list and keeps no copy of its
+  own ([E1, amended 2026-09-30](DECISIONS.md#e1)).
 
 **Evidence:** a new `validateSkillName` test throws for all 22 device names and accepts `com0`,
 `lpt0` and `console`. It fails on `main` and passes on the fix. The commands are in
@@ -33,12 +34,15 @@ that a worker or channel called `con` gets.**
 
 ```diff
  // packages/orchestration/src/skills/skill-md.ts  (shape only)
- const RESERVED_NAMES = new Set(["_meta", ""]);
-+const DOS_DEVICE_NAMES = new Set([con, prn, aux, nul, com1–com9, lpt1–lpt9]);
++import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
  …
    if (RESERVED_NAMES.has(name)) throw …
-+  if (DOS_DEVICE_NAMES.has(name)) throw `… is a reserved device name on Windows …`
+   if (!NAME_PATTERN.test(name)) throw …   // lowercase-hyphen check, unchanged
++  if (isWindowsReservedName(name)) throw `… is a reserved device name on Windows`
 ```
+
+The device check runs after the name pattern. The shared helper folds case, so this order is what
+keeps `CON` getting the existing "must be lowercase" message.
 
 Every entry point already calls `validateSkillName`: the skills folder read, seeding, refresh,
 the library index, the frontmatter `name`, `toSkill`, and the load and run tools. So one check
@@ -50,9 +54,10 @@ rule ([DOCS.md](DOCS.md)).
 
 ## What stays as it is
 
-The lowercase-hyphen pattern, the 64-character limit, `_meta`, and the copies of the list in
-workforce and engine. Nothing is imported across packages, because `orchestration` can't depend
-on `workforce`.
+The lowercase-hyphen pattern, the 64-character limit, and `_meta`. The device list itself lives
+once, in `@flow-state-dev/contracts/helpers`, and `orchestration` reads it through
+`@flow-state-dev/core/helpers`, which it already depends on. Nothing new is imported from
+`workforce` or `engine`, because `orchestration` can't depend on `workforce`.
 
 ## Sign off
 

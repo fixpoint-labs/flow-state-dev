@@ -1,6 +1,9 @@
 ---
 description: How this organisation works — read by every seat that coordinates.
 llmReadable: true
+client:
+  content:
+    read: true
 ---
 
 # Engineering handbook

@@ -62,6 +62,36 @@ export interface HarnessStubOptions {
   outcome?: HarnessRunOutcome | null;
   /** Anything the run wants to say. Recorded on the row, and becomes retry feedback. */
   finalMessage?: string | null;
+  /**
+   * Lines the run says as it works, each emitted as a message in the run's own
+   * session before `duringRun`. Absent means a run that says nothing, which is
+   * what the gate's checks grade. A Lab someone watches passes them, so the
+   * task's Session has steps to show.
+   */
+  steps?: readonly string[];
+  /**
+   * How long the run pauses before each of its `steps`, so a person watching
+   * the run's session sees them arrive. Abortable: an interrupt ends the wait.
+   * Default 0.
+   */
+  stepEveryMs?: number;
+}
+
+/** Wait `ms`, or reject as soon as `signal` aborts. */
+function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason ?? new Error("aborted"));
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new Error("aborted"));
+    };
+    // Removed when the timer wins, so a paced run leaves no listener per step.
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /** The slot, plus the log the gate grades. */
@@ -110,6 +140,10 @@ export function harnessStub(options: HarnessStubOptions = {}): HarnessStub {
           sessions += 1;
           await onSession(`sess_stub_${sessions}`, context);
 
+          for (const step of options.steps ?? []) {
+            if ((options.stepEveryMs ?? 0) > 0) await pause(options.stepEveryMs!, ctx.signal);
+            ctx.emit.message(step);
+          }
           await options.duringRun?.(run);
 
           return {
