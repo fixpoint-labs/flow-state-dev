@@ -92,6 +92,7 @@ import {
   tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
+import { mergeOwnKeyRecords, ownKeyRecord } from "../resources/own-key-record";
 import {
   isSharedToLineage,
   resolveOwnershipFlag,
@@ -1249,7 +1250,7 @@ export async function createExecutionContext<
     for (const [accessor, config] of Object.entries(configs)) {
       const scopeId = resolveConfigScopeId(scope, config);
       if (scopeId === undefined) continue;
-      const group = groups.get(scopeId) ?? {};
+      const group = groups.get(scopeId) ?? ownKeyRecord<ResourceConfig | ResourceCollectionConfig>();
       group[accessor] = config;
       groups.set(scopeId, group);
     }
@@ -1271,7 +1272,7 @@ export async function createExecutionContext<
     scopeId: string,
     rows: Record<string, T>
   ): Record<string, T> => {
-    const owned: Record<string, T> = {};
+    const owned = ownKeyRecord<T>();
     for (const [key, value] of Object.entries(rows)) {
       if (!ownerKeyMaySeed(key, userId)) continue;
       if (resolveResourceStorageScopeId(scope, key) === scopeId) owned[key] = value;
@@ -1304,10 +1305,7 @@ export async function createExecutionContext<
     if (scope !== "session" || scopeId !== lineageId) return loaded;
     if (scopeId === sessionKey) return loaded; // nothing moved
     const prior = retainOwnedKeys(scope, sessionKey, await read(sessionKey, sub));
-    const merged: Record<string, T> = {};
-    for (const [key, value] of Object.entries(prior)) merged[key] = value;
-    for (const [key, value] of Object.entries(loaded)) merged[key] = value;
-    return merged;
+    return mergeOwnKeyRecords(prior, loaded);
   };
 
   const loadScopeStateByBuckets = async (
@@ -1328,7 +1326,7 @@ export async function createExecutionContext<
         )
       )
     );
-    return Object.assign({}, ...results) as Record<string, VersionedResourceState>;
+    return mergeOwnKeyRecords(...results);
   };
 
   const loadScopeContentByBuckets = async (
@@ -1349,7 +1347,7 @@ export async function createExecutionContext<
         )
       )
     );
-    return Object.assign({}, ...results) as Record<string, string>;
+    return mergeOwnKeyRecords(...results);
   };
 
   const wave1Start = Date.now();
@@ -1559,7 +1557,7 @@ export async function createExecutionContext<
   };
   const withoutDeleted = <T>(snapshot: Record<string, T>, deleted: Set<string>): Record<string, T> => {
     if (deleted.size === 0) return snapshot;
-    const kept: Record<string, T> = {};
+    const kept = ownKeyRecord<T>();
     for (const [key, value] of Object.entries(snapshot)) {
       if (!deleted.has(key)) kept[key] = value;
     }
@@ -1662,7 +1660,7 @@ export async function createExecutionContext<
           fetched = true;
           const state = toBareState(row);
           if (state !== undefined) {
-            stateRef.current = { [storageKey]: state, ...stateRef.current };
+            stateRef.current = mergeOwnKeyRecords({ [storageKey]: state }, stateRef.current);
             // Record the version this read observed — without it a write to a
             // lazily-loaded key would have no basis to be conditional on.
             versionRef.current[storageKey] = row!.version;
@@ -1671,7 +1669,7 @@ export async function createExecutionContext<
             missingResourceKeys[scope].add(storageKey);
           }
           if (typeof content === "string") {
-            contentRef.current = { [storageKey]: content, ...contentRef.current };
+            contentRef.current = mergeOwnKeyRecords({ [storageKey]: content }, contentRef.current);
           }
         });
         return { fetched, durationMs };
@@ -1699,7 +1697,7 @@ export async function createExecutionContext<
           durationMs = Date.now() - started;
           fetched = true;
           const state = toBareStates(rows);
-          stateRef.current = { ...withoutDeleted(state, deletedStateKeys[scope]), ...stateRef.current };
+          stateRef.current = mergeOwnKeyRecords(withoutDeleted(state, deletedStateKeys[scope]), stateRef.current);
           // Versions for the keys this prefix read just brought in. Keys the
           // cache already held keep the version they were first read at, so a
           // later bulk load never silently re-bases an in-flight write.
@@ -1707,10 +1705,10 @@ export async function createExecutionContext<
             if (deletedStateKeys[scope].has(key)) continue;
             versionRef.current[key] ??= version;
           }
-          contentRef.current = {
-            ...withoutDeleted(content, deletedContentKeys[scope]),
-            ...contentRef.current
-          };
+          contentRef.current = mergeOwnKeyRecords(
+            withoutDeleted(content, deletedContentKeys[scope]),
+            contentRef.current
+          );
           loadedCollectionPrefixes[scope].add(coverageToken(scopeId, keyPrefix));
         });
         return { fetched, durationMs };
@@ -1786,14 +1784,14 @@ export async function createExecutionContext<
           if (deletedStateKeys[scope].has(key)) continue;
           versionRef.current[key] ??= version;
         }
-        stateRef.current = {
-          ...normalizeScopeResources(subConfig, toBareStates(stateSeed)),
-          ...stateRef.current
-        };
-        contentRef.current = {
-          ...normalizeScopeResourceContent(subConfig, contentSeed),
-          ...contentRef.current
-        };
+        stateRef.current = mergeOwnKeyRecords(
+          normalizeScopeResources(subConfig, toBareStates(stateSeed)),
+          stateRef.current
+        );
+        contentRef.current = mergeOwnKeyRecords(
+          normalizeScopeResourceContent(subConfig, contentSeed),
+          contentRef.current
+        );
       };
 
       if (isCollectionConfig(config)) {
