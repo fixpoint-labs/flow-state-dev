@@ -170,7 +170,7 @@ const changed = await ctx.session.atomicState(() => ({ mode: "chat" }));
 // true. Stored mode is "chat".
 ```
 
-A write with no version doesn't confirm, whichever way the store would apply it. Its equality check runs against the state **this context last read**, before anything reaches the store. If your write happens to match that stale copy, it's skipped and the other context's value stays stored:
+A write with no version is skipped without checking the store, even on a store that falls back to a full-record write. Its equality check runs against the state **this context last read**, before anything reaches the store. If your write happens to match that stale copy, it's skipped and the other context's value stays stored:
 
 ```ts
 // this context last read mode: "chat". Another context has since stored "agent".
