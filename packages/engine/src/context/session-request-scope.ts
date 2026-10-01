@@ -6,7 +6,8 @@
  * run in the session hands its model (`createExecutionContext`). One definition, so a request a
  * session's reads leave out can never reach a model through the history load.
  */
-import type { SessionRecord } from "../stores/types";
+import { matchesOrgFilter, matchesTenantFilter } from "../stores/scope-keys";
+import type { RequestRecord, SessionRecord } from "../stores/types";
 
 /**
  * The request filter for what a session shows, in its snapshot and its
@@ -57,4 +58,26 @@ export function sessionRequestScope(
     flowKind: session.flowKind,
     ...(session.flowId != null ? { flowId: session.flowId } : {})
   };
+}
+
+/**
+ * Whether `record` is a request {@link sessionRequestScope} selects: the one
+ * filter, applied to a single record read by id. Every key is matched exactly,
+ * as the store filters match a present key.
+ *
+ * @param record The stored request.
+ * @param scope The session's scope, from {@link sessionRequestScope}.
+ */
+export function requestInSessionScope(
+  record: Pick<RequestRecord, "sessionId" | "tenantId" | "userId" | "orgId" | "flowKind" | "flowId">,
+  scope: ReturnType<typeof sessionRequestScope>
+): boolean {
+  return (
+    record.sessionId === scope.sessionId &&
+    matchesTenantFilter(scope, record.tenantId) &&
+    record.userId === scope.userId &&
+    matchesOrgFilter(scope, record.orgId) &&
+    record.flowKind === scope.flowKind &&
+    (scope.flowId === undefined || record.flowId === scope.flowId)
+  );
 }
