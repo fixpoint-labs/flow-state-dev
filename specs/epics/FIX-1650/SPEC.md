@@ -52,7 +52,7 @@ makes its PASS mean the person still holds the hard-to-undo direction.
 | How we verify | |
 |---|---|
 | **Goal check** | The closure issue's goal check ([FIX-1720](https://linear.app/fixpoint-labs/issue/FIX-1720)), in a browser over Shift Manager, on one `main` commit after every other child merges ([ER-9](BUSINESS-RULES.md#the-closure)) |
-| **Signal** | Leg a: the person asks CoS for two projects; PROJECTS lists both from the `projects` rows with their workstreams beneath them, each project's Stream, Board, Workstreams and Brief show the Lab's content (the row and the project's room, where the person's post and a seat's answer both appear), not a gap entry, and both are still there after a restart. Leg b: the person asks CoS for a second coder and, with no approval asked, TEAMS shows the seat, and still does after a restart; the person asks CoS to fire it, an approval appears in Inbox, Approve, and it is gone after the next. A process killed between the decision (CoS's hire, or Approve on the fire) and the change landing comes back with it either made or not yet made, the fire still asked, never half-made. Leg c: a stored seat whose kind the profile no longer registers is listed with the reason, retired on approval, and the next boot names no refused seat |
+| **Signal** | Leg a (CoS's create path is FIX-1718's): the person asks CoS for two projects; PROJECTS lists both from the `projects` rows with their workstreams beneath them, each project's Stream, Board, Workstreams and Brief show the Lab's content (the row and the project's room, where the person's post and a seat's answer both appear), not a gap entry, and both are still there after a restart. Leg b: the person asks CoS for a second coder and, with no approval asked, TEAMS shows the seat, and still does after a restart; the person asks CoS to fire it, an approval appears in Inbox, Approve, and it is gone after the next. A process killed between the decision (CoS's hire, or Approve on the fire) and the change landing comes back with it either made or not yet made, the fire still asked, never half-made. Leg c: a stored seat whose kind the profile no longer registers is listed with the reason, retired on approval, and the next boot names no refused seat |
 | **Input** | The DevTeam profile (`labs/shift-manager/teams/devteam`) with its tree carrying what FIX-1718 and FIX-1719 add, a real model, one org from the Lab's resolver. Leg c seeds its orphan by hiring a kind, then booting without it |
 | **Anti-game** | No asserting on a child's own tests. No project seeded by Lab code or a fixture: CoS creates them. No Lab code that names CoS beyond its document. No restart skipped |
 | **Control that must fail** | Deny instead of Approve on the fire: leg b's "seat gone" must FAIL, the seat still present. The same hire ask in a Lab that did not opt into CoS: "seat appears" must FAIL. Today's `main`: all three legs FAIL |
@@ -71,7 +71,7 @@ A dated snapshot. Live state is Linear and the implementation PRs.
 
 | Issue | What it delivers | Why the set needs it | Status |
 |---|---|---|---|
-| [FIX-1718](https://linear.app/fixpoint-labs/issue/FIX-1718) · projects | A project as an org resource row CoS creates, with a members-only room stored beside it that each person reaches through their own talk session, minted from a template and linked both ways ([Q1](DECISIONS.md#q1)); the project level and the PROJECTS tree filled; what a workstream is, written down | Half the goal: the shell's project level is empty | Spec review, [#2625](https://github.com/fixpoint-labs/flow-state-dev/pull/2625) · to be rewritten on this amendment; unblocked once it merges |
+| [FIX-1718](https://linear.app/fixpoint-labs/issue/FIX-1718) · projects | A project as an org resource row CoS creates, with a members-only room stored beside it that each person reaches through their own talk session, minted from a template and linked both ways ([Q1](DECISIONS.md#q1)); CoS's create path, its `createProject` tool on the CoS seat; the project level and the PROJECTS tree filled; what a workstream is, written down | Half the goal: the shell's project level is empty | Spec review, [#2625](https://github.com/fixpoint-labs/flow-state-dev/pull/2625) · to be rewritten on this amendment; unblocked once it merges; its CoS wiring waits for FIX-1719's seat |
 | [FIX-1621](https://linear.app/fixpoint-labs/issue/FIX-1621) · orphan repair | Finds stored seats whose kind is gone, names the reason, retires or re-hires each on approval | Without it, a cut kind leaves a broken seat nobody can clear, and CoS would invent its own detector | Backlog · spec route · adopted from Workforce L2 |
 | [FIX-1719](https://linear.app/fixpoint-labs/issue/FIX-1719) · Chief of Staff | One org admin seat a Lab opts into, booted from `org/workers/`; it hires on its own, fires on approval and calls FIX-1621's repair; other seats ask it by message | The other half: who works here, changed without a file edit | Backlog · spec route · Q2 answered 2026-10-01 · blocked by FIX-1621 |
 | [FIX-1720](https://linear.app/fixpoint-labs/issue/FIX-1720) · closure · **required** | The QA plan and its runs on one `main` commit | Proves the whole | Backlog · blocked by FIX-1718, FIX-1621, FIX-1719 |
@@ -90,13 +90,14 @@ flowchart LR
   A --> Z["FIX-1720 · closure · required"]
   R --> Z
   B --> Z
+  B -->|"the CoS seat, for its CoS wiring"| A
   S["FIX-1649 · Shift Manager"] -.->|"the frame and its gap entries"| A
 ```
 
 Dashed edges are inputs from outside the set. Q1 and Q2 are answered; FIX-1718's spec is
-rewritten on Q1 as this amendment records it and proceeds once the amendment merges. CoS
-creates projects in FIX-1718's collection, but neither waits for the other: whichever lands
-second wires them ([PLAN.md](PLAN.md#coordination-seams-to-watch)). FIX-1621 starts at the gate. Shift Manager is shipped, so FIX-1718 fills
+rewritten on Q1 as this amendment records it and proceeds once the amendment merges. FIX-1718
+owns CoS's whole create path; only its last PR, wiring the `createProject` tool onto the CoS
+seat, waits for FIX-1719's seat to exist ([PLAN.md](PLAN.md#coordination-seams-to-watch)). FIX-1621 starts at the gate. Shift Manager is shipped, so FIX-1718 fills
 its frame without waiting on it.
 
 ## What stays as it is

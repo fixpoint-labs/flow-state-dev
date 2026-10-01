@@ -8,7 +8,7 @@ those rewrites the sentence it touches before anything is published.
 
 ## UPDATE · `apps/docs/docs/workforce/overview.md` · a new section after "Hire a roster"
 
-FIX-1718 publishes the first two paragraphs; FIX-1719 adds the last two.
+FIX-1718 publishes the first two paragraphs and the clause on CoS creating projects; FIX-1719 adds the rest of the last two.
 
 > ## Projects, workstreams, and the seats that run them
 >
@@ -43,9 +43,9 @@ What [ER-18](BUSINESS-RULES.md#the-closure) holds the closure to.
 |---|---|---|
 | The shared section's project and workstream paragraphs | FIX-1718, after its behaviour is verified | This document |
 | The shared section's org-seat and channel paragraphs | FIX-1719, after its behaviour is verified | This document |
-| How to declare the projects collection and its talk template; a project's room, its members and how a member joins; how a workstream belongs to a project; what a workstream is | FIX-1718 · `apps/docs/docs/workforce/channels.md` | Its `DOCS.md` |
+| How to declare the projects collection and its talk template; asking CoS for a project; a project's room, its members and how a member joins; how a workstream belongs to a project; what a workstream is | FIX-1718 · `apps/docs/docs/workforce/channels.md` | Its `DOCS.md` |
 | Shift Manager's project level and PROJECTS tree; removing the matching "What isn't here yet" lines | FIX-1718 · `labs/shift-manager/README.md` | Its `DOCS.md` |
-| The CoS seat, how a Lab opts in, CoS creating projects, hiring without asking and the approval on every fire | FIX-1719 · a new page under `apps/docs/docs/workforce/`, name its spec's call | Its `DOCS.md` |
+| The CoS seat, how a Lab opts in, hiring without asking and the approval on every fire | FIX-1719 · a new page under `apps/docs/docs/workforce/`, name its spec's call | Its `DOCS.md` |
 | Finding and repairing a seat whose kind is gone | FIX-1621 · `apps/docs/docs/workforce/durable-hire.md` | Its `DOCS.md` |
 
 Publish each part with its implementation, never because this spec merged. Published prose says

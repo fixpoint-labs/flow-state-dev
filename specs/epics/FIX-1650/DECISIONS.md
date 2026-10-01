@@ -93,8 +93,9 @@ controls go red).
 **What it settles.** A project is a row in an org-scoped collection declared once at
 `workforce/org/resources/projects.ts` (ref `projects`). The row is the only home of the
 project's durable data: title, status, owner, links, its `members`, and the list of its talk
-sessions. CoS creates rows at runtime with `create()`, and anyone in the Lab's org can list
-them. `members` is written only by trusted code: CoS at create, and later a member's invite,
+sessions. CoS creates rows at runtime with `create()` through a `createProject` action that
+FIX-1718 builds and wires onto the CoS seat FIX-1719 boots, and anyone in the Lab's org can
+list them. `members` is written only by trusted code: CoS at create, and later a member's invite,
 which is an edit to the row, not a channel invite under ER-3.
 
 The project's conversation is **one room stored on the project**, in Layer 2. Each line is a row
@@ -107,7 +108,11 @@ Each person reaches the room through **their own talk session**, minted from one
 `CHANNEL.md` that declares `mintFor: projects`, which is a shape and is not opened at boot.
 Creating a row mints the creator's talk session in the same turn (a `reactTo.created` binding
 the binder installs, dispatching to the channel kind's internal `bind` entry). A member who
-has no talk session yet calls `join`, which mints theirs. The session reads the room
+has no talk session yet calls `join`, which mints theirs. A talk session is keyed by the
+project and the person, not by the caller's session, so a second window adopts the existing one
+([ER-27](BUSINESS-RULES.md#what-no-child-may-do)). The row records whether it is bound, and if
+the create-time reaction fails after the row commits, an idempotent re-bind on read, on join or
+on CoS's retry completes it ([ER-28](BUSINESS-RULES.md#what-no-child-may-do)). The session reads the room
 (`read { after }` a cursor of its own) and posts to it, and both are refused unless the
 session's owner, as the engine recorded it, is in the row's `members`. Membership is never read
 from session state or a request body. The link stays explicit and two-sided: `resourceId` in
@@ -278,13 +283,15 @@ It comes down to the friction on a hire: none now, and every fire still asks.
 
 ![Who owns what: thirteen cross-cutting rules by FIX-1718, FIX-1621, FIX-1719 and FIX-1720, one decides or builds cell per rule](figures/ownership.svg)
 
-The matrix holds ER-1 to ER-9, ER-19, ER-20, ER-25 and ER-26. ER-10 to ER-18, ER-21 to ER-24 and ER-27 are fences and
+The matrix holds ER-1 to ER-9, ER-19, ER-20, ER-25 and ER-26. ER-10 to ER-18, ER-21 to ER-24, ER-27 and ER-28 are fences and
 process that bind every child alike, so they sit outside it.
 
 Every rule has one owner. FIX-1621 decides what an orphan is, so CoS calls its read rather than
 writing a second detector. FIX-1718 owns the `projects` collection, its `members`, the room
-(`room-lines` and its sequence row), the talk template, `bind`, `join` and the room's members
-gate, so CoS creates a row with its members and the mint follows; CoS opens nothing itself. FIX-1718 also
+(`room-lines` and its sequence row), the talk template, `bind`, `join`, the room's members
+gate, and CoS's whole create path: the `createProject` action and its tool on the CoS seat.
+FIX-1719 boots that seat and nothing project-shaped, so its merged plan is unchanged; FIX-1718's
+CoS-wiring PR waits for the seat. CoS opens nothing itself. FIX-1718 also
 builds the one runtime channel move ER-3 allows, which moves ER-3's build from FIX-1719 to
 FIX-1718. The closure only checks.
 
@@ -368,3 +375,9 @@ FIX-1728 spike's POC; both verdicts are in
   Jake answers card 1 "per person first"; ER-1 split into ER-1 (row and members), ER-25 (the
   talk link) and ER-26 (room storage); project talk in room rows only, with no item mirror;
   and ER-27, an idempotent, retried join, matching FIX-1718's BR-16a.
+- **Codex's review of the amendment (Oct 1)**, three P1s folded: ER-28, a project row that
+  records its bind state and is re-bound idempotently after a failed create-time reaction;
+  ER-27 keys a talk session by project and person, so a second window adopts it; and CoS's
+  project creation (the `createProject` action and its tool) moves wholly into FIX-1718, whose
+  CoS-wiring PR waits for FIX-1719's seat. FIX-1719's merged plan is not reopened. The matrix,
+  the plan, the path and leg a's owner follow.

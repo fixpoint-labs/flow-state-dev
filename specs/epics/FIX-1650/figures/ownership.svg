@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 552" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Who owns what: thirteen cross-cutting rules by four issues, FIX-1718 projects, FIX-1621 repair, FIX-1719 Chief of Staff, and FIX-1720 the closure. Each rule has exactly one decides or builds cell. ER-1, a project is a row in an org collection and lists its members: FIX-1718 decides; FIX-1719 consumes; FIX-1720 checks. ER-2, a workstream is a declared channel and its boards: FIX-1718 decides; FIX-1719 consumes; FIX-1720 consumes. ER-3, at runtime only the template mint, on create or join, opens a channel, and nothing retires, invites or renames one: FIX-1718 builds; FIX-1719 consumes; FIX-1720 checks. ER-4, CoS hires unasked and every fire is the person&#x27;s approval: FIX-1621 consumes; FIX-1719 decides; FIX-1720 checks. ER-5, an orphan is a stored seat its kind is gone from: FIX-1621 decides; FIX-1719 consumes; FIX-1720 checks. ER-6, CoS is the one opt-in org seat, booted in Layer 2: FIX-1718 consumes; FIX-1719 decides. ER-7, every change lands in the principal&#x27;s own cell, org seats too: FIX-1621 builds; FIX-1719 consumes; FIX-1720 checks. ER-8, a shell gap entry goes only when its owner fills it: FIX-1718 builds; FIX-1719 consumes; FIX-1720 checks. ER-9, the goal check runs on one main commit: FIX-1720 decides. ER-19, fire and retire are one path that removes the inventory row: FIX-1621 decides; FIX-1719 consumes; FIX-1720 checks. ER-20, CoS asks on each fire through an approval suspension Inbox renders: FIX-1621 consumes; FIX-1719 decides; FIX-1720 checks. ER-25, talk sessions are minted from a template and linked both ways, join idempotent: FIX-1718 decides; FIX-1719 consumes; FIX-1720 checks. ER-26, project talk lives in room rows only, members only: FIX-1718 decides; FIX-1720 checks. ER-10 to ER-18, ER-21 to ER-24 and ER-27 are fences and process, outside the matrix.">
+     aria-label="Who owns what: thirteen cross-cutting rules by four issues, FIX-1718 projects, FIX-1621 repair, FIX-1719 Chief of Staff, and FIX-1720 the closure. Each rule has exactly one decides or builds cell. ER-1, a project is a row in an org collection and lists its members, created by CoS through a path FIX-1718 builds: FIX-1718 decides; FIX-1720 checks. ER-2, a workstream is a declared channel and its boards: FIX-1718 decides; FIX-1719 consumes; FIX-1720 consumes. ER-3, at runtime only the template mint, on create or join, opens a channel, and nothing retires, invites or renames one: FIX-1718 builds; FIX-1719 consumes; FIX-1720 checks. ER-4, CoS hires unasked and every fire is the person&#x27;s approval: FIX-1621 consumes; FIX-1719 decides; FIX-1720 checks. ER-5, an orphan is a stored seat its kind is gone from: FIX-1621 decides; FIX-1719 consumes; FIX-1720 checks. ER-6, CoS is the one opt-in org seat, booted in Layer 2: FIX-1718 consumes; FIX-1719 decides. ER-7, every change lands in the principal&#x27;s own cell, org seats too: FIX-1621 builds; FIX-1719 consumes; FIX-1720 checks. ER-8, a shell gap entry goes only when its owner fills it: FIX-1718 builds; FIX-1719 consumes; FIX-1720 checks. ER-9, the goal check runs on one main commit: FIX-1720 decides. ER-19, fire and retire are one path that removes the inventory row: FIX-1621 decides; FIX-1719 consumes; FIX-1720 checks. ER-20, CoS asks on each fire through an approval suspension Inbox renders: FIX-1621 consumes; FIX-1719 decides; FIX-1720 checks. ER-25, talk sessions are minted from a template and linked both ways, join idempotent: FIX-1718 decides; FIX-1720 checks. ER-26, project talk lives in room rows only, members only: FIX-1718 decides; FIX-1720 checks. ER-10 to ER-18, ER-21 to ER-24, ER-27 and ER-28 are fences and process, outside the matrix.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -33,7 +33,6 @@
     <text class="t-id" x="16" y="91">ER-1</text>
     <text class="t-r" x="58" y="91">a project is an org row that lists its members</text>
     <rect class="own" x="376" y="77" width="126" height="20" rx="3"/><text class="t-own" x="386" y="91">decides</text>
-    <rect class="use" x="652" y="77" width="126" height="20" rx="3"/><text class="t-use" x="662" y="91">consumes</text>
     <rect class="chk" x="790" y="77" width="126" height="20" rx="3"/><text class="t-chk" x="800" y="91">checks</text>
   </g>
   <g id="er-2">
@@ -118,7 +117,6 @@
     <text class="t-id" x="16" y="465">ER-25</text>
     <text class="t-r" x="58" y="465">talk sessions minted, linked both ways</text>
     <rect class="own" x="376" y="451" width="126" height="20" rx="3"/><text class="t-own" x="386" y="465">decides</text>
-    <rect class="use" x="652" y="451" width="126" height="20" rx="3"/><text class="t-use" x="662" y="465">consumes</text>
     <rect class="chk" x="790" y="451" width="126" height="20" rx="3"/><text class="t-chk" x="800" y="465">checks</text>
   </g>
   <g id="er-26">
@@ -129,5 +127,5 @@
     <rect class="chk" x="790" y="485" width="126" height="20" rx="3"/><text class="t-chk" x="800" y="499">checks</text>
   </g>
   <line class="row" x1="16" y1="512" x2="924" y2="512"/>
-  <text class="t-lbl" x="16" y="536">DECIDES / BUILDS: THE ONE OWNER &#183; CONSUMES: MUST NOT RE-DECIDE &#183; CHECKS: THE CLOSURE RUN EXERCISES IT &#183; ER-10&#8211;18, 21&#8211;24, 27 SIT OUTSIDE</text>
+  <text class="t-lbl" x="16" y="536">DECIDES / BUILDS: THE ONE OWNER &#183; CONSUMES: MUST NOT RE-DECIDE &#183; CHECKS: THE CLOSURE RUN EXERCISES IT &#183; ER-10&#8211;18, 21&#8211;24, 27, 28 SIT OUTSIDE</text>
 </svg>
