@@ -26,6 +26,7 @@ import type {
   ResourceStateStore,
   ContentScopeType
 } from "../types";
+import { toStoredState } from "../resource-state-predicate";
 
 /** Structural shape of the last-write-wins keyed store (`ContentStore`). */
 type KeyedResourceStore<V> = {
@@ -339,9 +340,6 @@ export function createResourceStateStoreConformanceTests(
     // than kept by one and refused by the rest. One shape, asserted per member
     // so a failure names the value kind, rather than a per-kind rule.
 
-    /** What a JSON-serializing adapter commits for `value`: its JSON round-trip. */
-    const jsonForm = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
-
     const flattenedStates: Array<[string, () => Record<string, unknown>]> = [
       ["a Date", () => ({ v: new Date("2026-01-02T03:04:05.000Z") })],
       ["a Map", () => ({ v: new Map([["a", 1]]) })],
@@ -365,7 +363,7 @@ export function createResourceStateStoreConformanceTests(
       async (_kind, makeValue) => {
         await withStore(async (store) => {
           const written = makeValue();
-          const expected = jsonForm(written);
+          const expected = toStoredState(written as JsonObject);
           expect(await store.set("session", "s1", "k", written as JsonObject, 0)).toEqual({
             ok: true,
             version: 1
