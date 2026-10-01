@@ -2213,7 +2213,7 @@ describe("cross-process abort delivered during the background drain", () => {
 
   /**
    * `onCompleted` "fires only on terminal success"
-   * (docs/architecture/execution-and-errors.md → Request Lifecycle). A cancel
+   * (docs/architecture/execution-and-errors.md → Request finalisation guarantees). A cancel
    * accepted during the drain ends the request as `aborted`, so the completion
    * hooks must not run for it — otherwise a flow's `onCompleted` commits
    * business side effects or sends a success notification for a request whose

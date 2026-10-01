@@ -1,249 +1,45 @@
 # Resource Collections
 
-Static resources are declared by name at definition time. You know up front that there's a `plan` resource and an `artifacts` resource. Resource collections handle the case where you don't know how many instances you'll need. An AI managing files, accumulating per-topic observations, or creating workspaces on the fly — these are collection problems.
+A collection is a resource whose instances are created and destroyed at runtime under one schema and key pattern. The API, eviction, hooks, `reactTo` and when to use one are user-facing: [Resource Collections](../../apps/docs/docs/resources/collections.md), [Reactive blocks](../../apps/docs/docs/resources/reactive-blocks.md). General resource contracts: [Resources and Client Data](./resources-and-client-data.md).
 
-A collection defines a shared schema and pattern. Instances are created and destroyed at runtime. The property name you assign in the flat `resources` map is the key you use to access the collection at runtime — not the pattern string.
+## Access key vs storage key
 
-```ts
-import { defineResourceCollection } from "@flow-state-dev/core";
-
-const filesCollection = defineResourceCollection({
-  scope: "session",
-  pattern: "files/**",
-  stateSchema: z.object({ language: z.string().default("text") }),
-  maxInstances: 200,
-  eviction: "lru",
-});
-
-// In a block definition:
-const fileManager = handler({
-  name: "file-manager",
-  resources: { files: filesCollection },
-  //           ^^^^^ this property name = ctx.resources.files
-  execute: async (input, ctx) => {
-    const files = ctx.resources.files;
-    // ...
-  },
-});
-```
-
-For background on resources in general, see [Resources and Client Data](./resources-and-client-data.md).
-
-## How access keys work
-
-The property name in `resources` determines how you access the collection on `ctx.resources`. The pattern string only affects **storage keys** for instances.
-
-```ts
-// You declare:
-resources: { docs: myCollection }
-
-// You access:
-ctx.resources.docs  // ← property name, not the pattern
-
-// Instances are stored under pattern-resolved keys:
-// "documents/readme.md", "documents/src/utils.ts", etc.
-```
-
-This means the same collection definition can be registered under different property names in different blocks or flows without conflict.
+The property name in a `resources` map is the runtime accessor (`ctx.resources.<name>`); the pattern only shapes **storage keys**. So one collection definition can be registered under different names in different blocks without conflict.
 
 ## Patterns
 
-The pattern string determines which keys a collection can hold and how they're matched.
+| Pattern | Matches |
+|---|---|
+| `files/*` | one level (`files/a.md`, not `files/src/a.ts`) |
+| `files/**` | any depth; `**` must be the last segment |
+| `[topic]/notes` | parameterised; pass `{ topic: "react" }` as the key → `react/notes` |
 
-| Pattern | Example keys | Behavior |
-|---------|-------------|----------|
-| `files/*` | `files/readme.md` | Single-level wildcard. `files/src/utils.ts` would not match. |
-| `files/**` | `files/readme.md`, `files/src/deep/nested.ts` | Deep wildcard. Matches any depth. |
-| `[topic]/observations` | `react/observations`, `rust/observations` | Parameterized segment. The `[name]` portion becomes a key parameter. |
+A collection pattern **cannot overlap** another collection pattern or a static resource name in the same scope. Owner-private patterns (`~`-prefixed segments) add stronger isolation rules: [Owner-private collections](./resources-and-client-data.md#owner-private-collections).
 
-Constraints:
-- `**` must be the last segment
-- Parameterized segments use `[name]` syntax
-- A collection pattern cannot overlap with another collection pattern or a static resource name in the same scope
+## `ResourceRef` identity
 
-## Runtime API — `ResourceCollectionRef`
+Every handle has immutable `path`, `scope` and `uri`:
 
-At runtime, collection entries on the flat `ctx.resources` registry are `ResourceCollectionRef<TState>` instances. There is one ref type regardless of `prefetchMode`; the mode changes loading cost, not the API. The collection's intrinsic `scope` routes storage.
+- `path` is the canonical within-scope key: the accessor key or `config.ref` for a single resource; the resolved key for an instance. **For dual-registered aliases it's the canonical key**, not the alias, so two accessors to one ref produce identical `path`/`uri` (they share storage).
+- `uri` is always `${scope}/${path}`: unique across scopes within a flow, opaque (not RFC-3986). Content tools and search address resources by `uri`, which keeps resolution unambiguous when two collections share a pattern in different scopes.
 
-### Core operations
+## Config stamped onto instances
 
-All lookups (`get`, `getOptional`, `list`, `count`) return Promises — always `await` them. This holds in both `prefetchMode` settings; see [Prefetch mode](#prefetch-mode).
+`llmReadable` / `llmWritable` / `writable` are declared once on the collection and stamped onto every instance ref (`createNamespaceInstanceRef` puts `nsConfig` on `ref.config`), so content tools and search gate instances exactly as they gate single resources. `writable: false` makes every write throw (`patchState`, `setState`, `updateState`, `incState`, `pushState`, `upsert` patch, `writeContent`, `create({ replace: true })` on an existing key, `delete`), while `create` / `getOrCreate` of a **missing** key stay open. The LLM write tool admits on `llmWritable` alone, but persistence still honours `writable`.
 
-```ts
-execute: async (input, ctx) => {
-  const files = ctx.resources.files;
+## The post-mutation seam
 
-  // Create a new instance — returns a ResourceRef
-  const ref = await files.create("readme.md", { language: "markdown" });
+`onInstance*` hooks and `reactTo` both ride one internal seam, `onResourceChanged`: fired after persistence, awaitable, carrying `changeType` (`created`/`updated`/`deleted`) and `{ state, prevState, evicted, contentWrite }`. Two consumers: the client `resource_change` projection and the in-session reactive dispatcher.
 
-  // Get existing instance (throws if not found)
-  const existing = await files.get("utils.ts");
+- `deleted` fires for both explicit `delete()` and capacity eviction; `evicted` tells them apart. A `client.live` collection streams a `null` delta for either, so the client tombstones mid-stream.
+- Single resources fire only `updated`, and stream a client item only with `client.live`; a `reactTo`-only single runs its block without a client item.
+- `writeContent` fires `updated` with `contentWrite` and no state delta. The dispatcher maps it to `contentUpdated` (not a state reaction); the client still sees `updated`.
+- `onInstance*` hooks are synchronous and run inline: no heavy I/O.
 
-  // Get or create — returns existing if present, creates with defaults if not
-  const safe = await files.getOrCreate("config.json", { language: "json" });
+## Storage and loading
 
-  // List all instances, optionally filtered by prefix
-  const allFiles = await files.list();
-  const srcFiles = await files.list("src/");
-
-  // Delete an instance (no-op if not found)
-  await files.delete("old-file.ts");
-
-  // Current instance count
-  const count = await files.count();
-}
-```
-
-Each returned `ResourceRef` supports the same operations as a static resource: `state`, `patchState()`, `setState()`, `updateState()`, `incState()`, `pushState()`, `readContent()`, `readContentRaw()`. `patchState`, `setState`, `updateState`, `incState`, and `pushState` all refuse a result that fails `stateSchema`; see [Accessing Resources](./resources-and-client-data.md#accessing-resources). The `state` getter on a resolved `ResourceRef` is synchronous — you await the lookup, not the read of an already-resolved ref.
-
-### `ResourceRef` identity fields
-
-Every runtime handle carries three identity fields, each set at ref construction and immutable thereafter:
-
-```ts
-interface ResourceRef<TState> {
-  path: string;   // canonical within-scope storage key
-  scope: ScopeType;
-  uri: string;    // `${scope}/${path}`
-  // ...state, mutators, content I/O
-}
-```
-
-- **`path`** — the canonical storage key.
-  - For single resources: the canonical accessor key or `config.ref`.
-  - For collection instances: the resolved storage key (pattern + key params), e.g. `"react/notes"`.
-  - For dual-registered aliases (FIX-591): the canonical key, not the alias used to look up the handle. Two accessors pointing at the same ref produce handles with the same `path` and `uri`, since they share storage.
-- **`uri`** — always `${scope}/${path}`. Stable and unique across scopes within a flow; opaque (not an RFC-3986 URI). Used for logging, dedup across scopes, and cross-flow correspondence.
-
-See [State & Scopes](./state-and-scopes.md) and [Resources & Client Data](./resources-and-client-data.md) for how these fields surface to projections.
-
-**LLM content access (FIX-842).** A collection declares `llmReadable` / `llmWritable` once on its config; the runtime stamps that config onto every instance ref (`createNamespaceInstanceRef` casts `nsConfig` onto `ref.config`), so the generic content tools (`readResourceContentTool` / `writeResourceContentTool`) and content search (`grepResourceContent` / `searchResources`) gate collection instances on the same `ref.config.llmReadable` / `.llmWritable` they use for single resources. Those tools address resources by the unique `uri` above, so resolution stays unambiguous even when two collections share a pattern in different scopes.
-
-**Block writes (`writable`).** Same field as a single resource, declared once on the collection. Omit it (or set `true`) and instance `patchState` / `setState` / `updateState` / `incState` / `pushState` / `upsert` patch / `writeContent` persist as usual, as do `create({ replace: true })` on an existing key and `delete`. Set `writable: false` and those writes throw. `create` / `getOrCreate` of a key that does not exist stay open. The LLM write tool still admits on `llmWritable` alone; persist honors `writable`.
-
-### Parameterized patterns
-
-When a pattern has `[name]` segments, pass an object key instead of a string:
-
-```ts
-const topicNotes = defineResourceCollection({
-  scope: "session",
-  pattern: "[topic]/notes",
-  stateSchema: z.object({ entries: z.array(z.string()).default([]) }),
-});
-
-// Register under any property name you want:
-resources: { notes: topicNotes }
-
-// At runtime:
-const notes = ctx.resources.notes;
-const ref = await notes.create({ topic: "react" }, { entries: [] });
-// Storage key: "react/notes"
-
-const existing = await notes.get({ topic: "rust" });
-// Storage key: "rust/notes"
-```
-
-The framework resolves `{ topic: "react" }` to the storage key `react/notes`.
-
-## Eviction
-
-When `maxInstances` is set, the collection enforces a cap on live instances. What happens when a `create()` would exceed that cap depends on the eviction policy:
-
-| Policy | Behavior |
-|--------|----------|
-| `"none"` (default) | Throws an error. The caller must explicitly `delete()` before creating more. |
-| `"lru"` | Evicts the least-recently-accessed instance to make room. |
-| `"oldest"` | Evicts the first-created instance. |
-
-Setting `eviction` to `"lru"` or `"oldest"` without `maxInstances` throws at definition time. If you don't set `maxInstances`, the collection is unbounded.
-
-Practical guidance: set `maxInstances` for any collection that could grow without limit. An AI that creates files in a loop with no cap will eventually cause memory and storage pressure. `"lru"` is the safest default for most use cases — it keeps the working set and discards stale entries.
-
-## Lifecycle hooks
-
-Collections support per-instance lifecycle hooks for logging, side effects, or cleanup:
-
-```ts
-defineResourceCollection({
-  scope: "session",
-  pattern: "files/**",
-  stateSchema: fileSchema,
-  onInstanceCreated: (key, state, ctx) => {
-    ctx.log(`Created: ${key}`);
-  },
-  onInstanceUpdated: (key, state, prevState, ctx) => {
-    ctx.log(`Updated: ${key}`);
-  },
-  onInstanceDeleted: (key, ctx) => {
-    ctx.log(`Deleted: ${key}`);
-  },
-});
-```
-
-Hook context (`CollectionHookContext`) provides `log(message)` and `scopeType`. Hooks are synchronous — they run inline during the operation and should not perform heavy I/O.
-
-### Reactive blocks (`reactTo`)
-
-The `onInstance*` hooks are plain callbacks with no handle to the mutating turn. When a mutation should run a *block* — emitting items, calling models, invoking sub-blocks, or reading and writing the originating session's resources — bind a block via `reactTo` instead. See the [Reactive blocks](/docs/resources/reactive-blocks) reference for the author-facing surface.
-
-Both the hooks and `reactTo` ride one internal post-mutation seam (`onResourceChanged`). It fires after a mutation is persisted, is awaitable, and carries a `changeType` (`created` / `updated` / `deleted`) plus a `{ state, prevState, evicted, contentWrite }` delta. Two consumers sit on it: the client `resource_change` projection and the in-session reactive dispatcher. The seam's `changeType` is the client wire vocabulary; the reactive dispatcher maps it to the author-facing reactive kinds (`created` / `stateUpdated` / `deleted` / `contentUpdated`). The contract:
-
-- The seam fires `deleted` for both an explicit `delete()` and a capacity eviction; the `evicted` flag distinguishes them. A `client.live` collection streams a `null` delta on either, so the client tombstones the instance mid-stream.
-- Single resources fire only `updated` on the seam (they have no create or delete lifecycle), and stream a client `resource_change` only when they declare `client.live`. A `reactTo`-only single runs its block without emitting a client item.
-- A content write (`writeContent`) fires the seam as `updated` with a `contentWrite` marker and no state delta. The dispatcher maps that to a `contentUpdated` reaction (not the state reactions); the client projection still announces it as `updated`.
-
-## Storage model
-
-Collection instances and single resources share one flat keyspace for state. A collection with pattern `files/**` stores instances under keys like `files/readme.md`, `files/src/utils.ts`. Resource state — single and collection-instance alike — is persisted per-resource in the keyed `ResourceStateStore`, separate from the scope record (see [State Storage](./resources-and-client-data.md#state-storage)). The in-execution view is still a flat map, so accessors are unchanged; the difference is that a write to one instance touches only that instance's key instead of rewriting the whole scope record.
-
-## Prefetch mode
-
-`prefetchMode` controls *when* a collection's instances load, not whether reads are async. The accessor signatures are identical in both modes — `get`/`getOptional`/`list`/`count` return Promises either way (see the [Runtime API](#runtime-api--resourcecollectionref)). Flipping the mode requires no call-site changes.
-
-- **`'eager'` (default)** — the collection's whole prefix is bulk-loaded by the resource waves (see [Three-wave loading](./resources-and-client-data.md#three-wave-loading)) into the per-scope cache before any block reads it. A `list()` or `get()` resolves instantly against the in-memory cache.
-- **`'lazy'`** — the collection is not bulk-loaded by the waves. Each access fetches from the store on demand and caches the result.
-
-### Lazy loading internals
-
-A `prefetchMode: 'lazy'` collection reads through the same async accessor as an eager one, but the accessor defers loading until the target is touched:
-
-- A keyed read (`get`, `getOptional`, instance access) calls `lazyLoad.getInstance(storageKey)` to load that one instance.
-- A whole-collection read (`list`, `count`) calls `lazyLoad.getByPrefix(prefix)` to load the collection's pattern-prefix. A prefix miss is authoritative: once the prefix is loaded, the cache is treated as complete for that collection.
-
-Both go through the shared single-flight map, so a key loaded here dedupes against a wave or a concurrent block dispatch that loaded the same key. Once the cache is populated, reads resolve against it exactly as they would under eager mode. Mutations (`create` / `getOrCreate` / `upsert` / `delete`) were already async and behave the same in both modes. The accessor and the collection body both live in `createExecutionContext`.
-
-## Block declarations
-
-Collections work with block-level resource declarations the same way static resources do:
-
-```ts
-const fileManager = handler({
-  name: "file-manager",
-  resources: { files: filesCollection },
-  execute: async (input, ctx) => {
-    const ref = await ctx.resources.files.create("output.md", {
-      language: "markdown",
-    });
-    return input;
-  },
-});
-```
-
-Sequencers collect collection declarations from child blocks. `defineFlow` merges them into the flow's `resources` map. Conflict detection applies: two blocks declaring different collection refs for the same name will throw at build time. If both blocks reference the same `defineResourceCollection()` instance, the merge succeeds.
-
-## When to use collections vs static resources
-
-Use a static resource when you know the resource names at definition time: `plan`, `artifacts`, `preferences`. These are fixed parts of your flow's data model.
-
-Use a collection when instances come and go at runtime. The deciding factors:
-
-- **Unknown count** — you can't enumerate the instances ahead of time
-- **Independent lifecycles** — each instance is created, updated, and potentially deleted on its own schedule
-- **Pattern-based organization** — instances naturally fit a path structure (`files/src/utils.ts`, `topics/react/notes`)
-
-If the collection is bounded and predictable (say, three artifact slots), a static resource with an array or record in its state is simpler. Collections add value when the set is dynamic and potentially large.
-
-## Canonical Authority
-
-This document is authoritative for resource collections. See also [flows-and-actions.md](./flows-and-actions.md) and [state-and-scopes.md](./state-and-scopes.md). For full type signatures, refer to the published types in `@flow-state-dev/core`.
+- Instances and single resources share one flat keyspace, persisted per resource in `ResourceStateStore` ([State storage](./resources-and-client-data.md#state-storage)), so a write to one instance touches only that key.
+- All lookups (`get`, `getOptional`, `list`, `count`) are async in **both** prefetch modes; the mode changes cost, not the API, so flipping it needs no call-site changes.
+- `prefetchMode: 'eager'` (default): the prefix is bulk-loaded by the resource waves before any block reads it.
+- `'lazy'`: keyed reads call `lazyLoad.getInstance(key)`; `list`/`count` call `lazyLoad.getByPrefix(prefix)`, and **a loaded prefix is authoritative** (the cache is complete for that collection afterwards). Both go through the shared single-flight map, so they dedupe against waves and concurrent dispatches. Both live in `createExecutionContext`.
+- `eviction: "lru" | "oldest"` without `maxInstances` throws at definition.

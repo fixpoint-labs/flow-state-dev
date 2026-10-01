@@ -1,273 +1,69 @@
 # Authentication
 
-Authentication for flows resolves a *principal* — the caller identity the
-runtime keys state and resources by — from whatever the inbound transport
-hands the host. The framework owns the contract; the host owns credential
-verification. The framework stores no secrets.
-
-This is the foundation that lets one runtime accept browser sessions, MCP
-clients, webhooks, and scheduled jobs without the flow changing. Wiring
-patterns live in
-[Authentication](../../apps/docs/docs/server/authentication.md).
-
----
+A resolver turns whatever the transport hands the host into a *principal*, the identity the runtime keys state and resources by. The framework owns the contract; the host owns credential verification; the framework stores no secrets. Wiring patterns and helpers are user-facing: [Authentication](../../apps/docs/docs/server/authentication.md). Route guard: `packages/engine/src/routes/route-auth.ts`, which follows the table below.
 
 ## Contract
 
-A `ResolvePrincipalFn` is `(context: PrincipalResolutionContext) =>
-ResolvedPrincipal | { userId?: string; orgId?: string } | null` (or a
-Promise of the same). `PrincipalResolver` is an alias of that function
-on the engine side.
+- `ResolvePrincipalFn(ctx) → ResolvedPrincipal | { userId?, orgId? } | null`. `ctx.request` is set for HTTP-shaped transports; others use `ctx.envelope` / `ctx.rawBody`.
+- **A resolver must never take identity from `body.userId`** ([BP-031](../contributing/best-practices.md#bp-031-never-make-authorization-or-control-flow-decisions-from-caller-controllable-input)); identity must come from something the caller can't set.
+- **The framework default is the deliberate exception.** `defaultBodyUserIdPrincipalResolver` reads `body.userId` and is for development and tests only: an app on it is unauthenticated. It never reads `body.orgId` (a body `orgId` is ignored with a once-per-host warning) and runs under reserved `DEFAULT_ORG_ID`. `@flow-state-dev/node` refuses to bind such an app to a network interface. The engine recognises the default **by the resolver function it runs** (`isDefaultBodyUserIdPrincipalResolver`), not by the principal it returns. "Configured resolver" below means anything else.
+- **A configured resolver owns the org boundary and may not decline it.** No `orgId`, a blank one, or `DEFAULT_ORG_ID` → 401. Org binds at session creation and is immutable: a later different `orgId` → `OrgBindingMismatchError`.
 
-`context.request` is set for HTTP-shaped transports. Non-HTTP transports
-use `context.envelope` and `context.rawBody`. A resolver you write must
-**never** treat `body.userId` as the principal — that is BP-031, and it
-is the reason the hook exists: identity has to come from something the
-caller cannot set.
-
-The framework's own default is the deliberate exception.
-`defaultBodyUserIdPrincipalResolver` reads `body.userId` and returns it as
-the principal. It does **not** read `body.orgId` — the body is
-caller-controlled, so it is not a source an organization may come from
-(BP-031). An app on this resolver runs under the reserved `DEFAULT_ORG_ID`
-instead, and a body still carrying `orgId` is ignored with a once-per-host
-warning. It is there for early development and the framework's tests, not as
-a security boundary — an app still on it is unauthenticated, and the
-guarantee above does not apply to it. `@flow-state-dev/node` refuses to bind such an app to a
-network interface for exactly that reason. Everything below that speaks
-of a "configured" or "custom" resolver means one that is not this
-default.
-
-`defineFlow` accepts the hook on `authentication`:
-
-```ts
-defineFlow({
-  kind: "billing",
-  authentication: {
-    resolvePrincipal: async (ctx) => readSession(ctx.request),
-    requireUser: true,
-  },
-});
-```
-
-`requireUser` defaults to `true`: after the resolver and `defaultUserId`
-fallback, a missing `userId` is rejected. Set `false` to opt the flow out
-of user-scope identity.
-
-The resolved principal — not `userId` alone — is what the runtime scopes
-by. `userId` is the sole authority for session *ownership*. Resource
-scoping is keyed per scope:
+### What the runtime keys by
 
 | Scope | Key |
 |---|---|
-| `session` | the session id, namespaced to `${tenantId}:${sessionId}` when the request carries a tenant (`resolveSessionStorageKey`) |
+| `session` | session id, as `${tenantId}:${sessionId}` when a tenant is present (`resolveSessionStorageKey`) |
 | `user` | `userId` |
-| `org` | the session's bound `orgId`, taken from `principal.orgId` at session creation |
+| `org` | the session's bound `orgId` |
 
-User- and org-scoped resources route to a further `${id}:${flow.id}`
-bucket when the resource is flow-isolated — the registered **instance**, so
-two copies of one collection definition isolate from each other too. The
-identity above is still what that bucket is derived from, and an instance id
-is a storage coordinate, never an authorization.
-
-A custom resolver therefore owns the org boundary as well as the user one,
-and it may not decline it. Returning no `orgId`, a blank one, or the reserved
-`DEFAULT_ORG_ID` is refused with `401` — organization is unconditional, so
-there is no configuration under which a configured resolver may omit it. Org
-binding is fixed at session creation and immutable after: a later request
-claiming a different `orgId` is rejected with `OrgBindingMismatchError` rather
-than rebinding the session. Derive `orgId` from the same trusted source as
-`userId` — BP-031 covers it identically.
-
----
+Flow-isolated user/org resources add a `${id}:${flow.id}` bucket (the **instance** id). An instance id is a storage coordinate, **never an authorization**. `userId` alone is the authority for session ownership.
 
 ## Resolution order
 
-1. **Transport-level** — the inbound transport already resolved a
-   principal (scheduled, MCP, webhook, voice). Those adapters call
-   `host.resolvePrincipal` with their own context; they do not implement
-   a second auth path.
-2. **Flow-level** — `defineFlow({ authentication: { resolvePrincipal } })`.
-   Takes precedence over the host-level fallback when present
-   (`pickPrincipalResolver`).
-3. **Host-level** — `createFlowApiRouter({ resolvePrincipal })` /
-   `createFlowState({ resolvePrincipal })`. Fallback for flows that omit
-   a flow-level resolver.
-4. **`defaultUserId`** — if the chosen resolver returns no `userId` and
-   the flow sets `authentication.defaultUserId`, that value is used.
-5. **`requireUser`** — still no `userId` and `requireUser !== false` →
-   401.
+1. Transport adapters call `host.resolvePrincipal` with their own context; none implements a second auth path.
+2. Flow-level `authentication.resolvePrincipal` wins (`pickPrincipalResolver`) over
+3. the host-level `resolvePrincipal` (`createFlowApiRouter` / `createFlowState`).
+4. `authentication.defaultUserId` fills a missing `userId` (an `{ orgId }` with no `userId` counts as missing).
+5. Still none and `requireUser !== false` → 401.
 
-[BP-031](../contributing/best-practices.md#bp-031-never-make-authorization-or-control-flow-decisions-from-caller-controllable-input)
-applies to every path: a resolver that returns `body.userId` is a
-security hole. The scheduled-actions adapter is the reference
-implementation — it resolves from a server-side resource, never from the
-request body.
+`authentication.requireUser` wins over the older top-level `requireUser`.
 
----
+### `requireUser: false`
 
-## Scope: the whole `/api/flows` surface
+Opts out of user-scope identity: `defineFlow` throws if the flow also declares `user.stateSchema`, a `user.client` projection or any user-scoped resource. **It doesn't remove the need for a `userId`**: request bookkeeping still stamps one. With neither a returned `userId` nor `defaultUserId`, every request gets a **500** naming the misconfiguration (not 401; the caller did nothing wrong).
 
-`resolvePrincipal` runs on **every** HTTP request that hits `/api/flows`
-except the exempt routes below, not just action invocations. The same
-principal is the authority for session listings, session fetch, and
-`create_session`. This is the contract that closes the session-enumeration
-hole: a listing endpoint that skipped the resolver would leak every
-session on the host.
+## The whole `/api/flows` surface is guarded
 
-`packages/engine/src/routes/route-auth.ts` implements this section.
-The route/subject/owner table here is the contract that file follows.
+`resolvePrincipal` runs on **every** `/api/flows` request except exempt routes, not just actions. A listing that skipped it would enumerate every session on the host.
 
-### The route-auth subject
+`routeSubject` maps each route exhaustively over `ParsedFlowRoute["kind"]`:
 
-`routeSubject` maps every `/api/flows` route to the thing it addresses.
-The switch is exhaustive over `ParsedFlowRoute["kind"]`.
-
-| Subject | Routes | Owner / resolver |
+| Subject | Routes | Rule |
 |---|---|---|
-| `exempt` | `list_flows`, `capabilities`, `execute_action` | No owner check. `execute_action` resolves its own principal in the action handler. `list_flows` stays exempt: when the registry holds an owner pin it resolves the caller for each pinned instance through that instance's effective resolver (its own `authentication.resolvePrincipal`, otherwise the host's, the same precedence the doors use), and omits the instance when that resolver refuses the caller or the caller does not match its pin. A credential one instance's resolver accepts never lists another instance. Instances that share a resolver and its `requireUser` / `defaultUserId` settings are resolved once per request, at the first such instance's address. An anonymous caller sees unpinned flows only. The route does not answer 401. |
-| `session` | session CRUD, state, resources, debug-on-session | Owner is the stored session's `userId`. Flow comes from `session.flowKind`. A missing session is not an auth error — the handler 404s. Another user's session gets that same 404 from the guard (`sessionHidden`; a debug route applies its own gate first), so the answer never says the id is in use. An organization mismatch for the session's own user is 403. The guard returns the session record it checked (`session`, `null` when it found none). The session snapshot, the session stream and the metadata edit, which go on to read or write under the session, answer 404 when their own read of it is not that record: deleted and created again since, or created after the guard found none. A session's reads of its requests (the listing, the snapshot with items, the stream) keep to the session's own flow kind, and its owning instance when the session records one (`sessionRequestScope`), so the flow that admitted the caller never serves another flow's requests or items. The history a run in the session loads for its model (`createExecutionContext`) uses the same filter, so a legacy session holding another flow's, a peer instance's or another user's run never hands it to a model. The child runs the session stream lists are scoped by the parent's owner, organization and tenant, not its flow (`parentIdentity`), so work handed to another flow still shows. |
-| `request` | stream, abort, retry, continue, status, resume | Owner is the request record's `userId` (or the in-flight `activeRequests` entry when the record is not persisted yet). On every request route, another user's request gets the answer that route's handler gives an unused id: `unknownRequestResponse` for status, retry, continue, resume and abort; `unknownRequestStreamResponse` for the stream (an empty 200 when the caller sent a resume cursor). Each control handler also answers another tenant's request that way (`callerReachesRequest`). The guard hides another user's request before any held `migration-required` refusal, which stays its owner's to hear, and retry, continue and resume answer a request whose source is not open to public re-entry that way too (`public-reentry.ts`). With no record and no in-flight entry, nothing names an owner, so in an app that authenticates the stream answers every caller as an unused id rather than replaying an event log that outlived its record. |
-| `flow` | `create_session` | No record yet. The authenticated caller becomes the owner. Flow comes from the URL. An id already in use answers 409 whoever holds it, the one route where a session id shows it is taken. |
-| `user` | `user_stream`, `check_interrupted_requests` | Owner is the `userId` in the path. There is no stored record to read an organization or tenant from, so the guard compares neither and each handler scopes its own rows: `check_interrupted_requests` sweeps only entries in the caller's tenant (`tenantMatches`) and, when a principal is resolved, the caller's organization (`user_stream` answers 501 and has no rows). A test enforces this in two stages (`packages/engine/test/user-route-scoping.test.ts`). First, every route the guard classifies as `user`, and every `/users/:userId/...` path, must have an entry in the engine's user-route scoping table; a route without one fails the suite. Second, each entry says how to seed, call and observe its route, and the test runs it through the router as the owner, then as a caller from another organization, another tenant and, in a mixed app, an anonymous caller. The owner's call must see its row; any other caller seeing or changing a row fails. A route that is not built yet must answer 501; building it means replacing that pin with a real entry. |
-| `host` | `list_sessions`, `active_requests`, `transcribe` | No single owner. The handler scopes rows to the caller. A listed row owned by an instance with its own `authentication.resolvePrincipal` is judged by that resolver, the one its doors use: shown only when it accepts the caller, the row's `userId` and `orgId` are the principal it returns, and a pinned instance's pin admits that principal. One instance's resolver accepting a credential says nothing about another instance's rows; each is judged by its own resolver. Instances that share a resolver and its `requireUser` / `defaultUserId` settings are resolved once per request, at the first such instance's address. |
+| `exempt` | `list_flows`, `capabilities`, `execute_action` | No owner check (`execute_action` resolves in its handler). `list_flows` resolves the caller **per pinned instance through that instance's effective resolver** and omits instances that refuse or whose pin doesn't match; one instance's resolver accepting a credential never lists another. Instances sharing a resolver and its `requireUser`/`defaultUserId` resolve once per request. Anonymous callers see unpinned flows only. Never 401. |
+| `session` | session CRUD, state, resources, debug-on-session | Owner = stored `session.userId`; flow from `session.flowKind`. **Another user's session gets the same 404 as a missing one** (`sessionHidden`), so the answer never reveals an id is in use. Org mismatch for the session's own user → 403. The guard returns the record it checked; the snapshot, stream and metadata edit 404 if their own read isn't that record (deleted and recreated since). Request reads in a session stay within its flow kind and owning instance (`sessionRequestScope`), and so does the history `createExecutionContext` loads for a model, so a legacy session holding another flow's, instance's or user's run never hands it to a model. The session stream's child runs are scoped by owner, org and tenant, not flow (`parentIdentity`), so cross-flow work still shows. |
+| `request` | stream, abort, retry, continue, status, resume | Owner = record `userId` (or the in-flight `activeRequests` entry before persistence). **Another user's or tenant's request gets the unused-id answer** (`unknownRequestResponse`; `unknownRequestStreamResponse`, an empty 200 with a resume cursor; `callerReachesRequest`). This hiding happens before any held `migration-required` refusal, which stays the owner's to hear. Retry/continue/resume give the same answer for a source not open to public re-entry. With no record and no entry, an authenticating app's stream answers every caller as unused rather than replay an orphaned event log. |
+| `flow` | `create_session` | Caller becomes owner; flow from the URL. **An id already in use → 409, whoever holds it**: the one route where an id reveals it's taken. Not a bypass: guarded by the flow's resolver like an invoke, and `userId` comes from the principal, never `body.userId` (except on default-resolver apps). |
+| `user` | `user_stream`, `check_interrupted_requests` | Owner = path `userId`. No record to read org/tenant from, so each handler scopes its own rows (`check_interrupted_requests`: caller's tenant via `tenantMatches`, and org when a principal exists; `user_stream` is 501). `packages/engine/test/user-route-scoping.test.ts` requires every `user`-classified route and every `/users/:userId/...` path to have a scoping-table entry and runs it as owner, other org, other tenant and (mixed app) anonymous; a route not built yet must answer 501. |
+| `host` | `list_sessions`, `active_requests`, `transcribe` | Handler scopes rows to the caller. A row owned by an instance with its own resolver is **judged by that resolver**: shown only if it accepts the caller, the row's `userId`/`orgId` equal its principal, and any pin admits it. |
 
-An owner-pinned instance is registered with `register(flow, { pin })`, where the pin is `{ orgId, userId? }`. The registering code supplies the pin; it never comes from the address. Workforce pins every instance it hires this way, and its `registerHiredSeat` refuses one that arrives with no pin. `create_session` and a session-less `execute_action` compare the caller to the pin before the acknowledgement and answer a mismatch with `404 Unknown flow`, the same sentence an address this process does not hold gets. An internal dispatch to a pinned instance is refused at the dispatch seam, before a child session is written: a sending principal outside the pin gets `flow-not-found`, the same refusal an unregistered address gets (see [Dispatched Work](./dispatched-work.md)). Execution admission is the backstop. Every run, including resume and retry, compares the bound session to the pin before any block and throws `InstancePinMismatchError` on a mismatch. Its `reason` is `"owning-org"` or `"owning-user"`, the half of the pin the caller missed; the organization is compared first. An instance registered without a pin stays shared.
+### Owner-pinned instances
 
-The comparison uses the principal the host resolved. On the framework default resolver that principal names no organization, so opening a pinned instance answers `404 Unknown flow`, even for its owner. Install a resolver that verifies the organization where the instance is resolved: at the host when every flow authenticates, or on the instance itself (its `authentication.resolvePrincipal`) in a mixed app whose other flows stay on the development default. A host resolver that merely delegates to the default does not work, because the engine recognises the development default by the resolver it runs (`isDefaultBodyUserIdPrincipalResolver`), not by the principal it returns: a tokenless caller then gets 401 on actions (no verified organization) and on the management routes and listings (enforcement switches on). With the resolver on the instance, the flow catalog lists it to a caller that resolver admits and the pin matches, because the catalog resolves each pinned instance through its own resolver, as the doors do. The host listings (`list_sessions`, `active_requests`) show its sessions and in-flight requests to the same caller, because they judge each of its rows through its resolver too. The pin also picks where the instance stores a person's shared user data: one cell per (pin org, person), never the person's cross-org cell (FIX-1538, [State and Scopes](./state-and-scopes.md#the-owner-pinned-cell)).
+`register(flow, { pin: { orgId, userId? } })`. The registering code supplies the pin; it never comes from the address. Workforce pins every hire (`registerHiredSeat` refuses one without).
 
-Enforcement is off when the host resolver is the framework default **and**
-no registered flow configures its own resolver. A flow-scoped route whose
-effective resolver is still the default is treated as open.
+- `create_session` and session-less `execute_action` compare the caller to the pin before acknowledging; a mismatch is `404 Unknown flow`, identical to an unknown address.
+- An internal dispatch to a pinned instance from a principal outside the pin is refused at the seam as `flow-not-found`, before any child session is written.
+- **Execution admission is the backstop**: every run (resume and retry included) compares the bound session to the pin before any block, throwing `InstancePinMismatchError` with `reason` `"owning-org"` (checked first) or `"owning-user"`.
+- On the default resolver the principal names no org, so a pinned instance is `404 Unknown flow` even to its owner. Install an org-verifying resolver at the host, or on the instance in a mixed app. A host resolver that merely delegates to the default doesn't work (the default is recognised by function), so tokenless callers get 401 on actions and management routes.
+- The pin also chooses where the instance stores a person's shared user data: one cell per (pin org, person), never the person's cross-org cell ([State and Scopes](./state-and-scopes.md#the-owner-pinned-cell)).
 
-When a `host` or `user` route has no governing resolver in a **mixed
-app** (some flows authenticate, the host-level fallback is the default),
-the guard does not refuse the route. It returns `anonymousFlowIds` —
-the set of flow **instance ids** that do **not** configure their own
-resolver — and the handler withholds rows whose recorded owner
-(`flowId`, or the singleton its `flowKind` implies for a legacy row) is not
-in that set. Instance ids, not kinds: two instances of one collection can
-authenticate differently, and an anonymous member must not expose its
-authenticating sibling's rows. `anonymousFlowIds` is that computed set, not
-a `createFlowApiRouter` option. The two listings judge a row owned by an
-instance with its own resolver through that resolver instead (see the `host`
-row above), so the caller it names as the row's owner sees it.
-`check_interrupted_requests` does not, and leaves those rows alone.
+### When enforcement is off, and mixed apps
 
-A mixed app that wants listings scoped to a real caller must set a
-host-level `resolvePrincipal`. Without one, the listing stays up for the
-open flows, and shows an authenticated instance's rows only to the caller
-that instance's resolver names as their owner.
+- Enforcement is off when the host resolver is the default **and** no flow configures its own. A flow-scoped route whose effective resolver is the default is open.
+- **Mixed app** (some flows authenticate, host fallback is the default): `host`/`user` routes aren't refused. The guard computes `anonymousFlowIds`, the **instance ids** (not kinds, since collection members can authenticate differently) without their own resolver, and handlers withhold rows whose owner (`flowId`, or the singleton a legacy row's `flowKind` implies) isn't in it. The two listings instead judge authenticated instances' rows through those instances' resolvers; `check_interrupted_requests` leaves them alone.
+- With a host resolver, `list_sessions` scopes the store query to that principal. If an instance's resolver names the caller as someone else, the query runs unscoped and every row is judged in the handler (pages may come back short; the `userId` query param becomes the store filter, still judged after). A caller the host resolver refuses gets 401 on listings regardless of instance resolvers.
 
-With a host-level resolver, `list_sessions` scopes its store query to the
-host's principal. When an instance with its own resolver names the caller
-as someone else, the query runs unscoped and every row is judged in the
-handler instead, so a page can come back shorter than `limit`, as the
-anonymous listing's can. In an unscoped query the `userId` query parameter
-becomes the store filter, and the rows it returns are still judged
-afterwards. A caller the host resolver refuses still gets 401
-on the listings, whatever an instance's own resolver would say.
+### Binding mismatches
 
-### `create_session` is not a bypass
-
-`POST /api/flows` (`create_session`) is a `flow` subject. It is guarded
-by that flow's resolver, same as an invoke. A flow with a configured
-resolver rejects an unauthenticated `create_session` the same way it
-rejects an unauthenticated invoke.
-
-When a principal exists, the new session's `userId` comes from that
-principal, never from `body.userId`. `body.userId` is only the identity
-on apps still using the framework default resolver.
-
----
-
-## `requireUser: false`
-
-`requireUser: false` opts the flow out of user-scope identity.
-`defineFlow` throws at registration if the flow also declares
-`user.stateSchema`, a `user.client` projection, or any user-scoped
-resource. The runtime has nowhere to route those reads and writes
-without a principal.
-
-It is not restricted by `FlowKind`. Webhooks and scheduled jobs that
-legitimately have no end user are the usual callers.
-
-**Opting out of user identity does not opt out of needing a `userId`.**
-The runtime still stamps one onto `RequestRecord.userId`,
-`ActiveRequestEntry.userId`, and the rest of its request bookkeeping, so
-a `requireUser: false` flow must still name a technical principal: either
-return a `userId` from `resolvePrincipal`, or set
-`authentication.defaultUserId`. Configuring neither is a configuration
-mistake, and `host.resolvePrincipal` rejects every request to that flow
-with a **500** naming it — not a 401, because the caller did nothing
-wrong.
-
-```ts
-defineFlow({
-  kind: "stripe-webhook",
-  authentication: {
-    requireUser: false,
-    defaultUserId: "system",       // required — nothing else supplies one
-    resolvePrincipal: ({ rawBody, request }) => {
-      verifySignature(rawBody, request);
-      return null;                 // defaultUserId ("system") fills in
-    },
-  },
-  actions: { /* ... */ },
-});
-```
-
----
-
-## Top-level `requireUser` shorthand
-
-`requireUser` can be set at the top level of `defineFlow` as well as
-inside `authentication`. The top-level form is the older entry point.
-When both are set, `authentication.requireUser` wins.
-
----
-
-## Edge cases
-
-- **`body.userId` is not the principal.** Action identity comes from the
-  resolver. On `create_session`, `body.userId` is used only when no
-  principal exists (default-resolver apps). A resolver that reads
-  `body.userId` is a BP-031 violation.
-- **No `userId` resolved.** With `requireUser: true` (the default) the
-  host rejects with **401**. With `requireUser: false` and no
-  `defaultUserId`, it rejects with **500** — the flow is misconfigured,
-  not the caller.
-- **`resolvePrincipal` returns `{ orgId }` with no `userId`.** Treated as
-  no `userId`; falls through to `defaultUserId` and then to the rule
-  above.
-- **Session-user mismatch.** If a request names an existing session
-  whose stored `userId` does not match the resolved principal, the
-  engine rejects the request (`UserBindingMismatchError`). The check
-  runs after resolution, at admission, before the request is
-  acknowledged, and again on every path that loads a session. Over HTTP
-  it is `404 Unknown session`, the answer an unused id gets. On a
-  session-addressed management route the route-auth guard answers
-  another user's session the same way, and every request-addressed
-  route answers another user's request as an unused id (a 404, or an
-  empty 200 on a request stream resumed from a cursor). Creating a
-  session under an id already in use is the exception: 409, whoever
-  holds it
-  ([State and Scopes](./state-and-scopes.md#a-session-id-is-an-address-not-an-ownership)).
-
----
-
-## Cross-references
-
-- [Authentication (user guide)](../../apps/docs/docs/server/authentication.md) —
-  wiring patterns, convenience helpers, and host-level fallback examples.
-- [MCP Transport](./mcp-server.md) — MCP session identity and the
-  `FlowMcpServerOptions.auth` slot.
-- [Webhook Transport](./webhook-transport.md) — signature verification as
-  the resolver.
-- [Scheduled Actions](./scheduled-actions.md) — server-side resource as
-  the principal source; the reference BP-031 implementation.
-- [Voice Transport](./voice.md) — WebRTC / websocket identity.
-- [Server Routes](./server-and-client.md) — the HTTP surface
-  `resolvePrincipal` guards.
-- [BP-031](../contributing/best-practices.md#bp-031-never-make-authorization-or-control-flow-decisions-from-caller-controllable-input)
-  — never make auth decisions from caller-controllable input.
+A request naming an existing session whose stored `userId` differs from the principal is rejected (`UserBindingMismatchError`) at admission, before acknowledgement, and again on every path that loads a session. Over HTTP it's `404 Unknown session`. See [State and Scopes](./state-and-scopes.md#a-session-id-is-an-address-not-an-ownership).

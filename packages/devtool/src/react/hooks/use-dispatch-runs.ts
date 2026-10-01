@@ -133,7 +133,7 @@ export function useDispatchRuns(sessionId: string | null): UseDispatchRunsResult
   const [truncation, setTruncation] = useState<Truncation>("unknown");
 
   // Guarded twice, per the contract in
-  // `docs/architecture/server-and-client.md` ("Reads are guarded twice") —
+  // `docs/architecture/server-and-client.md` ("Two guards for two hazards") —
   // identity retires a response belonging to a superseded read, sequence orders
   // reads within one identity. Both live in `useReadFence`, which carries the
   // reasoning for why identity is compared by value rather than through a

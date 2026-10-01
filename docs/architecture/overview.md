@@ -1,210 +1,65 @@
 # Architecture Overview
 
-`@flow-state-dev` gives you five composable block kinds — **handler**, **generator**, **evaluator**, **sequencer**, **router** — and a runtime that handles execution, streaming, state persistence, retries, and client rendering so you don't have to.
+These docs record what **can't be recovered by reading the code or the user docs**: invariants, contracts between packages, security boundaries, and why a design is the way it is. How to use the framework is in [`apps/docs`](../../apps/docs/docs/intro.md); signatures are the published types. If a section here only restates either, it belongs there instead.
 
-You define flows composed of blocks. The framework does the rest.
+## Package boundaries
 
-This document provides the system-level view. For deep dives into each subsystem, see the companion docs linked throughout.
+Locked. `scripts/validate-package-boundaries.mjs` enforces the per-package allow/deny lists; it is the source of truth when this table and it disagree.
 
-## The idea in 30 seconds
+| Package | Rule |
+|---|---|
+| `contracts` | Imports no workspace package, declares no dependencies. Holds the item taxonomy, its pure helpers and leaf types. `core` re-exports every symbol from its original path |
+| `core` | Isomorphic; no platform code (e.g. no Node `crypto`, which is why webhook verification lives in `engine`). Value-imports `contracts` |
+| `engine` | Never depends on `client` or `react` |
+| `client` | Never depends on `engine` or `react`; works in any JS environment. Value-imports `contracts` helpers rather than hand-mirroring them; type-only on `core` |
+| `react` | No transport logic: wraps `client` |
+| `fsdev` (`packages/cli`) | Leaf consumer on an allow-list (`engine`, `testing`, stores, `workforce`, …); never `client` or `react` |
+| `apps/devtool` | Public `client` and `react` APIs only |
 
-Every AI feature needs the same infrastructure: call an LLM, stream the response, manage state, handle errors, sync with the UI. Teams rebuild this for every project. `@flow-state-dev` makes these concerns framework primitives.
+The rest of the packages are listed in the root `CLAUDE.md`.
 
-```ts
-// Define blocks
-const chat = generator({ name: "chat", model: "openai/gpt-5.4-mini", prompt: "..." });
-const track = handler({ name: "track", execute: async (input, ctx) => {
-  await ctx.session.incState({ count: 1 });
-  return input;
-}});
+## Request path
 
-// Compose into a pipeline
-const pipeline = sequencer({ name: "pipeline" })
-  .step(chat)
-  .step(track)
-  .rescue([{ when: [Error], block: fallback }]);
+1. `POST` returns `202` immediately; execution is async (in-process hosts may stream inline instead).
+2. Items stream over SSE as blocks run; the request stream resumes from a sequence cursor (`Last-Event-ID` or `starting_after`), the session stream from a time cursor (`?since=`).
+3. **On `request.completed` the client refetches the state snapshot.** The stream is live; the snapshot is authoritative.
 
-// Expose as a flow
-export default defineFlow({
-  kind: "my-app",
-  actions: { chat: { block: pipeline } },
-  session: { stateSchema },
-})();
-```
+Execution order and hook timing: [Flows and Actions](./flows-and-actions.md#request-execution-order). Stream contracts: [Streaming](./streaming.md).
 
-The framework gives you: SSE streaming with resume, atomic state operations, retry policies, rescue boundaries, lifecycle hooks, typed client SDK, React hooks — all from this definition.
+## Locked contracts
 
-## Package structure
+Changing any of these needs architecture review:
 
-Six packages with strict dependency boundaries:
+- Block kinds are exactly `handler`, `generator`, `evaluator`, `sequencer`, `router`.
+- Actions are flow-level (`defineFlow({ actions })`); other entry forms are in [Action Forms](./action-forms.md).
+- Required caller input: `userId`.
+- Stream model: item/content lifecycle, no part-envelope model.
+- Request-stream cursor `${requestId}:${sequence_number}`, resumable by both `Last-Event-ID` and `starting_after`. Session-stream cursor is the event's `at`, as `?since=`, with no sequence number.
+- Generator provider: Vercel AI SDK (Phase 1).
+- Observational hooks are past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`).
+- No block middleware ([Internal Execution Seams](./internal-execution-seams.md)).
 
-```
-@flow-state-dev/contracts  Zero-dependency shared layer (item taxonomy + leaf types)
-@flow-state-dev/core       Isomorphic builders, type contracts, item taxonomy
-@flow-state-dev/engine     Execution runtime, stores, SSE streaming, HTTP routes
-@flow-state-dev/client     Isomorphic API client (actions, sessions, streams)
-@flow-state-dev/react      React hooks and renderers (wraps client)
-@flow-state-dev/testing    Test harnesses and mocks
-@flow-state-dev/fsdev      Terminal interface (the fsdev command)
-apps/devtool               First-party inspector app
-```
+## Map
 
-## Dependency graph
+| Doc | Read before touching |
+|---|---|
+| [Blocks](./blocks.md) | block execution, context resolution, generator text joining, evaluators |
+| [Capabilities](./capabilities.md) | capability merging, the tools fence, config resolvers |
+| [Sequencer DSL](./sequencer-dsl.md) | per-step options, background work lifetime, output schemas |
+| [Flows and Actions](./flows-and-actions.md) | flow identity, instance config, execution order |
+| [Action Forms](./action-forms.md) | entry resolution, dispatch targets, public re-entry |
+| [State and Scopes](./state-and-scopes.md) | state verbs under concurrency, CAS, tenancy, isolation, lineage |
+| [Resources and Client Data](./resources-and-client-data.md) | resource storage, writers, owner-private collections, client exposure |
+| [Resource Collections](./resource-collections.md) | collection patterns, identity, the post-mutation seam |
+| [Items](./items.md) | item types, visibility, persistence, task attribution |
+| [Streaming](./streaming.md) | event durability, resume, session stream, live tail |
+| [Execution and Errors](./execution-and-errors.md) | loop ownership, resume, abort signals, drains, durability, liveness |
+| [Dispatched Work](./dispatched-work.md) | child sessions, claim gate, topology, shutdown, recovery |
+| [Authentication](./authentication.md) | resolvers, route guards, owner pins |
+| [Server and Client](./server-and-client.md) | instance routing, retention, child-session reads |
+| [Inbound Transports](./inbound-transports.md) | the host, admission, concurrency arbitration |
+| [MCP](./mcp-server.md) · [Webhooks](./webhook-transport.md) · [Scheduled](./scheduled-actions.md) · [Voice](./voice.md) | those transports |
+| [Utility Blocks](./utility-blocks.md) | utility factories |
+| [Workforce worker kind](./workforce-default-worker-kind.md) | the built-in `agent` kind and the hire step |
 
-```
-core ─────────────────────────────────┐
-  ↑                                   │
-  ├── engine                          │
-  │     ↑                             │
-  │     ├── testing                   │
-  │     └── cli ─── testing           │
-  │                                   │
-  ├── client ─────────────────────────┤
-  │     ↑                             │
-  │     └── react ────────────────────┘
-  │           ↑
-  │           └── apps/devtool
-  └── client
-```
-
-**Boundary rules (locked):**
-- `contracts` imports no workspace package and declares no dependencies — it is the zero-dependency layer the item taxonomy, its pure helpers, and the leaf types live in. `core` re-exports every symbol from its original path, so consumers importing them from `@flow-state-dev/core` are unaffected. Browser code (`client`, `react`) value-imports the canonical helpers from `contracts` instead of hand-mirroring them; `core` stays type-only for those packages.
-- `engine` never depends on `react` or `client` — the execution engine knows nothing about transport consumers
-- `client` never depends on `engine` or `react` — works in any JavaScript environment
-- `react` has no transport logic — it wraps `client` with hooks and renderers
-- `cli` uses `engine` + `testing`, never `react` or `client`
-- `apps/devtool` uses only public APIs from `client` and `react`
-
-## Core abstractions
-
-### Blocks — the five kinds
-
-Every piece of logic in the framework is one of exactly five block kinds:
-
-| Kind | What it does | When to use it |
-|------|-------------|----------------|
-| **handler** | `input → execute → output` | Validation, data transforms, state mutations, tool implementations |
-| **generator** | LLM call with framework-managed tool loop | Chat, structured extraction, agent tool use, any AI generation |
-| **evaluator** | Typed questions to an evaluation model, one call | Classification, triage, scoring: any model call your code branches on |
-| **sequencer** | Fluent DSL composing blocks into pipelines | Building multi-step workflows with branching, parallelism, error recovery |
-| **router** | Runtime block selection based on input or state | Dispatching to different pipelines based on mode, intent, or conditions |
-
-All blocks share the same execution contract: `block.run(input, ctx)`. This uniformity means any block can be composed with any other block. See [Blocks](./blocks.md).
-
-### Flows — the entry point
-
-A flow ties blocks to **actions** (entry points), **scopes** (state containers), and **lifecycle hooks**:
-
-```ts
-const myFlow = defineFlow({
-  kind: "my-flow",
-  requireUser: true,
-  actions: {
-    chat: { inputSchema, block: chatPipeline, userMessage: (i) => i.message }
-  },
-  session: { stateSchema, resources: { ... }, client: { expose: [...], derived: { ... } } },
-  user: { stateSchema, client: { derived: { ... } } },
-});
-```
-
-Actions are the flow's public API. Clients call them by name. Each action maps to a root block that the framework executes. See [Flows and Actions](./flows-and-actions.md).
-
-### Scopes — state that scales
-
-Four nested state scopes, each with typed atomic operations:
-
-```
-request → session → user → org
-(one run)  (conversation)  (across sessions)  (shared across users)
-```
-
-Each scope provides `patchState`, `setState`, `incState`, `pushState`, `atomicState`, and more. **They do not all take the version check** — some writes are guarded by compare-and-swap and can be refused, while the commutative ones persist unconditionally, and which is which depends on the shape of the call, the adapter and the scope. Before you rely on either behaviour, read [Atomicity Guarantees](./state-and-scopes.md#atomicity-guarantees), which is where that split is stated. Blocks declare only the state fields they need via partial schemas, so a counter block doesn't need to know about a preferences block's state. See [State and Scopes](./state-and-scopes.md) for the routing.
-
-### Dispatched work — outliving the request
-
-Work a flow hands off — through a `dispatcher()` block, or a task board with a `dispatcher({ action, session })` in its `workers` — runs in a **child session** that keeps going after the request that started it has returned. Where it runs, whether it survives the process, and what recovers it if the process stops all depend on the deployment topology. See [Dispatched Work](./dispatched-work.md).
-
-### Streaming — resilient by default
-
-SSE-based item/content streaming with built-in resume:
-
-- **Items** have types (`message`, `reasoning`, `component`, `status`, `error`, etc.) and lifecycle states (`in_progress` → `completed`)
-- **Content** streams within items via delta events — text appears token-by-token
-- **A request's stream** resumes from a sequence-number cursor after a disconnect: no data loss, no duplicates
-- **The session stream**, which follows every request in a session, resumes from a server time (`?since=`) instead. It repeats a few seconds of overlap on purpose, so a client dedupes by request and item id. See [Session Stream](./streaming.md#session-stream)
-- **Item types determine audience routing** — some items go to the UI, some to the LLM context, some to devtools
-
-See [Streaming](./streaming.md) and [Items](./items.md).
-
-### Resources and client data — data with policy
-
-**Resources** are named, typed state containers scoped to sessions, users, or orgs. Think of them as structured data stores that blocks can read and write. Blocks declare their resource dependencies via `defineResource()`, and the framework collects and merges these declarations automatically through sequencers up to the flow level. For dynamic collections where the instance count isn't known ahead of time, [Resource Collections](./resource-collections.md) let you create and destroy instances at runtime under a shared schema.
-
-**Client data** is the projection of scope state declared by each scope's `client` block (`expose` for verbatim passthrough, `derived` for computed views). Raw state never reaches the client; the snapshot route returns only what `client` declares. The privacy property is structural: a scope without a `client` block exposes nothing, and a new state field doesn't surface on the wire until it's added to `expose` or `derived`.
-
-See [Resources and Client Data](./resources-and-client-data.md).
-
-### Utility blocks — pre-built building blocks
-
-Utility blocks are factory functions that wrap `generator` or `handler` blocks into specialized, high-level capabilities: context reduction, memory extraction, task decomposition, summarization, analysis, and more. Each utility returns a standard `BlockDefinition` — composable in sequencers, routers, and flows like any other block.
-
-```ts
-const summarize = utility.summarizer({ name: "brief", granularity: "brief" });
-const analyze = utility.analyzer({ name: "check", criteria: ["accuracy"] });
-
-const pipeline = sequencer({ name: "review" })
-  .step(summarize)
-  .step(analyze);
-```
-
-The catalog of utilities and their kinds is in [Utility Blocks](./utility-blocks.md). Per-utility config and default models live in [Core Utilities](../../apps/docs/docs/patterns/utility-blocks/core.md).
-
-## Data flow
-
-A typical request flows through the system:
-
-```
-Client                    Server                           Store
-  │                         │                               │
-  ├─ POST action ──────────►│                               │
-  │                         ├─ validate input                │
-  │                         ├─ resolve session ─────────────►│
-  │                         ├─ create execution context      │
-  │                         ├─ emit user message item        │
-  │                         ├─ execute root block            │
-  │                         │   ├─ block.run(input, ctx)     │
-  │                         │   ├─ emit items/content ──────►│ (persist)
-  │                         │   └─ state ops ───────────────►│ (CAS or delta write)
-  │◄── SSE stream ──────────┤                               │
-  │  (items, deltas, status)│                               │
-  │                         ├─ fire lifecycle hooks          │
-  │                         ├─ terminal request status       │
-  │◄── request.completed ───┤                               │
-  │                         │                               │
-  ├─ GET state snapshot ───►│──────────────────────────────►│
-  │◄── snapshot response ───┤                               │
-```
-
-Key points:
-1. **Async by design** — POST returns `202 Accepted` immediately. Execution happens in the background.
-2. **Live streaming** — Items stream via SSE as blocks execute. The client sees results as they're produced.
-3. **Correctness path** — Client refetches the state snapshot on `request.completed` to get the authoritative final state.
-4. **Resilient resume** — Reconnect a request's stream after a disconnect using `Last-Event-ID` or the `starting_after` query param. The server replays missed events from the sequence cursor. The session stream resumes by time instead ([Session Stream](./streaming.md#session-stream)).
-
-## Locked contracts (Phase 1)
-
-These decisions are canonical and cannot change without architecture review:
-
-- Block kinds are exactly: `handler`, `generator`, `evaluator`, `sequencer`, `router`
-- Actions are flow-level (`defineFlow({ actions })`)
-- Required caller input: `userId`
-- Stream model: item/content lifecycle (no part-envelope model)
-- Request-stream cursor: `${requestId}:${sequence_number}`
-- Request-stream resume: both `Last-Event-ID` and `starting_after`
-- Session-stream cursor: the event's `at`, handed back as `?since=`; no sequence number ([Streaming](./streaming.md#session-stream))
-- Generator provider: Vercel AI SDK in Phase 1
-- Observational hooks: past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`)
-
-## Canonical authority
-
-The docs in this directory are authoritative for the framework's architecture. For edge cases and detailed contracts, the package-level READMEs and source code are the ground truth.
+When docs conflict, the more specific one wins. Where code and these docs disagree and nothing disambiguates, surface it (`audit-coherence`) rather than routing around it.

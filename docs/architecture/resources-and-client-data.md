@@ -1,599 +1,103 @@
 # Resources and Client Data
 
-Resources are **concrete persisted data** attached to a scope. Client data entries are **derived views** computed from state and resources — the mechanism for exposing server-side data to clients. Together, they provide structured, typed data management within flows.
+Resources are persisted, typed data with an intrinsic `scope` (`session` / `user` / `org`); client data is what a scope deliberately projects to the browser. Authoring is user-facing: [Resources overview](../../apps/docs/docs/resources/overview.md), [Client Access](../../apps/docs/docs/resources/client-access.md), [State vs Resources](../../apps/docs/docs/resources/storage.md), [Resource Edges](../../apps/docs/docs/resources/edges.md), [State mutation model](../../apps/docs/docs/state/mutation-model.md). Collections: [Resource Collections](./resource-collections.md). This page holds the storage, write and exposure contracts.
 
-## Resources
+## Identity and storage keys
 
-A resource carries an intrinsic `scope` (`"session"`, `"user"`, or `"org"`) and lives in a single flat `resources` map on a flow, block, or capability. The resource's scope routes its storage to the right layer; consumers reach for it via `ctx.resources.<accessor>` regardless of where it lives.
-
-```ts
-import { defineResource } from "@flow-state-dev/core";
-
-const planResource = defineResource({
-  ref: "plan",
-  scope: "session",
-  stateSchema: z.object({
-    steps: z.array(z.string()).default([]),
-    status: z.enum(["draft", "active", "complete"]).default("draft"),
-  }),
-  writable: true,
-});
-
-defineFlow({
-  kind: "my-app",
-  resources: { plan: planResource },
-  // session.stateSchema, user.stateSchema, etc. unchanged
-});
-```
-
-The accessor key (`plan`) is purely a typed read handle for `ctx.resources.<name>`. Persistence is keyed by ref identity: two blocks that declare the **same** `DefinedResource` reference under different accessor names see the same storage slot. Two blocks that declare **different** `DefinedResource` references under the same accessor name still conflict at flow-build time.
-
-When a resource is declared **without** an explicit `ref`, the canonical storage key falls back to the first accessor encountered in declaration order. That's fine for single-accessor resources, but for dual-registered user/org-scoped resources it makes the storage key sensitive to declaration order. **Set `ref` explicitly on any non-session resource you plan to register under multiple accessor names** so persisted data survives reordering, refactors, or moves between block- and flow-level declarations.
-
-### Resource Config
-
-```ts
-type ResourceConfig = {
-  ref?: string;                 // Storage namespace identifier (combined with scope/flowIsolation)
-  scope: "session" | "user" | "org"; // Required — intrinsic to the definition
-  flowIsolation?: boolean;      // Default false. When true at user/org, namespaces by flow instance id
-  stateSchema: ZodTypeAny;     // Required: defines the data shape
-  default?: JsonValue;          // Default initial value
-  content?: string;             // Optional definition-time content body
-  contentFile?: string;         // Optional path to initial content template
-  render?: (content: string, state: JsonObject) => string | Promise<string>; // Optional renderer
-  llmReadable?: boolean;        // Allows read tool access when readResourceContentTool is installed
-  llmWritable?: boolean;        // Allows write tool access when writeResourceContentTool is installed
-  writable?: boolean;           // Allow mutation from blocks
-  allowedExtensions?: string[]; // Content type restrictions
-  metadata?: Record<string, unknown>;
-};
-```
+- The accessor name in a `resources` map is only a typed handle. **Storage is keyed by ref identity**: the same `DefinedResource` under two accessor names shares one slot; different references under one accessor throw at build.
+- Without an explicit `ref`, the storage key falls back to the **first accessor encountered in declaration order**, which makes a dual-registered user/org resource's key depend on ordering. **Set `ref` on any non-session resource registered under more than one name**, or a refactor silently moves its data.
+- Build-time collisions: (1) same accessor, different references; (2) different accessors resolving to the same `(scope, ref, flowIsolation, flowInstanceId?)`, which would silently share storage. Identity-equal re-registration (capability diamonds) is always fine.
+- `defineFlow` merges block declarations from every reachable block (composition and static `tools`, including tools contributed by `uses`). Flow-level declarations win. Function-valued `tools` aren't collected; declare their resources on the flow.
 
 ### `flowIsolation`
 
-User- and org-scoped resources default to **shared** storage across every flow that touches the same `userId` / `orgId`, except that an owner-pinned instance (one registered with an owner pin) keeps its shared user-scoped resources at `(userId:~org:orgId, ref)`, shared only with that person's other instances pinned to the same org (FIX-1538, [the owner-pinned cell](./state-and-scopes.md#the-owner-pinned-cell)). Set `flowIsolation: true` on a definition that should be flow-private — its data lives at `(scopeId, flowInstanceId, ref)` instead of `(scopeId, ref)`. The coordinate is the resolved **instance** id, not the kind (FIX-1323): two registered copies of one `collection` definition each get their own cell, and a singleton's instance id is its kind, so its existing keys are unchanged.
+User/org resources are **shared** across flows by default (BP-027). `flowIsolation: true` makes one flow-private, keyed by the resolved **instance** id (so two copies of a collection definition isolate; a singleton's id is its kind, so its keys don't change). Flow-level `isolateUserState` / `isolateOrgState` are defaults; a resource's own declaration wins. `flowIsolation` on a session resource is a build error (sessions are already flow-bound).
 
-`flowIsolation: true` on a session-scoped resource is a build-time error: sessions are intrinsically flow-bound, so the field has no semantic meaning there. The flow-level `isolateUserState` / `isolateOrgState` flags from FIX-431 remain as defaults for resources at the relevant scope that don't declare `flowIsolation` themselves; resource-level declarations always win.
+| `scope` | `flowIsolation` | Key |
+|---|---|---|
+| session | n/a | `(sessionId, ref)` |
+| user | false | `(userId, ref)`; owner-pinned instance: `(userId:~org:orgId, ref)` ([the owner-pinned cell](./state-and-scopes.md#the-owner-pinned-cell)) |
+| user | true | `(userId, flowInstanceId, ref)` |
+| org | false | `(orgId, ref)` |
+| org | true | `(orgId, flowInstanceId, ref)` |
 
-| `scope` | `flowIsolation` | Storage key |
-| -- | -- | -- |
-| `session` | (n/a) | `(sessionId, ref)` |
-| `user` | `false` (default) | `(userId, ref)`; on an owner-pinned instance `(userId:~org:orgId, ref)` |
-| `user` | `true` | `(userId, flowInstanceId, ref)` |
-| `org` | `false` (default) | `(orgId, ref)` |
-| `org` | `true` | `(orgId, flowInstanceId, ref)` |
+**A resource's state and content share one coordinate**: two stores, one cell. Anything that moved one without the other would split the resource.
 
-A resource's **state and its content share the instance coordinate** — they are the same cell in two stores, and a read or a migration that moved one without the other would split a resource in half. Session-scoped rows (and the lineage address a `sharedToLineage` resource resolves to) are unchanged by instance isolation: a session is already bound to one instance through its owner record. See `docs/architecture/state-and-scopes.md` → "Cross-Flow State: Shared vs Isolated".
+## State storage
 
+Resource state (singles and collection instances) lives per key in `ResourceStateStore` `(scopeType, scopeId, resourceKey)`, not on the scope record (whose old inline `resources` field is no longer read or written). A write touches only its key, removing the old N-instance write amplification. Content lives in `ContentStore` with the same lifecycle. The two are independent (state without content and vice versa), with distinct payload types and adapters.
 
-### Resource Content
+- Execution contexts load into an in-memory per-scope cache; reads during execution are synchronous against it. State routes and debug snapshots read the stores fresh.
+- **Content writes don't bump the scope record's `version` / `updatedAt`.**
+- **Scope deletion calls `ContentStore.deleteAll()` before removing the record**, so no orphaned content.
+- Legacy: records carrying the removed inline `resourceContent` field silently drop it on their next round-trip. Content that must survive needs copying into `ContentStore` (`stores.content.set(...)` per entry) before upgrading.
+- `edges: true | { vocabulary?, maxEdges? }` injects an `edges: Edge[]` field into the state schema, so edges persist as ordinary state with no new key or adapter change; traversal is in memory. `.edges` mutators go through `updateState` (same `resource_change` events); `supersede` is a bi-temporal close, never a hard delete. The `maxEdges` cull drops superseded tombstones first, then lowest-confidence edges, and never the edge just added.
 
-Resources can also carry file-like text content. Use `content` for inline templates or `contentFile` to load at startup (mutually exclusive). A bare-string `contentFile` resolves relative to `process.cwd()`; for cwd-independent resolution pass an anchored path — `contentFile: { path: "./doc.md", importerUrl: import.meta.url }` — which resolves relative to the declaring module first and falls back to the working directory (the same candidate semantics as prompt-file loading).
+## Three-wave loading
 
-- `readContent()` returns rendered content (`string`) or `null` if no content exists.
-- `readContentRaw()` returns the stored raw body (`string`) or `null`.
-- Empty content (`""`) is valid and distinct from `null`.
-- Template rendering is **opt-in** via `render`, e.g. `render: renderTemplate` from `@flow-state-dev/engine`. Nested `{{#each}}` blocks are not supported. Templates longer than 512 KB are rejected.
-- LLM content access is **tool-driven and opt-in**. Add `readResourceContentTool()` / `writeResourceContentTool()` to a generator's `tools` list when you want these capabilities available.
+A request loads only what its action and blocks declare:
 
-```ts
-const soul = defineResource({
-  stateSchema: z.object({ values: z.array(z.string()), tone: z.string() }),
-  content: "## Values\n{{#each values}}- {{this}}\n{{/each}}Tone: {{tone}}",
-  render: renderTemplate,
-  llmReadable: true,
-  llmWritable: false,
-});
-```
+1. **Flow-level** eager resources, in `createExecutionContext` at request start.
+2. **Action-tree** resources, also in `createExecutionContext`, in one parallel burst. It lives there, not in `runAction`, because a context is bound to exactly one action, so there's no later "action start". Sibling actions' resources never load.
+3. **Per-block lazy** single resources, loaded by the block runtime's `run` (`_loadDeclaredResources`) when the block dispatches. Lazy collections defer further, to each access.
 
-### Content Storage
+- **Dedupe.** `loadedCollectionPrefixes` per scope (seeded by wave 1) prevents re-scans; singles are tracked by presence in the cache. `inflightLoads` single-flights concurrent loads (e.g. a `.sideChain()` fan-out) and clears in `finally` so a failure retries instead of poisoning the map. Lazy accessors share both.
+- **Cache writes are per key, in place** (`cache[key] = value`), never whole-map replacement. `.parallel`/`.forEach` branches share one context, so this is what lets a convergence `.list()` after a fan-out see every branch's instance.
+- **Validation:** `prefetchMode: 'lazy'` on a flow-level single resource throws (no dispatch to trigger it). Lazy plus non-`none` eviction throws (a partial cache can't evict correctly). `maxInstances` and eviction are exact under eager, best-effort under lazy.
 
-Resource content is persisted separately from scope record metadata via `ContentStore`. This separation lets adapters use different backends for content and metadata — SQL for scope records, blob storage for content, for example.
+## The five state writers
 
-**Two read paths:**
-1. **Execution context** — content is eagerly loaded from `ContentStore` into an in-memory cache at context creation. All reads during block execution are synchronous from this cache.
-2. **State routes** — `handleGetSessionState` loads content fresh from `ContentStore` before building the response.
+`patchState`, `setState`, `updateState` compute the next state; `incState`, `pushState` describe a delta. All five resolve to `void` (read `ref.state` after), exist on both single and instance refs, and honour `writable: false`. A handle from `ctx.resources.<name>` is `ResourceRef<any>`, so wrong-kind checks there are runtime only.
 
-**Migration from inline content:** Earlier versions stored content inline on scope records as `resourceContent`. That field has been removed — content now lives exclusively in `ContentStore`. Records persisted before the cutover that still carry a `resourceContent` blob will silently drop it on the next round-trip; any content that needs to survive must be copied into `ContentStore` before upgrading. The in-memory and filesystem stores hold no legacy data, and SQLite/Postgres serialize records as JSON, so the field simply disappears from the projected record. Operators with inline content already in production should run a one-shot script that reads each session/user/org record, walks its old `resourceContent` map, and calls `stores.content.set(scopeType, scopeId, key, value)` for each entry before deploying.
+- **Atomic per key through `runResourceCAS`** (`engine/src/stores/resource-cas.ts`). The mutator is *intent*: re-run against refreshed state on each retry, so a loser recomputes against the winner instead of committing a stale value. That's what makes two concurrent `incState`s both land. It's only as strong as the store's CAS: memory, SQLite and Postgres compare-and-swap in the store; **the filesystem store guards per key on the store instance**, so two instances pointed at one directory aren't coordinated.
+- **Refusals.** `incState` refuses a non-number field and a non-finite *result* (`z.number()` accepts `±Infinity`, and adapters disagree on storing it: memory keeps it, JSON adapters store `null`). `pushState` refuses a non-array. Code `resource_delta_refused`, not retryable. A multi-field call is one mutation: one bad field applies none.
+- **A refusal is judged against a verified basis and writes nothing.** The mutator runs unguarded before persistence, so a throw would otherwise fail terminally over a cached row the store may no longer hold. Instead a refusing attempt returns the basis **unparsed**; the CAS driver treats it as a no-op and verifies it: versions match → the refusal stands; the key moved → refresh and re-run. Schema rejections are deferred the same way (an `incState` off a stale `calls: 10` against `.max(10)` re-runs). **Unparsed is load-bearing**: normalising (filling a `.default()`, dropping a retired key) would make an untouched row look like a write and get persisted and version-bumped before the refusal surfaced. A refused write persists nothing, bumps nothing, emits no `resource_change`.
+- **Absent and `null` are empty, not wrong kinds**: `incState` starts from `0`, `pushState` from `[]` (BP-023 makes untouched fields `null`). Presence is `Object.hasOwn` and the write is `Object.defineProperty`, because inherited `Object.prototype` names would otherwise misfire and `__proto__` would set a prototype. Field names come from callers, so both paths are reachable. (Zod itself rebuilds objects by assignment, so a field literally named `__proto__` doesn't survive `parseResourceWriteState` on an object schema.)
+- **Schema failure throws `ValidationError`, state untouched.** A whole-row `.catch()` (even under `.nullable()`/`.default()`/`.readonly()`) is not a write success: the write path peels it and the candidate must satisfy the inner schema. Field-level `.catch()` is ordinary normalisation. Schema-valid `null` on a `.nullable()` resource is the documented reset and persists as `{}`. A single resource's stored value that no longer validates falls back to its default on read (load-time recovery); collection-instance reads return the stored object as-is.
 
-**Content writes do not bump scope record version.** Content is separate from state. The scope record's `version` and `updatedAt` reflect state/metadata changes only. Content writes persist per-key to `ContentStore` without touching the scope record.
+### `stateSchema` must be a fixed point
 
-**Scope deletion cascades:** When a session (or other scope) is deleted, `ContentStore.deleteAll()` is called before the scope record is removed. This prevents orphaned content.
+A single resource is parsed on read *and* write, so a schema rewrite lands twice per read-modify-write; a collection instance is parsed on writes only (`createNamespaceInstanceRef` returns the cached object, and its loaders skip `normalizeResourceState`). A rewrite that settles is fine and load-bearing (it's how pre-existing rows gain new defaults, BP-030). One that doesn't settle (`z.number().transform(v => v + 1)`) drifted stored values on every write while reporting success.
 
-See the [server README](../../packages/engine/README.md) for `ContentStore` interface details and custom adapter instructions.
+So `parseResourceWriteState` (`engine/src/resources/normalize-resource-state.ts`), the single parse path for every resource write (all setters on singles and instances, `collection.create()`, both `upsert` branches, and the `POST` create route), **refuses a parsed value that isn't a fixed point** with `ValidationError`. It short-circuits when the first parse changed nothing, assuming parse is pure. Legacy rows under a settling schema converge on their next write; rows under a non-settling schema can't be mutated at all (`assertStableResourceState`) until the schema is made idempotent.
 
-### State Storage
+When a helper must report *what it did* from an updater, use `updateStateWith` (`@flow-state-dev/core/helpers`): the updater can run more than once on the CAS path, so a value captured outside it describes the last attempt, not the committed one.
 
-Resource *state* (the structured `JsonObject` each resource carries, as opposed to its content body) is persisted the same way content is: per-resource in a dedicated `ResourceStateStore`, keyed by `(scopeType, scopeId, resourceKey)`, separate from the scope record. This covers both single resources and collection instances under one store.
+Scope state (`ctx.session.state`, etc.) stays separate from resources: state slices are namespaces many unrelated blocks contribute keys to; resources have identity and carry their scope.
 
-The two stores are parallel but independent — a resource can have state with no content body, and vice versa — so they keep distinct payload types (`JsonObject` for state, `string` for content) and distinct adapters.
+## Owner-private collections
 
-The lifecycle mirrors content exactly:
+A collection declaring `ownerPrivate: { param }` owns every key whose first `~`-prefixed segment sits at that parameter. Core validates the shape at definition (parameter occurs once, no `**`, no browser read of state or content). Engine enforces it in one module:
 
-1. **Execution context** — declared resource state is eagerly loaded from `ResourceStateStore` into an in-memory cache at context creation. Reads during block execution are synchronous against the cache.
-2. **State writes persist per-key.** A mutation to one resource writes only that resource's key via `ResourceStateStore.set` — it never loads or rewrites the whole scope record. This removes the write amplification a collection of N instances previously paid (the whole `resources` map was rewritten on every single-instance change).
-3. **State routes / debug snapshot** — read resource state fresh from `ResourceStateStore`.
+- **The key fence, always on.** A key's first `~` segment is its owner. Such a key is served only through an owner-private collection, only with that segment at its owner parameter, and only to the user `ownerSegment` encodes. Later `~` segments are data. Every other collection lists without it, reads it as absent and is refused on write: through the handle, the request-start seed cache, projected collections, browser resource routes, `/state` and debug endpoints. It reads only the key, so it holds in every process.
+- **The startup fence, armed by a declaration.** Once `FlowRegistry` holds a flow with an owner-private collection, it refuses any flow with another same-scope collection whose pattern can reach those keys, checking held flows and every later one. **Never cleared, even across unregister**, because the rows outlive the registration.
+- **Single resources, always.** Every registry refuses a single resource whose storage key (`ref`, else accessor) has a `~` segment: a single's key is the same for every caller, so it's never an owner's own.
 
-The `Resource*Ref` API is unchanged; this is an internal storage relocation. The scope record's former inline `resources` field is no longer read or written.
+Workforce's private roster is the first consumer; engine knows it only as an owner-private collection.
 
-### Typed Edges (`edges` slot)
+## Client data
 
-A resource (or collection) can opt into a typed-edge graph by declaring `edges: true | { vocabulary?, maxEdges? }` on `defineResource` / `defineResourceCollection`. This is part of the resource contract, not a separate store:
+**Scope state is server-private by default.** A scope's `client` block declares what crosses: `expose` (top-level fields, verbatim) and `derived` (computed from `{ state, resources }` of **that scope only**, returning `JsonValue` with no runtime schema). Both land at `clientData.<scope>.<name>`; they share one namespace, so a name in both throws at `defineFlow`. A scope without `client` exposes nothing, and a new state field doesn't reach the wire until named.
 
-- **State field injection.** `defineResource` extends the resource's `stateSchema` (and default) with an `edges: Edge[]` field unless the schema already declares one; `defineResourceCollection` does the same for each instance schema. Edges therefore live *inside* the resource's own state `JsonObject` and persist through the same per-key `ResourceStateStore` path as any other state — no new storage key, no store-adapter change. The graph is opaque to the store (it's just an array in the value), so traversal is in-memory.
-- **`.edges` ref API.** When `edges` is declared, the live `ResourceRef` / `ResourceContext` (and each collection-instance ref) gains an `.edges` accessor: `add`, `supersede` (bi-temporal close, never a hard delete), `remove`, `all({ at? })`, `neighbors`, `egoGraph`, `shortestPath`, and `pruneDangling`. Mutators route through the resource's existing `updateState`, so edge writes emit the same `resource_change` events as any state write. The edge schema and pure traversal helpers are the reusable `@flow-state-dev/core/graph` primitive; the slot is what wires them onto the resource.
-- **Bounding.** `maxEdges` caps growth; the cull drops superseded tombstones first, then lowest-confidence active edges, and never evicts the edge just added (so `add()` always returns a stored edge).
+Resource-level `client` is the second channel: `client.data` projects metadata into the snapshot, `client.content` gates content endpoints (`create`/`update`/`delete` are collection-only, a type error on singles). No `client` → invisible. The snapshot carries metadata and `clientData` only; content is fetched lazily unless `prefetch: true`. A never-written single resource's content endpoint returns its declared `content`/`contentFile`, the same body a run starts from.
 
-The first consumer is the memory `relations` tier (see `apps/docs/docs/memory/relations`), which stores typed relationships between fact subjects on the semantic resource's edge slot.
+`ClientDataOf<typeof def>` extracts the projected type, a phantom `ClientType` derived from `expose`/`exclude`/`data`'s awaited return/identity; React hooks take it as `TClient`. Type-level only: `resolveClientProjection` and the `JsonValue` wire contract are unchanged. Annotate a `data` function's return type to get a precise shape.
 
-### Three-Wave Loading
+### Collection write routes: state first, then content
 
-A request loads only the resources its dispatched action and blocks declare, partitioned into three waves. The partition is computed from where each resource is declared:
+`ResourceStateStore` is versioned, `ContentStore` is unversioned by decision. Both write routes **settle the state key first, then touch content**; a request that loses the state race gets `409` and never reaches `ContentStore`.
 
-- **Flow-level** — declared in `defineFlow({ resources })`. Available to every action.
-- **Action-tree** — declared anywhere inside the dispatched action's block tree, but not at flow level.
-- **Per-block (lazy)** — `prefetchMode: 'lazy'` resources, which opt out of the action-tree burst.
+- **`POST`** inserts at `expectedVersion: 0` (create-if-absent), then writes content. Concurrent creates → one `201`, one terminal `409`; the body is always the winner's. Its seed (`stateSchema.parse({})`) goes through `parseResourceWriteState` like every other write, so a schema that can't seed gets `400`, not a `201` over an unmutable row. This is the only engine path that writes resource state from outside the registry.
+- **`DELETE`** reads the version, deletes state conditionally, then content. Absent topic → idempotent `200`. The version is the one the *route* reads, so it closes only the route's own read→write window; a caller-supplied precondition isn't supported.
 
-Where each wave fires:
-
-- **Wave 1 (flow-level, request start)** — `createExecutionContext` loads the flow-level eager subset when the context is created, before any action runs.
-- **Wave 2 (action-tree, dispatch)** — also in `createExecutionContext`. A context is always bound to exactly one action, so the context loads that action's declared resources in one parallel burst at creation time. This lives in `createExecutionContext`, not in `runAction`, precisely because the binding is one-context-per-action — there's no separate point where the action "starts" that the context doesn't already know about. Sibling actions' resources never load.
-- **Wave 3 (per-block dispatch)** — the block runtime's `run` loads a block's `prefetchMode: 'lazy'` single resources when that block dispatches, through `_loadDeclaredResources`. Lazy collections defer further: they load per access through the on-demand accessor (below) rather than at block dispatch.
-
-**Per-scope cache and dedupe.** Each scope (session / user / org) keeps an in-memory state and content cache that the waves fill. A `loadedCollectionPrefixes` set per scope records which collection pattern-prefixes have already been bulk-loaded, seeded with the flow-level prefixes from Wave 1, so a re-dispatch never re-scans. Single resources are tracked implicitly by presence in the state cache. An `inflightLoads` single-flight map collapses concurrent loads of the same key or prefix across parallel block dispatch (for example a sequencer's `.sideChain()` fan-out), and clears its entry in `finally` so a failed load retries on the next attempt instead of poisoning the map.
-
-**Concurrent writes to the cache.** Every write commits one key to the per-key store and then mutates the live per-scope cache in place at that key (`cache[key] = value`) rather than replacing the whole map (FIX-744). Because `.parallel`/`.forEach` branches share one execution context, this is what lets distinct-key collection writes from a fan-out coexist in the cache: a convergence read (`.list()`/`.count()`) after the fan-out sees every instance, not just the last branch's. Same-key concurrent writes are last-writer-wins where each writer supplies a whole value; `incState` / `pushState` supply a delta that is re-run against the row it commits against, so two branches accumulating on one key both land. See [State and Scopes — concurrency guidance](./state-and-scopes.md).
-
-**Lazy collection reads.** `prefetchMode` is a loading-cost knob, not an API-shape one: a collection's `get`/`getOptional`/`list`/`count` are async in both modes. Eager just resolves them against a cache the waves prefilled, while lazy defers loading to the moment of access. A `prefetchMode: 'lazy'` collection reads through a per-scope on-demand accessor: `getInstance(storageKey)` and `getByPrefix(prefix)` fill the same per-scope cache and reuse the same single-flight map and `loadedCollectionPrefixes` set as the eager waves, so a key fetched on demand and one fetched by a wave dedupe against each other. The underlying reads go to the per-key `ResourceStateStore` (and `ContentStore` for content). See [Resource Collections — prefetch mode](./resource-collections.md#prefetch-mode).
-
-**Validation.** `prefetchMode: 'lazy'` on a single resource declared at flow level throws at build time — a flow-level declaration has no per-block dispatch to act as a load trigger. `prefetchMode: 'lazy'` combined with a non-`'none'` eviction policy throws — a lazy cache is partial, so eviction can't see the full set to evict correctly. `maxInstances` and eviction are exact under eager and best-effort under lazy (they only see loaded instances).
-
-### Accessing Resources
-
-Resources are accessed through the flat `ctx.resources` registry — the resource's intrinsic `scope` routes reads and writes to the right storage layer.
-
-```ts
-// Read resource state — same shape regardless of scope
-const plan = ctx.resources.plan;
-const steps = plan.state.steps;
-
-// Mutate resource state — these three take the resulting state
-await plan.patchState({ status: "active" });
-await plan.setState({ steps: ["step1", "step2"], status: "draft" });
-await plan.updateState((current) => ({
-  ...current,
-  steps: [...current.steps, "new-step"],
-}));
-
-// ...these two take a delta
-const usage = ctx.resources.usage; // { calls: number; errors: string[] }
-await usage.incState({ calls: 1 });
-await usage.pushState("errors", "rate_limited");
-```
-
-**The five state writers.** `patchState` / `setState` / `updateState` compute the next state; `incState` / `pushState` describe a change to it. All five resolve to `void` (read the result off the synchronous `ref.state` getter), all five exist on both ref factories — the single-resource handle and the collection-instance ref — and all five honor `writable: false`. `incState` and `pushState` are typed against `TState` on a `ResourceRef<TState>` / `ResourceContext<TState>` whose state type is written out; a handle read off `ctx.resources.<name>` is `ResourceRef<any>`, so on that path the wrong-kind check is the runtime one below.
-
-**Atomicity, and where it stops.** Every one of the five is a single version-checked mutation through `runResourceCAS` (`packages/engine/src/stores/resource-cas.ts`). The mutator is the op's *intent*, not a finished value: it is re-run against refreshed state on each retry, so a writer that loses a race recomputes against the winner's row instead of committing a value derived from a snapshot that has since moved. For the delta verbs that is the entire point — two contexts incrementing one counter both land, where a hand-written read-modify-write lands on one. The guarantee is per storage key and is only as strong as the store's compare-and-swap: the memory, SQLite and Postgres adapters compare and swap inside the store; the filesystem store holds its guard per key on the **store instance**, which covers every execution context sharing that instance but does not coordinate two store instances pointed at one directory. Losers still retry, so a delta is not faster than the read-modify-write it replaces — it just does not lose the update.
-
-**Refusal.** `incState` refuses a target field holding a non-number and `pushState` one holding a non-array, throwing `FlowError` with `code: "resource_delta_refused"` and `retryable: false`. `incState` additionally refuses a non-finite *result*: `z.number()` accepts `±Infinity` so the schema parse would let it through, and the adapters then disagree — the memory store keeps `Infinity` where every JSON-serializing adapter stores `null`. The check is on the result rather than the delta because two finite operands can overflow into it. One `incState` call is one mutation: if any field of a multi-field call is wrong-typed, none of the call applies.
-
-**A refusal is judged against a verified basis, and writes nothing.** `runResourceCAS` calls its mutator unguarded and only then persists, so a throw from inside the mutator propagates before any conflict is observed — no refresh, no re-run — and a caller whose cached row had since been replaced would fail terminally over a value the store no longer holds. So a refusing attempt returns a sentinel that the persist helpers turn back into the basis they were handed, **unparsed**: the CAS driver reads that as a deep-equal no-op and *verifies* it, either confirming the basis was the committed row (versions match, the refusal stands and is thrown to the caller) or discovering the key moved, refreshing, and re-running the mutator against the winner's state with the verdict reset. A schema rejection from the write-path parse is deferred the same way, so `incState({ calls: 1 })` computed off a stale `calls: 10` against a `.max(10)` field re-runs rather than failing over a ceiling the live row does not hit. Returning the basis unparsed is load-bearing: normalizing it (filling a `.default()` the stored row lacks, dropping a retired key) would make an untouched row look like a real write, and the driver would persist and version-bump it before the refusal was ever raised. A refused write therefore persists nothing, bumps no version, and emits no `resource_change`.
-
-**Absent and `null` are empty states, not wrong kinds.** `incState` starts an absent or `null` field from `0`, `pushState` from `[]`. BP-023 declares state fields `.nullable().default(null)`, so an untouched counter reads as `null` — refusing there would refuse the most ordinary write there is. Presence is tested as an *own* property (`Object.hasOwn`) and the result written with `Object.defineProperty`, because a plain object inherits `constructor`, `toString` and the rest of `Object.prototype` (a bare lookup turns a first touch into a wrong-kind refusal) and `next["__proto__"] = value` sets a prototype instead of creating an own property. Field names reach these verbs from callers, so both are reachable. Note the ceiling above the verbs: zod rebuilds a `ZodObject`'s output with plain assignment, so a field literally named `__proto__` does not survive `parseResourceWriteState` on an object `stateSchema`.
-
-A write whose result fails `stateSchema` throws `ValidationError` and leaves the stored state untouched. A whole-row `.catch()` fallback — including one sitting under `.nullable()`, `.default()`, or `.readonly()` — is not a write success: the write path peels those catch wrappers, and the candidate must satisfy the wrapped inner schema before any fallback-normalized output can be stored. Field-level `.catch()` remains ordinary Zod normalization. Schema-valid `null` on a `.nullable()` resource is the documented reset: the store holds JSON objects, so that write persists as `{}`. A read of a persisted single-resource value that no longer validates still falls back to the resource default — that is load-time recovery, not a write path. Collection-instance reads return the stored object as-is.
-
-**A `stateSchema` must parse its own output back to the same value.** A *single* resource's state is parsed on the way out as well as on the way in — the read path normalizes the stored row into the request's cache, the updater builds on that cache, and the write parses the result — so anything the schema rewrites lands twice per read-modify-write cycle. A collection instance gets the schema on writes only: `createNamespaceInstanceRef` hands back the cached stored object as-is, and the loaders that fill that cache (the collection branch of `normalizeScopeResources`, and the lazy `getByPrefix` bulk load) copy store rows in without `normalizeResourceState` — so a rewrite lands once per write there, not twice. Either way it recurs, so it has to settle. A rewrite that settles is fine and is load-bearing: filling a `.default()`, stripping an undeclared key, or normalizing a retired enum value lands on the same value the second time, which is how a row written before its schema gained a field acquires that field (BP-030). A rewrite that does not settle, such as `z.object({ n: z.number().transform((v) => v + 1) })`, moved the stored value on every write while reporting success, and on a single resource read back plausibly because the same shift re-applied on the way out.
-
-Writes are therefore held to the parsed value being a **fixed point** of the schema, and a value that is not one is refused with `ValidationError` rather than stored ([FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260)). The check runs in `parseResourceWriteState` (`packages/engine/src/resources/normalize-resource-state.ts`), which is the single parse path for every resource write: `setState` / `patchState` / `updateState` on singles and on collection instances, `collection.create()` and both of `upsert`'s branches, and the `POST` create route below. It short-circuits when the first parse changed nothing — the common case — which assumes a schema's parse is a pure function of its input; a schema for which that is false corrupts reads too and is out of this guard's scope. Rows written before the check may not satisfy it, and only some of them converge on their own. A row under a schema whose parse settles — one written before that schema gained a `.default()`, say — reads normally and converges on its next successful write; that is the BP-030 case. A row written by the kind of schema this guard targets has no next successful write: its parse does not settle, so `assertStableResourceState` refuses every mutation before persistence. Nothing converges until the schema's parse is made idempotent, and a value that already drifted keeps the value it drifted to until a write corrects it.
-
-`ctx.session.state`, `ctx.user.state`, and `ctx.org.state` survive — state slices are namespaces that multiple unrelated blocks contribute keys into and need scope tagging at the install site. Resources have identity, so they carry their scope with them.
-
-### Portable Resource Definitions
-
-`defineResource` returns a definition stamped with `(scope, ref, flowIsolation)`:
-
-```ts
-import { defineResource } from "@flow-state-dev/core";
-
-export const planResource = defineResource({
-  ref: "plan",
-  scope: "session",
-  stateSchema: z.object({
-    steps: z.array(z.string()).default([]),
-    status: z.enum(["draft", "active", "complete"]).default("draft"),
-  }),
-  writable: true,
-});
-
-// Use in flow — single flat resources map
-defineFlow({
-  resources: { plan: planResource },
-});
-```
-
-`defineResource` exposes `StateType` and `ContextType` helpers for typing shared helper functions:
-
-```ts
-type PlanState = typeof planResource.StateType;
-type PlanContext = typeof planResource.ContextType;
-
-async function addStep(ctx: PlanContext, step: string) {
-  await ctx.updateState((plan) => ({
-    ...plan,
-    steps: [...plan.steps, step],
-  }));
-}
-```
-
-The updater above reports nothing, which is why a plain `updateState` is right for
-it. As soon as a helper needs to tell its caller *what it did* — "yes, I removed
-that step", "here are the three I dropped" — reaching outside the callback for a
-variable is wrong: on the CAS path the updater can run more than once, and the
-value left behind describes whichever attempt ran last rather than the one that
-committed. Return the outcome through `updateStateWith` instead:
-
-```ts
-import { updateStateWith } from "@flow-state-dev/core/helpers";
-
-async function removeStep(ctx: PlanContext, step: string): Promise<boolean> {
-  return (await updateStateWith(ctx, (plan) => {
-    if (!plan.steps.includes(step)) return { state: plan, result: false };
-    return {
-      state: { ...plan, steps: plan.steps.filter((s) => s !== step) },
-      result: true,
-    };
-  })) ?? false;
-}
-```
-
-See [State mutation model](https://flow-state.dev/docs/state/mutation-model) →
-"Writing an updater that may run twice" for the full rule.
-
-### Resource Collections
-
-Static resources are declared by name at definition time. Resource collections let you create typed sets of resources dynamically at runtime — useful when the number of instances isn't known ahead of time (file collections, per-topic knowledge stores, dynamic workspaces).
-
-See [Resource Collections](./resource-collections.md) for the full reference: patterns, runtime API, eviction, lifecycle hooks, and storage model.
-
-#### Owner-private collections
-
-A collection declaring `ownerPrivate: { param }` owns every key whose first segment beginning `~` sits at that parameter. Core validates the declaration's shape at definition (the parameter occurs exactly once, no `**`, no browser read of state or content). Engine enforces it in one module, with two fences:
-
-- **The key fence, always on.** A key's first segment beginning `~` is its owner. A key with one is served only through an owner-private collection, only when that segment sits at its owner parameter, and only to the user `ownerSegment` encodes there. Later `~` segments are data. Every other collection lists without it, reads it as absent and is refused on write: through the resource handle, the request-start seed cache, projected collections, the browser resource routes, `/state` and the debug endpoints. It reads only the key, so it holds in every process over the store.
-- **The startup fence, armed by a declaration.** Once `FlowRegistry` holds a flow declaring an owner-private collection, it refuses any flow declaring another collection in the same scope whose pattern can reach its keys, checking flows it already holds and every later one. It is never cleared, even across unregister, for the reason the participants map is kept: the rows outlive the registration.
-- **Single resources, in every registry.** `FlowRegistry` refuses a flow declaring a single resource whose storage key (its `ref`, else its accessor) has a segment beginning `~`, armed or not. A single resource's key is the same for every caller, so it is never the owner's own, and the key fence reads only collections.
-
-Workforce's private roster collection is the first consumer. Engine knows it only as an owner-private collection.
-
-### Block-Level Resource Declarations
-
-Blocks declare resource dependencies via a single `resources` field:
-
-```ts
-const planManager = handler({
-  name: "plan-manager",
-  resources: { plan: planResource },
-  execute: async (input, ctx) => {
-    await ctx.resources.plan.patchState({ status: "active" });
-    return input;
-  },
-});
-```
-
-Declared resources surface on `BlockDefinition.declaredResources` as a flat `Record<string, DefinedResource | DefinedResourceCollection>`. Sequencers, routers, and capability-merge utilities walk this metadata to bubble resource declarations up to the flow level.
-
-#### Sequencer Resource Collection
-
-Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain (`.step()`, `.parallel()`, `.rescue()`, etc.). Nested sequencers bubble their collected resources upward into the same flat map.
-
-#### Flow-Level Resource Merge
-
-`defineFlow` collects `declaredResources` from every block reachable from its action blocks — through composition and through a generator's static `tools` array, including when a `uses` capability also contributes tools — and merges them into the flow's flat `resources` map. Tools returned by a function-valued `tools` slot are resolved per call, so their declarations are not collected; declare those resources on the flow. Flow-level declarations take priority on dedup; the merge errors at build time when two definitions share an accessor key but are different references:
-
-```ts
-const myFlow = defineFlow({
-  kind: "my-app",
-  actions: { chat: { block: pipeline } },
-  resources: {
-    // Flow-level plan overrides block-declared plan (same accessor key)
-    plan: customPlanResource,
-  },
-});
-```
-
-#### Collision Detection
-
-Two collision modes are checked at flow-build time:
-
-1. **Same accessor key, different references** — same as before. Use the same `defineResource()` reference everywhere or pick distinct accessor keys.
-2. **Different accessor keys, same effective storage key** — two definitions that resolve to the same `(scope, ref, flowIsolation, flowInstanceId?)` tuple would silently share storage. Hard error. The isolated coordinate is the resolved instance id, not the kind (FIX-1323).
-
-Identity-equal re-registration is always safe (diamond dependencies through capabilities). Different accessor names pointing at the **same** `DefinedResource` reference share storage by design — the persisted slot is keyed by ref identity, not accessor name.
-
-## Client Data
-
-Scope state is private to the server by default. Each scope declares what crosses the boundary with a `client` block, which has two halves:
-
-- **`expose`** — names of top-level state fields, passed through verbatim.
-- **`derived`** — named projections computed from `{ state, resources }` within that single scope.
-
-```ts
-session: {
-  client: {
-    expose: ["messageCount"],
-    derived: {
-      activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-    },
-  },
-}
-```
-
-Everything named in `expose` or `derived` is client-visible; there is no per-entry `client: true/false` toggle. The two share one namespace per scope (the scope's `clientData` object on the wire), so a name used in both throws at `defineFlow`.
-
-### ClientDataComputeFn
-
-```ts
-type ClientDataComputeFn<TState, TResources> =
-  (ctx: ClientDataContext<TState, TResources>) => JsonValue | Promise<JsonValue>;
-
-type ClientDataContext<TState, TResources> = {
-  state: Readonly<TState>;
-  resources: TResources;
-};
-```
-
-**Key differences from the former projection system:**
-- **Single-scope context**: Each compute function receives only the state and resources from its own scope — no cross-scope access. A session-level `derived` entry sees session state and session resources, nothing else.
-- **No output schema validation**: Compute functions return `JsonValue` directly. Type safety comes from usage patterns, not runtime schema validation.
-- **No `defineProjection()`**: There's no portable projection builder. For shared computation logic, extract a regular function.
-
-### All Three Scopes
-
-```ts
-defineFlow({
-  kind: "my-app",
-  session: {
-    client: {
-      derived: {
-        artifactsList: (ctx) => {
-          const artifacts = ctx.resources.artifacts?.state;
-          return artifacts?.order.map(id => ({
-            id,
-            title: artifacts.byId[id]?.title ?? "Untitled",
-          })) ?? [];
-        },
-        modeStatus: (ctx) => ({
-          currentMode: ctx.state.mode ?? "chat",
-          requestCount: ctx.state.requestCount ?? 0,
-        }),
-      },
-    },
-  },
-  user: {
-    client: {
-      derived: {
-        preferences: (ctx) => ({
-          displayName: ctx.state.displayName ?? "User",
-          preferredModel: ctx.state.preferredModel ?? "openai/gpt-5.4-mini",
-        }),
-      },
-    },
-  },
-  org: {
-    client: {
-      derived: {
-        sharedConfig: (ctx) => ctx.state.config ?? {},
-      },
-    },
-  },
-});
-```
-
-## Context Functions
-
-Generators use `contextFn()` to pull typed data from scopes into model context — replacing the old projection reference helpers:
-
-```ts
-import { contextFn } from "@flow-state-dev/core";
-
-const myContext = contextFn(
-  { session: z.object({ mode: z.string() }) },
-  ({ session }, ctx) => {
-    const steps = ctx.resources.plan?.state.steps ?? [];
-    return `Current mode: ${session.mode}\nPlan steps: ${steps.join(", ")}`;
-  },
-);
-
-const chatGenerator = generator({
-  name: "chat",
-  model: "openai/gpt-5.4-mini",
-  prompt: "You are a helpful assistant.",
-  context: [myContext],
-  history: true,
-  user: (input) => input.message,
-});
-```
-
-### Prompt Formatters
-
-The `@flow-state-dev/core/prompt` subpath provides utilities for formatting context data into LLM-friendly strings:
-
-| Formatter | Purpose |
-|-----------|---------|
-| `section(title, content)` | Wrap content in a labeled section |
-| `list(items)` | Bullet list |
-| `keyValues(obj)` | Key-value pairs |
-| `entries(items, fn)` | Map items through a formatter |
-| `codeBlock(code, lang?)` | Fenced code block |
-| `join(...parts)` | Concatenate with double newlines, filtering empties |
-| `when(condition, content)` | Conditional inclusion |
-
-## Type Helpers
-
-The framework exports type utilities for working with resources and scopes:
-
-```ts
-import { StateOf, ContextOf, ResourceContext } from "@flow-state-dev/core";
-
-// Extract state type from a schema or resource definition
-type PlanState = StateOf<typeof planResource>;
-
-// Get the context handle type for a scope/resource
-type SessionCtx = ContextOf<typeof sessionStateSchema, "session">;
-type PlanCtx = ContextOf<typeof planResource, "resource">;
-```
-
-`StateOf` and `ContextOf` work with both resource definitions and raw Zod schemas, so shared helper functions can use one consistent typing pattern.
-
-## Client Visibility
-
-Client-facing data is exposed through two complementary mechanisms:
-
-1. **Scope-level `client`** — `expose` for verbatim state fields, `derived` for views computed from scope state and resources. Best for cross-resource projections and non-resource data.
-2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Best for exposing resource data directly to clients without manual projection.
-
-### Scope-Level Client Data
-
-A scope's `client` block projects state and resources from that single scope. The result is served grouped by scope:
-
-```
-GET /api/flows/sessions/:sessionId/state
-```
-
-Returns scope-level client data grouped by scope:
-
-```json
-{
-  "clientData": {
-    "session": { "modeStatus": { "currentMode": "chat" } },
-    "user": { "preferences": { "displayName": "User" } }
-  }
-}
-```
-
-### Resource-Level Client Exposure
-
-Resources declare a `client` config to control what's visible to clients. `client.content` controls content endpoint access. `client.data` derives metadata for the snapshot.
-
-```ts
-// Single resource — content readable, data exposes derived state
-defineResource({
-  ref: 'soul',
-  stateSchema: z.object({ values: z.array(z.string()), tone: z.string() }),
-  content: `## Values\n{{#each values}}- {{this}}\n{{/each}}`,
-  client: {
-    content: { read: true },              // lazy by default
-    // content: { read: true, prefetch: true },  // opt-in eager load
-    data: (state) => ({ displayTone: state.tone }),
-  },
-})
-
-// Collection — content readable and mutable
-defineResourceCollection({
-  ref: 'files',
-  stateSchema: z.object({ mimeType: z.string(), size: z.number() }),
-  client: {
-    content: { read: true, create: true, update: true, delete: false },
-    data: (state) => ({ size: state.size, mimeType: state.mimeType }),
-  },
-})
-```
-
-**Key rules:**
-- `client.content` governs access to the rendered content body
-- `client.data` derives metadata visible in the snapshot
-- `create`, `update`, `delete` are collection-only — declaring them on a single resource is a type error
-- Omitting `client` entirely means the resource is invisible to clients (no change from current behavior)
-
-**Client-projection output type (FIX-741).** `defineResource` / `defineResourceCollection` carry the projected client-data type as a phantom (`ClientType`) alongside `StateType`, derived from the `client` config: `Pick` from `expose`, `Omit` from `exclude`, the awaited return of `data`, or the full state for the identity default. `ClientDataOf<typeof def>` extracts it, and the React hooks accept it as a `TClient` type parameter so `clientData` is typed instead of `unknown`. This is a pure type-level brand — `resolveClientProjection` and the `JsonValue` wire contract are unchanged; the hook applies a single projection-backed cast at its boundary. The `data` branch depends on the projection function's return type, so annotating that return is what threads a precise shape (the function's `state` argument is not concretely typed at the definer's inference position).
-
-### Snapshot Response with Resources
-
-The snapshot includes a `resources` key with metadata and `clientData` only — no content (except `prefetch: true` resources):
-
-```json
-{
-  "clientData": { "session": { "modeStatus": {...} } },
-  "resources": {
-    "session": {
-      "soul": { "clientData": { "displayTone": "Direct" } },
-      "files": {
-        "items": {
-          "readme.md": { "clientData": { "size": 1240, "mimeType": "text/markdown" } },
-          "notes.md": { "clientData": { "size": 430 } }
-        }
-      }
-    }
-  }
-}
-```
-
-### Content Fetch Endpoints
-
-Content is lazy-loaded via dedicated endpoints, gated by `client.content.read`:
-
-```
-GET /api/flows/sessions/:sessionId/resources/:ref/content          → single resource
-GET /api/flows/sessions/:sessionId/resources/:ref/:topic/content   → collection item
-```
-
-A single resource nothing has written yet returns the content its definition declares (`content` or `contentFile`), the same body a run's context starts from.
-
-### Mutation Endpoints (Collections Only)
-
-```
-POST   /api/flows/sessions/:sessionId/resources/:ref               → create item
-PATCH  /api/flows/sessions/:sessionId/resources/:ref/:topic/content → update content
-DELETE /api/flows/sessions/:sessionId/resources/:ref/:topic         → delete item
-```
-
-Server enforces declared permissions and rejects operations that exceed them.
-
-#### Write ordering and `409 Conflict`
-
-Item state and item content live in two stores (`ResourceStateStore`, `ContentStore`). Both write routes therefore follow one rule: **settle the state key first, then touch content.** A request that loses the state race returns `409` and never reaches `ContentStore`.
-
-- **`POST`** inserts the state row at `expectedVersion: 0` (create-if-absent) and writes content only after that commits. Two concurrent creates of one topic yield one `201` and one `409`, and the stored body always belongs to the winner. The conflict is terminal — a losing create is never retried into an overwrite.
-- **`DELETE`** reads the row's version, deletes state conditionally on it, and deletes content only after that commits. Deleting an absent topic is still an idempotent `200`.
-
-**The `POST`'s seed clears the same bar as every other write.** The route carries no initial state — it seeds the row from `stateSchema`'s parse of `{}` — and that seed goes through `parseResourceWriteState`, the same path `collection.create()` uses. A schema whose parse of `{}` fails, or whose parsed seed is not a fixed point, gets `400` with the resource-specific message rather than a `201` over a row every later mutation would reject. This route is the only place in the engine that writes resource state from outside the registry; before [FIX-1260](https://linear.app/fixpoint-labs/issue/FIX-1260) it parsed beside that guard rather than through it, so a collection the registry refused to create could still be seeded over HTTP.
-
-**What the `DELETE` check covers.** The version is the one the *route* observes while serving the request, not one the caller supplied, so the window it closes is the route's own read→write window. A `DELETE` issued from a client view fetched earlier still reads the live row and removes it. A caller-supplied precondition is separate surface these routes do not accept ([FIX-1006](https://linear.app/fixpoint-labs/issue/FIX-1006)).
-
-**Residuals, because a create is still two writes to two stores.** Between the `POST`'s state insert and its content write the item is *live but its content is not final*, and `ContentStore` is unversioned by decision, so no state predicate can fence a write to it:
+**Accepted residuals** (a create is two writes to two stores), pinned in `packages/engine/test/resource-collection-routes.test.ts`:
 
 | Window | Outcome |
-| --- | --- |
-| The content write fails | **The request fails, but the item exists anyway**, with **no content row**. The state row committed first and the `content.set` is a bare `await`, so the rejection propagates out of the handler — a failed `POST` is not a no-op. The item is live and listable, a retry of the topic gets an honest `409`, and repair is `PATCH` when the collection grants `client.content.update`. Applies to content-storing collections only — see the shape note below |
-| A `DELETE` lands in the window | The create's body is orphaned behind the tombstone; a later create carrying no content revives the row over it, surfacing a deleted generation's content as current. **No error** |
-| A `PATCH` lands in the window | It is acknowledged `200` and then overwritten by the in-flight create. **No error** |
+|---|---|
+| Content write fails | **The request fails but the item exists**, live and listable, with no content row; retries get `409`; repair is `PATCH` if granted |
+| `DELETE` lands in the window | The create's body is orphaned behind the tombstone; a later contentless create revives the row over it, surfacing deleted content as current. No error |
+| `PATCH` lands in the window | Acknowledged `200`, then overwritten by the in-flight create. No error |
 
-**The shape of a missing body is `null`, not `""`.** A failed content write leaves no content row, and `renderContent` (`packages/engine/src/resources/internal.ts`) returns `null` when `rawContent === undefined`. `handleGetCollectionItemContent` passes that straight through, so the item reads back as `{ content: null }`. Adapter and client code that branches on `content === ""` takes the wrong path — the distinction is between *absent* and *empty*, and only the former occurs here.
-
-**A template-backed collection splits that row rather than escaping it.** `renderContent` checks `contentTemplate` and `contentTemplateRef` *before* it looks at `rawContent` and returns from the template branch without consulting it, so **readability** costs nothing — the item renders from state whether or not a content row exists, and there is nothing to repair with `PATCH`. But the create route writes content whenever the caller sends any, with **no template guard**, so the **partial commit** is exactly as real: the request still fails, the item is still live and listable, and a retry still gets a `409`. Read the first row as two claims — *the body is absent*, which a template answers, and *the create half-committed*, which it does not.
-
-These are accepted, not oversights. A version cannot distinguish a create's own row after a state write (version 2) from a successor generation created after a delete (also version 2) — the counter is per key, not per generation — so no post-hoc fence closes them without a generation-owner token, and a token still cannot fence a write to an unversioned store. Closing them is cross-record atomicity ([FIX-854](https://linear.app/fixpoint-labs/issue/FIX-854)). All three are pinned by tests in `packages/engine/test/resource-collection-routes.test.ts`.
-
-### React Hooks
-
-```ts
-// Single resource — metadata from snapshot, content on demand
-const { clientData, fetchContent } = useResource(session, 'soul')
-
-// Convenience hook — fetches content immediately
-const { clientData, content, isLoading } = useResourceContent(session, 'soul')
-
-// Collection — metadata from snapshot, per-item content + CRUD actions
-const { items, actions } = useResourceCollection(session, 'files')
-await items['readme.md'].fetchContent()
-await actions.create({ topic: 'spec.md', content: '# New Spec' })
-await actions.update({ topic: 'readme.md', content: '# Updated' })
-```
-
-Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`. The `resource_change` projection rides the registry's internal post-mutation seam (`onResourceChanged`); the same seam also drives in-session reactive blocks (`reactTo`) — see [Reactive blocks](../../apps/docs/docs/resources/reactive-blocks.md) and the seam contract in [Resource Collections](./resource-collections.md#reactive-blocks-reactto).
-
-## Canonical Authority
-
-This document is authoritative for resources and client data. See also [flows-and-actions.md](./flows-and-actions.md) and [state-and-scopes.md](./state-and-scopes.md). For full type signatures, refer to the published types in `@flow-state-dev/core`.
+- **A missing body reads as `null`, not `""`** (`renderContent` returns `null` for undefined raw content). Code branching on `content === ""` takes the wrong path.
+- **Template-backed collections** render from state regardless (the template branch never consults `rawContent`), so readability is unaffected, but the create route writes content with no template guard, so the **half-commit is just as real**.
+- Why not fenced: versions are per key, not per generation, so a create's own row and a successor generation's can both be version 2; a generation token still couldn't fence an unversioned store. Closing these needs cross-record atomicity.
