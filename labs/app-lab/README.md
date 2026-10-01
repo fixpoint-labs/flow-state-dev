@@ -4,7 +4,7 @@ App Lab is a browser app for looking into a running Lab: a set of Workforce seat
 
 A task shows one worker's run as it happens, and lets you stop it. The panel on the right follows along, with the team and its tasks at a workstream and the task's details at a task.
 
-It knows nothing about any particular Lab. Every name on screen is read from the Lab while it runs, so the same App Lab opens any Lab whose config default-exports a `FlowState`.
+It knows nothing about any particular Lab. Every name on screen is read from the Lab while it runs, so the same App Lab opens any Lab whose config provides what's listed under [What a Lab's config provides](#what-a-labs-config-provides).
 
 It is research software. Several screens are drawn as placeholders that name what will fill them. They're listed under [What isn't here yet](#what-isnt-here-yet).
 
@@ -31,10 +31,6 @@ The process runs from the directory you started it in, so a Lab's relative paths
 
 A config that doesn't load, or doesn't default-export a `FlowState`, stops the command with the loader's own message.
 
-### Who you are
-
-App Lab reads the same connection settings `fsdev dev` hands the DevTool. That is the Lab's `devtool.userId` and, if the Lab declares one, its `devtool.bearerToken`. They are injected into the page on a loopback bind only. If the Lab refuses your first read for want of a verified organization, App Lab shows that refusal and nothing else.
-
 ### Working on the pages
 
 ```bash
@@ -44,10 +40,99 @@ pnpm --filter @flow-state-dev/app-lab dev                            # Vite, pro
 
 Set `VITE_LAB_URL` to proxy to a Lab on another address.
 
+## What a Lab's config provides
+
+App Lab reads a Lab only through the routes its `FlowState` serves. It doesn't build anything for the Lab, so the config has to export a server that is already set up. The first five items below happen in the config, or in a module it imports, before the default export. The last is frontmatter in the Lab's documents.
+
+**A `FlowState`, as the default export.** Build it and finish the boot steps below first. An `.mts` config can use top-level `await`. If the Lab keeps its assembly in a host module, have that module return the `FlowState` so the config can export it:
+
+```ts title="fsdev.config.mts"
+import { openLab } from "./host.mts"; // the Lab's own assembly
+
+const lab = await openLab({ /* the Lab's own options */ });
+
+export default lab.state;
+```
+
+**An organization.** Every request a Lab serves runs in an organization, and App Lab shows it in the sidebar. A Lab names its own with `resolvePrincipal` on `createFlowState`, which returns who a request is:
+
+```ts
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+
+const state = createFlowState({
+  flows,
+  stores: { default: { primary: inMemoryStores() } },
+  resolvePrincipal: () => ({ userId: "u_lab", orgId: "org_lab" }),
+});
+```
+
+A Lab with no resolver runs in the framework's development organization, `DEFAULT_ORG_ID` from `@flow-state-dev/core`, and App Lab shows that id. Anything the boot writes under an organization, such as the inventory below, has to use the same one.
+
+**Open channels.** Call `openChannels` at boot with the same `userId` you give App Lab in `devtool: { userId }` (below). Each channel is a workstream. App Lab reads the organization off that user's sessions, so a Lab that holds none for them opens to a screen saying it names no organization, in place of the Lab.
+
+**An open inventory.** The [inventory](../../apps/docs/docs/workforce/inventory.md) is the organization's record of its seats and channels. TEAMS and PROJECTS list it, and Inbox and the boards find seats and workstreams through it. It takes two steps:
+
+1. Build the channel flow with the actions that write the inventory: `defineChannelFlow({ notify, inventory: true })` for a channel kind of your own, or `channelInstances(channels, { inventory: true })` for the built-in one.
+2. Call `openInventory` once `openChannels` has returned, under the organization your resolver names.
+
+```ts
+// `roster` is the tree read with `readDeclaredRoster`, `hired` the seats
+// `hireWorkforce` returned, and `client` the session client `openChannels` takes.
+await openChannels(roster.channels, { client, userId: "u_lab" });
+const opened = await openInventory(
+  { seats: hired.map((seat) => ({ id: seat.id, kind: seat.kind })), channels: roster.channels },
+  { run, seatWriter: { flowKind: "channel" }, userId: "u_lab", orgId: "org_lab" },
+);
+if (opened.problems.length > 0) throw new Error(opened.problems.join("; "));
+```
+
+`run` executes one action for `openInventory` and throws when it fails:
+
+```ts
+import { runAction } from "@flow-state-dev/engine";
+import type { InventoryActionRequest } from "@flow-state-dev/workforce";
+
+const runtime = await state.getRuntime();
+const run = async (request: InventoryActionRequest) => {
+  const result = await runAction({
+    flow: flowsByKind[request.flowKind], // the channel flow and each seat, by kind or id
+    actionName: request.action,
+    input: request.input,
+    userId: request.userId,
+    orgId: request.orgId,
+    sessionId: request.sessionId,
+    source: request.source, // the seat rows are written only when this reaches runAction
+    stores: runtime.stores,
+    runtimeConfig: runtime.runtimeConfig,
+  });
+  if (result?.error !== undefined) throw new Error(String(result.error));
+  return result;
+};
+```
+
+Without an inventory, TEAMS and PROJECTS each say there is none to read, and the other sections load. The [Inventory](../../apps/docs/docs/workforce/inventory.md) page covers both calls in full.
+
+**Who App Lab reads as.** Set `devtool: { userId }` on `createFlowState`, and add `bearerToken` when the resolver checks one. These are the settings `fsdev dev` hands the DevTool. App Lab passes them to the page only when `--host` is a loopback address. If the Lab turns down App Lab's first request because it carries no organization the resolver accepts, App Lab shows the Lab's answer in place of the Lab.
+
+**Documents a browser may read.** Jump to lists a declared document (a `.md` under a `resources/` folder of the Lab's tree) only when its frontmatter lets a browser read it:
+
+```md
+---
+description: How this team works.
+client:
+  content:
+    read: true
+---
+```
+
+It's listed once a session whose flow serves it exists. A document without that line stays out of Jump to.
+
+`test/fixtures/ask-lab/lab.mts` is a small Lab that does all of the above in one file.
+
 ## What you see
 
 - **Sidebar.** The organization, Jump to (⌘K), Inbox and Tasks with their counts, PROJECTS (the workstreams, until projects exist), and TEAMS: each team in the Lab's seat inventory, with exactly its seats.
-- **Jump to (⌘K).** Finds workstreams, seats, tasks and the Lab's declared documents. A document opens read-only. Only documents whose frontmatter lets a browser read them (`client: { content: { read: true } }`) are listed, and only once a session whose flow serves them exists.
+- **Jump to (⌘K).** Finds workstreams, seats, tasks and the Lab's [readable documents](#what-a-labs-config-provides). A document opens read-only.
 - **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
 - **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream.
 - **A workstream.** One channel and the boards attached to it. It has four tabs: Stream (the transcript, the composer, and its members' asks), Board (five columns: QUEUED, RUNNING, NEEDS YOU, IN REVIEW, DONE), Brief (the channel's charter) and Results. The right panel lists the channel's members with their status, and its rows by column.

@@ -5,6 +5,7 @@
  * ordinary Lab config whose seats suspend on a stock approval, woken the way a
  * real Lab wakes them, by a channel post through the framework's member wake.
  */
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { PUBLIC_REENTRY_SOURCES } from "@flow-state-dev/engine";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLabClients } from "../src/lib/connection";
@@ -34,6 +35,7 @@ async function lab(options: Parameters<typeof openAskLab>[0] = {}) {
 
 function loaded(snapshot: LabSnapshot): LoadedSnapshot {
   if (snapshot.refused !== undefined) throw new Error(`refused: ${snapshot.refused.message}`);
+  if (snapshot.unreachable !== undefined) throw new Error(`unreachable: ${snapshot.unreachable.message}`);
   return snapshot;
 }
 
@@ -81,6 +83,56 @@ describe("the refusal (V2, BR-3)", () => {
     expect(snapshot.orgId).toBe("org_ask_lab");
     expect(snapshot.inventory.ok).toBe(true);
   });
+
+  it("refuses a Lab that names no organization for the person, and reads nothing from the tree", async () => {
+    // The Lab opens nothing at boot, so the person holds no session and
+    // nothing the Lab serves says which organization they are in.
+    const { baseUrl } = await lab({ channels: false });
+    const seen = countRequests();
+    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    expect(snapshot.refused?.message).toMatch(/no organization/);
+    expect(snapshot.refused?.message).toContain(ASK_LAB_USER_ID);
+    expect(seen).toEqual(["GET /api/flows/sessions"]);
+  });
+
+  it("refuses when the person's session carries no organization", async () => {
+    const { baseUrl } = await lab();
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const response = await real(input, init);
+      if (!/\/api\/flows\/sessions\/[^/]+$/.test(new URL(String(input instanceof Request ? input.url : input)).pathname)) {
+        return response;
+      }
+      const body = (await response.json()) as { session?: Record<string, unknown> } & Record<string, unknown>;
+      const strip = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== "orgId"));
+      const stripped = body.session === undefined ? strip(body) : { ...body, session: strip(body.session) };
+      return new Response(JSON.stringify(stripped), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    expect(snapshot.unreachable).toBeUndefined();
+    expect(snapshot.refused?.message).toMatch(/no organization/);
+  });
+
+  it("a first read that fails for another reason is unreachable, not a refusal, and nothing else is read", async () => {
+    const { baseUrl } = await lab();
+    const seen: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      seen.push(new URL(String(input instanceof Request ? input.url : input)).pathname);
+      return Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 }));
+    });
+    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    expect(snapshot.refused).toBeUndefined();
+    expect(snapshot.unreachable).toMatchObject({ httpStatus: 503, message: "store offline" });
+    expect(seen).toEqual(["/api/flows/sessions"]);
+  });
+
+  it("a network failure on the first read is unreachable, not a refusal", async () => {
+    const { baseUrl } = await lab();
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("fetch failed"));
+    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    expect(snapshot.refused).toBeUndefined();
+    expect(snapshot.unreachable?.message).toMatch(/fetch failed/);
+  });
 });
 
 describe("one read per resource (V3, BR-11)", () => {
@@ -126,7 +178,16 @@ describe("one read per resource (V3, BR-11)", () => {
     expect(snapshot.inventory).toMatchObject({ ok: false });
     if (snapshot.inventory.ok) return;
     expect(snapshot.inventory.failure.message).toMatch(/without opening its inventory/);
-    expect(snapshot.sessions.ok).toBe(true);
+    expect(snapshot.sessions.length).toBeGreaterThan(0);
+    expect(snapshot.orgId).toBe(DEFAULT_ORG_ID);
+  });
+
+  it("a Lab whose flows declare no inventory still reads the organization off the person's sessions", async () => {
+    const { baseUrl } = await lab({ inventoryDeclared: false });
+    const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read());
+    if (snapshot.inventory.ok) throw new Error("the inventory loaded");
+    expect(snapshot.inventory.failure.message).toMatch(/No inventory to read/);
+    expect(snapshot.orgId).toBe(DEFAULT_ORG_ID);
   });
 });
 
@@ -333,6 +394,6 @@ describe("declared documents (BR-10)", () => {
     });
     const snapshot = loaded(await createLabReader(clients).read());
     expect(snapshot.resources).toMatchObject({ ok: false, failure: { message: "manifest unavailable" } });
-    expect(snapshot.sessions.ok).toBe(true);
+    expect(snapshot.sessions.length).toBeGreaterThan(0);
   });
 });

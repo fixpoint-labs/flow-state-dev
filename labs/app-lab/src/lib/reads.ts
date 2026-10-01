@@ -14,18 +14,23 @@
  *    be invisible. This is also App Lab's first read: when the Lab refuses it
  *    for want of a verified organization, the snapshot is only that refusal
  *    and nothing else is read (BR-3).
- * 2. **The inventory**: the organization's seat and channel collections, found
+ * 2. **The organization**, off a listed session. The listing only ever holds
+ *    sessions in the organization the Lab resolved for the person, and a
+ *    session records it. A Lab that lists the person no session names no
+ *    organization, and gets the refusal too: App Lab never draws a Lab under
+ *    an unknown one (ER-4).
+ * 3. **The inventory**: the organization's seat and channel collections, found
  *    by their published key patterns in the manifest of a listed session whose
  *    flow declares them (the channel kind does). Nothing about the tree is
  *    written in App Lab; this is where every seat, team and workstream name
  *    comes from.
- * 3. **Each workstream's attached boards**: the channel kind's manifest lists
+ * 4. **Each workstream's attached boards**: the channel kind's manifest lists
  *    one collection per attached board, `<channelId>.<name>`, read through the
  *    channel's own session.
- * 4. **Pending asks**: for each listed session a seat owns, the suspension
+ * 5. **Pending asks**: for each listed session a seat owns, the suspension
  *    items only, reduced by `react`'s `deriveSuspensions` to the ones still
  *    pending. Not the transcript.
- * 5. **Declared documents** a browser may read, from each listed flow's
+ * 6. **Declared documents** a browser may read, from each listed flow's
  *    manifest, for Jump to (BR-10).
  *
  * Every read after the first fails on its own: a failed section carries its
@@ -155,6 +160,14 @@ export const REOPENED_SOURCES: ReadonlySet<string> = new Set(["http", "mcp", "sc
 export const DISPATCHED_RUN_UNANSWERABLE =
   "This ask can't be answered from App Lab. The Lab reopens only runs a person, an MCP caller or a schedule started; a run it started by itself (a channel post waking a seat, a dispatch, a webhook) is never reopened from outside it.";
 
+/**
+ * Why a Lab that lists the person no session is refused: nothing it serves
+ * says which organization they are in.
+ */
+function noOrganization(userId: string): string {
+  return `The Lab names no organization for ${userId}: it holds no session of theirs, and a session is where the Lab records the organization it puts them in. App Lab's README lists what a Lab opens at boot.`;
+}
+
 /** What an ask's card says when its session names no owning flow. */
 export const UNOWNED_SESSION_UNANSWERABLE =
   "This ask can't be answered from App Lab: its session was written before sessions recorded their owning flow, so there is no flow to answer it through.";
@@ -167,15 +180,19 @@ export type DeclaredResource = { ref: string; sessionId: string };
 
 /** Everything one refresh read. */
 export type LabSnapshot =
-  | { refused: Failure }
+  /** No organization to open the Lab under: the Lab said no, or named none. */
+  | { refused: Failure; unreachable?: undefined }
+  /** The first read failed for another reason (a 5xx, the network). Retrying may help. */
+  | { unreachable: Failure; refused?: undefined }
   | {
       refused?: undefined;
+      unreachable?: undefined;
       /** When this refresh finished, epoch ms. */
       readAt: number;
       /** The person's listed sessions, dispatch runs included. */
-      sessions: Section<SessionSummary[]>;
+      sessions: SessionSummary[];
       /** The organization the Lab bound this person's sessions to. */
-      orgId: string | null;
+      orgId: string;
       inventory: Section<{ seats: Seat[]; workstreams: Workstream[] }>;
       /** Per workstream id. Absent for a workstream when the inventory did not load. */
       boards: Record<string, Section<WorkstreamBoards>>;
@@ -368,9 +385,7 @@ export function createLabReader(clients: LabClients): LabReader {
     (await readCollection(channelId, boardRef)).map((row) => toBoardRow(boardRef, channelId, row.topic, row.clientData));
 
   /** Find the inventory through the first listed session whose flow declares it. */
-  const readInventory = async (
-    sessions: SessionSummary[],
-  ): Promise<{ inventory: Section<{ seats: Seat[]; workstreams: Workstream[] }>; hostSessionId: string | null }> => {
+  const readInventory = async (sessions: SessionSummary[]): Promise<Section<{ seats: Seat[]; workstreams: Workstream[] }>> => {
     const byKind = new Map<string, string>();
     for (const session of sessions) {
       if (session.parentSessionId == null && !byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
@@ -380,7 +395,7 @@ export function createLabReader(clients: LabClients): LabReader {
       try {
         manifest = await manifestFor(kind, sessionId);
       } catch (error) {
-        return { inventory: { ok: false, failure: describeFailure(error) }, hostSessionId: null };
+        return { ok: false, failure: describeFailure(error) };
       }
       const refOf = (pattern: string) =>
         manifest.resources.find((r) => r.kind === "collection" && r.pattern === pattern && r.client.state?.read === true)
@@ -399,30 +414,24 @@ export function createLabReader(clients: LabClients): LabReader {
           .filter((w): w is Workstream => w !== undefined);
         if (seats.length === 0 && workstreams.length === 0) {
           return {
-            inventory: {
-              ok: false,
-              failure: {
-                message:
-                  "The Lab's inventory is empty: it registers no seats and no channels. The Lab booted without opening its inventory.",
-              },
+            ok: false,
+            failure: {
+              message:
+                "The Lab's inventory is empty: it registers no seats and no channels. The Lab booted without opening its inventory.",
             },
-            hostSessionId: sessionId,
           };
         }
-        return { inventory: { ok: true, value: { seats, workstreams } }, hostSessionId: sessionId };
+        return { ok: true, value: { seats, workstreams } };
       } catch (error) {
-        return { inventory: { ok: false, failure: describeFailure(error) }, hostSessionId: sessionId };
+        return { ok: false, failure: describeFailure(error) };
       }
     }
     return {
-      inventory: {
-        ok: false,
-        failure: {
-          message:
-            "No inventory to read: none of this person's sessions is on a flow that declares the organization's seat and channel inventory. The Lab booted without opening its inventory.",
-        },
+      ok: false,
+      failure: {
+        message:
+          "No inventory to read: none of this person's sessions is on a flow that declares the organization's seat and channel inventory. The Lab booted without opening its inventory.",
       },
-      hostSessionId: null,
     };
   };
 
@@ -508,25 +517,26 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   const read = async (): Promise<LabSnapshot> => {
+    // The first read, and the organization off it, before anything from the
+    // tree is read. A 401/403, no session, or a session with no organization is
+    // the refusal; any other failure means the Lab couldn't be reached. Either
+    // is the whole snapshot.
     let sessions: SessionSummary[];
+    let orgId: string | undefined;
     try {
       sessions = await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" });
+      const first = sessions[0];
+      if (first === undefined) return { refused: { message: noOrganization(clients.userId) } };
+      orgId = (await clients.sessions.getSession(first.id)).orgId;
     } catch (error) {
       const failure = describeFailure(error);
-      if (failure.httpStatus === 401 || failure.httpStatus === 403) return { refused: failure };
-      const failed = { ok: false as const, failure };
-      return { readAt: Date.now(), sessions: failed, orgId: null, inventory: failed, boards: {}, asks: failed, resources: failed };
+      return failure.httpStatus === 401 || failure.httpStatus === 403 ? { refused: failure } : { unreachable: failure };
     }
+    if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(clients.userId) } };
 
-    const { inventory, hostSessionId } = await readInventory(sessions);
+    const inventory = await readInventory(sessions);
 
-    const [orgId, boardEntries, asks, resources] = await Promise.all([
-      hostSessionId === null
-        ? Promise.resolve(null)
-        : clients.sessions
-            .getSession(hostSessionId)
-            .then((detail) => detail.orgId ?? null)
-            .catch(() => null),
+    const [boardEntries, asks, resources] = await Promise.all([
       inventory.ok
         ? Promise.all(
             inventory.value.workstreams.map(async (w) => [w.id, await readWorkstreamBoards(w)] as const),
@@ -559,7 +569,7 @@ export function createLabReader(clients: LabClients): LabReader {
 
     return {
       readAt: Date.now(),
-      sessions: { ok: true, value: sessions },
+      sessions,
       orgId,
       inventory,
       boards: Object.fromEntries(boardEntries),
