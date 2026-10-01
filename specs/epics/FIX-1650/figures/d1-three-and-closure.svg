@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 422" role="img" aria-label="D1: how is the org-primitives epic cut? Chosen: three issues and a closure, where only the issues an open question touches wait for Jake: FIX-1718 on Q1, and FIX-1719 on Q2 until Jake answered it on 1 October 2026. Instead of: five issues, one per noun (project, workstream, CoS, Ops, repair). It comes down to the first row, what waits on Jake: with three, one issue (the orphan repair) starts at the gate and two wait; with five, four wait. Second row: a workstream already is a declared channel with its boards, so the three-issue cut writes it as a rule, where five gives it an issue with nothing to build. The price, third row: one spec carries both CoS and Ops. Locks in: FIX-1621 starts at the gate; FIX-1718 and FIX-1719 file specs only after Jake answers their question; Q2 is answered. Flips if Jake&#x27;s answer gives CoS behaviour of its own, such as routing or standing reports."
+<svg viewBox="0 0 940 422" role="img" aria-label="D1: how is the org-primitives epic cut? Chosen: three issues and a closure, where only the issues an open question touches wait for Jake: FIX-1718 on Q1, and FIX-1719 on Q2 until Jake answered it on 1 October 2026. Instead of: four issues, one per noun (project, workstream, CoS, repair). It comes down to the first row, what waits on Jake: with three, one issue (the orphan repair) starts at the gate and two wait; with four, three wait. Second row: a workstream already is a declared channel with its boards, so the three-issue cut writes it as a rule, where four gives it an issue with nothing to build. The price, third row: one spec carries the CoS seat and its hire door. Locks in: FIX-1621 starts at the gate; FIX-1718 and FIX-1719 file specs only after Jake answers their question; Q2 is answered. Flips if Jake&#x27;s answer gives CoS behaviour of its own, such as routing or standing reports, which has split off as FIX-1726."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -46,7 +46,7 @@
     <text class="t-h c-code" x="228" y="112">Three issues and a closure</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Five, one per noun</text>
+    <text class="t-h c-lost" x="592" y="112">Four, one per noun</text>
   </g>
 
   <g id="row-1">
@@ -59,8 +59,8 @@
     <text class="t-b" x="248" y="161">Two specs wait; repair starts</text>
     <text class="t-s" x="248" y="179">FIX-1621 needs no answer</text>
     <text class="mark minus" x="592" y="162">&#8722;</text>
-    <text class="t-b" x="612" y="161">Four of five wait</text>
-    <text class="t-s" x="612" y="179">project, CoS, Ops, workstream</text>
+    <text class="t-b" x="612" y="161">Three of four wait</text>
+    <text class="t-s" x="612" y="179">project, CoS, workstream</text>
   </g>
 
   <g id="row-2">
@@ -78,11 +78,11 @@
     <text class="t-lbl" x="32" y="276">SIZE OF</text>
     <text class="t-lbl" x="32" y="289">A SPEC</text>
     <text class="mark minus" x="228" y="282">&#8722;</text>
-    <text class="t-b" x="248" y="281">One spec carries CoS and Ops</text>
+    <text class="t-b" x="248" y="281">One spec carries CoS and its hire door</text>
     <text class="t-s" x="248" y="299">one template, one policy</text>
     <text class="mark plus" x="592" y="282">+</text>
     <text class="t-b" x="612" y="281">Each spec is small</text>
-    <text class="t-s" x="612" y="299">one seat each</text>
+    <text class="t-s" x="612" y="299">one noun each</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
 
@@ -97,6 +97,6 @@
     <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="353">FLIPS IF</text>
     <text class="t-b" x="494" y="373">CoS gets behaviour of its own</text>
-    <text class="t-s" x="494" y="391">routing or standing reports: CoS splits from Ops</text>
+    <text class="t-s" x="494" y="391">routing or standing reports split off (FIX-1726)</text>
   </g>
 </svg>

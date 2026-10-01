@@ -26,7 +26,7 @@ checks them. Each has one owner. ER-1 to ER-9, ER-19 and ER-20 are in
 | ER-3 | Open, retire or invite to a channel at runtime | [D3](DECISIONS.md#d3). Owner: FIX-1719, where it would appear; FIX-1718 consumes |
 | ER-8 | Remove a Shift Manager gap entry it does not fill, or change the shell's frame | FIX-1649 owns the frame; the issue that fills a surface replaces its entry and nothing else. Owner: FIX-1718 for the project entries |
 | ER-10 | Add `workforce/projects/`, `workforce/agents/`, a `CHANNELS.md` convention, or an L1 Agent, Team, Channel, Project or Workstream | [D2](DECISIONS.md#d2) and the Architect's invent-kills |
-| ER-11 | Add a CoS or Ops type, a second hire store, or a parallel ops taxonomy | Composed from existing seat and kind registers |
+| ER-11 | Add a CoS or admin-seat type, a second hire store, or a parallel ops taxonomy | Composed from existing seat and kind registers |
 | ER-12 | Map a cut kind onto another kind, or register a missing kind so an orphan boots | FIX-1621's fences: no auto-migrate, kinds enter only through the boot map |
 | ER-13 | Call a seat or an assignee a "worker" in a new product noun, or productize Kind | The Architect's vocabulary fence |
 

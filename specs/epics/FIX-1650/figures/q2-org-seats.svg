@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 422" role="img" aria-label="Q2, decided by Jake on 1 October 2026: which org seats does a Lab get, and may Ops hire without asking? Chosen: a CoS seat and an Ops seat that a Lab opts into, both on the built-in agent kind, where Ops hires without asking and every fire is still an approval the person answers in Inbox. Instead of the recommendation the epic made: the same two seats, with an Inbox approval on every hire as well as every fire. It comes down to the first row, the friction on a hire: none under the choice, a click in Inbox each time under the other. Second row, a tie: fire and retire are approved in Inbox either way, because a fire removes the seat's inventory row. The price, third row: a model picks who joins, within the kinds the Lab registers, never an org seat and never Ops itself. Locks in: Ops hires unattended and the approval seam stays built for fires. Flips if Jake turns hire approval back on, a policy switch ER-20 describes."
+<svg viewBox="0 0 940 422" role="img" aria-label="Q2, decided by Jake on 1 October 2026: which org seat does a Lab get, and may it hire without asking? Chosen: one CoS seat a Lab opts into, on the built-in agent kind, the only seat that hires, hiring without asking and every fire is still an approval the person answers in Inbox. Instead of the recommendation the epic made: the same seat, with an Inbox approval on every hire as well as every fire. It comes down to the first row, the friction on a hire: none under the choice, a click in Inbox each time under the other. Second row, a tie: fire and retire are approved in Inbox either way, because a fire removes the seat's inventory row. The price, third row: a model picks who joins, within the kinds the Lab registers, never a declared seat's id. Locks in: CoS hires unattended and the approval seam stays built for fires. Flips if Jake turns hire approval back on, a policy switch ER-20 describes."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -37,16 +37,16 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">Q2 &#183; DECIDED &#183; JAKE, 1 OCTOBER 2026</text>
-    <text class="t-q" x="32" y="52">Which org seats does a Lab get, and may Ops hire without asking?</text>
+    <text class="t-q" x="32" y="52">Which org seat does a Lab get, and may it hire without asking?</text>
   </g>
 
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">CoS and Ops, opt-in, Ops hires freely</text>
+    <text class="t-h c-code" x="228" y="112">CoS alone, opt-in, hires freely</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF &#183; THE RECOMMENDATION</text>
-    <text class="t-h c-lost" x="592" y="112">Same seats, Ops asks on every hire</text>
+    <text class="t-h c-lost" x="592" y="112">CoS asks on every hire</text>
   </g>
 
   <g id="row-1">
@@ -56,7 +56,7 @@
     <text class="t-lbl" x="32" y="169">ON A HIRE</text>
     <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">None: Ops hires on the ask</text>
+    <text class="t-b" x="248" y="161">None: CoS hires on the ask</text>
     <text class="t-s" x="248" y="179">the seat shows in TEAMS</text>
     <text class="mark minus" x="592" y="162">&#8722;</text>
     <text class="t-b" x="612" y="161">A click in Inbox each time</text>
@@ -79,7 +79,7 @@
     <text class="t-lbl" x="32" y="276">THE PRICE</text>
     <text class="mark minus" x="228" y="282">&#8722;</text>
     <text class="t-b" x="248" y="281">A model picks who joins</text>
-    <text class="t-s" x="248" y="299">registered kinds only; never an org seat or itself</text>
+    <text class="t-s" x="248" y="299">registered kinds only; never a declared seat&#x27;s id</text>
     <text class="mark plus" x="592" y="282">+</text>
     <text class="t-b" x="612" y="281">The person picks each one</text>
     <text class="t-s" x="612" y="299">one approval per hire</text>
@@ -89,7 +89,7 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="353">LOCKS IN</text>
-    <text class="t-b" x="32" y="373">Ops hires unattended; every fire is asked</text>
+    <text class="t-b" x="32" y="373">CoS hires unattended; every fire is asked</text>
     <text class="t-s" x="32" y="391">the approval seam stays built for fires</text>
   </g>
 

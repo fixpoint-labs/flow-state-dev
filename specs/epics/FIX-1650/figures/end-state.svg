@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 392" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box, three issues: projects in Shift Manager, where workstreams sit under the project the Lab declares and the project's stream, board, workstreams and brief read from the tree, FIX-1718, held on Jake's answer to Q1; the CoS and Ops org seats, documents a Lab opts into on the built-in agent kind, declared under org/workers and made hireable by a Layer 2 change, with Ops hiring on its own and firing on the person's approval, FIX-1719, whose Q2 Jake answered on 1 October 2026; and orphan repair, which finds stored seats whose kind is gone and retires or re-hires each on approval, FIX-1621, which starts at the gate. Composed from what already ships: channels and CHANNEL.md, boards, teams and TEAM.md, the inventory, durable hire and the seat-hire capability, plane isolation, the agent kind, and Shift Manager's frame. Owned elsewhere: what sits on a workstream's board, FIX-1651; attention, FIX-1652; wake and principal, FIX-1637 and FIX-1645; runtime channel admin, parked under FIX-1415 and FIX-1341; the org subscription registry, FIX-1550. Not built, below a fence: workforce/projects or workforce/agents folders; Layer 1 Agent, Team, Channel, Project or Workstream; a CoS or Ops type; a second hire store; an org-owned hire cell; an automatic mapping of a cut kind onto another; multi-user org productization; Heartbeats or Paperclip; a CHANNELS.md convention.">
+     aria-label="What's in the box. In the box, three issues: projects in Shift Manager, where workstreams sit under the project the Lab declares and the project's stream, board, workstreams and brief read from the tree, FIX-1718, held on Jake's answer to Q1; the CoS org seat, one document a Lab opts into on the built-in agent kind, declared under org/workers and booted by a Layer 2 change, the only seat that hires, hiring on its own and firing on the person's approval, FIX-1719, whose Q2 Jake answered on 1 October 2026; and orphan repair, which finds stored seats whose kind is gone and retires or re-hires each on approval, FIX-1621, which starts at the gate. Composed from what already ships: channels and CHANNEL.md, boards, teams and TEAM.md, the inventory, durable hire and the seat-hire capability, plane isolation, the agent kind, and Shift Manager's frame. Owned elsewhere: what sits on a workstream's board, FIX-1651; attention, FIX-1652; wake and principal, FIX-1637 and FIX-1645; runtime channel admin, parked under FIX-1415 and FIX-1341; the org subscription registry, FIX-1550. Not built, below a fence: workforce/projects or workforce/agents folders; Layer 1 Agent, Team, Channel, Project or Workstream; a CoS or admin-seat type; a second hire store; an org-owned hire cell; an automatic mapping of a cut kind onto another; multi-user org productization; Heartbeats or Paperclip; a CHANNELS.md convention.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -34,10 +34,10 @@
     <text class="t-s" x="44" y="126">read from the tree, no new folder</text>
     <text class="t-s" x="44" y="143">FIX-1718 &#183; waits for Q1</text>
     <rect class="held" x="328" y="56" width="284" height="96" rx="4"/>
-    <text class="t-b" x="340" y="78">CoS and Ops &#183; org seats</text>
-    <text class="t-s" x="340" y="96">documents a Lab opts into, on the agent kind</text>
-    <text class="t-s" x="340" y="111">hireable from org/workers/, in Layer 2</text>
-    <text class="t-s" x="340" y="126">Ops hires on its own, fires on approval</text>
+    <text class="t-b" x="340" y="78">Chief of Staff &#183; one org seat</text>
+    <text class="t-s" x="340" y="96">one document a Lab opts into, agent kind</text>
+    <text class="t-s" x="340" y="111">booted from org/workers/, in Layer 2</text>
+    <text class="t-s" x="340" y="126">CoS hires on its own, fires on approval</text>
     <text class="t-s" x="340" y="143">FIX-1719 &#183; Q2 answered</text>
     <rect class="held" x="624" y="56" width="284" height="96" rx="4"/>
     <text class="t-b" x="636" y="78">orphan repair</text>
@@ -68,7 +68,7 @@
   <g id="not-built">
     <rect class="fence" x="16" y="290" width="908" height="84" rx="5"/>
     <text class="t-non" x="32" y="310">NOT BUILT &#8212; THE INVENT-KILLS</text>
-    <text class="t-s" x="32" y="332">no workforce/projects/ or workforce/agents/ &#183; no L1 Agent, Team, Channel, Project or Workstream &#183; no CoS or Ops type</text>
+    <text class="t-s" x="32" y="332">no workforce/projects/ or workforce/agents/ &#183; no L1 Agent, Team, Channel, Project or Workstream &#183; no CoS or admin-seat type</text>
     <text class="t-s" x="32" y="348">no second hire store &#183; no org-owned hire cell &#183; no automatic mapping of a cut kind onto another &#183; no CHANNELS.md</text>
     <text class="t-s" x="32" y="364">no multi-user org product &#183; no Heartbeats or Paperclip &#183; no runtime channel open, retire or invite</text>
   </g>

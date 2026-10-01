@@ -6,7 +6,7 @@ The calls above any single issue. D1 to D3 are the sign-off surface. Q2 is answe
 2026-10-01); Q1 stays open for Jake with a recommendation, and only FIX-1718 waits on it. Scope,
 vocabulary and invent-kills come from the Architect's guidance on FIX-1650; the prior locks on
 the open forks are only these: `workforce/projects/` is invent-killed, single-user comes first,
-project is product framing, and CoS and Ops are composed from the existing seat and kind
+project is product framing, and the org seat is composed from the existing seat and kind
 registers.
 
 ## The tree
@@ -14,13 +14,13 @@ registers.
 ```mermaid
 flowchart TD
   E["FIX-1650"] --> D1["D1 · three issues and a closure"]
-  D1 -.->|"rejected"| X1["five issues, one per noun"]
+  D1 -.->|"rejected"| X1["one issue per noun"]
   E --> D2["D2 · no new noun, no new folder"]
   D2 -.->|"rejected"| X2["a project folder or record"]
   E --> D3["D3 · channels stay declared"]
-  D3 -.->|"rejected"| X3["Ops opens and retires channels"]
+  D3 -.->|"rejected"| X3["CoS opens and retires channels"]
   E --> Q1["Q1 · open · what a project is"]
-  E --> Q2["Q2 · decided · Ops hires, fires on approval"]
+  E --> Q2["Q2 · decided · CoS hires, fires on approval"]
 ```
 
 <a name="d1"></a>
@@ -28,14 +28,14 @@ flowchart TD
 
 | | |
 |---|---|
-| **Instead of** | Five issues, one per noun: project, workstream, CoS, Ops, repair · or filing nothing until Jake answers |
-| **Because** | A workstream already is a declared channel with its boards: Shift Manager lists them today, so it needs a rule, not an issue. CoS and Ops share one template and one hire and fire policy, so they are one spec. Orphan repair (FIX-1621, adopted) needs no answer from Jake and Ops consumes it, so it is the issue that starts at the gate. It stays apart from Ops's fire for that reason only: the two share one mutation path ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
+| **Instead of** | One issue per noun: project, workstream, CoS, repair · or filing nothing until Jake answers |
+| **Because** | A workstream already is a declared channel with its boards: Shift Manager lists them today, so it needs a rule, not an issue. The CoS seat and its hire and fire policy are one template, so they are one spec. Orphan repair (FIX-1621, adopted) needs no answer from Jake and CoS consumes it, so it is the issue that starts at the gate. It stays apart from CoS's fire for that reason only: the two share one mutation path ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 | **Locks in** | FIX-1621 starts at the gate. FIX-1718's spec starts when Q1 is answered and FIX-1719's when Q2 is (answered 2026-10-01, [below](#q2)). The workstream's definition is FIX-1718's to write ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) |
 
 **What would change my mind:** Q2's answer giving CoS behaviour of its own (routing asks,
-standing reports). Then CoS splits from Ops at FIX-1719's spec.
+standing reports). Then that behaviour splits from FIX-1719, as FIX-1726 now carries it.
 
-![D1: three issues and a closure, chosen, beside five issues one per noun; decided by what waits on Jake](figures/d1-three-and-closure.svg)
+![D1: three issues and a closure, chosen, beside one issue per noun; decided by what waits on Jake](figures/d1-three-and-closure.svg)
 
 It comes down to what waits on Jake: three lets repair start, five parks four issues.
 
@@ -60,14 +60,14 @@ It comes down to a new noun: a folder of its own reopens an invent-kill.
 
 | | |
 |---|---|
-| **Instead of** | Ops opening and retiring workstream channels at runtime |
-| **Because** | Hire and fire ride a shipped capability (`createSeatHireCapability`). Channel admin was explored (FIX-1415, #2084), not shipped, and parked behind Collab mint (FIX-1341), with the Architect's fence: no worker-facing channel-admin tools until Collab and the inventory land. "Channels" in the PRD's CoS + Ops line reads, here, as Ops reading them |
-| **Locks in** | A new workstream is a `CHANNEL.md` and a restart. Ops never writes a channel in this epic ([ER-3](BUSINESS-RULES.md#what-no-child-may-do)) |
+| **Instead of** | CoS opening and retiring workstream channels at runtime |
+| **Because** | Hire and fire ride a shipped capability (`createSeatHireCapability`). Channel admin was explored (FIX-1415, #2084), not shipped, and parked behind Collab mint (FIX-1341), with the Architect's fence: no worker-facing channel-admin tools until Collab and the inventory land. "Channels" in the PRD's CoS + Ops line reads, here, as CoS reading them |
+| **Locks in** | A new workstream is a `CHANNEL.md` and a restart. CoS never writes a channel in this epic ([ER-3](BUSINESS-RULES.md#what-no-child-may-do)) |
 
-**What would change my mind:** Jake wanting Ops to open workstreams in the first version. Then
+**What would change my mind:** Jake wanting CoS to open workstreams in the first version. Then
 this epic waits on FIX-1341 being un-parked, and that is his scheduling call.
 
-![D3: channels stay declared, chosen, beside Ops opening and retiring them; decided by what exists to build on](figures/d3-channels-declared.svg)
+![D3: channels stay declared, chosen, beside CoS opening and retiring them; decided by what exists to build on](figures/d3-channels-declared.svg)
 
 It comes down to what exists: hire ships, channel admin is a parked explore.
 
@@ -105,16 +105,16 @@ escalation.
 It comes down to the project stream: only a channel already has a conversation.
 
 <a name="q2"></a>
-## Q2 · decided · CoS alone, opt-in; it hires without asking and fires on approval
+## Q2 · decided · CoS alone, opt-in; it hires without asking and fires on approval (seat set pending Jake's confirmation)
 
 **Jake, 2026-10-01**, on the epic PR
 ([#2602](https://github.com/fixpoint-labs/flow-state-dev/pull/2602#issuecomment-5937962361)):
 "I think For now, ops can just hire without asking."
 
-**What it settles.** Ops hires a seat when asked, with no Inbox approval, and the person sees it
+**What it settles.** The hiring seat hires when asked, with no Inbox approval, and the person sees it
 in TEAMS. The fences on that hire are unchanged: a kind the Lab registers, never an org seat,
-never Ops itself, landing in the principal's own cell ([ER-4](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt),
-[ER-7](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). Undoing a hire Ops got wrong is
+never a declared seat's id, landing in the principal's own cell ([ER-4](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt),
+[ER-7](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). Undoing a wrong hire is
 one approved fire.
 
 **Where his words don't reach, my defaults as EM.** Each is one line from Jake to reverse.
@@ -122,8 +122,7 @@ one approved fire.
 - **The seat set is CoS alone** (Jake, later on Oct 1, relayed on
   [#2613](https://github.com/fixpoint-labs/flow-state-dev/pull/2613#issuecomment-5939127612),
   being confirmed with him): no Ops seat. CoS, declared under `org/workers/` on the `agent` kind
-  and opt-in per Lab, holds hire and fire; other seats ask it by message. Where this set still
-  says Ops for the hiring seat, read CoS.
+  and opt-in per Lab, holds hire and fire; other seats ask it by message.
 - **Fire and retire still ask in Inbox.** A fire removes the seat's inventory row
   ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)), the hard-to-undo
   direction, so the approval stays there ([ER-20](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
@@ -131,9 +130,9 @@ one approved fire.
   is [ER-20](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)'s.
 
 **What it costs.** A model picks who joins, inside the fences. Tightening later means looking
-over the seats Ops hired, which is the price the recommendation named.
+over the seats CoS hired, which is the price the recommendation named.
 
-![Q2 decided: CoS and Ops, opt-in, Ops hires freely, chosen, beside the same seats with Ops asking on every hire; decided by the friction on a hire](figures/q2-org-seats.svg)
+![Q2 decided: CoS alone, opt-in, hiring freely, chosen, beside CoS asking on every hire; decided by the friction on a hire](figures/q2-org-seats.svg)
 
 It comes down to the friction on a hire: none now, and every fire still asks.
 
@@ -144,14 +143,14 @@ It comes down to the friction on a hire: none now, and every fire still asks.
 The matrix holds ER-1 to ER-9, ER-19 and ER-20. ER-10 to ER-18 are fences and process that bind
 every child alike, so they sit outside it.
 
-Every rule has one owner. FIX-1621 decides what an orphan is, so Ops calls its read rather than
+Every rule has one owner. FIX-1621 decides what an orphan is, so CoS calls its read rather than
 writing a second detector. FIX-1718 decides what a project and a workstream are, so CoS joins a
 project's channel the way FIX-1718 defines it. The closure only checks.
 
 ## Decided in review, recorded so no child reopens them
 
 - **FIX-1621 joins the set** as a child, moved into this project. It is the "fire" half of the
-  Ops defaults, and leaving it out would give Ops a second orphan detector. Its own open walls
+  CoS + Ops defaults, and leaving it out would give the hiring seat a second orphan detector. Its own open walls
   (template or documented, delete-only or guided re-hire, banner or Ops seat) are answered by
   Q2 where Q2 reaches and by its spec otherwise.
 - **Single user, one org per Lab run, from the principal.** No org id in a request body; nothing
@@ -159,7 +158,7 @@ project's channel the way FIX-1718 defines it. The closure only checks.
 - **FIX-1715, FIX-1716 and FIX-1717 are not children.** The first two are Workforce EM's
   parallel tracks; FIX-1717 is a Claude thread's.
 - **A fired seat leaves TEAMS.** Today `fire` keeps the seat's inventory row, a shipped behaviour
-  this set changes. FIX-1621 owns the change and Ops fires through the same path
+  this set changes. FIX-1621 owns the change and CoS fires through the same path
   ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
 - **An org seat is not hireable today (settled, REFUTED).** Read-based on `origin/main`, not
   executed: the declared roster reader is teams-only and passes over `org/workers/`
@@ -168,9 +167,9 @@ project's channel the way FIX-1718 defines it. The closure only checks.
   `instructions`). FIX-1719 closes both halves in Layer 2: the reader lists org seats with no
   team, and either the seat factory boots them or `hire` names the declared seat. Which half is
   FIX-1719's first design question.
-- **Q2 is answered** (Jake, 2026-10-01): Ops hires without asking; fire and retire still ask
+- **Q2 is answered** (Jake, 2026-10-01): CoS is the one admin seat and hires without asking; fire and retire still ask
   in Inbox. The answer and the defaults I picked around it are [Q2](#q2).
-- **No team named `org`.** CoS and Ops in a `teams/org/` team would need no loader change, and
+- **No team named `org`.** An org seat in a `teams/org/` team would need no loader change, and
   forks the locked tree (`workforce/org/{resources,skills,channels,workers}/`). Rejected.
 
 ## What the end-state POC showed
@@ -191,4 +190,5 @@ No end-state POC. One claim was settled by a read-based check instead; its verdi
   on approval as my default. ER-4, ER-20, the goal's leg b and its control, and the figures
   that stated every-hire approval follow it.
 - **Ops dropped (Oct 1)**: CoS is the one org admin seat and the only hire door; fire still asks.
-  ER-4, ER-6, ER-20 and Q2 follow it; FIX-1719's spec carries the detail.
+  ER-4, ER-6, ER-20, Q2, the goal's leg b and the figures follow it; FIX-1719's spec carries
+  the detail. Pending Jake's direct confirmation.

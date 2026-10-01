@@ -27,7 +27,7 @@ the largest child, carrying the org-seat hire change, and the only one that cons
 |---|---|---|---|---|---|
 | **FIX-1621** orphan repair | spec → impl PR | Durable hire (FIX-1475), plane isolation (FIX-1529), FIX-1611's degrade-by-name | The orphan read, its reason, retire and re-hire on approval; fire and retire as one path that removes the inventory row, older rows still read ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) | FIX-1719 | Medium |
 | **FIX-1718** projects | spec (after Q1) → impl PR | Q1's answer · channels, boards, teams · Shift Manager's frame and `gaps.ts` | A project as the tree declares it; the project level and PROJECTS tree filled; the workstream written down | The closure | Medium |
-| **FIX-1719** CoS and Ops | spec (Q2 answered) → impl PR | Q2's answer · the `agent` kind, `createSeatHireCapability`, the inventory · FIX-1621's read · FIX-1718's project channel, if built first | CoS and Ops as documents a Lab opts into; a declared `org/workers/` seat made hireable in Layer 2 (the roster reader, plus one hire half its spec picks); Ops's unasked hire and approved fire ([ER-4](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), [ER-20](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); the DevTeam profile opted in | The closure | Large |
+| **FIX-1719** Chief of Staff | spec (Q2 answered) → impl PR | Q2's answer · the `agent` kind, `createSeatHireCapability`, the inventory · FIX-1621's read · FIX-1718's project channel, if built first | CoS as one document a Lab opts into; a declared `org/workers/` seat booted in Layer 2 (the roster reader and a teamless id); CoS's unasked hire and approved fire, the only hire door ([ER-4](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt), [ER-20](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); the DevTeam profile opted in | The closure | Large |
 | **FIX-1720** closure · required | spec (the QA plan) → runs until one is clean → PR | Every other child, merged, on one `main` commit | The committed browser checks, a QA report, a bug child for every failure | The wrap | Medium, repeats per retest |
 
 ## Where it is
@@ -55,10 +55,10 @@ shipped.
 | Seam | Between | Rule |
 |---|---|---|
 | The fired seat's inventory row | FIX-1621 and FIX-1719 | One mutation path for fire and retire ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)), so the second-path checklist is walked once |
-| The orphan read | FIX-1621 and FIX-1719 | FIX-1621 owns it ([ER-5](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); Ops calls it |
+| The orphan read | FIX-1621 and FIX-1719 | FIX-1621 owns it ([ER-5](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); CoS calls it |
 | CoS in a project's channel | FIX-1718 and FIX-1719 | FIX-1718 defines how a project is declared; FIX-1719's documents join it that way |
 | `labs/shift-manager/src/gaps.ts` | FIX-1718 and sibling FIX-1651 | Each replaces only its own entries ([ER-8](BUSINESS-RULES.md#what-no-child-may-do)) |
-| The approval card in Inbox | FIX-1719 and sibling FIX-1652 | Ops's ask on a fire is a `human_approval` suspension Inbox already renders ([ER-20](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); what counts as attention stays FIX-1652's |
+| The approval card in Inbox | FIX-1719 and sibling FIX-1652 | CoS's ask on a fire is a `human_approval` suspension Inbox already renders ([ER-20](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); what counts as attention stays FIX-1652's |
 | The Workforce loader | FIX-1719 and Workforce EM's tracks | FIX-1719's org-seat read is additive; the teams-only readers keep their behaviour |
 | The DevTeam profile's tree | FIX-1718 and FIX-1719 | Both add to it; whichever lands second adds, never rewrites |
 
