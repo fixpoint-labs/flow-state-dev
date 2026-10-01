@@ -1066,6 +1066,8 @@ The server exposes a read-only debug surface at `/api/flows/sessions/:id/debug/r
 
 The endpoint is off by default. Opt in with `debugEndpointsEnabled: true` on `createFlowApiRouter`, or set `FSDEV_DEBUG_ENDPOINTS=1` in the environment. By default the route accepts only loopback origins; widen with `debugAllowedOrigins` for non-loopback DevTool hosts.
 
+A request with no `Origin` header (curl, a script, or a same-origin GET from a browser) is rejected with `403 { "error": "debug_endpoints_origin_rejected", "origin": null }`. `Origin: null` counts as no header. To accept these requests, pass `debugAllowAnonymousLocal: true` to `createFlowApiRouter` or `createFlowState`, or set `FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL=1`. Only the value `1` turns it on. An explicit option, including `false`, overrides the env var. Opting in doesn't widen the origin check: a request whose `Origin` is neither loopback nor in `debugAllowedOrigins` is still rejected.
+
 ```ts
 const router = createFlowApiRouter({
   registry,
@@ -1074,7 +1076,9 @@ const router = createFlowApiRouter({
 });
 ```
 
-The DevTool's Resources panel uses this surface. `fsdev dev` enables it automatically on loopback. Don't ship it enabled to production without auditing the origin allowlist and gating the route behind whatever authentication your host already enforces.
+The DevTool's Resources panel uses this surface. `fsdev dev` enables it automatically on loopback and turns on `debugAllowAnonymousLocal` so the DevTool can reach it; `fsdev serve` does neither. Don't ship it enabled to production without auditing the origin allowlist and gating the route behind whatever authentication your host already enforces.
+
+The origin check doesn't identify the caller. Any local process can send a loopback `Origin` and pass, and with `debugAllowAnonymousLocal` on, any client that can reach the port gets in without one. Only turn that option on for a server bound to loopback, and don't expose debug endpoints on a network you don't trust.
 
 See [Debug vs client state](https://flow-state.dev/docs/devtool/debug-vs-client-state) for the full mental model.
 
