@@ -10,7 +10,7 @@
  * run-lab (`goals/app-lab/it-shows-and-stops-a-task-run/lab/`), whose runs store
  * a message, a reasoning item and a tool call through the Claude Code harness's
  * emit path. Chromium opens a task from Tasks by clicking, opens its tool card,
- * and reads COMPUTED styles in a light pass and a `.dark` pass.
+ * and reads COMPUTED styles in a light pass and a dark pass, set through the browser's colour-scheme setting.
  *
  * Builds:
  *   themed     App Lab as written
@@ -225,6 +225,8 @@ function readPage(args: { swept: Record<string, string>; probeValues: string[] }
 
 /** Open the task from Tasks, open what its Session draws closed, and read one pass. */
 async function readPass(page: Page, origin: string, taskId: string, dark: boolean): Promise<PageRead> {
+  // App Lab follows the OS setting, so the pass sets the setting, not the class.
+  await page.emulateMedia({ colorScheme: dark ? "dark" : "light" });
   await page.goto(`${origin}/tasks`);
   await page.getByTestId("tasks-table").waitFor({ timeout: 20_000 });
   await page.locator(`[data-testid=task-row][data-task-id="${taskId}"]`).click();
@@ -237,8 +239,14 @@ async function readPass(page: Page, origin: string, taskId: string, dark: boolea
   if ((await page.locator(SWEPT.tool!).count()) > 0) {
     await page.locator(SWEPT["code block"]!).first().waitFor({ timeout: 15_000 }).catch(() => undefined);
   }
-  if (dark) await page.evaluate(() => document.documentElement.classList.add("dark"));
-  await sleep(300);
+  // Read once the page shows the variant and no finite transition or animation is still running.
+  await page.waitForFunction(
+    (wantDark) =>
+      document.documentElement.classList.contains("dark") === wantDark &&
+      document.getAnimations().every((a) => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity),
+    dark,
+    { timeout: 10_000 },
+  );
   return page.evaluate(readPage, { swept: SWEPT, probeValues: [...THEME.light, ...THEME.dark] });
 }
 
