@@ -73,7 +73,7 @@ export const RESOURCE_SLOT_PATTERNS: readonly string[] = Object.freeze([
 ]);
 
 /** One folder where the convention's slots may sit. */
-export interface ResourcePlace {
+interface ResourcePlace {
   type: "place";
   /** The folder, absolute. A door joins its slot name onto it. */
   dir: string;
@@ -88,7 +88,7 @@ export interface ResourcePlace {
 }
 
 /** A structural folder on the way to a place that the walk will not go through. */
-export interface ResourceWalkRefusal {
+interface ResourceWalkRefusal {
   type: "refused";
   /** The refused folder, relative to the root. */
   path: string;
@@ -101,7 +101,7 @@ export interface ResourceWalkRefusal {
  * unreadable. Its own event because it is the one refusal the two doors word
  * differently (E2): each names the folder its own way, through {@link refusal}.
  */
-export interface ResourceWalkWorkerRefusal {
+interface ResourceWalkWorkerRefusal {
   type: "worker-refused";
   /** The worker folder, relative to the root — `teams/eng/workers/scout`. */
   path: string;
