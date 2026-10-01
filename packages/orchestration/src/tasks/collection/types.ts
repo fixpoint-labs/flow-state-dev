@@ -2,7 +2,8 @@
  * `TaskCollectionRef` — uniform API across both backings (FIX-443 §3.3).
  *
  * The same shape is returned from `getOrCreateTaskCollection` regardless
- * of how the collection is stored (sequencer-state vs resource-collection).
+ * of how the collection is stored (atomic state — a ref, or the request — vs
+ * resource).
  * Patterns and dispatchers consume `TaskCollectionRef` and never reach for
  * the underlying storage directly.
  */

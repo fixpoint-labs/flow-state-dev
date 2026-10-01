@@ -1424,7 +1424,8 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
  * Five forms, resolved here so no call site restates the backing:
  *
  * - omitted / request spec (**default**) — `getOrCreateTaskCollection({ backing:
- *   "request" })`; `collectionId` defaults to the board name. Reachable from any
+ *   "state" })` with no `state`, so it lands on the request; `collectionId`
+ *   defaults to the board name. Reachable from any
  *   block in the request (sibling adds, outer-loop re-entry).
  * - `DefinedTaskCollection` — durable resource backing. Registers the collection
  *   via an internal resource-declaring capability (distinct name) threaded onto

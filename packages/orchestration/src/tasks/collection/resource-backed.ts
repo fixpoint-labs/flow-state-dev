@@ -6,7 +6,7 @@
  * Per-task CAS rides the underlying ResourceRef.updateState contract — no
  * sibling projection map needed.
  *
- * When to use over the sequencer-state default: when the collection
+ * When to use over the default state backing: when the collection
  * outlives a single request (a user's persistent todo list, an org-wide
  * work queue, a skill that persists Tasks across sessions).
  *
