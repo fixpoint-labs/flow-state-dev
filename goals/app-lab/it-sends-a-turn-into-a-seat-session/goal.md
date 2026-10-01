@@ -11,7 +11,7 @@
 
 **Signal:** each failure is tagged `[<route>] <leg>`. A fresh token is typed for each route.
 
-- **delivered**: the run session the task links to holds a user message item with the token. The moment the composer first reads *delivered*, the check reads the store, and the item must already be there.
+- **delivered**: the run session the task links to holds a user message item with the token. The moment the composer first reads *delivered*, the check reads the store, and the item must already be there. Read again once the next attempt links, the task's run link still names that session.
 - **stopped**: the attempt that was running has a request that reads `aborted` through the flow that owns its session.
 - **continued**: the harness's own record on disk has a next attempt on that row. Its prompt holds the token, and its resume id equals the coding session the previous attempt named.
 - **standing**: once the next attempt is claimed, the stored row's retry standing is unchanged (`attempts − abandonments − turnReentries`).
@@ -51,3 +51,4 @@ Routes: **task composer** (the first row, reached from Tasks by clicking), **@co
 | 2026-10-01 | 829c2c2dd+wip (lab) | n/a | FAIL (control `fresh-session`, expected) | Only **continued**, on both coding routes: "the next attempt resumed nothing (the resume id), wanted the previous attempt's session sess_turn_goal_…". |
 | 2026-10-01 | 829c2c2dd+wip (lab) | n/a | FAIL (planted, expected) | With the turn re-entry not counted (`unparkPatch` planted, then restored), only **standing** fails, on both coding routes: 1 → 2. |
 | 2026-10-01 | caf8e92ea+wip (review round) | n/a | PASS | After the shared send state, the tail read and the unconfirmed outcome: both coding routes delivered with the line held, request `aborted`, same coding session resumed, standing 1 → 1; EM reply disabled; fixture reply heard. `optimistic-turn` FAILS at **delivered** on all three routes; `fresh-session` FAILS only at **continued**. |
+| 2026-10-01 | f7c87dc2c+wip (door fix: the drain runs in the claiming session) | n/a | PASS | Both coding routes delivered with the line held, and once the next attempt linked, the task still named the session the line went into. Request `aborted`, same coding session resumed, standing 1 → 1. EM reply disabled; fixture reply heard. Planted control (the door drains in the run's own session): FAILS only at **delivered**, on both coding routes ("after delivery the task links session dsx_…, not dsx_… where the line was delivered"). `optimistic-turn` FAILS at **delivered** on all three routes; `fresh-session` FAILS only at **continued**. |

@@ -15,7 +15,8 @@
  * Legs (each failure is tagged `[<route>] <leg>`):
  *
  *   delivered    the run session the task links to holds the line as a user
- *                item, and the composer showed *delivered* only once it did
+ *                item, the composer showed *delivered* only once it did, and
+ *                the next attempt's run link names that same session
  *   stopped      the attempt that was running reads `aborted`
  *   continued    the harness recorded a next attempt whose prompt holds the
  *                line and whose resume id is the previous attempt's session
@@ -351,8 +352,22 @@ async function grade(
   else if (standing(after) !== standing(turn.counters)) {
     fail("standing", `retry standing went ${standing(turn.counters)} → ${standing(after)} (attempts ${after.attempts}, abandonments ${after.abandonments}, turn re-entries ${after.turnReentries})`);
   }
+  // delivered, read again after delivery: the next attempt's run link still
+  // names the session the line was delivered into, so the task's Session view
+  // keeps showing it. A run that moved to a new session drops the line from it.
+  let linked: Row["run"] = null;
+  for (const until = Date.now() + NEXT_ATTEMPT_MS; Date.now() < until; await sleep(250)) {
+    linked = (await api.rows(where.channelId, where.boardRef)).find((r) => r.id === turn.row.id)?.run ?? null;
+    if (linked !== null && linked.requestId !== run.requestId) break;
+  }
+  if (linked === null || linked.requestId === run.requestId) {
+    fail("delivered", `after delivery, no next attempt linked on ${turn.row.id}`);
+  } else if (linked.sessionId !== run.sessionId) {
+    fail("delivered", `after delivery the task links session ${linked.sessionId}, not ${run.sessionId} where the line was delivered`);
+  }
+
   evidence.push(
-    `${turn.route} → ${turn.row.id}: ${sent.state}${sent.heldAtDelivered === true ? " (held when drawn)" : ""}, request ${record}, ` +
+    `${turn.route} → ${turn.row.id}: ${sent.state}${sent.heldAtDelivered === true ? " (held when drawn)" : ""}, linked after ${linked?.sessionId === run.sessionId ? "same session" : (linked?.sessionId ?? "none")}, request ${record}, ` +
       `next attempt resume=${next?.resume ?? "none"} (previous ${turn.previousSession}), standing ${standing(turn.counters)} → ${after === undefined ? "?" : `${standing(after)} (attempts ${after.attempts}, turn re-entries ${after.turnReentries})`}`,
   );
 }

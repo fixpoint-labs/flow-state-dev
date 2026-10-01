@@ -81,11 +81,8 @@ supporting parts of those.
 
 ## What it works around
 
-**The `coder` kind declares the channel's board a second time, and drains it only
-from its `message` door.** Same board id, the same ledger, its own dispatcher. The
-door (the harness manager's `messageDoor`) takes a person's message into one of the
-seat's running coding runs: it stops the run, re-queues the row and drains this
-board so the next attempt continues the same coding session with the message. `defineFlow` refuses a
+**The `coder` kind declares the channel's board a second time, and never drains
+it.** Same board id, the same ledger, its own dispatcher. `defineFlow` refuses a
 flow that declares a task entry with no reachable board handing off to it, and
 the claim gate refuses a dispatch whose board id differs from the recipient's
 own. That cost is the framework's to remove. Where the board lives is settled:
