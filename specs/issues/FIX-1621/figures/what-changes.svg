@@ -1,0 +1,62 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="Three stored seats at a start after the desk-clerk kind was cut. Today, on the left: joe on desk-clerk is refused and named at every start and nothing clears him; ada on agent starts; max, fired last week, has no roster row but his inventory row keeps him in TEAMS. After, on the right: the read lists joe as kind-gone; retire removes his roster row and his inventory row, or re-hire keeps his address on agent; ada is untouched; max's old inventory row is no longer listed because no roster row backs it."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .ok    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .bad   { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; }
+    .ghost { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:5 4; }
+    .act   { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-ok  { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-acc { fill:var(--accent); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+
+  <g id="today">
+    <rect class="panel" x="16" y="14" width="446" height="330" rx="6"/>
+    <text class="t-lbl" x="32" y="36">TODAY · EVERY START</text>
+    <rect class="bad" x="32" y="52" width="414" height="70" rx="5"/>
+    <text class="t-b" x="48" y="74">support.joe · desk-clerk</text>
+    <text class="t-bad" x="48" y="94">refused and named at start: the kind was cut</text>
+    <text class="t-s" x="48" y="111">nothing clears it short of the database</text>
+    <rect class="ok" x="32" y="136" width="414" height="56" rx="5"/>
+    <text class="t-b" x="48" y="158">support.ada · agent</text>
+    <text class="t-ok" x="48" y="177">starts</text>
+    <rect class="bad" x="32" y="206" width="414" height="70" rx="5"/>
+    <text class="t-b" x="48" y="228">support.max · fired last week</text>
+    <text class="t-s" x="48" y="248">roster row gone, inventory row stays</text>
+    <text class="t-bad" x="48" y="265">still listed in TEAMS</text>
+    <text class="t-s" x="32" y="304">The read the person needs does not exist,</text>
+    <text class="t-s" x="32" y="321">and fire leaves the team list behind.</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="478" y="14" width="446" height="330" rx="6"/>
+    <text class="t-lbl" x="494" y="36">AFTER · ON APPROVAL</text>
+    <rect class="act" x="494" y="52" width="414" height="70" rx="5"/>
+    <text class="t-b" x="510" y="74">support.joe · kind-gone</text>
+    <text class="t-acc" x="510" y="94">retire: roster row, then inventory row</text>
+    <text class="t-acc" x="510" y="111">or re-hire: same address, on agent</text>
+    <rect class="ok" x="494" y="136" width="414" height="56" rx="5"/>
+    <text class="t-b" x="510" y="158">support.ada · agent</text>
+    <text class="t-ok" x="510" y="177">untouched, never listed as broken</text>
+    <rect class="ghost" x="494" y="206" width="414" height="70" rx="5"/>
+    <text class="t-b" x="510" y="228">support.max</text>
+    <text class="t-s" x="510" y="248">old inventory row, no roster row</text>
+    <text class="t-ok" x="510" y="265">not listed in TEAMS; nothing deleted at start</text>
+    <text class="t-s" x="494" y="304">The next start names no refused seat,</text>
+    <text class="t-s" x="494" y="321">and TEAMS agrees with the roster.</text>
+  </g>
+</svg>
