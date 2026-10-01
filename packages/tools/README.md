@@ -195,7 +195,7 @@ generator({
 
 | Adapter | Provider type | Description |
 |---------|--------------|-------------|
-| Local FS | `"local"` | Real filesystem + `child_process`. Best for development. |
+| Local FS | `"local"` | Real filesystem + `child_process`. Best for development. Options: `cwd?`, `env?`, `execTimeoutMs?`. Each command gets a minimal environment (`PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR`, `TZ`) plus `env`; pass anything else a command needs, such as a token, in `env`. `execTimeoutMs` defaults to 60 s; on timeout the command and its children are killed and `exitCode` is `124`. `exitCode` is always a number: the shell's code, `124` on timeout, `128 + n` when killed by signal `n`, `1` on output overflow or spawn failure. |
 | Vercel | `"vercel"` | `@vercel/sandbox`. Supports persistent sandboxes. Requires OIDC Federation enabled on the project **or** the `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID` triple. Without either, the adapter throws a clear error naming both options — pick a different provider (e.g. `just-bash`) for unauthenticated/anonymous-visitor demos. See the [Deploying to Vercel guide](https://flow-state.dev/guides/deploying-to-vercel#7-using-the-bash-tool-on-vercel) for the full recipe. |
 | Upstash | `"upstash"` | Placeholder — blocked on upstream API stabilization. |
 | just-bash | `"just-bash"` | In-memory bash emulation. No real processes. |
