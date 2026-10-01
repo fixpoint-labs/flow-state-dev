@@ -105,7 +105,7 @@ escalation.
 It comes down to the project stream: only a channel already has a conversation.
 
 <a name="q2"></a>
-## Q2 · decided · CoS and Ops, opt-in; Ops hires without asking and fires on approval
+## Q2 · decided · CoS alone, opt-in; it hires without asking and fires on approval
 
 **Jake, 2026-10-01**, on the epic PR
 ([#2602](https://github.com/fixpoint-labs/flow-state-dev/pull/2602#issuecomment-5937962361)):
@@ -119,8 +119,11 @@ one approved fire.
 
 **Where his words don't reach, my defaults as EM.** Each is one line from Jake to reverse.
 
-- **The seat set is as recommended.** CoS and Ops, declared under `org/workers/` on the `agent`
-  kind, opt-in per Lab, made hireable by FIX-1719 in Layer 2. He objected to neither.
+- **The seat set is CoS alone** (Jake, later on Oct 1, relayed on
+  [#2613](https://github.com/fixpoint-labs/flow-state-dev/pull/2613#issuecomment-5939127612),
+  being confirmed with him): no Ops seat. CoS, declared under `org/workers/` on the `agent` kind
+  and opt-in per Lab, holds hire and fire; other seats ask it by message. Where this set still
+  says Ops for the hiring seat, read CoS.
 - **Fire and retire still ask in Inbox.** A fire removes the seat's inventory row
   ([ER-19](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)), the hard-to-undo
   direction, so the approval stays there ([ER-20](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
@@ -187,3 +190,5 @@ No end-state POC. One claim was settled by a read-based check instead; its verdi
 - **Q2 answered (Oct 1)** by Jake, recorded by an amendment: Ops hires without asking. Fire stays
   on approval as my default. ER-4, ER-20, the goal's leg b and its control, and the figures
   that stated every-hire approval follow it.
+- **Ops dropped (Oct 1)**: CoS is the one org admin seat and the only hire door; fire still asks.
+  ER-4, ER-6, ER-20 and Q2 follow it; FIX-1719's spec carries the detail.

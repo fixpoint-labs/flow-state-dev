@@ -7,7 +7,7 @@
 | A team that… | Today | After this epic |
 |---|---|---|
 | **runs a Lab alone in Shift Manager** (the owner, dogfooding) | PROJECTS lists every workstream on its own, and the project level shows four named empty states | Workstreams sit under the project they belong to; the project's Stream, Board, Workstreams and Brief read from the Lab's own tree |
-| **needs one more seat, or one fewer** | Edits a `WORKER.md`, or writes and guards its own hire action, then restarts | Asks Ops. Ops hires on the spot; a fire it raises in Inbox and makes on Approve. Either survives a restart |
+| **needs one more seat, or one fewer** | Edits a `WORKER.md`, or writes and guards its own hire action, then restarts | Asks CoS. CoS hires on the spot; a fire it raises in Inbox and makes on Approve. Either survives a restart |
 | **shipped a release that cut a kind** | The seat that ran it is refused at boot, named, and stays broken | Sees which seats lost their kind and why, and retires or re-hires each one on approval |
 | **builds the next Lab** (DevTeam, then CyberForce) | Would invent its own idea of a project and of an admin seat | Declares its projects in its tree and opts into CoS and Ops as documents, writing no code for either |
 
@@ -21,7 +21,7 @@ use rides on it. The spec work proceeds now; when the build runs is Jake's call
 ## The goal, and how we'll know it's met
 
 **One person opens a Lab in Shift Manager, finds its workstreams under the projects the Lab
-declares, and changes who works there by asking Ops, which hires on its own and fires on the
+declares, and changes who works there by asking CoS, which hires on its own and fires on the
 person's approval in Inbox, with every change surviving a restart, from what the Lab's tree declares, with nothing new in Layer 1, no new noun
 and no second hire store.**
 
