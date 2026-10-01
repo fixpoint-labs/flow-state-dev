@@ -72,6 +72,11 @@ export type Seat = {
    * written before doors were published.
    */
   door: string | null;
+  /**
+   * The id boards and channels name the seat by: for a hired seat the
+   * `<seatId>` inside its `<org>.<seatId>` address, otherwise `id` itself.
+   */
+  seatId: string;
   /** The team it sits under, or {@link STAFF_TEAM} for an org seat (see {@link toSeat}). */
   team: string;
   name: string;
@@ -279,7 +284,7 @@ export function toSeat(row: unknown, orgId: string): Seat | undefined {
   const dot = address.indexOf(".");
   const team = dot > 0 ? address.slice(0, dot) : STAFF_TEAM;
   const name = dot > 0 ? address.slice(dot + 1) : address;
-  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), team, name };
+  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), seatId: address, team, name };
 }
 
 /** A channel inventory row. A row written before `members` existed reads as none (BP-030). */

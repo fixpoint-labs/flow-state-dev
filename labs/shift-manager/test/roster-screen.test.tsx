@@ -175,10 +175,19 @@ describe("Roster (V3)", () => {
     expect(within(page).getAllByTestId("roster-worker").find((w) => w.getAttribute("data-seat-id") === "ops.asker")!.getAttribute("data-status")).toBe("off shift");
   });
 
+  it("BR-20, failure taxonomy: asks that did not load are named on Roster with the Lab's answer and Retry", async () => {
+    await open("/roster", lab({ asks: "failed" }));
+    const failure = await screen.findByTestId("roster-asks-failure");
+    expect(failure.textContent).toMatch(/asks offline/);
+    expect(within(failure).getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(within(screen.getByTestId("roster")).getByTestId("partial-mark")).toBeTruthy();
+  });
+
   it("draws no partial mark when asks loaded", async () => {
     await open("/roster");
     await screen.findByTestId("roster");
     expect(screen.queryAllByTestId("partial-mark")).toHaveLength(0);
+    expect(screen.queryByTestId("roster-asks-failure")).toBeNull();
   });
 });
 

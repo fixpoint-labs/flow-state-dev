@@ -154,3 +154,20 @@ describe("BR-13: the Roster route", () => {
     expect(pickedTeam(seats, null)).toBeNull();
   });
 });
+
+describe("a hired seat holds its rows by its logical id", () => {
+  it("a row assigned `<team>.<name>` belongs to the hired seat `<org>.<team>.<name>`", () => {
+    const hired = seat(`${ORG}.eng.coder-2`);
+    const states = seatStates(snapshotOf([hired], [row("a", "in_progress", "eng.coder-2"), row("b", "parked", "eng.coder-2")], [], ["eng.coder-2"]));
+    expect(states.seats.get(`${ORG}.eng.coder-2`)).toMatchObject({ status: "on shift" });
+    expect(states.seats.get(`${ORG}.eng.coder-2`)!.held.map((r) => r.id)).toEqual(["a", "b"]);
+  });
+
+  it("its bare name, shared with a seat in another team, resolves through the channel's logical members", () => {
+    const hired = seat(`${ORG}.eng.coder`);
+    const ops = seat("ops.coder");
+    const states = seatStates(snapshotOf([hired, ops], [row("a", "in_progress", "coder")], [], ["eng.coder"]));
+    expect(states.seats.get(`${ORG}.eng.coder`)!.status).toBe("on shift");
+    expect(states.seats.get("ops.coder")!.status).toBe("off shift");
+  });
+});

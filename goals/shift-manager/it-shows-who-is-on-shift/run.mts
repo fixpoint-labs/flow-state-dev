@@ -44,7 +44,7 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { Page } from "playwright";
+import type { Browser, Page } from "playwright";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
@@ -333,8 +333,10 @@ async function gradeRoster(page: Page, store: Store, team: string | null, fail: 
 async function checkSpread(n: number, spread: Record<string, ShiftState[]>, pages: string, failures: string[], evidence: string[]) {
   const fail = (leg: string, why: string) => failures.push(`[spread ${n}] ${leg}: ${why}`);
   const served = await startLab(pages, spread);
-  const browser = await launchChromium();
+  // Launched inside the cleanup scope: a browser that fails to start must not leave the Lab running.
+  let browser: Browser | undefined;
   try {
+    browser = await launchChromium();
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
     const pageErrors: string[] = [];
     page.on("pageerror", (e) => pageErrors.push(e.message));
@@ -409,7 +411,7 @@ async function checkSpread(n: number, spread: Record<string, ShiftState[]>, page
         .join("; ")}`,
     );
   } finally {
-    await browser.close();
+    await browser?.close();
     served.child.kill("SIGTERM");
     await served.exited;
   }

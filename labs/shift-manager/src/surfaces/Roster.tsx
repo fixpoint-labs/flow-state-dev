@@ -169,6 +169,11 @@ export function RosterView({
         </div>
       </header>
       <div className="flex-1 overflow-y-auto px-5 pb-6">
+        {snapshot.asks.ok ? null : (
+          <div className="mt-3">
+            <SectionFailure what="Asks" failure={snapshot.asks.failure} onRetry={() => void refresh()} testId="roster-asks-failure" />
+          </div>
+        )}
         {unread.map(({ workstreamId, failure }) => (
           <div key={workstreamId} className="mt-3">
             <SectionFailure what={`${workstreamId}'s tasks`} failure={failure} onRetry={() => void refresh()} testId="roster-boards-failure" />

@@ -28,10 +28,11 @@ export type Roster = { seats: readonly Seat[]; workstreams: readonly Workstream[
  * to, not a seat address: a board may name `<name>` for the seat
  * `<team>.<name>`. So, in order:
  *
- * 1. a seat whose id is the assignee;
+ * 1. a seat whose id, or whose logical seat id (a hired seat's `<seatId>`
+ *    inside its `<org>.<seatId>` address), is the assignee;
  * 2. the one seat whose own name is the assignee;
  * 3. when that name belongs to seats in more than one team, the one of them
- *    that is a member of the row's channel.
+ *    that is a member of the row's channel, by either id.
  *
  * Still more than one, or none, is no seat: a row is never shown against
  * several seats, or against a guess. Which seat actually claimed the row is
@@ -40,12 +41,12 @@ export type Roster = { seats: readonly Seat[]; workstreams: readonly Workstream[
  */
 export function seatFor(roster: Roster, row: BoardRow): Seat | undefined {
   if (row.assignee === null) return undefined;
-  const exact = roster.seats.find((seat) => seat.id === row.assignee);
+  const exact = roster.seats.find((seat) => seat.id === row.assignee || seat.seatId === row.assignee);
   if (exact !== undefined) return exact;
   const named = roster.seats.filter((seat) => seat.name === row.assignee);
   if (named.length <= 1) return named[0];
   const members = new Set(roster.workstreams.find((w) => w.id === row.channelId)?.members ?? []);
-  const inChannel = named.filter((seat) => members.has(seat.id));
+  const inChannel = named.filter((seat) => members.has(seat.id) || members.has(seat.seatId));
   return inChannel.length === 1 ? inChannel[0] : undefined;
 }
 

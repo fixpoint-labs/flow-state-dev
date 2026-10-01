@@ -234,7 +234,7 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
                   })}
                 </span>
                 <span className="w-8 text-right text-xs tabular-nums text-muted-foreground" data-testid="team-on-shift">
-                  {seats.filter((seat) => states?.seats.get(seat.id)?.status === "on shift").length}/{seats.length}
+                  {states === undefined ? 0 : shiftCounts(states, team)["on shift"]}/{seats.length}
                 </span>
               </button>
             ))
