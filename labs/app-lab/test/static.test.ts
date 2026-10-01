@@ -138,6 +138,25 @@ describe("V8", () => {
     );
   });
 
+  it("reads what became of a line in one place, the shared send state (BR-4, BR-5)", () => {
+    const code = sources.filter((f) => /\.tsx?$/.test(f) && !relative(src, f).startsWith("components/flow-state/"));
+    // Telling refused from not sent from unconfirmed is the send state's: a
+    // second copy is where Retry comes back for a line that may have arrived.
+    const CLASSIFIES = /instanceof TurnNotDelivered/;
+    const sites = (files: string[], read: (f: string) => string) =>
+      files.filter((f) => read(f).split("\n").some((line) => CLASSIFIES.test(line))).map((f) => relative(src, f)).sort();
+    const read = (f: string) => readFileSync(f, "utf8");
+    expect(sites(code, read)).toEqual(["components/TurnComposer.tsx"]);
+    for (const file of ["surfaces/Stream.tsx", "components/TurnComposer.tsx"]) {
+      expect(read(join(src, file)), file).toContain("useTurnSend()");
+    }
+    // Planted: a composer that classifies a failure itself is caught.
+    const planted = join(src, "surfaces/Planted.tsx");
+    expect(sites([...code, planted], (f) => (f === planted ? `const retry = err instanceof TurnNotDelivered && err.kind === "not-sent";` : read(f)))).toContain(
+      "surfaces/Planted.tsx",
+    );
+  });
+
   it("makes no write from the task screen but the abort and the one send path (ER-15, D2)", () => {
     const taskFiles = ["lib/run.ts", "lib/task.tsx", "surfaces/TaskFrame.tsx", "surfaces/TaskSession.tsx", "surfaces/TaskInspector.tsx"];
     const WRITES = /\b(sendAction|sendActionStream|resumeSuspension|postLine|createCollectionItem|updateCollectionItem|deleteCollectionItem|deleteSession|createSession|retryRequest|continueRequest)\b|method:\s*"(POST|PUT|PATCH|DELETE)"/;

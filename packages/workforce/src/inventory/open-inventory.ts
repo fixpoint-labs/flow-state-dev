@@ -43,7 +43,7 @@ import { seatDoorOf } from "../seat-door";
  * One registered seat, as the binder needs it.
  *
  * Structurally typed, and satisfied by `hireWorkforce`'s own return value: a
- * hired seat is a flow copy carrying exactly these two fields. Typed this
+ * hired seat is a flow copy carrying these three fields. Typed this
  * loosely on purpose — what belongs in the inventory is the seats that
  * actually exist, and a manifest the hire step refused never became one.
  */
@@ -54,10 +54,11 @@ export interface InventorySeat {
   kind: string;
   /**
    * The seat's public actions, which its door is read from (see
-   * `seat-door.ts`). A hired seat carries them; a seat passed without them is
-   * registered with no door.
+   * `seat-door.ts`). A hired seat carries them. Required, so a caller that
+   * builds `{ id, kind }` by hand can't register a seat as taking no message
+   * by forgetting them: pass `{}` to say the seat has no door.
    */
-  actions?: unknown;
+  actions: Readonly<Record<string, unknown>>;
 }
 
 /** What the binder registers: the seats that were hired, and the channels that were opened. */

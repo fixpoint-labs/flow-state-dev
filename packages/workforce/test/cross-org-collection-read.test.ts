@@ -525,7 +525,7 @@ async function buildInventoryHarness(
     if (options.fill === false) continue;
 
     const binding = await openInventory(
-      { seats: INVENTORY_ORGS[org].seats.map((id) => ({ id, kind: "agent" })), channels: [record] },
+      { seats: INVENTORY_ORGS[org].seats.map((id) => ({ id, kind: "agent", actions: {} })), channels: [record] },
       {
         run: async (request) => {
           const result: any = await runAction({

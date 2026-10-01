@@ -245,6 +245,27 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     expect(await userLines(clients, "s_ops_asker")).toContain("try again");
   });
 
+  it("keeps the draft and offers no Retry when it can't confirm the line arrived", async () => {
+    const { clients } = await openOnAsk();
+    const input = screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement;
+    const real = globalThis.fetch;
+    // The door takes the line, then reading the session back fails.
+    vi.spyOn(globalThis, "fetch").mockImplementation((i, init) =>
+      String(i instanceof Request ? i.url : i).includes("item_types=message")
+        ? Promise.resolve(new Response(JSON.stringify({ error: "store offline" }), { status: 503 }))
+        : real(i, init),
+    );
+    fireEvent.change(input, { target: { value: "did it land" } });
+    fireEvent.click(screen.getByTestId("inbox-reply-send"));
+    expect((await screen.findByTestId("inbox-reply-error", {}, { timeout: 5_000 })).textContent).toMatch(/Check the worker's session/);
+    expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("unconfirmed");
+    expect(input.value).toBe("did it land");
+    // A resend here would put the line in the session twice.
+    expect(screen.queryByTestId("inbox-reply-retry")).toBeNull();
+    vi.restoreAllMocks();
+    expect(await userLines(clients, "s_ops_asker")).toContain("did it land");
+  });
+
   it("is disabled for a seat whose kind has no door, and Approve still answers (BR-22)", async () => {
     await openOnAsk({ doors: false });
     expect((screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement).disabled).toBe(true);

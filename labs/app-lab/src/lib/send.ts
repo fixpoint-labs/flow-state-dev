@@ -12,9 +12,18 @@
  * `completed` **and** the target session holds the request's user item. The
  * HTTP answer alone never says so: it only says the request started.
  *
- * A refused line (the door's request failed) rejects with the door's own
- * reason. A line that never reached the Lab, or whose request ended any other
- * way, rejects as not sent. Either way the caller keeps the draft.
+ * Three ways a line can fail to be delivered, and the caller keeps the draft
+ * for each:
+ *
+ * - **refused**: the door's request failed. It rejects with the door's own reason.
+ * - **not sent**: the line never reached the Lab, or its request ended some
+ *   other way. Safe to send again.
+ * - **unconfirmed**: the line may have arrived, but App Lab can't confirm it.
+ *   The worker didn't answer in time, the session read failed, or the session
+ *   doesn't show it. Sending again could send it twice, so nothing offers to.
+ *
+ * Only a failure of a client call counts as one of these. A fault in this
+ * module's own reading is thrown as it is.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { LabClients } from "./connection";
@@ -26,8 +35,11 @@ export type TurnTarget = { sessionId: string; flowId: string; door: string };
 /** Why a line was not delivered. */
 export class TurnNotDelivered extends Error {
   constructor(
-    /** `refused`: the door said no, and why. `not-sent`: it never got that far. */
-    readonly kind: "refused" | "not-sent",
+    /**
+     * `refused`: the door said no, and why. `not-sent`: it never got that
+     * far, so sending again is safe. `unconfirmed`: it may have arrived.
+     */
+    readonly kind: "refused" | "not-sent" | "unconfirmed",
     message: string,
   ) {
     super(message);
@@ -40,29 +52,50 @@ const SEND_TIMEOUT_MS = 90_000;
 const SEND_POLL_MS = 250;
 /** Message items per session-state page while looking for the line. */
 const ITEM_PAGE = 200;
+/** Pages read back from the session's end before giving up. A new line is at the end. */
 const ITEM_PAGES = 20;
 
-/** Whether the session holds the person's line from `requestId`. */
-async function sessionHoldsLine(clients: LabClients, sessionId: string, requestId: string): Promise<boolean> {
-  let offset = 0;
-  for (let page = 0; page < ITEM_PAGES; page += 1) {
-    const state = await clients.sessions.getSessionState(sessionId, {
-      includeItems: true,
-      itemTypes: ["message"],
-      offset,
-      limit: ITEM_PAGE,
-    });
-    const items = (state.items ?? []) as Array<OutputItem & { role?: string }>;
-    if (items.some((item) => item.requestId === requestId && item.role === "user")) return true;
-    if (state.pagination?.hasMore !== true) return false;
-    offset = state.pagination.nextOffset ?? offset + ITEM_PAGE;
+/** A client call that failed: the network, or the Lab's answer. */
+class ClientCallFailed extends Error {
+  constructor(readonly failure: unknown) {
+    super(describeFailure(failure).message);
   }
-  return false;
+}
+
+/** Run one client call, marking anything it throws as the call's failure, not this module's. */
+async function call<T>(op: () => Promise<T>): Promise<T> {
+  try {
+    return await op();
+  } catch (error) {
+    throw new ClientCallFailed(error);
+  }
+}
+
+/**
+ * Whether the session holds the person's line from `requestId`, read from the
+ * newest page back. `undefined` when the page budget ran out first.
+ */
+async function sessionHoldsLine(clients: LabClients, sessionId: string, requestId: string): Promise<boolean | undefined> {
+  const read = (offset: number, limit: number) =>
+    call(() => clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["message"], offset, limit }));
+  const holds = (items: unknown) => (items as Array<OutputItem & { role?: string }>).some((item) => item.requestId === requestId && item.role === "user");
+
+  const first = await read(0, ITEM_PAGE);
+  const total = first.pagination?.total ?? 0;
+  if (total <= ITEM_PAGE) return holds(first.items ?? []);
+  let end = total;
+  for (let page = 0; page < ITEM_PAGES; page += 1) {
+    const offset = Math.max(0, end - ITEM_PAGE);
+    if (holds((await read(offset, end - offset)).items ?? [])) return true;
+    if (offset === 0) return false;
+    end = offset;
+  }
+  return undefined;
 }
 
 /** The door's own reason for a failed request, in its words. */
 async function refusalOf(clients: LabClients, sessionId: string, requestId: string): Promise<string> {
-  const failed = await clients.sessions.listSessionRequests(sessionId, { status: "failed" });
+  const failed = await call(() => clients.sessions.listSessionRequests(sessionId, { status: "failed" }));
   const said = failed.find((request) => request.id === requestId)?.result?.error?.message;
   return said ?? "The worker refused the message and gave no reason.";
 }
@@ -80,29 +113,29 @@ export async function sendTurn(
   const actions = clients.actions(target.flowId);
   let requestId: string;
   try {
-    requestId = (await actions.sendAction(target.door, { message }, { sessionId: target.sessionId })).request.id;
+    requestId = (await call(() => actions.sendAction(target.door, { message }, { sessionId: target.sessionId }))).request.id;
   } catch (error) {
-    throw new TurnNotDelivered("not-sent", describeFailure(error).message);
+    if (error instanceof ClientCallFailed) throw new TurnNotDelivered("not-sent", error.message);
+    throw error;
   }
 
   const until = Date.now() + (options.timeoutMs ?? SEND_TIMEOUT_MS);
+  const unconfirmed = (why: string) => new TurnNotDelivered("unconfirmed", `${why} Check the worker's session before sending it again.`);
   try {
     for (;;) {
-      const { status } = await actions.getRequestStatus(requestId);
+      const { status } = await call(() => actions.getRequestStatus(requestId));
       if (status === "completed") break;
       if (status === "failed") throw new TurnNotDelivered("refused", await refusalOf(clients, target.sessionId, requestId));
       if (status !== "in_progress") throw new TurnNotDelivered("not-sent", `The message's request ended ${status}.`);
-      if (Date.now() > until) {
-        throw new TurnNotDelivered("not-sent", "The worker did not answer in time; the message may still arrive.");
-      }
+      if (Date.now() > until) throw unconfirmed("The worker did not answer in time; the message may still arrive.");
       await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? SEND_POLL_MS));
     }
-    if (!(await sessionHoldsLine(clients, target.sessionId, requestId))) {
-      throw new TurnNotDelivered("not-sent", "The worker answered, but its session doesn't hold your message.");
-    }
+    const held = await sessionHoldsLine(clients, target.sessionId, requestId);
+    if (held === false) throw unconfirmed("The worker answered, but its session doesn't hold your message.");
+    if (held === undefined) throw unconfirmed("The worker answered, but its session is too long to find your message in.");
   } catch (error) {
-    if (error instanceof TurnNotDelivered) throw error;
-    throw new TurnNotDelivered("not-sent", describeFailure(error).message);
+    if (error instanceof ClientCallFailed) throw unconfirmed(`Couldn't read back whether the message arrived: ${error.message}.`);
+    throw error;
   }
   return { requestId };
 }

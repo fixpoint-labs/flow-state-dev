@@ -7,7 +7,7 @@
  * shows *delivered* while no session holds the line. The goal must fail at
  * "delivered only once the session holds the line".
  */
-export * from "../../../../labs/app-lab/src/lib/send.ts";
+export { TurnNotDelivered, type TurnTarget } from "../../../../labs/app-lab/src/lib/send.ts";
 
 export async function sendTurn(): Promise<{ requestId: string }> {
   return { requestId: "never-sent" };

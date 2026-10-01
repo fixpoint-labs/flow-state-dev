@@ -17,7 +17,7 @@ import { doorOf, rosterOf, workstreamsOf, waited, type LoadedSnapshot } from "..
 import { useLab } from "../lib/lab-data";
 import type { Ask } from "../lib/reads";
 import { navigate } from "../lib/routes";
-import { sendTurn } from "../lib/send";
+import { sendTurn, TurnNotDelivered } from "../lib/send";
 import type { Gaps } from "../gaps";
 
 const FILTERS = ["All", "Approvals", "Questions"] as const;
@@ -155,7 +155,9 @@ function Reply({
         placeholder={`Reply to ${ask.seatId ?? "this worker"}…`}
         blocked={route.blocked}
         send={async (message) => {
-          if (route.blocked !== null) return;
+          // The box is disabled while blocked; a send that got here anyway
+          // must not read as delivered.
+          if (route.blocked !== null) throw new TurnNotDelivered("refused", route.blocked);
           await sendTurn(clients, { sessionId: ask.sessionId, flowId: route.flowId, door: route.door }, message);
         }}
         onDelivered={onDelivered}

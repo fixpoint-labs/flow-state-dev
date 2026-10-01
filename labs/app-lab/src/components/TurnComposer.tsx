@@ -1,23 +1,79 @@
 /**
- * A composer that sends a person's line to a worker (S11): a task's, Inbox's
- * reply box, and the workstream composer when its line starts with `@`.
+ * A composer that sends a person's line to a worker (S11): a task's, and
+ * Inbox's reply box. The workstream composer, which also posts to its channel,
+ * uses the same send state for its `@worker` lines: {@link useTurnSend} and
+ * {@link TurnSendStatus}.
  *
  * It only draws. Where the line goes, and whether it can go at all, is the
  * caller's; the send itself is {@link sendTurn}'s, the one send path. The
  * composer shows *sending* until that resolves, and *delivered* only when it
  * does (BR-4). A refusal keeps the draft and shows the worker's reason
- * (BR-5); a line that never got there keeps the draft and offers Retry.
+ * (BR-5). A line that never got there keeps the draft and offers Retry. A line
+ * that may have arrived keeps the draft and offers no Retry, so it isn't sent
+ * twice.
  */
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { TurnNotDelivered } from "../lib/send";
 
 /** Where the last send stands. */
-type SendState =
+export type TurnSendState =
   | { kind: "idle" }
   | { kind: "sending" }
   | { kind: "delivered" }
   | { kind: "refused"; reason: string }
-  | { kind: "not-sent"; reason: string };
+  | { kind: "not-sent"; reason: string }
+  | { kind: "unconfirmed"; reason: string };
+
+/**
+ * The send state one composer keeps: run a send, and land on *delivered* or
+ * on why not. `run` resolves `true` once the line is delivered.
+ */
+export function useTurnSend() {
+  const [state, setState] = useState<TurnSendState>({ kind: "idle" });
+  const mounted = useRef(true);
+  useEffect(() => () => void (mounted.current = false), []);
+  const run = useCallback(async (send: () => Promise<void>): Promise<boolean> => {
+    setState({ kind: "sending" });
+    try {
+      await send();
+      if (mounted.current) setState({ kind: "delivered" });
+      return mounted.current;
+    } catch (error) {
+      if (!mounted.current) return false;
+      const reason = error instanceof Error ? error.message : String(error);
+      // Anything else is a fault in App Lab, not an answer about the line,
+      // which may have gone: say so, and offer no resend.
+      if (!(error instanceof TurnNotDelivered)) console.error("App Lab: sending a line failed", error);
+      setState({ kind: error instanceof TurnNotDelivered ? error.kind : "unconfirmed", reason });
+      return false;
+    }
+  }, []);
+  /** Drop a *delivered* once the person starts a new line; a failure stays until the next send. */
+  const reset = useCallback(() => setState((s) => (s.kind === "delivered" ? { kind: "idle" } : s)), []);
+  /** Forget the last send, whatever it came to. */
+  const clear = useCallback(() => setState({ kind: "idle" }), []);
+  return { state, run, reset, clear };
+}
+
+/** What a send's state says, with Retry only for a line that never got there. */
+export function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendState; testId: string; onRetry: () => void }) {
+  if (state.kind === "sending") return <>Sending… shown as delivered once the worker's session holds it.</>;
+  if (state.kind === "delivered") return <>Delivered.</>;
+  if (state.kind === "idle") return null;
+  return (
+    <span role="alert" className="text-destructive" data-testid={`${testId}-error`}>
+      {state.kind === "not-sent" ? `Not sent: ${state.reason}` : state.reason}
+      {state.kind === "not-sent" ? (
+        <>
+          {" "}
+          <button type="button" className="underline" onClick={onRetry} data-testid={`${testId}-retry`}>
+            Retry
+          </button>
+        </>
+      ) : null}
+    </span>
+  );
+}
 
 export function TurnComposer({
   testId,
@@ -40,9 +96,7 @@ export function TurnComposer({
   extra?: ReactNode;
 }) {
   const [draft, setDraft] = useState("");
-  const [state, setState] = useState<SendState>({ kind: "idle" });
-  const mounted = useRef(true);
-  useEffect(() => () => void (mounted.current = false), []);
+  const { state, run, reset } = useTurnSend();
 
   const sending = state.kind === "sending";
   const canSend = blocked === null && draft.trim().length > 0 && !sending;
@@ -51,17 +105,9 @@ export function TurnComposer({
     event?.preventDefault();
     if (!canSend) return;
     const message = draft.trim();
-    setState({ kind: "sending" });
-    try {
-      await send(message);
-      if (!mounted.current) return;
+    if (await run(() => send(message))) {
       setDraft("");
-      setState({ kind: "delivered" });
       onDelivered?.(message);
-    } catch (error) {
-      if (!mounted.current) return;
-      const reason = error instanceof Error ? error.message : String(error);
-      setState(error instanceof TurnNotDelivered && error.kind === "refused" ? { kind: "refused", reason } : { kind: "not-sent", reason });
     }
   };
 
@@ -71,7 +117,7 @@ export function TurnComposer({
         value={draft}
         onChange={(e) => {
           setDraft(e.target.value);
-          if (state.kind === "delivered") setState({ kind: "idle" });
+          reset();
         }}
         disabled={blocked !== null}
         rows={2}
@@ -87,22 +133,9 @@ export function TurnComposer({
         <p className="text-xs text-muted-foreground" data-testid={`${testId}-status`} data-state={blocked !== null ? "blocked" : state.kind}>
           {blocked !== null ? (
             <span data-testid={`${testId}-blocked`}>{blocked}</span>
-          ) : state.kind === "sending" ? (
-            "Sending… shown as delivered once the worker's session holds it."
-          ) : state.kind === "delivered" ? (
-            "Delivered."
-          ) : state.kind === "refused" ? (
-            <span role="alert" className="text-destructive" data-testid={`${testId}-error`}>
-              {state.reason}
-            </span>
-          ) : state.kind === "not-sent" ? (
-            <span role="alert" className="text-destructive" data-testid={`${testId}-error`}>
-              Not sent: {state.reason}{" "}
-              <button type="button" className="underline" onClick={() => void submit()} data-testid={`${testId}-retry`}>
-                Retry
-              </button>
-            </span>
-          ) : null}
+          ) : (
+            <TurnSendStatus state={state} testId={testId} onRetry={() => void submit()} />
+          )}
         </p>
         {extra}
         <button

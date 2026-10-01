@@ -317,8 +317,8 @@ function sessionApi(stores: any) {
 }
 
 const SEATS: InventorySeat[] = [
-  { id: "eng.lead", kind: "agent" },
-  { id: "eng.coder", kind: "coder" }
+  { id: "eng.lead", kind: "agent", actions: {} },
+  { id: "eng.coder", kind: "coder", actions: {} }
 ];
 
 /** The usual call: seats through the built-in kind, channels through their own. */
@@ -354,7 +354,7 @@ describe("what one boot writes", () => {
       const rows = await lab.read();
 
       expect(rows.seats.map((row) => row.id).sort()).toEqual(["eng.coder", "eng.lead"]);
-      // A seat passed without its actions has no door to read.
+      // A seat whose actions declare no door is registered with none.
       expect(rows.seats.find((row) => row.id === "eng.coder")).toEqual({
         id: "eng.coder",
         kind: "coder",
@@ -382,7 +382,7 @@ describe("what one boot writes", () => {
     const roster = [record("eng.standup", { members: ["eng.lead"] })];
     const lab = await host(roster, { inventory: true });
     try {
-      await bind(lab, { channels: roster, seats: [{ id: "eng.lead", kind: "agent" }] });
+      await bind(lab, { channels: roster, seats: [{ id: "eng.lead", kind: "agent", actions: {} }] });
 
       // Read out of storage rather than through the collection, because what is
       // being pinned is the key an already-persisted org would have to keep.
@@ -411,7 +411,7 @@ describe("what one boot writes", () => {
     try {
       await bind(lab, {
         channels: roster,
-        seats: [...SEATS, { id: "eng.leadership", kind: "agent" }]
+        seats: [...SEATS, { id: "eng.leadership", kind: "agent", actions: {} }]
       });
 
       const mine = await lab.read({ membershipsOf: "eng.lead" });
@@ -545,7 +545,7 @@ describe("running it twice", () => {
     try {
       const result = await bind(second, {
         channels: shrunk,
-        seats: [{ id: "eng.lead", kind: "agent" }]
+        seats: [{ id: "eng.lead", kind: "agent", actions: {} }]
       });
       expect(result.problems).toEqual([]);
 
@@ -717,7 +717,7 @@ describe("the registration action itself", () => {
       // Unlike `registerChannel`, this action's whole input is the row data,
       // so a public hit on it would let a caller write any seat it chose.
       const attempt = await lab.act(INVENTORY_SEAT_WRITER_SESSION, INVENTORY_REGISTER_SEATS, {
-        seats: [{ id: "attacker.fake", kind: "agent" }]
+        seats: [{ id: "attacker.fake", kind: "agent", actions: {} }]
       });
       expect(attempt.error).toBeDefined();
       expect(String((attempt.error as Error).message)).toContain(

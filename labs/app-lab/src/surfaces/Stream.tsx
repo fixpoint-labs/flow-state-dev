@@ -26,6 +26,7 @@ import { describeFailure, type BoardRow, type Failure, type Workstream } from ".
 import { navigate } from "../lib/routes";
 import { resolveRunFlow } from "../lib/run";
 import { sendTurn, TurnNotDelivered } from "../lib/send";
+import { TurnSendStatus, useTurnSend } from "../components/TurnComposer";
 import { lineLabel, lineOf, mergeLines, postLine, readTranscriptPage } from "../lib/transcript";
 import type { Gaps } from "../gaps";
 
@@ -209,8 +210,9 @@ function parseAddress(draft: string): { name: string; message: string } | undefi
 
 /**
  * The composer: posts to the whole channel, keeps its draft until the channel
- * keeps the line. A line to `@name` goes to that worker's task instead, and is
- * shown delivered only once the run's session holds it (BR-4).
+ * keeps the line. A line to `@name` goes to that worker's task instead, with
+ * the send state every turn composer shares ({@link useTurnSend}): delivered
+ * only once the run's session holds it (BR-4).
  */
 function Composer({
   send,
@@ -222,9 +224,9 @@ function Composer({
   addressing: (name: string) => Addressing;
 }) {
   const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<{ message: string; retry: boolean } | null>(null);
-  const [delivered, setDelivered] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
+  const turn = useTurnSend();
   const [chosen, setChosen] = useState<string>("");
   const mounted = useRef(true);
   useEffect(() => () => void (mounted.current = false), []);
@@ -241,40 +243,40 @@ function Composer({
         : row === undefined
           ? "This worker has several tasks here. Choose which one to message."
           : null;
+  const busy = posting || turn.state.kind === "sending";
   const canSend =
-    !sending &&
+    !busy &&
     blocked === null &&
     (address === undefined ? draft.trim().length > 0 : row !== undefined && address.message.length > 0);
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSend) return;
-    setSending(true);
-    setError(null);
-    setDelivered(false);
-    try {
-      if (address === undefined) {
-        await send(draft.trim());
-        if (!mounted.current) return;
-        setDraft("");
-        await onKept();
-      } else {
-        await (target as Extract<Addressing, { blocked: null }>).send(row!, address.message);
-        if (!mounted.current) return;
+    if (address !== undefined) {
+      const to = target as Extract<Addressing, { blocked: null }>;
+      setPostError(null);
+      if (await turn.run(() => to.send(row!, address.message))) {
         setDraft("");
         setChosen("");
-        setDelivered(true);
       }
-    } catch (err) {
+      return;
+    }
+    setPosting(true);
+    setPostError(null);
+    turn.clear();
+    try {
+      await send(draft.trim());
       if (!mounted.current) return;
-      const message = err instanceof Error ? err.message : String(err);
-      const notSent = err instanceof TurnNotDelivered && err.kind === "not-sent";
-      setError({ message: notSent ? `Not sent: ${message}` : message, retry: notSent });
+      setDraft("");
+      await onKept();
+    } catch (err) {
+      if (mounted.current) setPostError(err instanceof Error ? err.message : String(err));
     } finally {
-      if (mounted.current) setSending(false);
+      if (mounted.current) setPosting(false);
     }
   };
 
+  const state = blocked !== null ? "blocked" : posting ? "sending" : turn.state.kind;
   return (
     <form onSubmit={(e) => void submit(e)} className="border-t p-3" data-testid="composer">
       <label className="sr-only" htmlFor="composer-input">
@@ -286,7 +288,7 @@ function Composer({
         value={draft}
         onChange={(e) => {
           setDraft(e.target.value);
-          setDelivered(false);
+          turn.reset();
         }}
         rows={2}
         placeholder="Post a line to this workstream, or @worker to message one…"
@@ -314,28 +316,17 @@ function Composer({
         </label>
       ) : null}
       <div className="mt-2 flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground" data-testid="composer-status" data-state={blocked !== null ? "blocked" : sending ? "sending" : delivered ? "delivered" : "idle"}>
-          {blocked !== null
-            ? blocked
-            : sending
-              ? address === undefined
-                ? "Posting… the line appears once the channel keeps it."
-                : "Sending… shown as delivered once the worker's session holds it."
-              : delivered
-                ? "Delivered."
-                : null}
-          {error === null ? null : (
+        <p className="text-xs text-muted-foreground" data-testid="composer-status" data-state={state}>
+          {blocked !== null ? (
+            blocked
+          ) : posting ? (
+            "Posting… the line appears once the channel keeps it."
+          ) : postError !== null ? (
             <span role="alert" className="text-destructive" data-testid="composer-error">
-              {error.message}
-              {error.retry ? (
-                <>
-                  {" "}
-                  <button type="button" className="underline" onClick={() => void submit()} data-testid="composer-retry">
-                    Retry
-                  </button>
-                </>
-              ) : null}
+              {postError}
             </span>
+          ) : (
+            <TurnSendStatus state={turn.state} testId="composer" onRetry={() => void submit()} />
           )}
         </p>
         <button

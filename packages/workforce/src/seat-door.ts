@@ -53,8 +53,8 @@ function isDoor(action: ActionLike): boolean {
  * @returns The door's action name, `null` when the kind has none, and a
  *   problem naming both when it has two.
  */
-export function seatDoorOf(seat: Pick<FlowInstance, "id" | "kind"> & { actions?: unknown }): SeatDoor {
-  const actions = (seat.actions ?? {}) as Record<string, ActionLike>;
+export function seatDoorOf(seat: Pick<FlowInstance, "id" | "kind"> & { actions: Readonly<Record<string, unknown>> }): SeatDoor {
+  const actions = seat.actions as Readonly<Record<string, ActionLike>>;
   const doors = Object.keys(actions)
     .filter((name) => isDoor(actions[name]!))
     .sort();

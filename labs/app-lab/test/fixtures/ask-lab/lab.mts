@@ -186,7 +186,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
     };
     const binding = await openInventory(
       {
-        seats: options.doors === false ? seats.map((seat) => ({ id: seat.id, kind: seat.kind })) : seats,
+        seats: options.doors === false ? seats.map((seat) => ({ id: seat.id, kind: seat.kind, actions: {} })) : seats,
         channels: tree.channels,
       },
       { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: ASK_LAB_USER_ID, orgId },
