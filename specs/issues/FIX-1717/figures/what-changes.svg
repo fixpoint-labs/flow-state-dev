@@ -1,0 +1,67 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="What a coding run started from Shift Manager is handed, today and after, as the prompt reads top to bottom. Today: the task a person approved is on the row but dropped from the prompt; the run gets the seat's instructions, the seat's standing brief document treated as the job, the team's conventions, and the row's id, checkout and branch. After: the prompt opens on the approved task (its goal, title, context and any prior outputs the board selected), then the seat's instructions, the standing brief as reference, the conventions, the charter of the channel the task sits on when the seat is a member, and the run's terms including when it counts as done. Below a fence, never handed either way: the coordinator seat's session, the channel transcript, and environment keys."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .n-gone{ fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .fence { stroke:var(--gone); stroke-width:1.4; stroke-dasharray:6 5; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-hd  { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-gone{ fill:var(--gone); }
+    .c-code{ fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY · THE PROMPT, TOP TO BOTTOM</text>
+    <rect class="n-gone" x="16" y="36" width="436" height="50" rx="5"/>
+    <text class="t-b c-gone" x="30" y="57">The task a person approved: dropped</text>
+    <text class="t-s" x="30" y="75">on the row the run works, never in its prompt</text>
+    <rect class="n-box" x="16" y="96" width="436" height="40" rx="5"/>
+    <text class="t-b" x="30" y="121">The seat's instructions</text>
+    <rect class="n-box" x="16" y="146" width="436" height="50" rx="5"/>
+    <text class="t-b" x="30" y="167">The seat's standing brief, read as the job</text>
+    <text class="t-s" x="30" y="185">so an approved night-mode toggle runs as a greeting module</text>
+    <rect class="n-box" x="16" y="206" width="436" height="40" rx="5"/>
+    <text class="t-b" x="30" y="231">The team's conventions</text>
+    <rect class="n-box" x="16" y="256" width="436" height="50" rx="5"/>
+    <text class="t-b" x="30" y="277">This row: its id, checkout and branch</text>
+    <text class="t-s" x="30" y="295">and that a commit counts as done</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="488" y="24">AFTER</text>
+    <rect class="n-new" x="488" y="36" width="436" height="50" rx="5"/>
+    <text class="t-b c-code" x="502" y="57">The task: the goal a person approved</text>
+    <text class="t-s" x="502" y="75">with its title, context and prior outputs, when the row has them</text>
+    <rect class="n-box" x="488" y="96" width="436" height="40" rx="5"/>
+    <text class="t-b" x="502" y="121">The seat's instructions</text>
+    <rect class="n-box" x="488" y="146" width="436" height="50" rx="5"/>
+    <text class="t-b" x="502" y="167">The seat's standing brief, as reference</text>
+    <text class="t-s" x="502" y="185">the task says what to build; the brief says how the team works</text>
+    <rect class="n-box" x="488" y="206" width="436" height="40" rx="5"/>
+    <text class="t-b" x="502" y="231">The team's conventions</text>
+    <rect class="n-new" x="488" y="256" width="436" height="50" rx="5"/>
+    <text class="t-b c-code" x="502" y="277">The channel's charter</text>
+    <text class="t-s" x="502" y="295">the channel the task sits on, only when the seat is a member</text>
+    <rect class="n-box" x="488" y="316" width="436" height="40" rx="5"/>
+    <text class="t-b" x="502" y="341">The run's terms: checkout, branch, what counts as done</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="16" y1="382" x2="924" y2="382"/>
+    <text class="t-lbl c-gone" x="16" y="404">NEVER HANDED, TODAY OR AFTER</text>
+    <text class="t-b" x="16" y="428">The coordinator seat's session  ·  the channel transcript  ·  environment keys</text>
+    <text class="t-s" x="16" y="448">Detail a run needs goes on the task. A person's later messages keep arriving their own way.</text>
+  </g>
+</svg>
