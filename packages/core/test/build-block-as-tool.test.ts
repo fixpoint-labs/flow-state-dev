@@ -15,7 +15,7 @@ import {
 import type { BlockContext } from "../src/types/block";
 import { createMockContext, runForTest } from "./helpers";
 
-type Emitted = { type: string; item?: any; id?: string; patch?: any };
+type Emitted = { type: string; item?: any; itemId?: string; patch?: any };
 
 function ctxWithRecorder(extra?: Partial<BlockContext>): {
   ctx: BlockContext;
@@ -76,7 +76,7 @@ describe("BlockDefinition.asTool", () => {
     const tool_output_events = emitted.filter(
       (e) =>
         (e.type === "item.added" && e.item?.type === "tool_output") ||
-        (e.type === "item.updated" && e.id === item.id) ||
+        (e.type === "item.updated" && e.itemId === item.id) ||
         (e.type === "item.done" && e.item?.id === item.id)
     );
     expect(tool_output_events.map((e) => e.type)).toEqual([
@@ -135,7 +135,7 @@ describe("BlockDefinition.asTool", () => {
 
     // The patch sent on update reflects the failure shape.
     const update = emitted.find(
-      (e) => e.type === "item.updated" && e.id === item.id
+      (e) => e.type === "item.updated" && e.itemId === item.id
     );
     expect(update?.patch?.status).toBe("failed");
     expect(update?.patch?.error?.message).toBe("kaboom");
