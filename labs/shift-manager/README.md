@@ -1,6 +1,6 @@
 # Shift Manager
 
-Shift Manager is a browser app for looking into a running Lab: a set of Workforce seats and channels served from one `fsdev.config.mts`. You point it at a Lab's config and it shows what that Lab holds. That covers the teams and their seats, the workstreams, each channel's board, the asks waiting on you, and each channel's transcript, which you can post to.
+Shift Manager is the browser app you run a Workforce team through. A team is served as a Lab: a set of Workforce seats and channels from one `fsdev.config.mts`. You point Shift Manager at a Lab's config, or open one of the [team profiles](#team-profiles) this package ships, and it shows what that Lab holds. That covers the teams and their seats, the workstreams, each channel's board, the asks waiting on you, and each channel's transcript, which you can post to.
 
 A task shows one worker's run as it happens, and lets you stop it. The panel on the right follows along, with the team and its tasks at a workstream and the task's details at a task.
 
@@ -37,11 +37,11 @@ A config that doesn't load, or doesn't default-export a `FlowState`, stops the c
 
 ### Team profiles
 
-A team profile is a Lab's config kept in this package, under `teams/<name>/fsdev.config.mts`, so you can open it by name. There is one so far:
+A team profile is a Lab's config kept in this package, under `teams/<name>/fsdev.config.mts`, so you can open it by name. This package ships one:
 
 - **`devteam`** is a software team. An EM seat files features as rows on the team's board, a coder seat runs each row as a supervised coding run, and a reviewer seat is declared but never woken. On start the EM asks you to approve one feature, so Inbox has something in it. Rows run on a scripted harness with no model unless `DEVFORCE_LAB_HARNESS=claude-code` is set. Its tree and the checks behind it are in [`goals/devforce-lab/lab/`](../../goals/devforce-lab/lab/README.md).
 
-One process opens one team. Starting with a second `--team` or `--config` is refused.
+One process opens one team. Passing `--team` or `--config` twice stops the command.
 
 ### Working on the pages
 
@@ -205,7 +205,7 @@ Each of these is drawn as a named empty state or a disabled control:
 
 Shift Manager's look comes from the [design-system](../design-system) package, through one import in `src/styles.css`. It follows your operating system's light or dark setting, and switches when you change it. Remove that import and every screen falls back to the registry's neutral defaults.
 
-To pin the look instead, start on a shift: `--shift day` for light, `--shift night` for dark, or set `SHIFT_MANAGER_SHIFT` to either. The flag wins when both are set. Each shift is a file under `profiles/` naming its colour scheme. The page then keeps that look for as long as it's open and ignores the OS setting. There's no switch on the page itself. Restart on the other shift to change it.
+To pin the look instead, start on a shift: `--shift day` for light, `--shift night` for dark, or set `SHIFT_MANAGER_SHIFT` to either. The flag wins when both are set. The page then keeps that look for as long as it's open and ignores the OS setting. There's no switch on the page itself. Restart on the other shift to change it.
 
 The cards in a task's Session, and the ask cards in Inbox and in a workstream's Stream, are Shift Manager's copies of `@flow-state-dev/ui` registry components, kept unedited. The `ui:add` script in `package.json` names what was installed (`chat-assistant`, which brings the message, reasoning, tool, code block, task plan and ask cards with it). `chat-assistant` brings its whole dependency closure, so Shift Manager also holds copies it doesn't draw today (the debate, evented-actors, routed-specialists and audit-annotation containers) and the libraries they need, such as `shiki`, `streamdown` and `motion`. A test checks that the copies are exactly what that list ships, byte for byte.
 

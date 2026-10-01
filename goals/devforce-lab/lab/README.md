@@ -117,8 +117,8 @@ Opening again over the same store finds the earlier ask, answered or not, and ra
 a denied feature stays denied until the store is fresh. The other checks don't ask for
 it, so they run exactly as before.
 
-A host that builds its own flow state instead of calling `openLab` turns on durable execution itself and calls the same step,
-`raiseAsk` in `ask.mts`, after it hires.
+A host that builds its own flow state instead of calling `openLab` turns on durable execution
+itself and calls the same step, `raiseAsk` in `ask.mts`, after it hires.
 
 ```ts
 const lab = await openLab({
@@ -134,7 +134,7 @@ const lab = await openLab({
 
 ## Serving it
 
-This tree is served as Shift Manager's DevTeam team profile. The profile's config,
+This tree is served as Shift Manager's `devteam` profile. The profile's config,
 `labs/shift-manager/teams/devteam/fsdev.config.mts`, opens it through `openLab`, and
 `fsdev dev --config` takes the same file. `DEVFORCE_LAB_HARNESS` picks what runs an approved
 row (`harness.mts`):
