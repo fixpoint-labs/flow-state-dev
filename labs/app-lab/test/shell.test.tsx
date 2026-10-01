@@ -127,7 +127,9 @@ describe("the composer (V6)", () => {
     expect(input.value).toBe("kept line");
     release();
     await screen.findByText("kept line", { selector: "[data-testid=transcript-line-body]" });
-    expect(input.value).toBe("");
+    // The live stream can draw the kept line before the post's next status poll
+    // answers, and only that answer clears the draft: wait for it, don't race it.
+    await waitFor(() => expect(input.value).toBe(""));
     // And the channel holds it.
     const state = await clients.sessions.getSessionState("ops.side", { includeItems: true, itemTypes: ["component"] });
     expect(JSON.stringify(state.items)).toContain("kept line");
