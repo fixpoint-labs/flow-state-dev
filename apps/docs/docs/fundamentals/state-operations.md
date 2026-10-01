@@ -154,15 +154,15 @@ A write issued from a context whose cache predates a concurrent writer is still 
 The usual cause of `false` is a redundant write. When the update you propose is structurally equal to the current state, it's skipped, so idempotent writes don't need manual identity checks:
 
 ```ts
-// Safe to call repeatedly. If `mode` is already "agent", nothing happens.
+// Safe to call repeatedly. If this context last read `mode` as "agent", nothing is written.
 await ctx.session.patchState({ mode: "agent" });
 ```
 
 The comparison uses `Object.is` for primitives (NaN-equal-NaN, `+0 != -0`) and recursive structural equality for plain objects and arrays.
 
-What "current state" means depends on [which kind of write](#cas-semantics) you made.
+What "current state" means depends on [which kind of write](#cas-semantics) you made. Version-checked writes are `setState`, `atomicState`, the updater form of `patchState`, and `patchState` or `incState` with two or more fields. `patchState({ field: value })` with one field, single-field `incState`, `pushState`, `setStateRecord` and `deleteStateRecord` carry no version.
 
-A version-checked write confirms the match with the store before skipping. The runtime re-reads the record, and skips only if the store still holds the version this context read. If another context has moved it since, the runtime refreshes and runs your update again against the stored value, the same as after a conflict. A write that only matches your own stale copy still lands:
+A version-checked write is skipped only if the record is unchanged in the store since this context read it. If another context has changed it, your update runs against the stored value and the write lands:
 
 ```ts
 // this context last read mode: "chat". Another context has since stored "agent".
@@ -170,7 +170,7 @@ const changed = await ctx.session.atomicState(() => ({ mode: "chat" }));
 // true. Stored mode is "chat".
 ```
 
-A write with no version doesn't confirm. Its comparison runs against the state **this context last read**, before anything reaches the store. If your write happens to match that stale copy, it's skipped and the other context's value stays stored:
+A write with no version doesn't confirm, whichever way the store would apply it. Its equality check runs against the state **this context last read**, before anything reaches the store. If your write happens to match that stale copy, it's skipped and the other context's value stays stored:
 
 ```ts
 // this context last read mode: "chat". Another context has since stored "agent".
@@ -178,7 +178,7 @@ const changed = await ctx.session.patchState({ mode: "chat" });
 // false. Stored mode is still "agent". The write was never sent.
 ```
 
-When a write has to land even if it matches what you last read, make it version-checked: `atomicState(() => ({ mode: "chat" }))` rather than `patchState({ mode: "chat" })`.
+When the stored value has to end up as yours, even if it matches what you last read, use a version-checked write: `atomicState(() => ({ mode: "chat" }))` rather than `patchState({ mode: "chat" })`. It returns `false` only when the store already holds that value, or when the record no longer exists.
 
 A write is also refused, and returns `false`, in these cases:
 
@@ -210,7 +210,7 @@ persist(next, expectedVersion)
    ok    conflict ──► refresh from store, retry
 ```
 
-Other calls describe an operation instead — "add 1 to `messageCount`", "set `byId.doc-1` to this value" — and the runtime hands that operation to the store, which applies it to the record as it stands. Those writes carry no version, so nothing is compared, nothing can conflict, and they never raise `ConcurrentModificationError`. A call only goes that way if [the store offers the matching operation](#the-store-has-to-offer-the-operation).
+Other calls describe an operation instead — "add 1 to `messageCount`", "set `byId.doc-1` to this value" — and the runtime hands that operation to the store, which applies it to the record as it stands. Those writes carry no version, so the store checks no version, nothing can conflict, and they never raise `ConcurrentModificationError`. A call only goes that way if [the store offers the matching operation](#the-store-has-to-offer-the-operation).
 
 | Version-checked | No version |
 |---|---|
