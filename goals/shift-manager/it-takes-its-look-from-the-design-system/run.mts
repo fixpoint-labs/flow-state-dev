@@ -1,7 +1,8 @@
 /**
  * Goal check: Shift Manager takes its light and dark look from the design-system
  * package's one import, the FSD parts it reuses are the registry's copies,
- * and with that import removed no Shift Manager value shows on any of them.
+ * with that import removed no Shift Manager value shows on any of them, and
+ * the sidebar's shift switch changes the look live, both ways.
  *
  * Real path, no model, out of CI. See goal.md for the contract.
  *
@@ -26,12 +27,20 @@
  *   neutral    leg c: on the no-theme build, no colour painted on the shell or
  *              on a swept part is any Shift Manager value (either variant), and no
  *              font is one of its families
+ *   switch     on the themed build, in a fresh browser: clicking Night shift
+ *              while the OS prefers light paints the page's background with
+ *              Shift Manager's dark value, clicking Day shift while the OS
+ *              prefers dark paints its light value, the switch shows the shift
+ *              it's on each time, and each pick survives a reload
  *
  * Control:
  *   GOAL_CONTROL=hardcoded-accent  Shift Manager's copy of the tool card paints its
  *                                  completed icon with Shift Manager's accent as a
  *                                  literal, in both builds. `neutral` must FAIL
  *                                  naming `tool`, and nothing else may fail.
+ *   GOAL_CONTROL=switch-ignored    the shift switch's buttons do nothing when
+ *                                  clicked. `switch` must FAIL, and nothing
+ *                                  else may fail.
  *
  * Run:     PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-takes-its-look-from-the-design-system/run.mts
  * Control: GOAL_CONTROL=hardcoded-accent PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-takes-its-look-from-the-design-system/run.mts
@@ -41,14 +50,14 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSyn
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Page } from "playwright";
+import type { Browser, Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { hex, near, parseColour, readShiftManagerTheme, type Rgb } from "../../lib/colour.mts";
+import { declarations, hex, near, parseColour, readShiftManagerTheme, type Rgb } from "../../lib/colour.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["hardcoded-accent"] as const;
+const CONTROLS = ["hardcoded-accent", "switch-ignored"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
@@ -63,6 +72,18 @@ const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const RUN_LAB = join(REPO_ROOT, "goals", "shift-manager", "it-shows-and-stops-a-task-run", "lab");
 const SCRATCH = goalTmpDir("shift-manager-theme");
 const THEME = readShiftManagerTheme();
+/** Shift Manager's page background per variant, as the design-system package declares it. */
+const BACKGROUND = (() => {
+  const css = readFileSync(join(REPO_ROOT, "labs", "design-system", "shift-manager.css"), "utf8");
+  const rgb = (value: string | undefined): Rgb => {
+    if (value === undefined || !/^#[0-9a-f]{6}$/i.test(value)) throw new Error(`setup: shift-manager.css declares no #rrggbb --background (got ${value})`);
+    return [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16)) as Rgb;
+  };
+  const both = { light: rgb(declarations(css, ":root")["--background"]), dark: rgb(declarations(css, ".dark")["--background"]) };
+  // Equal backgrounds would let a switch that did nothing pass.
+  if (near(both.light, both.dark)) throw new Error(`setup: the light and dark --background are the same colour (${hex(both.light)})`);
+  return both;
+})();
 /** The one line leg c removes. */
 const THEME_IMPORT = /^@import "@flow-state-dev\/design-system\/shift-manager\.css";\n/m;
 /** The registry parts the Session must draw, by the selector that finds Shift Manager's copy of each. */
@@ -250,6 +271,52 @@ async function readPass(page: Page, origin: string, taskId: string, dark: boolea
   return page.evaluate(readPage, { swept: SWEPT, probeValues: [...THEME.light, ...THEME.dark] });
 }
 
+// ---- the shift switch ----------------------------------------------------------
+
+/**
+ * The switch leg: a fresh browser (nothing picked yet), each click made
+ * against the opposite OS setting so a page that ignored the click and
+ * followed the OS fails, and each pick read again after a reload.
+ */
+async function switchLeg(browser: Browser, origin: string): Promise<{ failures: string[]; evidence: string }> {
+  const failures: string[] = [];
+  const seen: string[] = [];
+  const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+  const ready = async () => {
+    await page.getByTestId("shift-switch").waitFor({ timeout: 20_000 });
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity));
+  };
+  const expect = async (step: string, want: "light" | "dark") => {
+    await ready();
+    const got = parseColour(await page.evaluate(() => getComputedStyle(document.body).backgroundColor));
+    const shown = want === "dark" ? "Night shift" : "Day shift";
+    if (got === null || !near(got.rgb, BACKGROUND[want])) {
+      failures.push(`switch [${step}] the page background is ${got === null ? "transparent" : hex(got.rgb)}, not Shift Manager's ${want} ${hex(BACKGROUND[want])}`);
+    }
+    if ((await page.getByTestId(want === "dark" ? "shift-night" : "shift-day").getAttribute("aria-pressed")) !== "true") {
+      failures.push(`switch [${step}] the switch doesn't show ${shown}`);
+    }
+    seen.push(`${step}: ${got === null ? "transparent" : hex(got.rgb)}`);
+  };
+  try {
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto(`${origin}/tasks`);
+    await expect("OS light, nothing picked", "light");
+    await page.getByTestId("shift-night").click();
+    await expect("Night shift clicked, OS light", "dark");
+    await page.reload();
+    await expect("reloaded after Night shift, OS light", "dark");
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.getByTestId("shift-day").click();
+    await expect("Day shift clicked, OS dark", "light");
+    await page.reload();
+    await expect("reloaded after Day shift, OS dark", "light");
+  } finally {
+    await page.close();
+  }
+  return { failures, evidence: `switch: ${seen.join("; ")}` };
+}
+
 // ---- grading -------------------------------------------------------------------
 
 const firstFamily = (value: string) => value.split(",")[0]!.trim().replace(/^["']|["']$/g, "");
@@ -305,7 +372,16 @@ await runGoal(async () => {
             why: `the tool card's completed icon painted Shift Manager's accent ${THEME.attentionLight} as a literal`,
           },
         ]
-      : [];
+      : CONTROL === "switch-ignored"
+        ? [
+            {
+              file: "src/surfaces/Sidebar.tsx",
+              from: "onClick={() => look.choose(scheme)}",
+              to: "onClick={() => undefined}",
+              why: "the shift switch's buttons do nothing when clicked",
+            },
+          ]
+        : [];
 
   // Either build failing to set up is its own leg's failure; the other still runs.
   const builds: Array<{ name: "themed" | "no-theme"; pages: string }> = [];
@@ -347,6 +423,11 @@ await runGoal(async () => {
         }
         if (errors.length > 0) failures.push(`reach [${name}] the page threw: ${errors.join(" | ")}`);
         await page.close();
+        if (name === "themed") {
+          const switched = await switchLeg(browser, served.origin);
+          failures.push(...switched.failures);
+          evidence.push(switched.evidence);
+        }
       } finally {
         served.child.kill("SIGTERM");
         await served.exited;

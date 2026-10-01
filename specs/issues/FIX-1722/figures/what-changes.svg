@@ -1,0 +1,79 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="What changes. Before: Shift Manager opens on Inbox; the sidebar reads Inbox, Tasks, PROJECTS and TEAMS, and nothing on screen talks to a chief of staff. After: a Chief of Staff entry sits above Inbox and is where every Lab opens. Its view has three parts. A shift summary Shift Manager draws from the reads it already makes: the asks waiting, answered inline with Inbox's card, and what is running. A conversation with the CoS seat, written only through the seat's door and drawn only from its session. A right rail with each workstream's running and needs-you counts, and who is on call, read from FIX-1723's status. The CoS seat itself comes from FIX-1719; until it lands, from a seat the Lab declares as chief-of-staff."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-in  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; stroke-dasharray:5 4; }
+    .n-row { fill:var(--surface-2); }
+    .edge  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-code { fill:var(--code); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-pro { fill:var(--prose); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="before">
+    <text class="t-lbl" x="16" y="24">BEFORE · TODAY'S MAIN</text>
+    <rect class="n-box" x="16" y="34" width="180" height="150" rx="5"/>
+    <text class="t-lbl" x="28" y="54">SIDEBAR</text>
+    <rect class="n-row" x="28" y="64" width="156" height="22" rx="3"/>
+    <text class="t-b" x="36" y="80">Inbox · opens here</text>
+    <text class="t-s" x="36" y="104">Tasks</text>
+    <text class="t-s" x="36" y="126">PROJECTS</text>
+    <text class="t-s" x="36" y="148">TEAMS</text>
+    <rect class="n-box" x="212" y="34" width="712" height="150" rx="5"/>
+    <text class="t-lbl" x="228" y="54">CENTRE · INBOX</text>
+    <text class="t-b" x="228" y="82">A list of asks and one ask's detail</text>
+    <text class="t-s" x="228" y="104">No summary of the shift on the first screen</text>
+    <text class="t-s" x="228" y="124">No one to ask: a line goes to a worker's task, never to a chief of staff</text>
+  </g>
+
+  <g id="after">
+    <text class="t-lbl" x="16" y="214">AFTER · THIS ISSUE</text>
+    <rect class="n-box" x="16" y="224" width="180" height="172" rx="5"/>
+    <text class="t-lbl" x="28" y="244">SIDEBAR</text>
+    <rect class="n-new" x="28" y="254" width="156" height="40" rx="3"/>
+    <text class="t-code" x="36" y="270">Chief of Staff</text>
+    <text class="t-s" x="36" y="286">every Lab opens here</text>
+    <text class="t-s" x="36" y="312">Inbox</text>
+    <text class="t-s" x="36" y="330">Tasks</text>
+    <text class="t-s" x="36" y="348">Roster · FIX-1723</text>
+    <text class="t-s" x="36" y="366">PROJECTS</text>
+    <text class="t-s" x="36" y="384">TEAMS</text>
+
+    <rect class="n-new" x="212" y="224" width="490" height="78" rx="5"/>
+    <text class="t-lbl" x="228" y="244">SHIFT SUMMARY · DRAWN BY SHIFT MANAGER · D1</text>
+    <text class="t-b" x="228" y="266">What waits on you, answered here with Inbox's card</text>
+    <text class="t-s" x="228" y="286">and what is running · the same reads as the sidebar's counts</text>
+
+    <rect class="n-new" x="212" y="312" width="490" height="82" rx="5"/>
+    <text class="t-lbl" x="228" y="332">CONVERSATION · THE COS SEAT'S OWN SESSION</text>
+    <text class="t-b" x="228" y="354">Your line through the seat's door; its reply from its session</text>
+    <text class="t-s" x="228" y="374">delivered only when the session holds it · the shipped send path</text>
+
+    <rect class="n-new" x="718" y="224" width="206" height="170" rx="5"/>
+    <text class="t-lbl" x="732" y="244">RIGHT RAIL</text>
+    <text class="t-b" x="732" y="268">STREAMS</text>
+    <text class="t-s" x="732" y="286">running · needs you, per stream</text>
+    <text class="t-b" x="732" y="318">ON CALL</text>
+    <text class="t-s" x="732" y="336">FIX-1723's status</text>
+    <text class="t-s" x="732" y="352">a named gap until it ships</text>
+  </g>
+
+  <g id="input">
+    <rect class="n-in" x="212" y="414" width="712" height="42" rx="5"/>
+    <text class="t-lbl" x="228" y="432">FROM OUTSIDE · D2</text>
+    <text class="t-pro" x="228" y="448">The CoS seat: FIX-1719's org seat · until it lands, the seat a Lab declares as chief-of-staff</text>
+    <path class="edge" d="M456 414 L456 394"/>
+  </g>
+</svg>

@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import { GAPS, type Gaps } from "./gaps";
+import type { ShiftLook } from "./lib/color-scheme";
 import type { LabClients } from "./lib/connection";
 import type { LoadedSnapshot } from "./lib/derive";
 import { LabProvider, useLab } from "./lib/lab-data";
@@ -29,11 +30,13 @@ import { findWorkstream, WorkstreamPanel, WorkstreamView } from "./surfaces/Work
 /**
  * @param devtoolUrl The devtool a task's trace link opens: the one Shift Manager
  *   serves, or `--devtool`. Absent: the link is off and says how to turn it on.
+ * @param look The page's light or dark look, which the sidebar's shift switch
+ *   changes. Absent: the sidebar draws no switch.
  */
-export function App({ clients, gaps = GAPS, devtoolUrl }: { clients: LabClients; gaps?: Gaps; devtoolUrl?: string }) {
+export function App({ clients, gaps = GAPS, devtoolUrl, look }: { clients: LabClients; gaps?: Gaps; devtoolUrl?: string; look?: ShiftLook }) {
   return (
     <LabProvider clients={clients}>
-      <Shell gaps={gaps} devtoolUrl={devtoolUrl} />
+      <Shell gaps={gaps} devtoolUrl={devtoolUrl} look={look} />
     </LabProvider>
   );
 }
@@ -81,7 +84,7 @@ function Unreachable({ failure, onRetry }: { failure: Failure; onRetry: () => vo
   );
 }
 
-function Shell({ gaps, devtoolUrl }: { gaps: Gaps; devtoolUrl: string | undefined }) {
+function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | undefined; look: ShiftLook | undefined }) {
   const { snapshot, refresh } = useLab();
   const route = useRoute();
   const [jumping, setJumping] = useState(false);
@@ -113,7 +116,7 @@ function Shell({ gaps, devtoolUrl }: { gaps: Gaps; devtoolUrl: string | undefine
   );
   return (
     <div className="flex h-screen min-h-0" data-testid="shell">
-      <Sidebar route={route} gaps={gaps} onJump={() => setJumping(true)} />
+      <Sidebar route={route} gaps={gaps} onJump={() => setJumping(true)} look={look} />
       {route.level === "task" ? (
         // The task screen and its inspector read one row and one run.
         <TaskProvider

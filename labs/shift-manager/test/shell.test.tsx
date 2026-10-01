@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
+import { bootColorScheme } from "../src/lib/color-scheme";
 import { createLabClients } from "../src/lib/connection";
 import { ASKER_REFUSED_LINE } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
@@ -29,6 +30,37 @@ async function openApp(path: string, options: Parameters<typeof openAskLab>[0] =
   render(<App clients={clients} />);
   return { lab, clients };
 }
+
+describe("the sidebar's shift switch", () => {
+  it("shows the shift the page is in, and a click flips the look both ways", async () => {
+    const lab = await serveLab((await openAskLab()).flowState);
+    served.push(lab);
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
+    // An OS that prefers dark and storage that keeps nothing: the page boots on the night shift.
+    const media = { matches: true, addEventListener: () => {}, removeEventListener: () => {} };
+    const look = bootColorScheme(undefined, { matchMedia: () => media, localStorage: { getItem: () => null, setItem: () => {} } } as unknown as Window);
+    try {
+      render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} look={look} />);
+      const day = await screen.findByTestId("shift-day");
+      const night = screen.getByTestId("shift-night");
+      expect(within(screen.getByTestId("sidebar-footer")).getByTestId("shift-switch")).toBeTruthy();
+      expect([day.textContent, night.textContent]).toEqual(["Day shift", "Night shift"]);
+      expect(night.getAttribute("aria-pressed")).toBe("true");
+      expect(document.documentElement.classList.contains("dark")).toBe(true);
+
+      act(() => fireEvent.click(day));
+      expect(document.documentElement.classList.contains("dark")).toBe(false);
+      expect(day.getAttribute("aria-pressed")).toBe("true");
+      expect(night.getAttribute("aria-pressed")).toBe("false");
+
+      act(() => fireEvent.click(night));
+      expect(document.documentElement.classList.contains("dark")).toBe(true);
+      expect(night.getAttribute("aria-pressed")).toBe("true");
+    } finally {
+      document.documentElement.classList.remove("dark");
+    }
+  });
+});
 
 describe("the refusal (V2, BR-3)", () => {
   it("shows only the refusal, draws nothing from the tree, and makes no further read", async () => {
