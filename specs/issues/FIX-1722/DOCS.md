@@ -32,7 +32,8 @@ Replace the sentence that lists what Shift Manager shows with:
 >   conversation a line saying how to add one.
 
 And in the **Sidebar** bullet, put *Chief of Staff* first: "The organization, Jump to (⌘K),
-Chief of Staff, Inbox and Tasks with their counts, …"
+Chief of Staff, Inbox and Tasks with their counts, …". In the **Jump to** bullet: "Finds
+Chief of Staff, workstreams, seats, tasks and the Lab's readable documents."
 
 ## UPDATE · `labs/shift-manager/README.md` · What a Lab's config provides, a new last item
 

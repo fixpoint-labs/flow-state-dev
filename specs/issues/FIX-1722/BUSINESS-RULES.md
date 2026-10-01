@@ -11,7 +11,7 @@ adds. *Proved by* names the kind of check the plan runs.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-1 | Shift Manager opens at `/`, at `/cos`, or at a path it doesn't know | The Chief of Staff view, with its sidebar entry marked current. `/inbox`, `/tasks` and every other route open as before | Goal check · CI |
-| BR-2 | The sidebar renders | *Chief of Staff* is the first entry, above Inbox. It carries no count and no dot. Roster, TEAMS and the footer are FIX-1723's | CI |
+| BR-2 | The sidebar renders | *Chief of Staff* is the first entry, above Inbox. It carries no count and no dot. Jump to (⌘K) finds it too (epic ER-1). Roster, TEAMS and the footer are FIX-1723's |  CI |
 | BR-3 | The Lab refuses Shift Manager, or can't be reached | The refusal or unreachable screen, as today; the Chief of Staff view waits behind it like every other | CI |
 
 ## The shift summary

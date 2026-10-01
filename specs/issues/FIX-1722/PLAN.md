@@ -12,7 +12,7 @@ FIX-1723 ([what each supplies](#what-siblings-supply)).
 | ID | Where · role | Change | Rules |
 |---|---|---|---|
 | S1 | `src/lib/routes.ts` · the route | Add the `cos` level at `/cos`; `/` and anything unknown parse to it instead of Inbox | BR-1 |
-| S2 | `src/surfaces/Sidebar.tsx` · the entry | *Chief of Staff* first, above Inbox, current on the `cos` level. Touch no other entry (FIX-1723's) | BR-2 |
+| S2 | `src/surfaces/Sidebar.tsx`, `src/surfaces/JumpTo.tsx` · the entry | *Chief of Staff* first, above Inbox, current on the `cos` level. Touch no other entry (FIX-1723's). Jump to (⌘K) finds *Chief of Staff* and opens `/cos`, through the navigation it already uses (epic ER-1) | BR-2 ER-1 |
 | S3 | `src/lib/derive.ts` · who is the CoS | One function from the inventory's seats to *one CoS · none · several*, D2's rule. The only place the rule lives | D2 BR-10 to BR-12 |
 | S4 | `src/lib/derive.ts` · the summary's numbers | Pending asks, running rows and the workstreams they run in, per-stream running and needs-you, all from the loaded snapshot with the helpers Tasks, Inbox and the workstream panel already use (`openRows`, `asksFor`, the column reads) | D1 BR-4 BR-7 BR-19 |
 | S5 | `src/surfaces/ChiefOfStaff.tsx` · the summary | The summary block and its ask list, each ask drawn by the component Inbox draws it with and answered through Inbox's answer path, not a copy of either. Per-section failure lines | D1 BR-4 to BR-9 |
@@ -54,7 +54,7 @@ One PR; no PR plan.
 
 | From | What this issue reads | Before it merges |
 |---|---|---|
-| **FIX-1719** · the CoS and Ops seats | The seat inventory contract, from FIX-1719 (#2613): rows `{ id, kind, door }`; org seats by bare folder name (`chief-of-staff`, `ops`) with no team; team seats `<team>.<name>`; Ops-hired seats `<org>.<seatId>`, split with `splitSeatAddress`; a fired seat has no row; the CoS reached through its door. This issue owns none of it | D2's rule needs nothing new: the name after `splitSeatAddress` is `chief-of-staff`. Org seats aren't hireable yet, so the fixture declares the CoS under a team; once FIX-1719 lands it moves to `org/workers/` and nothing in the shell changes. Org seats have no team: `Seat.team` becomes optional where the shell reads it (BP-030), and TEAMS listing teamless seats is FIX-1723's |
+| **FIX-1719** · the CoS and Ops seats | The seat inventory contract, from [FIX-1719 (#2613)](https://github.com/fixpoint-labs/flow-state-dev/pull/2613), as [D2](DECISIONS.md#d2) states it. S3 implements against the contract as merged. This issue owns none of it | D2's rule needs nothing new: the name after `splitSeatAddress` is `chief-of-staff`. Org seats aren't hireable yet, so the fixture declares the CoS under a team; once FIX-1719 lands it moves to `org/workers/` and nothing in the shell changes. Org seats have no team: `Seat.team` becomes optional where the shell reads it (BP-030), and TEAMS listing teamless seats is FIX-1723's |
 | **FIX-1723** · Roster | The one on-call function it pins in `derive.ts` (on shift · on call · off shift), and its sidebar entries | ON CALL and the summary's on-call clause are named gaps (BR-9, BR-20). Whichever PR merges second rebases the shared sidebar and `derive.ts`; the entries don't overlap |
 | **FIX-1697** · v2 and the final theme (PR #2605) | The design-system tokens | The view uses tokens only, so it lands in either order. v2's hand-back is the final one, so ER-9 is met once #2605 merges |
 | **The epic** · ER-10 | An amendment adopting v2's Chief of Staff destination | Jake's 2026-10-01 call is the authority; the coordinator records the amendment. This PR doesn't merge before it |
@@ -144,4 +144,11 @@ session back (`labs/shift-manager/src/lib/send.ts`). V4 and V5 exercise them fir
 
 ## Notes from review
 
-None yet.
+Recorded verbatim for the implementer (round 1, Cursor on #2616, non-blocking). Not folded into
+the design; weigh against real code.
+
+- **SPEC.md, the goal's *Bigger* row:** "This table does a good job separating “bigger, not this issue” from what actually ships in one PR. Worth a quick PO read: **inline asks + STREAMS rail + ON CALL gaps** are still a lot more than the Linear one-liner, even though they’re correctly attributed to v2/epic rather than FIX-1719’s seat tools. If anyone ever asks for a thinner first merge, this row is where that conversation should start — not by re-opening D1/D2." *(Coordinator: the full v2 default screen stays; the ER-10 amendment adopts it.)*
+- **DECISIONS.md, Decided not asked:** "§Decided, not asked overlaps `BUSINESS-RULES.md` (rail BR-19–20, landing BR-1, conversation BR-14–17). Not blocking — but if you want a slimmer retained set, normative bullets could live only in BR-* and this section could stay **rejected alternatives + sidebar boundary with FIX-1723**."
+- **PLAN.md, S9/S10:** "S9/S10 bake FIX-1723 into v1 via gaps and rail real estate. That’s cleaner than deriving on-call here (good), but it’s still **sibling surface area** in a PR that already extends `sendTurn` (S7). If implementation feels heavy, the spec already allows ON CALL as a named gap — the optional cut would be **STREAMS-only rail v1** (summary already carries global running counts via S4). I’m not sure v2 allows that; flagging as a product fork, not a spec defect." *(Coordinator: keep the rail as v2 draws it.)*
+- **PLAN.md, S6:** "S6’s “read message and tool items” after send is the right ER-15 shape. **Performance note for implementer:** load conversation items on open/send completion, not on every lab `refresh()` (inline ask answers trigger refresh today). Long CoS sessions may need pagination eventually — spec’s “every stored item” is UI truth, not a requirement to load unbounded pages in one shot on each refresh."
+- **BUSINESS-RULES.md, Acceptance:** "§Acceptance this issue owns restates BR-1, BR-4–6, BR-11, BR-15/17 in prose. Fine for human skim; optional trim to “see BR-1, BR-4–6, BR-11, BR-15, BR-17” if you’re fighting spec length."
