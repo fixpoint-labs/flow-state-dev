@@ -42,10 +42,17 @@
  * user item is in the session, so a refusal must not complete. It throws a
  * {@link TurnRefused} naming the reason; the line stays in the session with the
  * refusal after it.
+ *
+ * A refusal after the turn was kept withdraws it, so no later attempt acts on a
+ * line the person was told didn't arrive. If an attempt already took it (a
+ * second line whose door woke after the next attempt finished with it), the
+ * door answers as delivered instead: refusing would tell the person a line
+ * didn't reach the task that the task acted on.
  */
 import { handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
+  isTerminalStatus,
   ticketForClaim,
   type DefinedTaskCollection,
   type Task,
@@ -55,7 +62,8 @@ import type { TaskBoardHandle } from "@flow-state-dev/orchestration/task-board";
 import { z } from "zod";
 import { readRunRow, runTopic } from "./run-record";
 import { isRunOwner, runOwnerOf, runPrincipal } from "./run-owner";
-import { keepTurn } from "./turns";
+import { keepTurn, withdrawTurn } from "./turns";
+import { sleep } from "./workspace";
 
 /** What the door takes. App Lab builds it without knowing the kind. */
 export const messageDoorInputSchema = z.object({ message: z.string() });
@@ -111,9 +119,13 @@ export class TurnRefused extends Error {
  * heartbeat, so this covers several.
  */
 export const TURN_STOP_WAIT_MS = 60_000;
-const TURN_STOP_POLL_MS = 100;
-
-const TERMINAL = new Set(["completed", "errored", "cancelled"]);
+/**
+ * How often the door asks whether the stopped attempt has finished: soon at
+ * first (a run in this process stops at once), then backing off, so a run
+ * stopping on another process's heartbeat isn't asked ten times a second.
+ */
+const TURN_STOP_POLL_FIRST_MS = 100;
+const TURN_STOP_POLL_MAX_MS = 1_000;
 
 /** The note a row parked for a turn carries. */
 const TURN_PARK_NOTE = "A person sent a message; the run continues with it.";
@@ -130,8 +142,6 @@ export interface MessageDoorDeps {
   capability: DefinedCapability;
   /** Resolve the board's rows as the substrate sees them. */
   boardTasks: (ctx: BlockContext) => Promise<TaskCollectionRef>;
-  /** Overrides for tests. */
-  stopWaitMs?: number;
 }
 
 /** The board surface the door re-queues through. */
@@ -177,7 +187,7 @@ async function deliverTurn(
     const owner = runOwnerOf(row);
     if (owner !== null && !isRunOwner(owner, runPrincipal(ctx))) throw new TurnRefused("no-run");
   }
-  if (TERMINAL.has(row.status)) throw new TurnRefused("task-finished");
+  if (isTerminalStatus(row.status)) throw new TurnRefused("task-finished");
 
   const payload = rowPayloadSchema.safeParse(row.input);
   if (!payload.success) throw new TurnRefused("no-run");
@@ -190,7 +200,7 @@ async function deliverTurn(
   if (record?.sessionId == null) throw new TurnRefused("cannot-continue");
 
   // Durable first.
-  await keepTurn(ctx, {
+  const turnKey = await keepTurn(ctx, {
     issue,
     phase,
     forAttempt: row.attempts + 1,
@@ -198,6 +208,25 @@ async function deliverTurn(
     message,
   });
 
+  try {
+    return await continueRun(tasks, row, ctx);
+  } catch (error) {
+    // A stop that timed out keeps its turn by design (its text says so), and
+    // anything unexpected leaves the kept turn for the next attempt.
+    if (!(error instanceof TurnRefused) || error.reason === "stop-timeout") throw error;
+    if ((await withdrawTurn(ctx, turnKey)) === "delivered") {
+      return { outcome: "continuing", taskId: row.id, requeue: false };
+    }
+    throw error;
+  }
+}
+
+/** With the turn kept: stop the running attempt and park the row for it, or leave it kept. */
+async function continueRun(
+  tasks: TaskCollectionRef,
+  row: Task,
+  ctx: BlockContext,
+): Promise<MessageDoorOutput & { requeue: boolean }> {
   const kept = { outcome: "kept" as const, taskId: row.id, requeue: false };
   const continuing = { outcome: "continuing" as const, taskId: row.id, requeue: true };
 
@@ -207,22 +236,21 @@ async function deliverTurn(
   const runRequest = row.run.requestId;
   const first = await ctx.session.stopRequest(runRequest);
   if (first === "not-in-this-session") throw new TurnRefused("no-run");
-  if (first === "already-finished") {
-    // The attempt ended between the read and the stop. If it was stopped by
-    // something else (an Interrupt), the board decides what follows and the
-    // kept turn reaches whatever attempt it runs.
-    if (TERMINAL.has(row.status)) throw new TurnRefused("finished-first");
-    return kept;
-  }
+  // Already finished before this stop. The snapshot above was not terminal,
+  // so the kept turn stands and the board decides what the row does next.
+  if (first === "already-finished") return kept;
 
   // Wait for the stopped attempt to finish, so nothing it does lands after the
   // park. Asking again is the read: once the request has ended the stop
-  // answers `already-finished` and writes nothing.
-  const deadline = Date.now() + (deps.stopWaitMs ?? TURN_STOP_WAIT_MS);
+  // answers `already-finished`, and until then it rewrites the same flag, so
+  // a repeat is idempotent.
+  const deadline = Date.now() + TURN_STOP_WAIT_MS;
+  let pollMs = TURN_STOP_POLL_FIRST_MS;
   while ((await ctx.session.stopRequest(runRequest)) === "stopped") {
     if (ctx.signal.aborted) throw new TurnRefused("stop-timeout");
     if (Date.now() >= deadline) throw new TurnRefused("stop-timeout");
-    await new Promise((resolve) => setTimeout(resolve, TURN_STOP_POLL_MS));
+    await sleep(pollMs, ctx.signal);
+    pollMs = Math.min(pollMs * 2, TURN_STOP_POLL_MAX_MS);
   }
 
   // Park it for a turn, fenced to the attempt that was stopped. Refused when
@@ -232,7 +260,7 @@ async function deliverTurn(
     forTurn: true,
   });
   if (parked.outcome !== "declined") return continuing;
-  if (parked.status !== undefined && TERMINAL.has(parked.status)) {
+  if (parked.status !== undefined && isTerminalStatus(parked.status)) {
     throw new TurnRefused("finished-first");
   }
   return kept;
@@ -260,16 +288,9 @@ function buildDoorSequencer(deps: MessageDoorDeps, board: MessageDoorBoard) {
       (decided: { requeue: boolean }) => decided.requeue,
       board.unparkAndDrain.connectInput((decided: { taskId: string }) => ({
         taskId: decided.taskId,
-      })) as never,
+      })),
     )
-    .step(
-      handler({
-        name: `${deps.name}-message-result`,
-        inputSchema: messageDoorOutputSchema.extend({ requeue: z.boolean() }),
-        outputSchema: messageDoorOutputSchema,
-        execute: async ({ outcome, taskId }) => ({ outcome, taskId }),
-      }),
-    );
+    .map(({ outcome, taskId }) => ({ outcome, taskId }));
 }
 
 /**

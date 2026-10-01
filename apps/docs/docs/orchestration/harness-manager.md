@@ -139,7 +139,7 @@ What happens depends on where the task is:
 | Waiting on its own question, or between attempts | Kept, and given to the next attempt. The action answers `kept` |
 | Not started, or finished | Refused, with the reason |
 
-A refusal fails the request rather than answering with a value, so a request that completed is one whose message landed.
+A refusal fails the request rather than answering with a value, so a request that completed is one whose message landed. A refused message is never handed to a later attempt either.
 
 **A message doesn't spend a retry.** The run parks for your turn and comes back without being charged an attempt, so talking to a run never makes it fail sooner.
 

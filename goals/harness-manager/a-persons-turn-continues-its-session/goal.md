@@ -55,3 +55,4 @@ agent is allowed `Bash` here as well as file edits.
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-10-01 | door PR | Claude Code (Agent SDK, default model) | PASS | Same session id both attempts, fact file written, 2 claims / 1 turn re-entry. Control with the resume feed returning null: FAIL at signals 3, 4 and 5 |
+| 2026-10-01 | door PR, review round | Claude Code (Agent SDK, default model) | PASS | After the refusal-withdraws change and the backed-off stop wait: same session id both attempts, fact file written, 2 claims / 1 turn re-entry |

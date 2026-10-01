@@ -154,7 +154,7 @@ Sent `{ message }` on a run's own session, it writes the message into that sessi
 
 - **running** → `continuing`.
 - **parked on its own question, or between attempts** → `kept` for the next attempt; nothing is stopped and the question still needs answering.
-- **never started in this session, finished, or on a harness that named no session** → refused. A refusal throws `TurnRefused`, so the request fails and only a delivered message ever completes.
+- **never started in this session, finished, or on a harness that named no session** → refused. A refusal throws `TurnRefused`, so the request fails and only a delivered message ever completes. A refused message is withdrawn, so no later attempt takes it; if an attempt already took it, the door answers `continuing` instead of refusing.
 
 The door decides from server state only: the row is the one whose run link names the request's session, and the session to resume is the one the harness confirmed on the run record.
 

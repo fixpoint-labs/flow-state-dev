@@ -175,6 +175,23 @@ export function assertSafeSegment(label: string, value: string): string {
   return canonicalSegment(value);
 }
 
+/** The bare key prefix covering everything kept about one issue-phase. */
+export function issuePhasePrefix(issue: string, phase: string): string {
+  return `${assertSafeSegment("issue", issue)}/${assertSafeSegment("phase", phase)}/`;
+}
+
+/**
+ * Hex characters of a {@link hashKeySegment}: 64 bits. Where a counter is
+ * unavailable (the ask step commits no state), the hash is the row's identity,
+ * and the width is what keeps two different texts off one row.
+ */
+const KEY_HASH_LENGTH = 16;
+
+/** A key segment naming `text` by its hash, so any text fits the key grammar. */
+export function hashKeySegment(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex").slice(0, KEY_HASH_LENGTH);
+}
+
 /**
  * Join identity components into one string, injectively.
  *
@@ -1381,7 +1398,7 @@ export interface OwnershipBounds {
  * line, so cancellation keeps ONE exit and one message rather than growing a
  * second throw site here.
  */
-const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+export const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
   new Promise<void>((resolve) => {
     // **An already-aborted signal is checked, not just listened for.** `abort`
     // fires once; a signal that aborted before this listener existed never

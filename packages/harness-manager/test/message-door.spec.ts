@@ -298,7 +298,26 @@ function host(options: { script: Step[]; maxAttempts?: number; exitDelayMs?: num
     );
   };
 
-  return { act, row, until, send, request, userLines, seen };
+  /**
+   * Hold the stop a second door sends while it waits on attempt 1, until the
+   * row reads `completed`. Once the first door has parked the row, the only
+   * stop still asked of attempt 1's request is the second door's, so this
+   * wakes that door into a row its next attempt already finished: the moment
+   * a loaded machine can produce, made certain.
+   */
+  const holdSecondDoorUntilFinished = async (attempt1RequestId: string): Promise<void> => {
+    const stores = (await runtime()).stores;
+    const original = stores.request.setFieldsIfStatus.bind(stores.request);
+    stores.request.setFieldsIfStatus = async (id: string, ...rest: unknown[]) => {
+      const current = await row();
+      if (id === attempt1RequestId && (current.attempts >= 2 || current.status === "parked")) {
+        await until((t) => t.status === "completed", "the next attempt to finish first");
+      }
+      return original(id, ...(rest as []));
+    };
+  };
+
+  return { act, row, until, send, request, userLines, seen, settleFirst, holdSecondDoorUntilFinished };
 }
 
 /** A task's retry standing: claims it spent out of its own budget. */
@@ -357,7 +376,12 @@ describe("two turns before the next attempt starts", () => {
     const second = lab.send(ALICE, "second line");
     const outcomes = await Promise.all([first, second]);
     for (const sent of outcomes) expect(sent.error, messageOf(sent.error)).toBeUndefined();
-    expect(outcomes.map((sent) => sent.output.outcome).sort()).toEqual(["continuing", "kept"]);
+    // One door stops and re-queues. The other finds the row taken by then:
+    // its line is kept for the attempt now starting, or, if that attempt
+    // already finished with it, delivered (the case below makes that certain).
+    const sorted = outcomes.map((sent) => sent.output.outcome).sort();
+    expect(sorted[0]).toBe("continuing");
+    expect(["continuing", "kept"]).toContain(sorted[1]);
 
     const done = await lab.until((t) => t.status === "completed", "the next attempt to finish");
     // One stop: attempt 1 stopped, attempt 2 ran to the end.
@@ -366,6 +390,29 @@ describe("two turns before the next attempt starts", () => {
     expect(prompt.indexOf("first line")).toBeGreaterThan(-1);
     expect(prompt.indexOf("second line")).toBeGreaterThan(prompt.indexOf("first line"));
     expect(done.turnReentries).toBe(1);
+  }, 60_000);
+});
+
+describe("a second line whose door wakes after the next attempt finished (BR-10)", () => {
+  it("answers delivered, because the attempt that finished took it", async () => {
+    const lab = host({ script: ["hold", "finished"], exitDelayMs: 300 });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    const running = await lab.until((t) => t.status === "in_progress" && t.run !== undefined, "the run link");
+    await lab.until(() => lab.seen.length === 1, "attempt 1 to reach its harness");
+    await lab.holdSecondDoorUntilFinished(running.run!.requestId);
+
+    const first = lab.send(ALICE, "first line");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const second = lab.send(ALICE, "second line");
+    const outcomes = await Promise.all([first, second]);
+    // Attempt 2 ran with both lines, so neither person may be told theirs
+    // didn't reach the task.
+    for (const sent of outcomes) expect(sent.error, messageOf(sent.error)).toBeUndefined();
+    expect(outcomes.map((sent) => sent.output.outcome)).toEqual(["continuing", "continuing"]);
+    expect(lab.seen).toHaveLength(2);
+    expect(lab.seen[1]!.prompt).toContain("first line");
+    expect(lab.seen[1]!.prompt).toContain("second line");
   }, 60_000);
 });
 
@@ -383,6 +430,13 @@ describe("the run finished in the moment the stop was sent (BR-11)", () => {
     const row = await lab.row();
     expect(["completed", "in_progress"]).toContain(row.status);
     expect(row.status).not.toBe("parked");
+
+    // A refused line is withdrawn: were the task ever run again, its next
+    // attempt must not act on a line the person was told didn't reach it.
+    await lab.settleFirst("pending");
+    await lab.act(ALICE, "drain");
+    await lab.until(() => lab.seen.length === 2, "a later attempt");
+    expect(lab.seen[1]!.prompt).not.toContain("too late");
   }, 60_000);
 
   it("keeps the turn when the row re-pended first", async () => {

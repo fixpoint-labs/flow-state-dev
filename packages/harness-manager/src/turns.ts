@@ -30,16 +30,23 @@
  * still counts as its own. A later attempt does not see it again. Nothing is
  * ever deleted.
  *
+ * ## Withdrawn when the door refuses
+ *
+ * A door that refuses after keeping its turn withdraws it, with the same kind
+ * of conditional write: a turn no attempt took yet is marked `withdrawn` and
+ * no attempt takes it; a turn an attempt already took stays delivered, and the
+ * door answers as delivered instead of refusing. Exactly one of the two wins,
+ * so a person is never told a line didn't arrive that an attempt acted on.
+ *
  * `scope: "user"`, `flowIsolation: false`, like the inbox: the door runs as
  * the run's own person (it refuses anyone else), and the attempt runs as them
  * too, so both resolve the same rows.
  */
-import { createHash } from "node:crypto";
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { assertSafeSegment } from "./workspace";
+import { hashKeySegment, issuePhasePrefix } from "./workspace";
 
 /** Accessor key and storage prefix for kept turns. */
 export const TURNS = "turns" as const;
@@ -57,6 +64,8 @@ export const turnStateSchema = z.object({
   forAttempt: z.number().nullable().default(null),
   /** The attempt that took it into its prompt. Null until one has. */
   deliveredTo: z.number().nullable().default(null),
+  /** The door that kept it refused, so no attempt takes it. */
+  withdrawn: z.boolean().default(false),
 });
 
 export type TurnState = z.infer<typeof turnStateSchema>;
@@ -71,30 +80,39 @@ export const turnCollection = defineResourceCollection({
   llmWritable: false,
 });
 
-/** Name a turn by the request that kept it, inside the key grammar. */
-function turnId(requestId: string): string {
-  return createHash("sha256").update(requestId, "utf8").digest("hex").slice(0, 16);
-}
-
-/** The bare prefix covering every turn kept for one issue-phase. */
-function turnPrefix(issue: string, phase: string): string {
-  return `${assertSafeSegment("issue", issue)}/${assertSafeSegment("phase", phase)}/`;
-}
-
 /**
  * Keep a person's turn for `forAttempt` — create-only, so a replay of the
- * door's step is a read.
+ * door's step is a read. Returns the turn's key, for {@link withdrawTurn}.
  */
 export async function keepTurn(
   ctx: BlockContext,
   entry: { issue: string; phase: string; forAttempt: number; requestId: string; message: string },
-): Promise<void> {
-  const key = `${turnPrefix(entry.issue, entry.phase)}${entry.forAttempt}/${turnId(entry.requestId)}`;
+): Promise<string> {
+  // Named by the door request that kept it, hashed into the key grammar.
+  const key = `${issuePhasePrefix(entry.issue, entry.phase)}${entry.forAttempt}/${hashKeySegment(entry.requestId)}`;
   await turnsRef(ctx).upsert(
     key,
     {},
-    { message: entry.message, keptAt: Date.now(), forAttempt: entry.forAttempt, deliveredTo: null },
+    { message: entry.message, keptAt: Date.now(), forAttempt: entry.forAttempt, deliveredTo: null, withdrawn: false },
   );
+  return key;
+}
+
+/**
+ * Withdraw a kept turn because its door is refusing. Conditional inside the
+ * write, against {@link takeTurns}: `"withdrawn"` when no attempt took it,
+ * `"delivered"` when one already did (the door then must not refuse).
+ */
+export async function withdrawTurn(ctx: BlockContext, key: string): Promise<"withdrawn" | "delivered"> {
+  const ref = await turnsRef(ctx).getOptional(key);
+  if (ref === undefined) return "withdrawn";
+  const outcome = await updateStateWith<Record<string, unknown>, "withdrawn" | "delivered">(ref, (current) => {
+    const parsed = turnStateSchema.safeParse(current ?? {});
+    if (parsed.success && parsed.data.deliveredTo !== null) return { state: current, result: "delivered" };
+    return { state: { ...current, withdrawn: true }, result: "withdrawn" };
+  });
+  // No outcome means the write never ran: the door refuses, as it would have.
+  return outcome ?? "withdrawn";
 }
 
 /**
@@ -108,12 +126,13 @@ export async function takeTurns(
   phase: string,
   attempt: number,
 ): Promise<string[]> {
-  const rows = (await turnsRef(ctx).list(turnPrefix(issue, phase)))
+  const rows = (await turnsRef(ctx).list(issuePhasePrefix(issue, phase)))
     .map((ref) => ({ ref, state: turnStateSchema.parse(ref.state ?? {}) }))
     .filter(
       ({ state }) =>
         state.forAttempt !== null &&
         state.forAttempt <= attempt &&
+        !state.withdrawn &&
         (state.deliveredTo === null || state.deliveredTo === attempt),
     )
     .sort(
@@ -124,13 +143,15 @@ export async function takeTurns(
 
   const taken: string[] = [];
   for (const { ref, state } of rows) {
-    // Conditional, inside the write: a turn another attempt took between the
-    // list and here stays that attempt's.
+    // Conditional, inside the write: a turn another attempt took, or its door
+    // withdrew, between the list and here is not this attempt's.
     const mine = await updateStateWith<Record<string, unknown>, boolean>(ref, (current) => {
       const parsed = turnStateSchema.safeParse(current ?? {});
       const deliveredTo = parsed.success ? parsed.data.deliveredTo : null;
       if (deliveredTo === attempt) return { state: current, result: true };
-      if (deliveredTo !== null) return { state: current, result: false };
+      if (deliveredTo !== null || (parsed.success && parsed.data.withdrawn)) {
+        return { state: current, result: false };
+      }
       return { state: { ...current, deliveredTo: attempt }, result: true };
     });
     if (mine) taken.push(state.message);
@@ -166,6 +187,7 @@ interface TurnsRef {
     createOnly?: Record<string, unknown>,
   ): Promise<unknown>;
   list(prefix?: string): Promise<TurnRef[]>;
+  getOptional(key: string): Promise<TurnRef | undefined>;
 }
 
 /** Resolve the collection, failing loudly rather than keeping a turn nowhere. */
