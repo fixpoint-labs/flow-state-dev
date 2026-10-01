@@ -9,11 +9,11 @@ apply as written; these are the ones this issue adds. *Proved by* names the kind
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-1 | App Lab is started with a Lab's config | It serves that config's `FlowState` and its own pages from one process; the Lab's config is not edited or wrapped | CI · goal check |
-| BR-2 | The config does not load, or its default export is not a `FlowState` | App Lab refuses to start and prints the loader's own message | CI |
-| BR-3 | The Lab's server refuses App Lab's first read for want of a verified organization | App Lab shows a screen that says so. Nothing from the tree is drawn and no further read is made; the refusal is the only answer the shipped routes give, since none reports the principal on its own | CI · goal check |
+| BR-1 | shift-manager is started with a Lab's config | It serves that config's `FlowState` and its own pages from one process; the Lab's config is not edited or wrapped | CI · goal check |
+| BR-2 | The config does not load, or its default export is not a `FlowState` | shift-manager refuses to start and prints the loader's own message | CI |
+| BR-3 | The Lab's server refuses shift-manager's first read for want of a verified organization | shift-manager shows a screen that says so. Nothing from the tree is drawn and no further read is made; the refusal is the only answer the shipped routes give, since none reports the principal on its own | CI · goal check |
 | BR-4 | The Lab booted without opening its inventory | TEAMS and PROJECTS show their failed-read state, naming the missing inventory, with Retry. Other sections still render | CI |
-| BR-5 | A second tree is opened | Nothing in App Lab changes. No seat, channel, board, team or kind name appears in App Lab's source | Static check · goal check under `static-names` |
+| BR-5 | A second tree is opened | Nothing in shift-manager changes. No seat, channel, board, team or kind name appears in shift-manager's source | Static check · goal check under `static-names` |
 
 ## The sidebar
 
@@ -32,7 +32,7 @@ apply as written; these are the ones this issue adds. *Proved by* names the kind
 |---|---|---|---|
 | BR-12 | A board row is placed in the design's columns | pending → QUEUED · in_progress → RUNNING · parked or errored → NEEDS YOU · completed or cancelled → DONE · blocked → QUEUED, tagged *blocked*. The status word is on the card. IN REVIEW is drawn empty with its owner named | CI, every status |
 | BR-13 | A workstream's Board tab opens | Exactly the rows of the boards its channel attaches, by id | Goal check, against the store |
-| BR-14 | A workstream's channel attaches no board | The Board tab says so, and the workstream's tasks in the right panel say the same | CI · goal check on DevForce |
+| BR-14 | A workstream's channel attaches no board | The Board tab says so, and the workstream's tasks in the right panel say the same | CI · goal check on DevTeam |
 | BR-15 | Tasks opens | Every row on every attached board, excluding done ones; the summary counts equal the rows; group by State draws; Worker and Stream use the same rows under the other key; the Queued toggle hides pending rows | Goal check |
 | BR-16 | A Tasks column has no shipped read | NOW and IN REVIEW say what arrives with FIX-1651; TIME and COST come from the row's session and runs where shipped, otherwise a dash | CI |
 | BR-17 | A row or board card is chosen | The task route opens with the right panel's task slot. Until FIX-1664 fills it, the frame shows its named empty state | Goal check |

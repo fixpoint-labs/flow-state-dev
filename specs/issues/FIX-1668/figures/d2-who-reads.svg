@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 426" role="img" aria-label="D2: who can see which run is working a task? Chosen: everyone who can read the row, on the change stream, the browser read and the model read. Instead of: the server only, like claimedBy. It comes down to how App Lab reads a board: through the reads it already uses, versus a second read built beside them, which the Architect’s fence forbids. The price: a model reading the board sees each run’s session and request ids, which open nothing past the owner check. Opening the session is an owner check either way. Locks in: run ids are visible to every reader of the board. Flips if something acts on a bare session id without an owner check."
+<svg viewBox="0 0 940 426" role="img" aria-label="D2: who can see which run is working a task? Chosen: everyone who can read the row, on the change stream, the browser read and the model read. Instead of: the server only, like claimedBy. It comes down to how shift-manager reads a board: through the reads it already uses, versus a second read built beside them, which the Architect’s fence forbids. The price: a model reading the board sees each run’s session and request ids, which open nothing past the owner check. Opening the session is an owner check either way. Locks in: run ids are visible to every reader of the board. Flips if something acts on a bare session id without an owner check."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -84,7 +84,7 @@
     <rect class="foot" x="16" y="336" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="357">LOCKS IN</text>
     <text class="t-b" x="32" y="377">Run ids visible to every reader of the board</text>
-    <text class="t-s" x="32" y="395">taking it back later breaks App Lab</text>
+    <text class="t-s" x="32" y="395">taking it back later breaks shift-manager</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="336" width="446" height="74" rx="5"/>

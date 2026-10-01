@@ -1,4 +1,4 @@
-# App Lab wireframes · for the Claude Design hand-off
+# shift-manager wireframes · for the Claude Design hand-off
 
 > **Superseded as structure by the [Claude Design hand-back v1](../design/v1/README.md)
 > (2026-09-30).** Where the two differ, the hand-back wins; [`../design/DESIGN.md`](../design/DESIGN.md)
@@ -6,7 +6,7 @@
 > to Claude Design. The rail, the run inspector and the five fixed destinations below no longer
 > describe the shell.
 
-Five low-fidelity screens of the App Lab shell ([FIX-1649](../../SPEC.md)). They fix
+Five low-fidelity screens of the shift-manager shell ([FIX-1649](../../SPEC.md)). They fix
 structure: regions, what each section holds, the states each must show, and who owns what
 each surface means. They are not a visual design. Take them to Claude Design as they are;
 what comes back sets the look.
@@ -38,6 +38,6 @@ copy of either.
 
 ## What comes back, and where it goes
 
-The refined design sets the App Lab theme's values and the shell's final layout. Who takes
+The refined design sets the shift-manager theme's values and the shell's final layout. Who takes
 what from it, and what waits for it, is in
 [the plan](../../PLAN.md#the-design-hand-back-is-an-input-not-a-child).

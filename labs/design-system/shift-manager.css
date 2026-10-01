@@ -1,0 +1,106 @@
+/*
+ * shift-manager — light and dark, over the tokens FSD's components already read.
+ *
+ * DRAFT VALUES. These follow the Product Lead's notes and design hand-back v1;
+ * the final values replace them after the final design hand-back.
+ *
+ * Values only. Every name below is one the `@flow-state-dev/ui` registry's
+ * `tokens` item defines (in a base layer, so these unlayered values win
+ * wherever this file is loaded), plus Tailwind's font and radius variables,
+ * plus the navigator's and panels' `--fsd-*` properties, pointed at the same
+ * tokens so the chrome matches the cards.
+ *
+ * Two rules the values keep: `attention` (the highlighter) means only that a
+ * person must act, and no other token carries it; corners are square.
+ */
+
+:root {
+  --background: #f0ece1;
+  --foreground: #1b1a15;
+  --card: #f6f3ea;
+  --card-foreground: #1b1a15;
+  --popover: #f6f3ea;
+  --popover-foreground: #1b1a15;
+  --primary: #1b1a15;
+  --primary-foreground: #f0ece1;
+  --secondary: #e4dfd1;
+  --secondary-foreground: #1b1a15;
+  --muted: #e4dfd1;
+  --muted-foreground: #6b6657;
+  --accent: #e4dfd1;
+  --accent-foreground: #1b1a15;
+  --destructive: #a83e28;
+  --destructive-foreground: #f0ece1;
+  --border: #cfc8b6;
+  --input: #cfc8b6;
+  --ring: #1b1a15;
+  --success: #1b1a15;
+  --success-foreground: #f0ece1;
+  --warning: #c2622d;
+  --warning-foreground: #f0ece1;
+  --info: #2c4f8c;
+  --info-foreground: #f0ece1;
+  --attention: #e8f551;
+  --attention-foreground: #1b1a15;
+
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --radius: 0;
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+}
+
+.dark {
+  --background: #15140f;
+  --foreground: #ece7da;
+  --card: #1d1c16;
+  --card-foreground: #ece7da;
+  --popover: #1d1c16;
+  --popover-foreground: #ece7da;
+  --primary: #ece7da;
+  --primary-foreground: #15140f;
+  --secondary: #2a2821;
+  --secondary-foreground: #ece7da;
+  --muted: #2a2821;
+  --muted-foreground: #a39d8c;
+  --accent: #2a2821;
+  --accent-foreground: #ece7da;
+  --destructive: #d4694f;
+  --destructive-foreground: #15140f;
+  --border: #3a372e;
+  --input: #3a372e;
+  --ring: #ece7da;
+  --success: #ece7da;
+  --success-foreground: #15140f;
+  --warning: #e0874f;
+  --warning-foreground: #15140f;
+  --info: #7d9fd6;
+  --info-foreground: #15140f;
+  --attention: #e8f551;
+  --attention-foreground: #15140f;
+}
+
+/*
+ * The navigator and panels read their own properties, not the tokens.
+ * Declared on `.dark` as well as `:root` so a dark subtree recomputes them
+ * from its own token values instead of inheriting the light ones.
+ */
+:root,
+.dark {
+  --fsd-nav-bg: var(--background);
+  --fsd-nav-fg: var(--foreground);
+  --fsd-nav-muted-fg: var(--muted-foreground);
+  --fsd-nav-selected-bg: var(--accent);
+  --fsd-nav-selected-fg: var(--accent-foreground);
+  --fsd-nav-guide: var(--border);
+  --fsd-panel-fg: var(--foreground);
+  --fsd-panel-muted-fg: var(--muted-foreground);
+}

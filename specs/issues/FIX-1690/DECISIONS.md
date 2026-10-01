@@ -12,13 +12,13 @@ FIX-1664 ([EVOLUTION.md](EVOLUTION.md)).
 flowchart TD
   I["FIX-1690"] --> D1["D1 · one door each seat kind declares"]
   D1 -.->|"rejected · a router into every kind"| X1["one Workforce action on the channel flow"]
-  D1 -.->|"rejected · invent-kill"| X1b["App Lab keeps a kind-to-action table"]
+  D1 -.->|"rejected · invent-kill"| X1b["shift-manager keeps a kind-to-action table"]
   I --> O1["open · how a line reaches a running coding run"]
   O1 -.->|"recommended"| Y1["stop and continue, every harness"]
   O1 -.->|"alternative"| Y2["live mid-step on Claude Code and Cursor now"]
-  I --> O2["open · Inbox reply on DevForce"]
+  I --> O2["open · Inbox reply on DevTeam"]
   O2 -.->|"recommended"| Z1["grade it on a fixture seat"]
-  O2 -.->|"alternative"| Z2["give DevForce's EM a door"]
+  O2 -.->|"alternative"| Z2["give DevTeam's EM a door"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, or are a fork's two answers.
@@ -54,31 +54,31 @@ to the Claude Code harness before the closure can run.
 It comes down to the fallback: live delivery needs stop-and-continue anyway, and only covers two harnesses.
 
 <a name="open-inbox"></a>
-## Open · DevForce's only asking worker takes no message: grade Inbox's reply elsewhere, or give DevForce's EM a door?
+## Open · DevTeam's only asking worker takes no message: grade Inbox's reply elsewhere, or give DevTeam's EM a door?
 
 **In plain terms.** Inbox's reply goes into the asking worker's session, through that worker's
-door. In DevForce the only worker that asks is the EM, a scripted kind with no model: it files
-work and asks before filing, and nothing in it could read a message. So on DevForce the reply box
+door. In DevTeam the only worker that asks is the EM, a scripted kind with no model: it files
+work and asks before filing, and nothing in it could read a message. So on DevTeam the reply box
 can only say *"this worker takes no message"*. The closure's Part 4 expects a reply to land as a
 turn in the asking seat's session, which can't pass there as written.
 
 **The trade-off.** Grading the reply on a fixture seat that takes messages proves the path in
-this issue's own check and keeps DevForce honest, but the owner won't see a working reply in
-DevForce itself. Giving the EM a door makes the closure pass as written, with a door that stores
+this issue's own check and keeps DevTeam honest, but the owner won't see a working reply in
+DevTeam itself. Giving the EM a door makes the closure pass as written, with a door that stores
 a line nothing ever reads: the person is told the EM heard them.
 
 **Recommendation: grade it on a fixture seat**, in this issue's goal check, and amend FIX-1663's
 Part 4 run line to *"the reply is disabled with its line where the asking kind has no door, and
 lands as a turn where it has one (this issue's check)"*.
 
-**What would change my mind:** DevForce's EM is meant to converse. Then it needs a model and a
-real door, which is DevForce product work, not a scripted stub.
+**What would change my mind:** DevTeam's EM is meant to converse. Then it needs a model and a
+real door, which is DevTeam product work, not a scripted stub.
 
-**If wrong:** DevForce's Inbox shows a disabled reply until its EM learns to talk. Choosing the
+**If wrong:** DevTeam's Inbox shows a disabled reply until its EM learns to talk. Choosing the
 stub door instead ships a reply that is *delivered* and never read, the dishonesty ER-15 exists
 to prevent.
 
-![Open fork: where is Inbox's reply proven? A fixture seat that takes messages, recommended, beside a door on DevForce's EM. Decides it: the EM has nothing that could read a message. Price: DevForce shows the reply disabled](figures/open-inbox-reply.svg)
+![Open fork: where is Inbox's reply proven? A fixture seat that takes messages, recommended, beside a door on DevTeam's EM. Decides it: the EM has nothing that could read a message. Price: DevTeam shows the reply disabled](figures/open-inbox-reply.svg)
 
 It comes down to honesty: a door on the scripted EM would say *delivered* to a worker that can't read.
 
@@ -87,8 +87,8 @@ It comes down to honesty: a door on the scripted EM would say *delivered* to a w
 
 | | |
 |---|---|
-| **Instead of** | One Workforce action on the channel flow that takes a seat, a task or an ask and resolves the target itself · App Lab keeping a table from kind to action, as kitchen-sink's `SEAT_ASKS` does |
-| **Because** | What a turn *does* is the target kind's to say: a conversation takes it as its next turn, a coding run has to stop and continue. A channel action would still dispatch into each kind's own action and add a router in front of it, and an Inbox ask or a task run isn't a channel's to route. A table in App Lab names Lab kinds, which App Lab never does, and folding `SEAT_ASKS` into a package is an invent-kill. Core already marks the action a person's message enters through: `userMessage` on an action writes the line into the session as a user item before the block runs. So the door is **the kind's one public action that declares `userMessage` and takes `{ message }`**, Workforce publishes it per seat in the inventory, and App Lab calls it on the target session. Workforce's policy, Core's existing hook (tenet 2: no new mechanism beside the one that exists) |
+| **Instead of** | One Workforce action on the channel flow that takes a seat, a task or an ask and resolves the target itself · shift-manager keeping a table from kind to action, as kitchen-sink's `SEAT_ASKS` does |
+| **Because** | What a turn *does* is the target kind's to say: a conversation takes it as its next turn, a coding run has to stop and continue. A channel action would still dispatch into each kind's own action and add a router in front of it, and an Inbox ask or a task run isn't a channel's to route. A table in shift-manager names Lab kinds, which shift-manager never does, and folding `SEAT_ASKS` into a package is an invent-kill. Core already marks the action a person's message enters through: `userMessage` on an action writes the line into the session as a user item before the block runs. So the door is **the kind's one public action that declares `userMessage` and takes `{ message }`**, Workforce publishes it per seat in the inventory, and shift-manager calls it on the target session. Workforce's policy, Core's existing hook (tenet 2: no new mechanism beside the one that exists) |
 | **Locks in** | A kind takes messages by declaring one such action; two is a hire problem, none means the composers say so. The built-in agent kind's `run` is its door unchanged. The harness manager ships a door for coding kinds. The only Core and Engine addition is generic: a block may stop another running request in its own session, under the abort route's rules |
 
 ![D1: how does a person's line reach a worker? Each kind declares its door and the composers call it, chosen, beside one Workforce action on the channel flow. Decides it: what a turn does belongs to the target kind. Price: one convention for kind authors](figures/d1-one-door.svg)
@@ -133,7 +133,7 @@ session. Then a Workforce action that resolves it server-side earns its place in
 |---|---|
 | Implement Core's reserved `restart` concurrency policy for the door | It aborts the running request before the door runs, so the run can't tell a person's turn from an Interrupt, and there is nowhere to keep the line first |
 | The running attempt polls a harness-manager collection for turns | A request that is busy awaiting its harness would need its own timer over a resource the registry caches per request; the engine already delivers abort across processes |
-| App Lab calls the abort route, then the door | Two client calls, a race between them, and not one operation (ER-15) |
+| shift-manager calls the abort route, then the door | Two client calls, a race between them, and not one operation (ER-15) |
 | Charge the turn like an answered question is charged today | A chatty person exhausts the retry budget. The answer path's charge is flagged as a follow-up, not copied |
 | Treat `@worker` as a channel post that wakes the seat | The Architect's invent-kill: a channel peer post hoping fan-out looks like a turn |
 
@@ -145,4 +145,4 @@ session. Then a Workforce action that resolves it server-side earns its place in
 - **Review round 1** (Cursor): S3 cut to wiring over the existing `unpark`; S4 kept with its
   reason recorded; `seat-door` folded into `lab`, three PRs.
 
-**Open: two** — [live delivery](#open-live) and [Inbox's reply on DevForce](#open-inbox).
+**Open: two** — [live delivery](#open-live) and [Inbox's reply on DevTeam](#open-inbox).

@@ -60,7 +60,7 @@ cut rather than softened.
 **VG needs a live hired Workforce whose tree declares at least one sealed document** — a
 `references/` file or a `ro:` grant. No tree in this repository has one, and this issue does not
 add one ([DECISIONS.md](DECISIONS.md#the-subject)). The path that stands a real hire up is the
-ER-DevForce producer, [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496). One dependency,
+ER-DevTeam producer, [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496). One dependency,
 covering both rows.
 
 **This does not block FIX-1481.** Both code PRs and every check above — V1, V2, V3, V5, V6 — run

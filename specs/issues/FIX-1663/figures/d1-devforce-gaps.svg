@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1: where do leg a's two journeys run, when the DevForce tree cannot produce them today? Chosen: leg a stays on the DevForce tree, and its two gaps, an ask a person can approve and a board attached to the feature channel, are filed now as children of FIX-1649 blocking this issue. Instead of: walking the journeys on multi-seat-collab, which already has a board. It comes down to the first row, who may change the epic's input: the epic pins DevForce, so moving the leg is an epic amendment, not a closure call. Second row: the fixes start beside the other children, where the alternative needs nothing new. Third row, the price: two small children the epic did not plan. Locks in two blocking children, filed by the coordinator on approval, touching the goal lab's tree only. Flips if the owner rules the DevForce tree must not grow."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1: where do leg a's two journeys run, when the DevTeam tree cannot produce them today? Chosen: leg a stays on the DevTeam tree, and its two gaps, an ask a person can approve and a board attached to the feature channel, are filed now as children of FIX-1649 blocking this issue. Instead of: walking the journeys on multi-seat-collab, which already has a board. It comes down to the first row, who may change the epic's input: the epic pins DevTeam, so moving the leg is an epic amendment, not a closure call. Second row: the fixes start beside the other children, where the alternative needs nothing new. Third row, the price: two small children the epic did not plan. Locks in two blocking children, filed by the coordinator on approval, touching the goal lab's tree only. Flips if the owner rules the DevTeam tree must not grow."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,12 +36,12 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D1 &#183; THE CALL</text>
-    <text class="t-q" x="32" y="52">Leg a's journeys need an ask and a board DevForce doesn't have. Where do they run?</text>
+    <text class="t-q" x="32" y="52">Leg a's journeys need an ask and a board DevTeam doesn't have. Where do they run?</text>
   </g>
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">DevForce, gaps filed now</text>
+    <text class="t-h c-code" x="228" y="112">DevTeam, gaps filed now</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
     <text class="t-h c-lost" x="592" y="112">Another tree that has them</text>
@@ -53,7 +53,7 @@
     <text class="t-lbl" x="32" y="169">THE INPUT</text>
     <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">The epic pins DevForce</text>
+    <text class="t-b" x="248" y="161">The epic pins DevTeam</text>
     <text class="t-s" x="248" y="179">moving the leg is an amendment</text>
     <text class="mark minus" x="592" y="162">&#8722;</text>
     <text class="t-b" x="612" y="161">The closure, quietly</text>
@@ -90,7 +90,7 @@
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">The owner rules the DevForce tree must not grow</text>
+    <text class="t-b" x="494" y="371">The owner rules the DevTeam tree must not grow</text>
     <text class="t-s" x="494" y="389">then the epic's input changes by amendment</text>
   </g>
 </svg>

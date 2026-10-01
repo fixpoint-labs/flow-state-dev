@@ -19,7 +19,7 @@
   it unless it describes the wrap.
 - `goals/pentest-lab/a-post-reaches-both-declared-seats/goal.md`: see DOCS §2.
 - `goals/pentest-lab/lab/README.md`: see DOCS §1.
-- `goals/devforce-lab/lab/host.mts`: the session-client comment's reference sentences (E3,
+- `goals/devteam-lab/lab/host.mts`: the session-client comment's reference sentences (E3,
   DOCS §4).
 - `goals/pentest-lab/lab/workforce/flows/workers/probe.mts`: its `inspect` comment says the
   org-less read "is refused at the door". Check it still reads true once the door is `runAction`
@@ -44,7 +44,7 @@ pnpm tsx goals/pentest-lab/a-post-reaches-both-declared-seats/run.mts           
 GOAL_CONTROL=no-principal-org pnpm tsx goals/pentest-lab/a-post-reaches-both-declared-seats/run.mts # FAIL, names the org mismatch
 GOAL_CONTROL=list pnpm tsx goals/pentest-lab/a-post-reaches-both-declared-seats/run.mts             # lists no-principal-org, not no-org-wrap
 pnpm tsx goals/pentest-lab/a-seat-answers-from-its-own-document/run.mts                             # PASS (AI_GATEWAY_API_KEY)
-grep -rnE "omitOrgWrap|no-org-wrap|FIX-1412|the wrap" goals/pentest-lab goals/devforce-lab          # only dated verdict-log rows
+grep -rnE "omitOrgWrap|no-org-wrap|FIX-1412|the wrap" goals/pentest-lab goals/devteam-lab          # only dated verdict-log rows
 ```
 
 **Red state:** on `main` at `7dd56cd74`, the first command fails with *"Session pentest.findings is

@@ -102,5 +102,5 @@ session. That stays true. Add one sentence after it, for maintainers:
 
 ## Publication ownership
 
-FIX-1668 publishes all of the above in its implementation PR. FIX-1664 owns App Lab's README task
+FIX-1668 publishes all of the above in its implementation PR. FIX-1664 owns shift-manager's README task
 sentences and reads this page's section for the field's meaning; it doesn't restate it.

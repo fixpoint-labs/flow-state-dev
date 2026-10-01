@@ -28,7 +28,7 @@ is **not** a fork: driving the channel is the epic's wording, recorded under
 | | |
 |---|---|
 | **Instead of** | Leaving the commit in the run's own temporary directory, as today; or opening the pull request against `flow-state-dev` itself |
-| **Because** | ER-DevForce contrasts a real artifact with *a transcript*. What makes something more than a transcript is that it is still there, at an address, once the run is over — so the automated leg pushes to a **bare clone at a declared path** rather than leaving a commit in a directory the machine will sweep. The release run points that same path at a real remote and opens a pull request, because a title, a body and a diff a person accepts or rejects is what the launch claim is actually about |
+| **Because** | ER-DevTeam contrasts a real artifact with *a transcript*. What makes something more than a transcript is that it is still there, at an address, once the run is over — so the automated leg pushes to a **bare clone at a declared path** rather than leaving a commit in a directory the machine will sweep. The release run points that same path at a real remote and opens a pull request, because a title, a body and a diff a person accepts or rejects is what the launch claim is actually about |
 | **Locks in** | The **release** run costs a credential, a network call and a throwaway repository, once — CI costs none of them, which is what the one-leg trim bought. And we have committed to a definition of *real work* that the next Lab proof has to keep meeting: a later artifact that cannot satisfy the three properties does not get to call itself real by analogy |
 
 **The three properties, each with its falsifier.** This is what makes *"would a person accept
@@ -59,8 +59,8 @@ and nothing is built against it.
 | | |
 |---|---|
 | **Instead of** | Keeping the existing rule that only the prompt is graded and the product never is |
-| **Because** | The existing rule is right about what it guards — a model writes a plausible file without reading anything, so the file is no evidence a document was *read*. But ER-DevForce asks for a **work product**, and nothing that refuses to look at the product can prove one. The way out is not to grade the file's contents by eye; it is to grade it against a condition the *requester* wrote down before the run and a machine can execute |
-| **Locks in** | The feature brief stops being flavour text and becomes a contract. Every future DevForce brief owes an executable done-condition **naming the behaviour it wants**, and a Lab task that cannot state one cannot be proved this way — which is a real limit on what this proof shape can cover |
+| **Because** | The existing rule is right about what it guards — a model writes a plausible file without reading anything, so the file is no evidence a document was *read*. But ER-DevTeam asks for a **work product**, and nothing that refuses to look at the product can prove one. The way out is not to grade the file's contents by eye; it is to grade it against a condition the *requester* wrote down before the run and a machine can execute |
+| **Locks in** | The feature brief stops being flavour text and becomes a contract. Every future DevTeam brief owes an executable done-condition **naming the behaviour it wants**, and a Lab task that cannot state one cannot be proved this way — which is a real limit on what this proof shape can cover |
 
 Both gradings stay, because they answer different questions. *Did the seat's own files reach the
 run?* is the prompt's job and is unchanged. *Did the run produce work someone asked for?* is the
@@ -86,7 +86,7 @@ ref fails because `src/greeting.js` does not exist there.
 
 - <a name="channel"></a>**The row is filed in answer to a post on the feature channel, not by
   calling the EM seat's action directly — and this is not a fork.**
-  [ER-DevForce](../../epics/FIX-1457/BUSINESS-RULES.md#er-devforce) is worded *"One DevForce path
+  [ER-DevTeam](../../epics/FIX-1457/BUSINESS-RULES.md#er-devteam) is worded *"One DevTeam path
   completes and produces a real artifact … **with seats and channels used honestly rather than
   stubbed past**,"* and the epic's [people table and set table](../../epics/FIX-1457/SPEC.md)
   repeat the phrase twice more. Channels are inside the ratified exit criterion, not an
@@ -99,7 +99,7 @@ ref fails because `src/greeting.js` does not exist there.
   [FIX-1497](https://linear.app/fixpoint-labs/issue/FIX-1497), Backlog and not started when this
   was written; **Done since 2026-09-22** ([#2065](https://github.com/fixpoint-labs/flow-state-dev/pull/2065)).
   If it lands the channel leg first, this proof **reuses** it rather than re-building it. *(When
-  this was written the merged epic spec still recorded ER-Collab and ER-DevForce as having **no
+  this was written the merged epic spec still recorded ER-Collab and ER-DevTeam as having **no
   producer**. The epic amendment [#2033](https://github.com/fixpoint-labs/flow-state-dev/pull/2033)
   named both producers; current status is in the epic's set table.)*
 - **One automated gate, not two.** The temp-repository leg is the **only** leg CI runs; the
@@ -107,7 +107,7 @@ ref fails because `src/greeting.js` does not exist there.
   run**. That keeps [BR-14](BUSINESS-RULES.md) and [BR-15](BUSINESS-RULES.md) honest — the claim
   a run makes is still tied to the leg it ran — without carrying two lab code paths forever.
 
-- **This is a delta on `goals/devforce-lab/`, not a new Lab tree.** Roughly four fifths of the
+- **This is a delta on `goals/devteam-lab/`, not a new Lab tree.** Roughly four fifths of the
   path is built and passing; the issue's own fence says compose
   ([ER-11](../../epics/FIX-1457/BUSINESS-RULES.md), [ER-25](../../epics/FIX-1457/BUSINESS-RULES.md)).
 - **The new proof is a third sibling goal**, not an edit to either existing check. They carry
@@ -139,7 +139,7 @@ ref fails because `src/greeting.js` does not exist there.
 ## Settled
 
 - **FIX-1440 does not fence this work** — re-derived by
-  `poc/gap-check/` (green 2026-09-22, deleted at S8), claim 5: nothing under `goals/devforce-lab/`
+  `poc/gap-check/` (green 2026-09-22, deleted at S8), claim 5: nothing under `goals/devteam-lab/`
   reads the browsable child-session surface FIX-1440 removes, and the one parentage read is the
   provenance form the owner amendment explicitly retains. FIX-1440 is `Spec Approved`, not
   shipped; that remains true and remains irrelevant here.
@@ -158,11 +158,11 @@ ref fails because `src/greeting.js` does not exist there.
 
 - **Draft** — framed as *the proof is written and has never been run*, after finding
   `it-commits-from-the-seats-own-file` complete, type-checked and logged `NOT RUN`; the approach
-  is a four-gap delta on the existing lab rather than a new DevForce path, and the artifact
+  is a four-gap delta on the existing lab rather than a new DevTeam path, and the artifact
   question the Architect left open is answered as a pull request with three falsifiable
   properties.
 - **Review round 1** — scope trimmed, direction unchanged. The channel leg stopped being a
-  sign-off decision and became a recorded constraint, because the epic's ratified ER-DevForce
+  sign-off decision and became a recorded constraint, because the epic's ratified ER-DevTeam
   wording already carries it. The two artifact legs collapsed to **one automated gate** plus a
   documented human release run. Running the neighbouring commit check left the plan for
   [FIX-1501](https://linear.app/fixpoint-labs/issue/FIX-1501).

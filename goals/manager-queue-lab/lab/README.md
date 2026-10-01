@@ -49,7 +49,7 @@ Which is why the negative control can go red at all. It **swaps** two builders' 
 - **Nothing about the package format.** It authors no package shape at all, which is why it is compatible with every answer FIX-1394 can reach, *don't collapse* included.
 - **Nothing about the nested cascade** — personal boards, request boards, a row that fans into rows. One hop only: the channel's board, then the seat.
 - **Nothing about what a busy seat *should* do** — the epic ruled that, and the lab is pinned to the ruling rather than being evidence for it. See below.
-- **Nothing about scale, cost or a real coding run.** Worker bodies are stubs that write a line. `goals/devforce-lab/` is where a row becoming a supervised coding run is evidenced, and it stays as it is — this lab's diff gate rejects that subtree on purpose, because "byte for byte as before" is something a diff can prove and a behavioural suite cannot.
+- **Nothing about scale, cost or a real coding run.** Worker bodies are stubs that write a line. `goals/devteam-lab/` is where a row becoming a supervised coding run is evidenced, and it stays as it is — this lab's diff gate rejects that subtree on purpose, because "byte for byte as before" is something a diff can prove and a behavioural suite cannot.
 
 ## The drain-width switch, and the ruling
 

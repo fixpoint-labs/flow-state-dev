@@ -705,7 +705,7 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
-  labs/app-lab:
+  labs/shift-manager:
     dependencies:
       '@flow-state-dev/client':
         specifier: workspace:*

@@ -1,5 +1,5 @@
 /**
- * Reading `app-lab.css` and holding FSD's packages clear of it.
+ * Reading `shift-manager.css` and holding FSD's packages clear of it.
  *
  * The values are read from the stylesheet itself, never restated here, so a
  * value added to the theme is covered by the fence without editing a list.
@@ -13,7 +13,7 @@ export const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..
 /** The monorepo root. */
 export const REPO_ROOT = resolve(PACKAGE_ROOT, "../..");
 /** The stylesheet an app imports. */
-export const APP_LAB_CSS = join(PACKAGE_ROOT, "app-lab.css");
+export const SHIFT_MANAGER_CSS = join(PACKAGE_ROOT, "shift-manager.css");
 
 /** Custom property → value, for one rule. */
 export type Declarations = Record<string, string>;
@@ -33,7 +33,7 @@ export function rule(css: string, selectors: string): Declarations {
 }
 
 /**
- * Every value in the stylesheet a copy of which would carry App Lab's look
+ * Every value in the stylesheet a copy of which would carry shift-manager's look
  * into another package: colour literals (lowercased) and the quoted font
  * family names. Generic families (`ui-monospace`, `sans-serif`) are not ours
  * and not collected.

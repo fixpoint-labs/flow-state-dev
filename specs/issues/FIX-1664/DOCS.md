@@ -2,12 +2,12 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs**
 
-App Lab is a private lab, so nothing goes in `apps/docs` (the epic's
+shift-manager is a private lab, so nothing goes in `apps/docs` (the epic's
 [DOCS.md](../../epics/FIX-1649/DOCS.md#ownership)). This issue owns the README's task sentences
 in the epic's shared opening and one section of its own. Both are reconciled against the running
 app before they are published.
 
-## UPDATE · `labs/app-lab/README.md` · the epic's opening, third paragraph
+## UPDATE · `labs/shift-manager/README.md` · the epic's opening, third paragraph
 
 FIX-1662 publishes the opening without the task sentences. This issue adds them, in the words
 below, which differ from the epic's draft because the composer and Hand off don't ship yet:
@@ -15,7 +15,7 @@ below, which differ from the epic's draft because the composer and Hand off don'
 > A task shows one worker's run as it happens, and lets you stop it. The panel on the right
 > follows along, with the team and its tasks at a workstream and the task's details at a task.
 
-## CREATE · `labs/app-lab/README.md` · after "Posting"
+## CREATE · `labs/shift-manager/README.md` · after "Posting"
 
 > ## A task
 >
@@ -28,15 +28,15 @@ below, which differ from the epic's draft because the composer and Hand off don'
 >
 > **Interrupt** stops the run (Esc does the same). The screen says *interrupted* once the run
 > has actually stopped. What happens to the task afterwards, whether it's retried or left, is up
-> to the board, not App Lab.
+> to the board, not shift-manager.
 >
 > The panel on the right shows who is on it and when it started. If the harness records its
 > plan and the files it touched, as
 > Claude Code does, they're listed; otherwise the panel says so. *Open trace* opens the devtool
-> for the full detail. Tell App Lab where it runs:
+> for the full detail. Tell shift-manager where it runs:
 >
 > ```bash
-> pnpm --filter @flow-state-dev/app-lab start --config <your config> --devtool http://localhost:4000
+> pnpm --filter @flow-state-dev/shift-manager start --config <your config> --devtool http://localhost:4000
 > ```
 >
 > The run's session id sits beside the link; the devtool doesn't open a session from its

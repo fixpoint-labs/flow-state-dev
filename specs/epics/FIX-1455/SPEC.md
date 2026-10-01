@@ -113,7 +113,7 @@ both need the named organization [D9](DECISIONS.md#d9) records.
 - **The `@flow-state-dev/patterns` package itself.** FIX-1478 sheds a *consumer's* dependency;
   it does not dissolve the package or shrink its API.
 - **`/devtool`.** Observing a run as it unfolds is a different surface with no child here.
-- **DevForce and CyberForce.** They stay finish-line Labs beside kitchen-sink, never inside it.
+- **DevTeam and CyberForce.** They stay finish-line Labs beside kitchen-sink, never inside it.
 - **Org identity.** [FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442) is soft-related
   and consumed; this set does not re-decide it. [D9](DECISIONS.md#d9) names kitchen-sink's own
   organization and nothing wider, and

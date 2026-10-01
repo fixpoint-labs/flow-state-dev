@@ -1,11 +1,11 @@
 # Design system
 
-The look of App Lab, the Labs' app: a light and a dark theme over the tokens FSD's components
+The look of shift-manager, the Labs' app: a light and a dark theme over the tokens FSD's components
 already read. It holds values only. There are no components here; the app gets those from
 `@flow-state-dev/react` and the `@flow-state-dev/ui` registry, unedited.
 
 ```css
-@import "@flow-state-dev/design-system/app-lab.css";
+@import "@flow-state-dev/design-system/shift-manager.css";
 ```
 
 Import it after the stylesheet that holds the registry's `tokens` defaults. The light theme

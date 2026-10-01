@@ -4,10 +4,10 @@
 
 **No site documentation changes.** The change lives in a private goal lab under `goals/`, which
 publishes nothing a framework user reads, and it uses the stock approval suspension that
-`apps/docs` already documents. The epic's [DOCS.md](../../epics/FIX-1649/DOCS.md) owns App Lab's
+`apps/docs` already documents. The epic's [DOCS.md](../../epics/FIX-1649/DOCS.md) owns shift-manager's
 own pages.
 
-One internal README changes: `goals/devforce-lab/lab/README.md`.
+One internal README changes: `goals/devteam-lab/lab/README.md`.
 
 ## Update · the checks table
 
@@ -31,7 +31,7 @@ check:
 > it, so they run exactly as before.
 >
 > A host that builds its own flow state instead of calling `openLab`, such as the `fsdev`
-> config App Lab serves, turns on durable execution itself and calls the same raise step after
+> config shift-manager serves, turns on durable execution itself and calls the same raise step after
 > it hires.
 >
 > ```ts

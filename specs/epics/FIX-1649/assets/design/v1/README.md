@@ -1,6 +1,6 @@
 # Claude Design hand-back · v1
 
-Five dark-theme screens of App Lab, handed back from Claude Design by Jake on 2026-09-30:
+Five dark-theme screens of shift-manager, handed back from Claude Design by Jake on 2026-09-30:
 01 to 03 first, then 04 and 05 ("Latest designs, show Inbox and Tasks sections").
 They replace the [wireframes](../../wireframes/README.md) as the structure
 [FIX-1649](../../../SPEC.md) fixes; the wireframes stay as history. How each screen works,

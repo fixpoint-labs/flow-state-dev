@@ -4,7 +4,7 @@
 
 Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSINESS-RULES.md)
 (BR-n), [DECISIONS.md](DECISIONS.md) (D-n) and the epic's rules (ER-n). `tdd`. Four PRs. Built
-on FIX-1662 (App Lab frame), FIX-1664 (task screen) and FIX-1668 (the task-run link, the row's
+on FIX-1662 (shift-manager frame), FIX-1664 (task screen) and FIX-1668 (the task-run link, the row's
 `run` field), all on `main`. This plan is written for the recommended answer to both forks; if
 [the first](DECISIONS.md#open-live) goes the other way, add the follow-up's PR before `lab`.
 
@@ -20,13 +20,13 @@ on FIX-1662 (App Lab frame), FIX-1664 (task screen) and FIX-1668 (the task-run l
 | S6 | `@flow-state-dev/harness-manager` · the attempt | On a stop with an untaken turn, park *for a person's turn* instead of failing. On the next attempt, the prompt is the kept turns (oldest first, marked as the person's), resumed through the existing `resume` feed. Separate channel from `feedback` and from `answers`, for the reason those two are already separate | BR-7 BR-8 BR-10 BR-17 |
 | S7 | `goals/harness-manager/a-persons-turn-continues-its-session/` | Real Claude Code, modelled on `answered-run-continues-its-session`: attempt 1 is given a fact to hold and told to wait; a person's turn says *write down what you were given*; attempt 2's prompt never contains the fact. Signals: same session id, the fact file in the checkout, retry standing unchanged | BR-8 BR-9 |
 | S8 | `@flow-state-dev/workforce` · the seat's door | At hire, find the kind's one public action with `userMessage` and a `{ message }` input; publish it on the seat's inventory row (`null` when none, a problem when two). Browser-safe read of it. The built-in agent kind needs no change | D1 BR-1 BR-2 |
-| S9 | `goals/devforce-lab/lab/` · the coder kind | Declares the harness manager's door as its `message` action (the SPEC's diff). The EM kind gains nothing ([the second fork](DECISIONS.md#open-inbox)) | BR-18 BR-22 |
-| S10 | `labs/app-lab` · the send | One call site every composer uses: the target session, its flow (from the session's `flowId`), the door from the inventory, the draft. It owns *sending → delivered* per BR-4 by watching the target session for the door request's user item, never the HTTP answer alone | BR-3 BR-4 BR-5 ER-15 |
-| S11 | `labs/app-lab` · the three composers | Task composer (BR-18), `@worker` with its picker and receipt (BR-19, BR-20), Inbox's reply box (BR-21, BR-22). *Also post* stays disabled (BR-23). The gap registry loses `task.composer` and `addressWorker`, gains BR-14 to BR-16 and BR-22's lines | BR-18 to BR-23 |
-| S12 | `goals/app-lab/it-sends-a-turn-into-a-seat-session/` | The goal check, both controls, and a fixture tree under it with one scripted seat whose kind has a door and raises an ask ([at implement time](#at-implement-time)) | the goal |
+| S9 | `goals/devteam-lab/lab/` · the coder kind | Declares the harness manager's door as its `message` action (the SPEC's diff). The EM kind gains nothing ([the second fork](DECISIONS.md#open-inbox)) | BR-18 BR-22 |
+| S10 | `labs/shift-manager` · the send | One call site every composer uses: the target session, its flow (from the session's `flowId`), the door from the inventory, the draft. It owns *sending → delivered* per BR-4 by watching the target session for the door request's user item, never the HTTP answer alone | BR-3 BR-4 BR-5 ER-15 |
+| S11 | `labs/shift-manager` · the three composers | Task composer (BR-18), `@worker` with its picker and receipt (BR-19, BR-20), Inbox's reply box (BR-21, BR-22). *Also post* stays disabled (BR-23). The gap registry loses `task.composer` and `addressWorker`, gains BR-14 to BR-16 and BR-22's lines | BR-18 to BR-23 |
+| S12 | `goals/shift-manager/it-sends-a-turn-into-a-seat-session/` | The goal check, both controls, and a fixture tree under it with one scripted seat whose kind has a door and raises an ask ([at implement time](#at-implement-time)) | the goal |
 | S13 | Docs | [DOCS.md](DOCS.md) | ER-14 |
 
-**Removed:** App Lab's two gap lines for the composer and `@worker`; FIX-1664's registry row for
+**Removed:** shift-manager's two gap lines for the composer and `@worker`; FIX-1664's registry row for
 the composer; nothing in a package.
 
 ## Sequence
@@ -41,7 +41,7 @@ flowchart LR
 |---|---|---|
 | `stop` | S1, S2, with the engine's abort tests extended to the hook | — |
 | `door` | S3 to S7, the harness manager's README and docs page | `stop` |
-| `lab` | S8 to S13, workforce README and inventory page, App Lab's README | `door` |
+| `lab` | S8 to S13, workforce README and inventory page, shift-manager's README | `door` |
 
 The three run in order. FIX-1663's closure run waits on `lab`.
 
@@ -55,16 +55,16 @@ The three run in order. FIX-1663's closure run waits on `lab`.
 | V4 | S7 | The real-model goal: same session id, the fact file, retry standing unchanged. The fact never appears in attempt 2's prompt |
 | V5 | S8 | Agent kind publishes `run`; a kind with none publishes `null`; a kind with two is a named problem (BR-1, BR-2) |
 | V6 | S10 S11 | *Delivered* only after the session holds the item (BR-4); refusal keeps the draft (BR-5); `@worker` with one, several and no live task (BR-19); Inbox reply enabled and disabled (BR-21, BR-22) |
-| V7 | S10 S11 | Static: no session-item write in `labs/app-lab/src`; no Lab kind or action name in it; every send goes through S10 |
+| V7 | S10 S11 | Static: no session-item write in `labs/shift-manager/src`; no Lab kind or action name in it; every send goes through S10 |
 | V8 | S12 | The goal check, its two controls failing at their named signals |
 
 ## Pinned names
 
 | Name | Value | Why pinned |
 |---|---|---|
-| The door's input | `{ message: string }` | App Lab builds it without knowing the kind; the agent kind's `run` already takes it |
-| DevForce's door action | `message` | The Lab's README names it |
-| Goal checks | `goals/app-lab/it-sends-a-turn-into-a-seat-session/`, `goals/harness-manager/a-persons-turn-continues-its-session/` | FIX-1663 cites the first |
+| The door's input | `{ message: string }` | shift-manager builds it without knowing the kind; the agent kind's `run` already takes it |
+| DevTeam's door action | `message` | The Lab's README names it |
+| Goal checks | `goals/shift-manager/it-sends-a-turn-into-a-seat-session/`, `goals/harness-manager/a-persons-turn-continues-its-session/` | FIX-1663 cites the first |
 | Controls | `GOAL_CONTROL=optimistic-turn`, `GOAL_CONTROL=fresh-session` | The closure maps them onto a4 |
 
 ## Guardrails
@@ -75,7 +75,7 @@ The three run in order. FIX-1663's closure run waits on `lab`.
   implementers: the abort route stops a request a client names; the stop hook stops one a block
   names from inside the same session. Same write, two callers.
 - **The door is the only writer of a person's turn.** Every composer reaches it through S10;
-  nothing in App Lab, the channel or the manager writes a user item another way (ER-15). V7 is
+  nothing in shift-manager, the channel or the manager writes a user item another way (ER-15). V7 is
   its static half.
 - **Turns, answers and feedback stay three channels.** A turn is not an answer (it never unparks
   a question) and not feedback (it never says the last attempt failed); each prompt section says
@@ -93,7 +93,7 @@ The three run in order. FIX-1663's closure run waits on `lab`.
 
 [DOCS.md](DOCS.md) holds the draft: the harness manager's docs page and README gain *Talking to a
 run*; the Workforce inventory page and README gain the door; Core's action docs gain the stop
-hook; App Lab's README replaces its composer sentences. Changesets: `core`, `engine`,
+hook; shift-manager's README replaces its composer sentences. Changesets: `core`, `engine`,
 `orchestration`, `harness-manager`, `workforce` (minor). Labs and goals get none.
 
 ## Sketch · pseudocode, illustrative, react to the shape
@@ -132,7 +132,7 @@ Cursor harnesses' own `resume` feeds.
   never a silent *delivered*.
 - **The fixture seat for S12.** A scripted kind under the check's own folder, with an ask that
   suspends and a door whose step answers with the line it took, so the reply is heard, not just
-  stored. It is a test fixture, not a Lab, and App Lab names nothing in it.
+  stored. It is a test fixture, not a Lab, and shift-manager names nothing in it.
 - **Where the attempt learns it was stopped for a turn.** Reading the turn record on the abort
   is enough; if the rescue path can't read it, say so before inventing a reason field on the
   request.

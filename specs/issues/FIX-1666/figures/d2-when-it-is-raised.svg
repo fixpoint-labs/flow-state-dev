@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2: when is the ask raised? Chosen: when a host opens the lab with it turned on, off by default. Instead of: a shaped post that makes the EM ask, or raising it on every open. It comes down to the first row, whether opening alone shows it: raised on open, Inbox has it before anyone acts; a post needs a person to act first. Second row, the three existing checks: with the ask off they run exactly as today; raising on every open changes their rows and runs. Third row, the price: two lines in App Lab's DevForce config, turning durable on and calling the raise, owned by FIX-1662 or added by whichever lands second. Locks in one raise step, off by default, that the lab's open and App Lab's config both call. Flips if App Lab raises a Lab's asks itself; then the config's call moves there."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2: when is the ask raised? Chosen: when a host opens the lab with it turned on, off by default. Instead of: a shaped post that makes the EM ask, or raising it on every open. It comes down to the first row, whether opening alone shows it: raised on open, Inbox has it before anyone acts; a post needs a person to act first. Second row, the three existing checks: with the ask off they run exactly as today; raising on every open changes their rows and runs. Third row, the price: two lines in shift-manager's DevTeam config, turning durable on and calling the raise, owned by FIX-1662 or added by whichever lands second. Locks in one raise step, off by default, that the lab's open and shift-manager's config both call. Flips if shift-manager raises a Lab's asks itself; then the config's call moves there."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -72,7 +72,7 @@
     <text class="t-lbl" x="32" y="282">COST</text>
     <text class="t-lbl" x="32" y="295">NOW</text>
     <text class="mark minus" x="228" y="285">&#8722;</text>
-    <text class="t-b" x="248" y="284">Two lines in App Lab's config</text>
+    <text class="t-b" x="248" y="284">Two lines in shift-manager's config</text>
     <text class="t-s" x="248" y="302">durable on, then call the raise</text>
     <text class="mark plus" x="592" y="285">+</text>
     <text class="t-b" x="612" y="284">Nothing to wire</text>
@@ -83,12 +83,12 @@
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
     <text class="t-b" x="32" y="371">One raise step, off by default</text>
-    <text class="t-s" x="32" y="389">the lab's open and App Lab's config call it</text>
+    <text class="t-s" x="32" y="389">the lab's open and shift-manager's config call it</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">App Lab raises a Lab's asks itself</text>
+    <text class="t-b" x="494" y="371">shift-manager raises a Lab's asks itself</text>
     <text class="t-s" x="494" y="389">then the config's call moves there</text>
   </g>
 </svg>

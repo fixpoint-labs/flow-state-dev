@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
-Four published surfaces change, plus App Lab's README. No new page: each change is a section
+Four published surfaces change, plus shift-manager's README. No new page: each change is a section
 under a concept that already has one (the harness manager, the inventory, flows). Voice rules
 most at risk here: say *what a turn does to a run* before naming any API; no em-dash chains;
 introduce *door* once, in plain words, on each page that uses it; no issue numbers under
@@ -107,14 +107,14 @@ Replace the seat example and add a paragraph after it:
 The method's name is the implementer's; the sentence and the three outcomes are what this page
 promises.
 
-## UPDATE · `labs/app-lab/README.md`
+## UPDATE · `labs/shift-manager/README.md`
 
 Replace the *"A post appears in the transcript…"* paragraph's neighbourhood with:
 
 > **Talking to a worker.** Start a line with `@` and a worker's name to send it to that worker's
 > task in this workstream instead of the channel. If it has several, the composer asks which.
 > If it has none, Send is off and says so. In a task, the composer sends to that task's run.
-> From Inbox, the reply box sends to the worker that asked, if its kind takes messages; DevForce's
+> From Inbox, the reply box sends to the worker that asked, if its kind takes messages; DevTeam's
 > EM doesn't, so its reply box says so.
 >
 > A running coding run stops where it is and carries on in the same session with your message.

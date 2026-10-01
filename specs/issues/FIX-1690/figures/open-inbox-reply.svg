@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 424" role="img" aria-label="Open fork: DevForce&#x27;s only asking worker, its scripted EM, can&#x27;t take a message, so where is Inbox&#x27;s reply proven? Recommended: a fixture seat that takes messages, in this issue&#x27;s goal check. Alternative: give DevForce&#x27;s EM a door. It comes down to the first row: with the fixture, delivered means heard; a door on the scripted EM would store a line nothing reads. The price is the second row: DevForce shows the reply box disabled with its line. Third row: the closure&#x27;s Part 4 run line is amended by a follow-up PR, instead of running unchanged. Locks in: a reply goes only where a kind can hear it. Flips if: DevForce&#x27;s EM is meant to converse, which needs a model and a real door."
+<svg viewBox="0 0 940 424" role="img" aria-label="Open fork: DevTeam&#x27;s only asking worker, its scripted EM, can&#x27;t take a message, so where is Inbox&#x27;s reply proven? Recommended: a fixture seat that takes messages, in this issue&#x27;s goal check. Alternative: give DevTeam&#x27;s EM a door. It comes down to the first row: with the fixture, delivered means heard; a door on the scripted EM would store a line nothing reads. The price is the second row: DevTeam shows the reply box disabled with its line. Third row: the closure&#x27;s Part 4 run line is amended by a follow-up PR, instead of running unchanged. Locks in: a reply goes only where a kind can hear it. Flips if: DevTeam&#x27;s EM is meant to converse, which needs a model and a real door."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,7 +36,7 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">OPEN · THE FORK</text>
-    <text class="t-q" x="32" y="52">DevForce&#x27;s only asking worker can&#x27;t take a message. Where is Inbox&#x27;s reply proven?</text>
+    <text class="t-q" x="32" y="52">DevTeam&#x27;s only asking worker can&#x27;t take a message. Where is Inbox&#x27;s reply proven?</text>
   </g>
   <g id="options">
     <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
@@ -44,7 +44,7 @@
     <text class="t-h c-code" x="228" y="112">A fixture seat that takes messages</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">ALTERNATIVE</text>
-    <text class="t-h c-lost" x="592" y="112">A door on DevForce&#x27;s EM</text>
+    <text class="t-h c-lost" x="592" y="112">A door on DevTeam&#x27;s EM</text>
   </g>
   <g id="row-0">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
@@ -78,7 +78,7 @@
     <text class="t-s" x="248" y="305">a follow-up PR on FIX-1663</text>
     <text class="mark plus" x="592" y="288">+</text>
     <text class="t-b" x="612" y="287">Unchanged</text>
-    <text class="t-s" x="612" y="305">Part 4 runs on DevForce</text>
+    <text class="t-s" x="612" y="305">Part 4 runs on DevTeam</text>
     <line class="row" x1="16" y1="318" x2="924" y2="318"/>
   </g>
   <g id="locks-in">
@@ -91,7 +91,7 @@
   <g id="flips-if">
     <rect class="foot" x="478" y="334" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="355">FLIPS IF</text>
-    <text class="t-b" x="494" y="375">DevForce&#x27;s EM is meant to converse</text>
+    <text class="t-b" x="494" y="375">DevTeam&#x27;s EM is meant to converse</text>
     <text class="t-s" x="494" y="393">then it needs a model and a real door</text>
   </g>
 </svg>

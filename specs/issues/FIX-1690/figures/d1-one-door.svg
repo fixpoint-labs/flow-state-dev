@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 424" role="img" aria-label="D1: how does a person&#x27;s line reach whichever worker it addresses? Chosen: each seat kind declares its door, the one public action with userMessage that takes a message, and the composers call it on the session they target. Instead of: one Workforce action on the channel flow that routes it. It comes down to the first row: what a turn does there is the target kind&#x27;s to say, and a router would dispatch into each kind anyway. Second row: no new mechanism is needed to find the door, while a channel router adds one in front and Inbox asks and task runs are not a channel&#x27;s. The price is the third row: kind authors learn one convention, and a kind with two such actions fails its hire. Locks in: the inventory names each seat&#x27;s door, and App Lab calls it without naming any kind. Flips if: a caller must send a turn without knowing the target session."
+<svg viewBox="0 0 940 424" role="img" aria-label="D1: how does a person&#x27;s line reach whichever worker it addresses? Chosen: each seat kind declares its door, the one public action with userMessage that takes a message, and the composers call it on the session they target. Instead of: one Workforce action on the channel flow that routes it. It comes down to the first row: what a turn does there is the target kind&#x27;s to say, and a router would dispatch into each kind anyway. Second row: no new mechanism is needed to find the door, while a channel router adds one in front and Inbox asks and task runs are not a channel&#x27;s. The price is the third row: kind authors learn one convention, and a kind with two such actions fails its hire. Locks in: the inventory names each seat&#x27;s door, and shift-manager calls it without naming any kind. Flips if: a caller must send a turn without knowing the target session."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -85,7 +85,7 @@
     <rect class="foot" x="16" y="334" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="355">LOCKS IN</text>
     <text class="t-b" x="32" y="375">The inventory names each seat&#x27;s door</text>
-    <text class="t-s" x="32" y="393">App Lab calls it; names no kind</text>
+    <text class="t-s" x="32" y="393">shift-manager calls it; names no kind</text>
   </g>
 
   <g id="flips-if">

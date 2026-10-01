@@ -8,7 +8,7 @@ and [BUSINESS-RULES.md](BUSINESS-RULES.md) (ER-n).
 
 ## The path
 
-![The path, as of 30 September 2026, drawn in phases rather than dates because Cycle PM has not scheduled the build. An input lane for the design: hand-back v1 came back during review; design pass 2 runs from the gate to the final hand-back, a vertical line that gates final visuals only. An input lane for the sibling epics, which nothing waits on. This epic spec in review, with the now line on it. FIX-1655: spec, then the token contract, neutral defaults, skin fixes and the re-sync check, then the light and dark App Lab values after the final hand-back. FIX-1662: spec, then the frame and the project and workstream levels, then its final visual pass. FIX-1664: spec beside FIX-1662's, then the task level once FIX-1662's frame lands, then its final visual pass. FIX-1663: the QA plan written beside them, and its run after all three merge. The critical path runs the gate, design pass 2, the final passes and the closure run](figures/path.svg)
+![The path, as of 30 September 2026, drawn in phases rather than dates because Cycle PM has not scheduled the build. An input lane for the design: hand-back v1 came back during review; design pass 2 runs from the gate to the final hand-back, a vertical line that gates final visuals only. An input lane for the sibling epics, which nothing waits on. This epic spec in review, with the now line on it. FIX-1655: spec, then the token contract, neutral defaults, skin fixes and the re-sync check, then the light and dark shift-manager values after the final hand-back. FIX-1662: spec, then the frame and the project and workstream levels, then its final visual pass. FIX-1664: spec beside FIX-1662's, then the task level once FIX-1662's frame lands, then its final visual pass. FIX-1663: the QA plan written beside them, and its run after all three merge. The critical path runs the gate, design pass 2, the final passes and the closure run](figures/path.svg)
 
 Three lanes run from the gate, and all split at the same wait: the final hand-back. Everything
 structural starts at the gate, except the task view's build, which waits for FIX-1662's frame;
@@ -24,7 +24,7 @@ final hand-back is committed beside v1, linked on FIX-1649, and consumed by:
 
 | Consumer | Takes from it | Before it arrives |
 |---|---|---|
-| **FIX-1655** | The App Lab theme's light and dark token values | Token names and neutral defaults, skin fixes at the source, the re-sync check; draft values from v1 and the ticket |
+| **FIX-1655** | The shift-manager theme's light and dark token values | Token names and neutral defaults, skin fixes at the source, the re-sync check; draft values from v1 and the ticket |
 | **FIX-1662** | Final proportions, density and states' look for the frame, Inbox, Tasks and two levels | The sidebar, routes, Inbox and Tasks, the project and workstream levels, bindings and empty states, on the neutral defaults |
 | **FIX-1664** | The same, for the task level | The task level's tabs, actions and inspector, bindings and empty states |
 
@@ -35,10 +35,10 @@ v1 fixes is an amendment to this epic ([ER-10](BUSINESS-RULES.md#how-the-set-is-
 
 | Issue | Route | Consumes | Delivers | Releases | Size |
 |---|---|---|---|---|---|
-| **FIX-1655** design system | spec → impl PR, theme values after the hand-back | The existing theme contracts · D2 · the refined design | The token set's neutral defaults beside the components; the private package with the App Lab theme and the mapping; skin fixes at the source of the registry components with fixed palette colours; the re-sync check | FIX-1662's final pass · the closure | Medium |
-| **FIX-1662** App Lab shell | spec → impl PR, final pass after the hand-back | FIX-1655's token names · hand-back v1 · shipped react panels and ui components · a Lab's tree, org required | `labs/app-lab`: the sidebar, Jump to, the routes and the right panel's slot; Inbox and Tasks; the project and workstream levels and the workstream's panel; empty states | FIX-1664's build · the closure | Large |
+| **FIX-1655** design system | spec → impl PR, theme values after the hand-back | The existing theme contracts · D2 · the refined design | The token set's neutral defaults beside the components; the private package with the shift-manager theme and the mapping; skin fixes at the source of the registry components with fixed palette colours; the re-sync check | FIX-1662's final pass · the closure | Medium |
+| **FIX-1662** shift-manager shell | spec → impl PR, final pass after the hand-back | FIX-1655's token names · hand-back v1 · shipped react panels and ui components · a Lab's tree, org required | `labs/shift-manager`: the sidebar, Jump to, the routes and the right panel's slot; Inbox and Tasks; the project and workstream levels and the workstream's panel; empty states | FIX-1664's build · the closure | Large |
 | **FIX-1664** task view | spec beside FIX-1662's → impl PR after FIX-1662 merges, final pass after the hand-back | FIX-1662's routes and panel slot · FIX-1655's token names · hand-back v1 · the harness session's shipped reads and operations | The task level: Session, Diff, Checks, Brief; Interrupt, Hand off, Open PR; the composer's turn; the task inspector with the devtool trace link | The closure | Medium |
-| **FIX-1663** closure · required | spec (the QA plan) → runs until one is clean → PR | Every child merged, on one `main` commit · the DevForce lab tree, and the pentest lab tree for leg b | The committed browser check, a QA report, a child for every finding | The wrap | Medium, repeats per finding |
+| **FIX-1663** closure · required | spec (the QA plan) → runs until one is clean → PR | Every child merged, on one `main` commit · the DevTeam lab tree, and the pentest lab tree for leg b | The committed browser check, a QA report, a child for every finding | The wrap | Medium, repeats per finding |
 
 FIX-1655 carries no Kind label in Linear, so its route defaults to spec. FIX-1662 and FIX-1664
 are Features; FIX-1663 an Improvement.
@@ -66,7 +66,7 @@ The plan is written on [D3](DECISIONS.md#d3): one app, so no child builds a chro
 | Seam | Between | Rule |
 |---|---|---|
 | The token names | FIX-1655 and FIX-1662 | 1655 names them in its spec; 1662 uses those names and never hardcodes a value |
-| A reused component that won't take the skin | FIX-1655 and FIX-1662 | 1662 reports it; 1655 fixes it at its source and App Lab's copy is re-synced (ER-6) |
+| A reused component that won't take the skin | FIX-1655 and FIX-1662 | 1662 reports it; 1655 fixes it at its source and shift-manager's copy is re-synced (ER-6) |
 | The task route and the right panel's slot | FIX-1662 and FIX-1664 | 1662 names both in its spec and owns them; 1664 fills them and adds no route of its own |
 | A write into a worker's session | FIX-1664 and FIX-1662 | 1664 names the shipped operation in its spec; 1662's `@worker` composer and Inbox reply use it, and neither adds another (ER-15) |
 | How an ask is drawn | FIX-1662 and FIX-1652 | One rendering per ask kind, shared by the stream's approval card and Inbox's detail pane; 1652 says what the kinds are and what Approve and Deny do |

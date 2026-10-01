@@ -14,7 +14,7 @@ flowchart TD
   D1 -.->|"rejected"| X1["one child per region or destination"]
   D1 -.->|"rejected"| X1b["FIX-1662 carries every level"]
   E --> D2["D2 · one skin through the existing theme contracts"]
-  D2 -.->|"rejected"| X2["restyle copies inside App Lab"]
+  D2 -.->|"rejected"| X2["restyle copies inside shift-manager"]
   D2 -.->|"rejected"| X2b["a new theme API in the react package"]
   E --> D3["D3 · one app; a Lab is the tree it opens"]
   D3 -.->|"rejected"| X3["a chrome kit each Lab's app imports"]
@@ -41,13 +41,13 @@ It comes down to the size of a child: one spec of three levels is past what a re
 
 | | |
 |---|---|
-| **Instead of** | Restyling FSD components inside App Lab · adding a theme provider or theme API to `@flow-state-dev/react` |
-| **Because** | Jake's layer rule: FSD's L1 packages carry no App Lab look. The contracts exist: the navigator and panels read `--fsd-nav-*` and `--fsd-panel-*` ([FIX-1477 D1](../../issues/FIX-1477/DECISIONS.md#d1)), the registry reads semantic tokens, and kitchen-sink already maps one onto the other. A restyled copy drifts from every later FSD fix; a theme API puts a Lab-shaped surface into L1 |
-| **Locks in** | **Two shelves, as FSD ships them.** The chrome (navigator, roster, board panels, seat detail) is imported at runtime from `@flow-state-dev/react` and skinned through `--fsd-*`, per FIX-1477 D1. Registry and item components are copied in by `fsdev ui add` and skinned only through tokens; the copy is never edited. **One token set**, whose defaults are neutral values living beside the components that read them; the App Lab theme overrides them from the design-system package. A component that can't take the skin is fixed at its source by FIX-1655 and re-synced, and FIX-1655 owns a check that fails when an App Lab copy differs from its source ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) |
+| **Instead of** | Restyling FSD components inside shift-manager · adding a theme provider or theme API to `@flow-state-dev/react` |
+| **Because** | Jake's layer rule: FSD's L1 packages carry no shift-manager look. The contracts exist: the navigator and panels read `--fsd-nav-*` and `--fsd-panel-*` ([FIX-1477 D1](../../issues/FIX-1477/DECISIONS.md#d1)), the registry reads semantic tokens, and kitchen-sink already maps one onto the other. A restyled copy drifts from every later FSD fix; a theme API puts a Lab-shaped surface into L1 |
+| **Locks in** | **Two shelves, as FSD ships them.** The chrome (navigator, roster, board panels, seat detail) is imported at runtime from `@flow-state-dev/react` and skinned through `--fsd-*`, per FIX-1477 D1. Registry and item components are copied in by `fsdev ui add` and skinned only through tokens; the copy is never edited. **One token set**, whose defaults are neutral values living beside the components that read them; the shift-manager theme overrides them from the design-system package. A component that can't take the skin is fixed at its source by FIX-1655 and re-synced, and FIX-1655 owns a check that fails when an shift-manager copy differs from its source ([ER-6](BUSINESS-RULES.md#what-no-child-may-do)) |
 
 **Why the copy-in is right here when FIX-1477 D1 rejected it.** There the copy-in registry was
 proposed for the chrome itself, and a drifting copy of the chrome was the defect being fixed.
-Here it is the registry's documented distribution model (`packages/ui/README.md`), and App Lab
+Here it is the registry's documented distribution model (`packages/ui/README.md`), and shift-manager
 is the example consumer for skinning, so it must skin the way a user's app would. The re-sync
 check closes drift, and paint stays in tokens. Publishing `ui` as a runtime package, FIX-1477
 D1's mind-changer, is not reopened here.
@@ -58,7 +58,7 @@ spec of its own, not a restyled copy.
 
 ![D2: one skin through the existing contracts, chosen, beside restyling copies and a theme API in react; decided by where the paint lives](figures/d2-one-skin.svg)
 
-It comes down to where the paint lives: a restyled copy or a theme API puts App Lab into FSD.
+It comes down to where the paint lives: a restyled copy or a theme API puts shift-manager into FSD.
 
 <a name="d3"></a>
 ## D3 · One app that opens any Lab; a Lab is the Workforce tree it opens
@@ -68,10 +68,10 @@ Decided by Jake on 2026-09-30, answering the fork this set had open ("One app").
 | | |
 |---|---|
 | **Instead of** | A chrome kit each Lab's own app imports |
-| **Because** | Labs share one app chrome, per the Architect, and D-12 says DevForce is a Lab built completely on Workforce: "no special wrappers" reads most naturally as no Lab app at all. One app means no Lab writes UI and there is one thing to deploy; the kit is a package with one consumer today that would amend FIX-1455 D5. It is also the smaller build, and extracting a kit later is cheaper than guessing its seams now |
-| **Locks in** | The chrome stays inside `labs/app-lab`. A second Lab opens as its tree, with no shell code and no wrapper ([ER-4](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)), which the closure's leg b checks on `goals/pentest-lab/lab/workforce/`. A tree is not configuration alone: it carries code (flows, and a host that `fsdev gen` renders per app). How App Lab loads one is FIX-1662's spec's call, between the runtime `@flow-state-dev/workforce` loader and a per-Lab `fsdev gen` step; neither puts shell code in the Lab. The price: a Lab can't have a screen of its own until the shell grows a place for one |
+| **Because** | Labs share one app chrome, per the Architect, and D-12 says DevTeam is a Lab built completely on Workforce: "no special wrappers" reads most naturally as no Lab app at all. One app means no Lab writes UI and there is one thing to deploy; the kit is a package with one consumer today that would amend FIX-1455 D5. It is also the smaller build, and extracting a kit later is cheaper than guessing its seams now |
+| **Locks in** | The chrome stays inside `labs/shift-manager`. A second Lab opens as its tree, with no shell code and no wrapper ([ER-4](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)), which the closure's leg b checks on `goals/pentest-lab/lab/workforce/`. A tree is not configuration alone: it carries code (flows, and a host that `fsdev gen` renders per app). How shift-manager loads one is FIX-1662's spec's call, between the runtime `@flow-state-dev/workforce` loader and a per-Lab `fsdev gen` step; neither puts shell code in the Lab. The price: a Lab can't have a screen of its own until the shell grows a place for one |
 
-**What would change my mind:** DevForce or CyberForce must ship as separate products, with
+**What would change my mind:** DevTeam or CyberForce must ship as separate products, with
 screens only they have.
 
 **What being wrong costs:** about one issue to extract the chrome into a package later.
@@ -135,10 +135,10 @@ ships, or to the sibling that will ship it; until then, the surface shows its na
   task inspector (worker, harness, started, tokens, cost, acceptance criteria, harness plan,
   files, linked tasks), with the devtool's full trace one link away. It shows only what shipped
   reads return.
-- **App Lab's theme has a light and a dark variant**, both over the token set's neutral
+- **shift-manager's theme has a light and a dark variant**, both over the token set's neutral
   defaults. The hand-back is dark; the ticket's brutalist beige, black and yellow is the light
-  one. Leg c is unchanged: with no App Lab theme loaded, neither variant's values show.
-- **App Lab lives at `labs/app-lab/`**, with the repo's dogfooded apps. Kitchen-sink is not the shell.
+  one. Leg c is unchanged: with no shift-manager theme loaded, neither variant's values show.
+- **shift-manager lives at `labs/shift-manager/`**, with the repo's dogfooded apps. Kitchen-sink is not the shell.
 - **The design-system package is private**: an npm name is permanent, and no outside consumer
   exists. Its name and folder are FIX-1655's call.
 - **No second full theme.** Its only consumer was the proof. Neutral values are the token
@@ -152,7 +152,7 @@ ships, or to the sibling that will ship it; until then, the surface shows its na
 - **Inbox lists the pending approvals, questions and decisions seats have raised** until FIX-1652
   defines attention. It is not the Thought Fabric attention domain.
 - **The design-system package imports nothing from `@flow-state-dev/workforce`.** Workforce
-  words in the chrome (Inbox, NEEDS YOU, TEAMS) are labels App Lab passes in.
+  words in the chrome (Inbox, NEEDS YOU, TEAMS) are labels shift-manager passes in.
 
 <a name="design-pass-2"></a>
 ## Open for design pass 2 · what the hand-back v1 left undrawn

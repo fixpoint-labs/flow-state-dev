@@ -15,10 +15,10 @@ real hire with a sealed document. [Open](#open) is empty.
 
 ```mermaid
 flowchart TD
-  E["FIX-1457 · W5 · release QA"] --> D6["D6 · done = three named exit proofs<br/>Devtool · DevForce · Collab"]
+  E["FIX-1457 · W5 · release QA"] --> D6["D6 · done = three named exit proofs<br/>Devtool · DevTeam · Collab"]
   D6 -.->|"rejected"| X6["three surfaces, one of them kitchen-sink · or 'polished' with no pass/fail bar"]
-  E --> D8["D8 · proof-via-DevForce is IN<br/>the old invent-kill is dead"]
-  D8 -.->|"rejected"| X8["keep the Labs wholly on the delivery countdown · or build an adoptable DevForce"]
+  E --> D8["D8 · proof-via-DevTeam is IN<br/>the old invent-kill is dead"]
+  D8 -.->|"rejected"| X8["keep the Labs wholly on the delivery countdown · or build an adoptable DevTeam"]
   E --> D9["D9 · kitchen-sink leaves the set<br/>FIX-1455 is a sibling epic"]
   D9 -.->|"rejected"| X9["nest FIX-1455 under W5 again · or drop the reference consumer entirely"]
   E --> D7["D7 · boundary: one user, one org, isolated agents"]
@@ -44,7 +44,7 @@ flowchart TD
 
 > **Owner recalibration, 2026-09-20:** W5 is *"Workforce release QA / polish — get L2 tested and
 > proven ready to ship."* North star: *"Workforce is feature-complete enough that a finish-line Lab
-> (DevForce) can actually build something with seats collaborating across channel(s), and Devtool can
+> (DevTeam) can actually build something with seats collaborating across channel(s), and Devtool can
 > inspect that world without special wrappers."* **Rewritten** from the earlier *three surfaces*
 > framing, whose first leg was kitchen-sink.
 
@@ -52,22 +52,22 @@ flowchart TD
 |---|---|
 | **Instead of** | The three *surfaces* — reference app, live view, real configuration — whose first leg has now left the set · or a "polish" epic with no pass/fail bar, which is how *looks good* becomes a done condition |
 | **Because** | A QA epic's whole product is **evidence**, and evidence has to be falsifiable. Three named proofs each say what must pass and on what: the inspector is green on a live hire, a Lab shipped something real, two seats collaborated. Each can fail; *polished* cannot |
-| **Locks in** | **[ER-Devtool](BUSINESS-RULES.md#er-devtool), [ER-DevForce](BUSINESS-RULES.md#er-devforce), [ER-Collab](BUSINESS-RULES.md#er-collab)** replace ER-19, which is retired. Every proof runs against a **live hired Workforce** ([ER-3](BUSINESS-RULES.md)) and composes rather than extends ([ER-4](BUSINESS-RULES.md)). **The set is open** ([ER-23](BUSINESS-RULES.md)) — and **as of 2026-09-24 ER-DevForce and ER-Collab have passed** (#2051, with its gate re-proved by FIX-1515's #2073; #2065), while ER-Devtool stands at row 4 passed live, row 5 in spec ([D10](#d10)) and row 6 proved by automated checks with its live read carried ([D11](#d11)) |
+| **Locks in** | **[ER-Devtool](BUSINESS-RULES.md#er-devtool), [ER-DevTeam](BUSINESS-RULES.md#er-devteam), [ER-Collab](BUSINESS-RULES.md#er-collab)** replace ER-19, which is retired. Every proof runs against a **live hired Workforce** ([ER-3](BUSINESS-RULES.md)) and composes rather than extends ([ER-4](BUSINESS-RULES.md)). **The set is open** ([ER-23](BUSINESS-RULES.md)) — and **as of 2026-09-24 ER-DevTeam and ER-Collab have passed** (#2051, with its gate re-proved by FIX-1515's #2073; #2065), while ER-Devtool stands at row 4 passed live, row 5 in spec ([D10](#d10)) and row 6 proved by automated checks with its live read carried ([D11](#d11)) |
 
 **What would change my mind:** a ship date inside this cycle that the three proofs cannot fit. Then
 the bar is cut deliberately to one proof and the other two become named launch follow-ups — not
 quietly dropped, which is the failure mode this card exists to prevent.
 
 <a name="d8"></a>
-## D8 · Proof-via-DevForce is in — the invent-kill that said otherwise is dead
+## D8 · Proof-via-DevTeam is in — the invent-kill that said otherwise is dead
 
-> **A reversal, stated as one.** The standing invent-kill read *"don't treat W5 as build DevForce"*.
-> The recalibration kills it explicitly: *"Proof-via-DevForce is **in**. Old invent-kill… is
-> **dead**. Build the thinnest DevForce path that produces a real artifact; stop there."*
+> **A reversal, stated as one.** The standing invent-kill read *"don't treat W5 as build DevTeam"*.
+> The recalibration kills it explicitly: *"Proof-via-DevTeam is **in**. Old invent-kill… is
+> **dead**. Build the thinnest DevTeam path that produces a real artifact; stop there."*
 
 | | |
 |---|---|
-| **Instead of** | Keeping the finish-line Labs wholly on the delivery countdown, so W5 proves Workforce without ever running one · or admitting DevForce and letting it grow into an adoptable Lab product |
+| **Instead of** | Keeping the finish-line Labs wholly on the delivery countdown, so W5 proves Workforce without ever running one · or admitting DevTeam and letting it grow into an adoptable Lab product |
 | **Because** | *A Lab as product* and *a Lab as evidence* were conflated in the old fence. The north star is a Lab that **actually builds something** — that is the only claim a launch rests on, and it cannot be made without running one. The cost control is thinness, not exclusion |
 | **Locks in** | **The thinnest path that produces a real artifact, and it stops there** ([ER-11](BUSINESS-RULES.md)). Unbounded Lab product delivery stays out; **W5 is not "rebuild the whole Lab product"**; **CyberForce stays out** this cycle. *Which* artifact counts is the EM's cut leaning on the owner, and is **not blocking** |
 
@@ -221,9 +221,9 @@ have satisfied the reading the owner declined; it is exactly the mechanism of th
 
 ## Who owns what
 
-![Who owns what: a matrix of seven cross-cutting rules against the three exit-proof columns of the set plus a fourth column for the finished exploration FIX-1467. As of 2026-09-24 two proof columns read PASS — the DevForce proof path, FIX-1496, and the multi-seat collab scenario, FIX-1497 — and the Devtool checklist, held jointly by FIX-1481 and FIX-1502, still reads HELD. ER-1's owner is FIX-1497; ER-2's is FIX-1481; ER-3's is FIX-1496, which stood the live hired Workforce up; ER-4 is marked builds it in all three proof columns; ER-18 is marked MET by FIX-1467; ER-26 is marked MET, discharged by FIX-1496, and consumed by the other two for their runs. Notes record that on the Devtool checklist row 4 passed live, row 5 is FIX-1502's to build in W5 under D10, row 6 is proved by FIX-1481's automated checks with its live read carried to the first real hire with a sealed document and FIX-1547 as the mitigation under D11, and rows 1 to 3 ride FIX-1320. The figure's aria-label carries every cell.](figures/ownership.svg)
+![Who owns what: a matrix of seven cross-cutting rules against the three exit-proof columns of the set plus a fourth column for the finished exploration FIX-1467. As of 2026-09-24 two proof columns read PASS — the DevTeam proof path, FIX-1496, and the multi-seat collab scenario, FIX-1497 — and the Devtool checklist, held jointly by FIX-1481 and FIX-1502, still reads HELD. ER-1's owner is FIX-1497; ER-2's is FIX-1481; ER-3's is FIX-1496, which stood the live hired Workforce up; ER-4 is marked builds it in all three proof columns; ER-18 is marked MET by FIX-1467; ER-26 is marked MET, discharged by FIX-1496, and consumed by the other two for their runs. Notes record that on the Devtool checklist row 4 passed live, row 5 is FIX-1502's to build in W5 under D10, row 6 is proved by FIX-1481's automated checks with its live read carried to the first real hire with a sealed document and FIX-1547 as the mitigation under D11, and rows 1 to 3 ride FIX-1320. The figure's aria-label carries every cell.](figures/ownership.svg)
 
-**Two of the three proof cells are green, and the third is held.** ER-DevForce passed on
+**Two of the three proof cells are green, and the third is held.** ER-DevTeam passed on
 [#2051](https://github.com/fixpoint-labs/flow-state-dev/pull/2051), with its BR-10 and BR-17 gate
 re-proved by FIX-1515 ([#2073](https://github.com/fixpoint-labs/flow-state-dev/pull/2073)) and
 re-run green on `95049473f` on 2026-09-24. ER-Collab passed on
@@ -259,7 +259,7 @@ multi-user or sign-off pain is real**.
 | **The org chart of people** as a product | It was FIX-1458's to shape, and FIX-1458 is canceled | Multi-user lands, or a customer asks who owes a sign-off |
 | **Originator ≠ reviewer**, **durable `reviewedBy:`**, **multi-principal walls** | All need two principals to mean anything | With multi-user |
 | **The kitchen-sink rebuild** | [D9](#d9) — not deferred by W5, **owned elsewhere**. [FIX-1455](https://linear.app/fixpoint-labs/issue/FIX-1455) runs it now | Never returns here. It is a sibling's work, not a parked one |
-| **CyberForce, as a parallel thin proof** | [D8](#d8) admits DevForce as the proof and stops there. The recalibration lists *whether CyberForce gets a parallel thin proof this cycle* as **still open and not blocking** | The owner or HoE says so; DevForce proving first makes it cheap |
+| **CyberForce, as a parallel thin proof** | [D8](#d8) admits DevTeam as the proof and stops there. The recalibration lists *whether CyberForce gets a parallel thin proof this cycle* as **still open and not blocking** | The owner or HoE says so; DevTeam proving first makes it cheap |
 
 ## Decided in review, recorded so no child reopens them
 
@@ -306,7 +306,7 @@ previous revision said to revisit *the moment the remaining two gaps are filed, 
 starts building*. They are filed. **The trigger is recorded here as fired and unactioned**, because
 building the POC is its own dispatch and not this amendment's, and because both of the questions it
 was reserved for got sharper rather than going away: whether the collab scenario is separable from
-the DevForce path at all — [ER-26](BUSINESS-RULES.md#er-26) now says every run is graded on the
+the DevTeam path at all — [ER-26](BUSINESS-RULES.md#er-26) now says every run is graded on the
 workforce FIX-1496 stands up, which is a dependency the earlier draft did not have — and whether
 ER-Devtool's six rows survive being split, now across **three** owners rather than two. A rough
 end-state is what falsifies either. **Nothing should start building until it is run or deliberately
@@ -328,13 +328,13 @@ same day. Recorded rather than deleted, because the instruction above was not fo
   restated as *polish and prove* on three surfaces.
 - **Owner recalibration (Sep 20, 18:05) — the identity changed, not just the set.** W5 became
   **release QA**. **ER-19 retired** and replaced by three named exit proofs, [D6](#d6) rewritten
-  around them. **[D8](#d8)**: proof-via-DevForce is in and the invent-kill against it is **dead** —
+  around them. **[D8](#d8)**: proof-via-DevTeam is in and the invent-kill against it is **dead** —
   a reversal, recorded as one. **[D9](#d9)**: kitchen-sink left the set, so **ER-15 was rewritten**,
   **ER-1, ER-2 and ER-3 were re-owned**, and **ER-24** (no re-nesting) and **ER-25** (no substrate
   under a polish label) were added. **ER-18 recorded as met** by FIX-1467's merge rather than left
   standing open. **[D4](#d4) corrected**: the previous version called the ship fence *lifted*; the
   recalibration restates it as standing, and FIX-1407 is In Review. **ER-9 widened** to name *collab
-  RC as the whole of W5*. **ER-11 re-narrowed** around the thinnest DevForce path. **The
+  RC as the whole of W5*. **ER-11 re-narrowed** around the thinnest DevTeam path. **The
   [ER-Devtool checklist was drafted](BUSINESS-RULES.md#devtool-checklist)** — six pass/fail rows
   against what the surfaces expose today, two of which **fail as written**. **FIX-1468 and FIX-1469**
   entered the set table, which had never carried them, both marked *not a proving leg*. All three
@@ -359,7 +359,7 @@ same day. Recorded rather than deleted, because the instruction above was not fo
 - **Three children filed, one correction, one new rule (Sep 22)** — **the first post-merge
   amendment**, on its own PR from `main`; [#1944](https://github.com/fixpoint-labs/flow-state-dev/pull/1944)
   stays the merged review record. **Both named gaps closed**:
-  [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496) took ER-DevForce and
+  [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496) took ER-DevTeam and
   [FIX-1497](https://linear.app/fixpoint-labs/issue/FIX-1497) took ER-Collab, so ER-1 and ER-3 have
   names instead of roles. **The Devtool split was corrected from three-and-three to
   two-and-one-and-three** — FIX-1481 deferred checklist row 5 on a claim that
@@ -377,7 +377,7 @@ same day. Recorded rather than deleted, because the instruction above was not fo
   the merged record of the first. **[D10](#d10)**: the owner answered Open 1 with reading (a), so
   row 5 is built in W5 and FIX-1502's Linear relation to FIX-1486 is now *related*, not *blocked by*.
   **[D11](#d11)**: row 6's live read is deferred to the first real hire with a sealed document, with
-  [FIX-1547](https://linear.app/fixpoint-labs/issue/FIX-1547) as the mitigation. **ER-DevForce
+  [FIX-1547](https://linear.app/fixpoint-labs/issue/FIX-1547) as the mitigation. **ER-DevTeam
   passed** ([#2051](https://github.com/fixpoint-labs/flow-state-dev/pull/2051)), **ER-Collab passed**
   ([#2065](https://github.com/fixpoint-labs/flow-state-dev/pull/2065)), **row 4 passed live**
   ([#2066](https://github.com/fixpoint-labs/flow-state-dev/pull/2066)), and
@@ -392,7 +392,7 @@ same day. Recorded rather than deleted, because the instruction above was not fo
 wait?* — was answered by the owner on 2026-09-24 and is recorded as [D10](#d10), with the evidence
 it rested on. Row 6's live read was decided the same day, as [D11](#d11).
 
-**Not open, deliberately.** Of the recalibration's *Still open* items, **which DevForce artifact
+**Not open, deliberately.** Of the recalibration's *Still open* items, **which DevTeam artifact
 counts is now cut** by [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496) — one automated
 leg, the credentialed pull-request leg documented as the human release run — approved at FIX-1496's
 own direction gate ([#2023](https://github.com/fixpoint-labs/flow-state-dev/pull/2023)) and run

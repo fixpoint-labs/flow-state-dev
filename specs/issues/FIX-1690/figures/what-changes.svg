@@ -99,6 +99,6 @@
 
   <g id="not-here">
     <text class="t-s" x="32" y="430">Not here: answering an ask (FIX-1671) · filing with a notify (FIX-1474) · live mid-step delivery (the first fork)</text>
-    <text class="t-s" x="32" y="448">App Lab writes no session item and names no kind.</text>
+    <text class="t-s" x="32" y="448">shift-manager writes no session item and names no kind.</text>
   </g>
 </svg>

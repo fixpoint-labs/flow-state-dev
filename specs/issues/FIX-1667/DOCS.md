@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
 Three destinations, and one line in `packages/workforce/README.md` → "Holding a board": the
-board-name rule's list gains *and not `lock`, in any case*. No new page. The epic's shared App Lab
+board-name rule's list gains *and not `lock`, in any case*. No new page. The epic's shared shift-manager
 narrative is FIX-1662's; nothing here touches it.
 
 ## UPDATE · `packages/harness-manager/README.md` · after "Quick start", new section
@@ -45,7 +45,7 @@ built. Two boards whose ids differ other than in letter case never end up in the
 and a board whose id worked before keeps its folders and branches. On a channel's board, a row's
 run belongs to the person who started it; another person's drain leaves it alone.
 
-## UPDATE · `goals/devforce-lab/lab/README.md`
+## UPDATE · `goals/devteam-lab/lab/README.md`
 
 **In "What an author writes"**, the channel line becomes:
 

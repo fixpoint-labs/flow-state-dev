@@ -1,4 +1,4 @@
-# App Lab: how each screen works
+# shift-manager: how each screen works
 
 Epic FIX-1649 · Workforce lab shell · 2026-09-30
 

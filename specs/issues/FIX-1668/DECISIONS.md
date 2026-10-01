@@ -12,7 +12,7 @@ flowchart TD
   I["FIX-1668"] --> D1["D1 · the run writes its link as it starts<br/>no link, no start"]
   D1 -.->|"rejected"| X1["the drain writes it after dispatch<br/>a second write racing a run already going"]
   I --> D2["D2 · public wherever the row is"]
-  D2 -.->|"rejected"| X2["a separate server read for App Lab<br/>a second read path beside the row"]
+  D2 -.->|"rejected"| X2["a separate server read for shift-manager<br/>a second read path beside the row"]
   I --> D3["D3 · kept past its attempt<br/>cleared by the next claim"]
   D3 -.->|"rejected"| X3["cleared when the attempt ends<br/>a finished task names no run"]
 ```
@@ -40,13 +40,13 @@ Handed-off attempts are coarse units, a coding run each, so none is known.
 
 | | |
 |---|---|
-| **Instead of** | Keeping it server-only, like `claimedBy`, and giving App Lab its own server read |
-| **Because** | App Lab reads a channel board the way every browser does, through the board's browser read; a UI already following the run's own session sees it on that session's change stream. A second read path beside the row is the "Lab-only mirror" the Architect's fence forbids. The ids grant nothing: opening the session still passes the server's owner check (BP-031), and the link carries no tenant and no claiming session. A channel board's browser list must stay a subset of its model list (a test holds that), so the model read gets it too |
-| **Locks in** | Anyone who can read a board, and any model that reads it with `readBoard`, sees the session and request id of each task's run. The two channel publication lists stop saying "no execution coordinates"; they say "one: the run link". Taking it back later breaks App Lab |
+| **Instead of** | Keeping it server-only, like `claimedBy`, and giving shift-manager its own server read |
+| **Because** | shift-manager reads a channel board the way every browser does, through the board's browser read; a UI already following the run's own session sees it on that session's change stream. A second read path beside the row is the "Lab-only mirror" the Architect's fence forbids. The ids grant nothing: opening the session still passes the server's owner check (BP-031), and the link carries no tenant and no claiming session. A channel board's browser list must stay a subset of its model list (a test holds that), so the model read gets it too |
+| **Locks in** | Anyone who can read a board, and any model that reads it with `readBoard`, sees the session and request id of each task's run. The two channel publication lists stop saying "no execution coordinates"; they say "one: the run link". Taking it back later breaks shift-manager |
 
-![D2: who can see which run is working a task? Everyone who can read the row, chosen, beside the server only. Decides it: how App Lab reads a board. Price: a model reading the board sees run ids](figures/d2-who-reads.svg)
+![D2: who can see which run is working a task? Everyone who can read the row, chosen, beside the server only. Decides it: how shift-manager reads a board. Price: a model reading the board sees run ids](figures/d2-who-reads.svg)
 
-It comes down to how App Lab reads a board: server-only means building a second read beside it.
+It comes down to how shift-manager reads a board: server-only means building a second read beside it.
 
 **What would change my mind:** a model or browser flow that can act on a bare session or request
 id without an owner check. None exists; the session read, the stream and abort all check.

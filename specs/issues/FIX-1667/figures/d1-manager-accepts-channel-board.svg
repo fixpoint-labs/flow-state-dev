@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1, how the rows get onto the channel's board. Chosen: the coding-run manager accepts a board a channel holds. Instead of: a copy of each row written onto the channel, or leaving the board in the kinds. It comes down to the first row: with the chosen option the row App Lab shows is the row the run settled; a copy can say running after the run failed; leaving it in the kinds shows nothing, since App Lab reads a workstream through its channel. The price is the second row: a package outside the lab changes, where the other two stay inside it. Third row: existing boards keep their checkouts under the chosen option, and are untouched by the others. Locks in: a patch release with unchanged checkouts, and channel boards as the answer for the next coding Lab. Flips if: the owner holds the lab-only fence as hard."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, how the rows get onto the channel's board. Chosen: the coding-run manager accepts a board a channel holds. Instead of: a copy of each row written onto the channel, or leaving the board in the kinds. It comes down to the first row: with the chosen option the row shift-manager shows is the row the run settled; a copy can say running after the run failed; leaving it in the kinds shows nothing, since shift-manager reads a workstream through its channel. The price is the second row: a package outside the lab changes, where the other two stay inside it. Third row: existing boards keep their checkouts under the chosen option, and are untouched by the others. Locks in: a patch release with unchanged checkouts, and channel boards as the answer for the next coding Lab. Flips if: the owner holds the lab-only fence as hard."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -65,7 +65,7 @@
     <text class="t-s" x="484" y="179">"running" after a failed run</text>
     <text class="mark minus" x="706" y="162">−</text>
     <text class="t-b" x="724" y="161">Nothing to show</text>
-    <text class="t-s" x="724" y="179">App Lab reads the channel</text>
+    <text class="t-s" x="724" y="179">shift-manager reads the channel</text>
   </g>
 
   <g id="row-price">

@@ -33,11 +33,11 @@ Publisher: FIX-1655, once its token mapping ships.
 > Change a token and every component follows. Nothing here needs a class override or an edit
 > to a component you copied in; if a component ignores a token, that's a bug in the component.
 
-## CREATE · `labs/app-lab/README.md` · opening
+## CREATE · `labs/shift-manager/README.md` · opening
 
 Publisher: FIX-1662. How to open a Lab, and the run command, are its own draft.
 
-> # App Lab
+> # shift-manager
 >
 > The app you use a Workforce Lab through. Point it at a Lab's Workforce tree (the folder of
 > teams, workers and channels the Lab declares) and an organization, and it gives you one
@@ -61,7 +61,7 @@ Publisher: FIX-1662. How to open a Lab, and the run command, are its own draft.
 
 ## UPDATE · `labs/README.md` · the directory table
 
-Publisher: FIX-1662. One row: `app-lab/`, *the app a Workforce Lab is used through*, linking
+Publisher: FIX-1662. One row: `shift-manager/`, *the app a Workforce Lab is used through*, linking
 its README.
 
 ## Ownership
@@ -70,10 +70,10 @@ its README.
 |---|---|---|
 | The token paragraph and example above | FIX-1655 | This document; the full token list in its `DOCS.md` |
 | The design-system package README and the registry components' colour notes in `packages/ui/README.md` | FIX-1655 | Its `DOCS.md` |
-| The App Lab README opening above, how to open a Lab, the `labs/README.md` row | FIX-1662 | This document and its `DOCS.md` |
+| The shift-manager README opening above, how to open a Lab, the `labs/README.md` row | FIX-1662 | This document and its `DOCS.md` |
 | The README's task sentences above, checked against what the task level ships | FIX-1664 | This document and its `DOCS.md` |
-| Nothing in `apps/docs` about App Lab itself | — | App Lab is a private lab, not a published product |
+| Nothing in `apps/docs` about shift-manager itself | — | shift-manager is a private lab, not a published product |
 
-Publish each specific with its implementation. The App Lab opening waits until every level
+Publish each specific with its implementation. The shift-manager opening waits until every level
 it names is reachable, so FIX-1662 publishes it without the task sentences and FIX-1664 adds
 them.

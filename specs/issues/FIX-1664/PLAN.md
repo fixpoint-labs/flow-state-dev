@@ -25,18 +25,18 @@ Nothing in Core or Engine changes (ER-7).
 
 | ID | Where · role | Change | Rules |
 |---|---|---|---|
-| S1 | `labs/app-lab` · the task level | Fill FIX-1662's task route: header, the four tabs (lazy), the states of BR-2 and BR-3 | BR-1 to BR-4 |
-| S2 | `labs/app-lab` · the run | Read the run's session id, request id and attempt off the row's [task-run link](#the-task-run-link); no listing, no key rebuilt. Then read the session the link names (`client.getSession(id)`, `GET /api/flows/sessions/:id`, owner-checked) and take its `flowId` as the run's flow: a seat can hand off to another flow than the board's, and only the session records its owner. The flow is deliberately not on the link (FIX-1668: Layer 2 names stay out of Core and Engine, and the claim gate can't see its flow id). Resolved once per open and held. No link per BR-3; owner-refused per BR-9. Hand the ids and the flow to S3, S4 and S7, which use that flow for `useSession`, the abort and the request reads, never the board's | D1 BR-3 BR-5 BR-9 |
-| S3 | `labs/app-lab` · Session | `useSession(runSession, { live: true })`, **mounted only while the Session tab is open**, over the registry item components FIX-1662 copied in; add any item component a harness run emits that `frame` didn't copy, by `fsdev ui add`, unedited. A shared session (BR-8) keeps only items stamped with this task's id, through the attribution helper the substrate and the UI already share, never a copy | D1 BR-5 to BR-8 BR-10 ER-6 |
-| S4 | `labs/app-lab` · Interrupt | The shipped abort route on the request S2 read; Esc binds to it; state drawn from the request record only | D2 BR-11 to BR-14 |
-| S5 | `labs/app-lab` · the disabled acts | Hand off, reassign, Open PR, the composer and *also post*: disabled, each with its owner line as a prop, from the [gap registry](BUSINESS-RULES.md#gap-registry) | D2 BR-15 BR-16 ER-5 |
-| S6 | `labs/app-lab` · Diff, Checks, Brief | Two named empty states; Brief from the row | BR-17 BR-24 |
-| S7 | `labs/app-lab` · the inspector | Fills the right panel's task slot: worker, team, started, the harness-tokens-cost gap, acceptance gap, plan and files from the harness's recorded collections on the run session under S2's request id (one-shot reads, loaded once per open, no stream), linked, trace link | BR-18 to BR-23 |
-| S8 | `labs/app-lab` · start script | Optional `--devtool <url>`, passed to the page for S7's link | BR-23 |
-| S9 | `goals/app-lab/it-shows-and-stops-a-task-run/` | The goal check, both controls, and its input tree ([at implement time](#at-implement-time)) | the goal |
+| S1 | `labs/shift-manager` · the task level | Fill FIX-1662's task route: header, the four tabs (lazy), the states of BR-2 and BR-3 | BR-1 to BR-4 |
+| S2 | `labs/shift-manager` · the run | Read the run's session id, request id and attempt off the row's [task-run link](#the-task-run-link); no listing, no key rebuilt. Then read the session the link names (`client.getSession(id)`, `GET /api/flows/sessions/:id`, owner-checked) and take its `flowId` as the run's flow: a seat can hand off to another flow than the board's, and only the session records its owner. The flow is deliberately not on the link (FIX-1668: Layer 2 names stay out of Core and Engine, and the claim gate can't see its flow id). Resolved once per open and held. No link per BR-3; owner-refused per BR-9. Hand the ids and the flow to S3, S4 and S7, which use that flow for `useSession`, the abort and the request reads, never the board's | D1 BR-3 BR-5 BR-9 |
+| S3 | `labs/shift-manager` · Session | `useSession(runSession, { live: true })`, **mounted only while the Session tab is open**, over the registry item components FIX-1662 copied in; add any item component a harness run emits that `frame` didn't copy, by `fsdev ui add`, unedited. A shared session (BR-8) keeps only items stamped with this task's id, through the attribution helper the substrate and the UI already share, never a copy | D1 BR-5 to BR-8 BR-10 ER-6 |
+| S4 | `labs/shift-manager` · Interrupt | The shipped abort route on the request S2 read; Esc binds to it; state drawn from the request record only | D2 BR-11 to BR-14 |
+| S5 | `labs/shift-manager` · the disabled acts | Hand off, reassign, Open PR, the composer and *also post*: disabled, each with its owner line as a prop, from the [gap registry](BUSINESS-RULES.md#gap-registry) | D2 BR-15 BR-16 ER-5 |
+| S6 | `labs/shift-manager` · Diff, Checks, Brief | Two named empty states; Brief from the row | BR-17 BR-24 |
+| S7 | `labs/shift-manager` · the inspector | Fills the right panel's task slot: worker, team, started, the harness-tokens-cost gap, acceptance gap, plan and files from the harness's recorded collections on the run session under S2's request id (one-shot reads, loaded once per open, no stream), linked, trace link | BR-18 to BR-23 |
+| S8 | `labs/shift-manager` · start script | Optional `--devtool <url>`, passed to the page for S7's link | BR-23 |
+| S9 | `goals/shift-manager/it-shows-and-stops-a-task-run/` | The goal check, both controls, and its input tree ([at implement time](#at-implement-time)) | the goal |
 | S10 | Docs | [DOCS.md](DOCS.md): the README's task sentences and task section | ER-14 |
 
-**Removed:** nothing. App Lab mirrors `apps/kitchen-sink/components/picked-session-panel.tsx`
+**Removed:** nothing. shift-manager mirrors `apps/kitchen-sink/components/picked-session-panel.tsx`
 for the live session's shape and imports nothing from `apps/`.
 
 ## Sequence
@@ -70,14 +70,14 @@ operation is a later, separate PR after it merges, not part of this DAG.
 | V3 | S4 | Abort is called with the in-progress request id; *interrupted* renders only after the record reads `aborted` (BR-11); 409 and refusal paths (BR-12, BR-13); no board write on any path (BR-14) |
 | V4 | S5, S6 | Every disabled control and empty tab carries its gap line from the registry: the owner named, or *not planned in the first cut* where the registry says so; a control with neither fails (BR-15 to BR-17) |
 | V5 | S7 | BR-18's gap line with its registry owner, whatever the run reported; BR-19 against a seeded recorded plan and file-op rows; BR-20 with none; BR-22 both directions; BR-23 with and without `--devtool` |
-| V6 | S1 to S8 | Static: no literal colour outside token definitions; no tree name in `labs/app-lab/src`; registry copies byte-equal their source; no write call except the abort |
+| V6 | S1 to S8 | Static: no literal colour outside token definitions; no tree name in `labs/shift-manager/src`; registry copies byte-equal their source; no write call except the abort |
 | VG | S9 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) PASSES, after `GOAL_CONTROL=worker-session`, `GOAL_CONTROL=optimistic-interrupt` and `GOAL_CONTROL=board-flow` each FAILED at their named signal |
 
 ## Pinned names
 
 | Where | Name | Why pinned |
 |---|---|---|
-| Goal check | `goals/app-lab/it-shows-and-stops-a-task-run/` | The closure runs it |
+| Goal check | `goals/shift-manager/it-shows-and-stops-a-task-run/` | The closure runs it |
 | Controls | `GOAL_CONTROL=worker-session`, `GOAL_CONTROL=optimistic-interrupt`, `GOAL_CONTROL=board-flow` | The goal names them; `board-flow` matches FIX-1668's control of the same name |
 | Start flag | `--devtool <url>` | The README and the closure type it |
 | Task route and panel slot | FIX-1662's, unchanged | Epic seam; this issue adds no route |
@@ -131,8 +131,8 @@ assignee freeze on a handed-off board (`define-task-collection.ts`); the abort r
 ## At implement time
 
 - **The input tree.** The goal needs a channel-attached board whose rows hand off to a coding run.
-  DevForce's board is declared in code today (FIX-1662's follow-up). If it is channel-attached by
-  then, use DevForce; otherwise S9 carries a small fixture tree built from DevForce's kinds, and
+  DevTeam's board is declared in code today (FIX-1662's follow-up). If it is channel-attached by
+  then, use DevTeam; otherwise S9 carries a small fixture tree built from DevTeam's kinds, and
   the stub gains a hold-until-aborted script. Either way the tree needs a seat whose dispatcher
   hands off to another flow than the board's, for the goal's third row and `board-flow`.
 - Confirm the session read still returns the owning `flowId` for a dispatched run's session
@@ -152,7 +152,7 @@ assignee freeze on a handed-off board (`define-task-collection.ts`); the abort r
 
 - **The turn operation**, if the open fork is answered *file it*: a child of FIX-1649, then a
   small PR wiring the composer.
-- **A devtool address for a session**, so the trace link lands on the run. Devtool, not App Lab.
+- **A devtool address for a session**, so the trace link lands on the run. Devtool, not shift-manager.
 - **Earlier attempts in other sessions** (BR-7): the link names the current attempt's run only.
   A per-attempt history on the row would let the Session reach them. Not asked for yet.
 - **Harness, tokens and cost for a client** (BR-18): a read of what the run reported belongs to

@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
 The issue fixes the fences: the goal lab's tree only, no model in the path that raises the ask,
-no approval model in the framework or App Lab, the three checks green. FIX-1662 fixes what Inbox
+no approval model in the framework or shift-manager, the three checks green. FIX-1662 fixes what Inbox
 reads: pending approvals and questions in the seat sessions the session listing returns to this
 person ([its BR-24 to BR-27](https://github.com/fixpoint-labs/flow-state-dev/pull/2424)), and
 what a workstream's Stream draws (its BR-18). These are the calls left open.
@@ -14,7 +14,7 @@ what a workstream's Stream draws (its BR-18). These are the calls left open.
 flowchart TD
   I["FIX-1666"] --> D1["D1 · the EM asks before it files · Approve files and the coder starts"]
   D1 -.->|"rejected · a parked row, not an Inbox ask"| X1a["the coder asks mid-run"]
-  D1 -.->|"rejected · approves nothing DevForce does"| X1b["a demo gate beside the work"]
+  D1 -.->|"rejected · approves nothing DevTeam does"| X1b["a demo gate beside the work"]
   I --> D2["D2 · raised on open when a host asks · off by default"]
   D2 -.->|"rejected · Inbox empty until someone posts"| X2a["a shaped post makes the EM ask"]
   D2 -.->|"rejected · changes the three checks"| X2b["raised on every open"]
@@ -51,12 +51,12 @@ anything.
 |---|---|
 | **Instead of** | (a) A post on the feature channel in a shape that makes the EM ask instead of filing. (b) Raising it on every open |
 | **Because** | The issue asks that *opening* the tree shows the ask. (a) needs a person to post first, so Inbox is empty on open, and it changes the channel door the third check drives. (b) adds a pending request and, after any answer, a row to every check that opens the lab, so all three change shape. The lab already carries this pattern: its channel door is an option on open, absent by default, because "an entry that is only there to do nothing is worse than none" |
-| **Locks in** | The raise is one step of the lab's, called by whichever host turns the ask on: it runs once, as the lab's person, in the EM seat's session, over a flow state with durable execution on. The lab's open takes one option, absent by default, that turns durable on and calls it. App Lab's DevForce config (FIX-1662's S12) builds its own flow state rather than opening through the lab's host, so it turns durable on and calls the same step after it hires; whichever of the two lands second adds those two lines |
+| **Locks in** | The raise is one step of the lab's, called by whichever host turns the ask on: it runs once, as the lab's person, in the EM seat's session, over a flow state with durable execution on. The lab's open takes one option, absent by default, that turns durable on and calls it. shift-manager's DevTeam config (FIX-1662's S12) builds its own flow state rather than opening through the lab's host, so it turns durable on and calls the same step after it hires; whichever of the two lands second adds those two lines |
 
-**What would change my mind:** App Lab gaining a way to raise a Lab's asks itself (FIX-1652's
+**What would change my mind:** shift-manager gaining a way to raise a Lab's asks itself (FIX-1652's
 call). Then the config's call moves there; the rule that it is off by default stands.
 
-**What being wrong costs:** a missing line in App Lab's config, found by the closure's a1 as an
+**What being wrong costs:** a missing line in shift-manager's config, found by the closure's a1 as an
 empty Inbox.
 
 ![D2: raise on open when a host asks, chosen, beside a shaped post and raising on every open; decided by whether opening alone shows the ask and whether the three checks stay as they are](figures/d2-when-it-is-raised.svg)
@@ -65,11 +65,11 @@ It comes down to the first row: only raising on open makes the ask appear withou
 
 ## Decided, not asked
 
-- **Its own goal check, a fourth under `goals/devforce-lab/`** (engineering call). Widening one
+- **Its own goal check, a fourth under `goals/devteam-lab/`** (engineering call). Widening one
   of the three would change what it proves, the reason the channel door got its own. The
   directory is outside `lab/` but inside the goal lab, which the issue's fence covers.
 - **Answered only through the engine's resume route**, over the lab's door with its bearer. A
-  lab helper that resolved the ask would prove a path App Lab never takes.
+  lab helper that resolved the ask would prove a path shift-manager never takes.
 - **Durable execution is on only when the ask is.** The three checks run with it off, as today.
 - **Raised once per feature, and a Deny is final for that store.** A second open finds any
   asking request for the feature in the EM's session, pending, approved or denied, or the row
@@ -77,10 +77,10 @@ It comes down to the first row: only raising on open makes the ask appear withou
   keeps, so a Deny needs no record of its own. Retrying on reopen was rejected: it would put an
   ask the person already declined back in their Inbox on every restart, and "asked once" is the
   simpler promise to state.
-- **The ask stays in the EM seat's own session; App Lab's Stream draws it from there.** Inbox
+- **The ask stays in the EM seat's own session; shift-manager's Stream draws it from there.** Inbox
   reads seat sessions (FIX-1662 BR-24) and a workstream's Stream reads the channel's session
   (BR-18), and no shipped mechanism puts one session's suspension in another's stream. Of the two
-  sessions, the ask belongs in the seat's: FIX-1663's a1 is "a DevForce seat raises an ask", and
+  sessions, the ask belongs in the seat's: FIX-1663's a1 is "a DevTeam seat raises an ask", and
   the resume, the kind and the one-session rule (BR-26) all follow the session it is in. So
   FIX-1662's Stream draws, beside the transcript, the pending asks in the sessions of the
   channel's member seats, which its shared read already loads for Inbox, with the same card and

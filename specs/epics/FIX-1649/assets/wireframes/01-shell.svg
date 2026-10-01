@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 620" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="Wireframe 1, the App Lab shell at desktop width. A top bar with the App Lab mark, the Lab and org it has open, and the person. Below it four columns: a narrow nav rail with the five destinations, projects, workstreams, chat, attention and resources, with chat selected; a sidebar with three sections, NEEDS YOU with a count, CHANNELS, and ON SHIFT; the centre, headed by the open channel and four surface tabs, stream, board, brief and results, with the stream showing posts by seats and a composer at the foot; and a right run inspector showing the seat a run belongs to, its state, its current step and its tool calls. Annotations in blue mark what is fixed and what Claude Design refines; ochre marks where the yellow accent applies.">
+     aria-label="Wireframe 1, the shift-manager shell at desktop width. A top bar with the shift-manager mark, the Lab and org it has open, and the person. Below it four columns: a narrow nav rail with the five destinations, projects, workstreams, chat, attention and resources, with chat selected; a sidebar with three sections, NEEDS YOU with a count, CHANNELS, and ON SHIFT; the centre, headed by the open channel and four surface tabs, stream, board, brief and results, with the stream showing posts by seats and a composer at the foot; and a right run inspector showing the seat a run belongs to, its state, its current step and its tool calls. Annotations in blue mark what is fixed and what Claude Design refines; ochre marks where the yellow accent applies.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --prose:#A8761C; --prose-soft:#F3E8D2; }
@@ -32,7 +32,7 @@
       <path d="M16 60 L924 60" class="ln2"/>
       <text class="t-h" x="28" y="49">APP LAB</text>
       <rect class="sub" x="120" y="36" width="210" height="18"/>
-      <text class="t-s" x="128" y="48">Lab: DevForce · org: acme</text>
+      <text class="t-s" x="128" y="48">Lab: DevTeam · org: acme</text>
       <rect class="sub" x="846" y="36" width="66" height="18"/>
       <text class="t-s" x="856" y="48">person ▾</text>
     </g>

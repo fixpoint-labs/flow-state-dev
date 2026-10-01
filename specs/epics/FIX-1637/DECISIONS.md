@@ -80,7 +80,7 @@ all but the proof. FIX-1641 and FIX-1643 own no rule and have no column: they co
 - **`epic-wake` moves out of published docs.** One line in `docs/contributing/orchestration.md`
   says it is contributor tooling and not the product's *wake*. The outsider rule
   ([`user-docs.md`](../../../docs/contributing/user-docs.md)) keeps internal tooling names out
-  of `apps/docs`, which mentions none of `epic-wake`, Conductor or DevForce today. The owner
+  of `apps/docs`, which mentions none of `epic-wake`, Conductor or DevTeam today. The owner
   confirmed it with D1: one line in `docs/contributing/`, written by FIX-1639.
 - **Three terms, one definition each.** *Wake*: something outside the flow (a webhook delivery,
   a schedule tick) starts a run through the host. *Dispatch*: a flow sends one unit of work to

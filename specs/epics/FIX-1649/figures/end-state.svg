@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 372" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="What's in the box. In the box: App Lab under labs, with one sidebar holding the org switcher, Jump to, Inbox and Tasks, the projects tree with workstreams, and teams with their workers; three centre levels, project, workstream and task, each with its tabs; a right panel that follows the level; named empty states where meaning has not shipped, and a Lab's tree opened under an org; built by FIX-1662, with the task level by FIX-1664. A private design-system package holding the App Lab theme in light and dark, which overrides the token set's neutral defaults and maps onto the theme contracts FSD components already have; and skin fixes made at the source of reused registry components, with App Lab's copies re-synced, never edited; both FIX-1655. Reused and skinned, not restyled: the react navigator, roster, board panels and seat detail, the ui conversation, tool call, approval and prompt components, and the devtool's full trace, one link away. Reached here, meaning from siblings: projects and workstreams from FIX-1650, their tasks from FIX-1651, attention from FIX-1652. Not built, below a fence: new L1 nouns, a Heartbeats, Paperclip or Grok Bot clone, a factory or Conductor shell, kitchen-sink as the shell, the Thought Fabric attention domain, a design system per Lab, restyled copies of FSD UI.">
+     aria-label="What's in the box. In the box: shift-manager under labs, with one sidebar holding the org switcher, Jump to, Inbox and Tasks, the projects tree with workstreams, and teams with their workers; three centre levels, project, workstream and task, each with its tabs; a right panel that follows the level; named empty states where meaning has not shipped, and a Lab's tree opened under an org; built by FIX-1662, with the task level by FIX-1664. A private design-system package holding the shift-manager theme in light and dark, which overrides the token set's neutral defaults and maps onto the theme contracts FSD components already have; and skin fixes made at the source of reused registry components, with shift-manager's copies re-synced, never edited; both FIX-1655. Reused and skinned, not restyled: the react navigator, roster, board panels and seat detail, the ui conversation, tool call, approval and prompt components, and the devtool's full trace, one link away. Reached here, meaning from siblings: projects and workstreams from FIX-1650, their tasks from FIX-1651, attention from FIX-1652. Not built, below a fence: new L1 nouns, a Heartbeats, Paperclip or Grok Bot clone, a factory or Conductor shell, kitchen-sink as the shell, the Thought Fabric attention domain, a design system per Lab, restyled copies of FSD UI.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -27,7 +27,7 @@
     <rect class="box" x="16" y="24" width="560" height="212" rx="5"/>
     <text class="t-lbl" x="32" y="44">IN THE BOX &#8212; ONE APP, ONE SKIN</text>
     <rect class="held" x="32" y="56" width="256" height="166" rx="4"/>
-    <text class="t-b" x="44" y="80">App Lab &#183; labs/app-lab</text>
+    <text class="t-b" x="44" y="80">shift-manager &#183; labs/shift-manager</text>
     <text class="t-s" x="44" y="100">one sidebar &#183; three levels &#183; right panel</text>
     <text class="t-s" x="44" y="118">Inbox, Tasks &#183; projects &#183; teams, workers</text>
     <text class="t-s" x="44" y="136">project &#183; workstream &#183; task, tabbed</text>
@@ -37,7 +37,7 @@
     <text class="t-s" x="44" y="208">FIX-1662 &#183; task level FIX-1664</text>
     <rect class="held" x="300" y="56" width="260" height="96" rx="4"/>
     <text class="t-b" x="312" y="80">design system &#183; private package</text>
-    <text class="t-s" x="312" y="98">App Lab theme, light and dark</text>
+    <text class="t-s" x="312" y="98">shift-manager theme, light and dark</text>
     <text class="t-s" x="312" y="113">overrides the neutral token defaults</text>
     <text class="t-s" x="312" y="128">mapped onto the existing contracts</text>
     <text class="t-s" x="312" y="146">FIX-1655</text>
@@ -69,6 +69,6 @@
     <text class="t-non" x="32" y="276">NOT BUILT &#8212; THE PRD'S INVENT-KILLS</text>
     <text class="t-s" x="32" y="298">no L1 Agent, Team, Channel, MessageBoard or required Project &#183; no Workforce import in the design system</text>
     <text class="t-s" x="32" y="316">no Heartbeats, Paperclip or Grok Bot clone &#183; no factory or Conductor shell &#183; kitchen-sink is not the shell</text>
-    <text class="t-s" x="32" y="334">no Thought Fabric attention &#183; no design system per Lab &#183; no restyled copy of FSD UI &#183; no App Lab value in FSD</text>
+    <text class="t-s" x="32" y="334">no Thought Fabric attention &#183; no design system per Lab &#183; no restyled copy of FSD UI &#183; no shift-manager value in FSD</text>
   </g>
 </svg>

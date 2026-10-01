@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2: how App Lab skins the FSD components it reuses. Chosen: through the theme contracts they already have. Instead of: restyling copies inside App Lab, or a theme API in the react package. It comes down to the first row, where the paint lives: in one theme outside FSD, so the layer rule holds, where restyled copies drift from every FSD fix and a theme API puts a Lab surface into L1. Second row: a second Lab swaps a theme, where restyling means restyling again. The price, third row: the skin reaches only what the contracts expose, and some registry components need fixes at their source first. Locks in skin gaps fixed at the source by FIX-1655, with App Lab's copies re-synced and never restyled. Flips if the refined design needs a look a contract cannot reach without changing a component's public props."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2: how shift-manager skins the FSD components it reuses. Chosen: through the theme contracts they already have. Instead of: restyling copies inside shift-manager, or a theme API in the react package. It comes down to the first row, where the paint lives: in one theme outside FSD, so the layer rule holds, where restyled copies drift from every FSD fix and a theme API puts a Lab surface into L1. Second row: a second Lab swaps a theme, where restyling means restyling again. The price, third row: the skin reaches only what the contracts expose, and some registry components need fixes at their source first. Locks in skin gaps fixed at the source by FIX-1655, with shift-manager's copies re-synced and never restyled. Flips if the refined design needs a look a contract cannot reach without changing a component's public props."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -37,7 +37,7 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D2 &#183; THE CALL</text>
-    <text class="t-q" x="32" y="52">How does App Lab skin the FSD components it reuses?</text>
+    <text class="t-q" x="32" y="52">How does shift-manager skin the FSD components it reuses?</text>
   </g>
 
   <g id="options">
@@ -77,7 +77,7 @@
     <text class="t-s" x="248" y="244">no code</text>
     <text class="mark minus" x="468" y="227">&#8722;</text>
     <text class="t-b" x="488" y="226">Restyles again</text>
-    <text class="t-s" x="488" y="244">or shares App Lab's copies</text>
+    <text class="t-s" x="488" y="244">or shares shift-manager's copies</text>
     <text class="mark plus" x="708" y="227">+</text>
     <text class="t-b" x="728" y="226">Swaps a theme</text>
     <text class="t-s" x="728" y="244">through the new API</text>
@@ -92,7 +92,7 @@
     <text class="t-s" x="248" y="302">some need source fixes</text>
     <text class="mark plus" x="468" y="285">+</text>
     <text class="t-b" x="488" y="284">Anything</text>
-    <text class="t-s" x="488" y="302">the paint is App Lab's</text>
+    <text class="t-s" x="488" y="302">the paint is shift-manager's</text>
     <text class="mark plus" x="708" y="285">+</text>
     <text class="t-b" x="728" y="284">What the API grows</text>
     <text class="t-s" x="728" y="302">a new public surface</text>

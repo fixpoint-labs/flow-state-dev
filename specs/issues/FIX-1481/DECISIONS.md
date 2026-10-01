@@ -111,11 +111,11 @@ have nothing to appear on when a person looks at the live hire.
 
 This read like a fork — *does this issue add the missing document?* — and the epic has already
 answered it. [ER-3](../../epics/FIX-1457/BUSINESS-RULES.md) was rewritten so the proof runs against
-whatever live hire the DevForce path stands up, and no longer requires the reference app;
+whatever live hire the DevTeam path stands up, and no longer requires the reference app;
 [ER-24](../../epics/FIX-1457/BUSINESS-RULES.md#er-24) forbids reaching into the reference app for
 it. So the document comes from the hired tree the proof runs against, and this issue adds none.
 
-What is left is a **dependency on the ER-DevForce producer**: the tree it hires from needs one
+What is left is a **dependency on the ER-DevTeam producer**: the tree it hires from needs one
 sealed document, or row 6 cannot be exercised live however correct the code is. Raised on the epic
 per [ER-17](../../epics/FIX-1457/BUSINESS-RULES.md#er-17) rather than answered locally, and carried
 in [PLAN.md → At implement time](PLAN.md#at-implement-time) so it is checked before the goal runs.

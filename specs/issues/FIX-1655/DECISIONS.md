@@ -26,7 +26,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 | | |
 |---|---|
-| **Instead of** | App Lab remapping Tailwind's palette colours (`--color-amber-500` and friends) in its own stylesheet, leaving the registry as it is |
+| **Instead of** | shift-manager remapping Tailwind's palette colours (`--color-amber-500` and friends) in its own stylesheet, leaving the registry as it is |
 | **Because** | A palette remap recolours by hue, not meaning: the stuck-request banner, a blocked task and a tool call awaiting approval are all amber or yellow today, so a remap paints them the same, and paints any amber the app uses elsewhere too. The epic says a component that can't take the skin is fixed at its source (ER-6), and FSD's registry already reads meaning-named tokens (`destructive`, `muted-foreground`); status is the one family it never named (tenet 2: sharpen the primitive, don't route around it) |
 | **Locks in** | Four new public token names in the registry: `success`, `warning`, `info`, `attention`, each with a `-foreground`. Every registry user's stylesheet must define them; the token item arrives with `fsdev ui add`, and an app that copied components before re-adds it once. Renaming one later breaks every copy that uses it |
 
@@ -34,7 +34,7 @@ Solid edges are what you're signing. Dashed edges lost, and the label says why.
 
 It comes down to what a colour means: a remap follows hue, so every amber becomes one thing.
 
-**What would change my mind:** no registry consumer but App Lab ever wanting to skin these
+**What would change my mind:** no registry consumer but shift-manager ever wanting to skin these
 parts. Then a remap in one app costs less than four public names.
 
 <a name="d2"></a>
@@ -42,19 +42,19 @@ parts. Then a remap in one app costs less than four public names.
 
 | | |
 |---|---|
-| **Instead of** | Four tokens by hue family (success, warning, info, destructive), with App Lab's highlighter on `warning` |
-| **Because** | App Lab's one product rule for colour, from the design kit: yellow means a person must act, and is removed when they have. Today the registry uses one amber or yellow family for both *a person must act* (a tool call awaiting approval, a task parked for review) and *something is off* (a blocked task, a stuck request, an audit warning). With one token, App Lab's yellow lands on the second group. "Waiting on a person" is FSD's own idea, not Workforce's: it is a suspension, and a parked row is the board's *waiting on a human* state (`docs/architecture/dispatched-work.md`) |
+| **Instead of** | Four tokens by hue family (success, warning, info, destructive), with shift-manager's highlighter on `warning` |
+| **Because** | shift-manager's one product rule for colour, from the design kit: yellow means a person must act, and is removed when they have. Today the registry uses one amber or yellow family for both *a person must act* (a tool call awaiting approval, a task parked for review) and *something is off* (a blocked task, a stuck request, an audit warning). With one token, shift-manager's yellow lands on the second group. "Waiting on a person" is FSD's own idea, not Workforce's: it is a suspension, and a parked row is the board's *waiting on a human* state (`docs/architecture/dispatched-work.md`) |
 | **Locks in** | A fifth status token, and a rule every registry component now obeys: a waiting-on-a-person state uses `attention`, anything else amber uses `warning`. Its neutral default is yellow, so with no theme the two stay close to today |
 
-![D2: an attention token beside warning, chosen, beside warning covering both; decided by App Lab's yellow rule](figures/d2-attention.svg)
+![D2: an attention token beside warning, chosen, beside warning covering both; decided by shift-manager's yellow rule](figures/d2-attention.svg)
 
-It comes down to App Lab's yellow rule: with one token, a blocked task looks like an ask.
+It comes down to shift-manager's yellow rule: with one token, a blocked task looks like an ask.
 
 **What would change my mind:** Claude Design's final hand-back dropping the rule that yellow
 only means *you must act*. Then `attention` folds into `warning` before the final PR.
 
 <a name="d3"></a>
-## D3 · App Lab's theme ships light and dark, not the kit's third "draft" stock
+## D3 · shift-manager's theme ships light and dark, not the kit's third "draft" stock
 
 | | |
 |---|---|
@@ -71,21 +71,21 @@ It comes down to what the epic fixed: draft is a variant no screen draws and no 
 ## Decided, not asked
 
 - **The package is `labs/design-system/`, `@flow-state-dev/design-system`, private.** Outside
-  `packages/`, so the static check (ER-3) means something; beside App Lab, so it lands without
+  `packages/`, so the static check (ER-3) means something; beside shift-manager, so it lands without
   waiting for FIX-1662.
 - **Neutral defaults live in one registry item, `tokens`**, a registry dependency of every
   item that ships a file reading a status token: "defaults beside the components" (ER-3) for a
   copy-in registry. Seven of the 12 files are in no item today, so each is first made
   installable: a file another registry file imports ships in that item, a file nothing imports
   becomes its own item ([PLAN.md](PLAN.md#how-each-of-the-12-is-installed-s2-before-any-recolour)).
-- **The App Lab theme writes the semantic tokens once and maps them onto `--fsd-nav-*` and
+- **The shift-manager theme writes the semantic tokens once and maps them onto `--fsd-nav-*` and
   `--fsd-panel-*`**, as kitchen-sink already does for the navigator (review note on the issue).
   Kitchen-sink keeps its own mapping.
 - **Non-status accents fall to existing tokens.** The file tree's blue folder and every blue
   focus outline become `muted-foreground` and `ring`. With no theme this is a visible change,
   accepted: kitchen-sink's `ring` is near-black in light mode, so outlines go from blue to dark.
 - **The drift check stays in kitchen-sink, with its comparison extracted.** A second consumer
-  calls the function over its own folder; FIX-1662 does for App Lab. A shared consumer list
+  calls the function over its own folder; FIX-1662 does for shift-manager. A shared consumer list
   would move an app's test into a package for a consumer that doesn't exist yet, and break
   `main` if merge order flipped.
 - **The static check reads its values from the package**, so a new value is covered unedited.
@@ -98,7 +98,7 @@ It comes down to what the epic fixed: draft is a variant no screen draws and no 
 
 | Alternative | Why not |
 |---|---|
-| Keep the tokens inside `labs/app-lab` until a second app uses them (review note on the issue) | Ties this issue's merge to FIX-1662's and contradicts the issue's *"ship a design-system package"*; the package costs one `package.json` |
+| Keep the tokens inside `labs/shift-manager` until a second app uses them (review note on the issue) | Ties this issue's merge to FIX-1662's and contradicts the issue's *"ship a design-system package"*; the package costs one `package.json` |
 | Put the package under `packages/` | Makes the static check over `packages/` meaningless, and reads as FSD's own look |
 | A theme provider or theme prop in `@flow-state-dev/react` | Rejected by the epic's D2: a Lab-shaped surface in L1. The chrome needs nothing |
 | Generate the `--fsd-*` mapping with a build step | A dozen lines of CSS written once; a generator is more to maintain than it saves |
@@ -116,7 +116,7 @@ It comes down to what the epic fixed: draft is a variant no screen draws and no 
 ## How it got here
 
 - **Draft** — framed as the status colours a theme can't reach; named status tokens with an
-  `attention` token apart from `warning`, defaults in one registry item, App Lab's two variants
+  `attention` token apart from `warning`, defaults in one registry item, shift-manager's two variants
   in a private package outside `packages/`; two PRs split at the final hand-back.
 - **Review round 1** — no D-card moved. The plan now makes seven uninstallable files installable
   before adding `tokens`, because only five of the 12 were registry items; and the drift check

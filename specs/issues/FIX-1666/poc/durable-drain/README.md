@@ -4,7 +4,7 @@ Throwaway design evidence for [FIX-1666](../../SPEC.md). Not production code, no
 package, in no default build, test, lint or knip discovery. Nothing outside this folder imports it.
 
 The production shape now lives in the EM kind's `askToFile` action, in
-[`goals/devforce-lab/lab/workforce/flows/workers/em.mts`](../../../../../goals/devforce-lab/lab/workforce/flows/workers/em.mts).
+[`goals/devteam-lab/lab/workforce/flows/workers/em.mts`](../../../../../goals/devteam-lab/lab/workforce/flows/workers/em.mts).
 
 ## The question
 

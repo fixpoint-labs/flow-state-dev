@@ -30,7 +30,7 @@ The ledger id is never written anywhere. It is minted from where the channel fol
 
 (g) **The task status set has exactly the members it had** (BR-13), asserted on the enum against a written-out list rather than against a reading of itself.
 
-(h) **This issue's diff stays inside `goals/manager-queue-lab/`** and touches nothing under `goals/devforce-lab/` (BR-14, BR-15) — run against the merge base, not read off a list somebody maintained.
+(h) **This issue's diff stays inside `goals/manager-queue-lab/`** and touches nothing under `goals/devteam-lab/` (BR-14, BR-15) — run against the merge base, not read off a list somebody maintained.
 
 (i) **The drain-width switch runs WORK at either value** (BR-17), from one documented knob, with no edit to the tree and none to the checks. Each width files two rows for one desk, drains, and requires both to run and settle. Booting a lab at a width and reading the number back is not evidence that the lab runs at it — concurrency wiring ignored outright would leave that green — so the leg files and drains instead. The epic ruled width **1**; the knob stays because the ruling is reversible and because it is how the other case stays reachable.
 

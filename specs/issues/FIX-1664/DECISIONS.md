@@ -60,7 +60,7 @@ It comes down to steering: without the operation, the task screen watches and st
 | | |
 |---|---|
 | **Instead of** | The assigned worker's own conversation session · rebuilding the dispatch key and matching it against the session listing's `topic` · a new "task transcript" read in the engine |
-| **Because** | Only the run itself knows, for certain, which session it is in. A handed-off attempt enters its run session through the board's claim gate, whatever the seat's session policy and whichever conversation drained the board, so the gate is the one place that can write down *this task's attempt N is running in session S, request R*. Rebuilding the key from outside can't do that: the listing's `topic` is display-only, the run's session id also folds in the parent session and its lineage (so a re-drain from another conversation makes a second run with the same topic), and a per-worker or custom policy never produces a per-task key at all. So the association is **a small new field on the task row, stamped by the gate** in `@flow-state-dev/orchestration` (Layer 2, the substrate that already owns the row and the gate), filed as its own child of FIX-1649 under the epic's split trigger: [the task-run link](PLAN.md#the-task-run-link). The row already reaches App Lab through FIX-1662's board read, so the link arrives with it; the live stream FIX-1609 shipped (`useSession` with `live`) follows the session with no reload. The worker's own conversation is where it talks, not where this task ran. A transcript read would be a second API over the item log, which the Architect named an invent-kill |
+| **Because** | Only the run itself knows, for certain, which session it is in. A handed-off attempt enters its run session through the board's claim gate, whatever the seat's session policy and whichever conversation drained the board, so the gate is the one place that can write down *this task's attempt N is running in session S, request R*. Rebuilding the key from outside can't do that: the listing's `topic` is display-only, the run's session id also folds in the parent session and its lineage (so a re-drain from another conversation makes a second run with the same topic), and a per-worker or custom policy never produces a per-task key at all. So the association is **a small new field on the task row, stamped by the gate** in `@flow-state-dev/orchestration` (Layer 2, the substrate that already owns the row and the gate), filed as its own child of FIX-1649 under the epic's split trigger: [the task-run link](PLAN.md#the-task-run-link). The row already reaches shift-manager through FIX-1662's board read, so the link arrives with it; the live stream FIX-1609 shipped (`useSession` with `live`) follows the session with no reload. The worker's own conversation is where it talks, not where this task ran. A transcript read would be a second API over the item log, which the Architect named an invent-kill |
 | **Locks in** | A task's screen is the run its row names, and Interrupt aborts the request the row names. A session shared across tasks (a per-worker or custom policy) shows only the items stamped with this task's id, which every item a task's worker emits carries from the moment the gate marks the scope; the screen says the session is shared. **FIX-1664's build waits on the task-run link**; nothing in Core or Engine changes |
 
 ![D1: what does a task's Session tab show? The run the task's row names, chosen, beside the worker's conversation. Decides it: what the person is told the task did. Price: one small field on the row, in the orchestration package, before the screen can be built](figures/d1-run-session.svg)
@@ -79,7 +79,7 @@ aborts another task's run, as this one's.
 
 | | |
 |---|---|
-| **Instead of** | Calling the board's reassign action for Hand off and reassign · building a hand-off or a PR step inside App Lab |
+| **Instead of** | Calling the board's reassign action for Hand off and reassign · building a hand-off or a PR step inside shift-manager |
 | **Because** | Interrupt has a shipped operation: the abort route on the run's request, which records the intent and stops the run wherever it runs. The rest don't. A board that hands rows off freezes each row's assignee, because the child's address is derived from it, so the reassign action refuses every task this screen exists for. Opening a PR has no operation at all. A shell hand-off would be the HandOff noun the Architect's list forbids (ER-8, ER-15) |
 | **Locks in** | Day one: a person can watch and stop a run, and nothing else changes a task from this screen. Each disabled control names FIX-1651 and fills when it ships a hand-off or a PR step; the surface and its address stay |
 
@@ -104,12 +104,12 @@ the button calls it, with no change to the screen.
   rather than drawing a dash that looks like *not reported yet* ([the gap registry](BUSINESS-RULES.md#gap-registry)).
   **Branch** has no client read and is omitted.
 - **Linked** is the row's dependencies and its dependents; *review by* names FIX-1651.
-- **The trace link opens the devtool App Lab was started with** (`--devtool <url>`), with the
+- **The trace link opens the devtool shift-manager was started with** (`--devtool <url>`), with the
   run's session id beside it: the devtool can't open a session from its address yet.
 - **For FIX-1662's `@worker`:** a turn into a worker's own session, not a task run, is the worker
   kind's public message action where the kind declares one (the default agent kind's `run`). A
   coding worker declares none; that is the open fork.
-- **After Interrupt, the row's next state is the board's.** App Lab never cancels or settles a row.
+- **After Interrupt, the row's next state is the board's.** shift-manager never cancels or settles a row.
 
 ## Considered and dropped
 

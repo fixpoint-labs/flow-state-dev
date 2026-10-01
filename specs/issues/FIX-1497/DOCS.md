@@ -30,7 +30,7 @@ Named here so a reviewer does not read their absence above as an omission:
 | Artifact | What it carries |
 |---|---|
 | `goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/goal.md` | The contract and the verdict log — outcome, held-out input, the signal, the anti-game paragraph, every control with the leg it must fail, and one dated row per run. This is the proof's own record, and the epic's [ER-Collab](../../epics/FIX-1457/BUSINESS-RULES.md#er-collab) cell will cite it |
-| `goals/multi-seat-collab/lab/README.md` | What the lab owns rather than the framework, and what it works around — in the shape `goals/devforce-lab/lab/README.md` and `goals/manager-queue-lab/lab/README.md` already use |
+| `goals/multi-seat-collab/lab/README.md` | What the lab owns rather than the framework, and what it works around — in the shape `goals/devteam-lab/lab/README.md` and `goals/manager-queue-lab/lab/README.md` already use |
 
 Both are internal engineering artifacts under a private package. They follow the `goals/` corpus
 conventions, not the published-docs voice.

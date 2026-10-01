@@ -20,7 +20,7 @@ README says that rather than the draft's flatter claim.
 
 Nothing user-facing changes. This issue adds no public API, no configuration, no observable
 framework behaviour and no new concept a reader would search for: every changed path is inside
-`goals/devforce-lab/`, which is retained evidence rather than a shipped surface, and no package
+`goals/devteam-lab/`, which is retained evidence rather than a shipped surface, and no package
 under `packages/` is touched (enforced as [BR-16](BUSINESS-RULES.md), checked by `V9`).
 
 Checked rather than assumed, against the surfaces the docs-scoping heuristics name:
@@ -38,7 +38,7 @@ Checked rather than assumed, against the surfaces the docs-scoping heuristics na
 
 Two internal documents, both of which ship in the same PR as the code they describe.
 
-### UPDATE · `goals/devforce-lab/lab/README.md` · *What this directory owns, and why each piece is here*
+### UPDATE · `goals/devteam-lab/lab/README.md` · *What this directory owns, and why each piece is here*
 
 Add two rows to the existing table and one line of framing above it. Draft:
 
@@ -52,7 +52,7 @@ Add two rows to the existing table and one line of framing above it. Draft:
 | the channel door in `host.mts` | Which channel this lab opens, and when, is the app's. `openChannels` takes no `orgId` and needs no wrapper — the server-created session carries the organization from the verified principal ([FIX-1442](https://linear.app/fixpoint-labs/issue/FIX-1442)) |
 | the bare clone in `scratch-repo.mts` | Where an artifact has to survive to is the lab's question, not the framework's. A temp-directory repository plus a bare clone the run pushes to keeps the check re-runnable with no credential while still giving the artifact an address that outlives the process |
 
-### UPDATE · `goals/devforce-lab/lab/README.md` · *What it works around*
+### UPDATE · `goals/devteam-lab/lab/README.md` · *What it works around*
 
 Append one paragraph. Draft:
 
@@ -63,7 +63,7 @@ Append one paragraph. Draft:
 > ran the weaker leg and reported the stronger one would be worse than no proof, so the leg is
 > named in the verdict rather than inferred from whether `gh` happened to be installed.
 
-### CREATE · `goals/devforce-lab/it-ships-an-artifact-a-person-can-open/goal.md`
+### CREATE · `goals/devteam-lab/it-ships-an-artifact-a-person-can-open/goal.md`
 
 The new check's own document, in the shape its two siblings already use — outcome, input, signal,
 anti-game, controls table, model, run command, what it establishes and what it does not, verdict

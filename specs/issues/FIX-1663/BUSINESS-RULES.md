@@ -19,7 +19,7 @@ or report line that shows the rule held.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| QR-5 | A leg runs | Against a production build of App Lab from that commit, built by the run, in real Chromium | The build step |
+| QR-5 | A leg runs | Against a production build of shift-manager from that commit, built by the run, in real Chromium | The build step |
 | QR-6 | Leg a runs | Under a real org with a key and a real model set; a1 to a3 raise their ask and board row through D1's children's deterministic paths, and only a4's answer rests on the model. Legs b and c set no key; each fails if one is | The report names the model; the key assertion |
 | QR-7 | Leg c runs | On a second build of the same commit with only the theme import removed, in light and then dark | The patch, in the report |
 | QR-8 | A control runs | On its own build or server start. Today's `main` is the commit before FIX-1662's first merge | The report names each build's SHA and patch |
@@ -31,7 +31,7 @@ or report line that shows the rule held.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | QR-11 | Part 1 runs | Legs a, b and c pass, and each control fails the leg [Controls](PLAN.md#controls) names, at its signal | a1 to a4, b, c |
-| QR-12 | Leg b's Lab is opened | By an isolated writer that sees only App Lab's README and the pentest tree; each step it had to guess is a finding ([D2](DECISIONS.md#d2)) | b0 in the report |
+| QR-12 | Leg b's Lab is opened | By an isolated writer that sees only shift-manager's README and the pentest tree; each step it had to guess is a finding ([D2](DECISIONS.md#d2)) | b0 in the report |
 | QR-13 | Leg c renders | Every swept part appears on the page at least once in each theme pass; one that never does is a finding | c's sweep table |
 | QR-14 | Part 2 runs | Each team journey passes | J3, J4 |
 | QR-15 | Part 3 runs | Every child's check passes with its controls failing, and the goal labs' own checks stay green | P3.1 to P3.3 |
@@ -43,7 +43,7 @@ or report line that shows the rule held.
 |---|---|---|---|
 | QR-17 | A check, a control or a part-4 row fails | Filed through `issue-manager` as a Bug (a Feature for a missing capability), under FIX-1649, blocking this issue | Linear |
 | QR-18 | A finding matches an open issue | The closure worker wires it: under FIX-1649 (or `relates-to` if it has another parent), blocking this issue | Linear |
-| QR-19 | A finding is a sibling epic's meaning (what a project, task state or ask is) | Filed on that sibling epic, not blocking this issue, unless App Lab shows an invented model in its place (epic ER-5), which is this epic's | Report |
+| QR-19 | A finding is a sibling epic's meaning (what a project, task state or ask is) | Filed on that sibling epic, not blocking this issue, unless shift-manager shows an invented model in its place (epic ER-5), which is this epic's | Report |
 | QR-20 | A doc gap that breaks no step leg b or part 2 follows | Filed `relates-to` FIX-1649, not blocking | Linear |
 | QR-21 | The run files anything | No PR. The row stays at `NEEDS_IMPLEMENTATION`. When the last fix merges, **the whole plan** runs again on a fresh commit | The epic wake |
 | QR-22 | The owner closes a finding with a reason | The report quotes it; whoever records the drop removes the blocks relation | Report |
@@ -58,11 +58,11 @@ or report line that shows the rule held.
 | A journey was skipped because the tree couldn't produce it | a1 and a2 each have a PASS row, not a skip |
 | A swept part was never rendered in leg c | QR-13 |
 | Leg c passed because more than the theme was removed | The patch in the report is the theme import alone |
-| A reused component was restyled in App Lab, or a copy differs from its source | FIX-1655's drift check, with App Lab listed, in part 3 |
-| An App Lab value sits in an FSD package | Leg c's static half, and FIX-1655's check in part 3 |
+| A reused component was restyled in shift-manager, or a copy differs from its source | FIX-1655's drift check, with shift-manager listed, in part 3 |
+| An shift-manager value sits in an FSD package | Leg c's static half, and FIX-1655's check in part 3 |
 | A surface shows a model the shell invented | Leg a's rows equal store rows by id; J4 |
 | A Lab needed a wrapper, or opened with no org | b0 and b's no-org step |
-| A control never failed, or failed at setup | Each FAIL names its leg and signal, except today's `main`, whose expected red is that App Lab is absent |
+| A control never failed, or failed at setup | Each FAIL names its leg and signal, except today's `main`, whose expected red is that shift-manager is absent |
 | Final visuals merged before the final hand-back | P4's hand-back row |
 
 ## Failure taxonomy

@@ -1114,7 +1114,7 @@ describe("claudeCodeAgent", () => {
 describe("claudeCodeAgent — task attribution", () => {
   // A run inside a task-board task entry: the entry's leading tap marks the task
   // scope, and the agent runs as a later step. Every item the run produces must
-  // carry that taskId, or it is missing from the task's own view (App Lab's task
+  // carry that taskId, or it is missing from the task's own view (shift-manager's task
   // screen reads items by taskId). Driven through the real block over a
   // scripted SDK stream, so every emit site the stream reaches is covered, not
   // just the ones a per-site test happens to name.

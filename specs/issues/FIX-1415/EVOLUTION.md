@@ -24,7 +24,7 @@
 | [FIX-1480](https://linear.app/fixpoint-labs/issue/FIX-1480) seat-hire | Same Door B + `tools:` shape. Different noun. Do not merge |
 | [FIX-1407](https://linear.app/fixpoint-labs/issue/FIX-1407) W4 | Related-not-child. Do not stuff channel-admin into first-cut ship |
 | [FIX-1476](https://linear.app/fixpoint-labs/issue/FIX-1476) reference-app channels | File kind, boards, one draining seat. Runtime verbs stay here |
-| [FIX-1410](https://linear.app/fixpoint-labs/issue/FIX-1410) DevForce on Workforce | Lab pressure. Not a special manager type, and not a teach path yet |
+| [FIX-1410](https://linear.app/fixpoint-labs/issue/FIX-1410) DevTeam on Workforce | Lab pressure. Not a special manager type, and not a teach path yet |
 
 ## What this explore does not supersede
 

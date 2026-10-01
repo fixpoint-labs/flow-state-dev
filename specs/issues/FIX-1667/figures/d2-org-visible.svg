@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, who sees the DevForce board's rows. Chosen: everyone in the Lab's organization, as every channel's board is kept. Instead of: rows per user, as today. It comes down to the first row: organization-wide shows everyone working the workstream the same board; per user shows each person a different board, and no channel board is kept that way. The price is the second row: everyone in the org sees each row's title and status, where per user only the filer does. Third row is a tie: a row's input and output are never sent to a browser either way. Locks in: org-wide visibility of row titles and status. Flips if: a DevForce row ever carries something one org member must not see."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, who sees the DevTeam board's rows. Chosen: everyone in the Lab's organization, as every channel's board is kept. Instead of: rows per user, as today. It comes down to the first row: organization-wide shows everyone working the workstream the same board; per user shows each person a different board, and no channel board is kept that way. The price is the second row: everyone in the org sees each row's title and status, where per user only the filer does. Third row is a tie: a row's input and output are never sent to a browser either way. Locks in: org-wide visibility of row titles and status. Flips if: a DevTeam row ever carries something one org member must not see."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,7 +36,7 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Who sees the rows on the DevForce feature channel's board?</text>
+    <text class="t-q" x="32" y="52">Who sees the rows on the DevTeam feature channel's board?</text>
   </g>
 
   <g id="options">
@@ -88,7 +88,7 @@
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
     <text class="t-b" x="32" y="371">Row titles and status are org-wide</text>
-    <text class="t-s" x="32" y="389">for the DevForce Lab, where one team works one feature</text>
+    <text class="t-s" x="32" y="389">for the DevTeam Lab, where one team works one feature</text>
   </g>
 
   <g id="flips-if">

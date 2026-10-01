@@ -4,14 +4,14 @@
 
 Feature · `@flow-state-dev/orchestration` (the field, the stamp) and `@flow-state-dev/workforce`
 (two publication lists) · small · 1 PR · epic [FIX-1649](../../epics/FIX-1649/SPEC.md) (PR #2421) ·
-unblocks [FIX-1664](../FIX-1664/SPEC.md) (App Lab task view), whose
+unblocks [FIX-1664](../FIX-1664/SPEC.md) (shift-manager task view), whose
 [plan](../FIX-1664/PLAN.md#the-task-run-link) asked for it
 
 ## Five people, before and after
 
 | Someone who… | Today | After |
 |---|---|---|
-| **opens a task in App Lab to watch it** | Nothing on the task says which run is working it. The run's session id can't be rebuilt from the task: it also depends on the conversation that drained the board | The task's row names its run: the session, the request and the attempt. App Lab opens exactly that |
+| **opens a task in shift-manager to watch it** | Nothing on the task says which run is working it. The run's session id can't be rebuilt from the task: it also depends on the conversation that drained the board | The task's row names its run: the session, the request and the attempt. shift-manager opens exactly that |
 | **drains the same board from a second conversation** | The second drain makes a run with the same display topic as the first, so a match by topic can pick the wrong one | Each row names the run that actually took it, whichever conversation drained it |
 | **runs several tasks through one worker session** | Can't tell which request in that session was this task's | The row names the session and this task's own request |
 | **looks at a task that finished, failed, or is waiting to retry** | n/a | The row still names the run of its last attempt, so they can see what happened. The next attempt's claim clears it, and that run's start replaces it |
@@ -27,10 +27,10 @@ worked it, and never another task's run or a guess.**
 
 | Is it the right goal? | |
 |---|---|
-| **The real need** | The issue: App Lab's task view *"has to open the exact run behind a task"*, and *"anything else that has to tie a task to its run gets the same answer instead of a guess"*. FIX-1664's build waits on it ([D1 there](../FIX-1664/DECISIONS.md)) |
-| **Smaller, and rejected** | "The field exists on the task schema." Passes with the parent's session written in (which is what the claim's own coordinate already holds), or with the field stripped on the way to the browser, and App Lab still opens nothing |
+| **The real need** | The issue: shift-manager's task view *"has to open the exact run behind a task"*, and *"anything else that has to tie a task to its run gets the same answer instead of a guess"*. FIX-1664's build waits on it ([D1 there](../FIX-1664/DECISIONS.md)) |
+| **Smaller, and rejected** | "The field exists on the task schema." Passes with the parent's session written in (which is what the claim's own coordinate already holds), or with the field stripped on the way to the browser, and shift-manager still opens nothing |
 | **Bigger, and not this issue's** | A history of every attempt's run, and a transcript read (issue scope, invent-kills). The task id stamped on the run itself (an open wall the Architect left). Retiring the devtool's topic match (FIX-1514's leftover, a follow-up) |
-| **Not done if** | The link names the session of the conversation that drained the board rather than the run's · it reaches the server but not the reads App Lab uses · two tasks in one shared worker session name the same request · a second drain from another conversation leaves a row naming the first drain's run · a run on another flow than the board's can't be opened from its link |
+| **Not done if** | The link names the session of the conversation that drained the board rather than the run's · it reaches the server but not the reads shift-manager uses · two tasks in one shared worker session name the same request · a second drain from another conversation leaves a row naming the first drain's run · a run on another flow than the board's can't be opened from its link |
 
 ```mermaid
 flowchart LR
@@ -102,7 +102,7 @@ session records as its owner, which may not be the board's.
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** the exact run, on every read
-App Lab uses, including re-drains and shared worker sessions. If wrong: App Lab ships a task view
+shift-manager uses, including re-drains and shared worker sessions. If wrong: shift-manager ships a task view
 that opens the right run only in the easy case.
 
 1. **[D1](DECISIONS.md#d1) · The run writes its own link, as it starts, and an attempt that can't

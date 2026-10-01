@@ -29,7 +29,7 @@ who owns it and where it is checked.
 | ER-12 | No ambient "all boards" seat drain, and no widget that renders one | [D4](DECISIONS.md#d4). Board v1 is explicit per-seat wiring |
 | ER-13 | No nested or child sessions as the work control plane | Tasks and boards nest work; sessions link via hire and assign. `parentSessionId` is not a control plane |
 | ER-14 | No second skill registry and no second memory story for kitchen-sink | Cohesion. The app consumes what the packages ship |
-| ER-15 | No Lab product inside kitchen-sink. DevForce and CyberForce run beside it | Epic body invent-kill. They are finish-line Labs; this teaches the conventions |
+| ER-15 | No Lab product inside kitchen-sink. DevTeam and CyberForce run beside it | Epic body invent-kill. They are finish-line Labs; this teaches the conventions |
 | ER-16 | No runtime channel-admin verbs (create / delete / invite) | FIX-1415's, parked and adjacent. This set is the declarative convention |
 | ER-17 | No child re-parents FIX-1415, FIX-1430, FIX-1442, FIX-1351 or FIX-1407 under this epic | Consumed, not owned |
 

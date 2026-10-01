@@ -1,8 +1,8 @@
-# FIX-1664 · App Lab task view: a task's session, diff, checks and inspector
+# FIX-1664 · shift-manager task view: a task's session, diff, checks and inspector
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-Feature · private app `labs/app-lab` · no FSD package changes here, one small orchestration field
+Feature · private app `labs/shift-manager` · no FSD package changes here, one small orchestration field
 split out ([the task-run link](PLAN.md#the-task-run-link)) · medium · 1 PR, after FIX-1662's
 `frame` PR and that link · epic [FIX-1649](../../epics/FIX-1649/SPEC.md) (PR #2421) · beside
 [FIX-1662](https://linear.app/fixpoint-labs/issue/FIX-1662) (PR #2424) and
@@ -20,7 +20,7 @@ split out ([the task-run link](PLAN.md#the-task-run-link)) · medium · 1 PR, af
 
 ## The goal, and how we'll know it's met
 
-**A person opens one task in App Lab and watches that task's own run live, can stop it, and
+**A person opens one task in shift-manager and watches that task's own run live, can stop it, and
 sees every other act and value the design draws either working from a shipped read or
 operation or saying what arrives and who ships it, or that it is not planned in the first
 cut.**
@@ -35,7 +35,7 @@ cut.**
 
 ```mermaid
 flowchart LR
-  L["a Lab whose board hands rows to a scripted coding run that holds"] --> A["App Lab in Chromium · Tasks → the running task"]
+  L["a Lab whose board hands rows to a scripted coding run that holds"] --> A["shift-manager in Chromium · Tasks → the running task"]
   A --> R["read the screen against the store"]
   R -->|"Session equals the run session's items live · Interrupt aborts, then shows · every gap named"| P["PASS · goal met"]
   C1["control · Session reads the worker's own session"] -.-> A
@@ -45,14 +45,14 @@ flowchart LR
 ```
 
 The check grades what the screen shows against the run's stored session and request, never
-against App Lab's own state.
+against shift-manager's own state.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/app-lab/it-shows-and-stops-a-task-run/` · model n/a (the scripted harness stub, made to hold until aborted) · real Chromium · run by the implementer at completion · verdict in the implementation PR |
+| **Goal check** | `goals/shift-manager/it-shows-and-stops-a-task-run/` · model n/a (the scripted harness stub, made to hold until aborted) · real Chromium · run by the implementer at completion · verdict in the implementation PR |
 | **Signal** | Reached from Tasks by clicking, never by a typed URL: the Session tab's items equal, by id and in order, the items stored for the task's run session, and a new one appears within 2 s of being stored with no reload. Interrupt: the run's request record reads `aborted` before the view shows *interrupted*. Every tab, action and inspector field shows a value equal to the store or its named state. Diff, Checks, Hand off, reassign, Open PR and the composer are disabled or empty with their gap line from the [gap registry](BUSINESS-RULES.md#gap-registry): the owner named, or *not planned in the first cut* where the registry says so |
 | **Input** | A tree whose channel-attached board hands a row to a coding run on the scripted stub. A second row, on another seat, must pass too. A third row, on a seat whose dispatcher hands off to another flow than the board's, must pass too: its Session, Interrupt and inspector go through the flow the run's session records as its owner |
-| **Anti-game** | No assertion on App Lab's own state or a mocked server. Text found somewhere on the page doesn't count: items and rows are read by id |
+| **Anti-game** | No assertion on shift-manager's own state or a mocked server. Text found somewhere on the page doesn't count: items and rows are read by id |
 | **Control that must fail** | `GOAL_CONTROL=worker-session`: the Session tab reads the worker seat's own session. Must FAIL at *items equal the run session's*. `GOAL_CONTROL=optimistic-interrupt`: the view shows *interrupted* without calling abort. Must FAIL at *the request reads aborted first*. `GOAL_CONTROL=board-flow`: the screen reads the run through the board's flow instead of its session's `flowId`. Must FAIL at *items equal the run session's* on the cross-flow seat's row. Today's `main` fails everything |
 
 ## What changes
@@ -67,7 +67,7 @@ No person edits a file for this: a Lab opens as FIX-1662 already describes. The 
 a person types is where the devtool is, so the trace link can open it:
 
 ```diff
-  pnpm --filter @flow-state-dev/app-lab start --config goals/devforce-lab/lab/fsdev.config.mts
+  pnpm --filter @flow-state-dev/shift-manager start --config goals/devteam-lab/lab/fsdev.config.mts
 +   --devtool http://localhost:4000
 ```
 
@@ -83,11 +83,11 @@ flowchart LR
 ```
 
 The run is the one place that knows which session it's in, so it writes that on the row as it
-starts, and App Lab reads it there. Nothing is rebuilt or matched from outside: a key rebuilt
+starts, and shift-manager reads it there. Nothing is rebuilt or matched from outside: a key rebuilt
 by the shell can name a different run (the same task drained from another conversation) or no
 run at all (a worker that shares one session across tasks). The run's flow comes from the
 session the link names, not the board: a seat can hand its work to another flow. The link is a small field in the
-orchestration package, filed as its own issue ([D1](DECISIONS.md#d1)); App Lab changes nothing
+orchestration package, filed as its own issue ([D1](DECISIONS.md#d1)); shift-manager changes nothing
 else outside itself.
 
 ## What stays as it is
@@ -95,7 +95,7 @@ else outside itself.
 - **Every FSD package, but for the task-run link**, which is its own issue in the orchestration
   package. Nothing in Core or Engine. Session items render through the registry copies FIX-1662
   brings in, unedited.
-- **The board, the run and the harness.** App Lab changes a task only by aborting its run; what
+- **The board, the run and the harness.** shift-manager changes a task only by aborting its run; what
   the board then does with the row is the board's.
 - **FIX-1662's frame**: the route, the right-panel slot and the shared reads are used, not
   re-made.

@@ -16,7 +16,7 @@ flowchart TD
   D2 -.->|"rejected"| X3["a handed-off status · ER-8"]
   D2 -.->|"rejected"| X4["reassign the row<br/>a hand-off board refuses it by design"]
   I --> D3["D3 · this proof stands up its own hire<br/>owner's call, 2026-09-22"]
-  D3 -.->|"rejected"| X5["share the DevForce proof's workforce"]
+  D3 -.->|"rejected"| X5["share the DevTeam proof's workforce"]
 ```
 
 Solid edges are the decisions. D1 and D2 are what you're signing; **D3 is already closed** — it
@@ -64,13 +64,13 @@ Reached outside this issue, so it went up rather than being decided here
 
 | | |
 |---|---|
-| **Instead of** | Running the graded scenario inside [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496)'s DevForce workforce — one tree, one team, one place to point people at |
+| **Instead of** | Running the graded scenario inside [FIX-1496](https://linear.app/fixpoint-labs/issue/FIX-1496)'s DevTeam workforce — one tree, one team, one place to point people at |
 | **Because** | Two reasons, and they are different in kind. **The owner's is sequencing:** separate labs keep the two proofs from colliding while both are in flight, and *"we can combine them later"* — so the separation is a choice about ordering, not a boundary anyone has to argue their way back through. **The spec's is technical:** FIX-1496's [BR-8](../FIX-1496/BUSINESS-RULES.md) forbids board or harness *work* dispatch reaching its reviewer seat, with the control `reviewer-files` graded on the board dispatch record to go red if one does. A tree carrying two collaborating seats would have to relax that rule deliberately and be re-gated — which costs the first proof the thing it exists to prove |
 | **Locks in** | S1–S7 build their own `workforce/` tree under `goals/multi-seat-collab/`, and the day hiring changes shape there are two small Markdown trees to update rather than one. **What it does not lock in:** [ER-26](../../epics/FIX-1457/BUSINESS-RULES.md#er-26) fenced the *graded run* on a live hired Workforce existing at all ([BR-21](BUSINESS-RULES.md)); it lifted on 2026-09-22 ([#2051](https://github.com/fixpoint-labs/flow-state-dev/pull/2051)) and the run passed ([#2065](https://github.com/fixpoint-labs/flow-state-dev/pull/2065)). That fence was never a claim about whose tree the run uses, and this decision neither narrows nor widens it |
 
 **Combining stays cheap, and stays available.** Both trees are a few hundred lines in the same
 folder. Merging them later is an afternoon; the expensive direction was the other one — bending
-the DevForce proof to fit this one and costing it its sharpness. If the release wants one
+the DevTeam proof to fit this one and costing it its sharpness. If the release wants one
 demonstration to point at, that is a new call, and FIX-1496's [BR-8](../FIX-1496/BUSINESS-RULES.md) gets relaxed
 deliberately and re-gated rather than worked around.
 

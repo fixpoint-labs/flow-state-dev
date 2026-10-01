@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D1. How does App Lab open a Lab? Chosen: the Lab&#x27;s own server config, the one fsdev dev already loads. Instead of: App Lab reading the tree and building the kinds itself. It comes down to who supplies the kinds&#x27; inputs: a harness, a model and a workspace belong to the Lab, so App Lab cannot build them. The price: every Lab carries one host config file. Both run in one Node process. Locks in: a Lab is its tree plus one host config that opens its inventory at boot. Flips if: Workforce kinds become zero-argument modules, so a tree alone opens."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1. How does shift-manager open a Lab? Chosen: the Lab&#x27;s own server config, the one fsdev dev already loads. Instead of: shift-manager reading the tree and building the kinds itself. It comes down to who supplies the kinds&#x27; inputs: a harness, a model and a workspace belong to the Lab, so shift-manager cannot build them. The price: every Lab carries one host config file. Both run in one Node process. Locks in: a Lab is its tree plus one host config that opens its inventory at boot. Flips if: Workforce kinds become zero-argument modules, so a tree alone opens."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,7 +36,7 @@
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
     <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
-    <text class="t-q" x="32" y="52">How does App Lab open a Lab?</text>
+    <text class="t-q" x="32" y="52">How does shift-manager open a Lab?</text>
   </g>
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
@@ -44,7 +44,7 @@
     <text class="t-h c-code" x="228" y="112">The Lab&#x27;s own server config</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">App Lab builds the kinds itself</text>
+    <text class="t-h c-lost" x="592" y="112">shift-manager builds the kinds itself</text>
   </g>
   <g id="row-decides">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
@@ -56,7 +56,7 @@
     <text class="t-b" x="248" y="161">The Lab, which owns them</text>
     <text class="t-s" x="248" y="179">a harness, a model, a workspace</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">App Lab, which can&#x27;t</text>
+    <text class="t-b" x="612" y="161">shift-manager, which can&#x27;t</text>
     <text class="t-s" x="612" y="179">it would need each Lab&#x27;s choices</text>
   </g>
   <g id="row-1">

@@ -113,7 +113,7 @@ orchestration schema file. No checker ships with the spec; V5 and V6 cover all t
 
 - Re-read FIX-1664's merged spec for any name it assumed; the pins here win, and a conflict is
   raised, not picked.
-- Confirm FIX-1662's App Lab reads a channel board through the browser read. If it reads another
+- Confirm FIX-1662's shift-manager reads a channel board through the browser read. If it reads another
   way, that read needs `run` too; raise it rather than adding a path here.
 - Confirm the flow-agnostic session read still returns the owning flow (`flowId`) for a
   dispatched run's session. BR-20 rests on it; if it doesn't, raise it.

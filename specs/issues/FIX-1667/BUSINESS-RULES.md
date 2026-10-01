@@ -63,7 +63,7 @@ the run's starter is refused without charging an attempt (BR-17). Nothing new re
 
 ## Acceptance criteria this issue owns
 
-[The goal](SPEC.md#the-goal-and-how-well-know-its-met): a post on the DevForce feature channel
+[The goal](SPEC.md#the-goal-and-how-well-know-its-met): a post on the DevTeam feature channel
 ends as one completed row on the channel's own board, read back through the channel and through
 the browser's door, and the same run fails under `GOAL_CONTROL=kind-ledger`. The lab's three
 existing checks stay green with their controls still failing.

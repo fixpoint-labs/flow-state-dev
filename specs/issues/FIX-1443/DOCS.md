@@ -47,7 +47,7 @@ from this body."
 **The `CreateSessionOptions` comment** ("The `orgId` the wrap injects…") becomes "The fields
 `openChannels` passes to `createSession`."
 
-## 4. `goals/devforce-lab/lab/host.mts`
+## 4. `goals/devteam-lab/lab/host.mts`
 
 In the session-client comment, delete the sentence that begins "`goals/pentest-lab/lab/host.mts`
 still carries an `omitOrgWrap` control", and replace "which is the current reference" so the

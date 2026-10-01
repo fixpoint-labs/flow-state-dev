@@ -24,25 +24,25 @@ and [ER-6](../../epics/FIX-1649/BUSINESS-RULES.md#what-no-child-may-do).
 | BR-7 | An app installs a component that uses a status token | The `tokens` item comes with it, and the app's stylesheet gains every token with its light and dark default | CI · reachability: every file reading a status token ships in an item whose dependency closure includes `tokens` · goal check host installs this way |
 | BR-8 | An app loads no theme | Each status keeps today's hue: green, amber, blue, red, yellow. One shade per meaning; exact shades may shift | Goal check a:neutral · before/after screenshots in the implementation PR |
 | BR-9 | An app copied components before this change and re-adds one | It also adds `tokens`; an app that doesn't gets unstyled status colours, and the `ui` docs say so | Docs · [DOCS.md](DOCS.md) |
-| BR-10 | Kitchen-sink after the change | Byte-identical copies of the new sources, the new tokens in its stylesheet, and no App Lab value | CI · the drift check · the static check |
+| BR-10 | Kitchen-sink after the change | Byte-identical copies of the new sources, the new tokens in its stylesheet, and no shift-manager value | CI · the drift check · the static check |
 
-## What the App Lab theme does
+## What the shift-manager theme does
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-11 | An app loads the package's stylesheet | Every token, including the four new ones, fonts and corner radii takes App Lab's light value | Goal check b:themed |
-| BR-12 | The `.dark` class is on an ancestor | The same tokens take App Lab's dark value; the registry's own `dark:` variants read the same class | Goal check b:themed, dark pass |
+| BR-11 | An app loads the package's stylesheet | Every token, including the four new ones, fonts and corner radii takes shift-manager's light value | Goal check b:themed |
+| BR-12 | The `.dark` class is on an ancestor | The same tokens take shift-manager's dark value; the registry's own `dark:` variants read the same class | Goal check b:themed, dark pass |
 | BR-13 | The package is loaded | `--fsd-nav-*` and `--fsd-panel-*` read the same tokens, so the navigator and panels match the cards | Goal check b:themed on the chrome |
-| BR-14 | App Lab's theme sets `attention` | It is the only token carrying the highlighter; `warning` gets a different value | CI · a test over the package's values · goal check c:attention |
+| BR-14 | shift-manager's theme sets `attention` | It is the only token carrying the highlighter; `warning` gets a different value | CI · a test over the package's values · goal check c:attention |
 | BR-15 | The package is built | It imports nothing from `@flow-state-dev/workforce` and names no Workforce word; labels like *NEEDS YOU* are the app's | CI · import check |
 
 ## Keeping FSD neutral, and copies honest
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-16 | A value the App Lab theme declares (a colour, a font family) appears anywhere under `packages/` | The static check fails, naming file and value | CI · values read from the package · planted-value control |
+| BR-16 | A value the shift-manager theme declares (a colour, a font family) appears anywhere under `packages/` | The static check fails, naming file and value | CI · values read from the package · planted-value control |
 | BR-17 | Kitchen-sink's registry copy differs from its source | The drift check fails, naming the file | CI · planted-drift control |
-| BR-18 | Another consumer installs registry copies (App Lab, FIX-1662) | It runs the same comparison over its own folder, by calling the function this issue extracts; FIX-1663's QA plan confirms App Lab does | CI · closure |
+| BR-18 | Another consumer installs registry copies (shift-manager, FIX-1662) | It runs the same comparison over its own folder, by calling the function this issue extracts; FIX-1663's QA plan confirms shift-manager does | CI · closure |
 
 The fence in [what changes](SPEC.md#what-changes) is BR-16: only token names cross it, never a
 value.

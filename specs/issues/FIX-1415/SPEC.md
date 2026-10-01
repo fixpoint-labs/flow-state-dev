@@ -56,7 +56,7 @@ The verb names are the recommended cut. They are [still open](DECISIONS.md#recom
 - **Seat-hire.** [FIX-1480](https://linear.app/fixpoint-labs/issue/FIX-1480) stays a sibling. Hiring a person is not opening a room.
 - **Collab's mint.** Dynamic rooms are minted there. This explore specifies the seat-facing tools. It does not reopen the Collab release.
 - **W4 first-cut.** Related, not a child. Not a hard gate of work routing.
-- **The DevForce manager.** Pressure on the design only. Not a Workforce teach path until the tools and the mint both exist.
+- **The DevTeam manager.** Pressure on the design only. Not a Workforce teach path until the tools and the mint both exist.
 
 ## Sign off
 

@@ -49,7 +49,7 @@
  *
  * Nothing here declares the ledger a second time: the entry is reachable from
  * this flow's own board, which is what the orphan-task-entry guard wants. The
- * two-declaration shape `goals/devforce-lab/lab/board.mts` carries is the
+ * two-declaration shape `goals/devteam-lab/lab/board.mts` carries is the
  * cross-flow tax, and it is not this.
  */
 

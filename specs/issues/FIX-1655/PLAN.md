@@ -15,9 +15,9 @@ P2 after the final design hand-back.
 | S3 | `ui` · Storybook's preview stylesheet | Define the new tokens with the same defaults as S1 | BR-8 |
 | S4 | kitchen-sink · stylesheet and copies | Add the new tokens to `app/globals.css`; re-sync the 12 copies byte-for-byte | BR-10 |
 | S5 | `ui` · CI | Two assertions over two different sets, kept apart on purpose. **Census, over files:** the productionized form of `poc/palette-census/`, one rule module (palette classes, colour literals in registry files too, the planted control); walks **every** registry file (stories excluded), asserts the walked count, fails on any fixed palette class or colour literal (BR-1's transparent exception aside); every token utility a component uses is defined by S1. **Reachability, over items:** every relative import in an item's files resolves to a file that item or one of its dependencies ships, and every file reading a status token ships in an item whose dependency closure includes `tokens` | BR-1 BR-5 BR-6 BR-7 |
-| S6 | the drift check | Keep `apps/kitchen-sink/test/registry-drift.test.ts` where it is, assertions unchanged. Extract its comparison (both directions, the count) into a function a second consumer can call. No consumer list: FIX-1662 calls the function for App Lab's folder when it installs components | BR-17 BR-18 |
-| S7 | `labs/design-system` · new private package | `app-lab.css`: App Lab's light values on `:root`, dark under `.dark`, for every S1 token plus `--font-sans`, `--font-mono`, a display family and radii of 0; then `--fsd-nav-*` and `--fsd-panel-*` set from those tokens. **Draft values** in P1, headed as draft. README. Row in `labs/README.md` | BR-11 – BR-15 |
-| S8 | `labs/design-system` · CI | Static check: read every colour and font value `app-lab.css` declares; search `packages/**` (excluding `node_modules`, build output); fail naming file and value. Plus: `attention` differs from `warning` in both variants; no import from `@flow-state-dev/workforce` | BR-14 BR-15 BR-16 |
+| S6 | the drift check | Keep `apps/kitchen-sink/test/registry-drift.test.ts` where it is, assertions unchanged. Extract its comparison (both directions, the count) into a function a second consumer can call. No consumer list: FIX-1662 calls the function for shift-manager's folder when it installs components | BR-17 BR-18 |
+| S7 | `labs/design-system` · new private package | `shift-manager.css`: shift-manager's light values on `:root`, dark under `.dark`, for every S1 token plus `--font-sans`, `--font-mono`, a display family and radii of 0; then `--fsd-nav-*` and `--fsd-panel-*` set from those tokens. **Draft values** in P1, headed as draft. README. Row in `labs/README.md` | BR-11 – BR-15 |
+| S8 | `labs/design-system` · CI | Static check: read every colour and font value `shift-manager.css` declares; search `packages/**` (excluding `node_modules`, build output); fail naming file and value. Plus: `attention` differs from `warning` in both variants; no import from `@flow-state-dev/workforce` | BR-14 BR-15 BR-16 |
 | S9 | `goals/design-system/skins-reused-components-from-one-token-set/` | The goal check: a host page (the sweep in [SPEC.md](SPEC.md#the-goal-and-how-well-know-its-met)), installed by `fsdev ui add` of the items S2 names, from the local registry build, three passes in headless Chromium, `GOAL_CONTROL=hardcoded-accent` | goal |
 | S10 | Docs | Publish [DOCS.md](DOCS.md) | — |
 | S11 | P2 · `labs/design-system` | Replace draft values with the final hand-back's light and dark values; drop the draft header | ER-9 |
@@ -88,7 +88,7 @@ flowchart TD
 | V2 | S2 | Tool card and task plan: each state renders the token BR-2 to BR-4 name (D2's check: *awaiting* and *parked* on `attention`, *blocked* and *denied* on `warning`) |
 | V3 | S5 | Census and reachability pass; **red first**: on today's tree the census names 12 files and reachability names `chat-assistant`'s unshipped imports and `stuck-request-banner`. A planted palette class in a temp copy fails the census; a planted import of an unshipped file fails reachability |
 | V4 | S6 | Drift passes for kitchen-sink, as today; a planted one-byte change fails naming the file; the extracted function, called on a second temp folder, fails the same way |
-| V5 | S8 | Static check passes; a planted App Lab value in a temp copy of a `packages/` file fails naming it (D3's check: both variants parse, and `.dark` flips every token) |
+| V5 | S8 | Static check passes; a planted shift-manager value in a temp copy of a `packages/` file fails naming it (D3's check: both variants parse, and `.dark` flips every token) |
 | VG | S9 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met): `pnpm tsx goals/design-system/skins-reused-components-from-one-token-set/run.mts` PASSES a, b and c, after the same run FAILED b:themed under `GOAL_CONTROL=hardcoded-accent`, and after today's `main` FAILED it |
 | V6 | S4 | Second path (BP-035): kitchen-sink with no theme, light and dark, screenshots before and after in the PR; hue unchanged per status |
 
@@ -99,7 +99,7 @@ flowchart TD
 | Status tokens | `success`, `warning`, `info`, `attention`, each with `-foreground` (`--color-<name>` in CSS) | Public: every registry user types them (D1, D2) |
 | Registry item | `tokens` | Public: `fsdev ui add tokens` |
 | Package | `@flow-state-dev/design-system`, at `labs/design-system/`, `private: true` | FIX-1662 imports it by name |
-| Stylesheet | `@flow-state-dev/design-system/app-lab.css` | The one line App Lab writes |
+| Stylesheet | `@flow-state-dev/design-system/shift-manager.css` | The one line shift-manager writes |
 | Dark switch | the `.dark` class | The registry's `dark:` variant already reads it (D3) |
 
 Everything else is yours to name.
@@ -110,7 +110,7 @@ Everything else is yours to name.
 |---|---|
 | Every colour in a registry file goes through a token, and the census walks every file, never a list (tenet 5) | A list of 12 is how the thirteenth ships: the review note's grep found 11 |
 | `attention` is chosen by what a state means, not by today's hue | D2 exists so yellow stops meaning two things; a mechanical amber-to-`warning` swap undoes it |
-| No App Lab value, font name or Workforce word in any FSD package | The epic's layer rule; BR-16 is the check, and it reads its values from the package so it can't go stale |
+| No shift-manager value, font name or Workforce word in any FSD package | The epic's layer rule; BR-16 is the check, and it reads its values from the package so it can't go stale |
 | Copies are re-synced, never edited in a consumer | ER-6: a stale copy makes the goal check test the copy, not the skin |
 | No new prop, provider or custom property on the navigator or panels | They already take the skin; the epic's D2 rejects a theme API in `react` |
 | Final values only in P2 | ER-9: design pass 2 is still open |
@@ -125,7 +125,7 @@ and needs no docs change beyond dropping the README's draft note.
 ```
 registry tokens item     :root { --color-attention: <yellow>; … }   .dark { … }
 component                className="text-attention"                  (was text-yellow-600)
-app-lab.css              :root { --color-attention: <highlighter>; --color-warning: <red-ish>; … }
+shift-manager.css              :root { --color-attention: <highlighter>; --color-warning: <red-ish>; … }
                          .dark { … }
                          :root { --fsd-nav-fg: var(--color-foreground); … }
 ```
@@ -146,7 +146,7 @@ do (`spec-poc`), and nothing runs it as a gate.
 
 - PR #2080 (open) edits `approval.tsx`'s header comment and the session-items context in both
   the registry and kitchen-sink. If it lands first, re-sync from its version.
-- If FIX-1662 has already installed components into `labs/app-lab`, call S6's extracted
+- If FIX-1662 has already installed components into `labs/shift-manager`, call S6's extracted
   comparison for its folder in P1; otherwise FIX-1662 does, and FIX-1663's QA confirms it.
 - Confirm shadcn's CLI merges a registry item's CSS variables into a Tailwind v4 stylesheet the
   way S1 needs (`@theme` versus `:root` plus `@theme inline`); pick the form that makes
@@ -164,8 +164,8 @@ Round 1 on #2425. Inputs, not instructions.
 - "I'd make the outcome of this spike [shadcn CSS-variable merge] a short DECISIONS 'decided' bullet (CLI-driven vs documented manual merge) before P1 coding starts." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2425#discussion_r4140070977))
 - "If S6 drift already runs in CI, the goal should call that result (or skip re-walking) when VG runs in the same pipeline." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2425#discussion_r4140070983))
 - "'Today's main must FAIL b:themed' is valuable once as baseline evidence … scope that to implementer verification / one-time capture in the implementation PR, not recurring VG." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2425#discussion_r4140070987))
-- "The override example uses App Lab draft hex values … fictional hex or 'your brand' placeholders may read cleaner and reinforce the fence." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2425#discussion_r4140070996))
-- "S8 implementation — one walk of `packages/**`, all needles from `app-lab.css` in a single pass … S9 placement — clarify whether the headless sweep is default `pnpm test` / GHA or completion evidence only." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2425#pullrequestreview-5360569095))
+- "The override example uses shift-manager draft hex values … fictional hex or 'your brand' placeholders may read cleaner and reinforce the fence." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2425#discussion_r4140070996))
+- "S8 implementation — one walk of `packages/**`, all needles from `shift-manager.css` in a single pass … S9 placement — clarify whether the headless sweep is default `pnpm test` / GHA or completion evidence only." — cursor ([review](https://github.com/fixpoint-labs/flow-state-dev/pull/2425#pullrequestreview-5360569095))
 
 ## Follow-ups
 

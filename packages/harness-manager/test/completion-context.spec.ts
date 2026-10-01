@@ -34,7 +34,7 @@ describe("the contract permits the combination this exists for", () => {
     // was my turn limit". No harness shipped in this repo reports that pairing
     // today — all three derive `status` from `outcome === "finished"` — but the
     // slot exists precisely so a harness this package never sees can be driven,
-    // and the DevForce lab's own fake harness reports it.
+    // and the DevTeam lab's own fake harness reports it.
     //
     // If the contract is ever tightened to couple the two, this goes red and
     // the completion-side field should be re-examined rather than left behind.

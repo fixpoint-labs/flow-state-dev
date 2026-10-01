@@ -67,7 +67,7 @@ evidence path moves.
   bring back the caller-controlled input FIX-1442 removed (BP-031).
 - **E2 · Remove `omitOrgWrap` from `OpenLabOptions` and add `omitPrincipal`.** A removed key isn't
   kept as an alias. The lab is private and has one caller.
-- **E3 · Fix `devforce-lab`'s pointer, and name one reference.** Its host comment says the
+- **E3 · Fix `devteam-lab`'s pointer, and name one reference.** Its host comment says the
   pentest lab "still carries an `omitOrgWrap` control". After this change that is false (BP-034).
   It also calls `manager-queue-lab` "the current reference" while this lab's README teaches the
   resolver. Pick one: the pentest lab's host `resolvePrincipal` is the reference for how a lab

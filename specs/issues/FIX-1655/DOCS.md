@@ -76,12 +76,12 @@ Publish the epic's paragraph and example as drafted, with one sentence appended 
 
 > # Design system
 >
-> The look shared by the Workforce Labs' app, App Lab: a light and a dark theme over the tokens
+> The look shared by the Workforce Labs' app, shift-manager: a light and a dark theme over the tokens
 > FSD's components already read. It holds values only. There are no components here; the app
 > gets those from `@flow-state-dev/react` and the `@flow-state-dev/ui` registry, unedited.
 >
 > ```css
-> @import "@flow-state-dev/design-system/app-lab.css";
+> @import "@flow-state-dev/design-system/shift-manager.css";
 > ```
 >
 > The light theme applies by default. Put `class="dark"` on an ancestor for the dark one. The same
@@ -99,7 +99,7 @@ Publish the epic's paragraph and example as drafted, with one sentence appended 
 
 ## UPDATE · `labs/README.md` · the directory table
 
-One row: `design-system/`, *the light and dark theme App Lab loads over FSD's component tokens*,
+One row: `design-system/`, *the light and dark theme shift-manager loads over FSD's component tokens*,
 linking its README.
 
 ## Ownership

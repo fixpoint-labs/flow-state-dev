@@ -33,7 +33,7 @@ names the kind of check the plan runs.
 | BR-11 | Interrupt is pressed, or Esc with the Session focused | The request the row's link names gets the shipped abort. The view shows *interrupted* only after that request reads `aborted` | Goal check under `optimistic-interrupt` |
 | BR-12 | The abort answers that the request already finished | The view refreshes to what the request and row say; nothing is drawn as interrupted | CI |
 | BR-13 | The abort is refused or fails | The error shows by the button; the run is drawn as still running | CI |
-| BR-14 | The run was interrupted | App Lab writes nothing to the row; its next status is whatever the board records | CI |
+| BR-14 | The run was interrupted | shift-manager writes nothing to the row; its next status is whatever the board records | CI |
 | BR-15 | Hand off, reassign or Open PR is shown | Disabled, with a line naming what arrives and its owner from the [registry](#gap-registry) | CI |
 | BR-16 | The composer is shown | Disabled, with its gap line from the [registry](#gap-registry): the operation's owner, or *not planned in the first cut*, which follows [the open fork](DECISIONS.md#open). *Also post to the workstream* is disabled with it | CI |
 
@@ -47,7 +47,7 @@ names the kind of check the plan runs.
 | BR-20 | The run recorded neither | Each section says this harness records none ([registry](#gap-registry)) | Goal check (the stub records none) |
 | BR-21 | Acceptance criteria and *review by* render | Named gaps, owners from the [registry](#gap-registry) | CI |
 | BR-22 | Linked renders | *After*: the row's dependencies. *Blocks*: rows on the same board that depend on it. Each opens its task | CI |
-| BR-23 | The trace link is shown | It opens the devtool App Lab was started with, with the run's session id beside it; with no devtool given, it is disabled and says how to start one | CI |
+| BR-23 | The trace link is shown | It opens the devtool shift-manager was started with, with the run's session id beside it; with no devtool given, it is disabled and says how to start one | CI |
 | BR-24 | Brief opens | The row's title, goal, context and input, as stored; acceptance criteria per BR-21 | CI |
 
 <a name="gap-registry"></a>
@@ -75,10 +75,10 @@ is answered, this table changes and the rest follows.
 Nothing on the task screen is fatal. The row read failing shows the route's Retry; the
 session read, the stream and each recorded collection failing degrade only their own tab or
 section to Retry. A read that answers with a truncated page says *more than shown* with Retry;
-App Lab never pages through a listing to find something. Nothing retries on its own (BR-3's
+shift-manager never pages through a listing to find something. Nothing retries on its own (BR-3's
 bounded re-read of a row waiting for its link is a wait for a state, not a retry of a failure;
 a failed re-read stops it and shows Retry), and
-nothing is drawn from a guess or from App Lab's hope: a state changes on screen when the store
+nothing is drawn from a guess or from shift-manager's hope: a state changes on screen when the store
 says it changed.
 
 ## Acceptance criteria this issue owns

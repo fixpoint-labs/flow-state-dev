@@ -1,9 +1,9 @@
-# FIX-1690 · A person can't send a message into a worker's session from App Lab
+# FIX-1690 · A person can't send a message into a worker's session from shift-manager
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Feature · `@flow-state-dev/core` and `engine` (one generic hook), `harness-manager`,
-`orchestration`, `workforce`, private `labs/app-lab` and `goals/devforce-lab` · large · 3 PRs ·
+`orchestration`, `workforce`, private `labs/shift-manager` and `goals/devteam-lab` · large · 3 PRs ·
 epic [FIX-1649](../../epics/FIX-1649/SPEC.md) · blocks [FIX-1663](../FIX-1663/SPEC.md) a4 and
 Part 4's one-write-path row · answers [FIX-1664's open fork](../FIX-1664/DECISIONS.md#open)
 
@@ -13,13 +13,13 @@ Part 4's one-write-path row · answers [FIX-1664's open fork](../FIX-1664/DECISI
 |---|---|---|
 | **types `@coder …` in a workstream's composer** | Send is disabled: *"Addressing one worker with @ isn't built yet"* | The line goes into the coder's current task run in this workstream. The stream shows *delivered* once that run's session holds it, and the run's next step starts from it |
 | **types in a task's composer while its run works** | The composer is disabled | The run stops where it is, and continues **the same coding session** with the person's words as its next prompt. Its edits on disk and the harness's memory of the conversation both carry over |
-| **replies from an Inbox item** | Approve or Reject only | A reply box sends into the asking worker's session, through the same door. Where that worker's kind takes no message (DevForce's EM), the box says so and sends nothing ([the second fork](DECISIONS.md#open-inbox)) |
+| **replies from an Inbox item** | Approve or Reject only | A reply box sends into the asking worker's session, through the same door. Where that worker's kind takes no message (DevTeam's EM), the box says so and sends nothing ([the second fork](DECISIONS.md#open-inbox)) |
 | **talks to a worker that is between attempts, or parked on its own question** | n/a | The line is kept in the run's session and handed to its next attempt. It never answers the question for it; answering stays the ask's own path |
 | **talks to a task that has finished** | n/a | Send is disabled with a line: a finished task takes no message. Reopening one is FIX-1651's |
 
 ## The goal, and how we'll know it's met
 
-**A person's line, from any of App Lab's three composers, arrives as a turn in the session of
+**A person's line, from any of shift-manager's three composers, arrives as a turn in the session of
 the worker it addresses, including a coding run that is working right now, and the run acts on
 it; the app shows it as delivered only once that session holds it.**
 
@@ -29,11 +29,11 @@ it; the app shows it as delivered only once that session holds it.**
 | **Smaller, and rejected** | "The line is stored in the session." A door that writes the item and never reaches the harness passes it, and a person is told a run heard them when it didn't. So the check also reads what the next attempt was prompted with |
 | **Short of the need, and asked** | **Live delivery mid-step.** This goal reaches a running coding run by stopping it and continuing its session, on all three harnesses. Hearing a line without stopping is possible on Claude Code and Cursor only. Whether to build that now is [the first fork](DECISIONS.md#open-live) |
 | **Bigger, and not this issue's** | Answering an ask (FIX-1671) · filing work with a notify (FIX-1474) · a seat's own conversation outside a task · reopening a finished task (FIX-1651) · Inbox listing a coding run's questions (FIX-1652) |
-| **Not done if** | A composer draws *delivered* before the target session holds the line · the next attempt starts a fresh coding session instead of continuing the old one · the next attempt's prompt lacks the line · a turn spends the task's retry budget · App Lab writes a session item or names a Lab's kind · a turn reaches a run the person can't reach |
+| **Not done if** | A composer draws *delivered* before the target session holds the line · the next attempt starts a fresh coding session instead of continuing the old one · the next attempt's prompt lacks the line · a turn spends the task's retry budget · shift-manager writes a session item or names a Lab's kind · a turn reaches a run the person can't reach |
 
 ```mermaid
 flowchart LR
-  L["DevForce on the scripted harness · a coder run held open"] --> A["App Lab in Chromium · task composer, then @coder"]
+  L["DevTeam on the scripted harness · a coder run held open"] --> A["shift-manager in Chromium · task composer, then @coder"]
   A --> R["read the run session and the harness stub's own record"]
   R -->|"line in the session before delivered shows · run stopped · next attempt resumed the same coding session with the line · retry standing unchanged"| P["PASS · goal met"]
   C1["control · the composer draws delivered without sending"] -.-> A
@@ -41,14 +41,14 @@ flowchart LR
   R -.->|"under either control"| F["must FAIL · names the signal"]
 ```
 
-The check reads the store and what the stub harness was handed, never App Lab's own state.
+The check reads the store and what the stub harness was handed, never shift-manager's own state.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/app-lab/it-sends-a-turn-into-a-seat-session/` · model n/a (the scripted stub, held open until stopped) · real Chromium · run by the implementer at completion · verdict in the last implementation PR. The real-model half is FIX-1663's a4 |
-| **Signal** | A fresh token, typed in the task composer and then as `@coder <token>` in the feature workstream: (1) the run session named by the task's link holds a user message item with the token, and the composer shows *delivered* only after it does; (2) the running attempt's request reads `aborted`; (3) the stub records a next attempt whose prompt contains the token and whose resume id equals the previous attempt's coding session id; (4) the row's retry standing (`attempts` minus discounted re-entries) is unchanged by the turn. Inbox: on the fixture seat, a reply's token is in the ask's session; on DevForce's EM ask, the box is disabled with its line |
-| **Input** | `goals/devforce-lab/lab/` on its scripted stub with one coder row held running; a second row on the same coder for the picker; a fixture seat whose kind takes messages and asks, under the check's own folder |
-| **Anti-game** | No assertion on App Lab state or a mocked server. The resume id and prompt come from the stub's own record on disk, not from the manager's |
+| **Goal check** | `goals/shift-manager/it-sends-a-turn-into-a-seat-session/` · model n/a (the scripted stub, held open until stopped) · real Chromium · run by the implementer at completion · verdict in the last implementation PR. The real-model half is FIX-1663's a4 |
+| **Signal** | A fresh token, typed in the task composer and then as `@coder <token>` in the feature workstream: (1) the run session named by the task's link holds a user message item with the token, and the composer shows *delivered* only after it does; (2) the running attempt's request reads `aborted`; (3) the stub records a next attempt whose prompt contains the token and whose resume id equals the previous attempt's coding session id; (4) the row's retry standing (`attempts` minus discounted re-entries) is unchanged by the turn. Inbox: on the fixture seat, a reply's token is in the ask's session; on DevTeam's EM ask, the box is disabled with its line |
+| **Input** | `goals/devteam-lab/lab/` on its scripted stub with one coder row held running; a second row on the same coder for the picker; a fixture seat whose kind takes messages and asks, under the check's own folder |
+| **Anti-game** | No assertion on shift-manager state or a mocked server. The resume id and prompt come from the stub's own record on disk, not from the manager's |
 | **Control that must fail** | `GOAL_CONTROL=optimistic-turn`: the composer draws *delivered* without calling the door. Must FAIL at (1). `GOAL_CONTROL=fresh-session`: the manager's resume feed returns nothing on a turn attempt. Must FAIL at (3), naming the resume id. Today's `main` fails everything |
 
 ## What changes
@@ -77,7 +77,7 @@ The built-in agent kind needs no line: its `run` already is its door.
 
 ```mermaid
 sequenceDiagram
-  participant P as App Lab composer
+  participant P as shift-manager composer
   participant D as the door, in the run session
   participant R as the running attempt
   participant B as the board
@@ -119,8 +119,8 @@ told a run heard them when it didn't, which is the one thing ER-15 forbids.
 1. **[Live delivery mid-step, or stop-and-continue for every harness first?](DECISIONS.md#open-live)**
    Recommended: stop-and-continue now, on all three harnesses; live delivery on Claude Code and
    Cursor as a follow-up that reuses this door.
-2. **[DevForce's only asking worker takes no message: grade Inbox's reply elsewhere, or give
-   DevForce's EM a door?](DECISIONS.md#open-inbox)** Recommended: grade it on a fixture seat that
+2. **[DevTeam's only asking worker takes no message: grade Inbox's reply elsewhere, or give
+   DevTeam's EM a door?](DECISIONS.md#open-inbox)** Recommended: grade it on a fixture seat that
    takes messages, and amend the closure's Part 4 run line to match.
 
 3. **[D1](DECISIONS.md#d1) · One door: each seat kind declares the public action that takes a

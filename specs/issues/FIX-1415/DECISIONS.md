@@ -45,7 +45,7 @@ These are already locked on the issue. Restated so a reviewer does not "open" th
 - **System versus dynamic.** A declared room (file or code, opened at boot) is undeletable from a seat. Create, delete, invite, and uninvite apply only to rooms Collab minted. The lane is where the room came from. A file cannot set it: `system:` is already refused, and the message says the path decides.
 - **Create is a named session on a channel kind the app already registered.** The channel id is the session id. No hot-mint of a new flow kind. No second mega-registry. The inventory stays the lookup store it already is.
 - **Do not bolt the verbs onto the declaration binder.** `openChannels` leaves a bound room's members as they were at first open. The POC ran that. Invite is a membership write on a dynamic session, not an edit to `CHANNEL.md`.
-- **Seats do the admin. Channels hold the conversation.** No assignable-channel routing. No EM-as-a-special type. DevForce is a Lab on Workforce, and it is not a teach path yet.
+- **Seats do the admin. Channels hold the conversation.** No assignable-channel routing. No EM-as-a-special type. DevTeam is a Lab on Workforce, and it is not a teach path yet.
 - **Sibling of seat-hire, not a merge.** Not a W4 first-cut child. Not a Collab release reopen. Org from the principal, never from the tool input.
 
 ## Recommended, still open

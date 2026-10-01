@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 414" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The path as of 30 September 2026, in phases rather than dates because Cycle PM has not scheduled the build. Now is this epic spec in review, before the gate. An input lane for the design: Claude Design's hand-back v1 came back during review, and design pass 2 runs from the gate to the final hand-back, a vertical line that gates final visuals only. An input lane for the sibling epics FIX-1650 to 1652, which nothing waits on. FIX-1655: its spec, then the token contract with neutral defaults, skin fixes and the re-sync check, then the light and dark App Lab values after the final hand-back. FIX-1662: its spec, then the frame and the project and workstream levels, then its final visual pass. FIX-1664: its spec beside FIX-1662's, then the task level once FIX-1662's frame has merged, then its final visual pass. FIX-1663: its QA plan written beside them, then its run after all three merge. The critical path runs the gate, design pass 2, the final passes and the closure run.">
+     aria-label="The path as of 30 September 2026, in phases rather than dates because Cycle PM has not scheduled the build. Now is this epic spec in review, before the gate. An input lane for the design: Claude Design's hand-back v1 came back during review, and design pass 2 runs from the gate to the final hand-back, a vertical line that gates final visuals only. An input lane for the sibling epics FIX-1650 to 1652, which nothing waits on. FIX-1655: its spec, then the token contract with neutral defaults, skin fixes and the re-sync check, then the light and dark shift-manager values after the final hand-back. FIX-1662: its spec, then the frame and the project and workstream levels, then its final visual pass. FIX-1664: its spec beside FIX-1662's, then the task level once FIX-1662's frame has merged, then its final visual pass. FIX-1663: its QA plan written beside them, then its run after all three merge. The critical path runs the gate, design pass 2, the final passes and the closure run.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -64,7 +64,7 @@
     <text class="t-s" x="656" y="187">light, dark values</text>
   </g>
   <g id="shell">
-    <text class="t-ln" x="16" y="228">FIX-1662 &#183; App Lab shell</text>
+    <text class="t-ln" x="16" y="228">FIX-1662 &#183; shift-manager shell</text>
     <rect class="todo" x="296" y="214" width="80" height="22" rx="3"/>
     <text class="t-s" x="304" y="229">spec</text>
     <rect class="todo" x="384" y="214" width="136" height="22" rx="3"/>

@@ -30,7 +30,7 @@ const IN_SCOPE = {
 const OUT_OF_SCOPE = {
   "packages/claude-code/src/sdk/agent.ts": "reads blockPath and attempt, not item scope",
   "packages/orchestration/src/task-board/index.ts": "reads blockInstanceId for a worker name",
-  "goals/app-lab/it-shows-and-stops-a-task-run/lab/lab.mts":
+  "goals/shift-manager/it-shows-and-stops-a-task-run/lab/lab.mts":
     "a goal fixture's stand-in harness, not a shipped emitter",
 };
 

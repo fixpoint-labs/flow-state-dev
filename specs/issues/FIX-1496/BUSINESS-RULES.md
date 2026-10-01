@@ -46,7 +46,7 @@ lives in `SPEC.md` and is not redrawn here.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-16 | The change is reviewed against the epic's fences | No L1 type, no `TaskStatus` value, no second work plane, no new substrate, nothing under `packages/` | Diff gate: every changed path is inside `goals/devforce-lab/` or `specs/issues/FIX-1496/` |
+| BR-16 | The change is reviewed against the epic's fences | No L1 type, no `TaskStatus` value, no second work plane, no new substrate, nothing under `packages/` | Diff gate: every changed path is inside `goals/devteam-lab/` or `specs/issues/FIX-1496/` |
 | BR-17 | The existing two checks are looked at after the change | The model-free gate still passes with its claim intact. The model-backed sibling still type-checks and keeps its claim; **running it is [FIX-1501](https://linear.app/fixpoint-labs/issue/FIX-1501), not this issue**. Neither verdict log is rewritten | CI for the gate · type-check for the sibling |
 
 ## Failure taxonomy
@@ -61,7 +61,7 @@ leg it ran.
 ## Acceptance criteria this issue owns
 
 One command runs the proof end to end on a machine with a signed-in harness, and the
-`goals/devforce-lab/` verdict log gains a dated `PASS` row naming the artifact's address, the
+`goals/devteam-lab/` verdict log gains a dated `PASS` row naming the artifact's address, the
 branch, and which leg ran. The three properties in [D1](DECISIONS.md#d1) hold, each with the
 control that makes it go red. **A passing check whose controls were never run does not close this
 issue** — the red states are part of the deliverable, not a nicety.

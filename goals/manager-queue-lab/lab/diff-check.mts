@@ -3,9 +3,9 @@
  *
  * This issue is evidence, not surface. Its whole diff lives under
  * `goals/manager-queue-lab/`: no published package gains a file, an export or a
- * changeset, and nothing under `goals/devforce-lab/` is touched either.
+ * changeset, and nothing under `goals/devteam-lab/` is touched either.
  *
- * **Why `devforce-lab` is named as a second fence rather than covered by the
+ * **Why `devteam-lab` is named as a second fence rather than covered by the
  * first.** BR-15 says that lab runs byte for byte as before, and no behavioural
  * suite can prove a tree unchanged — it can only prove the behaviours somebody
  * thought to check. A diff gate can prove it exactly, and it is the only thing
@@ -23,7 +23,7 @@ import { REPO_ROOT } from "../../lib/index.mts";
 export const LAB_ROOT = "goals/manager-queue-lab/";
 
 /** The one subtree inside the fence this issue must also leave alone. */
-export const FROZEN_SUBTREE = "goals/devforce-lab/";
+export const FROZEN_SUBTREE = "goals/devteam-lab/";
 
 /** What the diff gate found. */
 export interface DiffReport {

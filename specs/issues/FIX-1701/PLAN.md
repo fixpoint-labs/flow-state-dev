@@ -119,5 +119,5 @@ The premise held: three emitters, two shapes, nothing else to fold in.
 
 - Provenance derivation is copied in all three emitters, and core's own emit sites read the
   scope fields inline. Deepening opportunity; `improve-codebase-architecture`.
-- The goal fixture `goals/app-lab/it-shows-and-stops-a-task-run/lab/lab.mts` hand-reads the task
+- The goal fixture `goals/shift-manager/it-shows-and-stops-a-task-run/lab/lab.mts` hand-reads the task
   id as a stand-in harness. It could call the reader; left alone as a fixture.

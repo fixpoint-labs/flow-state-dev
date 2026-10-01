@@ -1,8 +1,8 @@
-# FIX-1496 · ER-DevForce proof: thinnest DevForce path ships a real artifact
+# FIX-1496 · ER-DevTeam proof: thinnest DevTeam path ships a real artifact
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-Feature · `goals/devforce-lab` only · **small** · 1 PR · epic [FIX-1457](../../epics/FIX-1457/SPEC.md) ([ER-DevForce](../../epics/FIX-1457/BUSINESS-RULES.md#er-devforce))
+Feature · `goals/devteam-lab` only · **small** · 1 PR · epic [FIX-1457](../../epics/FIX-1457/SPEC.md) ([ER-DevTeam](../../epics/FIX-1457/BUSINESS-RULES.md#er-devteam))
 
 ## Five people, before and after
 
@@ -15,14 +15,14 @@ Feature · `goals/devforce-lab` only · **small** · 1 PR · epic [FIX-1457](../
 | **has to re-run this proof a year from now** | Impossible: it has never been run once | One command, and it is what CI runs: no network, no token, no `gh`. The pull-request release run is the same path pointed at a real remote |
 
 **Why now.** W5's done condition is three exit proofs and none has been run
-([FIX-1457](../../epics/FIX-1457/SPEC.md)). ER-DevForce is the one that decides whether
+([FIX-1457](../../epics/FIX-1457/SPEC.md)). ER-DevTeam is the one that decides whether
 "Workforce can host a Lab that builds" is a claim or a fact. The research finding is that it is
 **nearly built already** — and that the last mile is not more substrate, it is running the thing
 and letting what it makes survive.
 
 ## What changes
 
-![Two lanes over the same five-stage DevForce path. Today three stages are built and green while the declared channel sits unused and the artifact is a commit in a temp directory; a banner reads never run, on in-memory stores. After, the same five stages with four marked gaps closed: a post on the feature channel drives the filing, the run is on durable on-disk stores, the artifact is work left at an address that outlives the run, and it is graded against an acceptance condition the brief stated before the run rather than assumed.](figures/the-four-gaps.svg)
+![Two lanes over the same five-stage DevTeam path. Today three stages are built and green while the declared channel sits unused and the artifact is a commit in a temp directory; a banner reads never run, on in-memory stores. After, the same five stages with four marked gaps closed: a post on the feature channel drives the filing, the run is on durable on-disk stores, the artifact is work left at an address that outlives the run, and it is graded against an acceptance condition the brief stated before the run rather than assumed.](figures/the-four-gaps.svg)
 
 The five stages are the same in both lanes, and the middle three are untouched. Only the two
 ends move, plus two properties of the run. **Nothing new is built** — the four gaps are the whole
@@ -89,14 +89,14 @@ declared and never dispatched, which is a negative claim the existing gate alrea
    network once, and we have committed to a definition of "real work" that a later Lab has to
    keep meeting.
 2. **[D2](DECISIONS.md#d2) · The proof grades what the run produced, against a condition the
-   brief stated first and a machine executes.** *If wrong:* every future DevForce brief owes an
+   brief stated first and a machine executes.** *If wrong:* every future DevTeam brief owes an
    executable acceptance condition, and a brief that cannot state one cannot be proved this way.
 
 **Open: none.** Number 1 is the one to weigh — it is the question the Architect deliberately left
 open, answered here as a proposal with a falsifier rather than left open again.
 
 **Not asked, because the epic already answered it.** Driving the feature channel is inside
-[ER-DevForce](../../epics/FIX-1457/BUSINESS-RULES.md#er-devforce)'s ratified wording — *"with
+[ER-DevTeam](../../epics/FIX-1457/BUSINESS-RULES.md#er-devteam)'s ratified wording — *"with
 seats and channels used honestly rather than stubbed past"* — so it is a constraint this spec
 obeys, not a call it makes ([Decided, not asked](DECISIONS.md#decided-not-asked)). Same section
 records the other trim: **one automated gate**, with the credentialed pull-request leg documented

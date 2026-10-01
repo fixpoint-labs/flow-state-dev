@@ -11,7 +11,7 @@ rules apply as written; these are the ones a turn adds. *Proved by* names the ki
 |---|---|---|---|
 | BR-1 | A seat kind is hired | Its door is its one public action that declares `userMessage` and takes `{ message: string }`. The inventory's seat row names it, or says it has none | CI |
 | BR-2 | A kind declares two such actions | The hire reports a problem naming both, and the seat is published with no door; nothing guesses | CI |
-| BR-3 | The door is called | The engine writes the person's line into the target session as a user message item before the door's block runs (Core's `userMessage`). App Lab writes no item of its own (ER-15) | Goal check · static |
+| BR-3 | The door is called | The engine writes the person's line into the target session as a user message item before the door's block runs (Core's `userMessage`). shift-manager writes no item of its own (ER-15) | Goal check · static |
 | BR-4 | The composer waits for delivery | It shows *delivered* only when the door's request is `completed` **and** the target session holds that request's user item. Until then it shows *sending*; the draft stays | Goal check under `optimistic-turn` |
 | BR-5 | The door refuses (finished task, no resumable harness, not the run's owner, no run) | The request ends with a named refusal; the composer keeps the draft and shows the reason. The line stays in the session, followed by the refusal | CI |
 | BR-6 | The caller is not the run's principal | Refused as the harness manager's `answer` refuses a foreign run, and as the engine refuses an unreachable session: the same not-found shape, no hint the run exists | CI |
@@ -40,7 +40,7 @@ rules apply as written; these are the ones a turn adds. *Proved by* names the ki
 | BR-19 | `@worker` is typed in a workstream | The worker's rows on the channel's boards that are running, parked, or pending with a link. One → BR-18 for that task. Several → the composer asks which, naming each. None → Send disabled: *"<worker> has no task in this workstream to message."* The channel transcript gets nothing | Goal check |
 | BR-20 | A sent `@worker` line is delivered | The stream shows a receipt, *sent into <task>*, linking to its Session, until the page reloads | CI |
 | BR-21 | An Inbox reply is sent | Into the session the ask sits in, through that session's kind's door | Goal check (fixture seat) |
-| BR-22 | The asking session's kind has no door | The reply box is disabled: *"<worker> takes no message. Answer its ask with Approve or Reject."* Approve and Reject are untouched | Goal check (DevForce's EM) |
+| BR-22 | The asking session's kind has no door | The reply box is disabled: *"<worker> takes no message. Answer its ask with Approve or Reject."* Approve and Reject are untouched | Goal check (DevTeam's EM) |
 | BR-23 | *Also post to the workstream* is shown | Disabled, with its gap line naming FIX-1474 | CI |
 
 ## Failure taxonomy
@@ -54,8 +54,8 @@ rules apply as written; these are the ones a turn adds. *Proved by* names the ki
 
 ## Acceptance criteria this issue owns
 
-- Every composer in App Lab that sends to a worker calls the one door, and nothing else writes a
+- Every composer in shift-manager that sends to a worker calls the one door, and nothing else writes a
   session item (ER-15; FIX-1663's Part 4, as amended by [the second fork](DECISIONS.md#open-inbox)).
 - FIX-1663's a4 can put a token into `eng.coder`'s running task session and read the model's next
   step in that session.
-- FIX-1664's composer gap and FIX-1662's `@worker` gap are gone from App Lab's gap registry.
+- FIX-1664's composer gap and FIX-1662's `@worker` gap are gone from shift-manager's gap registry.

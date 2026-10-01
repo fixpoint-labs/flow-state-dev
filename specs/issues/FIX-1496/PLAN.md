@@ -9,14 +9,14 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 
 | ID | Package · role | Change | Rules |
 |---|---|---|---|
-| S1 | `goals/devforce-lab/lab` · the authored brief | Rewrite the feature brief around a **named contract**: export `greet(name)` from a named path, with stated behaviour for a non-empty and an empty name. Keep the held-out marker — the prompt is still graded for it (D2, BR-12) | BR-3 BR-12 |
-| S1a | `goals/devforce-lab/lab` · the acceptance check | **New, and it is the requester's, not the run's.** A small check that imports the named export from the named path and asserts both behaviours. It lives with the lab, **outside the run's checkout**, and is executed against the produced tree after the run — so the agent cannot edit it, delete it, or substitute a test of its own for it | BR-3 BR-3a BR-4 |
-| S2 | `goals/devforce-lab/lab` · the host | Open the declared feature channel (`channelInstances` + `openChannels`, as `manager-queue-lab` does) and expose posting on it. The EM seat files its row in answer to the post rather than through a direct action call. **No org wrapper** — see *At implement time* | BR-6 BR-7 BR-8 BR-9 BR-10 |
-| S3 | `goals/devforce-lab/lab` · the artifact's repository | **One automated path.** The temp-directory repository stays, and gains a **bare clone at a declared path** that the run pushes to — so the artifact resolves after the process exits without needing a network or a credential. The helper names the leg it built so the verdict can report it (D1, BR-14) | BR-1 BR-14 BR-15 |
-| S4 | `goals/devforce-lab/lab` · the phase | **Amended at implement time — see below.** Done-condition is *a commit the base ref lacks* **and** the brief's acceptance condition, opt-in per check. **No `gh` probe and no second phase path in the lab.** The credentialed pull-request release run is documented in `goal.md`, using conductor's existing `prExists` slot, and is not wired as a CI leg | BR-1 BR-4 BR-5 |
-| S5 | `goals/devforce-lab/lab` · the acceptance gate | Execute S1a's check against the produced tree, and against the base ref. Both halves, or the leg proves nothing (D2). The two executions share one checkout setup | BR-3 BR-3a BR-4 |
-| S6 | `goals/devforce-lab/it-ships-an-artifact-a-person-can-open/` · **new sibling goal** | The runner, its `goal.md` (outcome · input · signal · anti-game · controls · verdict log), and the controls below. Reuses `openLab` with the S2–S5 options; **does not edit either existing check** | all |
-| S7 | `goals/devforce-lab/lab/README.md` | Extend *What this directory owns* and *What it works around* for the channel door and the artifact's bare clone. Record that the artifact now outlives the run | — |
+| S1 | `goals/devteam-lab/lab` · the authored brief | Rewrite the feature brief around a **named contract**: export `greet(name)` from a named path, with stated behaviour for a non-empty and an empty name. Keep the held-out marker — the prompt is still graded for it (D2, BR-12) | BR-3 BR-12 |
+| S1a | `goals/devteam-lab/lab` · the acceptance check | **New, and it is the requester's, not the run's.** A small check that imports the named export from the named path and asserts both behaviours. It lives with the lab, **outside the run's checkout**, and is executed against the produced tree after the run — so the agent cannot edit it, delete it, or substitute a test of its own for it | BR-3 BR-3a BR-4 |
+| S2 | `goals/devteam-lab/lab` · the host | Open the declared feature channel (`channelInstances` + `openChannels`, as `manager-queue-lab` does) and expose posting on it. The EM seat files its row in answer to the post rather than through a direct action call. **No org wrapper** — see *At implement time* | BR-6 BR-7 BR-8 BR-9 BR-10 |
+| S3 | `goals/devteam-lab/lab` · the artifact's repository | **One automated path.** The temp-directory repository stays, and gains a **bare clone at a declared path** that the run pushes to — so the artifact resolves after the process exits without needing a network or a credential. The helper names the leg it built so the verdict can report it (D1, BR-14) | BR-1 BR-14 BR-15 |
+| S4 | `goals/devteam-lab/lab` · the phase | **Amended at implement time — see below.** Done-condition is *a commit the base ref lacks* **and** the brief's acceptance condition, opt-in per check. **No `gh` probe and no second phase path in the lab.** The credentialed pull-request release run is documented in `goal.md`, using conductor's existing `prExists` slot, and is not wired as a CI leg | BR-1 BR-4 BR-5 |
+| S5 | `goals/devteam-lab/lab` · the acceptance gate | Execute S1a's check against the produced tree, and against the base ref. Both halves, or the leg proves nothing (D2). The two executions share one checkout setup | BR-3 BR-3a BR-4 |
+| S6 | `goals/devteam-lab/it-ships-an-artifact-a-person-can-open/` · **new sibling goal** | The runner, its `goal.md` (outcome · input · signal · anti-game · controls · verdict log), and the controls below. Reuses `openLab` with the S2–S5 options; **does not edit either existing check** | all |
+| S7 | `goals/devteam-lab/lab/README.md` | Extend *What this directory owns* and *What it works around* for the channel door and the artifact's bare clone. Record that the artifact now outlives the run | — |
 | S8 | The verdict log · and `gap-check`'s sunset | Run the new proof and append **one** dated row to its own `goal.md`. Appending only. **Then delete `specs/issues/FIX-1496/poc/gap-check/`** — see the sunset rule below. Running the never-run commit sibling is **not here**: [FIX-1501](https://linear.app/fixpoint-labs/issue/FIX-1501) | BR-17 |
 
 **Nothing is removed.** Named explicitly because tenet 3 expects the question asked: the two
@@ -54,8 +54,8 @@ all three feed S6. S8 is the proof itself and is last because it is the only ste
 | V6 | S6 | BR-2. Every graded token of the artifact's content is absent from the lab's `.mts` files, its fixtures and the prompt — asserted **before** any verdict is read |
 | V7 | S6 | BR-11. The store is closed and a fresh process reads the same row, run record and transcript |
 | V8 | S6 | BR-13. Control `no-harness`: the check fails loudly and does not fall back to a stub |
-| VG | S8 | **The goal.** One command: a post produces an artifact whose address resolves after the process exits, whose content the lab did not author, and which satisfies the brief's condition. `goals/devforce-lab/it-ships-an-artifact-a-person-can-open/run.mts` |
-| V9 | S8 | BR-16. Diff gate: every changed path is under `goals/devforce-lab/` or `specs/issues/FIX-1496/`. Nothing under `packages/` |
+| VG | S8 | **The goal.** One command: a post produces an artifact whose address resolves after the process exits, whose content the lab did not author, and which satisfies the brief's condition. `goals/devteam-lab/it-ships-an-artifact-a-person-can-open/run.mts` |
+| V9 | S8 | BR-16. Diff gate: every changed path is under `goals/devteam-lab/` or `specs/issues/FIX-1496/`. Nothing under `packages/` |
 | V10 | S8 | BR-17. The model-free gate still passes with its claim intact; the model-backed sibling still type-checks. Running it is [FIX-1501](https://linear.app/fixpoint-labs/issue/FIX-1501) |
 
 **Every control must be seen red.** A green check nobody has watched fail is not evidence
@@ -87,7 +87,7 @@ review time. They expire on merge, and saying so here is what stops someone revi
 
 | Where | Name | Why pinned |
 |---|---|---|
-| The new goal directory | `goals/devforce-lab/it-ships-an-artifact-a-person-can-open` | It is the claim, and the verdict log is cited from the epic |
+| The new goal directory | `goals/devteam-lab/it-ships-an-artifact-a-person-can-open` | It is the claim, and the verdict log is cited from the epic |
 | The brief's held-out marker | `FEATURE-BRIEF-E61B8` | The existing prompt grading keys on it; changing it silently weakens a passing check |
 
 Everything else is yours to name.
@@ -102,7 +102,7 @@ Everything else is yours to name.
 | BR-3 runs both halves — the check against the produced tree *and* against the base ref | A condition that was already true reports PASS on a run that did nothing. This is the vacuous-green shape the sibling labs each found the hard way |
 | The verdict names the leg it ran, and CI carries **one** | A proof that quietly ran the weaker leg and reported the stronger one is worse than no proof (BR-14). Two lab code paths is the ongoing cost that buys nothing once the leg is named |
 | No stub fallback when the harness is missing | A model-backed check that degrades to a scripted run is the exact failure its model-free sibling exists to detect. The existing check already states this; keep it |
-| Every changed path stays inside `goals/devforce-lab/` or this spec | [ER-11](../../epics/FIX-1457/BUSINESS-RULES.md) and [ER-25](../../epics/FIX-1457/BUSINESS-RULES.md). A package change here is a substrate epic wearing a polish label, and V9 is the fence |
+| Every changed path stays inside `goals/devteam-lab/` or this spec | [ER-11](../../epics/FIX-1457/BUSINESS-RULES.md) and [ER-25](../../epics/FIX-1457/BUSINESS-RULES.md). A package change here is a substrate epic wearing a polish label, and V9 is the fence |
 | Compose `openChannels` and conductor's `gh` probe; do not re-implement either | [ER-4](../../epics/FIX-1457/BUSINESS-RULES.md). A second copy of a proven path is a second thing to keep true |
 
 ## Docs
