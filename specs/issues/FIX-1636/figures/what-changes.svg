@@ -1,0 +1,70 @@
+<svg viewBox="0 0 940 372" role="img" aria-label="Two panels. Today: leg a, the packed install, runs in its own CI job against the installed tarballs, but the shared HTTP suite's legs b and c run in the test job from source over workspace links, so no HTTP case ever touches the installed release. After: one main commit, with only the runner on top, carries four parts: part 1 installs the tarballs once and runs leg a, then the shared suite and the queue case against those installed copies with a real Redis, and a workspace-link control that must fail; part 2 maps each team to a leg; part 3 re-runs every child's tests against a derived manifest; part 4 sweeps the seams, follows the docs and checks the observations. A finding is filed under the epic and sends the whole run round again on a fresh commit." xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-alone { fill:var(--surface-2); stroke:var(--rule); stroke-width:1.2; }
+    .n-src { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 3; }
+    .n-part { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-find { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .line  { stroke:var(--ink-3); stroke-width:1.4; fill:none; }
+    .pin   { fill:var(--accent); }
+    .loop  { stroke:var(--prose); stroke-width:1.3; fill:none; stroke-dasharray:5 3; }
+    .rule  { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; font-weight:600; }
+    .t-pr  { fill:var(--prose); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="372"/>
+  <g id="today">
+    <text class="t-lbl" x="16" y="24">TODAY · THE HTTP CASES NEVER MEET THE RELEASE</text>
+    <rect class="n-alone" x="16" y="44" width="428" height="54" rx="5"/>
+    <text class="t-b" x="30" y="66">leg a · packed-install job</text>
+    <text class="t-s" x="30" y="84">pack · install · import each · start a server · DevTool</text>
+    <rect class="n-src" x="16" y="112" width="428" height="54" rx="5"/>
+    <text class="t-b" x="30" y="134">legs b and c · the shared HTTP suite · test job</text>
+    <text class="t-gone" x="30" y="152">from src, over workspace links · how 0.1.1 passed</text>
+    <rect class="n-alone" x="16" y="180" width="428" height="54" rx="5"/>
+    <text class="t-b" x="30" y="202">each child's own tests</text>
+    <text class="t-s" x="30" y="220">green on the PR that added them</text>
+    <text class="t-s" x="16" y="340">each on whatever commit its PR happened to be</text>
+  </g>
+  <g id="divider">
+    <path class="rule" d="M470 16 V356"/>
+  </g>
+  <g id="after">
+    <text class="t-lbl" x="492" y="24">AFTER · ONE COMMIT, FOUR PARTS</text>
+    <rect class="n-part" x="580" y="44" width="344" height="58" rx="5"/>
+    <text class="t-b" x="592" y="64">1 · install once · leg a · then b and c on it</text>
+    <text class="t-s" x="592" y="80">real Redis · 0.1.1 control · workspace-link control</text>
+    <text class="t-s" x="592" y="94">stays in the packed-install job afterwards</text>
+    <rect class="n-part" x="580" y="110" width="344" height="36" rx="5"/>
+    <text class="t-b" x="592" y="133">2 · each team mapped to a leg</text>
+    <rect class="n-part" x="580" y="154" width="344" height="44" rx="5"/>
+    <text class="t-b" x="592" y="174">3 · every child's tests, re-run</text>
+    <text class="t-s" x="592" y="190">against a derived manifest · recorded controls</text>
+    <rect class="n-part" x="580" y="206" width="344" height="44" rx="5"/>
+    <text class="t-b" x="592" y="226">4 · the gap sweep</text>
+    <text class="t-s" x="592" y="242">seams · docs followed · the three observations</text>
+    <path class="rule" d="M550 73 H580 M550 128 H580 M550 176 H580 M550 228 H580 M550 73 V296"/>
+    <circle class="pin" cx="550" cy="296" r="6"/>
+    <text class="t-acc" x="492" y="330">one main commit, only the runner on top</text>
+    <rect class="n-find" x="712" y="268" width="212" height="40" rx="5"/>
+    <text class="t-pr" x="724" y="286">a finding · a child of FIX-1635</text>
+    <text class="t-pr" x="724" y="300">blocks FIX-1636 until fixed</text>
+    <path class="loop" d="M712 288 H640 Q620 288 620 296 H558"/>
+    <text class="t-pr" x="600" y="264">the whole run, again</text>
+  </g>
+  <g id="commit-line">
+    <path class="line" d="M492 296 H544"/>
+    <text class="t-lbl" x="492" y="350">MAIN</text>
+  </g>
+</svg>
