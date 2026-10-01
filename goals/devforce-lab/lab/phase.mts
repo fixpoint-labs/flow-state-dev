@@ -32,18 +32,10 @@ import type {
 } from "@flow-state-dev/harness-manager";
 import { GIT_TIMEOUT_MS, run } from "@flow-state-dev/harness-manager/checkout";
 import { runAcceptance } from "./acceptance.mts";
+import type { SeatConfig } from "./seat-config.mts";
 
 /** The phase segment of every run record's topic, and of every row filed here. */
 export const PHASE = "implement";
-
-/** What a seat of the `coder` kind carries in its settings bag, where the bag's type is erased. */
-interface SeatConfig {
-  /** The seat's own id, imposed by the hire and never authored. */
-  seatId?: string;
-  instructions?: string;
-  document?: string;
-  seatSkills?: Array<{ name: string; skillMd: string }>;
-}
 
 /** What {@link implementPhase}'s `validate` learned, handed back to `isDone`. */
 interface ValidatedWorkspace {
@@ -79,7 +71,7 @@ export async function buildSeatPrompt(
   options: ImplementPhaseOptions = {},
 ): Promise<string> {
   const ctx = run.ctx;
-  const config = (ctx.flow.config ?? {}) as SeatConfig;
+  const config = (ctx.flow.config ?? {}) as unknown as SeatConfig;
 
   const documentRef = config.document;
   if (documentRef === undefined) {
@@ -156,7 +148,12 @@ function cappedJson(value: unknown): string {
   return `${text.slice(0, MAX_TASK_OUTPUT_CHARS)}\n[truncated: ${dropped} more characters]`;
 }
 
-/** The task's section, as the board packed it: the goal, then what the row adds. */
+/**
+ * The task's section, as the board packed it: the goal, then what the row adds.
+ *
+ * `input` is deliberately not rendered: this team's rows carry only
+ * `{ issue, phase }`, which the run's terms already name.
+ */
 function taskSection(task: PromptRunContext["task"]): string[] {
   return [
     `# Your task`,
