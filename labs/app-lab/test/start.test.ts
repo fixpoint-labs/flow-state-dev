@@ -22,11 +22,11 @@ afterEach(() => {
 });
 
 /** Run the start script from the repo root, the way `pnpm --filter … start` does. */
-function start(config: string, extra: string[] = [], host = "127.0.0.1") {
+function start(config: string, extra: string[] = [], host = "127.0.0.1", env: Record<string, string | undefined> = {}) {
   const child = spawn(
     process.execPath,
     ["--import", "tsx", "bin/start.mts", "--config", config, "--port", "0", "--host", host, "--assets", assets, "--devtool-assets", devtoolAssets, ...extra],
-    { cwd: pkg, env: { ...process.env, INIT_CWD: repo }, stdio: ["ignore", "pipe", "pipe"] },
+    { cwd: pkg, env: { ...process.env, SHIFT_MANAGER_SHIFT: undefined, INIT_CWD: repo, ...env }, stdio: ["ignore", "pipe", "pipe"] },
   );
   running.push(child);
   let output = "";
@@ -145,6 +145,24 @@ describe("the start command", () => {
     expect(network.output()).toMatch(/won't serve 0\.0\.0\.0: this Lab hands its page a bearer token/);
     expect(network.output()).not.toMatch(/App Lab: http/);
   }, 120_000);
+
+  it("boots on the shift it is given, by --shift or SHIFT_MANAGER_SHIFT, and on none when given neither", async () => {
+    const lab = "goals/multi-seat-collab/lab/fsdev.config.mts";
+    const scheme = async (app: ReturnType<typeof start>) =>
+      /<meta name="app-lab-color-scheme" content="([^"]+)">/.exec(await (await fetch(`${await app.listening}/tasks`)).text())?.[1];
+
+    // Unset: no forced scheme, so the page follows the OS setting.
+    expect(await scheme(start(lab))).toBeUndefined();
+    expect(await scheme(start(lab, ["--shift", "night"]))).toBe("dark");
+    expect(await scheme(start(lab, ["--shift", "day"]))).toBe("light");
+    expect(await scheme(start(lab, [], "127.0.0.1", { SHIFT_MANAGER_SHIFT: "night" }))).toBe("dark");
+    // The flag wins over the environment.
+    expect(await scheme(start(lab, ["--shift", "day"], "127.0.0.1", { SHIFT_MANAGER_SHIFT: "night" }))).toBe("light");
+
+    const refused = start(lab, ["--shift", "dusk"]);
+    expect(await refused.exited).not.toBe(0);
+    expect(refused.output()).toMatch(/No shift "dusk".*day, night/);
+  }, 180_000);
 
   it("refuses a config path with nothing at it, with the loader's message", async () => {
     const app = start("labs/app-lab/test/fixtures/missing/fsdev.config.mts");

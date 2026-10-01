@@ -27,6 +27,7 @@ It prints the address, `http://127.0.0.1:4300` by default. One process serves th
 | `--assets <dir>` | `dist/` | Serve a different build of the pages. |
 | `--devtool <url>` | the devtool App Lab serves | Point a task's *Open trace* link at a devtool you run yourself instead. Must be an `http(s)` address. App Lab then serves no devtool of its own. |
 | `--devtool-assets <dir>` | the `@flow-state-dev/devtool` build | Serve a different build of the devtool's pages. |
+| `--shift <day\|night>` | `SHIFT_MANAGER_SHIFT`, else unset | Start on the light (`day`) or dark (`night`) look and keep it, whatever the OS setting. Unset, the page follows the OS. |
 
 The process runs from the directory you started it in, so a Lab's relative paths, such as a SQLite file, land where they would under `fsdev dev`.
 
@@ -193,6 +194,8 @@ Each of these is drawn as a named empty state or a disabled control:
 ## How it looks
 
 App Lab's look comes from the [design-system](../design-system) package, through one import in `src/styles.css`. It follows your operating system's light or dark setting, and switches when you change it. Remove that import and every screen falls back to the registry's neutral defaults.
+
+To pin the look instead, start on a shift: `--shift day` for light, `--shift night` for dark, or set `SHIFT_MANAGER_SHIFT` to either. The flag wins when both are set. Each shift is a file under `profiles/` naming its colour scheme. The page then keeps that look for as long as it's open and ignores the OS setting. There's no switch on the page itself. Restart on the other shift to change it.
 
 The cards in a task's Session, and the ask cards in Inbox and in a workstream's Stream, are App Lab's copies of `@flow-state-dev/ui` registry components, kept unedited. The `ui:add` script in `package.json` names what was installed (`chat-assistant`, which brings the message, reasoning, tool, code block, task plan and ask cards with it). `chat-assistant` brings its whole dependency closure, so App Lab also holds copies it doesn't draw today (the debate, evented-actors, routed-specialists and audit-annotation containers) and the libraries they need, such as `shiki`, `streamdown` and `motion`. A test checks that the copies are exactly what that list ships, byte for byte.
 

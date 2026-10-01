@@ -1,15 +1,15 @@
 /**
- * App Lab's entry: follow the OS's light or dark setting, connect as the page
- * was served, and draw the shell.
+ * App Lab's entry: take the shift it was started on, or else the OS's light or
+ * dark setting, connect as the page was served, and draw the shell.
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { followColorScheme } from "./lib/color-scheme";
+import { bootColorScheme, readServedColorScheme } from "./lib/color-scheme";
 import { createLabClients, readConnection, readDevtoolUrl } from "./lib/connection";
 import "./styles.css";
 
-followColorScheme();
+bootColorScheme(readServedColorScheme());
 
 const clients = createLabClients(readConnection());
 

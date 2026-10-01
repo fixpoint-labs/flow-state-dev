@@ -31,6 +31,10 @@
  *   --devtool-assets <dir>
  *                     serve a different build of the devtool's pages
  *                     (default: the shipped `@flow-state-dev/devtool` build)
+ *   --shift <name>    boot on a shift profile from this package's `profiles/`:
+ *                     `day` (light) or `night` (dark). Falls back to the
+ *                     `SHIFT_MANAGER_SHIFT` environment variable. With neither,
+ *                     the page follows the OS's light or dark setting.
  *
  * The devtool. A task's trace link opens the run in the devtool, which can only
  * show it if it reads the store the run is in. A devtool in another process
@@ -44,9 +48,9 @@
  * Either way the address reaches the page the same way: App Lab's pages are
  * copied to a temp directory with it written into index.html, once the Lab has
  * loaded, and the copy is removed when the process stops. The build itself is
- * untouched.
+ * untouched. A forced shift's scheme reaches the page in that same copy.
  */
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,10 +62,16 @@ import { assertNetworkBindIsAuthenticated, isLoopbackHost, serve, type ServeHand
 /** App Lab's own build output. */
 const DEFAULT_ASSETS = fileURLToPath(new URL("../dist", import.meta.url));
 
+/** The shift profiles `--shift` picks from, one `<name>.json` each. */
+const PROFILES = fileURLToPath(new URL("../profiles", import.meta.url));
+
+/** The environment variable `--shift` falls back to. */
+const SHIFT_ENV = "SHIFT_MANAGER_SHIFT";
+
 /** Exit code for a config or argument problem; matches the CLI's. */
 const EXIT_CONFIG_ERROR = 3;
 
-/** The copy of the pages `--devtool` writes its address into; removed whenever the process ends. */
+/** The copy of the pages the devtool address and shift are written into; removed whenever the process ends. */
 let scratch: string | undefined;
 function removeScratch(): void {
   if (scratch !== undefined) rmSync(scratch, { recursive: true, force: true });
@@ -82,6 +92,7 @@ const { values } = parseArgs({
     assets: { type: "string" },
     devtool: { type: "string" },
     "devtool-assets": { type: "string" },
+    shift: { type: "string" },
   },
   strict: true,
 });
@@ -103,6 +114,23 @@ if (!existsSync(resolve(built, "index.html"))) {
 /** The meta tag the page reads the devtool address from (`readDevtoolUrl`). */
 const DEVTOOL_META = "app-lab-devtool";
 
+/** The meta tag the page reads a forced scheme from (`readServedColorScheme`). */
+const SCHEME_META = "app-lab-color-scheme";
+
+/**
+ * The scheme the shift profile `--shift` (or `SHIFT_MANAGER_SHIFT`) names, or
+ * `undefined` when neither is set. A name with no profile stops the process.
+ */
+function shiftScheme(): "light" | "dark" | undefined {
+  const name = values.shift ?? (process.env[SHIFT_ENV]?.trim() || undefined);
+  if (name === undefined) return undefined;
+  const known = readdirSync(PROFILES).filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -".json".length)).sort();
+  if (!known.includes(name)) fail(`No shift "${name}". Known shifts: ${known.join(", ")}.`);
+  const scheme = (JSON.parse(readFileSync(join(PROFILES, `${name}.json`), "utf8")) as { colorScheme?: unknown }).colorScheme;
+  if (scheme !== "light" && scheme !== "dark") fail(`Shift profile ${name}.json has no colorScheme of "light" or "dark".`);
+  return scheme;
+}
+
 /** The `--devtool` address, checked before anything loads. */
 function devtoolAddress(devtool: string): URL {
   let url: URL;
@@ -116,17 +144,19 @@ function devtoolAddress(devtool: string): URL {
 }
 
 /**
- * The pages with the devtool address written in: a copy in a temp directory,
- * made only once the Lab is ready to be served, and removed on shutdown or on
- * any failure after it.
+ * The pages with `metas` written in: a copy in a temp directory, made only
+ * once the Lab is ready to be served, and removed on shutdown or on any
+ * failure after it.
  */
-function pagesWithDevtool(url: URL): string {
+function pagesWithMetas(metas: Record<string, string>): string {
   scratch = mkdtempSync(join(tmpdir(), "app-lab-pages-"));
   cpSync(built, scratch, { recursive: true });
   const index = join(scratch, "index.html");
-  const attr = url.href.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const attr = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
   const html = readFileSync(index, "utf8");
-  const tag = `<meta name="${DEVTOOL_META}" content="${attr}">`;
+  const tag = Object.entries(metas)
+    .map(([name, content]) => `<meta name="${name}" content="${attr(content)}">`)
+    .join("");
   writeFileSync(index, /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${tag}</head>`) : `${tag}${html}`);
   return scratch;
 }
@@ -153,6 +183,7 @@ function devtoolPages(): string | undefined {
 }
 
 let devtoolUrl = values.devtool === undefined ? undefined : devtoolAddress(values.devtool);
+const scheme = shiftScheme();
 
 // Process-global: nothing else in this package may assume the package directory as cwd.
 process.chdir(invokedFrom);
@@ -208,7 +239,11 @@ if (ownDevtool !== undefined) {
   devtoolUrl = new URL(`http://${host.includes(":") ? `[${host}]` : host}:${devtoolHandle.port}/`);
 }
 
-const assets = devtoolUrl === undefined ? built : pagesWithDevtool(devtoolUrl);
+const metas: Record<string, string> = {
+  ...(devtoolUrl === undefined ? {} : { [DEVTOOL_META]: devtoolUrl.href }),
+  ...(scheme === undefined ? {} : { [SCHEME_META]: scheme }),
+};
+const assets = Object.keys(metas).length === 0 ? built : pagesWithMetas(metas);
 
 const handle = await serve(flowState, {
   host,
