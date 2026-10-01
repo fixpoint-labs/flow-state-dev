@@ -15,8 +15,9 @@ Jake's final hand-back, v2 ([PR #2605](https://github.com/fixpoint-labs/flow-sta
 adds Chief of Staff as the landing view (FIX-1722), Roster with TEAMS as rows of status squares
 (FIX-1723), and a live Day/Night switch in the sidebar (FIX-1725). v2's removal of the
 workstream, task and project tabs is not adopted. What moved, and why: [EVOLUTION.md](EVOLUTION.md#amendment--2026-10-01--design-v2s-structure).
-App Lab now ships as **Shift Manager**, at `labs/shift-manager` (FIX-1706); this set keeps the
-name it was approved under.
+**One rule for the name:** App Lab now ships as **Shift Manager** (FIX-1706). Implementation
+and the closure's legs use `labs/shift-manager` wherever this set says `labs/app-lab`; the
+prose keeps "App Lab" as the product name it was approved under.
 
 ## Four teams, before and after
 
@@ -123,8 +124,9 @@ FIX-1664's empty states the same way). FIX-1662 names FIX-1655's tokens in its s
 wait for its merge; FIX-1664's spec runs beside FIX-1662's, and its build merges after it.
 FIX-1722 and FIX-1723 build in FIX-1662's frame, which has shipped. FIX-1719 (the FIX-1650
 epic) supplies the seat data both read; neither waits for it, since a Lab-declared seat stands
-in until it lands. Chief of Staff's ON CALL is a named gap until FIX-1723 merges, not a wait.
-The closure waits on every child, FIX-1725 included.
+in until it lands. Within FIX-1722, only its ON CALL rail waits on FIX-1723, and it shows a
+named gap until then; the rest of FIX-1722 does not wait. The closure waits on every child as a
+whole, FIX-1725 included: Linear has each one blocking FIX-1663.
 
 ## What stays as it is
 

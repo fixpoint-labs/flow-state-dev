@@ -29,7 +29,8 @@ flowchart TD
 | **Because** | The hand-back turned four regions into three centre levels (project, workstream, task), each with four tabs, and a right panel that changes with the level. As one child that is one spec of twelve tabs and two panel modes, past what a review holds. The task level is the clean cut: it reads one harness session (its transcript, diff and checks) and carries the session writes (a turn, Interrupt, Hand off), where the project board is the workstream board in swimlanes, so those two stay together. Meaning still lives in FIX-1650, 1651 and 1652, so a child per destination would still draw a sibling's model or wait on it |
 | **Locks in** | **FIX-1662:** the frame (sidebar, Jump to, routes, the right panel's slot), the Inbox and Tasks destinations, the project and workstream levels, and the workstream's panel. **FIX-1664:** the task level and the task inspector, inside that frame; its spec runs beside FIX-1662's, and its build merges after FIX-1662. The split trigger still stands for anything further: a level that needs a read no shipped surface exposes splits out rather than inventing the read. **Amended 2026-10-01:** that trigger fired twice for design v2. Chief of
 Staff (**FIX-1722**) reads the CoS seat's session; Roster (**FIX-1723**) derives each worker's
-status. Both are destinations inside FIX-1662's frame, filed as their own children. The Day/Night
+status. Both are destinations inside FIX-1662's frame, filed as their own children so their spec and
+build PRs run in parallel. The Day/Night
 switch (**FIX-1725**) is a direct-route child: look only |
 
 **What would change my mind:** FIX-1664's spec finding the task level reads mostly what the
@@ -184,7 +185,6 @@ until it returns. Kept in step with [`assets/design/DESIGN.md`](assets/design/DE
 |---|---|
 | **Where resources live** | Reached from Jump to, as a list of what the tree declares |
 | **The light variant** (the ticket's beige, black and yellow) | FIX-1655 drafts it from the ticket; no final value merges |
-| **TEAMS with workers below each team** (Jake's correction) | Answered by v2 and adopted: team rows of status squares opening Roster (FIX-1723) |
 | **Tabs not drawn:** workstream Board, Brief, Results; project Stream, Workstreams, Brief; task Diff, Checks, Brief | Built from the wireframes' surfaces in the v1 look |
 | **Empty, loading and failed states** in the v1 look | The wireframes' states: a named empty state, a per-section Retry |
 | **The right panel at a project** (v1's board has none) | The board takes the full width |

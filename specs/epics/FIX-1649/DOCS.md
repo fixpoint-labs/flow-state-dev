@@ -33,7 +33,7 @@ Publisher: FIX-1655, once its token mapping ships.
 > Change a token and every component follows. Nothing here needs a class override or an edit
 > to a component you copied in; if a component ignores a token, that's a bug in the component.
 
-## CREATE · `labs/app-lab/README.md` · opening
+## UPDATE · `labs/shift-manager/README.md` · opening
 
 Publisher: FIX-1662. How to open a Lab, and the run command, are its own draft.
 
@@ -65,7 +65,7 @@ Publisher: FIX-1662. How to open a Lab, and the run command, are its own draft.
 
 ## UPDATE · `labs/README.md` · the directory table
 
-Publisher: FIX-1662. One row: `app-lab/`, *the app a Workforce Lab is used through*, linking
+Publisher: FIX-1662. One row: `shift-manager/`, *the app a Workforce Lab is used through*, linking
 its README.
 
 ## Ownership
