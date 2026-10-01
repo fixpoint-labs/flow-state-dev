@@ -151,24 +151,23 @@ export function createScopePersist<
 }
 
 /**
- * Builds the `reread` callback that lets the CAS path verify a no-op against
- * the stored record (see `runWithCAS`). When the stored version has moved,
- * `ref.current` is refreshed from it, as the conflict path does, so the retry
- * builds its `set` record from the store's record rather than a stale one.
+ * `reread` for a scope record. `undefined` when the ref or the stored record
+ * is gone. Refreshes `ref.current` only when the stored version moved, so the
+ * retry's `set` is built from the store's record.
  */
 export function createScopeReread<
   TState,
   TRecord extends { id: string; state: unknown; version: number }
 >(
-  ref: { current: TRecord },
+  ref: { current: TRecord | undefined },
   store: { get(id: string): Promise<TRecord | undefined> }
 ): CASReread<TState> {
   return async () => {
-    const record = await store.get(ref.current.id);
-    if (record === undefined) {
-      return undefined;
-    }
-    if (record.version !== ref.current.version) {
+    const held = ref.current;
+    if (held === undefined) return undefined;
+    const record = await store.get(held.id);
+    if (record === undefined) return undefined;
+    if (record.version !== held.version) {
       ref.current = record;
     }
     return { state: record.state as TState, version: record.version };

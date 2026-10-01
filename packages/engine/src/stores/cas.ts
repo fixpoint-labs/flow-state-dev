@@ -179,46 +179,31 @@ export async function runWithCAS<TState>({
     const expectedVersion = container.getVersion();
     const nextState = await mutator(current);
 
-    // No-op short-circuit, verified only. `current` is this context's cached
-    // copy, which another writer may have replaced since it was read: a
-    // mutator that deliberately restores that cached value would be skipped
-    // while the other writer's value stays stored. So skip only when the
-    // store confirms it still holds the version we hold; if it moved, refresh
-    // and re-run the mutator against the real value, like a conflict.
+    // A verified no-op returns here. A stale cache and a lost persist share
+    // the refresh-and-retry tail below; see `reread` on `RunWithCASOptions`.
     if (deepEqual(current, nextState) && reread !== undefined) {
       const fresh = await reread();
       if (fresh === undefined || fresh.version === expectedVersion) {
         return { state: current, committed: false };
       }
       container.commit(fresh.state, fresh.version);
-      attempt += 1;
-      if (attempt > maxRetries) {
-        break;
+    } else {
+      const result = await persist(nextState, expectedVersion, persistHint);
+      if (result.ok) {
+        return { state: container.commit(nextState, result.version), committed: true };
       }
-      await waitForCASRetry(attempt, options);
-      continue;
+      // Deleted between read and write: keep the cached state. The next
+      // persist still mismatches on its own expectedVersion check.
+      container.commit(
+        result.currentState ?? (container.read() as TState),
+        result.currentVersion
+      );
     }
-
-    const result = await persist(nextState, expectedVersion, persistHint);
-
-    if (result.ok) {
-      return { state: container.commit(nextState, result.version), committed: true };
-    }
-
-    // Conflict: refresh the container with the store's current state so the
-    // next attempt's mutator sees the real current state. When the store has
-    // no current value (deleted between read and write), fall back to the
-    // previously cached state — the next persist will still detect the
-    // mismatch via its own expectedVersion check.
-    const refreshedState =
-      result.currentState ?? (container.read() as TState);
-    container.commit(refreshedState, result.currentVersion);
 
     attempt += 1;
     if (attempt > maxRetries) {
       break;
     }
-
     await waitForCASRetry(attempt, options);
   }
 
