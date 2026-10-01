@@ -127,6 +127,9 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
         block: readOwnFacts,
         description: "Read what this seat can see of its own configuration. Writes nothing.",
       },
+      // The seat's door: a person's message into one of its running coding
+      // runs, which stops and continues the same coding session with it.
+      message: manager.messageDoor(board),
     },
     // Reachable only through the board's claim gate, by a hand-off that named
     // this instance.

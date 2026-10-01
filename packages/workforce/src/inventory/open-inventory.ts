@@ -37,6 +37,7 @@ import {
   INVENTORY_REGISTER_SEATS
 } from "../channel/channel-flow";
 import type { ChannelManifest } from "../manifest";
+import { seatDoorOf } from "../seat-door";
 
 /**
  * One registered seat, as the binder needs it.
@@ -51,6 +52,12 @@ export interface InventorySeat {
   id: string;
   /** The flow kind it was hired into. */
   kind: string;
+  /**
+   * The seat's public actions, which its door is read from (see
+   * `seat-door.ts`). A hired seat carries them; a seat passed without them is
+   * registered with no door.
+   */
+  actions?: unknown;
 }
 
 /** What the binder registers: the seats that were hired, and the channels that were opened. */
@@ -254,10 +261,10 @@ export async function openInventory(
     try {
       await options.run({
         action: INVENTORY_REGISTER_SEATS,
-        // Id and kind only. A seat's row is the whole of what the inventory
-        // knows about it, and everything else on a record is the declared
-        // layer's to answer.
-        input: { seats: seats.map((seat) => ({ id: seat.id, kind: seat.kind })) },
+        // Id, kind and door only. A seat's row is the whole of what the
+        // inventory knows about it, and everything else on a record is the
+        // declared layer's to answer.
+        input: { seats: seats.map((seat) => ({ id: seat.id, kind: seat.kind, door: seatDoorOf(seat).door })) },
         userId: options.userId,
         orgId,
         flowKind: writer.flowKind,

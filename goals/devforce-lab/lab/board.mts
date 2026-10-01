@@ -17,7 +17,7 @@
  *   dispatcher naming *another flow instance* — the hired coder seat — so the
  *   row it claims is handed to the seat a `WORKER.md` declared.
  * - {@link recipientBoard} sits on the `coder` kind, and **is the framework's
- *   tax, not a convention.** It drains nothing. It exists because `defineFlow`
+ *   tax, not a convention.** Only the seat's message door drains it. It exists because `defineFlow`
  *   refuses a flow that declares a task entry with no board reachable that
  *   hands off to it, and because the claim gate refuses a dispatch whose
  *   `boardId` differs from the one the recipient's own board was built with.
@@ -130,7 +130,8 @@ export function coordinatorBoard(options: CoordinatorBoardOptions) {
 
 /**
  * The recipient's board — declared so the claim gate has something to verify
- * against, and drained by nobody.
+ * against, and drained only by the seat's message door, which re-queues a
+ * run it stopped for a person's message and starts its next attempt.
  *
  * **The framework's tax.** See this module's header.
  */
@@ -140,6 +141,10 @@ export function recipientBoard(collection: DefinedTaskCollection) {
     boardId: BOARD_ID,
     collection,
     concurrency: 1,
+    // The seat's message door drains this board after it re-queues a run, so
+    // the drain must claim only the sender's own rows, as the coordinator's
+    // does.
+    dispatcher: runOwnerDispatcher(),
     workers: {
       [ASSIGNEE]: dispatcher<TaskWorkerInput>({
         name: `${BOARD_ID}-gate`,

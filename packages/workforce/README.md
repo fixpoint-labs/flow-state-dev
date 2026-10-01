@@ -353,6 +353,11 @@ documents this seat may touch. Everything else is that worker's settings, handed
 verbatim and parsed against its `configSchema`. That schema is closed, so a setting the flow never
 declared is refused by name at the hire.
 
+A seat takes a person's message through its **door**: the one public action its kind declares
+with `userMessage` and a `{ message }` input. The hire finds it, and `openInventory` writes it on the
+seat's [inventory row](#the-inventory) as `door`, or `null` when the kind has none.
+Two such actions on one kind is a hire warning naming both, and the seat gets `null`.
+
 ### The documents a seat may touch
 
 A `WORKER.md` may list the [file-declared documents](#reading-documents-from-files) that seat is
@@ -1686,7 +1691,7 @@ fired seat keeps its row. A channel's `members` are the ones it had when it regi
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
-| `defineSeatInventoryCollection()` | registered seat, at `inventory/seats/<seatId>` | `id`, `kind` (the worker kind the seat was hired into) |
+| `defineSeatInventoryCollection()` | registered seat, at `inventory/seats/<seatId>` | `id`, `kind` (the worker kind the seat was hired into), `door` (the action that takes a person's message, or `null`) |
 | `defineChannelInventoryCollection()` | registered channel, at `inventory/channels/<channelId>` | `id`, `kind` (the channel kind that opened it), `members` (seat ids, `[]` when absent), `openedAt` (ISO string, or `null` when absent) |
 | `defineMembershipIndexCollection()` | seat-in-channel, at `inventory/members/<seatId>/<channelId>` | `seatId`, `channelId` |
 
@@ -1734,7 +1739,7 @@ Leave both out and channels work without an inventory. Nothing is declared, noth
 
 **What `openInventory` writes:**
 
-- One row per seat at `inventory/seats/<seatId>`, carrying `{ id, kind }`.
+- One row per seat at `inventory/seats/<seatId>`, carrying `{ id, kind, door }`.
 - One row per channel at `inventory/channels/<channelId>`, carrying `{ id, kind, members, openedAt }`.
 - One row per member per channel at `inventory/members/<seatId>/<channelId>`.
 
@@ -2002,9 +2007,10 @@ the root exports, and reaches no Node built-in.
 | `inventoryWriterActions(kind)` | The two blocks a custom channel kind installs to get inventory rows, keyed by action name. Split them: `registerChannelInInventory` into `actions` (public, safe — empty input), `registerSeatsInInventory` into `internal.actions` (its input is the row data, with nothing to check it against). The string is the `kind` value those rows carry. |
 | `INVENTORY_REGISTER_CHANNEL` / `INVENTORY_REGISTER_SEATS` | The action names the writer runs: `"registerChannelInInventory"` and `"registerSeatsInInventory"`. |
 | `INVENTORY_SEAT_WRITER_SESSION` | The session id the seat-registration action runs under when `seatWriter` names none: `"inventory-binder"`. |
-| `InventoryRoster` / `InventorySeat` / `InventorySeatWriter` | What `openInventory` takes: the roster (`{ seats, channels }`), one seat (`{ id, kind }`), and which flow writes the seat rows (`{ flowKind }`). |
+| `InventoryRoster` / `InventorySeat` / `InventorySeatWriter` | What `openInventory` takes: the roster (`{ seats, channels }`), one seat (`{ id, kind }`, plus its `actions` when it is a hired seat, which its door is read from), and which flow writes the seat rows (`{ flowKind }`). |
 | `InventoryActionRequest` / `InventoryBinding` | What the `run` door receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the seat request and must reach `runAction`), and what one boot of `openInventory` returns (`{ seats, channels, problems }`). |
 | `OpenInventoryOptions` | The options `openInventory` takes: `run`, `seatWriter`, `userId`, `orgId`. |
+| `seatDoorOf(seat)` / `SeatDoor` | A hired seat's door: the one public action its kind declares with `userMessage` and a `{ message }` input. Returns `{ door }`, `null` when there is none, plus a `problem` naming both when the kind declares two (and `door: null`). `openInventory` writes it on the seat's row. |
 
 ## Error Semantics
 

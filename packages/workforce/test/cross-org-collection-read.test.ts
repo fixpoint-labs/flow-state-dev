@@ -863,8 +863,9 @@ describe("FIX-1502 · V5 · a fired seat is still listed (BR-15)", () => {
 
     const listed = await readCollection(h, sessionId, SEAT_INVENTORY_RESOURCE, "", org);
     expect(listed.status).toBe(200);
+    // The row a hire through the tools wrote carries the agent kind's door.
     expect(listed.json.items.map((item: any) => item.clientData)).toEqual([
-      { id: address, kind: "agent" }
+      { id: address, kind: "agent", door: "run" }
     ]);
   });
 });

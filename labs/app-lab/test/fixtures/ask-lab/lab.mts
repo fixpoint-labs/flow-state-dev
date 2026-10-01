@@ -89,6 +89,12 @@ export type AskLabOptions = {
   /** Open the inventory at boot. Default true. */
   inventory?: boolean;
   /**
+   * Register each seat with its actions, so its inventory row names its door.
+   * Default true. `false` registers id and kind only: every seat reads as a
+   * kind with no door.
+   */
+  doors?: boolean;
+  /**
    * Build the channel kind with the inventory's collections. Default true.
    * `false` is a Lab whose flows never declare an inventory, so no session it
    * serves lists one. The inventory is not opened either.
@@ -179,7 +185,10 @@ export async function openAskLab(options: AskLabOptions = {}) {
       return result;
     };
     const binding = await openInventory(
-      { seats: seats.map((seat) => ({ id: seat.id, kind: seat.kind })), channels: tree.channels },
+      {
+        seats: options.doors === false ? seats.map((seat) => ({ id: seat.id, kind: seat.kind })) : seats,
+        channels: tree.channels,
+      },
       { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: ASK_LAB_USER_ID, orgId },
     );
     if (binding.problems.length > 0) throw new Error(binding.problems.join("; "));

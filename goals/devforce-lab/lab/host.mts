@@ -616,7 +616,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       return result;
     };
     const opened = await openInventory(
-      { seats: hired.map((seat) => ({ id: seat.id, kind: seat.kind })), channels: roster.channels },
+      { seats: hired, channels: roster.channels },
       { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
     );
     if (opened.problems.length > 0) {

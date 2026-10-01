@@ -3,14 +3,21 @@
  * Lab lists for this person, dispatch runs included, oldest first (BR-24).
  * A list and a detail pane; the detail draws the ask with the same card a
  * workstream's Stream uses, and answers it through the same resume (BR-25).
+ *
+ * Under the card, a reply box sends a line into the session the ask sits in,
+ * through the door of the seat that owns that session (BR-21). A seat whose
+ * kind has no door gets the box disabled, saying so; Approve and Reject are
+ * untouched (BR-22).
  */
 import { useState } from "react";
 import { AskCard } from "../components/AskCard";
+import { TurnComposer } from "../components/TurnComposer";
 import { EmptyState, SectionFailure } from "../components/ui";
-import { workstreamsOf, waited, type LoadedSnapshot } from "../lib/derive";
+import { doorOf, rosterOf, workstreamsOf, waited, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { Ask } from "../lib/reads";
 import { navigate } from "../lib/routes";
+import { sendTurn } from "../lib/send";
 import type { Gaps } from "../gaps";
 
 const FILTERS = ["All", "Approvals", "Questions"] as const;
@@ -21,7 +28,7 @@ function matches(filter: Filter, ask: Ask): boolean {
 }
 
 export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapshot; suspensionId: string | null; gaps: Gaps }) {
-  const { refresh } = useLab();
+  const { clients, refresh } = useLab();
   const [filter, setFilter] = useState<Filter>("All");
   if (!snapshot.asks.ok) {
     return (
@@ -107,9 +114,52 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
               {selected.seatId ?? "unknown seat"} asked, in session {selected.sessionId}
             </p>
             <AskCard ask={selected} />
+            <Reply key={selected.item.suspensionId} ask={selected} snapshot={snapshot} gaps={gaps} clients={clients} onDelivered={() => void refresh()} />
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+/** Why a reply can't go into the ask's session, or the door it goes through. */
+function replyRoute(ask: Ask, snapshot: LoadedSnapshot, gaps: Gaps): { blocked: string } | { blocked: null; flowId: string; door: string } {
+  // A session written before instance ownership names no flow, so no door.
+  if (ask.flowId === null) return { blocked: ask.unanswerable ?? "This session names no flow to send through." };
+  if (!snapshot.inventory.ok) return { blocked: snapshot.inventory.failure.message };
+  const door = doorOf(rosterOf(snapshot).seats, ask.flowId);
+  if (door === null) return { blocked: `${ask.seatId ?? ask.flowId} ${gaps.turn.replyNoDoor}` };
+  return { blocked: null, flowId: ask.flowId, door };
+}
+
+/** The reply box under an ask (BR-21, BR-22). */
+function Reply({
+  ask,
+  snapshot,
+  gaps,
+  clients,
+  onDelivered,
+}: {
+  ask: Ask;
+  snapshot: LoadedSnapshot;
+  gaps: Gaps;
+  clients: ReturnType<typeof useLab>["clients"];
+  onDelivered: () => void;
+}) {
+  const route = replyRoute(ask, snapshot, gaps);
+  return (
+    <div className="mt-4 rounded-md border">
+      <TurnComposer
+        testId="inbox-reply"
+        label={`Reply to ${ask.seatId ?? "this worker"}`}
+        placeholder={`Reply to ${ask.seatId ?? "this worker"}…`}
+        blocked={route.blocked}
+        send={async (message) => {
+          if (route.blocked !== null) return;
+          await sendTurn(clients, { sessionId: ask.sessionId, flowId: route.flowId, door: route.door }, message);
+        }}
+        onDelivered={onDelivered}
+      />
     </div>
   );
 }

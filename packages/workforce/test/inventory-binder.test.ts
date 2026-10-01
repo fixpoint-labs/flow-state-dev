@@ -354,9 +354,11 @@ describe("what one boot writes", () => {
       const rows = await lab.read();
 
       expect(rows.seats.map((row) => row.id).sort()).toEqual(["eng.coder", "eng.lead"]);
+      // A seat passed without its actions has no door to read.
       expect(rows.seats.find((row) => row.id === "eng.coder")).toEqual({
         id: "eng.coder",
-        kind: "coder"
+        kind: "coder",
+        door: null
       });
 
       const channels = Object.fromEntries(rows.channels.map((row) => [row.id, row]));
@@ -391,7 +393,8 @@ describe("what one boot writes", () => {
       ]);
       expect(await lab.row("inventory/seats/eng.lead")).toEqual({
         id: "eng.lead",
-        kind: "agent"
+        kind: "agent",
+        door: null
       });
     } finally {
       await lab.dispose();

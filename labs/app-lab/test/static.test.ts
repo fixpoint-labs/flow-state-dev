@@ -114,7 +114,31 @@ describe("V8", () => {
     expect(literalColours(join(src, "styles.css"), `/* Token definitions */\n--x: hsl(0 0% 0%);\n/* End of token definitions. */\n.a { color: hsl(1 1% 1%); }`)).toHaveLength(1);
   });
 
-  it("makes no write from the task screen but the abort (ER-15, D2)", () => {
+  it("sends a person's line only through the one send path, to the door the inventory names (V7, ER-15)", () => {
+    const code = sources.filter((f) => /\.tsx?$/.test(f) && !relative(src, f).startsWith("components/flow-state/"));
+    // An action is the only way App Lab can put an item in a session (the
+    // client has no item write), so the sites that send one are the list.
+    const SEND = /\bsendAction(Stream)?\(/;
+    const sites = (files: string[], read: (f: string) => string) =>
+      files.filter((f) => read(f).split("\n").some((line) => SEND.test(line))).map((f) => relative(src, f)).sort();
+    const read = (f: string) => readFileSync(f, "utf8");
+    expect(sites(code, read)).toEqual(["lib/send.ts", "lib/transcript.ts"]);
+    // The door is the one the inventory names, never an action name of App Lab's own.
+    const sendLines = read(join(src, "lib/send.ts")).split("\n").filter((line) => SEND.test(line));
+    expect(sendLines).toHaveLength(1);
+    expect(sendLines[0]).toContain("sendAction(target.door,");
+    // Every composer that talks to a worker sends through it.
+    for (const file of ["surfaces/TaskFrame.tsx", "surfaces/Stream.tsx", "surfaces/Inbox.tsx"]) {
+      expect(read(join(src, file)), file).toContain("sendTurn(clients,");
+    }
+    // Planted: a composer that sends to a named action is caught.
+    const planted = join(src, "surfaces/Planted.tsx");
+    expect(sites([...code, planted], (f) => (f === planted ? `await actions.sendAction("message", { message });` : read(f)))).toContain(
+      "surfaces/Planted.tsx",
+    );
+  });
+
+  it("makes no write from the task screen but the abort and the one send path (ER-15, D2)", () => {
     const taskFiles = ["lib/run.ts", "lib/task.tsx", "surfaces/TaskFrame.tsx", "surfaces/TaskSession.tsx", "surfaces/TaskInspector.tsx"];
     const WRITES = /\b(sendAction|sendActionStream|resumeSuspension|postLine|createCollectionItem|updateCollectionItem|deleteCollectionItem|deleteSession|createSession|retryRequest|continueRequest)\b|method:\s*"(POST|PUT|PATCH|DELETE)"/;
     const writes = (text: string) => text.split("\n").filter((line) => WRITES.test(line) || (/abortRequest\(/.test(line) && !/await actions\.abortRequest\(run\.requestId\)/.test(line)));

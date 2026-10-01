@@ -174,8 +174,10 @@ const seatChannels = handler({
 **Seat:**
 
 ```ts
-{ id: "engineering.lead", kind: "agent" }
+{ id: "engineering.lead", kind: "agent", door: "run" }
 ```
+
+`door` is the action that takes a person's message for this seat: its kind's one public action that declares `userMessage` and takes `{ message }`. The built-in worker's is `run`. A kind with no such action gets `door: null`, and an app should say that seat takes no message rather than guess. A kind with two gets `null` too, and the hire warns, naming both. The door is read from the seats `hireWorkforce` returned, so pass those to `openInventory`. A seat passed as a bare `{ id, kind }` is registered with no door.
 
 **Channel:**
 

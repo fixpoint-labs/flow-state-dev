@@ -134,12 +134,18 @@ It's listed once a session whose flow serves it exists. A document without that 
 
 - **Sidebar.** The organization, Jump to (⌘K), Inbox and Tasks with their counts, PROJECTS (the workstreams, until projects exist), and TEAMS: each team in the Lab's seat inventory, with exactly its seats.
 - **Jump to (⌘K).** Finds workstreams, seats, tasks and the Lab's [readable documents](#what-a-labs-config-provides). A document opens read-only.
-- **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
+- **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card, and can reply to the worker under it. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
 - **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream.
 - **A workstream.** One channel and the boards attached to it. It has four tabs: Stream (the transcript, the composer, and its members' asks), Board (five columns: QUEUED, RUNNING, NEEDS YOU, IN REVIEW, DONE), Brief (the channel's charter) and Results. The right panel lists the channel's members with their status, and its rows by column.
 - **A task.** One task's run, live, with Interrupt. See [A task](#a-task).
 
 A post appears in the transcript only once the channel has kept it. Until then the composer keeps your draft and says it's posting. If the post is refused, the draft stays and the reason is shown.
+
+**Talking to a worker.** Start a line with `@` and a worker's name to send it to that worker's task in this workstream instead of the channel. If it has several, the composer asks which. If it has none, Send is off and says so. In a task, the composer sends to that task's run. From Inbox, the reply box sends to the worker that asked, if its kind takes messages. DevForce's EM doesn't, so its reply box says so.
+
+A running coding run stops where it is and carries on in the same session with your message. The composer says *delivered* once the run's session holds your line, not before. If the worker refuses it, your draft stays and its reason is shown. A finished task takes no message.
+
+App Lab sends every line the same way: to the action the worker's kind names as its door on the seat's inventory row. It knows no kind and no action name of its own.
 
 Each section loads on its own. If one read fails, that section says what the Lab answered and offers Retry, and the rest of the screen still draws.
 
@@ -165,7 +171,6 @@ pnpm --filter @flow-state-dev/app-lab start --config <your config> --devtool htt
 
 | On the task screen | Shows today | Filled in by |
 |---|---|---|
-| Typing to the worker, and also posting it to the workstream | A disabled composer | Not planned yet. It needs a way to add your message to a running coding run |
 | Hand off, reassign, Open PR | Disabled | The eng workstream kit |
 | Diff and Checks | An empty tab saying so | The eng workstream kit |
 | Acceptance criteria, who reviews | An empty section | The eng workstream kit |
@@ -181,7 +186,7 @@ Each of these is drawn as a named empty state or a disabled control:
 
 - **Projects.** The project level's tabs, and a project's own workstreams.
 - **Parts of the task screen.** Listed under [A task](#not-there-yet).
-- **Addressing one worker.** A line starting with `@` can't be sent. A coding worker takes no message while it runs, so for now a line goes to the whole channel.
+- **Posting a task's message to its workstream too.** Sending to the worker and posting to the channel are two separate things for now.
 - **Worker detail.** A seat's harness, and the NOW, TIME and COST columns on Tasks.
 - **IN REVIEW.** The column is drawn empty, because no row status means "in review" yet.
 
