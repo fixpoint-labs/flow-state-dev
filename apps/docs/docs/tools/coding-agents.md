@@ -44,7 +44,7 @@ agent produced the run:
 | Field | What it holds |
 |---|---|---|
 | `source` | Which agent and entry point produced the run, as `<package>/<door>` — `claude-code/sdk`, `codex/sdk`, `cursor/sdk`. |
-| `status` | `running`, `completed`, or `errored`. The schema also admits `dispatched`, which only a fire-and-forget door reports — see [below](#not-every-dispatch-is-a-harness). Switch exhaustively on all four. |
+| `status` | `running`, `completed`, or `errored`. The schema also admits `dispatched`, which only a fire-and-forget door reports. Switch exhaustively on all four. |
 | `sessionId`, `url`, `dispatchedAt` | The run's own id, a link to it when there is one, and when it started. |
 | `outcome` | How it ended: `finished`, `stopped-at-limit` (it hit a turn or budget cap), or `failed`. `null` while unknown. |
 | `finalMessage` | The last assistant message, or `null`. |
@@ -115,13 +115,6 @@ board, [`@flow-state-dev/harness-manager`](/docs/orchestration/harness-manager)
 does that part: it derives and provisions a checkout per task, reads the verdict
 off the handle before the row settles, parks a run that needs to ask a person
 something, and retries the rest. The harness itself is a slot you fill.
-
-## Not every dispatch is a harness
-
-[Claude Code remote dispatch](./claude-code-cli.md) hands a task to a cloud
-session and returns. It is fire-and-forget, so there is no outcome, no final
-message, no usage and no cost to report — its handle is a dispatch record, not the
-handle above, and the harness manager cannot drive it.
 
 ## Related
 
