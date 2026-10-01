@@ -113,6 +113,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    # The two-users-one-tenant suite runs against the installed copies, and its
+    # queue case needs a real Redis. The script refuses that leg without one,
+    # so losing this service fails the job rather than skipping the case.
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      REDIS_URL: redis://127.0.0.1:6379
+
     steps:
       - uses: actions/checkout@v4
 
@@ -133,10 +150,15 @@ jobs:
           restore-keys: |
             turbo-${{ runner.os }}-${{ github.job }}-
 
+      # The suite runner's judgement rules (lockfile pins, case count, what
+      # counts as a pass), pinned against fixtures before the slow steps.
+      - name: Suite runner rules
+        run: node --test scripts/packed-install/suite.test.mjs
+
       - name: Release build
         run: pnpm release:build
 
-      - name: Pack, install into an empty project, import each, start a server, serve DevTool
+      - name: Pack, install, import each, serve, run the two-users suite on the install
         run: node scripts/packed-install/run.mjs
 
       # The control: the same install-and-import path against the published
@@ -146,6 +168,13 @@ jobs:
       # works would make the control pass for the wrong reason.
       - name: Control fails against the 0.1.1 tarball
         run: node scripts/packed-install/run.mjs --control
+
+      # The suite's control: one installed package swapped for a symlink into
+      # the repository. It passes only if the resolution guard names that
+      # package, so a guard that can no longer tell the repository from the
+      # install turns this step red.
+      - name: Control fails with a package linked to the workspace
+        run: node scripts/packed-install/run.mjs --control=workspace-link
 
   guards:
     name: Process guards
