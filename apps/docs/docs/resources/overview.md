@@ -159,6 +159,14 @@ const readme = await ctx.resources.files.get("readme.md");
 await readme.incState({ views: 1 });
 ```
 
+### What gets stored
+
+Resource state is saved as JSON, and every store saves the same thing for the same write. That includes the in-memory store, so a flow you test on memory reads back what it will read on SQLite, Postgres, or the filesystem.
+
+A value JSON can't represent comes back in its JSON form. A `Date` becomes its ISO string, a `Map` or `Set` becomes `{}`, and `Infinity` and `NaN` become `null`. An `undefined` field or a function is dropped. A `bigint`, or an object that refers to itself, can't be written at all: the write fails with a `TypeError` and nothing is stored.
+
+So keep `stateSchema` to JSON types. Store a date as a string, a set as an array.
+
 ### Deltas and concurrent writers
 
 Each delta call is a single guarded write. One that loses a race re-runs against the value that won instead of committing a number it computed from a snapshot that has since moved. Two requests incrementing the same counter both land, and two appending to the same list both keep their entry. Computing the total yourself — reading `state.calls`, adding one, patching the result back — can't promise that.
@@ -206,7 +214,7 @@ An absent field, and a field holding `null`, are that field's empty state rather
 
 One `incState` call is one write. If any field in a multi-field call is wrong-typed, none of the call applies.
 
-`incState` also refuses a result that isn't finite. `z.number()` accepts `Infinity`, so the schema won't catch one, and the stores don't agree on it: the in-memory store keeps `Infinity` where every JSON-serializing store writes `null`. Two finite numbers can reach it, since adding `Number.MAX_VALUE` to a field already holding `Number.MAX_VALUE` overflows. The check is on the result, so a delta that is a perfectly ordinary number can still be turned away.
+`incState` also refuses a result that isn't finite. `z.number()` accepts `Infinity`, so the schema won't catch one, and no store can keep it: state is saved as JSON, which writes `null` in its place. Two finite numbers can reach it, since adding `Number.MAX_VALUE` to a field already holding `Number.MAX_VALUE` overflows. The check is on the result, so a delta that is a perfectly ordinary number can still be turned away.
 
 A delta that commits is validated against `stateSchema` like every other state write. `incState({ retries: -1 })` on a `z.number().nonnegative()` field throws and stores nothing; see [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes). And a resource declared `writable: false` refuses `incState` and `pushState` alongside `patchState`, `setState`, and `updateState`.
 

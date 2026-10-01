@@ -17,9 +17,14 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import {
+  createFilesystemResourceStateStore,
+  createInMemoryResourceStateStore
+} from "@flow-state-dev/engine";
+import {
   createContentStoreConformanceTests,
   createResourceStateStoreConformanceTests
 } from "@flow-state-dev/engine/testing";
+import type { JsonObject } from "@flow-state-dev/core/types";
 import { createSQLiteStores } from "../src";
 import { createSQLiteContentStore } from "../src/content-store";
 import { createSQLiteResourceStateStore } from "../src/resource-state-store";
@@ -55,6 +60,64 @@ createResourceStateStoreConformanceTests({
   cleanup: (store) => {
     (store as unknown as { __db: Database.Database }).__db.close();
   }
+});
+
+// FIX-1266: the same resource write must leave the same stored value on every
+// adapter. The shared conformance suite pins each adapter to the JSON round-trip
+// one by one; this case asserts the symptom itself, side by side — a deployment
+// that tests on memory and runs on SQLite (or the filesystem) reads back the
+// same state for the same write.
+describe("one resource write, the same stored state on memory, filesystem and SQLite", () => {
+  let rootDir: string | undefined;
+  let db: Database.Database | undefined;
+  afterEach(() => {
+    db?.close();
+    if (rootDir) fs.rmSync(rootDir, { recursive: true, force: true });
+    db = undefined;
+    rootDir = undefined;
+  });
+
+  function adapters() {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "fsd-state-parity-"));
+    db = freshDb();
+    return {
+      memory: createInMemoryResourceStateStore(),
+      filesystem: createFilesystemResourceStateStore(rootDir),
+      sqlite: createSQLiteResourceStateStore(db)
+    };
+  }
+
+  it("reads back identical state for a write holding values JSON cannot represent", async () => {
+    const write = (): JsonObject =>
+      ({
+        when: new Date("2026-01-02T03:04:05.000Z"),
+        tags: new Set(["a"]),
+        ratio: Infinity,
+        zero: -0,
+        gone: undefined,
+        holes: [1, , 3],
+        fn: () => 1
+      }) as unknown as JsonObject;
+
+    const stores = adapters();
+    const read: Record<string, unknown> = {};
+    for (const [name, store] of Object.entries(stores)) {
+      expect(await store.set("session", "s1", "k", write(), 0)).toEqual({ ok: true, version: 1 });
+      read[name] = (await store.get("session", "s1", "k"))?.state;
+    }
+
+    expect(read.memory).toStrictEqual(read.sqlite);
+    expect(read.filesystem).toStrictEqual(read.sqlite);
+  });
+
+  it("refuses a bigint write on every adapter, rather than keeping it on one", async () => {
+    for (const store of Object.values(adapters())) {
+      await expect(
+        store.set("session", "s1", "k", { n: 1n } as unknown as JsonObject, 0)
+      ).rejects.toThrow(TypeError);
+      expect(await store.get("session", "s1", "k")).toBeUndefined();
+    }
+  });
 });
 
 describe("SQLite resource durability across restart", () => {

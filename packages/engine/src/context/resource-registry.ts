@@ -253,9 +253,9 @@ function applyIncrements(
     // The check is on the RESULT, not the delta: a non-finite delta always
     // yields a non-finite result, and only a result check catches an overflow
     // from two finite operands (`Number.MAX_VALUE * 2`). `z.number()` accepts
-    // ±Infinity, so the write-path schema parse does not catch this — and the
-    // adapters then disagree, the memory store keeping `Infinity` where every
-    // JSON-serializing adapter stores `null`.
+    // ±Infinity, so the write-path schema parse does not catch this — and
+    // every adapter stores state as JSON, which would write `null` in its
+    // place (FIX-1266).
     if (!Number.isFinite(result)) {
       return refuseDelta(
         `Resource "${label}" incState result for "${field}" is not finite (${String(result)})`

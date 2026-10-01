@@ -77,3 +77,19 @@ export function checkWriteVersion(
     : resourceStateConflict(row);
 }
 
+/**
+ * The value a `ResourceStateStore` commits for `state`: its JSON round-trip.
+ *
+ * The SQL adapters store `JSON.stringify(state)`, so what they hold is fixed
+ * by JSON — a `Date` reads back as its ISO string, a `Map`/`Set` as `{}`,
+ * `Infinity`/`NaN` as `null`, an `undefined` field or a function field is
+ * dropped, and a `bigint` or a cycle throws a `TypeError` before anything is
+ * written. The memory and filesystem adapters snapshot through this instead of
+ * a structured clone so they commit that same value: one write, one stored
+ * value, whichever adapter a deployment runs (FIX-1266). It is also a deep
+ * copy, so it doubles as the snapshot that keeps the caller's object from
+ * aliasing the stored row.
+ */
+export function toStoredState(state: JsonObject): JsonObject {
+  return JSON.parse(JSON.stringify(state)) as JsonObject;
+}

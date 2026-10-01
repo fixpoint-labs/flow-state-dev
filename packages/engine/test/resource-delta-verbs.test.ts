@@ -294,11 +294,9 @@ describe.each(HANDLE_KINDS)("FIX-1269 delta verbs on a %s", (kind) => {
 
   it("refuses a non-finite incState result and leaves the stored value intact", async () => {
     // Why this is refused rather than stored: `z.number()` ACCEPTS ±Infinity,
-    // so the schema-validation path does not catch it, and the adapters then
-    // disagree about what got written. The memory store keeps `Infinity`; every
-    // JSON-serializing adapter (SQLite, Postgres, filesystem) turns it into
-    // `null` — the same call leaving different stored state on different
-    // adapters. That premise, pinned:
+    // so the schema-validation path does not catch it, and every adapter stores
+    // state as its JSON round-trip (FIX-1266), which turns it into `null` — a
+    // counter silently reset rather than overflowed. That premise, pinned:
     expect(JSON.parse(JSON.stringify({ n: Infinity })).n).toBeNull();
 
     const stores = createInMemoryStores();
