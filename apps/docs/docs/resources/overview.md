@@ -33,7 +33,7 @@ const artifactResource = defineResource({
 
 `defineResource() requires an explicit scope of "session", "user", or "org" (got …)`
 
-The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. Both are versioned, both support atomic operations. A state write persists only when the result satisfies `stateSchema` and is a JSON object. See [Writing resource state](#writing-resource-state) for the write methods, and [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes) for what a rejected write does.
+The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. Both are versioned, both support atomic operations. A state write persists only when the result satisfies `stateSchema` and is an object, not an array (see [What gets stored](#what-gets-stored) for how its values are saved). See [Writing resource state](#writing-resource-state) for the write methods, and [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes) for what a rejected write does.
 
 Config options:
 
@@ -159,6 +159,18 @@ const readme = await ctx.resources.files.get("readme.md");
 await readme.incState({ views: 1 });
 ```
 
+### What gets stored
+
+Resource state is saved as JSON, and every store saves the same thing for the same write. That includes the in-memory store, so a flow you test on memory reads back what it will read on SQLite, Postgres, or the filesystem.
+
+A value with no JSON equivalent is stored the way `JSON.stringify` writes it. A `Date` becomes its ISO string, a `Map` or `Set` becomes `{}`, and `Infinity` and `NaN` become `null`. An `undefined` field or a function is dropped. A `bigint`, or an object that refers to itself, can't be written at all: the write fails with a `TypeError` and nothing is stored.
+
+The stored form shows up on the next read from the store. Within the request that made the write, `ref.state` can still hold the value as you wrote it, so a `Date` you just patched in still reads as a `Date` there.
+
+On a single resource, state is checked against `stateSchema` on every read. If any field fails, the whole state reads back as the resource's default, not only the failing field. Nothing is thrown or logged. A `z.date()` field fails this way, because it can't parse the stored ISO string. The next write builds on that default and stores it, so the earlier values are gone. If the default leaves a required field missing, that write is refused instead.
+
+So keep `stateSchema` to JSON types, and store a set as an array. The exception is a date on a single resource: declare it `z.coerce.date()` and it reads back as a `Date`. A collection instance isn't parsed on read, so a date there comes back as an ISO string: store it and declare it as a string.
+
 ### Deltas and concurrent writers
 
 Each delta call is a single guarded write. One that loses a race re-runs against the value that won instead of committing a number it computed from a snapshot that has since moved. Two requests incrementing the same counter both land, and two appending to the same list both keep their entry. Computing the total yourself — reading `state.calls`, adding one, patching the result back — can't promise that.
@@ -169,7 +181,7 @@ Losing writers still retry, so a delta isn't faster than the read-modify-write i
 
 ### When a delta is refused
 
-A delta aimed at a field holding something it can't work with refuses, and leaves the stored value where it was. That happens on a call the signature didn't narrow away, and on a stored value that disagrees with its declared type: an open `passthrough()` schema, a union, or a row written before the field's type changed.
+A delta aimed at a field holding something it can't work with refuses, and leaves the stored value where it was. That happens on a call the signature didn't narrow away, and on a stored value that disagrees with its declared type: an open `passthrough()` schema, a union, or a collection instance written before the field's type changed.
 
 ```ts
 import { defineResource, FlowError, handler } from "@flow-state-dev/core";
@@ -206,7 +218,7 @@ An absent field, and a field holding `null`, are that field's empty state rather
 
 One `incState` call is one write. If any field in a multi-field call is wrong-typed, none of the call applies.
 
-`incState` also refuses a result that isn't finite. `z.number()` accepts `Infinity`, so the schema won't catch one, and the stores don't agree on it: the in-memory store keeps `Infinity` where every JSON-serializing store writes `null`. Two finite numbers can reach it, since adding `Number.MAX_VALUE` to a field already holding `Number.MAX_VALUE` overflows. The check is on the result, so a delta that is a perfectly ordinary number can still be turned away.
+`incState` also refuses a result that isn't finite. `z.number()` accepts `Infinity`, so the schema won't catch one, and a stored `Infinity` would read back as `null` (see [What gets stored](#what-gets-stored)). Two finite numbers can reach it, since adding `Number.MAX_VALUE` to a field already holding `Number.MAX_VALUE` overflows. The check is on the result, so a delta that is an ordinary number can still be turned away.
 
 A delta that commits is validated against `stateSchema` like every other state write. `incState({ retries: -1 })` on a `z.number().nonnegative()` field throws and stores nothing; see [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes). And a resource declared `writable: false` refuses `incState` and `pushState` alongside `patchState`, `setState`, and `updateState`.
 

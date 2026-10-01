@@ -26,6 +26,7 @@ import type {
   ResourceStateStore,
   ContentScopeType
 } from "../types";
+import { toStoredState } from "../resource-state-predicate";
 
 /** Structural shape of the last-write-wins keyed store (`ContentStore`). */
 type KeyedResourceStore<V> = {
@@ -326,6 +327,81 @@ export function createResourceStateStoreConformanceTests(
         expect((await store.get("user", "s1", "k"))?.state).toEqual(makeState(3));
       });
     });
+
+    // --- the stored form: one write, one value, whatever the adapter --------
+    //
+    // A `stateSchema` can accept values JSON cannot represent — a `z.date()`
+    // field, a `Set`, a transform that yields `Infinity`. Three of the four
+    // adapters serialize to JSON, so for them the stored value IS the JSON
+    // round-trip of what was written. The contract is that every adapter
+    // commits that same value: a deployment that tests on memory and runs on
+    // SQLite or Postgres reads back what it would have read in test, and a
+    // value JSON cannot serialize at all is refused on every adapter rather
+    // than kept by one and refused by the rest. One shape, asserted per member
+    // so a failure names the value kind, rather than a per-kind rule.
+
+    const flattenedStates: Array<[string, () => Record<string, unknown>]> = [
+      ["a Date", () => ({ v: new Date("2026-01-02T03:04:05.000Z") })],
+      ["a Map", () => ({ v: new Map([["a", 1]]) })],
+      ["a Set", () => ({ v: new Set([1, 2]) })],
+      ["a RegExp", () => ({ v: /a+/g })],
+      ["Infinity", () => ({ v: Infinity })],
+      ["-Infinity", () => ({ v: -Infinity })],
+      ["NaN", () => ({ v: NaN })],
+      ["-0", () => ({ v: -0 })],
+      ["an undefined field", () => ({ v: 1, gone: undefined })],
+      ["undefined in an array", () => ({ v: [1, undefined] })],
+      ["a sparse array hole", () => ({ v: [1, , 3] })],
+      ["a non-index property on an array", () => ({ v: Object.assign([1], { extra: true }) })],
+      ["a function field", () => ({ v: 1, fn: () => 1 })],
+      ["a function in an array", () => ({ v: [() => 1] })],
+      ["a symbol field", () => ({ v: 1, sym: Symbol("s") })]
+    ];
+
+    it.each(flattenedStates)(
+      "a state holding %s is stored as its JSON round-trip",
+      async (_kind, makeValue) => {
+        await withStore(async (store) => {
+          const written = makeValue();
+          const expected = toStoredState(written as JsonObject);
+          expect(await store.set("session", "s1", "k", written as JsonObject, 0)).toEqual({
+            ok: true,
+            version: 1
+          });
+          expect((await store.get("session", "s1", "k"))?.state).toStrictEqual(expected);
+          expect((await store.getAll("session", "s1")).k?.state).toStrictEqual(expected);
+        });
+      }
+    );
+
+    const unserializableStates: Array<[string, () => Record<string, unknown>]> = [
+      ["a bigint", () => ({ v: 1n })],
+      [
+        "a cycle",
+        () => {
+          const state: Record<string, unknown> = { v: 1 };
+          state.self = state;
+          return state;
+        }
+      ]
+    ];
+
+    it.each(unserializableStates)(
+      "a state holding %s is refused with a TypeError, and nothing is stored",
+      async (_kind, makeValue) => {
+        await withStore(async (store) => {
+          await expect(
+            store.set("session", "s1", "k", makeValue() as JsonObject, 0)
+          ).rejects.toThrow(TypeError);
+          expect(await store.get("session", "s1", "k")).toBeUndefined();
+          // No version was spent on the refused write.
+          expect(await store.set("session", "s1", "k", makeState(1), 0)).toEqual({
+            ok: true,
+            version: 1
+          });
+        });
+      }
+    );
 
     // --- snapshot isolation: a read is a copy, not a handle ----------------
     //
