@@ -9,7 +9,8 @@
  * Lines go in through {@link sendTurn}, the one send path, so *delivered*
  * means what it means everywhere else. The Lab's answer to an action sent with
  * no session doesn't name the session it opened, so a first line goes to a
- * fresh session id minted here, and the door's request opens that session. What the screen draws is what the
+ * fresh session id minted here ({@link newConversationId}), and the door's
+ * request opens that session. What the screen draws is what the
  * session stores, read back after each line; nothing is drawn in the seat's
  * voice that its session doesn't hold.
  */
@@ -33,22 +34,39 @@ export function conversationSession(sessions: readonly SessionSummary[], seatId:
   return newest?.id ?? null;
 }
 
+/**
+ * The conversation the view is on: `opened`, the session a first line opened
+ * here, until the listing holds it; from then on the newest direct session
+ * the listing names, which may be one started elsewhere.
+ */
+export function currentConversation(sessions: readonly SessionSummary[], seatId: string, opened: string | null): string | null {
+  if (opened !== null && !sessions.some((session) => session.id === opened)) return opened;
+  return conversationSession(sessions, seatId);
+}
+
+/**
+ * A fresh session id for a new conversation. Built from `getRandomValues`,
+ * which a page served over plain HTTP has, unlike `randomUUID`.
+ */
+export function newConversationId(): string {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  return `cos_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
 /** Every item the conversation's session holds, in stored order. */
 export function readConversation(clients: LabClients, sessionId: string): Promise<SessionItems> {
   return readSessionItems(clients, sessionId);
 }
 
 /**
- * Send a line to the chief of staff through its door, into `sessionId`, or,
- * when it is `null`, into a new session the door's request opens. Resolves
- * once the line is delivered, with the session that holds it.
+ * Send a line to the chief of staff through its door, into `sessionId`: the
+ * conversation's, or a {@link newConversationId} the door's request opens.
+ * Resolves once the line is delivered; rejects as {@link sendTurn} does.
  */
 export async function sendToChiefOfStaff(
   clients: LabClients,
-  target: { seatId: string; door: string; sessionId: string | null },
+  target: { seatId: string; door: string; sessionId: string },
   message: string,
-): Promise<{ sessionId: string }> {
-  const sessionId = target.sessionId ?? `cos_${globalThis.crypto.randomUUID()}`;
-  await sendTurn(clients, { sessionId, flowId: target.seatId, door: target.door }, message);
-  return { sessionId };
+): Promise<void> {
+  await sendTurn(clients, { sessionId: target.sessionId, flowId: target.seatId, door: target.door }, message);
 }

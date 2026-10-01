@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { chiefOfStaffOf, shiftSummary, streamCounts, type LoadedSnapshot } from "../src/lib/derive";
-import { conversationSession } from "../src/lib/cos";
+import { conversationSession, currentConversation, newConversationId } from "../src/lib/cos";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
 import { toSeat, type Ask, type BoardRow, type Seat } from "../src/lib/reads";
 
@@ -202,5 +202,36 @@ describe("the person's conversation with the chief of staff (V4, BR-14)", () => 
       "direct",
     );
     expect(conversationSession([], "desk.chief-of-staff")).toBeNull();
+  });
+});
+
+describe("which conversation the view is on, once a line opened one (V4, BR-14)", () => {
+  const session = (id: string, createdAt: number): SessionSummary =>
+    ({ id, flowKind: "agent", flowId: "desk.chief-of-staff", userId: "u", createdAt, updatedAt: createdAt }) as SessionSummary;
+
+  it("keeps the session a first line opened until the listing holds it", () => {
+    expect(currentConversation([], "desk.chief-of-staff", "cos_new")).toBe("cos_new");
+    expect(currentConversation([session("older", 1)], "desk.chief-of-staff", "cos_new")).toBe("cos_new");
+  });
+
+  it("follows the newest direct session once the listing has caught up, even one started elsewhere", () => {
+    expect(currentConversation([session("cos_new", 2)], "desk.chief-of-staff", "cos_new")).toBe("cos_new");
+    expect(currentConversation([session("cos_new", 2), session("from_another_tab", 3)], "desk.chief-of-staff", "cos_new")).toBe("from_another_tab");
+    expect(currentConversation([session("listed", 1)], "desk.chief-of-staff", null)).toBe("listed");
+  });
+});
+
+describe("a new conversation's id", () => {
+  it("is minted without crypto.randomUUID, which a page on plain HTTP doesn't have", () => {
+    const real = globalThis.crypto.randomUUID;
+    Object.defineProperty(globalThis.crypto, "randomUUID", { value: undefined, configurable: true, writable: true });
+    try {
+      const a = newConversationId();
+      const b = newConversationId();
+      expect(a).toMatch(/^cos_[0-9a-f]{32}$/);
+      expect(a).not.toBe(b);
+    } finally {
+      Object.defineProperty(globalThis.crypto, "randomUUID", { value: real, configurable: true, writable: true });
+    }
   });
 });

@@ -487,6 +487,109 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(input.value).toBe(ASKER_REFUSED_LINE);
   });
 
+  it("keeps a refused first line's conversation, so the next line goes into the same session (BR-15)", async () => {
+    const { clients } = await openCos("/", { chiefOfStaff: true });
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: ASKER_REFUSED_LINE } });
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    await screen.findByTestId("cos-composer-error", {}, { timeout: 5_000 });
+    // The door took the line before it refused it: the session exists and holds it.
+    await waitFor(() => expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).not.toBe(""));
+    const first = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
+    await waitFor(() => expect(screen.getAllByTestId("cos-item").some((el) => el.getAttribute("data-role") === "user")).toBe(true));
+    fireEvent.change(input, { target: { value: "second line" } });
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe(first);
+    const direct = (await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).filter((s) => s.flowId === "ops.chief-of-staff" && s.parentSessionId == null);
+    expect(direct.map((s) => s.id)).toEqual([first]);
+  });
+
+  it("takes no line until the conversation has been read, and Retry keeps it shut until a read succeeds", async () => {
+    const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
+    served.push(lab);
+    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    await clients.actions("ops.chief-of-staff").sendAction("message", { message: "earlier" }, { sessionId: "s_cos_earlier" });
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let failing = false;
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+      const url = String(i instanceof Request ? i.url : i);
+      // The conversation's read, not the snapshot's ask read of the same session.
+      if (url.includes("/sessions/s_cos_earlier/state") && !url.includes("item_types=suspension")) {
+        await held;
+        if (failing) return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
+      }
+      return real(i, init);
+    });
+    setURL(`${lab.baseUrl}/cos`);
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe("s_cos_earlier");
+    expect(input.disabled).toBe(true);
+    failing = true;
+    release();
+    await screen.findByTestId("cos-conversation-failure");
+    expect(input.disabled).toBe(true);
+    act(() => fireEvent.click(within(screen.getByTestId("cos-conversation-failure")).getByRole("button", { name: "Retry" })));
+    expect(input.disabled).toBe(true);
+    failing = false;
+    await waitFor(() => expect(input.disabled).toBe(false));
+    expect(screen.queryByTestId("cos-conversation-failure")).toBeNull();
+  });
+
+  it("draws an answered ask in the conversation as answered, not as waiting on the person", async () => {
+    const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
+    served.push(lab);
+    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    await clients.actions("ops.chief-of-staff").sendAction("ask", { what: "ship it" }, { sessionId: "s_cos_asked" });
+    let suspension: { requestId: string; suspensionId: string } | undefined;
+    await waitFor(async () => {
+      const state = await clients.sessions.getSessionState("s_cos_asked", { includeItems: true, itemTypes: ["suspension"] });
+      suspension = (state.items ?? [])[0] as typeof suspension;
+      expect(suspension).toBeDefined();
+    });
+    await clients.recovery.resumeSuspension("ops.chief-of-staff", suspension!.requestId, {
+      suspensionId: suspension!.suspensionId,
+      action: "approve",
+      resumedBy: ASK_LAB_USER_ID,
+    });
+    await waitFor(async () => {
+      const state = await clients.sessions.getSessionState("s_cos_asked", { includeItems: true, itemTypes: ["suspension_resume"] });
+      expect(state.items ?? []).toHaveLength(1);
+    });
+    setURL(`${lab.baseUrl}/cos`);
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    const conversation = await screen.findByTestId("cos-conversation");
+    await waitFor(() => expect(within(conversation).getAllByTestId("cos-item").some((el) => el.getAttribute("data-item-type") === "suspension")).toBe(true));
+    expect(conversation.textContent).not.toMatch(/Waiting on you/);
+  });
+
+  it("says what the Lab answered, with Retry, for a workstream whose boards or asks didn't load (BR-8)", async () => {
+    const lab = await serveLab((await openAskLab()).flowState);
+    served.push(lab);
+    // A seat session, so there are asks to read.
+    await createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID }).actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+      const url = String(i instanceof Request ? i.url : i);
+      if (url.includes("/sessions/ops.desk/resources/ops.desk.") || url.includes("item_types=suspension")) {
+        return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
+      }
+      return real(i, init);
+    });
+    setURL(`${lab.baseUrl}/cos`);
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    const desk = await screen.findByTestId("cos-stream-failure");
+    expect(desk.textContent).toMatch(/ops\.desk/);
+    expect(desk.textContent).toMatch(/store offline.*503/);
+    expect(within(desk).getByRole("button", { name: "Retry" })).toBeTruthy();
+    const asks = screen.getByTestId("cos-streams-asks-failure");
+    expect(asks.textContent).toMatch(/store offline/);
+    expect(within(asks).getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
   it("disables the composer for a seat that takes no message (BR-13)", async () => {
     await openCos("/", { chiefOfStaff: true, doors: false });
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;

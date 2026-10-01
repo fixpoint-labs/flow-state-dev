@@ -15,16 +15,17 @@
  * back when the view opens and after each line, never on the snapshot's
  * refresh. Nothing is drawn in the seat's voice that its session doesn't hold.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
 import { chatAssistantRenderers } from "../components/flow-state/chat-assistant";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { TurnComposer } from "../components/TurnComposer";
 import { SectionFailure } from "../components/ui";
-import { conversationSession, readConversation, sendToChiefOfStaff } from "../lib/cos";
+import { currentConversation, newConversationId, readConversation, sendToChiefOfStaff } from "../lib/cos";
 import { chiefOfStaffOf, shiftSummary, streamCounts, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
+import type { SessionSummary } from "@flow-state-dev/client";
 import { describeFailure, type Failure, type Seat } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { RunReadError, type SessionItems } from "../lib/run";
@@ -128,16 +129,21 @@ function Conversation({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps
       </section>
     );
   }
-  return <Talk key={cos.seat.id} seat={cos.seat} listed={conversationSession(snapshot.sessions, cos.seat.id)} gaps={gaps} />;
+  return <Talk key={cos.seat.id} seat={cos.seat} sessions={snapshot.sessions} gaps={gaps} />;
 }
 
 /** The conversation with one seat: its stored items, and the composer. */
-function Talk({ seat, listed, gaps }: { seat: Seat; listed: string | null; gaps: Gaps }) {
-  const { clients } = useLab();
-  // The session a first line opened, until the snapshot lists it.
+function Talk({ seat, sessions, gaps }: { seat: Seat; sessions: readonly SessionSummary[]; gaps: Gaps }) {
+  const { clients, refresh } = useLab();
+  // The session a first line opened, until the snapshot lists it (BR-14).
   const [opened, setOpened] = useState<string | null>(null);
-  const sessionId = opened ?? listed;
-  const [stored, setStored] = useState<SessionItems | undefined>(undefined);
+  const sessionId = currentConversation(sessions, seat.id, opened);
+  // The id a first line goes to, kept across a failed send so a retry lands in
+  // the same session if the Lab already opened it.
+  const fresh = useRef<string | null>(null);
+  // The last read that succeeded, and whose session it read. A re-read keeps it
+  // on screen until the new one lands.
+  const [stored, setStored] = useState<{ sessionId: string; read: SessionItems } | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
   const [working, setWorking] = useState(false);
@@ -145,10 +151,11 @@ function Talk({ seat, listed, gaps }: { seat: Seat; listed: string | null; gaps:
   useEffect(() => {
     if (sessionId === null) return;
     let closed = false;
-    setFailure(undefined);
     readConversation(clients, sessionId)
       .then((read) => {
-        if (!closed) setStored(read);
+        if (closed) return;
+        setStored({ sessionId, read });
+        setFailure(undefined);
       })
       .catch((error: unknown) => {
         if (!closed) setFailure(error instanceof RunReadError ? error.failure : describeFailure(error));
@@ -158,12 +165,17 @@ function Talk({ seat, listed, gaps }: { seat: Seat; listed: string | null; gaps:
     };
   }, [clients, sessionId, reads]);
 
+  // Nothing is sent into a conversation the screen hasn't read (the failure
+  // taxonomy). One a line opened here holds nothing the person hasn't seen.
+  const read = sessionId !== null && stored?.sessionId === sessionId ? stored.read : undefined;
   const blocked =
     seat.door === null
       ? `${seat.id} ${gaps.turn.noDoor}`
       : failure !== undefined
         ? "The conversation didn't load, so nothing can be sent until it does."
-        : null;
+        : sessionId !== null && sessionId !== opened && read === undefined
+          ? "Reading the conversation first…"
+          : null;
 
   return (
     <section aria-label={`Conversation with ${seat.id}`} className="rounded-md border" data-testid="cos-conversation" data-seat-id={seat.id} data-session-id={sessionId ?? ""}>
@@ -179,11 +191,11 @@ function Talk({ seat, listed, gaps }: { seat: Seat; listed: string | null; gaps:
         <p className="px-4 py-3 text-sm text-muted-foreground" data-testid="cos-conversation-empty">
           You haven't talked with {seat.id} yet. Your first line starts the conversation.
         </p>
-      ) : stored === undefined ? (
+      ) : read === undefined ? (
         <p className="px-4 py-3 text-sm text-muted-foreground">Reading the conversation…</p>
       ) : (
         <FlowProvider renderers={chatAssistantRenderers}>
-          <Items stored={stored} />
+          <Items stored={read} />
         </FlowProvider>
       )}
       {working ? (
@@ -197,15 +209,21 @@ function Talk({ seat, listed, gaps }: { seat: Seat; listed: string | null; gaps:
         placeholder={`Message ${seat.id}…`}
         blocked={blocked}
         send={async (message) => {
+          const target = sessionId ?? (fresh.current ??= newConversationId());
           setWorking(true);
           try {
-            const sent = await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId }, message);
-            setOpened(sent.sessionId);
+            await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId: target }, message);
+            setOpened(target);
+          } catch (error) {
+            // The Lab may have opened the session before the line failed. The
+            // listing says whether it did; the composer says what failed.
+            void refresh();
+            throw error;
           } finally {
             setWorking(false);
+            setReads((n) => n + 1);
           }
         }}
-        onDelivered={() => setReads((n) => n + 1)}
       />
     </section>
   );
@@ -214,6 +232,13 @@ function Talk({ seat, listed, gaps }: { seat: Seat; listed: string | null; gaps:
 /** The session's items as stored, with the same render filters the task session applies. */
 function Items({ stored }: { stored: SessionItems }) {
   const { renderers } = useFlowContext();
+  const answered = useMemo(
+    () =>
+      new Set(
+        stored.items.flatMap((item) => (item.type === "suspension_resume" ? [(item as { suspensionId?: string }).suspensionId] : [])),
+      ),
+    [stored],
+  );
   const shown = useMemo(
     () => buildItemRenderStream(stored.items, renderers).flatMap((segment) => (segment.kind === "item" ? [segment.item] : segment.items)),
     [stored, renderers],
@@ -235,7 +260,7 @@ function Items({ stored }: { stored: SessionItems }) {
             data-item-type={item.type}
             data-role={(item as { role?: string }).role ?? ""}
           >
-            {item.type === "suspension" ? (
+            {item.type === "suspension" && !answered.has((item as { suspensionId?: string }).suspensionId) ? (
               <button type="button" className="text-sm underline" onClick={() => navigate({ level: "inbox", suspensionId: null })}>
                 Waiting on you: answer it in Inbox
               </button>
@@ -256,6 +281,9 @@ export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot
   return (
     <div className="p-3" data-testid="cos-panel">
       <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">STREAMS</p>
+      {snapshot.asks.ok ? null : (
+        <SectionFailure what="What needs you" failure={snapshot.asks.failure} onRetry={() => void refresh()} testId="cos-streams-asks-failure" />
+      )}
       {streams.ok ? (
         <ul data-testid="cos-streams">
           {streams.value.map(({ workstream, running, needsYou }) => (
@@ -269,13 +297,16 @@ export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot
               >
                 <span className="truncate">{workstream.id}</span>
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  <span data-testid="cos-stream-running" title={running.ok ? undefined : running.failure.message}>
-                    {running.ok ? running.value : "!"}
+                  <span data-testid="cos-stream-running">
+                    {running.ok ? running.value : "–"}
                   </span>{" "}
                   running ·{" "}
-                  <span data-testid="cos-stream-needs-you">{needsYou ?? "!"}</span> need you
+                  <span data-testid="cos-stream-needs-you">{needsYou ?? "–"}</span> need you
                 </span>
               </button>
+              {running.ok ? null : (
+                <SectionFailure what={`${workstream.id}'s boards`} failure={running.failure} onRetry={() => void refresh()} testId="cos-stream-failure" />
+              )}
             </li>
           ))}
         </ul>

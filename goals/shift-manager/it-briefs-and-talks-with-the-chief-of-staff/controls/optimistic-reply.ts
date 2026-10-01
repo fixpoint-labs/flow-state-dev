@@ -8,7 +8,7 @@
  * reply while the seat's session holds neither. The goal must fail at "talk".
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
-export { conversationSession } from "../../../../labs/shift-manager/src/lib/cos.ts";
+export { conversationSession, currentConversation, newConversationId } from "../../../../labs/shift-manager/src/lib/cos.ts";
 
 const typed: string[] = [];
 
@@ -27,7 +27,6 @@ export async function readConversation(): Promise<{ items: OutputItem[]; truncat
   return { items: items as unknown as OutputItem[], truncated: false };
 }
 
-export async function sendToChiefOfStaff(_clients: unknown, target: { sessionId: string | null }, message: string): Promise<{ sessionId: string }> {
+export async function sendToChiefOfStaff(_clients: unknown, _target: unknown, message: string): Promise<void> {
   typed.push(message);
-  return { sessionId: target.sessionId ?? "cos_local" };
 }
