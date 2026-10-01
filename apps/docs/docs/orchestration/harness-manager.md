@@ -116,7 +116,7 @@ Answer it and the run picks up **the same coding session** — not a new one tol
 
 A person can send a running coding run a message. The run stops where it is, and its next attempt continues **the same coding session** with the message added to its prompt. The checkout and the harness's memory of the conversation both carry over, so the run picks up with what it had already read and tried, plus what you said.
 
-The manager builds the action that does this, which we call its door. Declare it on the flow whose board runs the coding work, passing that board so the door can re-queue the row and start the next attempt:
+The manager builds the action that does this, which we call its door. Declare it on the flow whose board runs the coding work. The door also needs a way to start the next attempt, so give the flow an `internal` entry that runs the board's drain and pass its name. Internal entries can't be called from outside; the door dispatches this one into the session that claimed the task, which keeps every attempt of the run in the same session:
 
 ```ts
 const manager = harnessManager({ /* … */ });
@@ -124,7 +124,8 @@ const board = taskBoard({ /* … the board whose rows the manager works */ });
 
 defineFlow({
   kind: "coder",
-  actions: { message: manager.messageDoor(board) },
+  internal: { actions: { resume: { block: board.drain } } },
+  actions: { message: manager.messageDoor({ drain: "resume" }) },
   task: { actions: { work: { block: manager } } },
 });
 ```
@@ -136,6 +137,8 @@ What happens depends on where the task is:
 | The task is | Your message |
 |---|---|
 | Running | Stops the attempt and continues the session with your message. The action answers `continuing` |
+| Running, but it didn't stop in time or couldn't be restarted | Kept, and given to the next attempt. The action answers `kept` |
+| About to start an attempt | Kept, and given to that attempt. The action answers `kept` |
 | Waiting on its own question, or between attempts | Kept, and given to the next attempt. The action answers `kept` |
 | Not started, or finished | Refused, with the reason |
 

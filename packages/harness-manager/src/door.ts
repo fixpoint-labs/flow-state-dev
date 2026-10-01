@@ -1,7 +1,8 @@
 /**
  * The door — a person's message into a coding run (FIX-1690).
  *
- * A public action a coding kind declares (`message: manager.messageDoor(board)`).
+ * A public action a coding kind declares
+ * (`message: manager.messageDoor({ drain: "resume" })`).
  * It takes `{ message }` and declares `userMessage`, so the engine writes the
  * person's line into the session as a user item before this block runs. What
  * the block decides is what that line *does* to the run:
@@ -9,9 +10,27 @@
  * | The run's row is | The door |
  * |---|---|
  * | `in_progress` | keeps the turn, stops the attempt, parks the row for a turn, re-queues it and drains — the next attempt resumes the same coding session with the line |
+ * | `in_progress`, claimed but its run not linked yet | keeps the turn for the attempt the claim started |
  * | `parked` on its own question, or `pending` after an attempt | keeps the turn for the next attempt; stops nothing, unparks nothing |
  * | `parked` for an earlier turn | re-queues it (an interrupted earlier door) |
  * | not started in this session, finished, someone else's, or on a harness that named no session | refuses, by name |
+ *
+ * ## The drain runs where the row was claimed
+ *
+ * The door runs in the run's own session, and a board that hands a row off
+ * derives the run's session from the session that drains it. Draining here
+ * would put the next attempt in a session beneath this one, and every message
+ * would move the run one level deeper. So the door re-queues the row and
+ * dispatches the board's drain into the session that claimed it (the row's
+ * `claimedBy`), as an `internal` entry the flow declares: the next attempt
+ * lands in this same session, as a coordinator's own retry would.
+ *
+ * ## Kept is never reported as not delivered
+ *
+ * Once the turn is kept and the attempt stopped, the run will act on the line.
+ * If the re-queue or the drain fails after that, or the stop does not finish
+ * in time, the door answers `kept`: the line waits for whatever runs the row
+ * next. Failing the request would tell the person to send it again.
  *
  * ## It decides from server state only (BP-031)
  *
@@ -51,7 +70,7 @@
  */
 import { handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import type { BlockContext } from "@flow-state-dev/core/types";
+import { dispatchThroughSeam, markDispatcher, type BlockContext } from "@flow-state-dev/core/types";
 import {
   isTerminalStatus,
   resolveResourceCollection,
@@ -60,9 +79,8 @@ import {
   type Task,
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
-import type { TaskBoardHandle } from "@flow-state-dev/orchestration/task-board";
 import { z } from "zod";
-import { readRunRow, runTopic } from "./run-record";
+import { findRunRowBySession, readRunRow, runTopic } from "./run-record";
 import { isRunOwner, runOwnerOf, runPrincipal } from "./run-owner";
 import { keepTurn, withdrawTurn } from "./turns";
 import { sleep } from "./workspace";
@@ -75,7 +93,8 @@ export const messageDoorInputSchema = z.object({ message: z.string() });
  *
  * - `continuing` — the running attempt was stopped and the next one starts
  *   now, resuming the same coding session with the message.
- * - `kept` — nothing was running; the message waits for the next attempt.
+ * - `kept` — the message waits for the run's next attempt: nothing was
+ *   running, or the run could not be re-queued now.
  */
 export const messageDoorOutputSchema = z.object({
   outcome: z.enum(["continuing", "kept"]),
@@ -90,8 +109,7 @@ export type TurnRefusalReason =
   | "not-started"
   | "task-finished"
   | "finished-first"
-  | "cannot-continue"
-  | "stop-timeout";
+  | "cannot-continue";
 
 /** What a person reads for each refusal. */
 const REFUSAL_TEXT: Record<TurnRefusalReason, string> = {
@@ -100,8 +118,6 @@ const REFUSAL_TEXT: Record<TurnRefusalReason, string> = {
   "task-finished": "A finished task takes no message.",
   "finished-first": "The task finished before your message reached it.",
   "cannot-continue": "This run's harness can't continue with a message.",
-  "stop-timeout":
-    "The run didn't stop in time to take your message. It is kept, and the run's next attempt will get it.",
 };
 
 /** The door refused. The request fails with this, so nothing reads *delivered*. */
@@ -115,7 +131,8 @@ export class TurnRefused extends Error {
 }
 
 /**
- * How long the door waits for a stopped attempt to finish before refusing.
+ * How long the door waits for a stopped attempt to finish before answering
+ * `kept`.
  * Bounded so a harness that ignores its signal cannot hold the person's
  * request open; a request running in another process stops on its next
  * heartbeat, so this covers several.
@@ -146,8 +163,15 @@ export interface MessageDoorDeps {
   boardTasks: (ctx: BlockContext) => Promise<TaskCollectionRef>;
 }
 
-/** The board surface the door re-queues through. */
-export type MessageDoorBoard = Pick<TaskBoardHandle, "unparkAndDrain">;
+/** How a flow wires the door. */
+export interface MessageDoorOptions {
+  /**
+   * The flow's `internal` entry that runs the board's drain
+   * (`internal: { actions: { resume: { block: board.drain } } }`). The door
+   * dispatches it into the session that claimed the row.
+   */
+  drain: string;
+}
 
 /** The action entry a kind declares. */
 export interface MessageDoorAction {
@@ -173,14 +197,35 @@ function linkedRow(tasks: TaskCollectionRef, sessionId: string): Task | undefine
   );
 }
 
-/** Decide what a person's line does to the run, and do it. */
-async function deliverTurn(
+/**
+ * The row whose next attempt was claimed but whose run has not linked yet: a
+ * claim clears the run link, so the row is found by the run record's session
+ * instead. A listing of the user's run records, read only when no row links
+ * this session.
+ */
+async function claimedRow(
   deps: MessageDoorDeps,
-  message: string,
+  tasks: TaskCollectionRef,
   ctx: BlockContext,
-): Promise<MessageDoorOutput & { requeue: boolean }> {
+): Promise<Task | undefined> {
+  const record = await findRunRowBySession(ctx, deps.boardCollectionId, ctx.session.identity.id);
+  if (record?.taskId == null) return undefined;
+  const row = (tasks.list() as Task[]).find((task) => task.id === record.taskId);
+  return row?.status === "in_progress" && row.run === undefined ? row : undefined;
+}
+
+/** What the decide step hands the re-queue step. */
+type Decided = MessageDoorOutput & {
+  requeue: boolean;
+  /** The session that claimed the row, where its drain runs. */
+  resumeIn: string | null;
+};
+
+/** Decide what a person's line does to the run, and do it. */
+async function deliverTurn(deps: MessageDoorDeps, message: string, ctx: BlockContext): Promise<Decided> {
   const tasks = await deps.boardTasks(ctx);
-  const row = linkedRow(tasks, ctx.session.identity.id);
+  const linked = linkedRow(tasks, ctx.session.identity.id);
+  const row = linked ?? (await claimedRow(deps, tasks, ctx));
   // No run has worked in this session: the task never started here (BR-14).
   if (row === undefined) throw new TurnRefused("not-started");
 
@@ -201,11 +246,12 @@ async function deliverTurn(
   const record = await readRunRow(ctx, runTopic(deps.boardCollectionId, issue, phase));
   if (record?.sessionId == null) throw new TurnRefused("cannot-continue");
 
-  // Durable first.
+  // Durable first. A claimed row's run has not started, so its claimed
+  // attempt takes the turn; otherwise the next one does.
   const turnKey = await keepTurn(ctx, {
     issue,
     phase,
-    forAttempt: row.attempts + 1,
+    forAttempt: linked === undefined ? row.attempts : row.attempts + 1,
     requestId: ctx.request.identity.id,
     message,
   });
@@ -213,11 +259,10 @@ async function deliverTurn(
   try {
     return await continueRun(deps, tasks, row, ctx);
   } catch (error) {
-    // A stop that timed out keeps its turn by design (its text says so), and
-    // anything unexpected leaves the kept turn for the next attempt.
-    if (!(error instanceof TurnRefused) || error.reason === "stop-timeout") throw error;
+    // Anything unexpected leaves the kept turn for the next attempt.
+    if (!(error instanceof TurnRefused)) throw error;
     if ((await withdrawTurn(ctx, turnKey)) === "delivered") {
-      return { outcome: "continuing", taskId: row.id, requeue: false };
+      return { outcome: "continuing", taskId: row.id, requeue: false, resumeIn: null };
     }
     throw error;
   }
@@ -244,11 +289,17 @@ async function continueRun(
   tasks: TaskCollectionRef,
   row: Task,
   ctx: BlockContext,
-): Promise<MessageDoorOutput & { requeue: boolean }> {
-  const kept = { outcome: "kept" as const, taskId: row.id, requeue: false };
-  const continuing = { outcome: "continuing" as const, taskId: row.id, requeue: true };
+): Promise<Decided> {
+  const kept = { outcome: "kept" as const, taskId: row.id, requeue: false, resumeIn: null };
+  const continuing = {
+    outcome: "continuing" as const,
+    taskId: row.id,
+    requeue: true,
+    resumeIn: row.claimedBy?.sessionId ?? null,
+  };
 
   if (row.status === "parked") return row.parkedForTurn === true ? continuing : kept;
+  // Claimed, with its run not linked yet: that attempt takes the turn.
   if (row.status !== "in_progress" || row.run?.attempt !== row.attempts) return kept;
 
   const runRequest = row.run.requestId;
@@ -268,12 +319,12 @@ async function continueRun(
   // Wait for the stopped attempt to finish, so nothing it does lands after the
   // park. Asking again is the read: once the request has ended the stop
   // answers `already-finished`, and until then it rewrites the same flag, so
-  // a repeat is idempotent.
+  // a repeat is idempotent. An attempt that outlasts the wait is not parked:
+  // the turn is kept, and the attempt after it gets the line.
   const deadline = Date.now() + TURN_STOP_WAIT_MS;
   let pollMs = TURN_STOP_POLL_FIRST_MS;
   while ((await ctx.session.stopRequest(runRequest)) === "stopped") {
-    if (ctx.signal.aborted) throw new TurnRefused("stop-timeout");
-    if (Date.now() >= deadline) throw new TurnRefused("stop-timeout");
+    if (ctx.signal.aborted || Date.now() >= deadline) return kept;
     await sleep(pollMs, ctx.signal);
     pollMs = Math.min(pollMs * 2, TURN_STOP_POLL_MAX_MS);
   }
@@ -291,14 +342,63 @@ async function continueRun(
   return kept;
 }
 
-function buildDoorSequencer(deps: MessageDoorDeps, board: MessageDoorBoard) {
+/**
+ * Re-queue a row parked for a turn without charging it, and run the board's
+ * drain in the session that claimed it, so the next attempt starts now in the
+ * run's own session. Any failure here answers `kept`: the turn is kept and the
+ * attempt stopped, so the run gets the line from whatever runs the row next.
+ */
+async function requeue(
+  deps: MessageDoorDeps,
+  options: MessageDoorOptions,
+  decided: Decided,
+  ctx: BlockContext,
+): Promise<MessageDoorOutput> {
+  const { outcome, taskId } = decided;
+  if (!decided.requeue) return { outcome, taskId };
+  const kept = { outcome: "kept" as const, taskId };
+  try {
+    const unparked = await (await deps.boardTasks(ctx)).unpark(taskId);
+    // Someone re-queued it first; the turn is kept for what they started.
+    if (unparked.outcome !== "recorded") return kept;
+    if (decided.resumeIn === null) return kept;
+    const drained = await dispatchThroughSeam(ctx, {
+      type: "internal",
+      action: options.drain,
+      session: { id: decided.resumeIn },
+      payload: {},
+      from: `${deps.name}-message-requeue`,
+    });
+    return drained.ok ? { outcome, taskId } : kept;
+  } catch {
+    return kept;
+  }
+}
+
+function buildDoorSequencer(deps: MessageDoorDeps, options: MessageDoorOptions) {
   const decide = handler({
     name: `${deps.name}-message-door`,
     inputSchema: messageDoorInputSchema,
-    outputSchema: messageDoorOutputSchema.extend({ requeue: z.boolean() }),
+    outputSchema: messageDoorOutputSchema.extend({
+      requeue: z.boolean(),
+      resumeIn: z.string().nullable(),
+    }),
     uses: [deps.capability],
     execute: async (input, ctx: BlockContext) => deliverTurn(deps, input.message, ctx),
   });
+
+  const requeueStep = handler({
+    name: `${deps.name}-message-requeue`,
+    inputSchema: messageDoorOutputSchema.extend({
+      requeue: z.boolean(),
+      resumeIn: z.string().nullable(),
+    }),
+    outputSchema: messageDoorOutputSchema,
+    uses: [deps.capability],
+    execute: async (decided, ctx: BlockContext) => requeue(deps, options, decided, ctx),
+  });
+  // So `defineFlow` checks the flow declares the drain entry.
+  markDispatcher(requeueStep, { type: "internal", action: options.drain });
 
   return sequencer({
     name: `${deps.name}-message`,
@@ -306,25 +406,16 @@ function buildDoorSequencer(deps: MessageDoorDeps, board: MessageDoorBoard) {
     outputSchema: messageDoorOutputSchema,
   })
     .step(decide)
-    // Re-queue without charging and run the board, so the next attempt
-    // starts now. Only for a row parked for a turn: a kept turn waits for
-    // whatever runs the row next.
-    .tapIf(
-      (decided: { requeue: boolean }) => decided.requeue,
-      board.unparkAndDrain.connectInput((decided: { taskId: string }) => ({
-        taskId: decided.taskId,
-      })),
-    )
-    .map(({ outcome, taskId }) => ({ outcome, taskId }));
+    .step(requeueStep);
 }
 
 /**
- * Build the door for one manager. Called once per board the kind declares it
- * on; the board is what re-queues and drains the row.
+ * Build the door for one manager. `options.drain` names the flow's `internal`
+ * entry that runs the board's drain.
  */
 export function createMessageDoor(deps: MessageDoorDeps) {
-  return (board: MessageDoorBoard): MessageDoorAction => ({
-    block: buildDoorSequencer(deps, board),
+  return (options: MessageDoorOptions): MessageDoorAction => ({
+    block: buildDoorSequencer(deps, options),
     inputSchema: messageDoorInputSchema,
     userMessage: (input) => input.message,
     description:

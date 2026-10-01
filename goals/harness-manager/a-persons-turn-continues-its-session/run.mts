@@ -304,7 +304,8 @@ await runGoal(async () => {
 
       // ── A person's turn, sent into the run's own session ────────────────
       turn = `${fixture.turnText}\n  ${factFile}`;
-      const sent = await call<{ outcome: string }>("message", { message: turn }, board.run.sessionId);
+      const turnSession = board.run.sessionId;
+      const sent = await call<{ outcome: string }>("message", { message: turn }, turnSession);
       doorOutcome = sent.outcome;
       if (sent.outcome !== "continuing") {
         failures.push(`the door answered "${sent.outcome}", not "continuing"`);
@@ -321,6 +322,15 @@ await runGoal(async () => {
         failures.push(
           `the board row reads "${row?.status}", not "completed" — reason: ` +
             `${row?.run?.reason ?? row?.feedback ?? "none recorded"}`,
+        );
+      }
+
+      // The run link, read after delivery: attempt 2 runs in the session the
+      // person sent the turn into, not one beneath it.
+      if (board?.run?.sessionId !== turnSession) {
+        failures.push(
+          `attempt 2 ran in session "${board?.run?.sessionId}", not "${turnSession}" where the ` +
+            `turn was sent — the run moved out of the session the person is looking at`,
         );
       }
 
