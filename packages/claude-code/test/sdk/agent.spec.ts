@@ -1043,6 +1043,55 @@ describe("claudeCodeAgent", () => {
     expect(items.some((i) => i.type === "error")).toBe(true);
   });
 
+  it("reports a failed run when a success result carries is_error", async () => {
+    // The SDK ends a turn that hit an API error with subtype "success" AND
+    // `is_error: true`, putting the error text in `result`. Reading the
+    // subtype alone records that run as a success: a flow downstream sees a
+    // completed handle and no error item, and the failure surfaces later as
+    // missing output with nothing to trace it back to.
+    const messages: SdkMessageLike[] = [
+      {
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "API Error: 529 overloaded",
+        session_id: "sess_api",
+      },
+    ];
+    const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages) });
+    const { output, error, items, state } = await testBlock(block, { input: { prompt: "x" } });
+
+    // Still a return, not a throw — the same contract as every errored result.
+    expect(error).toBeNull();
+    const handle = output as SdkAgentHandle;
+    expect(handle.status).toBe("errored");
+    expect(handle.outcome).toBe("failed");
+    // The vendor's own word is kept as reported, beside the verdict.
+    expect(handle.resultSubtype).toBe("success");
+
+    const errorItem = items.find((i) => i.type === "error") as
+      | { message?: string; code?: string }
+      | undefined;
+    expect(errorItem?.message).toBe("API Error: 529 overloaded");
+    expect(errorItem?.code).toBe("is_error");
+
+    // What the session records is the failure, not a success.
+    const runs = state.session[SDK_AGENT_RUNS_KEY] as SdkAgentHandle[];
+    expect(runs.at(-1)).toMatchObject({ status: "errored", outcome: "failed" });
+  });
+
+  it("keeps a success result with is_error: false a completed run", async () => {
+    // The other side of the line above: the flag, not its presence, decides.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([{ ...RESULT_OK, is_error: false } as SdkMessageLike]),
+    });
+    const { output, items } = await testBlock(block, { input: { prompt: "x" } });
+
+    expect((output as SdkAgentHandle).status).toBe("completed");
+    expect((output as SdkAgentHandle).outcome).toBe("finished");
+    expect(items.some((i) => i.type === "error")).toBe(false);
+  });
+
 });
 
 /**
@@ -2751,6 +2800,29 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
       expect(handle.outcome).toBe("failed");
       expect(handle.status).toBe("errored");
       expect(handle.resultSubtype).toBeNull();
+    });
+
+    it("reads a success flagged is_error as failed, and a limit flagged is_error as a limit", async () => {
+      // The SDK sets `is_error` on its error subtypes too. The flag turns a
+      // `success` into a failure; it must not turn a turn cap into one, or a
+      // manager would stop telling "ran out of turns" apart from "broke".
+      const apiError = await runFor({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "API Error: 500",
+        session_id: "s",
+      });
+      expect(apiError.outcome).toBe("failed");
+
+      const capped = await runFor({
+        type: "result",
+        subtype: "error_max_turns",
+        is_error: true,
+        session_id: "s",
+      });
+      expect(capped.outcome).toBe("stopped-at-limit");
+      expect(capped.status).toBe("errored");
     });
 
     it("leaves outcome, usage and cost null when the run reported no result", async () => {

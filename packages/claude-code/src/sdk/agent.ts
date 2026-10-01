@@ -480,9 +480,12 @@ export interface ClaudeCodeAgentOptions {
  * `"success"`. `null` here means the SDK reported a subtype this version does
  * not recognize (`normalizeSubtype` only nulls unknown values — `"success"` is
  * always recognized), so it is a failure, not a silent success.
+ *
+ * `isError` is the result's `is_error` flag: a `"success"` carrying it is the
+ * SDK's shape for a turn that ended on an API error, so it errored too.
  */
-function isErroredSubtype(subtype: SdkResultSubtype | null): boolean {
-  return subtype !== "success";
+function isErroredSubtype(subtype: SdkResultSubtype | null, isError: boolean): boolean {
+  return subtype !== "success" || isError;
 }
 
 /**
@@ -918,6 +921,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // carrying a subtype this package does not recognize. Only this flag
       // tells those apart, and `outcome` depends on the difference.
       let terminalResultArrived = false;
+      // The result's `is_error` flag, read beside the subtype: a `success` can
+      // still be a failed turn.
+      let resultIsError = false;
       let finalMessage: string | null = null;
       let newSessionId: string | null = session.sdkSessionId;
       /**
@@ -1062,6 +1068,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                 if (event.kind === "result") {
                   terminalResultArrived = true;
                   resultSubtype = event.subtype;
+                  resultIsError = event.isError;
                   if (event.sessionId !== null) newSessionId = event.sessionId;
                   if (event.finalMessage !== null)
                     finalMessage = event.finalMessage;
@@ -1166,14 +1173,14 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         // back to the SDK result's text.
         finalMessage = emitState.finalMessage ?? finalMessage;
 
-        const errored = isErroredSubtype(resultSubtype);
+        const errored = isErroredSubtype(resultSubtype, resultIsError);
         const handle: SdkAgentHandle = {
           source: CLAUDE_SDK_SOURCE,
           status: errored ? "errored" : "completed",
           sessionId: newSessionId,
           url: null,
           dispatchedAt,
-          outcome: outcomeFromResultSubtype(resultSubtype, terminalResultArrived),
+          outcome: outcomeFromResultSubtype(resultSubtype, terminalResultArrived, resultIsError),
           finalMessage,
           usage,
           // The SDK reports its own total, so the basis is `reported` whenever
@@ -1201,7 +1208,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
         ctx.emit.status(
           errored
-            ? `Claude Code agent run errored (${resultSubtype ?? "unknown subtype"}).`
+            ? `Claude Code agent run errored (${
+                resultSubtype === "success" ? "is_error" : (resultSubtype ?? "unknown subtype")
+              }).`
             : "Claude Code agent run completed.",
           { transient: false },
         );
