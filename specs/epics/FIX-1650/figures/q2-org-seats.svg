@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 422" role="img" aria-label="Open question Q2, for Jake: which org seats does a Lab get, and may Ops change the roster without asking? Recommended, not yet chosen: a CoS seat and an Ops seat that a Lab opts into, both on the built-in agent kind, where every hire and every fire is an approval the person answers in Inbox. Beside it: an Ops seat alone, booted in every Lab, that hires and fires on its own within a list of allowed kinds. It comes down to the first row, who changes the roster: the person, one approval each, where the other lets a model do it inside a list. Second row: a Lab that wants neither adds nothing under the recommendation, and gets seats it never declared under the other. The price, third row: an Inbox approval for every hire and fire. Locks in: every roster change in this epic is a person&#x27;s approval, and FIX-1719 makes org seats hireable, each landing in the person&#x27;s own cell. Flips if Jake wants hires to happen unattended, for example overnight."
+<svg viewBox="0 0 940 422" role="img" aria-label="Q2, decided by Jake on 1 October 2026: which org seat does a Lab get, and may it hire without asking? Chosen: one CoS seat a Lab opts into, on the built-in agent kind, the only seat that hires, hiring without asking and every fire is still an approval the person answers in Inbox. Instead of the recommendation the epic made: the same seat, with an Inbox approval on every hire as well as every fire. It comes down to the first row, the friction on a hire: none under the choice, a click in Inbox each time under the other. Second row, a tie: fire and retire are approved in Inbox either way, because a fire removes the seat's inventory row. The price, third row: a model picks who joins, within the kinds the Lab registers, never a declared seat's id. Locks in: CoS hires unattended and the approval seam stays built for fires. Flips if Jake turns hire approval back on, a policy switch ER-20 describes."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -36,67 +36,67 @@
 
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">Q2 &#183; OPEN &#183; FOR JAKE</text>
-    <text class="t-q" x="32" y="52">Which org seats does a Lab get, and may Ops hire without asking?</text>
+    <text class="t-lbl" x="32" y="32">Q2 &#183; DECIDED &#183; JAKE, 1 OCTOBER 2026</text>
+    <text class="t-q" x="32" y="52">Which org seat does a Lab get, and may it hire without asking?</text>
   </g>
 
   <g id="options">
-    <rect class="rec" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
-    <text class="t-h c-code" x="228" y="112">CoS and Ops, opt-in, Ops asks</text>
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">CoS alone, opt-in, hires freely</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Ops alone, always on, hires freely</text>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF &#183; THE RECOMMENDATION</text>
+    <text class="t-h c-lost" x="592" y="112">CoS asks on every hire</text>
   </g>
 
   <g id="row-1">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">WHO CHANGES</text>
-    <text class="t-lbl" x="32" y="169">THE ROSTER</text>
+    <text class="t-lbl" x="32" y="156">FRICTION</text>
+    <text class="t-lbl" x="32" y="169">ON A HIRE</text>
     <text class="t-tag c-acc" x="32" y="186">&#9656; DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">The person, one approval each</text>
-    <text class="t-s" x="248" y="179">Approve in Inbox, then it happens</text>
+    <text class="t-b" x="248" y="161">None: CoS hires on the ask</text>
+    <text class="t-s" x="248" y="179">the seat shows in TEAMS</text>
     <text class="mark minus" x="592" y="162">&#8722;</text>
-    <text class="t-b" x="612" y="161">A model, inside a list</text>
-    <text class="t-s" x="612" y="179">the person reads about it after</text>
+    <text class="t-b" x="612" y="161">A click in Inbox each time</text>
+    <text class="t-s" x="612" y="179">nothing is hired while the person is away</text>
   </g>
 
   <g id="row-2">
-    <text class="t-lbl" x="32" y="218">A LAB THAT</text>
-    <text class="t-lbl" x="32" y="231">WANTS NEITHER</text>
-    <text class="mark plus" x="228" y="224">+</text>
-    <text class="t-b" x="248" y="223">Adds nothing</text>
-    <text class="t-s" x="248" y="241">the seats are documents it opts into</text>
-    <text class="mark minus" x="592" y="224">&#8722;</text>
-    <text class="t-b" x="612" y="223">Gets seats it never declared</text>
-    <text class="t-s" x="612" y="241">booted in every Lab</text>
+    <text class="t-lbl" x="32" y="218">FIRE AND</text>
+    <text class="t-lbl" x="32" y="231">RETIRE</text>
+    <text class="mark tie" x="228" y="224">=</text>
+    <text class="t-b" x="248" y="223">Approved in Inbox</text>
+    <text class="t-s" x="248" y="241">a fire removes the row; the hard way back</text>
+    <text class="mark tie" x="592" y="224">=</text>
+    <text class="t-b" x="612" y="223">Approved in Inbox</text>
+    <text class="t-s" x="612" y="241">the same ask</text>
     <line class="row" x1="16" y1="254" x2="924" y2="254"/>
   </g>
 
   <g id="row-3">
-    <text class="t-lbl" x="32" y="276">FRICTION</text>
+    <text class="t-lbl" x="32" y="276">THE PRICE</text>
     <text class="mark minus" x="228" y="282">&#8722;</text>
-    <text class="t-b" x="248" y="281">An approval per hire and fire</text>
-    <text class="t-s" x="248" y="299">a click each, in Inbox</text>
+    <text class="t-b" x="248" y="281">A model picks who joins</text>
+    <text class="t-s" x="248" y="299">registered kinds only; never a declared seat&#x27;s id</text>
     <text class="mark plus" x="592" y="282">+</text>
-    <text class="t-b" x="612" y="281">None</text>
-    <text class="t-s" x="612" y="299">the roster just changes</text>
+    <text class="t-b" x="612" y="281">The person picks each one</text>
+    <text class="t-s" x="612" y="299">one approval per hire</text>
     <line class="row" x1="16" y1="312" x2="924" y2="312"/>
   </g>
 
   <g id="locks-in">
     <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="353">LOCKS IN</text>
-    <text class="t-b" x="32" y="373">Every roster change is a person's approval</text>
-    <text class="t-s" x="32" y="391">FIX-1719 ships them and makes org seats hireable</text>
+    <text class="t-b" x="32" y="373">CoS hires unattended; every fire is asked</text>
+    <text class="t-s" x="32" y="391">the approval seam stays built for fires</text>
   </g>
 
   <g id="flips-if">
     <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="353">FLIPS IF</text>
-    <text class="t-b" x="494" y="373">Jake wants hires to happen unattended</text>
-    <text class="t-s" x="494" y="391">for example overnight</text>
+    <text class="t-b" x="494" y="373">Jake turns hire approval back on</text>
+    <text class="t-s" x="494" y="391">a policy switch, as ER-20 says</text>
   </g>
 </svg>
