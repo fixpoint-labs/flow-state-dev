@@ -138,14 +138,18 @@ same day: a channel is messaging about the project, and live channels stay user-
 
 **Still open, carried, assigned to no child:** live push of other people's lines (today they
 arrive on the reader's next read: on open, on focus, after a wake) · one seat memory per room
-rather than per person ([5](#pending-5)) · one transcript home for channels (items) and rooms
-(rows), flagged for `audit-coherence` · a board per project (a template's `boards:` resolve to one ledger
-per template today) · a workstream as runtime data, which would be a second collection with its
-own `mintFor:` template, the same family and no new substrate; until then a workstream is a
-declared channel ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) · **a risk:**
-two people joining at once append to `sessions` together, untested. Concurrent posts are
-covered: the engine's own retries lost one post in ten under a two-person burst, so the room
-retries its sequence allocation itself ([ER-24](BUSINESS-RULES.md#what-no-child-may-do)).
+rather than per person ([5](#pending-5)) · one transcript home for declared channels too
+(today they keep items), flagged for `audit-coherence` · a board per project (a template's
+`boards:` resolve to one ledger per template today) · a workstream as runtime data, which would
+be a second collection with its own `mintFor:` template, the same family and no new substrate;
+until then a workstream is a declared channel ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
+
+**Decided for projects (Cursor's review):** project talk lives in room rows only, with no
+`channel-post` item mirroring it in anyone's session ([ER-26](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)),
+so a project has one transcript home. **Concurrency:** the engine's own retries lost one post
+in ten under a two-person burst, so the room retries its sequence allocation itself
+([ER-24](BUSINESS-RULES.md#what-no-child-may-do)); joins get the same rigour, idempotent and
+retried on the row's `sessions` append ([ER-27](BUSINESS-RULES.md#what-no-child-may-do)).
 
 ![Q1 decided: an org row with a room stored on it, chosen, beside a project as its own channel and a shared engine session; decided by where the project and its conversation live](figures/q1-project.svg)
 
@@ -177,6 +181,9 @@ to any of them is a small amendment, priced below.
   Lab ever having two real people in it.
 - *What being wrong costs:* about one PR nobody needed, if rooms never get a second member.
   The other way round, a migration of thread history, or leaving it private.
+- *If he answers "per person first":* FIX-1728's per-person talk is the fallback baseline.
+  ER-1, ER-25 and ER-27 stand; ER-26 and the members gate on the room drop out of this slice;
+  FIX-1729's room becomes the later delta, and FIX-1718 shrinks by about one PR.
 
 <a name="pending-2"></a>
 **2 · decided · Jake, 2026-10-01: "Amend now."** The narrow slice ships inside FIX-1650, and D2,
@@ -269,9 +276,9 @@ It comes down to the friction on a hire: none now, and every fire still asks.
 
 ## Who owns what
 
-![Who owns what: eleven cross-cutting rules by FIX-1718, FIX-1621, FIX-1719 and FIX-1720, one decides or builds cell per rule](figures/ownership.svg)
+![Who owns what: thirteen cross-cutting rules by FIX-1718, FIX-1621, FIX-1719 and FIX-1720, one decides or builds cell per rule](figures/ownership.svg)
 
-The matrix holds ER-1 to ER-9, ER-19 and ER-20. ER-10 to ER-18 and ER-21 to ER-24 are fences and
+The matrix holds ER-1 to ER-9, ER-19, ER-20, ER-25 and ER-26. ER-10 to ER-18, ER-21 to ER-24 and ER-27 are fences and
 process that bind every child alike, so they sit outside it.
 
 Every rule has one owner. FIX-1621 decides what an orphan is, so CoS calls its read rather than
@@ -357,3 +364,7 @@ FIX-1728 spike's POC; both verdicts are in
   rejected. ER-1 and ER-21 are amended, ER-23 and ER-24 added, and leg a, the box, the Q1
   figure and the ownership label follow. Building the room now and members-only reads are
   pending Jake; one seat conversation per person per room is decided.
+- **Cursor's review of the amendment (Oct 1)**, four notes folded: the per-person fallback if
+  Jake answers card 1 "per person first"; ER-1 split into ER-1 (row and members), ER-25 (the
+  talk link) and ER-26 (room storage); project talk in room rows only, with no item mirror;
+  and ER-27, an idempotent, retried join, matching FIX-1718's BR-16a.
