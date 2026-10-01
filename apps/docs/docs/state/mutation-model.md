@@ -162,6 +162,8 @@ A whole-row `.catch()` fallback — including one sitting under `.nullable()`, `
 
 `setState(null)` on a `.nullable()` resource is not a schema failure. The store holds JSON objects, so that write persists as `{}` — the same cleared form an unwritten nullable single already surfaces as.
 
+That reset applies only when you write `null`. If your schema turns a non-null value into `null`, for example a `.transform()` that maps "no `phase` yet" to `null`, the write is refused. Storing the cleared form would throw away the value you wrote and still report success. Write `null` to clear the resource, or have the schema return an object for that value.
+
 The message is:
 
 ```
