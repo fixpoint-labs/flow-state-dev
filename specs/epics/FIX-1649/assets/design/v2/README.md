@@ -68,4 +68,5 @@ a tab or the right panel's content an epic amendment, not a child's call. v2 doe
 - the task header's **Open PR** gives way to **Open `#stream`**, and the workstream loses
   **Pause stream**; the project loses **+ Team** and **+ Workstream**.
 
-Until an amendment decides, Shift Manager keeps v1's structure with v2's look.
+The [v2 amendment](../../../EVOLUTION.md#amendment--2026-10-01--design-v2s-structure) adopts the
+first two. The removed tabs and dropped actions do not join, so those keep v1's structure.

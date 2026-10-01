@@ -21,6 +21,7 @@ import type { ExecutionResult } from "./types";
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import { createLiveRequestStream, type LiveRequestStream } from "../streaming/live-stream";
 import { runAction } from "./runAction";
+import { stripResumeMetadata } from "./resume-metadata";
 import { hasLiveRequestAttempt } from "./request-attempts";
 import { resolveRecordOwner } from "../context/record-owner";
 
@@ -173,7 +174,12 @@ export async function continueRequest(
     // is belt-and-suspenders for the seam where runAction owns the emitter.
     startSequenceNumber: lastSeq,
     startItemIndex: nextItemIndex,
-    metadata: { ...record.metadata, resumeContext },
+    // The resolution travels as the typed option, never as metadata (FIX-1707).
+    // A record persisted before then may still carry `resumeContext` /
+    // `resumeOf` in its metadata; strip them here so they are not mistaken for
+    // a caller's forged keys (runAction would drop them anyway).
+    metadata: stripResumeMetadata(record.metadata),
+    resumeContext,
     runtimeConfig
   }) as Promise<ExecutionResult>;
 

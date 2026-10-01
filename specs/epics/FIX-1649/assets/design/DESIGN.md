@@ -4,8 +4,10 @@ Epic FIX-1649 · Workforce lab shell · 2026-09-30
 
 > **The final hand-back is [v2](v2/README.md)** (design pass 2, 2026-10-01). It is the look:
 > Shift Manager's theme values come from it. Its structure differs from what this file
-> describes (Chief of Staff, Roster, fewer tabs); until an epic amendment adopts it
-> ([ER-10](../../BUSINESS-RULES.md#how-the-set-is-run)), the structure below stands. v2's
+> describes (Chief of Staff, Roster, fewer tabs). The
+> [v2 amendment](../../EVOLUTION.md#amendment--2026-10-01--design-v2s-structure) adopts Chief of
+> Staff, Roster and TEAMS as status squares; v2's removed tabs do not join, so the rest of the
+> structure below stands. v2's
 > README says, item by item, what it drew from §9.
 
 This file shows the five low-fidelity wireframes and your five Claude Design screens together, and says how each screen behaves. **Where the two differ, your Claude Design screens win.** The wireframes are the starting point, kept as history; the spec on [#2421](https://github.com/fixpoint-labs/flow-state-dev/pull/2421) now fixes the structure your screens show ([`../../SPEC.md`](../../SPEC.md)).

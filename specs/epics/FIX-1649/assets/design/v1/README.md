@@ -1,8 +1,9 @@
 # Claude Design hand-back · v1
 
 > **Superseded as the look by [v2](../v2/README.md)**, the final hand-back (design pass 2,
-> 2026-10-01). v1 still fixes the structure until an epic amendment adopts v2's
-> ([ER-10](../../../BUSINESS-RULES.md#how-the-set-is-run)); kept as history.
+> 2026-10-01). v1's structure stands except where the
+> [v2 amendment](../../../EVOLUTION.md#amendment--2026-10-01--design-v2s-structure) changed it
+> (Chief of Staff, Roster, TEAMS as status squares); kept as history.
 
 Five dark-theme screens of App Lab, handed back from Claude Design by Jake on 2026-09-30:
 01 to 03 first, then 04 and 05 ("Latest designs, show Inbox and Tasks sections").
