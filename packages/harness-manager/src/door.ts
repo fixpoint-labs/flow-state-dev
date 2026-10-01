@@ -50,9 +50,11 @@
  * didn't reach the task that the task acted on.
  */
 import { handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
+import { updateStateWith } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   isTerminalStatus,
+  resolveResourceCollection,
   ticketForClaim,
   type DefinedTaskCollection,
   type Task,
@@ -209,7 +211,7 @@ async function deliverTurn(
   });
 
   try {
-    return await continueRun(tasks, row, ctx);
+    return await continueRun(deps, tasks, row, ctx);
   } catch (error) {
     // A stop that timed out keeps its turn by design (its text says so), and
     // anything unexpected leaves the kept turn for the next attempt.
@@ -221,8 +223,24 @@ async function deliverTurn(
   }
 }
 
+/**
+ * The row's status as stored now. The board this request resolved is the
+ * snapshot it read when it started, so a row the attempt settled since reads
+ * as running there. A conditional update that returns what it finds and
+ * changes nothing reads the committed row, and writes nothing.
+ */
+async function storedStatus(ctx: BlockContext, collectionId: string, taskId: string): Promise<unknown> {
+  const ref = await resolveResourceCollection(ctx, collectionId)?.getOptional(taskId);
+  if (ref === undefined) return undefined;
+  return updateStateWith<Record<string, unknown>, unknown>(ref, (current) => ({
+    state: current,
+    result: current?.status,
+  }));
+}
+
 /** With the turn kept: stop the running attempt and park the row for it, or leave it kept. */
 async function continueRun(
+  deps: MessageDoorDeps,
   tasks: TaskCollectionRef,
   row: Task,
   ctx: BlockContext,
@@ -236,9 +254,16 @@ async function continueRun(
   const runRequest = row.run.requestId;
   const first = await ctx.session.stopRequest(runRequest);
   if (first === "not-in-this-session") throw new TurnRefused("no-run");
-  // Already finished before this stop. The snapshot above was not terminal,
-  // so the kept turn stands and the board decides what the row does next.
-  if (first === "already-finished") return kept;
+  // The attempt ended between the read and the stop (BR-11). If it settled
+  // the row, the turn reached no one. Otherwise the kept turn stands and the
+  // board decides what follows, which is also what an Interrupt gets (BR-17).
+  if (first === "already-finished") {
+    const status = await storedStatus(ctx, deps.boardCollectionId, row.id);
+    if (typeof status === "string" && isTerminalStatus(status as Task["status"])) {
+      throw new TurnRefused("finished-first");
+    }
+    return kept;
+  }
 
   // Wait for the stopped attempt to finish, so nothing it does lands after the
   // park. Asking again is the read: once the request has ended the stop

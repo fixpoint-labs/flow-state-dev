@@ -56,6 +56,7 @@ afterAll(() => {
  *   alone, so the race is written the way the board would have written it.
  * - `no-session` — fails without ever naming a session (a dispatch-only
  *   harness).
+ * - `finish-later` — works for 400ms, then returns finished on its own.
  */
 type Step =
   | "hold"
@@ -64,7 +65,8 @@ type Step =
   | "finished"
   | "failed"
   | "ask"
-  | "no-session";
+  | "no-session"
+  | "finish-later";
 
 interface SeenAttempt {
   prompt: string;
@@ -110,6 +112,10 @@ function stubHarness(
           if (step === "fail-on-stop") await settleFirst("pending");
           await new Promise((resolve) => setTimeout(resolve, exitDelayMs));
           throw new DOMException("Aborted", "AbortError");
+        }
+        if (step === "finish-later") {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          return handle("completed");
         }
         if (step === "ask") {
           const marker = /write it as the entire contents of this file:\n {2}(\S+)/.exec(input.prompt)?.[1];
@@ -317,7 +323,49 @@ function host(options: { script: Step[]; maxAttempts?: number; exitDelayMs?: num
     };
   };
 
-  return { act, row, until, send, request, userLines, seen, settleFirst, holdSecondDoorUntilFinished };
+  /**
+   * Hold the door's first stop of the attempt's request until that attempt
+   * has finished on its own and its row settled: the door read the row
+   * running, and the stop then finds the request already over.
+   */
+  const holdStopUntilSettled = async (attemptRequestId: string): Promise<{ settledVersion?: number }> => {
+    const seenAt: { settledVersion?: number } = {};
+    const stores = (await runtime()).stores;
+    const original = stores.request.setFieldsIfStatus.bind(stores.request);
+    stores.request.setFieldsIfStatus = async (id: string, ...rest: unknown[]) => {
+      if (id === attemptRequestId) {
+        await until((t) => t.status === "completed", "the attempt to settle its row");
+        for (;;) {
+          const record = await stores.request.get(attemptRequestId);
+          if (record?.status !== "in_progress") break;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        seenAt.settledVersion = await rowVersion();
+      }
+      return original(id, ...(rest as []));
+    };
+    return seenAt;
+  };
+
+  /** The stored version of the row, which moves on every write to it. */
+  const rowVersion = async (): Promise<number | undefined> => {
+    const rt = await runtime();
+    return (await rt.stores.resourceState.get("org", ORG_ID, `${BOARD_ID}/${TASK_ID}`))?.version;
+  };
+
+  return {
+    act,
+    row,
+    until,
+    send,
+    request,
+    userLines,
+    seen,
+    settleFirst,
+    holdSecondDoorUntilFinished,
+    holdStopUntilSettled,
+    rowVersion,
+  };
 }
 
 /** A task's retry standing: claims it spent out of its own budget. */
@@ -437,6 +485,23 @@ describe("the run finished in the moment the stop was sent (BR-11)", () => {
     await lab.act(ALICE, "drain");
     await lab.until(() => lab.seen.length === 2, "a later attempt");
     expect(lab.seen[1]!.prompt).not.toContain("too late");
+  }, 60_000);
+
+  it("refuses when the stop finds the attempt already over and its row settled", async () => {
+    const lab = host({ script: ["finish-later"] });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    const running = await lab.until((t) => t.status === "in_progress" && t.run !== undefined, "the run link");
+    await lab.until(() => lab.seen.length === 1, "attempt 1 to reach its harness");
+    const seenAt = await lab.holdStopUntilSettled(running.run!.requestId);
+
+    const sent = await lab.send(ALICE, "just missed");
+    expect(sent.error, "the door completed for a task that finished first").toBeDefined();
+    expect(messageOf(sent.error)).toContain("The task finished before your message reached it.");
+    expect((await lab.row()).status).toBe("completed");
+    // The door read the settled row and wrote nothing to it.
+    expect(seenAt.settledVersion).toBeDefined();
+    expect(await lab.rowVersion()).toBe(seenAt.settledVersion);
   }, 60_000);
 
   it("keeps the turn when the row re-pended first", async () => {
