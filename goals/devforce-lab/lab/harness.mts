@@ -1,7 +1,7 @@
 /**
  * Which harness a served DevForce Lab puts in the `coder` kind's slot.
  *
- *     DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/app-lab start \
+ *     DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/shift-manager start \
  *       --config goals/devforce-lab/lab/fsdev.config.mts
  *
  * Two choices, picked by {@link HARNESS_ENV} and nothing else:

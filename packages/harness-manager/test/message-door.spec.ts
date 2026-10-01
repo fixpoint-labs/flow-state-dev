@@ -7,7 +7,7 @@
  * records what each attempt was handed: the prompt, and the session it was
  * told to resume.
  *
- * The door is called the way App Lab calls it: the `message` action, into the
+ * The door is called the way Shift Manager calls it: the `message` action, into the
  * session the task's run link names.
  */
 import { afterAll, describe, expect, it } from "vitest";

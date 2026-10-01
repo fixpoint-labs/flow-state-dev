@@ -1,15 +1,15 @@
 # design-system › it skins reused components from one token set
 
-**Issue:** FIX-1655 (the App Lab design system; epic FIX-1649)
+**Issue:** FIX-1655 (the Shift Manager design system; epic FIX-1649)
 
 **Outcome:** An app installs FSD's registry components unedited, loads one stylesheet, and every one of them takes that stylesheet's look, light and dark. With no stylesheet loaded, the same components show FSD's neutral defaults. "A person must act" gets the highlighter and nothing else does. A component that paints a fixed colour again is caught.
 
 **Input:** a fresh host app, built on each run, that installs the sweep from this checkout's registry the way an app does: the registry is built with its own URLs pointing at a local HTTP server, and one `fsdev ui add` with every sweep item installs from it. The CLI runs with its input closed, so any question it stops to ask fails the run. The token defaults arrive as a dependency of the items that read them. The host page (`host/main.tsx`) renders every swept part in every state that carries a colour. That covers the 12 components this issue fixed, the stream cards the design shows (message, reasoning, code block, tool, approval, task plan), and the navigator, roster, board panels and seat detail from `@flow-state-dev/react`. Each part is tagged with what its colour means (`data-means`).
 
-**Signal:** computed styles read in headless Chromium, four passes: no theme light and dark, App Lab light and dark (`@flow-state-dev/design-system/app-lab.css` imported after the host's own stylesheet).
+**Signal:** computed styles read in headless Chromium, four passes: no theme light and dark, Shift Manager light and dark (`@flow-state-dev/design-system/shift-manager.css` imported after the host's own stylesheet).
 
 (a) **a:neutral**: with no theme, every painted colour (text, background, borders, outline, svg stroke and fill) is a registry token default or the chrome's own fallback.
-(b) **b:themed**: under App Lab light and dark, no painted colour is a registry default or a fixed Tailwind palette colour, every one is an App Lab value, every font is one of App Lab's families, and every corner is square (rounded-full pills excepted).
+(b) **b:themed**: under Shift Manager light and dark, no painted colour is a registry default or a fixed Tailwind palette colour, every one is a Shift Manager value, every font is one of Shift Manager's families, and every corner is square (rounded-full pills excepted).
 (c) **c:attention**: under the theme, the attention colour is on every part that waits on a person and on no other part.
 
 **Anti-game:**
@@ -24,7 +24,7 @@
 **Three calls the check makes, and why:**
 - **A prompt is a failure.** With its input closed, the CLI answers an overwrite prompt "no" and still exits 0, so the run fails on the prompt's text rather than on the exit code.
 - **Byte identity, with one allowance.** The CLI drops the comments above the first statement of a file that has no `"use client"` directive (the `.ts` helpers). Everything else must match byte for byte.
-- **Palette colours App Lab itself uses.** App Lab's dark card `#1d1c16` is Tailwind's `olive-900` to within rounding, and a computed style cannot tell the two apart. A palette colour that is also an App Lab value is therefore not counted against b:themed. The source census is what keeps palette classes out of the components. Fixed colours are matched to within 1 per channel; App Lab values are matched to within 3.
+- **Palette colours Shift Manager itself uses.** Shift Manager's dark card `#1d1c16` is Tailwind's `olive-900` to within rounding, and a computed style cannot tell the two apart. A palette colour that is also a Shift Manager value is therefore not counted against b:themed. The source census is what keeps palette classes out of the components. Fixed colours are matched to within 1 per channel; Shift Manager values are matched to within 3.
 
 The upstream shadcn primitives the CLI fetched (`button`, `select`, …) are replaced by the ones the registry's Storybook builds against. Upstream's now import an npm package (`cn`) this workspace does not have, and the primitives are not what this goal checks.
 

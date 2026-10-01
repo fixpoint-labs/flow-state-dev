@@ -44,7 +44,7 @@ different valid feature still passes a correct implementation.
     its claim, so a reopen asks again even when no request record is left *(AR-5, AR-6)*.
 
 **Anti-game:** a hollow pass is an Inbox item that approves nothing, or an ask that was answered by
-a lab helper rather than by the route App Lab takes. So every read a person's client would make goes
+a lab helper rather than by the route Shift Manager takes. So every read a person's client would make goes
 through the lab's HTTP door with its verified bearer; the answer goes only through the engine's
 resume route; rows are **enumerated**, never looked up by the id this check expects; and "the coder
 started" is graded on the dispatch record by `flowId` and on the stub being reached, not on the

@@ -118,7 +118,7 @@ a denied feature stays denied until the store is fresh. The other checks don't a
 it, so they run exactly as before.
 
 A host that builds its own flow state instead of calling `openLab`, such as the `fsdev`
-config App Lab serves, turns on durable execution itself and calls the same step,
+config Shift Manager serves, turns on durable execution itself and calls the same step,
 `raiseAsk` in `ask.mts`, after it hires.
 
 ```ts
@@ -135,7 +135,7 @@ const lab = await openLab({
 
 ## Serving it
 
-`fsdev.config.mts` serves the lab, for App Lab or `fsdev dev`. `DEVFORCE_LAB_HARNESS` picks
+`fsdev.config.mts` serves the lab, for Shift Manager or `fsdev dev`. `DEVFORCE_LAB_HARNESS` picks
 what runs an approved row (`harness.mts`):
 
 | Value | What runs |
@@ -147,7 +147,7 @@ The scripted run pauses 2 s before each of its five steps so you can watch them 
 `DEVFORCE_LAB_STEP_MS` changes the pause; a test that only needs the row to settle sets it to `0`.
 
 ```bash
-DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/app-lab start \
+DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/shift-manager start \
   --config goals/devforce-lab/lab/fsdev.config.mts
 ```
 

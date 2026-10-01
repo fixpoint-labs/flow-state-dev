@@ -1,7 +1,7 @@
 /**
- * The DevForce lab as a server: the config `fsdev dev` and App Lab load.
+ * The DevForce lab as a server: the config `fsdev dev` and Shift Manager load.
  *
- *     pnpm --filter @flow-state-dev/app-lab start --config goals/devforce-lab/lab/fsdev.config.mts
+ *     pnpm --filter @flow-state-dev/shift-manager start --config goals/devforce-lab/lab/fsdev.config.mts
  *
  * One `FlowState`, default-exported, opened through the same `openLab` the
  * lab's checks use, so a server and a check boot the same tree the same way.
@@ -9,7 +9,7 @@
  *
  * - **The channel and the inventory.** The feature channel is opened with its
  *   post reaching the EM members, and the organization's seat and channel
- *   collections are registered, which App Lab's TEAMS and PROJECTS read.
+ *   collections are registered, which Shift Manager's TEAMS and PROJECTS read.
  * - **One ask waiting.** The EM seat's approval for {@link ASK_FEATURE} is
  *   raised in its own session (which also turns durable execution on), so
  *   Inbox has something to answer. Approve files the row and starts the coder
@@ -61,7 +61,7 @@ if (coderSeatId === undefined) throw new Error("the DevForce tree declares no co
 const members = (roster.channels[0]?.declared.members as string[] | undefined) ?? [];
 const addresses = Object.fromEntries(members.filter((m) => kindOf(m) === EM_KIND).map((m) => [m, m]));
 
-const scratch = createScratchRepo("app-lab");
+const scratch = createScratchRepo("shift-manager");
 const harness = selectHarness();
 
 const lab = await openLab({

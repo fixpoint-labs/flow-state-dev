@@ -1,5 +1,5 @@
 /**
- * Goal: every FSD component App Lab reuses takes App Lab's light or dark look
+ * Goal: every FSD component Shift Manager reuses takes Shift Manager's light or dark look
  * from one package, FSD ships only neutral defaults, and a component that
  * hardcodes a colour is caught.
  *
@@ -14,11 +14,11 @@
  *      pass on edited copies would prove the copies, not the skin.
  *   4. Build a page rendering every swept part in every state that carries a
  *      colour, and read COMPUTED styles in headless Chromium, three ways:
- *      no theme; App Lab light; App Lab dark.
+ *      no theme; Shift Manager light; Shift Manager dark.
  *
  * Signals (see goal.md):
  *   a:neutral    with no theme, every painted colour is a registry default
- *   b:themed     under App Lab light and dark, no painted colour is a registry
+ *   b:themed     under Shift Manager light and dark, no painted colour is a registry
  *                default or a fixed palette colour, every one is a theme value,
  *                and fonts and corners are the theme's
  *   c:attention  under the theme, the attention colour is on every
@@ -54,7 +54,7 @@ import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { hex, near, parseColour, readAppLabTheme, type AppLabTheme, type Rgb } from "../../lib/colour.mts";
+import { hex, near, parseColour, readShiftManagerTheme, type ShiftManagerTheme, type Rgb } from "../../lib/colour.mts";
 import { goalTmpDir, repoPath, REPO_ROOT, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
@@ -106,8 +106,8 @@ interface Oracles {
   palette: string[];
   /** The navigator's and panels' own neutral fallbacks (`var(--fsd-*, <fallback>)`). */
   chromeFallbacks: string[];
-  /** App Lab's values per variant, and its attention colour. */
-  theme: AppLabTheme;
+  /** Shift Manager's values per variant, and its attention colour. */
+  theme: ShiftManagerTheme;
 }
 
 function readOracles(): Oracles {
@@ -129,7 +129,7 @@ function readOracles(): Oracles {
     }
   }
 
-  return { defaults, palette, chromeFallbacks, theme: readAppLabTheme() };
+  return { defaults, palette, chromeFallbacks, theme: readShiftManagerTheme() };
 }
 
 // ---------------------------------------------------------------------------
@@ -454,9 +454,9 @@ await runGoal(async () => {
       }
     }
 
-    // 4. The page. Its stylesheet is the host's own, plus App Lab's for the themed passes.
+    // 4. The page. Its stylesheet is the host's own, plus Shift Manager's for the themed passes.
     for (const file of ["index.html", "main.tsx", "fixtures.ts"]) cpSync(join(HERE, "host", file), join(host, file));
-    writeFileSync(join(host, "app/themed.css"), '@import "./globals.css";\n@import "@flow-state-dev/design-system/app-lab.css";\n');
+    writeFileSync(join(host, "app/themed.css"), '@import "./globals.css";\n@import "@flow-state-dev/design-system/shift-manager.css";\n');
     for (const css of ["app/globals.css", "app/themed.css"]) {
       const text = readFileSync(join(host, css), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
       const aimed = text.match(/(?:^|[\s,}])\.(?!dark\b)[a-zA-Z_-][\w-]*/gm);
@@ -493,8 +493,8 @@ await runGoal(async () => {
       for (const [pass, query] of [
         ["neutral-light", ""],
         ["neutral-dark", "?dark=1"],
-        ["themed-light", "?theme=app-lab"],
-        ["themed-dark", "?theme=app-lab&dark=1"],
+        ["themed-light", "?theme=shift-manager"],
+        ["themed-dark", "?theme=shift-manager&dark=1"],
       ] as const) {
         const page = await browser.newPage({ viewport: { width: 800, height: 1200 } });
         const errors: string[] = [];
@@ -520,7 +520,7 @@ await runGoal(async () => {
     const setOf = (read: PageRead, values: string[]) => values.map((v) => rgbOf(read, v)).filter((v): v is Rgb => v !== null);
     const any = (set: Rgb[], rgb: Rgb) => set.some((c) => near(c, rgb));
     // A fixed colour renders exactly as its probe does, so it is matched to
-    // within rounding. The looser match would call App Lab's own near-blacks
+    // within rounding. The looser match would call Shift Manager's own near-blacks
     // Tailwind's stone palette.
     const exactly = (set: Rgb[], rgb: Rgb) => set.some((c) => c.every((v, i) => Math.abs(v - rgb[i]!) <= 1));
     const where = (s: Sample) => `${s.part} (${s.component}) ${s.el} ${s.prop}`;
@@ -549,7 +549,7 @@ await runGoal(async () => {
     ] as const) {
       const read = reads[pass]!;
       const forbiddenValues = [...oracles.defaults, ...oracles.palette, ...oracles.chromeFallbacks];
-      // A palette colour App Lab happens to use itself (its dark card is
+      // A palette colour Shift Manager happens to use itself (its dark card is
       // Tailwind's olive-900 to within rounding) cannot be told apart by what
       // the page computes, so it is not forbidden here. The source census in
       // packages/ui is what keeps palette classes out of the components.
@@ -568,7 +568,7 @@ await runGoal(async () => {
         const c = parseColour(s.value);
         if (!c) continue;
         if (exactly(forbidden, c.rgb)) bFails.push(`b:themed [${variant}] ${where(s)} → ${hex(c.rgb)} is a registry default or palette colour (${named(c.rgb)})`);
-        else if (!any(theme, c.rgb)) bFails.push(`b:themed [${variant}] ${where(s)} → ${hex(c.rgb)} is not an App Lab value`);
+        else if (!any(theme, c.rgb)) bFails.push(`b:themed [${variant}] ${where(s)} → ${hex(c.rgb)} is not a Shift Manager value`);
       }
       for (const s of read.fonts) {
         const first = s.value.split(",")[0]!.trim().replace(/^["']|["']$/g, "");

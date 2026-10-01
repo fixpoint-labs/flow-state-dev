@@ -85,7 +85,7 @@ import { isRunOwner, runOwnerOf, runPrincipal } from "./run-owner";
 import { keepTurn, withdrawTurn } from "./turns";
 import { sleep } from "./workspace";
 
-/** What the door takes. App Lab builds it without knowing the kind. */
+/** What the door takes. Shift Manager builds it without knowing the kind. */
 export const messageDoorInputSchema = z.object({ message: z.string() });
 
 /**
