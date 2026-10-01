@@ -3,8 +3,9 @@
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 The calls above any single issue. D1 to D3 are the sign-off surface. Q1 and Q2 are answered
-(Jake, 2026-10-01), and Q1's answer amends D2 and D3. Three calls inside Q1's answer are written
-on my recommended defaults and are [pending Jake](#pending). Scope, vocabulary and invent-kills
+(Jake, 2026-10-01), and Q1's answer amends D2 and D3, which Jake confirmed ("Amend now"). Two
+calls inside Q1 are [still open](#pending): a shared project room, pending the FIX-1729 spike,
+on a per-person baseline; and where templates are declared, on my default. Scope, vocabulary and invent-kills
 come from the Architect's guidance on FIX-1650; the prior locks on the open forks are only
 these: `workforce/projects/` is invent-killed, single-user comes first, project is product
 framing, and the org seat is composed from the existing seat and kind registers.
@@ -20,7 +21,7 @@ flowchart TD
   E --> D3["D3 · amended · channels declared, plus a template mint"]
   D3 -.->|"rejected"| X3["CoS opens, retires and invites"]
   E --> Q1["Q1 · decided · org resource, per-person talk"]
-  Q1 --> P["pending Jake · three defaults"]
+  Q1 --> P["open · shared room, FIX-1729 · template site"]
   E --> Q2["Q2 · decided · CoS hires, fires on approval"]
 ```
 
@@ -65,8 +66,9 @@ It comes down to new substrate: a row rides the plane the roster already uses.
 | **Because** | Hire and fire ride a shipped capability (`createSeatHireCapability`). Channel admin was explored (FIX-1415, #2084), not shipped, and parked behind Collab mint (FIX-1341), with the Architect's fence: no worker-facing channel-admin tools until Collab and the inventory land. Minting a talk session when a project row is created, and when a person joins, runs on shipped L1 (`reactTo.created`, a cross-flow `dispatcher`, session state); FIX-1728 ran both. Retire, invite and rename are what FIX-1341 parked, and they stay there. This slice is the first instance of FIX-1341's dynamic-room lane |
 | **Locks in** | Declared channels stay boot-opened and unchanged; a new workstream is a `CHANNEL.md` and a restart. A talk session is opened at runtime only by minting from a template, on create or on join ([ER-3](BUSINESS-RULES.md#what-no-child-may-do)). CoS creates project rows; it never opens, retires, invites to or renames a channel |
 
-**What would change my mind:** Collab (FIX-1341) close enough that FIX-1718 can wait for it.
-That is Jake's call, [pending](#pending-2).
+**Decided with Jake:** he chose to amend now rather than wait for Collab (FIX-1341)
+([2](#pending-2)). **What would change my mind:** Collab redesigning rooms before FIX-1718
+builds; then the slice folds into it.
 
 ![D3 amended: declared channels plus a template mint, chosen, beside CoS opening and retiring channels; decided by what exists to build on](figures/d3-channels-declared.svg)
 
@@ -108,8 +110,8 @@ the `projects` collection is the one project store.
 own, and this amendment's first draft, which recorded that as Jake's answer. Jake held it the
 same day: a channel is messaging about the project, and live channels stay user-bound sessions.
 
-**Still open, carried, assigned to no child:** a shared multi-person project thread (option B
-of [Pending 1](#pending-1)) · a board per project (a template's `boards:` resolve to one ledger
+**Still open, carried, assigned to no child:** a shared project room, open pending the FIX-1729
+spike ([1](#pending-1)) · a board per project (a template's `boards:` resolve to one ledger
 per template today) · a workstream as runtime data, which would be a second collection with its
 own `mintFor:` template, the same family and no new substrate; until then a workstream is a
 declared channel ([ER-2](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)) · **a risk:**
@@ -120,42 +122,40 @@ two people joining at once append to `sessions` together, and the spike didn't e
 It comes down to where the project's data lives: on the row, and nowhere else.
 
 <a name="pending"></a>
-### Pending Jake · three calls inside Q1, written on my recommended defaults
+### Inside Q1 · one call decided, two still with Jake
 
-Each is on a card with him. The spec reads as if he takes the default; a different answer is a
+One call is decided: the slice ships here (2). Per-person talk is the v1 baseline, and a
+shared room stays open pending its own spike (1). The template site is pending Jake on my
+default (3). The spec reads as if the open calls land on the baseline; a different answer is a
 small amendment, priced below.
 
 <a name="pending-1"></a>
-**1 · When two people talk about one project, do they see each other's lines?** *Default: no,
-each person gets their own talk channel.*
+**1 · open, pending the FIX-1729 spike · When two people talk about one project, do they see
+each other's lines?** *v1 baseline: no, each person gets their own talk channel. A shared
+project room is not decided either way.*
 
-- *In plain terms.* Alice and Bob each get a private thread about "Apollo" with the project's
-  seats. The project row is the only thing they share. The engine already refuses one person
-  reading or posting into another's session (FIX-1728, P3 and P6).
-- *The trade-off.* Per-person threads need nothing in L1. A shared thread is either posts kept
-  as rows on the project (option B: all L2, but the conversation becomes project data), or
-  sessions shared between users, which is a new L1 access model and a security change.
-- *My recommendation:* per-person now. Single-user comes first, so v1 has one thread per
-  project and the question doesn't come up.
-- *What would change my mind:* a v1 Lab where two or more real people must read one thread.
-- *What being wrong costs:* moving to option B later adds a thread collection; existing threads
-  stay readable but private. Sharing sessions by default would put an L1 auth change on
-  FIX-1718's path.
+- *In plain terms.* Under the baseline, Alice and Bob each get a private thread about "Apollo"
+  with the project's seats, and the project row is the only thing they share. The engine
+  already refuses one person reading or posting into another's session (FIX-1728, P3 and P6).
+  Jake has asked for a spike on a shared project room (FIX-1729) before he decides.
+- *The trade-off.* Per-person threads need nothing in L1. A shared room is either posts kept
+  as rows on the project (all L2, but the conversation becomes project data), or sessions
+  shared between users, which is a new L1 access model and a security change. FIX-1729 is
+  where those get priced.
+- *My recommendation:* build per-person as the baseline now; FIX-1718 does not wait for
+  FIX-1729. Whatever shared room FIX-1729 shows adds to the baseline rather than replacing it.
+- *What would change my mind:* FIX-1729 finding a shared room that is cheap only if built
+  first, before any per-person threads exist.
+- *What being wrong costs:* adding a shared room later is a thread collection or an access
+  change, and existing per-person threads stay readable but private. If FIX-1729's answer
+  changes a cross-cutting rule (ER-21), that comes back here as an amendment.
 
 <a name="pending-2"></a>
-**2 · Ship the project slice inside FIX-1650, or wait for the parked rooms work (FIX-1341)?**
-*Default: ship it here, and amend D2, D3 and ER-3 together.*
-
-- *In plain terms.* The merged D3 said CoS never opens a channel here. Minting a talk session
-  when a project is created is opening one. FIX-1341 parked runtime rooms until Collab.
-- *The trade-off.* Shipping now allows exactly two runtime moves, mint on create and join;
-  retire, invite and rename stay parked. Waiting keeps D3 as merged, but FIX-1718 then has no
-  project to show, because projects are runtime data.
-- *My recommendation:* ship the narrow slice here.
-- *What would change my mind:* Collab close enough that FIX-1718 can wait for it.
-- *What being wrong costs:* if Collab redesigns rooms, `bind` and `mintFor:` are renamed or
-  folded in. Stored data is only `resourceId` on sessions and `sessions` on rows, so the
-  migration is small.
+**2 · decided · Jake, 2026-10-01: "Amend now."** The narrow slice ships inside FIX-1650, and D2,
+D3 and ER-3 are amended together, as recorded above. Waiting for FIX-1341 was rejected. Exactly
+two runtime moves are allowed, mint on create and join; retire, invite and rename stay parked.
+If Collab later redesigns rooms, `bind` and `mintFor:` are renamed or folded in. The stored
+data is only `resourceId` on sessions and `sessions` on rows, so that migration is small.
 
 <a name="pending-3"></a>
 **3 · Where is "a new project gets a talk channel shaped like this" declared?** *Default, the
@@ -246,11 +246,15 @@ FIX-1718. The closure only checks.
 - **No team named `org`.** An org seat in a `teams/org/` team would need no loader change, and
   forks the locked tree (`workforce/org/{resources,skills,channels,workers}/`). Rejected.
 - **Q1 is answered** (Jake, 2026-10-01): a project is an org resource row, and talk channels are
-  about it. The convention, the fence it keeps and the three calls pending him are [Q1](#q1).
+  about it. The convention, the fence it keeps and the calls inside it are [Q1](#q1).
+- **The slice ships inside FIX-1650** (Jake, 2026-10-01, "Amend now"): D2, D3 and ER-3 are
+  amended together rather than waiting for FIX-1341 ([2](#pending-2)).
 - **No shared org session (settled by the FIX-1728 spike, executed).** A session belongs to the
   principal that created it; another user's read and action both answer 404, and posting into
   another person's session is refused (P3, P6). Today's "shared" channels are shared only
-  because a Lab authenticates everyone as one user. No child relies on that.
+  because a Lab authenticates everyone as one user. No child relies on that. This settles how
+  the engine behaves today, not whether a shared project room is built; that is FIX-1729's
+  ([1](#pending-1)).
 - **Minted talk sessions are not channels in the inventory.** They are never registered in
   `inventory/channels/*`, so the Lab's channel list doesn't fill with per-person threads, the
   hole FIX-1415 named ([ER-22](BUSINESS-RULES.md#what-no-child-may-do)). The Architect's pass
@@ -280,5 +284,6 @@ FIX-1728 spike's POC; both verdicts are in
 - **Q1 answered (Oct 1)** by Jake, after a first draft of this amendment recorded "a project is
   a channel" and he held it. He asked for the FIX-1728 spike first; its convention is what this
   records. D2 and D3 are amended with it, ER-3's build moves to FIX-1718, ER-21 and ER-22 are
-  added, and the goal's leg a, the box, the path and the figures follow. Three calls stay
-  pending Jake.
+  added, and the goal's leg a, the box, the path and the figures follow. Jake then chose to
+  amend now, so the slice ships here; a shared project room went to a new spike, FIX-1729, with
+  per-person talk as the v1 baseline; the template site stays on my default.

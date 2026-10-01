@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
 The shared story once, and who publishes each part. The drafts below follow Jake's answers to
-Q1 and Q2 and the defaults [pending him](DECISIONS.md#pending); a different answer to one of
+Q1 and Q2, the per-person baseline and the template default [still open](DECISIONS.md#pending); a different answer to one of
 those rewrites the sentence it touches before anything is published.
 
 ## UPDATE · `apps/docs/docs/workforce/overview.md` · a new section after "Hire a roster"

@@ -29,7 +29,7 @@ checks them. Each has one owner. ER-1 to ER-9, ER-19 and ER-20 are in
 | ER-11 | Add a CoS or admin-seat type, a second hire store, or a parallel ops taxonomy | Composed from existing seat and kind registers |
 | ER-12 | Map a cut kind onto another kind, or register a missing kind so an orphan boots | FIX-1621's fences: no auto-migrate, kinds enter only through the boot map |
 | ER-13 | Call a seat or an assignee a "worker" in a new product noun, or productize Kind | The Architect's vocabulary fence |
-| ER-21 | Keep a project's data in session state, make a session the project, or let one person read or post into another's talk session, including by an L1 session-access change | Jake's fence on [Q1](DECISIONS.md#q1); sharing is [pending Jake](DECISIONS.md#pending-1). Owner: FIX-1718 |
+| ER-21 | Keep a project's data in session state, make a session the project, or let one person read or post into another's talk session, including by an L1 session-access change | Jake's fence on [Q1](DECISIONS.md#q1); per-person talk is the v1 baseline. A shared project room is open pending the FIX-1729 spike ([Q1](DECISIONS.md#pending-1)); if it is chosen, it amends this rule here rather than in a child. Owner: FIX-1718 |
 | ER-22 | Register a minted talk session in `inventory/channels/*`, or have the PROJECTS list read the Lab's checkout rather than the `projects` rows | Per-person threads would flood the Lab's channel list, the hole FIX-1415 named; the Architect's pass on #2629. Owner: FIX-1718 |
 
 ## How the set is run

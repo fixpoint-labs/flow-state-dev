@@ -45,9 +45,10 @@ ran the project convention on `main` with no L1 change.
    Jake schedules it.
 2. **Jake answered Q1** (2026-10-01; the FIX-1728 spike, [#2629](https://github.com/fixpoint-labs/flow-state-dev/pull/2629),
    gave it its shape) → recorded by this amendment → FIX-1718's spec ([#2625](https://github.com/fixpoint-labs/flow-state-dev/pull/2625))
-   is rewritten on it and is unblocked once this amendment merges. The three calls
-   [pending Jake](DECISIONS.md#pending) don't hold it: each is a small amendment if he answers
-   against the default.
+   is rewritten on it and is unblocked once this amendment merges. Jake chose to amend now,
+   so the slice ships here. The [open calls](DECISIONS.md#pending) don't hold it: FIX-1718
+   builds the per-person baseline, and a shared project room is open pending the FIX-1729
+   spike. If that spike's answer changes ER-21, it comes back here as an amendment.
 3. **Jake answered Q2** (2026-10-01) → recorded the same way → FIX-1719's spec starts once that
    amendment merges. Its build waits for FIX-1621 to merge.
 4. **An answer needs a folder or an L1 type** → it comes back here as an escalation

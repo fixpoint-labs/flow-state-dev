@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 422" role="img" aria-label="Q1, decided by Jake on 1 October 2026 and shaped by the FIX-1728 spike: what is a project? Chosen: an org resource, a row in an org collection that CoS creates, with a talk channel per person minted from a template and linked both ways. Beside it: a project as a channel of its own, the recommendation this epic merged with, which Jake held; and one project room shared by everyone. It comes down to the first row, where the project&#x27;s data lives: on the row only, where a project channel keeps it in a CHANNEL.md file, and a shared room keeps it in a session, mixing directory with runtime. Second row, who creates one: CoS at runtime for the org row and for the shared room, where a project channel is an author&#x27;s file and a restart. The price, third row: the chosen shape needs Layer 2 only, a bind entry, join and one CHANNEL.md key; a project channel needs one key; a shared room needs a Layer 1 session-access change, a security change. Locks in: FIX-1718 lists project rows, not channels, and its spec is rewritten on this. Flips if two people must read one thread; then posts kept on the resource, all Layer 2."
+<svg viewBox="0 0 940 422" role="img" aria-label="Q1, decided by Jake on 1 October 2026 and shaped by the FIX-1728 spike: what is a project? Chosen: an org resource, a row in an org collection that CoS creates, with a talk channel per person minted from a template and linked both ways. Beside it: a project as a channel of its own, the recommendation this epic merged with, which Jake held; and one project room shared by everyone, which is open pending the FIX-1729 spike. It comes down to the first row, where the project&#x27;s data lives: on the row only, where a project channel keeps it in a CHANNEL.md file, and a shared room keeps it in a session, mixing directory with runtime. Second row, who creates one: CoS at runtime for the org row and for the shared room, where a project channel is an author&#x27;s file and a restart. The price, third row: the chosen shape needs Layer 2 only, a bind entry, join and one CHANNEL.md key; a project channel needs one key; a shared room needs a Layer 1 session-access change, a security change. Locks in: FIX-1718 lists project rows, not channels, and its spec is rewritten on this. The shared room is not decided: it is open pending the FIX-1729 spike, and per-person talk is the v1 baseline. Flips if FIX-1729 picks a shared room; then it adds to the per-person baseline and ER-21 is amended."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -46,7 +46,7 @@
     <text class="t-tag c-mute" x="468" y="93">INSTEAD OF &#183; HELD</text>
     <text class="t-h c-lost" x="468" y="112">Its own channel</text>
     <rect class="lost" x="692" y="76" width="224" height="46" rx="5"/>
-    <text class="t-tag c-mute" x="708" y="93">INSTEAD OF</text>
+    <text class="t-tag c-mute" x="708" y="93">OPEN &#183; FIX-1729 SPIKE</text>
     <text class="t-h c-lost" x="708" y="112">One shared project room</text>
   </g>
 
@@ -107,7 +107,7 @@
   <g id="flips-if">
     <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="353">FLIPS IF</text>
-    <text class="t-b" x="494" y="373">Two people must read one thread</text>
-    <text class="t-s" x="494" y="391">then posts kept on the resource, all Layer 2</text>
+    <text class="t-b" x="494" y="373">FIX-1729 picks a shared room</text>
+    <text class="t-s" x="494" y="391">it adds to the per-person baseline, ER-21 amended</text>
   </g>
 </svg>

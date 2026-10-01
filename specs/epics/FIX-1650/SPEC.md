@@ -30,7 +30,7 @@ project store.**
 |---|---|
 | **The real need** | Jake's PRD line: project, workstream-as-channel+flow, CoS + Ops defaults (hire/fire/channels), single-user; Jake has since made CoS the one admin seat ([Q2](DECISIONS.md#q2)). Jake's Q1 answer: a project is an org resource, generally CoS-created, and a channel is talk about it ([Q1](DECISIONS.md#q1)). The Architect's fences: no new L1 noun, no `workforce/projects/` |
 | **Smaller, and rejected** | "Projects render." FIX-1718 alone meets it, and the person still edits files and restarts to change who works there, which is the half of "org" a single user feels most |
-| **Bigger, and not this epic's** | Multi-user orgs and the org subscription registry (FIX-1550) · retiring, inviting to or renaming channels at runtime (channel admin, parked: [D3](DECISIONS.md#d3)) · one talk thread several people share ([pending Jake](DECISIONS.md#pending-1)) · what sits on a workstream's board (FIX-1651) · attention (FIX-1652) · wake and principal (FIX-1637, FIX-1645) |
+| **Bigger, and not this epic's** | Multi-user orgs and the org subscription registry (FIX-1550) · retiring, inviting to or renaming channels at runtime (channel admin, parked: [D3](DECISIONS.md#d3)) · a shared project room (open, pending the FIX-1729 spike: [Q1](DECISIONS.md#pending-1)) · what sits on a workstream's board (FIX-1651) · attention (FIX-1652) · wake and principal (FIX-1637, FIX-1645) |
 | **Not done if** | Every child is Done and the closure check hasn't run · a project needs a folder or an L1 type, keeps its data in session state, or is listed by reading the checkout · a fire lands without the person's approval, a seat other than CoS hires, or a hire reuses a declared seat's id · a fired seat is back after a restart, or still listed under TEAMS · a seat whose kind is gone is mapped onto another kind without anyone asking |
 
 ```mermaid
@@ -61,8 +61,9 @@ makes its PASS mean the person still holds the hard-to-undo direction.
 
 ![What's in the box: projects in Shift Manager as CoS-created org resource rows with per-person talk channels (FIX-1718, Q1 answered), the CoS org seat, hiring on its own and firing on approval (FIX-1719, Q2 answered) and orphan repair (FIX-1621, starts at the gate); composed from channels, boards, teams, org resource collections and their reactions, the inventory, durable hire, the seat-hire capability, plane isolation and the agent kind; owned elsewhere: board contents, attention, wake, channel admin beyond mint and join, the org subscription registry; the invent-kills fenced off below](figures/end-state.svg)
 
-Jake has answered Q1 and Q2; three calls inside Q1 are pending him on my defaults
-([Pending](DECISIONS.md#pending)). Everything the three compose already ships, with no L1 change, and the fence is the Architect's invent-kill list, where an org epic would drift.
+Jake has answered Q1 and Q2 and chose to ship the project slice here; a shared project room is
+open pending the FIX-1729 spike, and the box shows the per-person baseline
+([Q1](DECISIONS.md#pending)). Everything the three compose already ships, with no L1 change, and the fence is the Architect's invent-kill list, where an org epic would drift.
 
 ## The set · as of 2026-10-01
 
@@ -125,9 +126,10 @@ people are still managed by editing files.
    talk session from a template.** If wrong: Collab redesigns rooms, and `bind` and `mintFor:`
    fold into it; a new workstream still costs a file and a restart.
 
-**Pending Jake, on my defaults:** [three calls inside Q1](DECISIONS.md#pending). Each person
-gets their own talk channel; the slice ships here, amending D2, D3 and ER-3 together; and
-`mintFor:` serves Lab-authored templates while app defaults call the same mint from code.
+**Inside Q1** ([the calls](DECISIONS.md#pending)): Jake chose to amend now, so the slice ships
+here and D2, D3 and ER-3 move together. **Open:** a shared project room, pending the FIX-1729
+spike, with per-person talk as the v1 baseline; and where templates are declared, on my
+default (`mintFor:` for Lab-authored templates, app defaults calling the same mint from code).
 [Q2](DECISIONS.md#q2) is answered: CoS is the one admin seat and hires without asking; a fire still asks in Inbox,
 my default for him to reverse. The seat set is pending his direct confirmation. Rules: [BUSINESS-RULES.md](BUSINESS-RULES.md). Order:
 [PLAN.md](PLAN.md).
