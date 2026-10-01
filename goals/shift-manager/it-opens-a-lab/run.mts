@@ -426,14 +426,15 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
 
     await open(page, served.origin, "/inbox");
 
-    // ---- TEAMS -------------------------------------------------------------
+    // ---- TEAMS: one status square per seat, under its team's row -------------
     const shownSeats = await attr(page, "worker", "data-seat-id");
     if (!same(shownSeats, store.seats)) fail("TEAMS equals the store's seats", diff(store.seats, shownSeats));
     for (const team of await attr(page, "team", "data-team")) {
       const under = await page.locator(`[data-testid=team][data-team="${team}"] [data-testid=worker]`).evaluateAll((els) =>
         els.map((e) => e.getAttribute("data-seat-id") ?? ""),
       );
-      const want = store.seats.filter((s) => s.split(".")[0] === team);
+      // A seat with no team (an org seat) sits in the Staff row.
+      const want = store.seats.filter((s) => (s.includes(".") ? s.split(".")[0] : "Staff") === team);
       if (!same(under, want)) fail("TEAMS equals the store's seats", `team ${team} lists ${diff(want, under)}`);
     }
 

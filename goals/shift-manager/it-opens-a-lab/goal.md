@@ -9,7 +9,7 @@
 **Signal:** per Lab, each failure tagged `[<lab>] <leg>`:
 
 - **store** (precondition): the Lab's inventory holds exactly the tree's seats and channels, and a board holds at least one row.
-- **TEAMS equals the store's seats**: the sidebar's seat set equals the inventory's seat rows, and each team lists exactly its seats.
+- **TEAMS equals the store's seats**: the sidebar's TEAMS squares, one per seat, equal the inventory's seat rows, and each team's row has a square for exactly its seats (a seat with no team sits in the Staff row).
 - **PROJECTS equals the store's channels**: the workstream list equals the inventory's channel rows, and each workstream panel's team equals its channel's declared members.
 - **Board equals the store's rows** (BR-13): each workstream's Board tab draws exactly its declared boards' stored rows, each card with the stored status word. The task frame opened from a card titles the stored row.
 - **Tasks equals the store's open rows**: grouped by state, by worker and by stream, the rows are exactly the stored rows that are neither completed nor cancelled.
@@ -48,3 +48,5 @@ The rows come from the Lab's own doors. On multi-seat-collab, the planner files 
 | 2026-09-30 | 108a83871+wip | n/a | FAIL (control `unanswerable-asks`, expected) | Only `[devforce] an answer from Inbox lands in the store`: 1 ask pending and Shift Manager offers an answer on none. |
 | 2026-10-01 | 829c2c2dd+wip (FIX-1690 lab) | n/a | PASS | DevForce's coder seat now has a `message` door, and seats are registered with their doors. Every level still matches each tree and store. DevForce: 1 ask listed of 1 pending, 1 approved. |
 | 2026-10-01 | 475b3cd4b (feat/FIX-1649-shift-manager) | n/a | PASS | After the rename to Shift Manager. DevTeam served from `labs/shift-manager/teams/devteam`; the pages carry the boot-shift code, unset in this run. |
+| 2026-10-01 | feat/FIX-1723-roster (pre-PR) | n/a | PASS | TEAMS re-pointed at the team rows' status squares (one per seat); the worker list under each team is gone. devteam: 3 seats, 1 row [pending], ask approved 1 of 1. multi-seat-collab: 3 seats, 1 row [parked]. |
+| 2026-10-01 | feat/FIX-1723-roster (pre-PR), `GOAL_CONTROL=static-names` | n/a | FAIL (expected) | Only `[multi-seat-collab] TEAMS equals the store's seats`: missing [eng.builder, eng.planner], extra [eng.coder, eng.em], for the squares and for team eng's row. |
