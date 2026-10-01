@@ -10,20 +10,19 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { createLabClients } from "../src/lib/connection";
+import { createLabClients, type LabClients } from "../src/lib/connection";
 import { createLabReader, type BoardRow } from "../src/lib/reads";
 import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { followRequest, readSessionItems, resolveRunFlow, taskItems } from "../src/lib/run";
+import { declaredBrowserReadable } from "./helpers/documents";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 
-type Opened = { lab: ServedLab; roster: DeclaredRoster; snapshot: LoadedSnapshot };
+type Opened = { lab: ServedLab; roster: DeclaredRoster; snapshot: LoadedSnapshot; clients: LabClients };
 
-type OpenedWithClients = Opened & { clients: ReturnType<typeof createLabClients> };
-
-async function open(configPath: string, treePath: string): Promise<OpenedWithClients> {
+async function open(configPath: string, treePath: string): Promise<Opened> {
   const loaded = await loadFsdevConfig({ cwd: repo, configPath });
   if (loaded === undefined) throw new Error(`no config at ${configPath}`);
   const lab = await serveLab(loaded.flowState);
@@ -35,7 +34,8 @@ async function open(configPath: string, treePath: string): Promise<OpenedWithCli
   });
   const snapshot = await createLabReader(clients).read();
   if (snapshot.refused !== undefined) throw new Error(`refused: ${snapshot.refused.message}`);
-  return { lab, clients, roster: await readDeclaredRoster(`${repo}/${treePath}`), snapshot };
+  if (snapshot.unreachable !== undefined) throw new Error(`unreachable: ${snapshot.unreachable.message}`);
+  return { lab, roster: await readDeclaredRoster(`${repo}/${treePath}`), snapshot, clients };
 }
 
 /** TEAMS, as the tree declares it: each team's seat ids. */
@@ -49,7 +49,7 @@ function declaredTeams(roster: DeclaredRoster): Record<string, string[]> {
 describe.each([
   ["multi-seat-collab", "goals/multi-seat-collab/lab/fsdev.config.mts", "goals/multi-seat-collab/lab/workforce"],
   ["devforce-lab", "goals/devforce-lab/lab/fsdev.config.mts", "goals/devforce-lab/lab/workforce"],
-])("%s", (_name, configPath, treePath) => {
+])("%s", (name, configPath, treePath) => {
   let opened: Opened;
   beforeAll(async () => {
     opened = await open(configPath, treePath);
@@ -92,6 +92,25 @@ describe.each([
       for (const row of boards.value.rows) expect(attached).toContain(row.boardRef);
     }
   });
+
+  it("Jump to finds exactly the declared documents the tree lets a browser read, and each opens with the file's body", async () => {
+    const { snapshot, roster, clients } = opened;
+    if (!snapshot.resources.ok) throw new Error(snapshot.resources.failure.message);
+    const readable = roster.documents.filter(declaredBrowserReadable);
+    expect(snapshot.resources.value.map((r) => r.ref).sort()).toEqual(readable.map((doc) => doc.ref).sort());
+    for (const found of snapshot.resources.value) {
+      const read = await clients.resources.getResourceContent(found.sessionId, found.ref);
+      expect(String(read.content).trim()).toBe(readable.find((doc) => doc.ref === found.ref)!.body.trim());
+    }
+  });
+
+  // The Lab the epic pins for the closure's leg a: Jump to reaches a declared
+  // document on it, so the resources destination is never empty there.
+  it.runIf(name === "devforce-lab")("serves at least one declared document to Jump to", () => {
+    const { snapshot } = opened;
+    if (!snapshot.resources.ok) throw new Error(snapshot.resources.failure.message);
+    expect(snapshot.resources.value.length).toBeGreaterThan(0);
+  });
 });
 
 // Approve & run on the DevForce tree, the way App Lab does it (FIX-1692). The
@@ -104,7 +123,7 @@ describe.each([
 const STEP_MS_ENV = "DEVFORCE_LAB_STEP_MS";
 
 describe("devforce-lab: an approved task's run", () => {
-  let opened: OpenedWithClients;
+  let opened: Opened;
   beforeAll(async () => {
     // Settling is what this checks, so the scripted run does not wait out the
     // pacing a person watching needs. The it-shows-and-stops goal keeps it.
@@ -131,6 +150,7 @@ describe("devforce-lab: an approved task's run", () => {
     const running = await eventually<BoardRow>(async () => {
       const next = await reader.read();
       if (next.refused !== undefined) throw new Error(next.refused.message);
+      if (next.unreachable !== undefined) throw new Error(next.unreachable.message);
       const row = Object.values(next.boards).flatMap((b) => (b.ok ? b.value.rows : []))[0];
       return row?.status === "in_progress" && row.run !== null ? row : undefined;
     }, "the approved row to start", 30_000);

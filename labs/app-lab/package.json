@@ -10,20 +10,35 @@
     "start": "tsx bin/start.mts",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ui:add": "fsdev ui add chat-assistant"
   },
   "dependencies": {
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/design-system": "workspace:*",
     "@flow-state-dev/devtool": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/fsdev": "workspace:*",
     "@flow-state-dev/node": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/workforce": "workspace:*",
+    "@radix-ui/react-use-controllable-state": "^1.2.2",
+    "@streamdown/cjk": "^1.0.2",
+    "@streamdown/code": "^1.0.3",
+    "@streamdown/math": "^1.0.2",
+    "@streamdown/mermaid": "^1.0.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "lucide-react": "^0.575.0",
+    "motion": "^12.34.3",
+    "radix-ui": "^1.4.3",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "react-markdown": "^10.1.0",
+    "shiki": "^3.22.0",
+    "streamdown": "^2.3.0",
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@flow-state-dev/orchestration": "workspace:*",

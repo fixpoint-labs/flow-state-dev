@@ -3,10 +3,10 @@
  * every surface computes it the same way.
  */
 import { columnFor, isDone, readStatus } from "./columns";
-import type { Ask, BoardRow, LabSnapshot, Seat, Workstream } from "./reads";
+import type { Ask, BoardRow, Failure, LabSnapshot, Seat, Workstream } from "./reads";
 
-/** A loaded snapshot (not a refusal). */
-export type LoadedSnapshot = Exclude<LabSnapshot, { refused: unknown }>;
+/** A loaded snapshot (not a refusal, not an unreachable Lab). */
+export type LoadedSnapshot = Exclude<LabSnapshot, { refused: Failure } | { unreachable: Failure }>;
 
 /** Every row on every attached board that loaded, across workstreams. */
 export function allRows(snapshot: LoadedSnapshot): BoardRow[] {

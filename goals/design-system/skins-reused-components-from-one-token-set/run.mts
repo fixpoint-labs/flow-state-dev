@@ -54,6 +54,7 @@ import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
 import { extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { hex, near, parseColour, readAppLabTheme, type AppLabTheme, type Rgb } from "../../lib/colour.mts";
 import { goalTmpDir, repoPath, REPO_ROOT, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
@@ -95,66 +96,6 @@ const FIXED_FILES = [
 ];
 
 // ---------------------------------------------------------------------------
-// Colour arithmetic — computed styles come back in several colour spaces.
-// ---------------------------------------------------------------------------
-
-type Rgb = [number, number, number];
-
-const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
-const gamma = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
-
-function oklabToRgb(L: number, a: number, b: number): Rgb {
-  const l = Math.pow(L + 0.3963377774 * a + 0.2158037573 * b, 3);
-  const m = Math.pow(L - 0.1055613458 * a - 0.0638541728 * b, 3);
-  const s = Math.pow(L - 0.0894841775 * a - 1.291485548 * b, 3);
-  return [
-    clamp(255 * gamma(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s)),
-    clamp(255 * gamma(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s)),
-    clamp(255 * gamma(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s)),
-  ];
-}
-
-/**
- * A computed colour string as RGB plus alpha, or null when it is fully
- * transparent or not a colour. Alpha is kept apart: a `bg-success/10` tint is
- * still `success`.
- */
-function parseColour(value: string): { rgb: Rgb; alpha: number } | null {
-  const nums = (s: string) =>
-    s
-      .split(/[\s,/]+/)
-      .filter(Boolean)
-      .map((n) => (n.endsWith("%") ? parseFloat(n) / 100 : n === "none" ? 0 : parseFloat(n)));
-  let m: RegExpMatchArray | null;
-  let rgb: Rgb;
-  let alpha: number;
-  if ((m = value.match(/^rgba?\(([^)]+)\)$/))) {
-    const [r, g, b, a] = m[1]!.split(/[\s,/]+/).filter(Boolean).map(parseFloat);
-    rgb = [r!, g!, b!];
-    alpha = a ?? 1;
-  } else if ((m = value.match(/^color\(srgb ([^)]+)\)$/))) {
-    const [r, g, b, a] = nums(m[1]!);
-    rgb = [clamp(r! * 255), clamp(g! * 255), clamp(b! * 255)];
-    alpha = a ?? 1;
-  } else if ((m = value.match(/^oklab\(([^)]+)\)$/))) {
-    const [L, a, b, al] = nums(m[1]!);
-    rgb = oklabToRgb(L!, a!, b!);
-    alpha = al ?? 1;
-  } else if ((m = value.match(/^oklch\(([^)]+)\)$/))) {
-    const [L, C, H, al] = nums(m[1]!);
-    const h = (H! * Math.PI) / 180;
-    rgb = oklabToRgb(L!, C! * Math.cos(h), C! * Math.sin(h));
-    alpha = al ?? 1;
-  } else {
-    return null;
-  }
-  return alpha === 0 ? null : { rgb, alpha };
-}
-
-const near = (a: Rgb, b: Rgb) => a.every((v, i) => Math.abs(v - b[i]!) <= 3);
-const hex = ([r, g, b]: Rgb) => `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
-
-// ---------------------------------------------------------------------------
 // What counts as which colour — read from the sources, never restated here.
 // ---------------------------------------------------------------------------
 
@@ -166,17 +107,7 @@ interface Oracles {
   /** The navigator's and panels' own neutral fallbacks (`var(--fsd-*, <fallback>)`). */
   chromeFallbacks: string[];
   /** App Lab's values per variant, and its attention colour. */
-  theme: { light: string[]; dark: string[]; attentionLight: string; attentionDark: string; families: string[] };
-}
-
-function declarations(css: string, selector: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  for (const m of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    if (m[1]!.split(",").map((s) => s.trim()).join(", ") !== selector) continue;
-    for (const d of m[2]!.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) out[d[1]!] = d[2]!.trim();
-  }
-  return out;
+  theme: AppLabTheme;
 }
 
 function readOracles(): Oracles {
@@ -198,23 +129,7 @@ function readOracles(): Oracles {
     }
   }
 
-  const appLab = readFileSync(join(DESIGN_SYSTEM, "app-lab.css"), "utf8");
-  const light = declarations(appLab, ":root");
-  const dark = declarations(appLab, ".dark");
-  const colours = (d: Record<string, string>) => Object.values(d).filter((v) => /^#[0-9a-f]{3,8}$/i.test(v));
-  const families = [...appLab.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
-  return {
-    defaults,
-    palette,
-    chromeFallbacks,
-    theme: {
-      light: colours(light),
-      dark: colours(dark),
-      attentionLight: light["--attention"]!,
-      attentionDark: dark["--attention"]!,
-      families: [...new Set(families)],
-    },
-  };
+  return { defaults, palette, chromeFallbacks, theme: readAppLabTheme() };
 }
 
 // ---------------------------------------------------------------------------

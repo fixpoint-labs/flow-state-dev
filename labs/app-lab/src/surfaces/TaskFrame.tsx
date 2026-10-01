@@ -38,7 +38,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
 
   // The same resolver the inspector and Tasks use, so a name two teams share
   // resolves to the seat in this row's channel, or to no seat at all.
-  const seat = row === undefined || snapshot === undefined || snapshot.refused !== undefined ? undefined : seatFor(rosterOf(snapshot), row);
+  const seat = row === undefined || snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined ? undefined : seatFor(rosterOf(snapshot), row);
   const worker = row?.assignee == null ? null : (seat?.id ?? row.assignee);
 
   return (

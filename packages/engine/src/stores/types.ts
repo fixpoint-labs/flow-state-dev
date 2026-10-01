@@ -6,6 +6,7 @@ import type {
   SuspensionRecord
 } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
+import type { ExpectedVersion as SharedExpectedVersion } from "@flow-state-dev/core/helpers";
 import type {
   BlockTraceItem,
   OutputItem,
@@ -544,8 +545,11 @@ export type OrgListOptions = {
  *    does arithmetic or binds the value to a SQL parameter.
  *  - The CAS delta verbs read-modify-write an existing record, so `"absent"`
  *    is meaningless there and **throws** rather than conflicting.
+ *
+ * Defined once in `@flow-state-dev/contracts` beside the write-version guards
+ * that consume it; this is the same type under the engine's name.
  */
-export type ExpectedVersion = number | "any" | "absent";
+export type ExpectedVersion = SharedExpectedVersion;
 
 /**
  * Outcome of a CAS-aware `Store.set`. Encodes conflict as data rather than

@@ -734,7 +734,7 @@ could occupy by picking the right session id — unguessable is a weaker propert
 than unaddressable. Adapters treat the value as opaque (a plain `TEXT` column,
 no constraint), so this needed no schema change and no migration.
 
-**Where resolution happens.** On the execution path, `resolveConfigScopeId` and `resolveResourceStorageScopeId` in `packages/engine/src/context/createExecutionContext.ts`. Both route the session scope on a `sharedToLineage` bucket map built the same way user/org build their `flowIsolation` buckets: singles by canonical storage key, collection instances by longest-matching prefix. Collections sharing a storage prefix must agree on the flag, refused at context construction like the `flowIsolation` case.
+**Where resolution happens.** One session routing index (`sessionRoutingIndex`) in `packages/engine/src/resources/lineage-scope.ts` walks a flow's session-scoped declarations once: singles by canonical storage key, collection instances by pattern prefix, each carrying its `sharedToLineage` flag. Both paths read it. On the execution path, `createExecutionContext` builds its session buckets from the index and refuses, at context construction, collections that share a storage prefix but disagree on the flag, like the `flowIsolation` case. User and org buckets are still built in `createExecutionContext`.
 
 The HTTP read/write routes need the same answer and derive it from `packages/engine/src/resources/lineage-scope.ts`. **Which helper depends on what the route holds, and getting that wrong is a cross-session read:**
 
@@ -751,7 +751,7 @@ distinction the first bullet exists for — so reach for it only if a caller
 genuinely arrives holding the declaration and nothing else, and read
 `sessionKeyScopeId`'s contract first to be sure that is what you have.
 
-**Ownership is one rule, in one place.** `resolveOwnershipFlag` (`resources/lineage-scope.ts`) decides which declaration owns a storage key: **an exact single wins outright, then the longest matching collection prefix.** Both `createExecutionContext`'s bucket resolution and the whole-scope reads call it, because two implementations of "longest prefix wins" is how the execution view and the HTTP view drift into disagreeing about which session holds a key.
+**Ownership is one rule, in one place.** `resolveOwnershipFlag` (`resources/lineage-scope.ts`), fed by the session routing index, decides which declaration owns a storage key: **an exact single wins outright, then the longest matching collection prefix.** Both `createExecutionContext`'s bucket resolution and the whole-scope reads call it, because two implementations of "longest prefix wins" is how the execution view and the HTTP view drift into disagreeing about which session holds a key.
 
 Two shapes make that precedence load-bearing rather than cosmetic:
 

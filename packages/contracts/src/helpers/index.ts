@@ -4,8 +4,17 @@
  * authoring ecosystem can value-import them without a duplicate copy or the
  * heavy `core` runtime. `@flow-state-dev/core/helpers` re-exports them.
  */
+export { cloneValue } from "./clone";
 export { deepEqual, looseDeepEqual } from "./deep-equal";
 export { camelToKebab, normalizeTagName } from "./string-case";
 export { mapLimit } from "./concurrency";
 export { toError } from "./to-error";
 export { isWindowsReservedName } from "./windows-reserved-name";
+export {
+  assertSetExpectedVersion,
+  assertDeleteExpectedVersion,
+  resourceStateConflict,
+  type ExpectedVersion,
+  type VersionedRow,
+  type VersionConflict
+} from "./write-version";

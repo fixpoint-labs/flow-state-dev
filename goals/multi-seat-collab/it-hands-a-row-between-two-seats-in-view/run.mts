@@ -82,6 +82,40 @@ function fail(leg: string, line: string): void {
   failures.push(`[${leg}] ${line}`);
 }
 
+/**
+ * V4's rule for a `404` to the second person's delivery, in one place.
+ *
+ * The engine answers another user's session with `404 Unknown session`, the
+ * same answer an unused id gets. So the 404 counts as the refusal only when its
+ * `error` names the owning seat's session AND the owner's own delivery to that
+ * same session is then admitted: that admission is what tells "refused this
+ * caller" from "no such session".
+ *
+ * @param other The second person's delivery, which came back `404`.
+ * @param ownerAnswer The owner's own delivery to the same session, sent after.
+ * @param sessionId The owning seat's session both were addressed to.
+ * @returns A failure line for V4, or a note when the 404 is the refusal.
+ */
+function judgeHiddenSession(
+  other: ActResult,
+  ownerAnswer: ActResult,
+  sessionId: string,
+): { fail: string } | { note: string } {
+  let error: unknown;
+  try {
+    error = (JSON.parse(other.refusal ?? "") as { error?: unknown } | null)?.error;
+  } catch {
+    error = undefined;
+  }
+  if (error !== `Unknown session "${sessionId}"`) {
+    return { fail: `the second person's delivery came back 404 ${other.refusal} — neither an explicit refusal nor a request the fence was exercised on` };
+  }
+  if (ownerAnswer.httpStatus !== 202) {
+    return { fail: `the second person's delivery came back 404 ${other.refusal}, and the owner's own delivery to the same session came back ${ownerAnswer.httpStatus} — a 404 there cannot be told from an unused id` };
+  }
+  return { note: `the second person's delivery was refused at admission as an unknown session (404 ${other.refusal}), and the owner's own delivery to the same session was admitted` };
+}
+
 function treeFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const path = join(dir, entry);
@@ -342,12 +376,15 @@ async function main() {
     }
     // The positive record first: the delivery reached the server, either as a
     // request on the owning seat or as an explicit refusal at the door. Only
-    // then is its fate judged. An explicit 401/403 is the loud refusal FIX-1511
-    // would give — stronger than today's hang, so it counts. Anything else
-    // that is not a 202 with a request id proves nothing about the fence.
+    // then is its fate judged. An explicit 401/403 is a loud refusal, so it
+    // counts. A 404 is judged by `judgeHiddenSession` once the owner's own
+    // delivery to the same session has been sent. Anything else that is not a
+    // 202 with a request id proves nothing about the fence.
     if (otherPerson !== undefined) {
       if (otherPerson.httpStatus === 401 || otherPerson.httpStatus === 403) {
         notes.push(`the second person's delivery was refused at the door (${otherPerson.httpStatus} ${otherPerson.refusal})`);
+      } else if (otherPerson.httpStatus === 404) {
+        // Judged below, with the owner's admission.
       } else if (otherPerson.httpStatus !== 202 || otherPerson.requestId === undefined) {
         fail("V4", `the second person's delivery came back ${otherPerson.httpStatus} ${otherPerson.refusal ?? "with no request id"} — neither an explicit refusal nor a request the fence was exercised on`);
       } else {
@@ -361,7 +398,13 @@ async function main() {
 
     // ---- V3 (BR-7). the person answers through the owning seat's action ----
     const answered = await lab.answer(owner, firstId, fixture.answer);
-    if (answered.status !== "completed") fail("V3", `the answer request ended ${answered.status ?? answered.refusal}`);    const afterAnswer = (await lab.rows()).find((row) => row.id === firstId);
+    if (otherPerson?.httpStatus === 404) {
+      const verdict = judgeHiddenSession(otherPerson, answered, lab.seatSession(owner));
+      if ("fail" in verdict) fail("V4", verdict.fail);
+      else notes.push(verdict.note);
+    }
+    if (answered.status !== "completed") fail("V3", `the answer request ended ${answered.status ?? answered.refusal}`);
+    const afterAnswer = (await lab.rows()).find((row) => row.id === firstId);
     const finishedFirst = lab.workLines().filter((line) => line.taskId === firstId && line.event === "finished");
     if (afterAnswer?.status !== "completed") fail("V3", `after the answer the first row is "${afterAnswer?.status}", not completed`);
     if (afterAnswer?.feedback !== fixture.answer) fail("V3", `after the answer the row carries ${JSON.stringify(afterAnswer?.feedback)}, not the answer`);
@@ -438,12 +481,24 @@ async function main() {
     }
     await page.waitForTimeout(500);
     await page.screenshot({ path: join(SHOTS, "3-resources.png"), fullPage: true });
-    const byRow = await Promise.all(
-      ledgerNow.map(async (row) => {
-        const box = aside.locator("div", { has: page.getByRole("button", { name: String(row.id), exact: true }) }).last();
-        return { row, text: (await box.count()) > 0 ? await box.innerText() : "" };
-      }),
-    );
+    // The body folds after 20 lines behind a "… (N more lines)" button, and a
+    // row that names its run (`run`) folds its output, where the seat is, below
+    // that line. A person reading the row clicks it, so the check does too
+    // before reading what the row says. One row at a time, and re-clicked if
+    // the panel's refresh folds it again before the read.
+    const byRow: Array<{ row: Record<string, any>; text: string }> = [];
+    for (const row of ledgerNow) {
+      const box = aside.locator("div", { has: page.getByRole("button", { name: String(row.id), exact: true }) }).last();
+      let text = "";
+      for (let tries = 0; tries < 5 && (await box.count()) > 0; tries += 1) {
+        const more = box.getByRole("button", { name: /more lines/ });
+        if ((await more.count()) > 0) await more.first().click();
+        text = await box.innerText();
+        if (!/more lines\)/.test(text)) break;
+        await page.waitForTimeout(200);
+      }
+      byRow.push({ row, text });
+    }
     const workLines = lab.workLines();
     for (const { row, text } of byRow) {
       // A listed row whose body shows nothing is a screen a person cannot read,

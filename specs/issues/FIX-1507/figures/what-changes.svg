@@ -1,0 +1,92 @@
+<svg viewBox="0 0 940 360" role="img" aria-label="Before: three separate copies of the read recipe, one in the panels and two in the navigator, and four copies of the panel client set-up, one per panel. After: one internal fenced read called by five reads, the leaf session list with a read-only-while-open switch, and one panel client helper called by four panels. Nothing crosses the package's public edge."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .copy  { fill:var(--surface); stroke:var(--gone); stroke-width:1.3; stroke-dasharray:5 4; }
+    .one   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .user  { fill:var(--surface-2); stroke:var(--rule); stroke-width:1; }
+    .sw    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .edge  { stroke:var(--ink-3); stroke-width:1; stroke-dasharray:3 4; fill:none; }
+    .wire  { stroke:var(--code); stroke-width:1.2; fill:none; }
+    .split { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:10.5px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-c   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="360"/>
+  <line class="split" x1="462" y1="16" x2="462" y2="284"/>
+
+  <g id="before">
+    <text class="t-lbl" x="24" y="34">BEFORE</text>
+    <text class="t-g" x="24" y="62">THE READ RECIPE · 3 COPIES</text>
+    <rect class="copy" x="24" y="72" width="132" height="54" rx="5"/>
+    <text class="t-b" x="36" y="94">panels' read</text>
+    <text class="t-s" x="36" y="112">rows · item · live</text>
+    <rect class="copy" x="166" y="72" width="132" height="54" rx="5"/>
+    <text class="t-b" x="178" y="94">flow list</text>
+    <text class="t-s" x="178" y="112">hand-rolled</text>
+    <rect class="copy" x="308" y="72" width="132" height="54" rx="5"/>
+    <text class="t-b" x="320" y="94">leaf sessions</text>
+    <text class="t-s" x="320" y="112">hand-rolled + closed</text>
+    <text class="t-g" x="24" y="176">CLIENT SET-UP · 4 COPIES</text>
+    <rect class="copy" x="24" y="186" width="98" height="40" rx="5"/>
+    <text class="t-s" x="36" y="210">Roster</text>
+    <rect class="copy" x="130" y="186" width="98" height="40" rx="5"/>
+    <text class="t-s" x="142" y="210">BoardColumns</text>
+    <rect class="copy" x="236" y="186" width="98" height="40" rx="5"/>
+    <text class="t-s" x="248" y="210">BoardList</text>
+    <rect class="copy" x="342" y="186" width="98" height="40" rx="5"/>
+    <text class="t-s" x="354" y="210">SeatDetail</text>
+    <text class="t-s" x="24" y="262">a race fix is made three times; a new panel copies the set-up</text>
+  </g>
+
+  <g id="after-read">
+    <text class="t-lbl" x="486" y="34">AFTER</text>
+    <rect class="one" x="486" y="52" width="436" height="40" rx="5"/>
+    <text class="t-c" x="500" y="68">DRAWN ONCE · INTERNAL</text>
+    <text class="t-h" x="500" y="85">the fenced read</text>
+    <path class="wire" d="M530 92 V110 M614 92 V110 M698 92 V110 M782 92 V110 M866 92 V110"/>
+    <rect class="user" x="486" y="110" width="80" height="34" rx="4"/>
+    <text class="t-s" x="496" y="131">row read</text>
+    <rect class="user" x="572" y="110" width="80" height="34" rx="4"/>
+    <text class="t-s" x="582" y="131">item read</text>
+    <rect class="user" x="658" y="110" width="80" height="34" rx="4"/>
+    <text class="t-s" x="668" y="131">live board</text>
+    <rect class="user" x="744" y="110" width="80" height="34" rx="4"/>
+    <text class="t-s" x="754" y="131">flow list</text>
+    <rect class="sw" x="830" y="110" width="92" height="34" rx="4"/>
+    <text class="t-s" x="838" y="125">leaf sessions</text>
+    <text class="t-s" x="838" y="139">switch: open</text>
+  </g>
+
+  <g id="after-client">
+    <rect class="one" x="486" y="176" width="436" height="40" rx="5"/>
+    <text class="t-c" x="500" y="192">DRAWN ONCE · PANELS ONLY</text>
+    <text class="t-h" x="500" y="209">the panel client helper</text>
+    <path class="wire" d="M540 216 V234 M650 216 V234 M760 216 V234 M870 216 V234"/>
+    <rect class="user" x="486" y="234" width="104" height="30" rx="4"/>
+    <text class="t-s" x="498" y="253">Roster</text>
+    <rect class="user" x="596" y="234" width="104" height="30" rx="4"/>
+    <text class="t-s" x="608" y="253">BoardColumns</text>
+    <rect class="user" x="706" y="234" width="104" height="30" rx="4"/>
+    <text class="t-s" x="718" y="253">BoardList</text>
+    <rect class="user" x="816" y="234" width="106" height="30" rx="4"/>
+    <text class="t-s" x="828" y="253">SeatDetail</text>
+  </g>
+
+  <g id="public-edge">
+    <path class="edge" d="M24 300 H922"/>
+    <text class="t-lbl" x="24" y="324">THE PACKAGE'S PUBLIC EDGE</text>
+    <text class="t-s" x="24" y="342">nothing above it is exported, before or after · useReadFence stays public and unchanged</text>
+  </g>
+</svg>
