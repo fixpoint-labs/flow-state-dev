@@ -1,4 +1,4 @@
-import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, handler, sequencer, type StopRequestOutcome } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { afterEach, describe, expect, it, beforeEach, vi } from "vitest";
@@ -991,6 +991,8 @@ function makeBlockingFlow(options: {
   kind: string;
   heartbeatIntervalMs?: number;
   selfCompleteAfterMs?: number;
+  /** Add a `stop` action that stops another request through `ctx.session.stopRequest`. */
+  withStop?: boolean;
 }) {
   return defineFlow({
     kind: options.kind,
@@ -1026,7 +1028,22 @@ function makeBlockingFlow(options: {
               });
             })
         })
-      }
+      },
+      ...(options.withStop === true
+        ? {
+            stop: {
+              inputSchema: z.object({ requestId: z.string() }),
+              block: handler({
+                name: "stops-another",
+                inputSchema: z.object({ requestId: z.string() }),
+                outputSchema: z.object({ outcome: z.string() }),
+                execute: async (input, ctx) => ({
+                  outcome: await ctx.session.stopRequest(input.requestId)
+                })
+              })
+            }
+          }
+        : {})
     }
   })();
 }
@@ -3750,51 +3767,9 @@ describe("a run's abort controller carries the incarnation it executes as", () =
 // tell it apart from an unknown id.
 // ---------------------------------------------------------------------------
 
-type StopOutcome = Awaited<
-  ReturnType<import("@flow-state-dev/core").SessionScopeHandle["stopRequest"]>
->;
-
-/** A flow with a `run` that waits for its signal, and a `stop` that stops another request. */
+/** A blocking `run` that completes on its own after 1.5 s, and a `stop`. */
 function makeStoppableFlow(kind: string) {
-  return defineFlow({
-    kind,
-    request: { heartbeatIntervalMs: 20 },
-    actions: {
-      run: {
-        inputSchema: z.object({}).passthrough(),
-        block: handler({
-          name: "waits-for-stop",
-          inputSchema: z.object({}).passthrough(),
-          outputSchema: z.string(),
-          execute: async (_input, ctx) =>
-            new Promise<string>((resolve, reject) => {
-              if (ctx.signal.aborted) {
-                reject(new DOMException("Aborted", "AbortError"));
-                return;
-              }
-              // Completes on its own, so a stop that never lands reads
-              // `completed`, not a hung test.
-              const timer = setTimeout(() => resolve("completed naturally"), 1_500);
-              ctx.signal.addEventListener("abort", () => {
-                clearTimeout(timer);
-                reject(new DOMException("Aborted", "AbortError"));
-              });
-            })
-        })
-      },
-      stop: {
-        inputSchema: z.object({ requestId: z.string() }),
-        block: handler({
-          name: "stops-another",
-          inputSchema: z.object({ requestId: z.string() }),
-          outputSchema: z.object({ outcome: z.string() }),
-          execute: async (input, ctx) => ({
-            outcome: await ctx.session.stopRequest(input.requestId)
-          })
-        })
-      }
-    }
-  })();
+  return makeBlockingFlow({ kind, heartbeatIntervalMs: 20, selfCompleteAfterMs: 1_500, withStop: true });
 }
 
 describe("ctx.session.stopRequest — a block stops a request in its own session", () => {
@@ -3835,7 +3810,7 @@ describe("ctx.session.stopRequest — a block stops a request in its own session
     flow: ReturnType<typeof makeStoppableFlow>,
     targetId: string,
     where: { sessionId: string; tenantId?: string; userId?: string; requestId: string }
-  ): Promise<StopOutcome> {
+  ): Promise<StopRequestOutcome> {
     const result = await run({
       orgId: DEFAULT_ORG_ID,
       flow,
@@ -3849,7 +3824,7 @@ describe("ctx.session.stopRequest — a block stops a request in its own session
       runtimeConfig: {}
     });
     expect(result.error).toBeUndefined();
-    return (result.output as { outcome: StopOutcome }).outcome;
+    return (result.output as { outcome: StopRequestOutcome }).outcome;
   }
 
   it("stops a running request in the same session, in this process", async () => {
@@ -3948,6 +3923,28 @@ describe("ctx.session.stopRequest — a block stops a request in its own session
       requestId: "req_unknown_caller"
     });
     expect(outcome).toBe("not-in-this-session");
+  });
+
+  it("stops the calling request itself when it names its own id", async () => {
+    // Not refused: the caller asked to stop a request in its own session, and
+    // its own is one. Pinned so the behaviour does not change by accident.
+    const stores = createInMemoryStores();
+    const flow = makeStoppableFlow("stop-hook-self");
+    const result = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow,
+      actionName: "stop",
+      input: { requestId: "req_stop_self" },
+      requestId: "req_stop_self",
+      userId: "u_stop",
+      sessionId: "sess_self",
+      stores,
+      runtimeConfig: {}
+    });
+    expect(result.output).toBeUndefined();
+    const record = await stores.request.get("req_stop_self");
+    expect(record?.status).toBe("aborted");
+    expect(record?.abortRequested).toBe(true);
   });
 
   it("reports a finished request as already finished, and writes nothing", async () => {
