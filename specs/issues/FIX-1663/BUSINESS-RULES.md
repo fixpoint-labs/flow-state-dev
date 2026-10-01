@@ -31,7 +31,7 @@ or report line that shows the rule held.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | QR-11 | Part 1 runs | Legs a, b and c pass, and each control fails the leg [Controls](PLAN.md#controls) names, at its signal | a1 to a4, b, c |
-| QR-12 | Leg b's Lab is opened | By an isolated writer that sees only Shift Manager's README and the pentest tree; each step it had to guess is a finding ([D2](DECISIONS.md#d2)) | b0 in the report |
+| QR-12 | Leg b's Lab is opened | By an isolated writer that sees only Shift Manager's README and the pentest tree; each step it had to guess is a finding, and so is a semantic difference between its scratch copy and the committed config ([D2](DECISIONS.md#d2), as amended) | b0 in the report |
 | QR-13 | Leg c renders | Every swept part appears on the page at least once in each theme pass; one that never does is a finding | c's sweep table |
 | QR-14 | Part 2 runs | Each team journey passes | J3, J4 |
 | QR-15 | Part 3 runs | Every child's check passes with its controls failing, and the goal labs' own checks stay green | P3.1 to P3.3 |
@@ -47,7 +47,7 @@ or report line that shows the rule held.
 | QR-20 | A doc gap that breaks no step leg b or part 2 follows | Filed `relates-to` FIX-1649, not blocking | Linear |
 | QR-21 | The run files anything | No PR. The row stays at `NEEDS_IMPLEMENTATION`. When the last fix merges, **the whole plan** runs again on a fresh commit | The epic wake |
 | QR-22 | The owner closes a finding with a reason | The report quotes it; whoever records the drop removes the blocks relation | Report |
-| QR-23 | A run files nothing | The closure PR opens: the goal check, the pentest config, and the report as its body: the commit, each PASS and its controls' FAILs, each journey, each finding and its retest | The closure PR |
+| QR-23 | A run files nothing | The closure PR opens: the goal check and the report as its body: the commit, each PASS and its controls' FAILs, each journey, each finding and its retest | The closure PR |
 
 ## Not done if · each state the run shows absent
 
@@ -61,7 +61,7 @@ or report line that shows the rule held.
 | A reused component was restyled in Shift Manager, or a copy differs from its source | FIX-1655's drift check, with Shift Manager listed, in part 3 |
 | A Shift Manager value sits in an FSD package | Leg c's static half, and FIX-1655's check in part 3 |
 | A surface shows a model the shell invented | Leg a's rows equal store rows by id; J4 |
-| A Lab needed a wrapper, or opened with no org | b0 and b's no-org step |
+| A Lab needed a wrapper, or opened with no org | b0's comparison, and b's org step under a Lab with no resolver, with the `no-org` control failing it |
 | A control never failed, or failed at setup | Each FAIL names its leg and signal, except today's `main`, whose expected red is that Shift Manager is absent |
 | Final visuals merged before the final hand-back | P4's hand-back row |
 

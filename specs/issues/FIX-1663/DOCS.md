@@ -5,7 +5,7 @@
 **No reader-facing documentation changes.** This issue proves what the epic's children shipped
 and publishes nothing a user of the framework or of Shift Manager reads.
 
-- **What it adds** is a goal check under `goals/`, the pentest Lab's host config, and a QA report
+- **What it adds** is a goal check under `goals/` and a QA report
   in the closure PR. The goal check's `goal.md` is the contract for the next person who runs it,
   written from [SPEC.md's goal](SPEC.md#the-goal-and-how-well-know-its-met) in the
   `goals/README.md` format; it is not site content.

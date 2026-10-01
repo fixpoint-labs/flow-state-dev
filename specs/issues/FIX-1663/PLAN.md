@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Written for the closure worker; it owns the leg definitions. It starts when QR-1 and QR-2 hold,
-and adds only the goal check and the pentest config. Names from the children are read off their
+and adds only the goal check. Names from the children are read off their
 **merged** specs: FIX-1662's are in review as
 [#2424](https://github.com/fixpoint-labs/flow-state-dev/pull/2424), FIX-1655's as
 [#2425](https://github.com/fixpoint-labs/flow-state-dev/pull/2425), FIX-1664 has no spec yet.
@@ -21,9 +21,9 @@ rename ([#2588](https://github.com/fixpoint-labs/flow-state-dev/pull/2588)): the
 | ID | Where | Change |
 |---|---|---|
 | S1 | `goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/` | `goal.md` from [SPEC.md's goal](SPEC.md#the-goal-and-how-well-know-its-met) in the `goals/README.md` format; `run.mts`: builds Shift Manager from the commit, starts it over each Lab's config, drives Chromium through the [Sequence](#sequence). Leg a starts it with `pnpm --filter @flow-state-dev/shift-manager start --team devteam`, leg b with `--config goals/pentest-lab/lab/fsdev.config.mts`, neither with `--devtool`. Page helpers lifted from FIX-1662's and FIX-1664's checks |
-| S2 | `goals/pentest-lab/lab/fsdev.config.mts` | New, host only, written from Shift Manager's README ([D2](DECISIONS.md#d2)). `host.mts` and the two checks untouched |
-| S3 | S1's scratch builds | The no-theme build (leg c) and the `hardcoded-accent` build: each a patch on a scratch copy of the commit, never committed, its diff printed in the report |
-| S4 | The closure PR | Only after a run that files nothing: S1 with its verdict log, S2, the report as its body. No changeset |
+| S2 | `goals/pentest-lab/lab/fsdev.config.mts` | On `main` since [#2529](https://github.com/fixpoint-labs/flow-state-dev/pull/2529) (FIX-1693); read, never edited. b0's writer writes its own copy to scratch ([D2](DECISIONS.md#d2), as amended). `host.mts` and the two checks untouched |
+| S3 | S1's scratch builds | The no-theme build (leg c), the `hardcoded-accent` build and the `no-org` build: each a patch on a scratch copy of the commit, never committed, its diff printed in the report |
+| S4 | The closure PR | Only after a run that files nothing: S1 with its verdict log, the report as its body. No changeset |
 
 ## Sequence
 
@@ -31,7 +31,7 @@ rename ([#2588](https://github.com/fixpoint-labs/flow-state-dev/pull/2588)): the
 flowchart TD
   M["QR-1 and QR-2 hold · pick the commit"] --> B["build Shift Manager · then the no-theme build"]
   B --> A["leg a · DevForce · real model on a4"]
-  B --> P0["b0 · a README-only writer writes the pentest config"]
+  B --> P0["b0 · a README-only writer writes a scratch config · compared with the committed one"]
   P0 --> L2["leg b · pentest · keyless"]
   B --> C["leg c · no-theme build · light then dark · static check"]
   A --> K["controls · each on its own build or start"]
@@ -56,8 +56,8 @@ its shipped routes, never with Shift Manager's own state.
 | a2 | **The task journey.** A row on the DevForce feature board (through D1's second child). From Tasks, then again from the workstream's Board: open the task; its Session tab shows the seat's live harness session, and the task inspector sits in the right panel with the devtool trace link. Shift Manager runs with no `--devtool`, so the link is the devtool it serves in-process over the same Lab ([#2531](https://github.com/fixpoint-labs/flow-state-dev/pull/2531)). Opening the link lands on that run's trace |
 | a3 | **Every surface ([epic ER-1](../../epics/FIX-1649/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).** The org switcher, Jump to (finding a workstream, a worker, a task and a declared resource), Inbox, Tasks, PROJECTS with the feature workstream, TEAMS with `eng` and its three workers; every tab at the project, workstream and task levels; the right panel at a workstream and at a task. Each is reached by clicking from the first screen, is `aria-selected` or in view, and shows store rows or its named empty state. TEAMS lists exactly the store's seats |
 | a4 | **The `@worker` turn.** With a task of `eng.coder`'s running in the feature workstream on the real harness (`DEVFORCE_LAB_HARNESS=claude-code`): in the feature workstream's composer, `@coder` plus a fresh token. The token is in `eng.coder`'s running task session (the session the task's run link names, FIX-1690) as a person's turn before the composer shows it as delivered, and the seat answers in that session. The answer is the one step graded on the real model |
-| b0 | **Open the pentest Lab from the README.** An isolated sub-agent that sees only Shift Manager's README and `goals/pentest-lab/lab/` (not these specs, not DevForce's config) writes S2 and returns it with every step it had to guess. The closure worker then lists every line that differs from DevForce's config other than for the tree. Start Shift Manager over it with the README's command |
-| b | **Leg b.** The same reach as a3 on the pentest tree: TEAMS lists `pentest` and `audit` with exactly the store's seats, the `findings` workstream opens with every tab, and its composer's post is in the channel's stored transcript before the stream shows it. `git diff` of `labs/shift-manager` against the commit is empty, and no file there names a pentest seat, team or channel. Opening either Lab with no org is refused with a message, not an empty app |
+| b0 | **Open the pentest Lab from the README.** An isolated sub-agent that sees only Shift Manager's README and `goals/pentest-lab/lab/` (not these specs, not DevForce's config) writes a pentest config to scratch, never over S2, and returns it with every step it had to guess. The closure worker then compares it with the committed S2: a semantic difference (what the server boots: flows, stores, the org it names, the inventory, who the page reads as), not formatting or comments, is a finding. It also lists every line that differs from DevForce's config other than for the tree. Start Shift Manager over the scratch copy with the README's command once to show it boots; leg b runs over S2 |
+| b | **Leg b.** The same reach as a3 on the pentest tree: TEAMS lists `pentest` and `audit` with exactly the store's seats, the `findings` workstream opens with every tab, and its composer's post is in the channel's stored transcript before the stream shows it. `git diff` of `labs/shift-manager` against the commit is empty, and no file there names a pentest seat, team or channel. **Every Lab opens under an org.** Over a Lab with no resolver (`labs/shift-manager/test/fixtures/ask-lab/fsdev.config.mts`, booted with no bearer), Shift Manager opens under the dev org `__fsd_default_org__` (`DEFAULT_ORG_ID`, sanctioned by FIX-1442), which the org switcher names; on both Labs the switcher names the store's org, and no screen renders org-less or as an empty app |
 | c | **Leg c.** On the no-theme build, for each theme pass (`--shift day`, then `--shift night`): visit every surface a3 reaches, and read the computed colour, background, border and font of every swept part against every value the design-system package's Shift Manager theme declares (both variants, normalised). Zero matches. Then FIX-1655's static check over `packages/**` finds none |
 
 **Leg c's sweep, by name.** The `@flow-state-dev/ui` registry cards Shift Manager draws: the
@@ -81,6 +81,7 @@ Shift Manager is absent, and that is its expected red.
 | `GOAL_CONTROL=static-names` | Reading the tree: DevForce's names compiled in | b, at TEAMS, naming a pentest seat | a · c | FIX-1662 |
 | `GOAL_CONTROL=optimistic-post` | The send: the composer draws the line without posting | a4, at the turn in the running task session · b's post step, at the stored transcript | a1 to a3 · b's reach · c | FIX-1662 |
 | FIX-1664's control(s) | As `goals/shift-manager/it-shows-and-stops-a-task-run/goal.md` names | As that goal names, mapped onto a2 or a4 | The rest | FIX-1664 |
+| `no-org` | The org: Shift Manager's copy built to render with no org, the org switcher empty (S3) | b, at the org step, naming the org switcher | a · c · b's reach | This amendment, on the epic's *no org-less mode* |
 
 `optimistic-post` removes the send on both trees, so its signal is the pair: a4 and b's post
 step fail together. Either failing alone, or anything else reddening, is a finding.
@@ -126,7 +127,7 @@ A doc gap follows [QR-20](BUSINESS-RULES.md#what-happens-to-a-finding).
 | Goal check | `goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/` |
 | Pentest config | `goals/pentest-lab/lab/fsdev.config.mts` |
 | Legs | `a1` to `a4`, `b0`, `b`, `c`; journeys `J3`, `J4` |
-| Controls | `hardcoded-accent` (a scratch patch, no switch), FIX-1662's `static-names` and `optimistic-post`, FIX-1664's and FIX-1690's as their goals name them |
+| Controls | `hardcoded-accent` and `no-org` (scratch patches, no switch), FIX-1662's `static-names` and `optimistic-post`, FIX-1664's and FIX-1690's as their goals name them |
 
 Everything else is yours to name.
 

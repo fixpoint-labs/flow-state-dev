@@ -52,7 +52,7 @@ epic can make.
 |---|---|
 | **Instead of** | (a) Filing the config as a child of FIX-1649. (b) Running leg b on multi-seat-collab, whose config already exists |
 | **Because** | A Lab opens in Shift Manager through the one server config it already needs ([FIX-1662 D1](https://github.com/fixpoint-labs/flow-state-dev/pull/2424)), and FIX-1662 hands the pentest one to this issue. Writing it from the README is the "builds the next Lab" team's journey: if a person following the README can open a Lab Shift Manager has never seen, the promise holds; if they can't, the README is the finding. (a) is a child for one input file, and loses the journey. (b) proves only the tree FIX-1662's own check already ran on |
-| **Locks in** | `goals/pentest-lab/lab/fsdev.config.mts`, host only, written by an isolated sub-agent that sees only Shift Manager's README and the pentest tree, never this spec or DevForce's config. Every step it had to guess, and every line that differs from DevForce's config for a reason other than the tree, is reported and filed. `labs/shift-manager` is untouched. The pentest lab's two existing checks stay green |
+| **Locks in** | *As amended after merge:* `goals/pentest-lab/lab/fsdev.config.mts` is on `main` since #2529, so the writer's copy goes to scratch and is compared with it; a semantic difference is a finding. As approved: the config, host only, written by an isolated sub-agent that sees only Shift Manager's README and the pentest tree, never this spec or DevForce's config. Every step it had to guess, and every line that differs from DevForce's config for a reason other than the tree, is reported and filed. `labs/shift-manager` is untouched. The pentest lab's two existing checks stay green |
 
 **What would change my mind:** the README naming a generator (`fsdev gen` or similar) that writes
 the config. Then the closure runs the generator instead of writing the file.
@@ -121,9 +121,10 @@ in [PLAN.md → At implement time](PLAN.md#at-implement-time)).
   model-dependent steps turns every miss into a full re-run; `optimistic-post` graded as the pair
   it fails (a4 and b's post), because the table and its caveat contradicted each other.
 - **Amendment after merge** (Oct 1; original review
-  [#2426](https://github.com/fixpoint-labs/flow-state-dev/pull/2426)), five calls already made
-  elsewhere, recorded here so the closure re-run reads them off this spec. The goal, D1, D2, the
-  controls and the rules for findings are unchanged.
+  [#2426](https://github.com/fixpoint-labs/flow-state-dev/pull/2426)), calls already made
+  elsewhere, recorded here so the closure re-run reads them off this spec. The goal, D1 and the
+  rules for findings are unchanged; D2 changes only where the writer's copy goes (6), and the
+  controls gain `no-org` (7).
   1. **Shift Manager.** The shell was renamed by
      [#2588](https://github.com/fixpoint-labs/flow-state-dev/pull/2588) on the owner's naming
      decision (mailbox #29): `labs/shift-manager`, `goals/shift-manager/`, the
@@ -152,3 +153,16 @@ in [PLAN.md → At implement time](PLAN.md#at-implement-time)).
   5. **a2 runs without `--devtool`.** Shift Manager serves the devtool in-process over the same
      Lab, so the trace link lands on in-memory runs
      ([#2531](https://github.com/fixpoint-labs/flow-state-dev/pull/2531), FIX-1691/1692).
+  6. **b0 compares, it doesn't add.** `goals/pentest-lab/lab/fsdev.config.mts` landed on `main`
+     with FIX-1693 ([#2529](https://github.com/fixpoint-labs/flow-state-dev/pull/2529)) before the
+     closure ran. D2's writer still writes the config from Shift Manager's README alone, to
+     scratch; the run compares it with the committed file, and a semantic difference is a
+     finding. The closure PR no longer carries S2. Engineering call by the epic coordinator.
+  7. **"Opens with no org" means org-less, not dev org.** The epic promises no org-less mode
+     ([DESIGN.md](../../epics/FIX-1649/assets/design/DESIGN.md), Org switcher;
+     [epic SPEC](../../epics/FIX-1649/SPEC.md#the-goal-and-how-well-know-its-met), *Not done if*).
+     A Lab with no resolver runs under the dev org `__fsd_default_org__`, sanctioned by FIX-1442
+     and kept by the EM call on #2529, and that is an org. So leg b no longer expects a refusal:
+     it checks the switcher names the dev org on a Lab with no resolver and the store's org on
+     both trees, and never an org-less or empty app. The new `no-org` scratch control (switcher
+     empty) must fail it. Engineering call by the epic coordinator.
