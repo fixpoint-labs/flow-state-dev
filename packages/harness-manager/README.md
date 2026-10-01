@@ -130,13 +130,40 @@ Collections a phase reads ride the standard `uses` option:
 harnessManager({ …, uses: [myPhaseCapability] });
 ```
 
-A capability claiming one of the manager's own accessors (`runs`, `inbox`, the board's ledger) is refused when you build the manager, naming the key — silently overriding one of them would send the manager's bookkeeping somewhere nothing reads.
+A capability claiming one of the manager's own accessors (`runs`, `inbox`, `turns`, the board's ledger) is refused when you build the manager, naming the key — silently overriding one of them would send the manager's bookkeeping somewhere nothing reads.
 
 ## Continuing a run
 
 A run that needs a decision writes a question and parks. Answer it, and the next attempt **continues the same coding session** rather than starting over told what was answered.
 
 The rule that makes it safe to leave running: the recorded session is the one the harness *confirmed* it was in. `onSession` is its only writer, every attempt clears it first, and the manager never writes back an id it merely sent. So a session the agent has lost is asked for once, and the attempt after that starts fresh.
+
+## Talking to a run
+
+`manager.messageDoor({ drain })` builds a public action a coding flow declares. `drain` names the flow's `internal` entry that runs the drain of the board whose rows the manager works:
+
+```ts
+defineFlow({
+  kind: "coder",
+  internal: { actions: { resume: { block: board.drain } } },
+  actions: { message: manager.messageDoor({ drain: "resume" }) },
+  task: { actions: { work: { block: manager } } },
+});
+```
+
+Sent `{ message }` on a run's own session, it writes the message into that session as a user item and keeps it in the manager's `turns` collection. A running attempt stops, and the next attempt resumes the same coding session with the message appended to its prompt, marked as the person's words. The message doesn't count against `maxAttempts`.
+
+The door starts that next attempt by dispatching `drain` into the session that claimed the row, which keeps every attempt in the run's own session. `defineFlow` refuses a flow that doesn't declare the entry. When another flow drains the board and hands rows to this one, declare the entry on that flow and pass that flow's id as `flowKind` (for a flow with one instance, its kind).
+
+It answers `{ outcome: "continuing" | "kept", taskId }`:
+
+- **running** → `continuing`.
+- **running, but it didn't stop within the wait, or the row couldn't be re-queued or drained** → `kept`. The run gets the message from whatever runs the row next.
+- **claimed, with its run not started yet** → `kept` for that attempt.
+- **parked on its own question, or between attempts** → `kept` for the next attempt; nothing is stopped and the question still needs answering.
+- **never started in this session, finished, or on a harness that named no session** → refused. A refusal fails the request, with the reason in words as the error's message and the door's `TurnRefused` error as its cause, so only a delivered message ever completes. A refused message is withdrawn, so no later attempt takes it; if an attempt already took it, the door answers `continuing` instead of refusing.
+
+The door ignores everything in the request except `message`: it works on the task whose run link names the calling session.
 
 ## The deadline
 
@@ -179,6 +206,7 @@ resolve, it refuses and names the option.
 - **One host's storage.** Checkouts and leases live on a local filesystem, so a retry inherits the last attempt's work because that work is on disk. On a multi-host deployment the recorded checkout names nothing on the machine that picks the retry up.
 - **The lease is not a mutex.** Checking the lock and removing it are two steps. A dead holder's lock is reclaimed after a stale window rather than instantly, and the manager refuses a configuration that shortens that window below the longest a live attempt could legitimately hold it. The per-acquisition token replaces an inode check so the lease can be written down — it does not buy stronger cross-process exclusion.
 - **No retention policy.** Run records and question rows grow without bound.
+- **A harness that can't resume can't take a message.** The door refuses a run whose harness never confirmed a coding session, such as `claude-code/cli-remote`.
 - **Git worktrees specifically**, as above.
 
 ## Running tests

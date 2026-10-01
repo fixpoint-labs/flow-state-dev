@@ -82,12 +82,11 @@
  * A string handed *to* the collection carries no `inbox/` prefix; one that came
  * *out* of it does, and the accessor is `ref.path`. See `run-record.ts`.
  */
-import { createHash } from "node:crypto";
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { assertSafeSegment } from "./workspace";
+import { assertSafeSegment, hashKeySegment, issuePhasePrefix } from "./workspace";
 
 /** Accessor key and storage prefix for the inbox. */
 export const INBOX = "inbox" as const;
@@ -148,21 +147,9 @@ export const inboxCollection = defineResourceCollection({
   llmWritable: false,
 });
 
-/**
- * How much of the question's hash names its row.
- *
- * 16 hex characters — 64 bits. A counter is unavailable (the ask step commits
- * no state), so the hash is the identity, and the width is what keeps two
- * different questions from one attempt off one row.
- */
-const FINGERPRINT_LENGTH = 16;
-
 /** Name a question by its words, so asking it twice in one attempt is one row. */
 export function questionFingerprint(question: string): string {
-  return createHash("sha256")
-    .update(question.trim(), "utf8")
-    .digest("hex")
-    .slice(0, FINGERPRINT_LENGTH);
+  return hashKeySegment(question.trim());
 }
 
 /** The bare topic for one question. Never carries the `inbox/` prefix. */
@@ -182,7 +169,7 @@ export function questionTopic(
 
 /** The bare prefix covering every question ever asked about one issue-phase. */
 export function questionTopicPrefix(issue: string, phase: string): string {
-  return `${assertSafeSegment("issue", issue)}/${assertSafeSegment("phase", phase)}/`;
+  return issuePhasePrefix(issue, phase);
 }
 
 /** The coordinates a question key carries. */

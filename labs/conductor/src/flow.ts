@@ -1025,6 +1025,9 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     },
   });
 
+  /** A person's message into a run; `resume` below is where it re-runs the board. */
+  const door = manager.messageDoor({ drain: "resume" });
+
   const defineConductor = defineFlow({
     kind: CONDUCTOR_FLOW_KIND,
     // One conductor per epic, each addressed by its own board id — a
@@ -1036,6 +1039,22 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
     // puts it behind the board's claim gate; the flow, not the board, owns
     // what a task dispatch can reach.
     task: { actions: { [ASSIGNEE]: { block: manager } } },
+    // The drain the `message` door dispatches into the session that claimed
+    // the row, so the next attempt runs in the run's own session rather than
+    // one beneath it. Gated like `wake`; not reachable from outside.
+    internal: {
+      actions: {
+        resume: {
+          block: sequencer({
+            name: "conductor-resume",
+            inputSchema: z.unknown(),
+            outputSchema: z.unknown(),
+          })
+            .tap(tenantGate)
+            .step(board.drain),
+        },
+      },
+    },
     actions: {
       /** File an issue-phase and start it in one call. */
       seed: {
@@ -1110,6 +1129,22 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "errored", "cancelled"]);
           // no-op — on a `pending` row it claims and dispatches — so a
           // declined answer must not run one.
           .tapIf((outcome: AnswerOutput) => outcome.drained, board.drain),
+      },
+      /**
+       * Send a person's message into a run. Called in the run's own session
+       * (the board row's run link names it): a running attempt stops, and the
+       * next one resumes the same coding session with the message.
+       */
+      message: {
+        ...door,
+        // Gated like every other action, before the door reads the board.
+        block: sequencer({
+          name: "conductor-message",
+          inputSchema: door.inputSchema,
+          outputSchema: door.block.outputSchema,
+        })
+          .tap(tenantGate)
+          .step(door.block),
       },
     },
   });

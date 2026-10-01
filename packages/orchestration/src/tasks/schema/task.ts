@@ -105,6 +105,31 @@ export const taskSchema = z.object({
    */
   abandonments: z.number().int().nonnegative().optional(),
 
+  /**
+   * Whether this row is parked because a person's turn stopped its worker,
+   * rather than because the worker asked a question (FIX-1690). Set by
+   * `awaitReview(id, feedback, { forTurn: true })`, cleared by every other park
+   * and by `unpark`.
+   *
+   * Top level for the reason `abandonments` is (BP-031): it decides whether
+   * the next claim is charged, so no caller-writable surface may reach it.
+   * **Absent reads as false** (BP-030).
+   */
+  parkedForTurn: z.boolean().optional(),
+
+  /**
+   * How many times this row re-entered after a person's turn stopped its
+   * worker (FIX-1690). Incremented by the `unpark` of a row parked for a turn;
+   * the claim that follows advances `attempts` as every claim does, and
+   * `shouldRetryOnFail` discounts this beside `abandonments`, so a person
+   * talking to a run never spends its retries. The board's `maxTotalRetries`
+   * is untouched already: `unpark` is not a failure retry.
+   *
+   * Top level, never in `metadata` (BP-031), for `abandonments`' reason.
+   * **Absent reads as zero** (BP-030).
+   */
+  turnReentries: z.number().int().nonnegative().optional(),
+
   assignee: z.string().optional(),
   deps: z.array(z.string()).optional(),
   priority: z.number().optional(),
