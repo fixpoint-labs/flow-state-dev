@@ -147,7 +147,12 @@ is written to the recommendation for each.
   are listed under Not here.
 - **The row's `members` is written only by trusted code:** the app at boot, or the chief of
   staff at create. `join` never adds its caller. A non-member who calls `join` gets nothing.
-- **Concurrent joins: `join` is idempotent and retried, not `sessions` as rows.** It returns the caller's listed session, or mints and appends with the counter's retry. Simpler than a third collection, and the pinned row shape stays (BR-16a).
+- **Concurrent joins: `join` is keyed by `(projectId, userId)` and retried, not `sessions` as rows.** It returns the user's listed session, so a second window adopts it, or mints and appends with the counter's retry. Simpler than a third collection, and the pinned row shape stays (BR-16a).
+- **A reader never passes an unwritten line.** The counter row keeps a committed watermark; a line missing past a grace period is tombstoned with `create` (BR-16b). The spike's counter CAS carries it, with no new lock.
+- **A workstream claim is one shared key,** `workstream-claims/<channelId>`, created with `create`, so two projects can't both claim it (BR-4).
+- **Binding is recoverable.** A row whose owner has no session is unbound, and `join`, opening the project, or re-sending the create repairs it (BR-8a).
+- **One template per collection and kind,** refused at boot otherwise (BR-6).
+- **The chief of staff's `createProject` tool is this issue's** (PLAN S15), on FIX-1719's seat.
 - **Project talk is room rows only.** No `channel-post` mirror in anyone's session.
 - **The room's sequence counter is a row of its own,** so editing a project never contends with
   posts. The room retries the counter after a lost race. The engine's three retries lost a post

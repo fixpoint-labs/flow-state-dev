@@ -62,7 +62,8 @@ flowchart LR
 | **Signal · room** | Over HTTP as three verified users: <br/>· two members, each through their own talk session, read each other's lines by cursor <br/>· a seat's answer is in the room for both <br/>· the outsider's `read` and `post` are refused, even from a session it created with the project's `resourceId` in its state <br/>· two members post a parallel burst, and every post lands <br/>· a parallel burst of joins leaves exactly one session per member on the row <br/>· the channel inventory equals the tree's declared channels |
 | **Input** | The DevTeam profile ([PLAN S12](PLAN.md#surfaces)), with its two default projects and three bearer users, on a fresh store |
 | **Anti-game** | Expected values come from the store, never from the check. Rows are written by the profile's own code, through the entries the chief of staff will use. Posts go through the composer and the talk session |
-| **Controls that must fail** | Today's `main` fails all of these: <br/>· `unread`: the project reader becomes `main`'s flat list, so PROJECTS fails <br/>· `gap-tabs`: the project level becomes `main`'s, so the four-tab leg fails <br/>· `no-gate`: the membership check is removed, so the outsider leg fails <br/>· `no-retry`: the room's sequence retry is removed, so the burst loses a post |
+| **Signal · the chief of staff** | The epic closure's ask, as the `cos` leg. Asked for two projects, the chief of staff creates two rows through its `createProject` tool, each owned by the person and bound. This needs a model and FIX-1719's seat, and its control `no-tool` must fail |
+| **Controls that must fail** | Today's `main` fails all of these: <br/>· `unread`: the project reader becomes `main`'s flat list, so PROJECTS fails <br/>· `gap-tabs`: the project level becomes `main`'s, so the four-tab leg fails <br/>· `no-gate`: the membership check is removed, so the outsider leg fails <br/>· `no-retry`: the room's sequence retry is removed, so the burst loses a post <br/>· `no-tool`: the chief of staff has no `createProject` tool, so the `cos` leg fails |
 
 ## What changes
 
@@ -123,7 +124,7 @@ Stream shows the viewer's own talk session through `talkFor`, as FIX-1728 had it
 | Unread counts and a stored read cursor | Out. Shift Manager has no Unread surface today, so the cursor lives in the open view only |
 | Inviting someone to a project | A follow-up, written by trusted code. In v1 `members` is set when the row is created |
 | A conversation that belongs to no single person: a shared session, or one seat memory per room | Rejected by FIX-1729 (option A); an engine auth change |
-| The chief of staff creating projects, setting workstreams and members | FIX-1719, through the entries this issue ships |
+| The chief of staff's seat itself | FIX-1719. This issue adds the `createProject` tool to it (PLAN S15) |
 | Editing a project after create, beyond its workstreams; a Linear pointer | A follow-up |
 | What sits on a board | FIX-1651 |
 | Retiring or renaming a room | Parked (FIX-1341's lane; epic D3 as amended) |
@@ -148,5 +149,5 @@ can read.
 inside FIX-1650.
 
 Feature · `@flow-state-dev/workforce` (L2) + Shift Manager + the DevTeam profile + docs ·
-medium-large · 3 PRs · child of epic [FIX-1650](../../epics/FIX-1650/SPEC.md) · blocked by
+medium-large · 3 PRs plus the chief of staff's tool · child of epic [FIX-1650](../../epics/FIX-1650/SPEC.md) · blocked by
 #2622's rewrite merging, and Jake clearing the HOLD
