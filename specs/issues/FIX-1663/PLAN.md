@@ -3,18 +3,9 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
 Written for the closure worker; it owns the leg definitions. It starts when QR-1 and QR-2 hold,
-and adds only the goal check. Names from the children are read off their
-**merged** specs: FIX-1662's are in review as
-[#2424](https://github.com/fixpoint-labs/flow-state-dev/pull/2424), FIX-1655's as
-[#2425](https://github.com/fixpoint-labs/flow-state-dev/pull/2425), FIX-1664 has no spec yet.
-Where a merged spec renames something below, the merged spec wins.
-
-**As amended after merge:** names and commands below are current `main` after the Shift Manager
-rename ([#2588](https://github.com/fixpoint-labs/flow-state-dev/pull/2588)): the shell is
-`labs/shift-manager` (`@flow-state-dev/shift-manager`), its goal checks sit under
-`goals/shift-manager/`, the DevForce tree opens as the DevTeam profile (`--team devteam`), and
-`--shift day|night` pins the light or dark look. The DevForce tree keeps its path,
-`goals/devforce-lab/lab/`. What changed and why: [DECISIONS → How it got here](DECISIONS.md#how-it-got-here).
+and adds only the goal check. Names from the children are read off their **merged** specs on
+`main` (FIX-1655, FIX-1662, FIX-1664, FIX-1690). Where a merged spec renames something below,
+the merged spec wins. Amended after merge: [Evolution](EVOLUTION.md).
 
 ## Surfaces
 
@@ -66,7 +57,7 @@ message, reasoning, tool, code block and ask cards, located through the install 
 devtool page the task inspector's trace link opens. Each must render at least once per pass
 (QR-13). Shift Manager mounts no `@flow-state-dev/react` chrome, so the navigator, roster,
 board panels and seat detail are not swept; nor are the task plan card and the twelve
-FIX-1655 fixes, which Shift Manager never promised to draw ([How it got here](DECISIONS.md#how-it-got-here)).
+FIX-1655 fixes, which Shift Manager never promised to draw ([Evolution](EVOLUTION.md)).
 
 ## Controls
 
@@ -100,7 +91,7 @@ Leg a walks the day-to-day user and leg b with b0 the next Lab's builder.
 | ID | Passes when |
 |---|---|
 | P3.1 | FIX-1655's `goals/design-system/skins-reused-components-from-one-token-set/` with `hardcoded-accent` failing b:themed; its drift check with Shift Manager listed; its static check and census in CI |
-| P3.2 | FIX-1662's `goals/shift-manager/it-opens-a-lab/` with both controls; FIX-1664's `goals/shift-manager/it-shows-and-stops-a-task-run/` with its controls; FIX-1690's `goals/shift-manager/it-sends-a-turn-into-a-seat-session/` with its controls; FIX-1655's `goals/shift-manager/it-takes-its-look-from-the-design-system/`; each D1 child's check |
+| P3.2 | Re-run each child's merged goal check with its controls (paths in each child's `PLAN.md` → Pinned names, under `goals/shift-manager/` since #2588), including FIX-1690's, which is new to the stack; and each D1 child's check |
 | P3.3 | The goal labs the set touched stay green: `goals/devforce-lab/`'s three checks, `goals/pentest-lab/`'s two, and `goals/multi-seat-collab/`'s. `pnpm typecheck` and `pnpm test` on the commit |
 
 ## Part 4 · gap sweep
@@ -112,7 +103,7 @@ Only what parts 1 to 3 don't grade. Each seam is the epic's
 |---|---|
 | **Token names** | No literal colour under `labs/shift-manager/` source: no hex, `rgb()`, `hsl()`, fixed palette class or arbitrary colour value |
 | **The task route and panel slot** | Shift Manager's route table is FIX-1662's pinned routes; FIX-1664 added none |
-| **One session write path (ER-15)** | Read off the source: Shift Manager writes to a session only through the door FIX-1690's spec names (it took ER-15's operation over from FIX-1664). Run: Inbox's reply is disabled with its line where the asking kind has no door (DevForce's EM, on leg a's tree), and lands as a turn in the asking seat's session where it has one: the test seat in FIX-1690's `goals/shift-manager/it-sends-a-turn-into-a-seat-session/` (P3.2) |
+| **One session write path (ER-15)** | Read off the source: Shift Manager writes to a session only through the door FIX-1690's spec names (it took ER-15's operation over from FIX-1664). Run: Inbox's reply as [FIX-1690 → open-inbox](../FIX-1690/DECISIONS.md#open-inbox) grades it; FIX-1690's goal harness is not re-run here when P3.2 already passed it on this commit |
 | **One ask rendering** | Inbox's detail pane and the stream's card render through the same component per ask kind |
 | **Layer fence (ER-7, ER-8)** | The set's changes to `core`, `engine`, `client` and `react` add no Agent, Team, Channel, MessageBoard or Project noun; the design-system package imports nothing from `@flow-state-dev/workforce`; no `CHANNELS.md` or `kind:` frontmatter was added |
 | **Final visuals (ER-9)** | The Shift Manager theme's final values merged after the final hand-back's commit |

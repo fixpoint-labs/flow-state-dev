@@ -5,9 +5,8 @@
 Improvement · closure (QA) · `goals/` only · medium, repeats per finding · 1 PR after a clean
 run · epic [FIX-1649](../../epics/FIX-1649/SPEC.md) (review PR
 [#2421](https://github.com/fixpoint-labs/flow-state-dev/pull/2421)), closure · required · runs
-after FIX-1655, FIX-1662 and FIX-1664 merge and the final design hand-back is linked · amended
-after merge for Shift Manager and FIX-1690 ([How it got here](DECISIONS.md#how-it-got-here),
-[Evolution](EVOLUTION.md))
+after FIX-1655, FIX-1662 and FIX-1664 merge and the final design hand-back is linked · amended after
+merge, see [Evolution](EVOLUTION.md)
 
 ## Five people, before and after
 

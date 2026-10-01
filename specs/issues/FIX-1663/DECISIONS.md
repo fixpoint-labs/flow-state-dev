@@ -82,7 +82,7 @@ author reads.
   stale.
 - **The sweep is what Shift Manager promised to draw**: the message, reasoning, tool, code block
   and ask cards, found through its install list, plus the devtool trace page. Amended after merge;
-  see [How it got here](#how-it-got-here).
+  see [Evolution](EVOLUTION.md).
 - **Only a4's answer rests on the real model.** a1 to a3 raise their ask and board row through
   D1's children's deterministic paths, so a miss there is a shell finding, not model behaviour.
   The leg still runs under a real org with a real model set, as the epic's input says. The one
@@ -120,49 +120,4 @@ in [PLAN.md → At implement time](PLAN.md#at-implement-time)).
   confined to a4's answer, with a1 to a3 on D1's deterministic paths, because a whole leg of
   model-dependent steps turns every miss into a full re-run; `optimistic-post` graded as the pair
   it fails (a4 and b's post), because the table and its caveat contradicted each other.
-- **Amendment after merge** (Oct 1; original review
-  [#2426](https://github.com/fixpoint-labs/flow-state-dev/pull/2426)), calls already made
-  elsewhere, recorded here so the closure re-run reads them off this spec. The goal, D1 and the
-  rules for findings are unchanged; D2 changes only where the writer's copy goes (6), and the
-  controls gain `no-org` (7).
-  1. **Shift Manager.** The shell was renamed by
-     [#2588](https://github.com/fixpoint-labs/flow-state-dev/pull/2588) on the owner's naming
-     decision (mailbox #29): `labs/shift-manager`, `goals/shift-manager/`, the
-     DevForce tree opened as the DevTeam profile (`--team devteam`), and `--shift day|night` for
-     light and dark. Paths and commands now name it; the DevForce tree keeps
-     `goals/devforce-lab/lab/`. The `teams/devteam` profile is the one Shift Manager file that
-     points at that tree, so the anti-game line excepts it. Quotes in Notes from review keep the
-     old name.
-  2. **Leg c's sweep is the promised set**: message, reasoning, tool, code block and ask cards, and
-     the devtool page. Shift Manager mounts no `@flow-state-dev/react` chrome, so the navigator,
-     roster, board panels and seat detail aren't there to sweep; the task plan card and the
-     twelve FIX-1655 fixes were never promised to draw. EM call recorded with FIX-1688/1689
-     ([#2532](https://github.com/fixpoint-labs/flow-state-dev/pull/2532)) after closure run #1 at
-     `899e059`. This narrows the epic's pinned sweep ([epic SPEC](../../epics/FIX-1649/SPEC.md#the-goal-and-how-well-know-its-met));
-     see [Evolution](EVOLUTION.md).
-  3. **a4 targets `eng.coder`'s running task session.** The seat has no session outside a task
-     run; FIX-1690 shipped the door that puts a person's line there
-     ([#2538](https://github.com/fixpoint-labs/flow-state-dev/pull/2538),
-     [#2544](https://github.com/fixpoint-labs/flow-state-dev/pull/2544),
-     [#2565](https://github.com/fixpoint-labs/flow-state-dev/pull/2565)), as
-     [FIX-1690's evolution](../FIX-1690/EVOLUTION.md) asked of this spec.
-  4. **Part 4's Inbox reply is graded on the test seat.** DevForce's EM takes no message, so its
-     reply is disabled with its line, and the turn is proven on the fixture seat in FIX-1690's goal
-     check. Decided in [FIX-1690's second fork](../FIX-1690/DECISIONS.md#open-inbox), merged with
-     [#2525](https://github.com/fixpoint-labs/flow-state-dev/pull/2525).
-  5. **a2 runs without `--devtool`.** Shift Manager serves the devtool in-process over the same
-     Lab, so the trace link lands on in-memory runs
-     ([#2531](https://github.com/fixpoint-labs/flow-state-dev/pull/2531), FIX-1691/1692).
-  6. **b0 compares, it doesn't add.** `goals/pentest-lab/lab/fsdev.config.mts` landed on `main`
-     with FIX-1693 ([#2529](https://github.com/fixpoint-labs/flow-state-dev/pull/2529)) before the
-     closure ran. D2's writer still writes the config from Shift Manager's README alone, to
-     scratch; the run compares it with the committed file, and a semantic difference is a
-     finding. The closure PR no longer carries S2. Engineering call by the epic coordinator.
-  7. **"Opens with no org" means org-less, not dev org.** The epic promises no org-less mode
-     ([DESIGN.md](../../epics/FIX-1649/assets/design/DESIGN.md), Org switcher;
-     [epic SPEC](../../epics/FIX-1649/SPEC.md#the-goal-and-how-well-know-its-met), *Not done if*).
-     A Lab with no resolver runs under the dev org `__fsd_default_org__`, sanctioned by FIX-1442
-     and kept by the EM call on #2529, and that is an org. So leg b no longer expects a refusal:
-     it checks the switcher names the dev org on a Lab with no resolver and the store's org on
-     both trees, and never an org-less or empty app. The new `no-org` scratch control (switcher
-     empty) must fail it. Engineering call by the epic coordinator.
+- Post-merge amendment (2026-10-01): see [Evolution](EVOLUTION.md).
