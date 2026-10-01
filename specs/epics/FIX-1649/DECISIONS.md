@@ -159,6 +159,8 @@ ships, or to the sibling that will ship it; until then, the surface shows its na
 
 Not decisions for Jake; the brief for the next Claude Design pass, with what the build does
 until it returns. Kept in step with [`assets/design/DESIGN.md`](assets/design/DESIGN.md) §9.
+Pass 2 returned on 2026-10-01 ([v2](assets/design/v2/README.md#the-pass-2-open-list-item-by-item)
+says what it drew for each row); the table stays as the brief it answered.
 
 | Item | Until it returns |
 |---|---|
@@ -198,3 +200,9 @@ and reach), and the one code seam, tokens mapped onto `--fsd-nav-*`, already wor
 - **Amendment (Sep 30), found by the project-spec refresh**: the workstreams row was split to match
   FIX-1649's Linear map and FIX-1650's scope: FIX-1650 owns the workstream itself (its channel,
   its flow, that it exists), FIX-1651 what sits on its board; nothing the shell builds changed.
+- **Design hand-back v2 (Oct 1, owner input, FIX-1697)**: the final hand-back, committed under
+  [`assets/design/v2/`](assets/design/v2/README.md). It is the look: Shift Manager's day and
+  night values come from it ([ER-9](BUSINESS-RULES.md#how-the-set-is-run)). It also redraws
+  structure (Chief of Staff, Roster, TEAMS as status squares, fewer tabs); that is an
+  [ER-10](BUSINESS-RULES.md#how-the-set-is-run) amendment still to decide, so v1's structure
+  stands.

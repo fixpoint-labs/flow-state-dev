@@ -1,5 +1,9 @@
 # Claude Design hand-back · v1
 
+> **Superseded as the look by [v2](../v2/README.md)**, the final hand-back (design pass 2,
+> 2026-10-01). v1 still fixes the structure until an epic amendment adopts v2's
+> ([ER-10](../../../BUSINESS-RULES.md#how-the-set-is-run)); kept as history.
+
 Five dark-theme screens of App Lab, handed back from Claude Design by Jake on 2026-09-30:
 01 to 03 first, then 04 and 05 ("Latest designs, show Inbox and Tasks sections").
 They replace the [wireframes](../../wireframes/README.md) as the structure
@@ -20,6 +24,6 @@ its workers below it (seat, harness, status); the team row is not just status sq
 spec is written on the corrected sidebar; the screens still show the uncorrected one. In 04 and
 05, Inbox and Tasks sit under Jump to and replace the NEEDS YOU section of 01 to 03.
 
-**Not final visuals.** These are the dark variant, and the next design pass has open items
-([`DECISIONS.md` → Design pass 2](../../../DECISIONS.md#design-pass-2)). Final visual values
-merge only after the final hand-back ([ER-9](../../../BUSINESS-RULES.md#how-the-set-is-run)).
+**Not final visuals.** These are the dark variant, and the next design pass had open items
+([`DECISIONS.md` → Design pass 2](../../../DECISIONS.md#design-pass-2)). The final values came
+with [v2](../v2/README.md) ([ER-9](../../../BUSINESS-RULES.md#how-the-set-is-run)).
