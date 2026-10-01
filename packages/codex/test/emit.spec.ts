@@ -91,6 +91,84 @@ describe("scope attribution", () => {
   });
 });
 
+/**
+ * Item shape: a reasoning item carries its text in `summary`, as the
+ * `ReasoningItem` contract declares and as the Claude Code and generator
+ * emitters produce it. The React reasoning renderer reads `item.summary`
+ * directly, so a reasoning item that put its text in `content` instead threw
+ * on render and took the whole Session view down with it. The client places a
+ * reasoning item's `content.added` / `content.done` parts into `summary`, and
+ * the renderer keeps only `reasoning_text` parts, so the part type on those
+ * events has to match too or the text renders empty.
+ */
+describe("reasoning item shape", () => {
+  /** Record every response event while still letting the test context accumulate items. */
+  async function recordingContext() {
+    const runtime = await createTestContext({});
+    const events: Array<Record<string, unknown>> = [];
+    const response = (runtime.ctx as { response: { emit: (e: unknown) => Promise<void> } }).response;
+    const passThrough = response.emit.bind(response);
+    response.emit = async (event: unknown) => {
+      events.push(event as Record<string, unknown>);
+      await passThrough(event);
+    };
+    return { runtime, events };
+  }
+
+  /** The renderer's read of a reasoning item: join its `reasoning_text` summary parts. */
+  function renderedReasoningText(item: Record<string, unknown>): string {
+    return (item.summary as Array<{ type: string; text: string }>)
+      .filter((c) => c.type === "reasoning_text")
+      .map((c) => c.text)
+      .join("\n");
+  }
+
+  it("puts reasoning text in summary as reasoning_text, on every event the item travels on", async () => {
+    const { runtime, events } = await recordingContext();
+    const state = createEmitState();
+    await emitTranslatedEvent(
+      { kind: "reasoning", text: "weighing the options" },
+      runtime.ctx as never,
+      state,
+      "codex-agent",
+    );
+
+    const lifecycle = events.filter((e) => e.type === "item.added" || e.type === "item.done");
+    expect(lifecycle.map((e) => e.type)).toEqual(["item.added", "item.done"]);
+    for (const { item } of lifecycle as Array<{ item: Record<string, unknown> }>) {
+      expect(item.type).toBe("reasoning");
+      expect(item).not.toHaveProperty("content");
+      expect(Array.isArray(item.summary)).toBe(true);
+    }
+    const done = (lifecycle[1] as { item: Record<string, unknown> }).item;
+    expect(renderedReasoningText(done)).toBe("weighing the options");
+
+    const parts = events
+      .filter((e) => e.type === "content.added" || e.type === "content.done")
+      .map((e) => ({ type: e.type, content: e.content }));
+    expect(parts).toEqual([
+      { type: "content.added", content: { type: "reasoning_text", text: "" } },
+      { type: "content.done", content: { type: "reasoning_text", text: "weighing the options" } },
+    ]);
+
+    const [stored] = runtime.getItems() as Array<Record<string, unknown>>;
+    expect(renderedReasoningText(stored)).toBe("weighing the options");
+  });
+
+  it("leaves message items on content as output_text", async () => {
+    const { runtime, events } = await recordingContext();
+    const state = createEmitState();
+    await emitTranslatedEvent({ kind: "message", text: "all done" }, runtime.ctx as never, state, "codex-agent");
+
+    const done = events.find((e) => e.type === "item.done") as { item: Record<string, unknown> };
+    expect(done.item).not.toHaveProperty("summary");
+    expect(done.item.content).toEqual([{ type: "output_text", text: "all done" }]);
+    const contentDone = events.find((e) => e.type === "content.done") as { content: unknown };
+    expect(contentDone.content).toEqual({ type: "output_text", text: "all done" });
+    expect(state.finalMessage).toBe("all done");
+  });
+});
+
 // Characterization of the task scope every item carries: which of `taskId` and
 // `ownedBy` are present, and with what value, for each identity the runtime can
 // hand over, on every item kind and every close path. Asserted on the item's

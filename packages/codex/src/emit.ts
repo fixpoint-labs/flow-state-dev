@@ -131,6 +131,10 @@ export async function emitTranslatedEvent(
  * Emit a complete message or reasoning item: added(in_progress) → content.added
  * → content.done → item.done(completed). Codex carries whole items, so there is
  * never a partially-accumulated one to reconcile with.
+ *
+ * A message carries its text in `content` as `output_text`; a reasoning item
+ * carries it in `summary` as `reasoning_text`, the `ReasoningItem` contract and
+ * the shape every other reasoning emitter produces (renderers read `summary`).
  */
 async function emitText(
   text: string,
@@ -140,30 +144,34 @@ async function emitText(
   provenance: EmitProvenance,
 ): Promise<void> {
   const base = buildBase(ctx, provenance, kind === "message" ? "msg" : "reason");
+  const partType = kind === "message" ? ("output_text" as const) : ("reasoning_text" as const);
+  const body = (partText: string) =>
+    kind === "message"
+      ? { role: "assistant" as const, content: [{ type: partType, text: partText }] }
+      : { summary: [{ type: partType, text: partText }] };
   const inProgress = {
     ...base,
     type: kind,
-    ...(kind === "message" ? { role: "assistant" as const } : {}),
     status: "in_progress" as const,
     itemVisibility: CONVERSATIONAL_VISIBILITY,
-    content: [{ type: "output_text" as const, text: "" }],
+    ...body(""),
   };
   await ctx.response.emit({ type: "item.added", item: inProgress });
   await ctx.response.emit({
     type: "content.added",
     itemId: base.id,
     contentIndex: 0,
-    content: { type: "output_text", text: "" },
+    content: { type: partType, text: "" },
   });
   await ctx.response.emit({
     type: "content.done",
     itemId: base.id,
     contentIndex: 0,
-    content: { type: "output_text", text },
+    content: { type: partType, text },
   });
   await ctx.response.emit({
     type: "item.done",
-    item: { ...inProgress, status: "completed", content: [{ type: "output_text", text }] },
+    item: { ...inProgress, status: "completed", ...body(text) },
   });
   if (kind === "message") state.finalMessage = text;
 }
