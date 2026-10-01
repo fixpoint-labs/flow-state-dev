@@ -467,6 +467,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // The channel's charter and members, resolved once here so the prompt
     // builder stays a function of the run and these options. Not the whole
     // manifest: the charter is the only channel content a run is handed.
+    // Known limit: this is a snapshot, so a charter edited while the lab is
+    // open does not reach later prompts. A real host should read it per run.
     phase: defineImplementPhase({
       requireAcceptance: options.requireAcceptance === true,
       channel: {

@@ -5,12 +5,13 @@
  *
  * - **`buildPrompt` leads with the task the manager hands over** (`run.task`,
  *   the work a person approved or posted), **then is composed out of the seat's
- *   own configuration**, read through the block context the manager hands it. Nothing here names a file,
- *   a seat or a token: the instructions are the `WORKER.md` body the mint put
- *   on the seat, the brief is whatever ref that seat's own frontmatter declared,
- *   and the conventions are the skill union the tree resolved for it. That is
- *   what makes BR-10 gradeable — the prompt carries three tokens that live in
- *   three different files and in none of this lab's code.
+ *   own configuration**, read through the block context the manager hands it.
+ *   Nothing here names a file, a seat or a token: the instructions are the
+ *   `WORKER.md` body the mint put on the seat, the brief is whatever ref that
+ *   seat's own frontmatter declared, and the conventions are the skill union
+ *   the tree resolved for it. That is what makes BR-10 gradeable — the prompt
+ *   carries three tokens that live in three different files and in none of
+ *   this lab's code.
  * - **`isDone` refuses a run that reported `stopped-at-limit`, and otherwise is
  *   a commit the base ref does not have**, read out of the run's
  *   own checkout with git. Not a pull request: conductor already proves the `gh`
@@ -139,6 +140,22 @@ export async function buildSeatPrompt(
   ].join("\n");
 }
 
+/**
+ * The most of each of `deps` and `priorWork` a prompt carries, in characters of
+ * its JSON. The task leads the prompt, so an uncapped dependency output would
+ * push the seat's files and the run's terms toward the end of the context. The
+ * goal and context are never capped: they are what a person wrote.
+ */
+const MAX_TASK_OUTPUT_CHARS = 4_000;
+
+/** `value` as indented JSON, cut at {@link MAX_TASK_OUTPUT_CHARS} with a visible marker. */
+function cappedJson(value: unknown): string {
+  const text = JSON.stringify(value, null, 2);
+  if (text.length <= MAX_TASK_OUTPUT_CHARS) return text;
+  const dropped = text.length - MAX_TASK_OUTPUT_CHARS;
+  return `${text.slice(0, MAX_TASK_OUTPUT_CHARS)}\n[truncated: ${dropped} more characters]`;
+}
+
 /** The task's section, as the board packed it: the goal, then what the row adds. */
 function taskSection(task: PromptRunContext["task"]): string[] {
   return [
@@ -150,10 +167,10 @@ function taskSection(task: PromptRunContext["task"]): string[] {
     ...(task.context === undefined ? [] : [task.context.trim(), ``]),
     ...(task.deps === undefined
       ? []
-      : [`What the tasks this one depends on produced:`, ``, JSON.stringify(task.deps, null, 2), ``]),
+      : [`What the tasks this one depends on produced:`, ``, cappedJson(task.deps), ``]),
     ...(task.priorWork === undefined
       ? []
-      : [`What earlier tasks on this board found:`, ``, JSON.stringify(task.priorWork, null, 2), ``]),
+      : [`What earlier tasks on this board found:`, ``, cappedJson(task.priorWork), ``]),
   ];
 }
 

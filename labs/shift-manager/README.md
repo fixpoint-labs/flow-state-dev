@@ -182,14 +182,14 @@ pnpm --filter @flow-state-dev/shift-manager start --config <your config> --devto
 
 When you approve a feature in Inbox, or post `slug: what to build` on a workstream, the team's coordinator files it as a task and a coder seat picks it up as a coding run. In the `devteam` profile, the run's prompt holds, in this order:
 
-- **The task.** The line you approved or posted, word for word.
+- **The task.** The feature you approved, or what you posted after `slug:`, word for word.
 - **The seat's own files.** Its instructions, the document it names (the team's standing brief), and its skills.
 - **The workstream's charter**, the description on its Brief tab, when the coder seat is a member of that workstream.
 - **Where and how to work.** Its own checkout and branch, and what counts as done.
 
-It never gets the coordinator seat's session or the workstream's transcript. Anything a run needs from a conversation has to be written on the task. A message you send to a running task reaches it separately, as described under *Talking to a worker* in [What you see](#what-you-see). Which environment variables a run sees isn't decided here.
+It never gets the coordinator seat's session or the workstream's transcript. Anything a run needs from a conversation has to be written on the task. A message you send to a running task reaches it separately, as described under *Talking to a worker* in [What you see](#what-you-see).
 
-Another Lab decides its own prompt. Every Lab's prompt builder is handed the task the same way.
+Other Labs build their own prompts from the same task fields. See [`run.task`](../../apps/docs/docs/orchestration/harness-manager.md) in the harness manager docs.
 
 ### Not there yet
 

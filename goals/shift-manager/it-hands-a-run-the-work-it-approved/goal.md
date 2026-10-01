@@ -2,7 +2,7 @@
 
 **Issue:** FIX-1717
 
-**Outcome:** A person approves a feature in Shift Manager's Inbox, or posts `slug: what to build` on a workstream, and the coding run that starts is handed that work. Its prompt opens on the line they approved or posted, word for word. It also carries the coder seat's own files, the workstream's charter when the coder is a member of it, and where and how to work. It carries nothing private to another seat and nothing said on the channel. A real coding run does the approved work.
+**Outcome:** A person approves a feature in Shift Manager's Inbox, or posts `slug: what to build` on a workstream, and the coding run that starts is handed that work. Its prompt opens on the goal they approved, or the text they posted after `slug:`, word for word. It also carries the coder seat's own files, the workstream's charter when the coder is a member of it, and where and how to work. It carries nothing private to another seat and nothing said on the channel. A real coding run does the approved work.
 
 **Input:** `fixtures/input.json`, held out. Three features (one approved, one posted, one for the real run), one line posted on the channel that files nothing, and the tokens graded in the prompt, each with the one tree file it lives in. The approved and posted goals, the posted line and the real run's token and file name are spelled in no lab code and no tree file (leg 0 checks this before anything is built). Another valid feature in any of the three slots must pass a correct implementation. The real run's goal names one file and one token, so its commit is gradable without judging the model's code.
 
