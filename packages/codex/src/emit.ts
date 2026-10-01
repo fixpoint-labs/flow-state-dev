@@ -131,10 +131,6 @@ export async function emitTranslatedEvent(
  * Emit a complete message or reasoning item: added(in_progress) → content.added
  * → content.done → item.done(completed). Codex carries whole items, so there is
  * never a partially-accumulated one to reconcile with.
- *
- * A message carries its text in `content` as `output_text`; a reasoning item
- * carries it in `summary` as `reasoning_text`, the `ReasoningItem` contract and
- * the shape every other reasoning emitter produces (renderers read `summary`).
  */
 async function emitText(
   text: string,
