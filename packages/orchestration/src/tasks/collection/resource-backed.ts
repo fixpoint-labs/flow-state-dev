@@ -812,23 +812,16 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // why the task is waiting on a person.
       // A park for a person's turn is fenced to a running attempt: a row that
       // settled or re-pended first declines naming what it found, instead of
-      // being parked behind the attempt that already ended it.
-      if (options?.forTurn === true) {
-        return transitionRef(
-          id,
-          "parked",
-          "review_requested",
-          () => parkPatch(feedback, true) as Partial<Task<TInput, TOutput>>,
-          { ...options, ifAllowed: true },
-          "in_progress"
-        );
-      }
+      // being parked behind the attempt that already ended it. `ifAllowed` is
+      // forced on that path only, the way `unpark` forces its own fence.
+      const forTurn = options?.forTurn === true;
       return transitionRef(
         id,
         "parked",
         "review_requested",
-        () => parkPatch(feedback, options?.forTurn) as Partial<Task<TInput, TOutput>>,
-        options
+        () => parkPatch(feedback, forTurn) as Partial<Task<TInput, TOutput>>,
+        forTurn ? { ...options, ifAllowed: true } : options,
+        forTurn ? "in_progress" : undefined
       );
     },
 

@@ -207,13 +207,9 @@ async function deliverTurn(
   const runRequest = row.run.requestId;
   const first = await ctx.session.stopRequest(runRequest);
   if (first === "not-in-this-session") throw new TurnRefused("no-run");
-  if (first === "already-finished") {
-    // The attempt ended between the read and the stop. If it was stopped by
-    // something else (an Interrupt), the board decides what follows and the
-    // kept turn reaches whatever attempt it runs.
-    if (TERMINAL.has(row.status)) throw new TurnRefused("finished-first");
-    return kept;
-  }
+  // Already finished before this stop. The snapshot above was not terminal,
+  // so the kept turn stands and the board decides what the row does next.
+  if (first === "already-finished") return kept;
 
   // Wait for the stopped attempt to finish, so nothing it does lands after the
   // park. Asking again is the read: once the request has ended the stop
@@ -262,14 +258,7 @@ function buildDoorSequencer(deps: MessageDoorDeps, board: MessageDoorBoard) {
         taskId: decided.taskId,
       })) as never,
     )
-    .step(
-      handler({
-        name: `${deps.name}-message-result`,
-        inputSchema: messageDoorOutputSchema.extend({ requeue: z.boolean() }),
-        outputSchema: messageDoorOutputSchema,
-        execute: async ({ outcome, taskId }) => ({ outcome, taskId }),
-      }),
-    );
+    .map(({ outcome, taskId }) => ({ outcome, taskId }));
 }
 
 /**
