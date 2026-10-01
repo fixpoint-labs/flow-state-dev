@@ -12,7 +12,13 @@
  * Each command runs with a minimal environment (not the server's full
  * `process.env`), a deadline, and a numeric exit code — see
  * `executeCommand` below. Command execution assumes a Unix process-group
- * model (Linux/macOS): a timeout kills the command's whole group.
+ * model (Linux/macOS): a timeout kills the command's process group.
+ *
+ * None of this is an isolation boundary. Commands run as the server's own
+ * user, so one can still read the server's environment on purpose
+ * (`/proc/$PPID/environ`, `ps eww`) and can start processes that outlive
+ * the timeout. Run untrusted commands with the moat adapter or in a
+ * container.
  */
 
 import { spawn } from "node:child_process";
@@ -38,14 +44,18 @@ export interface LocalFsSandboxOptions {
   /**
    * Extra environment variables for each command, layered over the minimal
    * base (`BASE_ENV_KEYS`, copied from the server when set), so a key named
-   * here wins. Nothing else from the server's environment reaches the
-   * command.
+   * here wins. Nothing else from the server's environment is inherited, so
+   * commands don't see it by accident. This is not an isolation boundary:
+   * the command runs as the same user and can still read the server's
+   * environment deliberately (e.g. `/proc/$PPID/environ`). Use the moat
+   * adapter or a container for untrusted commands.
    */
   env?: Record<string, string>;
   /**
    * Per-command deadline in milliseconds. Default: 60 000. On overrun the
-   * command and everything it started are killed and the result carries
-   * `exitCode: 124`.
+   * command's process group is killed and the result carries
+   * `exitCode: 124`. A process that detaches into its own session
+   * (`setsid`, a daemon) leaves that group and can survive.
    */
   execTimeoutMs?: number;
 }
@@ -169,10 +179,15 @@ export function createLocalFsSandbox(
  * Run one command under `/bin/bash -c` with the given env and deadline.
  *
  * The shell is spawned as its own process group so a timeout or output
- * overrun kills everything it started — killing only the shell would leave
- * a pipeline's children holding stdout open, and the result would never
- * arrive. After a normal exit nothing is killed, so a background job whose
- * output is redirected (`server > log 2>&1 &`) keeps running as before.
+ * overrun kills the whole group, not just the shell — killing only the
+ * shell would leave a pipeline's children holding stdout open, and the
+ * result would never arrive. Only the group is killed: a descendant that
+ * starts its own session (`setsid`, a daemon) has left it and survives.
+ * After a normal exit nothing is killed, so a background job whose output
+ * is redirected (`server > log 2>&1 &`) keeps running as before.
+ *
+ * Output is capped at `MAX_OUTPUT_BYTES` per stream (stdout and stderr
+ * counted separately, as Node's `maxBuffer` did); an overrun kills the group.
  *
  * Because the child is its own process group, it does not receive the
  * terminal's SIGINT/SIGTERM aimed at the server; the deadline is the only
@@ -197,7 +212,6 @@ function runBash(
     });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
-    let outputBytes = 0;
     let failure: { exitCode: number; message: string } | null = null;
 
     let settled = false;
@@ -230,15 +244,20 @@ function runBash(
       finish(exitCode);
     };
 
-    const collect = (sink: Buffer[]) => (chunk: Buffer) => {
-      // After a kill or settle, late chunks are dropped rather than buffered.
-      if (settled || failure) return;
-      outputBytes += chunk.length;
-      if (outputBytes > MAX_OUTPUT_BYTES) {
-        fail(1, `output exceeded ${MAX_OUTPUT_BYTES} bytes; command killed`);
-        return;
-      }
-      sink.push(chunk);
+    // One counter per stream, as Node's `maxBuffer` did: the cap applies to
+    // stdout and stderr separately, not to their sum.
+    const collect = (sink: Buffer[]) => {
+      let streamBytes = 0;
+      return (chunk: Buffer) => {
+        // After a kill or settle, late chunks are dropped rather than buffered.
+        if (settled || failure) return;
+        streamBytes += chunk.length;
+        if (streamBytes > MAX_OUTPUT_BYTES) {
+          fail(1, `output exceeded ${MAX_OUTPUT_BYTES} bytes on one stream; command killed`);
+          return;
+        }
+        sink.push(chunk);
+      };
     };
     child.stdout.on("data", collect(stdout));
     child.stderr.on("data", collect(stderr));

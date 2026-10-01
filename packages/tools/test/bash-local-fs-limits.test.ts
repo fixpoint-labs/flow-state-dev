@@ -117,7 +117,7 @@ describe("local-fs bash: environment", () => {
 
 describe("local-fs bash: timeout", () => {
   it(
-    "kills a hung command and everything it started at the deadline, reporting exit code 124",
+    "kills a hung command's process group at the deadline, reporting exit code 124",
     async () => {
       // A pipeline: killing only the shell would leave `sleep` and `cat`
       // holding stdout open. The result arriving on time is not enough —
@@ -138,6 +138,31 @@ describe("local-fs bash: timeout", () => {
       expect(sleepPid).toBeGreaterThan(0);
       spawnedPids.push(sleepPid);
       expect(await waitForExit(sleepPid, 2_000)).toBe(true);
+    },
+    10_000,
+  );
+
+  it(
+    "does not reach a process that detached into its own session (documented limit)",
+    async () => {
+      // The timeout kills the command's process group, nothing more. A process
+      // that calls setsid leaves the group, so it survives. That is the stated
+      // contract; untrusted commands need the moat adapter or a container.
+      // If this starts failing because the escapee died, the adapter gained
+      // descendant tracking and the docs can promise more.
+      const sandbox = createLocalFsSandbox({ cwd, execTimeoutMs: 500 });
+
+      const result = await sandbox.executeCommand(
+        `setsid sh -c 'echo $$ > pid; exec sleep 30' > /dev/null 2>&1 & ` +
+          `while [ ! -s pid ]; do sleep 0.05; done; sleep 30`,
+      );
+
+      expect(result.exitCode).toBe(124);
+      const escapedPid = Number((await readFile(join(cwd, "pid"), "utf-8")).trim());
+      expect(escapedPid).toBeGreaterThan(0);
+      spawnedPids.push(escapedPid);
+      await new Promise((r) => setTimeout(r, 200));
+      expect(isAlive(escapedPid)).toBe(true);
     },
     10_000,
   );
@@ -193,6 +218,43 @@ describe("local-fs bash: exit code is always a number", () => {
 
       expect(typeof result.exitCode).toBe("number");
       expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("output exceeded");
+    },
+    10_000,
+  );
+});
+
+describe("local-fs bash: output cap", () => {
+  it(
+    "applies the 10 MiB cap to each stream separately, so 6 MiB on both succeeds",
+    async () => {
+      // The cap replaces Node's `maxBuffer`, which counted stdout and stderr
+      // separately. A shared counter would kill a command that is within the
+      // limit on both streams (a long build log plus a long warning dump) and
+      // report failure for a command that succeeded.
+      const sixMiB = 6 * 1024 * 1024;
+      const sandbox = createLocalFsSandbox({ cwd });
+
+      const result = await sandbox.executeCommand(
+        `yes | head -c ${sixMiB}; yes | head -c ${sixMiB} >&2`,
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.length).toBe(sixMiB);
+      expect(result.stderr.length).toBe(sixMiB);
+    },
+    10_000,
+  );
+
+  it(
+    "still kills a command that writes more than 10 MiB to stderr alone",
+    async () => {
+      const sandbox = createLocalFsSandbox({ cwd });
+
+      const result = await sandbox.executeCommand("yes | head -c 11000000 >&2");
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("output exceeded");
     },
     10_000,
   );
