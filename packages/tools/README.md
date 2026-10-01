@@ -204,14 +204,18 @@ generator({
 
 #### Local FS
 
-The `local` provider runs each command with a minimal environment: `PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR` and `TZ`, plus whatever you pass in `env`. Anything else a command needs goes in `env`. That includes API tokens, proxy settings (`HTTPS_PROXY`, `NO_PROXY`), custom CA bundle paths and `SSH_AUTH_SOCK` for git over ssh. Values in `env` override the defaults, `PATH` included. A command that runs past `execTimeoutMs` is stopped along with its children and returns `exitCode` `124`.
+The `local` provider runs each command with a minimal environment: `PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR` and `TZ`, plus whatever you pass in `env`. Anything else a command needs goes in `env`. That includes API tokens, proxy settings (`HTTPS_PROXY`, `NO_PROXY`), custom CA bundle paths and `SSH_AUTH_SOCK` for git over ssh. Values in `env` override the defaults, `PATH` included.
+
+The minimal environment keeps commands from inheriting the server's environment by accident. It is not an isolation boundary. Commands run as the same OS user as the server, so a command that goes looking can still read the server's environment, for example through `/proc/<parent pid>/environ` or `ps eww`. For untrusted commands, use the `moat` provider or a container.
+
+A command that runs past `execTimeoutMs` has its process group killed and returns `exitCode` `124`. A process that detaches into its own session, through `setsid` or as a daemon, can survive the timeout.
 
 `exitCode` is:
 
 - the shell's own code when the command finishes;
-- `124` on timeout (the command and its children are stopped);
+- `124` on timeout (the command's process group is killed);
 - `128 + n` when stopped by signal `n`;
-- `1` when output (stdout and stderr combined) exceeds 10 MB, or the command fails to start.
+- `1` when stdout or stderr goes over 10 MiB (each stream has its own limit, and the command is killed), or the command fails to start.
 
 #### MOAT
 
