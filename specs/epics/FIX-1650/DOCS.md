@@ -3,7 +3,7 @@
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
 The shared story once, and who publishes each part. The drafts below follow Jake's answers to
-Q1 and Q2, the per-person baseline and the template default [still open](DECISIONS.md#pending); a different answer to one of
+Q1 and Q2, and the recommendations [pending Jake](DECISIONS.md#pending) (the room now, members only); a different answer to one of
 those rewrites the sentence it touches before anything is published.
 
 ## UPDATE · `apps/docs/docs/workforce/overview.md` · a new section after "Hire a roster"
@@ -17,11 +17,12 @@ FIX-1718 publishes the first two paragraphs; FIX-1719 adds the last two.
 > channel, in a `CHANNEL.md`.
 >
 > A project groups workstreams. It is a record your organization keeps: a title, a status, an
-> owner, and links, stored once and visible to everyone in the organization. You don't write a
-> file for each project. Your Lab declares one talk channel shape for projects, a `CHANNEL.md`
-> with `mintFor: projects`, and each new project gets a talk channel in that shape. Your talk
-> channel about a project is yours: someone else who joins the project gets their own, and the
-> project record is what you share.
+> owner, its members, and links, stored once and visible to everyone in the organization. You
+> don't write a file for each project. Each project has a room, one conversation its members
+> share with the project's seats. You reach it through your own talk channel, which your Lab
+> shapes once for every project, in a `CHANNEL.md` with `mintFor: projects`. Only members read
+> or post in a project's room. Other members' lines show up when your view next reads the room,
+> not the instant they're posted.
 >
 > One seat helps one person run an organization. The chief of staff is who you ask what is
 > going on; it reads the boards and creates projects when you ask for one. It also changes who works there:
@@ -42,7 +43,7 @@ What [ER-18](BUSINESS-RULES.md#the-closure) holds the closure to.
 |---|---|---|
 | The shared section's project and workstream paragraphs | FIX-1718, after its behaviour is verified | This document |
 | The shared section's org-seat and channel paragraphs | FIX-1719, after its behaviour is verified | This document |
-| How to declare the projects collection and its talk template; how a person joins a project; how a workstream belongs to a project; what a workstream is | FIX-1718 · `apps/docs/docs/workforce/channels.md` | Its `DOCS.md` |
+| How to declare the projects collection and its talk template; a project's room, its members and how a member joins; how a workstream belongs to a project; what a workstream is | FIX-1718 · `apps/docs/docs/workforce/channels.md` | Its `DOCS.md` |
 | Shift Manager's project level and PROJECTS tree; removing the matching "What isn't here yet" lines | FIX-1718 · `labs/shift-manager/README.md` | Its `DOCS.md` |
 | The CoS seat, how a Lab opts in, CoS creating projects, hiring without asking and the approval on every fire | FIX-1719 · a new page under `apps/docs/docs/workforce/`, name its spec's call | Its `DOCS.md` |
 | Finding and repairing a seat whose kind is gone | FIX-1621 · `apps/docs/docs/workforce/durable-hire.md` | Its `DOCS.md` |
