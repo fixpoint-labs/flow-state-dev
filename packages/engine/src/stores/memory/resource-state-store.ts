@@ -122,8 +122,6 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     // A recreate continues from the tombstone's version, so a version is
     // never reused for a key that has been deleted and written again.
     const nextVersion = (row?.version ?? 0) + 1;
-    // The JSON round-trip, not a structured clone: the row must hold what the
-    // serializing adapters would hold for this write (see `toStoredState`).
     bucket.set(resourceKey, { state: toStoredState(state), version: nextVersion, lifecycle: "live" });
     return { ok: true, version: nextVersion };
   }
