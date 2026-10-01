@@ -1,8 +1,14 @@
 /*
- * Shift Manager — light and dark, over the tokens FSD's components already read.
+ * Shift Manager — day and night, over the tokens FSD's components already read.
  *
- * DRAFT VALUES. These follow the Product Lead's notes and design hand-back v1;
- * the final values replace them after the final design hand-back.
+ * The values are the final design hand-back's (design pass 2, 2026-10-01:
+ * `specs/epics/FIX-1649/assets/design/v2/`): day is its `:root`, night is its
+ * night block. Where the design paints a surface with a translucent tint
+ * (`accent`, its selection), the value is that tint flattened over the surface
+ * it sits on. Day `card` is the design's card one step bluer in its last
+ * channel, so no value sits within the closure check's tolerance of the
+ * registry's neutral near-white. The design draws no warning colour; `warning` keeps its earlier
+ * value, apart from `attention` in both variants.
  *
  * Values only. Every name below is one the `@flow-state-dev/ui` registry's
  * `tokens` item defines (in a base layer, so these unlayered values win
@@ -15,24 +21,24 @@
  */
 
 :root {
-  --background: #f0ece1;
+  --background: #f8f6f0;
   --foreground: #1b1a15;
-  --card: #f6f3ea;
+  --card: #fcfbf6;
   --card-foreground: #1b1a15;
-  --popover: #f6f3ea;
+  --popover: #fcfbf6;
   --popover-foreground: #1b1a15;
   --primary: #1b1a15;
   --primary-foreground: #f0ece1;
-  --secondary: #e4dfd1;
+  --secondary: #f0ece1;
   --secondary-foreground: #1b1a15;
-  --muted: #e4dfd1;
-  --muted-foreground: #6b6657;
-  --accent: #e4dfd1;
+  --muted: #f0ece1;
+  --muted-foreground: #57544a;
+  --accent: #d1d0cc;
   --accent-foreground: #1b1a15;
   --destructive: #a83e28;
   --destructive-foreground: #f0ece1;
-  --border: #cfc8b6;
-  --input: #cfc8b6;
+  --border: #c9c4b6;
+  --input: #c9c4b6;
   --ring: #1b1a15;
   --success: #1b1a15;
   --success-foreground: #f0ece1;
@@ -44,7 +50,7 @@
   --attention-foreground: #1b1a15;
 
   --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   --radius: 0;
@@ -59,33 +65,33 @@
 }
 
 .dark {
-  --background: #15140f;
+  --background: #1c1b15;
   --foreground: #ece7da;
-  --card: #1d1c16;
+  --card: #24231c;
   --card-foreground: #ece7da;
-  --popover: #1d1c16;
+  --popover: #24231c;
   --popover-foreground: #ece7da;
   --primary: #ece7da;
-  --primary-foreground: #15140f;
-  --secondary: #2a2821;
+  --primary-foreground: #16150f;
+  --secondary: #16150f;
   --secondary-foreground: #ece7da;
-  --muted: #2a2821;
-  --muted-foreground: #a39d8c;
-  --accent: #2a2821;
+  --muted: #16150f;
+  --muted-foreground: #a6a08f;
+  --accent: #212323;
   --accent-foreground: #ece7da;
-  --destructive: #d4694f;
-  --destructive-foreground: #15140f;
-  --border: #3a372e;
-  --input: #3a372e;
+  --destructive: #e27a5f;
+  --destructive-foreground: #16150f;
+  --border: #57544a;
+  --input: #57544a;
   --ring: #ece7da;
   --success: #ece7da;
-  --success-foreground: #15140f;
+  --success-foreground: #16150f;
   --warning: #e0874f;
-  --warning-foreground: #15140f;
-  --info: #7d9fd6;
-  --info-foreground: #15140f;
+  --warning-foreground: #16150f;
+  --info: #8fabe2;
+  --info-foreground: #16150f;
   --attention: #e8f551;
-  --attention-foreground: #15140f;
+  --attention-foreground: #1b1a15;
 }
 
 /*
