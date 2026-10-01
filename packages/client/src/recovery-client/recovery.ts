@@ -9,21 +9,13 @@
  */
 import type { ResumeAction } from "@flow-state-dev/contracts";
 import { buildFlowApiUrl, requestJson, resolveFetch } from "../internal/http";
-import type { ClientFetch } from "../types";
+import type { ClientTransportOptions } from "../types";
 
 /** The resolution actions the resume endpoint accepts. */
 const RESUME_ACTIONS: readonly ResumeAction[] = ["approve", "reject", "submit", "skip"];
 
-export type CreateRecoveryClientOptions = {
-  baseUrl?: string;
-  /**
-   * Where the server mounts the flow API, after `baseUrl`. Default
-   * `"/api/flows"`. Set it to the server's mount when that differs, such as
-   * the Node host's `basePath`.
-   */
-  apiPath?: string;
-  fetcher?: ClientFetch;
-};
+/** Options for the recovery client: the shared {@link ClientTransportOptions}. */
+export type CreateRecoveryClientOptions = ClientTransportOptions;
 
 export type CheckInterruptedOptions = {
   /** User whose stale active-request entries should be swept. Required. */

@@ -3,18 +3,10 @@
  * /api/flows/transcribe endpoint as raw binary (no base64 encoding).
  */
 import { buildFlowApiUrl, requestJson, resolveFetch } from "../internal/http";
-import type { ClientFetch } from "../types";
+import type { ClientTransportOptions } from "../types";
 
-export type TranscribeOptions = {
-  baseUrl?: string;
-  /**
-   * Where the server mounts the flow API, after `baseUrl`. Default
-   * `"/api/flows"`. Set it to the server's mount when that differs, such as
-   * the Node host's `basePath`.
-   */
-  apiPath?: string;
-  fetcher?: ClientFetch;
-};
+/** Options for {@link transcribe}: the shared {@link ClientTransportOptions}. */
+export type TranscribeOptions = ClientTransportOptions;
 
 export type TranscribeRequest = {
   audio: Uint8Array | Blob;

@@ -9,7 +9,7 @@ import type {
 import { buildFlowApiUrl, requestJson, resolveFetch } from "../internal/http";
 import {
   ClientHttpError,
-  type ClientFetch,
+  type ClientTransportOptions,
   type ExecuteActionRequestBody,
   type ExecuteActionResponse,
   type FlowCapabilities,
@@ -30,15 +30,7 @@ import {
 export type CreateClientOptions = {
   flowKind: string;
   userId: string;
-  baseUrl?: string;
-  /**
-   * Where the server mounts the flow API, after `baseUrl`. Default
-   * `"/api/flows"`. Set it to the server's mount when that differs, such as
-   * the Node host's `basePath`.
-   */
-  apiPath?: string;
-  fetcher?: ClientFetch;
-};
+} & ClientTransportOptions;
 
 /**
  * Generic client contract used for dynamic flow execution.
@@ -242,11 +234,7 @@ export function createTypedClient<TFlow extends FlowLike>(
     apiPath: options.apiPath,
     fetcher: options.fetcher
   });
-  const sessions = createSessionClient({
-    baseUrl: options.baseUrl,
-    apiPath: options.apiPath,
-    fetcher: options.fetcher
-  });
+  const sessions = createSessionClient(options);
 
   const actions = Object.fromEntries(
     Object.keys(options.flow.actions).map((actionName) => [
