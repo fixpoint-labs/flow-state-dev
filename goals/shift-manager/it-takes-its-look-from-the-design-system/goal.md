@@ -32,3 +32,4 @@
 | 2026-10-01 | fix-1688-app-lab-skin (pre-PR), `GOAL_CONTROL=hardcoded-accent` | n/a | FAIL (expected) | Only **neutral**, on `tool` (`svg.lucide-circle-check-big` stroke `#e8f551`), light and dark. reach and themed pass. |
 | 2026-10-01 | fix-1688 follow-up (Shift Manager follows the OS setting; passes set the browser's colour scheme) | n/a | PASS | Light: shell 129, message 8, reasoning 16, tool 51, code block 32 elements, 360 colours; dark: message 12, 365 colours. No-theme light 360, dark 365, none a Shift Manager value. |
 | 2026-10-01 | fix-1688 follow-up, `GOAL_CONTROL=hardcoded-accent` | n/a | FAIL (expected) | Only **neutral**, on `tool` (`svg.lucide-circle-check-big` stroke `#e8f551`), light and dark. |
+| 2026-10-01 | 475b3cd4b (feat/FIX-1649-shift-manager) | n/a | PASS | After the rename to Shift Manager. DevTeam served from `labs/shift-manager/teams/devteam`; the pages carry the boot-shift code, unset in this run. |

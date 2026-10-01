@@ -47,3 +47,4 @@ The rows come from the Lab's own doors. On multi-seat-collab, the planner files 
 | 2026-09-30 | 108a83871+wip | n/a | FAIL (control `optimistic-post`, expected) | Only `the post is in the stored transcript`, on both Labs: 0 stored copies, and gone after a reload. |
 | 2026-09-30 | 108a83871+wip | n/a | FAIL (control `unanswerable-asks`, expected) | Only `[devforce] an answer from Inbox lands in the store`: 1 ask pending and Shift Manager offers an answer on none. |
 | 2026-10-01 | 829c2c2dd+wip (FIX-1690 lab) | n/a | PASS | DevForce's coder seat now has a `message` door, and seats are registered with their doors. Every level still matches each tree and store. DevForce: 1 ask listed of 1 pending, 1 approved. |
+| 2026-10-01 | 475b3cd4b (feat/FIX-1649-shift-manager) | n/a | PASS | After the rename to Shift Manager. DevTeam served from `labs/shift-manager/teams/devteam`; the pages carry the boot-shift code, unset in this run. |
