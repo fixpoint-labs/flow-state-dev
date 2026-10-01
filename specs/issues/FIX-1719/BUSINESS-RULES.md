@@ -41,17 +41,6 @@ The cases, written as rules. "Goal" is the goal check in
 | BR-20 | A person asks CoS who is on a channel or what seats exist | It answers from `discover`: declared and hired seats, with their kinds | Goal |
 | BR-21 | CoS is asked to hire or fire | It has no such tool, and says Ops does that | Lab spec on CoS's catalog |
 
-## What the screens read
-
-What FIX-1722 and FIX-1723 consume. Nothing here is a new field.
-
-| # | Read | Carries |
-|---|---|---|
-| BR-22 | The seat inventory, per org | `{ id, kind, door }`. Org seats keyed by bare name, no team; team seats `<team>.<name>`; hired seats `<org>.<seatId>`, split with `splitSeatAddress`. A fired seat has no row (ER-19) |
-| BR-23 | CoS and Ops | Seat ids `chief-of-staff` and `ops` in the templates, reached through their door like any seat |
-| BR-24 | Ops's asks | Stock `human_approval` records, `data: { verb, seatId, kind }`, as Inbox lists them today |
-| BR-25 | Shift status, slots, "on call for" | Not carried. FIX-1723 derives them from board rows and runs; FIX-1637 owns wakes |
-
 ## Failure taxonomy
 
 Boot: an org seat that fails to load is reported beside team-seat failures; the Lab's host
@@ -65,3 +54,17 @@ The goal: in the DevTeam Lab with both templates, Ops's hire lands with no ask, 
 only on Approve, and both hold across restarts; `GOAL_CONTROL=deny-fire` fails on "seat gone".
 CoS names the declared seats. ER-6, ER-20 and ER-3 hold. The four existing `devforce-lab` checks
 pass. [DOCS.md](DOCS.md)'s operations are published.
+
+## Appendix · Downstream reads (FIX-1722/1723)
+
+Not acceptance for this issue: what the Chief of Staff and Roster screens consume, listed so
+their specs can point here. Nothing is a new field.
+
+- **Seat inventory, per org:** `{ id, kind, door }`. Org seats keyed by bare name, no team;
+  team seats `<team>.<name>`; hired seats `<org>.<seatId>`, split with `splitSeatAddress`. A
+  fired seat has no row (ER-19).
+- **CoS and Ops:** the template ids `chief-of-staff` and `ops`, reached through their door.
+- **Ops's asks:** stock `human_approval` records; the `data` shape is pinned in
+  [PLAN → Pinned names](PLAN.md#pinned-names).
+- **Not carried:** shift status, slot use, "on call for". FIX-1723 derives the first two from
+  board rows and runs; FIX-1637 owns wakes.

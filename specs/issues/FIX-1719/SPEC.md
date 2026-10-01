@@ -100,7 +100,7 @@ Org seats are booted from the tree, never hired at runtime, and Ops cannot fire 
 
 | What | Owner |
 |---|---|
-| The Chief of Staff screen | FIX-1722 (FIX-1649), reading [the seat data this issue ships](BUSINESS-RULES.md#what-the-screens-read) |
+| The Chief of Staff screen | FIX-1722 (FIX-1649), reading [the seat data this issue ships](BUSINESS-RULES.md#appendix--downstream-reads-fix-17221723) |
 | The Roster screen, shift status (on shift, on call, off shift) and slot use | FIX-1723, derived from existing seat and run state; no field here |
 | CoS turning a request into a task, messaging a seat, answering an ask for the person, reassigning | FIX-1722 to scope, against FIX-1651 (board contents) and FIX-1671 (answering an ask) |
 | Briefings on a schedule, "on call for" a webhook | FIX-1637 (wake) |

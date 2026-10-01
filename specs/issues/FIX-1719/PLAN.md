@@ -21,12 +21,12 @@ Written for the implementing agent. IDs cross-reference [BUSINESS-RULES.md](BUSI
 
 | ID | PR | Package · role | Change | Rules |
 |---|---|---|---|---|
-| S1 | 1 | `workforce` loader · roster reader | Walk `org/workers/<name>/` beside the team walk, same slot rules, same refusals. Mint the bare name. **Remove** "an org-level `workers/` is passed over in silence" from the header and docs | BR-1 BR-3 BR-4 BR-6 |
-| S2 | 1 | `workforce` · the three IN readers, plus skills | `splitWorkerId`, `resolveHeldPackages`, `placeOfSeat` and `readSeatSkills` take a seat with no team: org level, then its own folder. Each dotless id reads as an org seat, never as its own team | BR-5 |
+| S1 | 1 | `workforce` loader · roster reader | Walk `org/workers/<name>/` beside the team walk, same slot rules, same refusals, reusing the worker-slot walk `resource-walk.ts` already has (`walkWorkers`, which takes `teamId: undefined` for the org level) so the roster and the resources never disagree on what a slot is. Mint the bare name. **Remove** "an org-level `workers/` is passed over in silence" from the header and docs | BR-1 BR-3 BR-4 BR-6 |
+| S2 | 1 | `workforce` · the three IN readers, plus skills | One exported parser, `parseDeclaredSeatId` (pinned), turns a declared id into `{ team?, name }`: dotless is an org seat, `<team>.<name>` a team seat. `splitWorkerId`, `resolveHeldPackages`, `placeOfSeat` and `readSeatSkills` all call it; none splits on its own. `placeOfSeat` returns `{ team: undefined, worker }` for an org seat, and the parser's tests sit with `placeOfSeat`'s, since both are public. An org seat reads org level, then its own folder | BR-5 |
 | S3 | 1 | `workforce` test · published tree | Delete the `build` row from `KNOWN_UNRESOLVABLE_REFS`; the docs example gains `org/workers/build/WORKER.md` | BR-7 |
-| S4 | 2 | `workforce` · seat-hire capability | `askBefore` option on `createSeatHireCapability`, default `[]`. The tool path validates, raises `human_approval` with `data: { verb, seatId, kind }`, then on Approve re-validates and applies; on Deny returns a denial result. Refuses a gated verb when `ctx.suspend` is absent. The blocks themselves stay ungated | BR-10 BR-12 BR-13 BR-15 BR-16 BR-17 BR-18 BR-24 |
+| S4 | 2 | `workforce` · seat-hire capability | `askBefore` option on `createSeatHireCapability`, default `[]`. The tool path validates, raises `human_approval` with `data: { verb, seatId, kind }`, then on Approve re-validates and applies; on Deny returns a denial result. Refuses a gated verb when `ctx.suspend` is absent. The blocks themselves stay ungated | BR-10 BR-12 BR-13 BR-15 BR-16 BR-17 BR-18 |
 | S5 | 2 | `workforce` · fire | Fire calls FIX-1621's one remove path. If FIX-1621 has not merged, stop: this surface waits | BR-11 ER-19 |
-| S6 | 2 | DevTeam Lab · tree | `org/workers/chief-of-staff/WORKER.md` (`flow: agent`, discover, post) and `org/workers/ops/WORKER.md` (`flow: agent`, `tools: [hire, fire]`), each with a brief | BR-20 BR-21 BR-23 |
+| S6 | 2 | DevTeam Lab · tree | `org/workers/chief-of-staff/WORKER.md` (`flow: agent`, discover, post) and `org/workers/ops/WORKER.md` (`flow: agent`, `tools: [hire, fire]`), each with a brief | BR-20 BR-21 |
 | S7 | 2 | DevTeam Lab · host and profile | Install `createWorkforceCapability`, channel post and `createSeatHireCapability({ askBefore: ["fire"], allowKinds })` on the agent kind. The profile gets a store that survives a restart and reloads hired seats at boot | BR-8 BR-9 BR-19 |
 | S8 | 2 | Goal check · `goals/org-seats/ops-changes-the-roster/` | New. Control `deny-fire` | Goal |
 | S9 | 1 and 2 | Docs | [DOCS.md](DOCS.md) operations; one `minor` changeset for `@flow-state-dev/workforce` in each PR | — |
@@ -52,7 +52,7 @@ flowchart TD
 | ID | Runs after | Passes when |
 |---|---|---|
 | V1 | S1 S2 | Loader specs: BR-1 to BR-6 on a fixture tree with one org seat, one team seat of the same name, and one broken org slot |
-| V2 | S2 | `check.mjs` still classifies every split; the three IN sites handle a dotless id; every existing `workforce` test passes unchanged (BR-2) |
+| V2 | S2 | `check.mjs` run by hand as a spec gate (not wired into default vitest) still classifies every split, the IN sites now through `parseDeclaredSeatId`; parser specs on both id shapes; every existing `workforce` test passes unchanged (BR-2) |
 | V3 | S3 | `published-tree-surface` passes with the row removed (BR-7) |
 | V4 | S4 | Capability spec over a durable in-memory runtime: ask raised for fire, none for hire; Approve applies; Deny changes nothing; restart between ask and answer keeps the ask (BR-10 to BR-18). Off state: `askBefore` omitted behaves exactly as today |
 | V5 | S7 | The four `devforce-lab` checks and `it-waits-for-a-person-before-it-files` pass with the templates in the tree |
@@ -63,15 +63,16 @@ flowchart TD
 | Where | Name | Why pinned |
 |---|---|---|
 | `createSeatHireCapability` option | `askBefore: readonly ("hire" \| "fire")[]` | Public. FIX-1621 adds its verbs to the union |
-| Suspension `data` | `{ verb, seatId, kind }` | Inbox and FIX-1722 read it (BR-24) |
-| Template seat ids | `chief-of-staff`, `ops` | The screens find them (BR-23) |
+| Declared-seat id parser | `parseDeclaredSeatId` · exported beside `placeOfSeat` | The one teamless rule every IN reader uses (S2) |
+| Suspension `data` | `{ verb, seatId, kind }` | Inbox and FIX-1722 read it ([downstream reads](BUSINESS-RULES.md#appendix--downstream-reads-fix-17221723)) |
+| Template seat ids | `chief-of-staff`, `ops` | The screens find them |
 | Goal control | `deny-fire` | The spec's control |
 
 ## Guardrails
 
 | Rule | Because |
 |---|---|
-| Every id reader goes through the one teamless rule in S2; `check.mjs` stays green | An invariant loosened at one reader is found by review at the next (tenet 5) |
+| Every id reader goes through `parseDeclaredSeatId`; `check.mjs` stays green | An invariant loosened at one reader is found by review at the next (tenet 5) |
 | Nothing in `core` or `engine` changes; no CoS, Ops, project or org-seat type | ER-6, ER-10, ER-11 |
 | The ask is raised only for a change that would succeed, and re-checked on resume | A person approving a change that then fails is worse than no ask |
 | Org comes from the principal, never the request body | ER-7, BP-031 |
@@ -107,6 +108,16 @@ FAILS. It answers "which readers assume a team"; it does not change behaviour.
 - Check whether `createFlowState` refuses two flows with one key. If it overwrites, the DevTeam
   host refuses an org seat named like a channel kind.
 - The epic's closure control still reads "Deny the hire". The amendment recording Q2 changes it.
+
+## Notes from review
+
+From Cursor on #2613 (review 5384025389), for the implementer. The parser pin, the downstream
+appendix, the slimmer docs draft, `check.mjs` as a hand-run gate and the `walkWorkers` reuse are
+folded above.
+
+- "**PLAN S1–S2** are one logical 'org seat identity' change; merging surface IDs is bookkeeping only."
+- "**Goal (S8):** real-model + double restart is the right anti-game bar; expect slow/flaky automation unless capped — that is cost, not a reason to drop the goal."
+- "fold or shorten `EVOLUTION.md` if epic amendment already records Q2."
 
 ## Follow-ups
 
