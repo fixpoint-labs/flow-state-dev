@@ -151,7 +151,7 @@ defineFlow({
 });
 ```
 
-Sent `{ message }` on a run's own session, it writes the message into that session as a user item, keeps it in the manager's `turns` collection, stops a running attempt through `ctx.session.stopRequest`, parks the row for a turn and re-queues it without charging an attempt. Then it dispatches `drain` into the session that claimed the row, so the next attempt runs in the run's own session again, not one beneath it. That attempt resumes the same coding session with the message appended to its prompt, marked as the person's words. `defineFlow` refuses a flow that doesn't declare the entry. It answers `{ outcome: "continuing" | "kept", taskId }`:
+Sent `{ message }` on a run's own session, it writes the message into that session as a user item, keeps it in the manager's `turns` collection, stops a running attempt through `ctx.session.stopRequest`, parks the row for a turn and re-queues it without charging an attempt. Then it dispatches `drain` into the session that claimed the row, so the next attempt runs in the run's own session again, not one beneath it. That attempt resumes the same coding session with the message appended to its prompt, marked as the person's words. `defineFlow` refuses a flow that doesn't declare the entry. When another flow drains the board and hands rows to this one across flows, declare the entry on that flow and pass its instance id as `flowKind`. It answers `{ outcome: "continuing" | "kept", taskId }`:
 
 - **running** → `continuing`.
 - **running, but it didn't stop within the wait, or the row couldn't be re-queued or drained** → `kept`. The run gets the message from whatever runs the row next.
