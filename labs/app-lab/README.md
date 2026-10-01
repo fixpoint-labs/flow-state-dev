@@ -63,13 +63,13 @@ Open a task from Tasks or from a card on a board. The Session tab is that task's
 
 **Interrupt** stops the run (Esc does the same while the Session has focus). The screen says *interrupted* once the run has actually stopped. What happens to the task afterwards, whether it's retried or left, is up to the board, not App Lab.
 
-The panel on the right shows who is on it and when it started. If the harness records its plan and the files it touched, as Claude Code does, they're listed. Otherwise the panel says so. *Open trace* opens the devtool for the full detail. Tell App Lab where it runs:
+The panel on the right shows who is on it and when it started. If the harness records its plan and the files it touched, as Claude Code does, they're listed. Otherwise the panel says so. *Open trace* opens the run's session in the devtool, for the full detail. Tell App Lab where the devtool runs:
 
 ```bash
 pnpm --filter @flow-state-dev/app-lab start --config <your config> --devtool http://localhost:4000
 ```
 
-The run's session id sits beside the link. The devtool doesn't open a session from its address yet, so paste it there.
+The link adds `?session=<id>` to that address, and the devtool opens the session under the flow that owns it. That needs a devtool reading the same store as App Lab, as the same user. A Lab whose stores are in memory lives only in App Lab's process, so a devtool started separately, such as `fsdev dev` on the same config, has its own empty store and says it can't open the session. The session id also sits beside the link.
 
 ### Not there yet
 

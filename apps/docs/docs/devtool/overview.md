@@ -82,6 +82,12 @@ Selecting a different instance closes the session you had open. The two are one 
 
 The DevTool remembers the last session you had open under each copy and offers it back when you return, including after a reload. It checks with the server first — if that session no longer exists, is no longer yours, or belongs to a different copy, the workspace opens empty and waits for you to choose. It will never substitute another copy's session for the one you saved.
 
+### Opening a session from a link
+
+Add `?session=<id>` to the DevTool's address to open one session directly, for example `http://localhost:4200/?session=dsx_8f1c…`. A tool that knows which run you care about can link straight to it this way; App Lab's *Open trace* does.
+
+The DevTool reads the session, finds the flow copy that owns it, and opens both. If no listed copy owns it, it belongs to another user, or the server refuses the read, nothing opens and the header says why. The link only works against a DevTool that talks to the server holding that session, so a Lab with in-memory stores has to be served by the same process.
+
 ## Action dispatch
 
 Invoke actions directly from the DevTool. Select an action, paste or edit JSON input, and send. The response (request ID, status) appears immediately. Use this to trigger flows without wiring up a UI or writing curl commands.

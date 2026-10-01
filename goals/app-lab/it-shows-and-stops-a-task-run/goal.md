@@ -12,7 +12,7 @@
 - **items equal the run session's**: the Session's items equal, by id and in order, the task's items in the run session's stored state plus its request's stream, read through the flow the session records as its owner and filtered by core's `itemsForTask`. The store is read before and after the screen, so the screen must hold everything the first read held and nothing the second doesn't.
 - **live**: the next item the request stores for the task is drawn within 2 s, with no reload.
 - **the request reads aborted first**: after Interrupt, once the view reads `aborted`, the request record read through its own flow already reads `aborted`, and the view's word is *interrupted*. The row's run link is unchanged afterwards.
-- **inspector**: the worker equals the tree's member the row is assigned to. The start time equals the row's. The plan steps and file paths equal what the run recorded under its request id, or the inspector says the harness records none. The trace link is the `--devtool` address and names the run's session.
+- **inspector**: the worker equals the tree's member the row is assigned to. The start time equals the row's. The plan steps and file paths equal what the run recorded under its request id, or the inspector says the harness records none. The trace link is the `--devtool` address with `?session=` the run's session, and the session id is shown beside it.
 - **gaps**: Hand off, reassign and Open PR, the composer and *also post* are disabled. Each of them, the Diff and Checks tabs, the Brief's missing fields and acceptance, and the inspector's harness, acceptance and reviewer lines carry a gap line that names its owner or says *not planned in the first cut*.
 - **no run**: the unclaimed row says no run has started, and Interrupt is disabled.
 - **reach**: the page throws nothing.
@@ -46,3 +46,5 @@
 | 2026-09-30 | review round 2 | n/a | FAIL (control `optimistic-interrupt`, expected) | Only **the request reads aborted first**, on both held rows. |
 | 2026-09-30 | review round 2 | n/a | FAIL (control `worker-session`, expected) | **items equal the run session's** on all three rows (nothing drawn), and **live** on both held rows. |
 | 2026-09-30 | review round 2 | n/a | FAIL (control `board-flow`, expected) | Only the own-flow row: 404 through the drainer's flow, empty inspector, no Interrupt. |
+| 2026-10-01 | a25134ebd+wip (FIX-1691/1692) | n/a | FAIL (before-state, expected) | Inspector with the goal's new link check, TaskInspector as on main: **inspector** fails on all three rows, "the trace link is http://127.0.0.1:4000/, wanted …/?session=<the run's session>". |
+| 2026-10-01 | a25134ebd+wip (FIX-1691/1692) | n/a | PASS | The trace link is the `--devtool` address with `?session=` the run's session. Drainer's flow: 5 items, then aborted. Own flow: 9 items, then aborted. Finished: 4 items. `worker-session`, `optimistic-interrupt` and `board-flow` each FAIL at their named signal. |

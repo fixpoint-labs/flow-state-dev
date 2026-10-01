@@ -26,7 +26,8 @@
  *                 after Interrupt, the view reads *interrupted* only once the
  *                 request record, read through its own flow, is `aborted`
  *   inspector     worker, start time and recorded plan and files equal the
- *                 store's; the trace link carries the --devtool address
+ *                 store's; the trace link is the --devtool address opening
+ *                 the run's session
  *   gaps          Diff, Checks, Hand off, reassign, Open PR, the composer and
  *                 the inspector's unread values each carry a gap line naming
  *                 its owner, or saying it is not planned in the first cut
@@ -391,8 +392,11 @@ async function checkInspector({ page, api, tree, fail }: Ctx, row: Row): Promise
   await sectionAgrees(plan, "inspector-plan-step", "data-step-id", "inspector-plan-none", "plan");
   await sectionAgrees(files, "inspector-file", "data-path", "inspector-files-none", "file operations");
 
+  // The link opens the run's session in the devtool (`?session=<id>`), not the
+  // devtool's front page with the id left to paste.
   const href = await page.getByTestId("inspector-trace-link").getAttribute("href").catch(() => null);
-  if (href !== DEVTOOL) fail("inspector", `the trace link is ${href}, started with --devtool ${DEVTOOL}`);
+  const wanted = `${DEVTOOL}?session=${encodeURIComponent(row.run!.sessionId)}`;
+  if (href !== wanted) fail("inspector", `the trace link is ${href}, wanted ${wanted} (--devtool ${DEVTOOL} plus the run's session)`);
   const traced = await page.getByTestId("inspector-trace-session").textContent().catch(() => null);
   if (traced !== row.run!.sessionId) fail("inspector", `the trace names session ${traced}, the run's is ${row.run!.sessionId}`);
 }

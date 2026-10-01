@@ -356,7 +356,10 @@ describe("the inspector (BR-18 to BR-23)", () => {
     const files = await within(inspector).findAllByTestId("inspector-file", {}, { timeout: 10_000 });
     expect(files.map((f) => [f.getAttribute("data-path"), f.getAttribute("data-kind")])).toEqual([["notes/audit.md", "created"]]);
     expect(within(inspector).getAllByTestId("inspector-plan-step").map((s) => s.getAttribute("data-status"))).toEqual(["completed", "in_progress"]);
-    expect(within(inspector).getByTestId("inspector-trace-link").getAttribute("href")).toBe("http://127.0.0.1:4000");
+    // The link opens this run's session in the devtool: no paste step (FIX-1691).
+    expect(within(inspector).getByTestId("inspector-trace-link").getAttribute("href")).toBe(
+      `http://127.0.0.1:4000/?session=${encodeURIComponent(row.run!.sessionId)}`,
+    );
     expect(within(inspector).getByTestId("inspector-trace-session").textContent).toBe(row.run!.sessionId);
   }, 30_000);
 

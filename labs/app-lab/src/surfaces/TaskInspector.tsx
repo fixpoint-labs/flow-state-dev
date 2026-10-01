@@ -4,10 +4,12 @@
  * Worker and team from the seat inventory, started from the row, the plan and
  * files the run recorded under its own request (read once per open, no
  * stream), the rows it waits on and the rows waiting on it from the same board
- * read, and a link to the devtool the page was started with. Harness, tokens,
+ * read, and a link that opens the run's session in the devtool the page was
+ * started with. Harness, tokens,
  * cost, acceptance and *review by* are named gaps from the gap registry.
  */
 import { useEffect, useState, type ReactNode } from "react";
+import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
 import { rosterOf, seatFor, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
@@ -186,7 +188,7 @@ function Recorded({ run, gaps }: { run: OpenRun; gaps: Gaps }) {
   );
 }
 
-/** The devtool link, with the run's session id beside it (BR-23). */
+/** The devtool link, opening the run's session, with its id beside it (BR-23). */
 function Trace() {
   const task = useTask();
   const sessionId = task.run.kind === "open" ? task.run.run.sessionId : task.row?.run?.sessionId;
@@ -199,14 +201,26 @@ function Trace() {
   }
   return (
     <div className="text-xs">
-      <a href={task.devtoolUrl} target="_blank" rel="noreferrer" className="font-medium underline" data-testid="inspector-trace-link">
+      <a href={traceHref(task.devtoolUrl, sessionId)} target="_blank" rel="noreferrer" className="font-medium underline" data-testid="inspector-trace-link">
         Open trace
       </a>
       {sessionId === undefined ? null : (
         <p className="mt-1 text-muted-foreground">
-          Session <code data-testid="inspector-trace-session">{sessionId}</code>. Paste it into the devtool to find the run.
+          Session <code data-testid="inspector-trace-session">{sessionId}</code>
         </p>
       )}
     </div>
   );
+}
+
+/**
+ * The devtool address that opens the run's session: `?session=<id>`, which the
+ * devtool follows to the session and the flow that owns it. With no run yet,
+ * the devtool itself.
+ */
+function traceHref(devtoolUrl: string, sessionId: string | undefined): string {
+  if (sessionId === undefined) return devtoolUrl;
+  const url = new URL(devtoolUrl);
+  url.searchParams.set(SESSION_ADDRESS_PARAM, sessionId);
+  return url.toString();
 }

@@ -166,3 +166,4 @@ own verdict log, which re-proves BR-10 and BR-17. **Re-run on `origin/main` at `
 2026-09-24: PASS**, all legs green, including *"an org-less read is refused at the transport door
 while the same read with an org lands"*. The paragraph above is kept as history.
 | 2026-09-30 | a1b122eb1 | n/a | PASS | Local leg. Row read back in a fresh process from the organization's storage under the channel's board id; the transcript count reads channel-post items. The published branch carries `eng.feature.work`. |
+| 2026-10-01 | a25134ebd+wip (FIX-1691/1692) | Claude Code (Agent SDK) | PASS | Local leg. 19 lab TypeScript files classified, `harness.mts` among them. |

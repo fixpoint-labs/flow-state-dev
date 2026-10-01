@@ -101,6 +101,18 @@ function mintId(kind: string): string {
   return `item_${kind}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+/**
+ * The task this run works, from the runtime's `ctx._blockIdentity`, as the
+ * `taskId` every item carries. It is what puts an item in the task's own view,
+ * so a run inside a board's task entry (as `harnessManager` runs it) shows its
+ * steps on that task. Outside a task scope the key is omitted, not `undefined`.
+ * The same rule as `@flow-state-dev/codex` and `@flow-state-dev/cursor`.
+ */
+function taskScope(ctx: BlockContext): { taskId?: string } {
+  const taskId = (ctx as { _blockIdentity?: { taskId?: string } })._blockIdentity?.taskId;
+  return taskId === undefined ? {} : { taskId };
+}
+
 /** Build the per-item base fields, reading a fresh `itemIndex` each call. */
 function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) {
   return {
@@ -109,6 +121,7 @@ function buildBase(ctx: BlockContext, provenance: EmitProvenance, kind: string) 
     itemIndex: ctx.response.getItemCount(),
     provenance,
     ts: Date.now(),
+    ...taskScope(ctx),
   };
 }
 
@@ -256,6 +269,7 @@ async function closeStreamingMessage(
       itemIndex: ctx.response.getItemCount(),
       provenance: deriveProvenance(ctx, blockName),
       ts: Date.now(),
+      ...taskScope(ctx),
       itemVisibility: CONVERSATIONAL_VISIBILITY,
       ...(ownedBy ? { ownedBy } : {}),
       content: [{ type: "output_text", text }],
@@ -368,6 +382,7 @@ async function closeStreamingReasoning(
       itemIndex: ctx.response.getItemCount(),
       provenance: deriveProvenance(ctx, blockName),
       ts: Date.now(),
+      ...taskScope(ctx),
       itemVisibility: CONVERSATIONAL_VISIBILITY,
       ...(ownedBy ? { ownedBy } : {}),
       summary: [{ type: "reasoning_text", text }],
@@ -478,6 +493,7 @@ async function emitToolResult(
     itemIndex: ctx.response.getItemCount(),
     provenance,
     ts: Date.now(),
+    ...taskScope(ctx),
     blockName: toolName,
     output: event.output,
     toolCall: {
@@ -546,6 +562,7 @@ async function emitSubagentClose(
       itemIndex: ctx.response.getItemCount(),
       provenance: { ...deriveProvenance(ctx, blockName), blockInstanceId: open.instanceId },
       ts: Date.now(),
+      ...taskScope(ctx),
       blockName: open.name,
       label: open.label,
       startedAt: open.startedAt,
@@ -598,6 +615,7 @@ export async function finalizeOpenItems(
         itemIndex: ctx.response.getItemCount(),
         provenance: deriveProvenance(ctx, blockName),
         ts: Date.now(),
+        ...taskScope(ctx),
         blockName: open.name,
         output: null,
         toolCall: {
@@ -624,6 +642,7 @@ export async function finalizeOpenItems(
         itemIndex: ctx.response.getItemCount(),
         provenance: { ...deriveProvenance(ctx, blockName), blockInstanceId: open.instanceId },
         ts: Date.now(),
+        ...taskScope(ctx),
         blockName: open.name,
         label: open.label,
         startedAt: open.startedAt,

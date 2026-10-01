@@ -11,15 +11,19 @@ import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { createLabClients } from "../src/lib/connection";
-import { createLabReader } from "../src/lib/reads";
+import { createLabReader, type BoardRow } from "../src/lib/reads";
 import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
-import { serveLab, type ServedLab } from "./helpers/serve-lab";
+import type { OutputItem } from "@flow-state-dev/core/items";
+import { followRequest, readSessionItems, resolveRunFlow, taskItems } from "../src/lib/run";
+import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 
 type Opened = { lab: ServedLab; roster: DeclaredRoster; snapshot: LoadedSnapshot };
 
-async function open(configPath: string, treePath: string): Promise<Opened> {
+type OpenedWithClients = Opened & { clients: ReturnType<typeof createLabClients> };
+
+async function open(configPath: string, treePath: string): Promise<OpenedWithClients> {
   const loaded = await loadFsdevConfig({ cwd: repo, configPath });
   if (loaded === undefined) throw new Error(`no config at ${configPath}`);
   const lab = await serveLab(loaded.flowState);
@@ -31,7 +35,7 @@ async function open(configPath: string, treePath: string): Promise<Opened> {
   });
   const snapshot = await createLabReader(clients).read();
   if (snapshot.refused !== undefined) throw new Error(`refused: ${snapshot.refused.message}`);
-  return { lab, roster: await readDeclaredRoster(`${repo}/${treePath}`), snapshot };
+  return { lab, clients, roster: await readDeclaredRoster(`${repo}/${treePath}`), snapshot };
 }
 
 /** TEAMS, as the tree declares it: each team's seat ids. */
@@ -88,4 +92,70 @@ describe.each([
       for (const row of boards.value.rows) expect(attached).toContain(row.boardRef);
     }
   });
+});
+
+// Approve & run on the DevForce tree, the way App Lab does it (FIX-1692). The
+// Lab's own config is loaded as the start script loads it, the waiting ask is
+// answered through App Lab's one answer path, and the row and its run are read
+// through the reads the task screen uses. Before the fix the config's harness
+// could never finish the phase: the run recorded no step and the row went back
+// to pending with nothing left to run it.
+describe("devforce-lab: an approved task's run", () => {
+  let opened: OpenedWithClients;
+  beforeAll(async () => {
+    opened = await open("goals/devforce-lab/lab/fsdev.config.mts", "goals/devforce-lab/lab/workforce");
+  }, 120_000);
+  afterAll(async () => opened?.lab.handle.close());
+
+  it("shows its steps while it runs, and settles the row the Tasks list and the task screen both read", async () => {
+    const { snapshot, clients } = opened;
+    const reader = createLabReader(clients);
+    if (!snapshot.asks.ok) throw new Error(snapshot.asks.failure.message);
+    const ask = snapshot.asks.value.find((a) => a.kind === "approval");
+    if (ask === undefined) throw new Error("the Lab raised no approval to answer");
+
+    await reader.resume(ask, { action: "approve" });
+
+    // Live: while the row is still running, the run's request stream (what the
+    // Session tab follows) delivers its steps, stamped with this task.
+    const running = await eventually<BoardRow>(async () => {
+      const next = await reader.read();
+      if (next.refused !== undefined) throw new Error(next.refused.message);
+      const row = Object.values(next.boards).flatMap((b) => (b.ok ? b.value.rows : []))[0];
+      return row?.status === "in_progress" && row.run !== null ? row : undefined;
+    }, "the approved row to start", 30_000);
+    const flowId = await resolveRunFlow(clients, running.run!.sessionId);
+    const streamed: OutputItem[] = [];
+    let rowStatusAtFirstStep: string | undefined;
+    const follower = followRequest(clients, { flowId, requestId: running.run!.requestId }, {
+      onItem: (item) => {
+        streamed.push(item);
+        if (rowStatusAtFirstStep === undefined && taskItems(streamed, running.boardRef, running.id).items.length > 0) {
+          void reader.readBoard(running.channelId, running.boardRef).then((rows) => {
+            rowStatusAtFirstStep ??= rows.find((r) => r.id === running.id)?.status;
+          });
+        }
+      },
+      onStatus: () => {},
+      onError: () => {},
+    });
+
+    let last: BoardRow | undefined;
+    const settled = await eventually<BoardRow>(async () => {
+      const next = await reader.read();
+      if (next.refused !== undefined) throw new Error(next.refused.message);
+      last = Object.values(next.boards).flatMap((b) => (b.ok ? b.value.rows : []))[0];
+      return last !== undefined && last.status !== "pending" && last.status !== "in_progress" ? last : undefined;
+    }, "the approved row to settle", 45_000).catch((error: Error) => {
+      throw new Error(`${error.message}; last read ${last?.status ?? "no row"}: ${last?.error ?? ""}`);
+    });
+
+    follower.close();
+    expect(taskItems(streamed, running.boardRef, running.id).items.length).toBeGreaterThan(0);
+    expect(rowStatusAtFirstStep).toBe("in_progress");
+    expect(settled.status).toBe("completed");
+    expect(settled.run).not.toBeNull();
+    const { items } = await readSessionItems(clients, settled.run!.sessionId);
+    expect(taskItems(items, settled.boardRef, settled.id).items.length).toBeGreaterThan(0);
+  }, 90_000);
 });

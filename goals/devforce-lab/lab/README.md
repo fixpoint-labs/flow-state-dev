@@ -76,8 +76,8 @@ no opinion at that spot — not because a convention is missing.
 | the bare clone in `scratch-repo.mts` | Where an artifact has to survive to is the lab's question, not the framework's. A temp-directory repository plus a bare repository at a declared path the work is published to keeps the check re-runnable with no credential while still giving the artifact an address that outlives the process. |
 | `acceptance-check.mjs`, with `acceptance.mts` | The requester's half of the brief. It names the module, the export and the behaviour, and is spawned from here against the produced tree — never copied into a checkout, because a check the run can reach is a check the run can satisfy by rewriting it. |
 
-`harness-stub.mts`, `phase.mts` and `seat-config.mts` are supporting parts of
-those.
+`harness-stub.mts`, `harness.mts`, `phase.mts` and `seat-config.mts` are
+supporting parts of those.
 
 ## What it works around
 
@@ -132,6 +132,24 @@ const lab = await openLab({
 // The EM's session now holds one pending approval. Answer it through
 // POST /<em-seat>/requests/<requestId>/resume with "approve" or "reject".
 ```
+
+## Serving it
+
+`fsdev.config.mts` serves the lab, for App Lab or `fsdev dev`. `DEVFORCE_LAB_HARNESS` picks
+what runs an approved row (`harness.mts`):
+
+| Value | What runs |
+|---|---|
+| unset or `stub` | The scripted run, no model. It says what it's doing in the run's session and commits one file, so the row settles `completed`. |
+| `claude-code` | Claude Code through its Agent SDK, set up as the honesty check sets it up. Needs a signed-in SDK or an Anthropic key. Nothing falls back to the stub. |
+
+```bash
+DEVFORCE_LAB_HARNESS=claude-code pnpm --filter @flow-state-dev/app-lab start \
+  --config goals/devforce-lab/lab/fsdev.config.mts
+```
+
+A row the run leaves unfinished goes back to `pending` with its reason, and waits for the next
+drain of the EM's board. Nothing in the served lab drains it again on its own.
 
 ## What the gate found
 

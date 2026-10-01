@@ -65,6 +65,7 @@ The panel fills its container — give it a parent with explicit height (the lay
 | `autoRecoverInterrupted` | `boolean` | `false` | When `true`, sweeps interrupted requests on mount. The standalone shell sets this; embedded mounts default off so the panel doesn't mutate request state in the host app. |
 | `userIdControl` | `"host" \| "internal"` | `"internal"` | `"host"` hides the SettingsSheet user-id editor. Use `"host"` whenever the host app supplies `userId`. |
 | `className` | `string` | — | Extra class on the panel root. |
+| `openSessionId` | `string` | — | A session to open on mount, under the flow copy that owns it. The standalone shell passes the page's `?session=<id>`, which `readSessionAddress()` reads. |
 
 ## CSS
 

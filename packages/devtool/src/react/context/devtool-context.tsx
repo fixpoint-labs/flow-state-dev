@@ -36,6 +36,7 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import type { Client, FlowListEntry, RecoveryClient, ResourceClient, SessionClient } from "@flow-state-dev/client";
@@ -46,7 +47,7 @@ import {
   createDevToolSessionClient,
   type DevToolConfig,
 } from "../lib/client";
-import { isConclusiveRefusal, recordBelongsTo } from "../lib/instance-ownership";
+import { describeReadError, isConclusiveRefusal, recordBelongsTo } from "../lib/instance-ownership";
 import {
   clearLegacySingletonSessionHint,
   readLegacySingletonSessionHint,
@@ -72,6 +73,8 @@ type DevToolState = {
   /** Bumped on every workspace transition; see the header. */
   workspaceToken: number;
   flows: FlowListEntry[];
+  /** True once the catalog has been read at least once, empty or not. */
+  flowsLoaded: boolean;
   flowsLoading: boolean;
   flowsError: string | null;
 };
@@ -164,7 +167,7 @@ function reducer(state: DevToolState, action: Action): DevToolState {
         workspaceToken: state.workspaceToken + 1,
       };
     case "SET_FLOWS": {
-      const next = { ...state, flows: action.flows, flowsLoading: false, flowsError: null };
+      const next = { ...state, flows: action.flows, flowsLoaded: true, flowsLoading: false, flowsError: null };
       if (state.activeFlowId === null) return next;
       // The selected copy is gone from the catalog. There is no same-kind peer
       // to fall back to — a peer is a different instance with different work —
@@ -206,6 +209,12 @@ type DevToolContextValue = DevToolState & {
   selectSession: (sessionId: string | null) => void;
   /** Move instance and session together — following a child into its owner. */
   selectWorkspace: (flowId: string, sessionId: string) => void;
+  /**
+   * Why the session named by `openSessionId` was not opened, or `null`. Set
+   * only when the address could not be followed; the panel says so rather than
+   * opening on nothing.
+   */
+  sessionAddressError: string | null;
 };
 
 const DevToolContext = createContext<DevToolContextValue | null>(null);
@@ -218,6 +227,7 @@ function createInitialState(initialConfig: DevToolConfig, baseUrl: string | unde
     activeSessionId: null,
     workspaceToken: 0,
     flows: [],
+    flowsLoaded: false,
     flowsLoading: false,
     flowsError: null,
   };
@@ -232,6 +242,13 @@ export type DevToolProviderProps = {
   autoRecoverInterrupted?: boolean;
   /** When "host", SettingsSheet hides the userId field. Default "internal". */
   userIdControl?: UserIdControl;
+  /**
+   * A session to open once the catalog loads — a link to one run, such as the
+   * standalone shell's `?session=<id>`. The panel reads the session, finds the
+   * instance that owns it, and opens both together. Nothing is opened on the
+   * strength of the id alone.
+   */
+  openSessionId?: string;
   children: ReactNode;
 };
 
@@ -240,11 +257,13 @@ export function DevToolProvider({
   baseUrl,
   autoRecoverInterrupted = false,
   userIdControl = "internal",
+  openSessionId,
   children,
 }: DevToolProviderProps) {
   const [state, dispatch] = useReducer(reducer, null, () =>
     createInitialState(initialConfig, baseUrl),
   );
+  const [sessionAddressError, setSessionAddressError] = useState<string | null>(null);
 
   const activeFlow = useMemo(
     () => state.flows.find((flow) => flow.id === state.activeFlowId),
@@ -390,6 +409,51 @@ export function DevToolProvider({
     state.workspaceToken,
   ]);
 
+  // Open the session a link named (`openSessionId`), once the catalog is in.
+  //
+  // The same rule as the restore above: the id is only an address. The session
+  // is read, the instance that owns it is found by the one ownership predicate,
+  // and only then do instance and session move together. A session nobody in
+  // the catalog owns, or one the server refuses, opens nothing and says why.
+  //
+  // Tried once per (address, user): an operator who then picks another session
+  // is not dragged back to the link.
+  const addressAttemptRef = useRef<string | null>(null);
+  const workspaceTokenRef = useRef(state.workspaceToken);
+  workspaceTokenRef.current = state.workspaceToken;
+  useEffect(() => {
+    if (openSessionId === undefined || openSessionId.length === 0 || !state.flowsLoaded) return;
+    const attempt = `${openSessionId}\0${state.config.userId}`;
+    if (addressAttemptRef.current === attempt) return;
+    addressAttemptRef.current = attempt;
+    const startedAt = state.workspaceToken;
+    const { flows, sessionClient } = state;
+    const userId = state.config.userId;
+    void (async () => {
+      let error: string | null = null;
+      let owner: FlowListEntry | undefined;
+      try {
+        const detail = await sessionClient.getSession(openSessionId);
+        owner = detail.userId === userId ? flows.find((flow) => recordBelongsTo(detail, flow)) : undefined;
+        if (owner === undefined) {
+          error = `Session ${openSessionId} belongs to no flow this DevTool lists for ${userId}.`;
+        }
+      } catch (err) {
+        error = `Session ${openSessionId} could not be opened: ${describeReadError(err, "the read failed.")}`;
+      }
+      // The operator moved while the read was in flight; the link is theirs to
+      // follow again, not ours to force.
+      if (workspaceTokenRef.current !== startedAt) return;
+      if (owner === undefined) {
+        setSessionAddressError(error);
+        return;
+      }
+      setSessionAddressError(null);
+      writeSessionHint({ baseUrl, userId, flowId: owner.id }, openSessionId);
+      dispatch({ type: "SELECT_WORKSPACE", flowId: owner.id, sessionId: openSessionId });
+    })();
+  }, [openSessionId, baseUrl, state]);
+
   // Propagate EXTERNAL config changes (a new `initialConfig`/`baseUrl` prop from
   // the standalone shell's focus re-read or a host swapping identity/token) into
   // state. `initialConfig` is memoized by the parent on `[userId, bearerToken]`,
@@ -441,6 +505,7 @@ export function DevToolProvider({
       selectInstance,
       selectSession,
       selectWorkspace,
+      sessionAddressError,
     }),
     [
       state,
@@ -454,6 +519,7 @@ export function DevToolProvider({
       selectInstance,
       selectSession,
       selectWorkspace,
+      sessionAddressError,
     ],
   );
 

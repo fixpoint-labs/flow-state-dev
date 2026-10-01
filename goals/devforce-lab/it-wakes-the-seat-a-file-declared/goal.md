@@ -96,3 +96,4 @@ one in the code that pays it.
 | 2026-09-22 | c76ac5969 | n/a | PASS | Option 1 (FIX-1515): lab host wires a fail-closed verified principal. Org-less HTTP read is 401 with "verified organization"; same read with an org lands. All seven legs green; all five controls red, each on clauses traceable to its one perturbation. |
 | 2026-09-17 | 4d7a5749f | n/a | PASS | All seven legs green; all five controls red, each on clauses traceable to its one perturbation. |
 | 2026-09-30 | a1b122eb1 | n/a | PASS | Rows now on the feature channel's board. All five controls fail at their named legs. |
+| 2026-10-01 | a25134ebd+wip (FIX-1691/1692) | n/a | PASS | After the stub took optional narrated steps (unused here). All five controls FAIL. |
