@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createResourceBackedTaskCollection,
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   ticketForClaim,
   type Task,
   type TaskCollectionRef,
@@ -33,9 +33,9 @@ async function sequencerBacking(): Promise<Backing> {
   let clock = 1000;
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
   return {
-    collection: createSequencerBackedTaskCollection({
+    collection: createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer,
+      state: sequencer,
       onChange: createCapturedChanges().onChange,
       now: () => clock,
     }),
