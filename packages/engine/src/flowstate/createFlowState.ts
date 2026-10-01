@@ -1154,6 +1154,7 @@ class InternalFlowState<TSettings extends object>
       adapters: this.#options.adapters,
       resolvePrincipal: this.#options.resolvePrincipal,
       debugEndpointsEnabled: this.#options.debugEndpointsEnabled,
+      debugAllowAnonymousLocal: this.#options.debugAllowAnonymousLocal,
       staleSweepIntervalMs: this.#options.staleSweepIntervalMs,
       staleSweepThresholdMs: this.#options.staleSweepThresholdMs,
       queuedGraceMs: this.#options.queuedGraceMs,

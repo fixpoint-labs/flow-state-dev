@@ -146,7 +146,9 @@ async function setupCtx(opts: {
     await stores.resourceState.set("session", sessionId, key, state as JsonObject, "any");
   }
   const debug = resolveDebugConfig(
-    opts.debugConfig ?? { debugEndpointsEnabled: true }
+    // Non-gate tests issue headerless requests, so they opt into anonymous
+    // access explicitly; the gate tests pass their own config.
+    opts.debugConfig ?? { debugEndpointsEnabled: true, debugAllowAnonymousLocal: true }
   );
   return { registry, stores, sessionId, debug };
 }
@@ -169,9 +171,12 @@ const BASE = "http://localhost/api/flows/sessions/sess_1/debug/resources";
 
 describe("assertDebugAllowed (gate)", () => {
   const ORIG = process.env.FSDEV_DEBUG_ENDPOINTS;
+  const ORIG_ANON = process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL;
   afterEach(() => {
     if (ORIG === undefined) delete process.env.FSDEV_DEBUG_ENDPOINTS;
     else process.env.FSDEV_DEBUG_ENDPOINTS = ORIG;
+    if (ORIG_ANON === undefined) delete process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL;
+    else process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL = ORIG_ANON;
   });
 
   it("403s with debug_endpoints_disabled when enabled=false", async () => {
@@ -208,14 +213,77 @@ describe("assertDebugAllowed (gate)", () => {
     expect(body.origin).toBe("https://evil.example");
   });
 
-  it("permits anonymous (no Origin) when allowAnonymousLocal is default-true", async () => {
-    const ctx = await setupCtx();
+  // A headerless request (curl, a server-side fetch) carries no proof of where
+  // it came from, so an enabled debug surface must not hand it the full server
+  // state unless the operator opted in. Default is closed.
+  it("403s anonymous (no Origin) by default — anonymous access is opt-in", async () => {
+    delete process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL;
+    const ctx = await setupCtx({ debugConfig: { debugEndpointsEnabled: true } });
+    const res = await handleDebugListResources(
+      makeReq(BASE),
+      { kind: "debug_list_resources", sessionId: ctx.sessionId },
+      ctx
+    );
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: "debug_endpoints_origin_rejected",
+      origin: null
+    });
+  });
+
+  it("permits anonymous (no Origin) when the router opts in explicitly", async () => {
+    delete process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL;
+    const ctx = await setupCtx({
+      debugConfig: {
+        debugEndpointsEnabled: true,
+        debugAllowAnonymousLocal: true
+      }
+    });
     const res = await handleDebugListResources(
       makeReq(BASE),
       { kind: "debug_list_resources", sessionId: ctx.sessionId },
       ctx
     );
     expect(res.status).toBe(200);
+  });
+
+  // `fsdev dev` opts in through this env flag (it binds 127.0.0.1 and its
+  // same-origin DevTool GETs carry no Origin header).
+  it("permits anonymous when FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL=1 and the option is unset", () => {
+    process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL = "1";
+    const cfg = resolveDebugConfig({ debugEndpointsEnabled: true });
+    expect(cfg.allowAnonymousLocal).toBe(true);
+    expect(assertDebugAllowed(new Request("http://localhost/x"), cfg)).toBeNull();
+  });
+
+  it("explicit debugAllowAnonymousLocal: false beats the env opt-in", () => {
+    process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL = "1";
+    const cfg = resolveDebugConfig({
+      debugEndpointsEnabled: true,
+      debugAllowAnonymousLocal: false
+    });
+    expect(cfg.allowAnonymousLocal).toBe(false);
+    expect(assertDebugAllowed(new Request("http://localhost/x"), cfg)?.status).toBe(403);
+  });
+
+  it("only the literal \"1\" opts in through the env flag", () => {
+    process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL = "true";
+    expect(resolveDebugConfig({ debugEndpointsEnabled: true }).allowAnonymousLocal).toBe(false);
+  });
+
+  it("anonymous opt-in does not widen the Origin gate for off-host browsers", async () => {
+    const ctx = await setupCtx({
+      debugConfig: {
+        debugEndpointsEnabled: true,
+        debugAllowAnonymousLocal: true
+      }
+    });
+    const res = await handleDebugListResources(
+      makeReq(BASE, { headers: { origin: "https://evil.example" } }),
+      { kind: "debug_list_resources", sessionId: ctx.sessionId },
+      ctx
+    );
+    expect(res.status).toBe(403);
   });
 
   it("403s anonymous (no Origin) when allowAnonymousLocal is false", async () => {
@@ -241,7 +309,10 @@ describe("assertDebugAllowed (gate)", () => {
     process.env.FSDEV_DEBUG_ENDPOINTS = "1";
     const cfg = resolveDebugConfig({});
     expect(cfg.enabled).toBe(true);
-    const denied = assertDebugAllowed(new Request("http://localhost/x"), cfg);
+    const denied = assertDebugAllowed(
+      new Request("http://localhost/x", { headers: { origin: "http://localhost:3000" } }),
+      cfg
+    );
     expect(denied).toBeNull();
   });
 
@@ -363,7 +434,7 @@ describe("handleDebugListResources", () => {
         "memos/d": { title: "D", body: "" },
         "memos/e": { title: "E", body: "" }
       },
-      debugConfig: { debugEndpointsEnabled: true, debugCountLimit: 3 }
+      debugConfig: { debugEndpointsEnabled: true, debugAllowAnonymousLocal: true, debugCountLimit: 3 }
     });
     const res = await handleDebugListResources(
       makeReq(BASE),

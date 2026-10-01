@@ -209,6 +209,9 @@ const flowstate = createFlowState({
   // Enable the gated debug endpoints (incl. the DevTool Suspensions list) for
   // local dev only. Deployed (DB present) stays fail-closed / env-gated.
   debugEndpointsEnabled: databaseUrl ? undefined : true,
+  // The embedded DevTool at /devtool reads them with same-origin GETs, which
+  // carry no Origin header; admit those locally too. Deployed stays closed.
+  debugAllowAnonymousLocal: databaseUrl ? undefined : true,
   // FSD_BULLMQ_DISPATCH=1 routes all action dispatches through the BullMQ
   // queue instead of running in-process. Requires REDIS_URL. The adapter
   // wires the dispatcher and the co-located worker against the same resolved
