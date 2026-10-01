@@ -332,3 +332,50 @@ describe("Jump to a declared document (BR-10)", () => {
     expect(within(view).queryAllByRole("button")).toEqual([]);
   });
 });
+
+describe("Jump to from the keyboard", () => {
+  it("arrow keys move the highlight through the results, and Enter goes to the highlighted one", async () => {
+    await openApp("/inbox");
+    const jump = await screen.findByTestId("jump-to");
+    act(() => fireEvent.click(jump));
+    const input = screen.getByTestId("jump-input");
+    const results = await screen.findAllByTestId("jump-result");
+    expect(results.length).toBeGreaterThan(2);
+    const active = () => screen.getAllByTestId("jump-result").findIndex((r) => r.getAttribute("aria-selected") === "true");
+    expect(active()).toBe(0);
+
+    act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
+    act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
+    expect(active()).toBe(2);
+    act(() => fireEvent.keyDown(input, { key: "ArrowUp" }));
+    expect(active()).toBe(1);
+    // The ends hold: Up from the first stays on the first, Down from the last stays on the last.
+    act(() => fireEvent.keyDown(input, { key: "ArrowUp" }));
+    act(() => fireEvent.keyDown(input, { key: "ArrowUp" }));
+    expect(active()).toBe(0);
+    for (let i = 0; i < results.length + 2; i++) act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
+    expect(active()).toBe(results.length - 1);
+
+    // Typing starts the highlight over on the first match.
+    act(() => fireEvent.change(input, { target: { value: "o" } }));
+    expect(active()).toBe(0);
+    act(() => fireEvent.change(input, { target: { value: "" } }));
+
+    // Enter opens the highlighted result, not the first one: the ask Lab's
+    // first two results are its workstreams, ops.desk then ops.side.
+    act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
+    expect(screen.getAllByTestId("jump-result")[1]!.textContent).toMatch(/^ops\.side/);
+    act(() => fireEvent.keyDown(input, { key: "Enter" }));
+    expect(screen.queryByTestId("jump-dialog")).toBeNull();
+    expect(window.location.pathname).toBe("/w/ops.side/stream");
+  });
+
+  it("the pointer highlights the result it is over", async () => {
+    await openApp("/inbox");
+    const jump = await screen.findByTestId("jump-to");
+    act(() => fireEvent.click(jump));
+    const results = await screen.findAllByTestId("jump-result");
+    act(() => fireEvent.mouseMove(results[2]!));
+    expect(results.map((r) => r.getAttribute("aria-selected"))).toEqual(results.map((_, i) => String(i === 2)));
+  });
+});
