@@ -125,8 +125,8 @@ describe("task attribution", () => {
 //
 // The owner rules follow the Container Ownership contract
 // (`docs/architecture/streaming.md`): an item inside a sub-agent carries the
-// sub-agent's container as its owner whatever the runtime says. What a
-// top-level item and the sub-agent box itself carry is pinned below.
+// sub-agent's container as its owner whatever the runtime says; a top-level
+// item and the sub-agent box itself carry the runtime's owner.
 describe("scope characterization", () => {
   const BLOCK = "claude-code-agent";
   const SUBAGENT_OWNER = "bi_1:subagent:s1";
@@ -142,14 +142,14 @@ describe("scope characterization", () => {
     ["empty-string task", { taskId: "" }],
   ];
 
-  /** The owner a top-level item carries. Today: none, whatever the runtime says. */
-  function topLevelOwner(_identity: Identity): string | undefined {
-    return undefined;
+  /** The owner a top-level item carries: the runtime's. */
+  function topLevelOwner(identity: Identity): string | undefined {
+    return identity.ownedBy;
   }
 
-  /** The owner a sub-agent container item carries. Today: none, whatever the runtime says. */
-  function containerOwner(_identity: Identity): string | undefined {
-    return undefined;
+  /** The owner a sub-agent container item carries: the runtime's, as a nested container's own item does. */
+  function containerOwner(identity: Identity): string | undefined {
+    return identity.ownedBy;
   }
 
   function expectedScope(where: Where, identity: Identity): Record<string, string> {
