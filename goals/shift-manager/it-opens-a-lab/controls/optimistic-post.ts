@@ -25,7 +25,7 @@ import {
 } from "../../../../labs/shift-manager/src/lib/transcript.ts";
 
 export * from "../../../../labs/shift-manager/src/lib/transcript.ts";
-export { TurnNotDelivered, type TurnTarget } from "../../../../labs/shift-manager/src/lib/send.ts";
+export * from "../../../../labs/shift-manager/src/lib/send.ts";
 
 const drawn = new Map<string, ChannelTranscriptLine[]>();
 
