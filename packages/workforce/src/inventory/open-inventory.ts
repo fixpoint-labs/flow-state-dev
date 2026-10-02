@@ -218,10 +218,12 @@ function messageOf(error: unknown): string {
  * to register in, and the failure is named rather than silent. The seat half
  * does not care about the order.
  *
- * Re-running over an unchanged roster is a no-op: every write is an upsert
- * keyed by the record's own id, so nothing duplicates and nothing appends. A
- * channel that has been open since an earlier boot keeps its original
- * `openedAt`.
+ * Re-running over an unchanged roster is a no-op: every write is keyed by the
+ * record's own id, so nothing duplicates and nothing appends. A channel that
+ * has been open since an earlier boot keeps its original `openedAt`. A seat
+ * row is written only where the boot may still write it (no row when read, or
+ * a stored row of the same seat), so a boot whose roster is older than the
+ * store never replaces a runtime hire's row.
  *
  * @param roster  The hired seats and the opened channel records.
  * @param options `run`: the action door. `seatWriter`: the flow the seat rows

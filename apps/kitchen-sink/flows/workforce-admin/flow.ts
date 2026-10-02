@@ -269,6 +269,8 @@ const fire = handler({
       roster: rosterOf(ctx),
       privateRoster: privateRosterOf(ctx),
       userId,
+      // A retry after a fire that died past the caller's own row stays theirs.
+      leftoverAt: { orgId, inventory: inventoryOf(ctx) },
     });
     // A user-owned row answers on `<org>.~<user>.<seat>`. A legacy flat row,
     // and a file-declared seat, stay on `<org>.<seat>`.

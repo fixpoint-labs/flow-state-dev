@@ -1587,7 +1587,7 @@ gone but whose inventory row is left (a crash between the two deletes), it remov
 when the row says `hired: true` and returns `released: false` with `alreadyGone: true`; a row
 that doesn't say so is left, and the call refused as for a seat never hired. A roster row that can't be read is deleted by its key and nothing else is
 touched (`address: null`). After `fire`, `discover` withholds the seat. `removeHiredSeat` is
-this removal on its own, for an app whose fire is its own handler, and `resolveHiredSeatLocation({ seatId, owner?, roster, privateRoster?, userId?, leftoverAt? })` picks the row it removes, as `fire` does.
+this removal on its own, for an app whose fire is its own handler, and `resolveHiredSeatLocation({ seatId, owner?, roster, privateRoster?, userId?, leftoverAt })` picks the row it removes, as `fire` does. `leftoverAt` is required: a fire passes `{ orgId, inventory }` so that a retry after a fire that stopped past the caller's own row stays on that seat; a caller acting only on a row that exists passes `null`.
 
 It refuses when this organization hired no seat, or when a live file-declared seat sits at that
 address (removed by editing its folder, not by firing it).
@@ -1833,11 +1833,12 @@ the channel's session state, not the inventory; the row is a copy for finding th
 
 **Running it twice.** Every write is an upsert keyed by the record's id. Nothing duplicates, and a
 channel registered on an earlier boot keeps its original `openedAt`. A row stays where it is when a
-later roster no longer names the seat or channel. A hired seat's row is the exception to the upsert:
-the roster a boot read can be older than the store, so the boot creates the row only where there was
-none when it read the inventory, and otherwise replaces it only while the stored row is a hired one
-carrying the same incarnation. Another hire's row, a declared seat's row, and a row a fire removed
-after the boot read it are left as they are.
+later roster no longer names the seat or channel. Seat rows are the exception to the upsert: the
+roster a boot read can be older than the store, so the boot creates a seat's row only where there was
+none when it read the inventory, and otherwise replaces it only while the stored row is the same kind
+of seat — a declared row for a declared seat, and for a hired seat a hired row carrying the same
+incarnation. A runtime hire's row is never replaced by another hire's or a declared seat's, and a row
+a fire removed after the boot read it is not written back.
 
 **What lands in `problems`.** `openInventory` returns `{ seats, channels, problems }`. A channel
 whose session is not open, or whose kind declares no registration action, is named in `problems` and
@@ -2064,7 +2065,7 @@ before fire removed inventory rows is left out that way.
 | `CHANNEL_POST_COMPONENT` / `emitChannelPostLine(ctx, line)` / `readChannelPostLines(ctx, schema)` | The component name a post's line is kept under; keep a line as that item, resolving once it is stored and rejecting if the write fails; read the posted lines in the history window back, parsed by the kind's own line schema. For a channel kind of your own. |
 | `defineHiredRosterCollection()` | The hired roster's browser collection: one org-scoped row per org-visible seat, at `workforce/roster/<seatId>`. One segment, so a user-owned row is not listed. Takes no options. Write org-visible rows with `create()` — its already-exists throw is what refuses a duplicate hire, and `upsert()` loses that refusal silently. |
 | `defineHiredRosterPrivateCollection()` | The server-side writer for a user-owned row, at `workforce/roster/~<escaped user>/<seatId>`. No browser read. It is an owner-private collection (`ownerPrivate: { param: "owner" }`): a row is served only to the member it belongs to, and any other collection whose pattern can reach those rows is refused at startup. Declare `workforce/roster/*` for the org roster. |
-| `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions, owningOrgId, ownerUserId, pendingRepair, incarnation }`. `owningOrgId`, `ownerUserId`, `pendingRepair` (set only while a `rehire` is unfinished) and `incarnation` (the hire or re-hire that wrote it) are nullable and default to `null`; the last two are not published to browsers. The envelope is closed; `settings` is a passthrough bag belonging to the kind's own schema. |
+| `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions, owningOrgId, ownerUserId, pendingRepair, incarnation }`. `owningOrgId`, `ownerUserId`, `pendingRepair` (set only while a `rehire` is unfinished) and `incarnation` (the hire or re-hire that wrote it) are nullable and default to `null`; the last two are not published to browsers. The envelope is closed when parsed; the roster collections store it with unknown keys kept, so a key a newer version wrote survives this version's rewrite of the row (a re-hire). `settings` is a passthrough bag belonging to the kind's own schema. |
 | `HIRED_ROSTER_PREFIX` | The roster's storage prefix, `"workforce/roster/"`. Moving it strands every roster already written. |
 | `HIRED_ROSTER_BROWSER_PATTERN` / `HIRED_ROSTER_PRIVATE_PATTERN` | The two roster collections' patterns, `"workforce/roster/*"` and `"workforce/roster/[owner]/[seat]"`. Like the prefix, they spell stored keys. |
 | `seatAddress(orgId, seatId, ownerUserId?)` / `splitSeatAddress(orgId, address)` | Join an organization and a seat id into the address a hired seat answers on, and take the seat id back out. Org-visible is `<org>.<seatId>`. User-owned is `<org>.~<user>.<seatId>`, with the user escaped. The pin is the hire row, not the address. Throws when the organization is not one legal address segment, or when the seat id starts with `~`. |

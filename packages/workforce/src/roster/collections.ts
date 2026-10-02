@@ -29,13 +29,16 @@ import { HIRED_ROSTER_BROWSER_PATTERN } from "../seat-hire-keys";
 /**
  * One hired seat, as it is stored.
  *
- * **The envelope is closed; `settings` is passthrough**, and the two halves
- * answer to different owners. The envelope's keys are this package's to
- * version, so this version declares all of them and Zod's default strip drops
- * anything else — safe here, and only here, because nothing ever
- * read-modify-writes one of these rows: a hire `create`s it once and a fire
- * deletes it, so a key a newer version added is never carried through an older
- * version's rewrite and lost.
+ * **The envelope is closed when read, kept whole when stored; `settings` is
+ * passthrough.** The envelope's keys are this package's to version, so this
+ * schema declares all of them and a parse (`parseHiredSeatRow`) hands back
+ * only those: logic never acts on a key it has no name for. But rows ARE
+ * read-modify-written — a re-hire replaces the row, and the fence a hire or
+ * re-hire runs before each side effect is itself a version-checked write — so
+ * the collections store through `storedHiredSeatRowSchema`, which passes
+ * unknown envelope keys through, and every rewrite starts from the stored row
+ * (`{ ...current, ... }`). A key a newer version added survives an older
+ * version's rewrite.
  *
  * `settings` is the opposite case and gets the opposite rule (BP-030). That
  * bag belongs to the flow kind's own `configSchema`, which is free to grow
@@ -108,6 +111,14 @@ export const hiredSeatRowSchema = z.object({
 /** One stored roster row. @see hiredSeatRowSchema */
 export type HiredSeatRow = z.infer<typeof hiredSeatRowSchema>;
 
+/**
+ * The roster collections' `stateSchema`: {@link hiredSeatRowSchema} with
+ * unknown envelope keys passed through, so a key a newer version stored is
+ * not dropped when this version rewrites the row. Browser reads are unaffected:
+ * the org collection's `expose` list names what a browser sees.
+ */
+const storedHiredSeatRowSchema = hiredSeatRowSchema.passthrough();
+
 /** The collection's storage prefix, without its wildcard. Pinned; see the file header. */
 export const HIRED_ROSTER_PREFIX = "workforce/roster/";
 
@@ -157,7 +168,7 @@ export function defineHiredRosterCollection() {
     pattern: HIRED_ROSTER_BROWSER_PATTERN,
     scope: "org",
     flowIsolation: SHARED_ACROSS_FLOWS,
-    stateSchema: hiredSeatRowSchema,
+    stateSchema: storedHiredSeatRowSchema,
     // A browser may read these rows. Without it the collection-state route
     // refuses every read with `403 State read not permitted`, and a roster
     // panel has no way to name the org's seats — an action's return value has
@@ -206,6 +217,6 @@ export function defineHiredRosterPrivateCollection() {
     ownerPrivate: { param: "owner" },
     scope: "org",
     flowIsolation: SHARED_ACROSS_FLOWS,
-    stateSchema: hiredSeatRowSchema,
+    stateSchema: storedHiredSeatRowSchema,
   });
 }
