@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawn as spawnChild, type ChildProcess } from "node:child_process";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { mkdir as mkdirAsync, mkdtemp } from "node:fs/promises";
@@ -614,6 +615,69 @@ describe("claudeCodeAgent", () => {
           (runtime.ctx.session.state as Record<string, unknown>)[SDK_SESSION_ID_KEY],
         ).toBe("sess_early");
         expect(vendor.state.transcriptComplete).toBe(true);
+      });
+
+      it("waits for the process itself, not the SDK stream, which can end while the process is still writing", async () => {
+        // The SDK's shutdown is bounded at ~2s: past that its stream ends (and
+        // its `return()` resolves) whether or not the process has exited. So
+        // this fake ends its stream the moment it is aborted, while the real
+        // child process it spawned — through the block's spawn hook, as the
+        // SDK does — finishes "writing" 150ms after its stdin closes.
+        abortExitGrace.ms = shippedGraceMs;
+        const state = { transcriptComplete: false };
+        let sawFirst: () => void = () => {};
+        const sawFirstMessage = new Promise<void>((resolve) => {
+          sawFirst = resolve;
+        });
+        const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+          query: async function* (args) {
+            const opts = args.options!;
+            const spawnOptions = {
+              command: process.execPath,
+              args: [
+                "-e",
+                "process.stdin.resume(); process.stdin.on('end', () => setTimeout(() => process.exit(0), 150));",
+              ],
+              env: { ...process.env },
+              signal: new AbortController().signal,
+            };
+            const child = (opts.spawnClaudeCodeProcess?.(spawnOptions) ??
+              spawnChild(spawnOptions.command, spawnOptions.args, {
+                stdio: ["pipe", "pipe", "pipe"],
+              })) as ChildProcess;
+            child.once("exit", () => {
+              state.transcriptComplete = true;
+            });
+            const signal = opts.abortController!.signal;
+            const aborted = new Promise<void>((resolve) => {
+              if (signal.aborted) resolve();
+              else signal.addEventListener("abort", () => resolve(), { once: true });
+            });
+            yield { type: "system", subtype: "init", session_id: "sess_early" } as SdkMessageLike;
+            sawFirst();
+            await aborted;
+            child.stdin!.end(); // what the SDK's close() does first
+            throw new DOMException("Claude Code process aborted by user", "AbortError");
+          },
+        });
+        const block = claudeCodeAgent({ resolveClaudeAgent });
+        const runtime = await createTestContext({ declaredResources: block.declaredResources });
+        const controller = new AbortController();
+        (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        await sawFirstMessage;
+        controller.abort();
+
+        const caught = await withRaceTimeout(
+          runPromise!.then(
+            () => null,
+            (err) => err,
+          ),
+          2_000,
+        );
+        expect(isAbortLike(caught)).toBe(true);
+        expect(state.transcriptComplete).toBe(true);
       });
 
       it("with no grace, settles on the signal without waiting for the exit", async () => {

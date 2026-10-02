@@ -47,6 +47,7 @@ import {
   workRecorderResources,
 } from "./work-collections";
 import { defaultResolveClaudeAgent } from "./sdk-client";
+import { trackProcess } from "./process-exit";
 import {
   createClaudeAgentSessionProvider,
   type ClaudeAgentSession,
@@ -699,6 +700,12 @@ function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: ()
  * and gives it 2s to exit before sending `SIGTERM`. A process that exits on
  * its own, or on that signal, lands inside this bound.
  *
+ * **What it bounds:** the wait on the vendor — the SDK's stream and the
+ * process's exit, together. **What it does not:** the block's own in-flight
+ * write (an item persist, or the host's `onSession` hook), awaited to
+ * completion after it, because finalizing items past that write leaves them
+ * open with nobody to close them.
+ *
  * Internal and mutable only as a test seam — not re-exported from the package.
  * Read at abort time, so a test can shorten it for a vendor that never exits.
  */
@@ -742,9 +749,10 @@ async function settledWithin(promise: Promise<unknown>, ms: number): Promise<voi
  * outright, so the block's deadline is not bounded by whenever the SDK's stream
  * happens to settle. The rejection itself can arrive up to
  * {@link abortExitGrace} later: the already-wired `abortController` (below)
- * tells the SDK to stop, and the block then waits, bounded, for the SDK's
- * stream to end — which it does once the agent's process has exited — so the
- * session's transcript is complete before anyone can resume it. A subprocess the vendor spawned can therefore outlive the abort —
+ * tells the SDK to stop, and the block then waits, bounded, for the agent's
+ * process to exit (observed through the SDK's spawn hook — the SDK's own stream
+ * can end first), so the session's transcript is complete before anyone can
+ * resume it. A subprocess the vendor spawned can therefore outlive the abort —
  * the working directory's sandbox is the fence for that, not this block's
  * deadline.
  *
@@ -916,6 +924,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       const resolved = await resolveClaudeAgent(ctx);
       const dispatchedAt = Date.now();
       const abortController = forwardSignalToController(ctx.signal);
+      // Holds the real process so an abort can wait for it to exit — the
+      // SDK's stream ends ~2s into its shutdown whether or not it has.
+      const agentProcess = trackProcess();
 
       const queryOptions: ClaudeAgentQueryOptions = {
         model,
@@ -927,6 +938,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         maxTurns,
         includePartialMessages,
         abortController,
+        spawnClaudeCodeProcess: agentProcess.spawn,
         ...(workingDirectory !== undefined ? { cwd: workingDirectory } : {}),
         // Spread conditionally rather than passed as `undefined`. For
         // `settingSources` the two are different instructions — absent means
@@ -1157,8 +1169,13 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // shape despite OUR signal having fired and won the race.
           const abortedByOurSignal = ctx.signal.aborted;
           if (abortedByOurSignal && loop !== undefined) {
-            // Bounded wait for the process to exit — see `abortExitGrace`.
-            await settledWithin(loop, abortExitGrace.ms);
+            // Bounded wait for the process to exit — see `abortExitGrace`. The
+            // loop first: once it settles the SDK has spawned if it ever will,
+            // so `exited()` is read after it rather than before.
+            const deadline = Date.now() + abortExitGrace.ms;
+            await settledWithin(loop, deadline - Date.now());
+            const exited = agentProcess.exited();
+            if (exited !== null) await settledWithin(exited, deadline - Date.now());
           }
           if (abortedByOurSignal && inFlightRef.current) {
             // The abandoned loop can still be mid-`await` on its own
@@ -1201,8 +1218,12 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             );
             throw reason;
           }
+          // The SDK's own exit errors carry the process's stderr only when the
+          // SDK spawned it; this block does, so it carries the tail instead.
+          const stderrTail = agentProcess.stderrTail();
           const wrapped = new ClaudeAgentRunError(
-            `Claude Code agent run failed: ${(err as Error).message}`,
+            `Claude Code agent run failed: ${(err as Error).message}` +
+              (stderrTail === "" ? "" : `\n${stderrTail}`),
             { cause: (err as Error).message },
           );
           await emitTranslatedEvent(
