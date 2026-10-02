@@ -705,8 +705,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       if (result?.error !== undefined) throw new Error(messageOf(result.error));
       return result;
     };
+    // The seats reloaded from the roster too, not only the declared ones: a
+    // hire that died after its roster row and before its inventory row is
+    // serving again now, and this is what lists it. Each row carries the
+    // incarnation of the roster row it was minted from.
     const opened = await openInventory(
-      { seats: hired, channels: roster.channels },
+      { seats: [...hired, ...reload.seats], channels: roster.channels },
       { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
     );
     if (opened.problems.length > 0) {
