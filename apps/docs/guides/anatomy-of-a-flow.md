@@ -80,7 +80,7 @@ Four scopes, each its own record with typed atomic operations:
 
 ![Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation, keyed by the session id and by the tenant when one is sent. User state follows one person across conversations and flows, keyed by the user id, or one record per flow copy with isolateUserState. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session names its user and org but holds neither one's state. Blocks read and write all four; the browser sees only the fields a scope's client config exposes](../docs/fundamentals/state-scopes.svg)
 
-Request scope lasts for one action run. Session scope is where most state lives for chat-style apps: conversation mode, message counts, in-progress drafts. User scope spans sessions: preferences, feature flags, usage quotas. Org scope is shared across users: team config, shared resources.
+Request scope lasts for one action run. Session scope is where most state lives for chat-style apps: conversation mode, message counts, in-progress drafts. User scope spans sessions: preferences, feature flags, usage quotas. Org scope is shared across users: team config, shared resources. [State and scopes](/docs/fundamentals/state-and-scopes) compares the four lifetimes in one table.
 
 Blocks declare partial schemas: they only specify the fields they read or write. A counter block doesn't need to know about preferences. The framework merges these declarations at the flow level. This keeps blocks portable and self-documenting.
 

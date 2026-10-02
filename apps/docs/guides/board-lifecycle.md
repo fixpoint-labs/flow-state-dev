@@ -229,8 +229,9 @@ resolves again.
 
 ## What a board is not
 
-A board is not a background job queue. A foreground request appending tasks
-while a separate background process drains the same board is not supported. To run work outside the request
+A board is not a background job queue. Nothing wakes a drain when another
+request inserts a task, and a foreground request appending tasks while a
+separate background process drains the same board is not supported. To run work outside the request
 that created it, dispatch a fresh flow run (see [Background jobs](./background-jobs-bullmq))
 that builds and drains its own board.
 
