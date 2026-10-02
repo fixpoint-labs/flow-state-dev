@@ -45,9 +45,21 @@ export function tasksSummary(snapshot: LoadedSnapshot): string {
   ].join(" · ");
 }
 
-/** What Inbox says when nothing waits on the person (v2:1354): the runs still going, and who is on call. */
+/**
+ * How many sessions the running rows run in. One session can work several
+ * rows, so rows linked to the same run session count once. A running row with
+ * no run link (stored before the link existed, or not yet linked) counts as
+ * its own session.
+ */
+export function runningSessions(rows: readonly BoardRow[]): number {
+  const running = rows.filter((row) => readStatus(row.status) === "in_progress");
+  const linked = new Set(running.flatMap((row) => (row.run == null ? [] : [row.run.sessionId])));
+  return linked.size + running.filter((row) => row.run == null).length;
+}
+
+/** What Inbox says when nothing waits on the person (v2:1354): the sessions still running, and who is on call. */
 export function emptyInboxSentence(snapshot: LoadedSnapshot): string {
-  const running = openRows(snapshot).filter((row) => readStatus(row.status) === "in_progress").length;
+  const running = runningSessions(openRows(snapshot));
   const onCall = shiftCounts(seatStates(snapshot))["on call"];
   return `Nothing needs you. ${plural(running, "session is", "sessions are")} still running and ${plural(onCall, "worker is", "workers are")} on call.`;
 }

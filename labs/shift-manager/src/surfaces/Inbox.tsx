@@ -41,6 +41,8 @@ function matches(filter: Filter, ask: Ask): boolean {
 export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapshot; suspensionId: string | null; gaps: Gaps }) {
   const { clients, refresh } = useLab();
   const [filter, setFilter] = useState<Filter>("All");
+  // Bumped when a reply is delivered, so the ask's session is read again then.
+  const [replies, setReplies] = useState(0);
   if (!snapshot.asks.ok) {
     return (
       <div className="p-6">
@@ -146,12 +148,22 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                   {selected.item.message ?? "(no message)"}
                 </ScreenTitle>
                 <AskCard ask={selected} titled />
-                <AskSession key={selected.item.suspensionId} ask={selected} readAt={snapshot.readAt} />
+                <AskSession key={selected.item.suspensionId} ask={selected} reread={replies} />
               </div>
             </div>
             <div className="px-[34px] pt-3 pb-4">
               <div className="max-w-[660px]">
-                <Reply key={selected.item.suspensionId} ask={selected} snapshot={snapshot} gaps={gaps} clients={clients} onDelivered={() => void refresh()} />
+                <Reply
+                  key={selected.item.suspensionId}
+                  ask={selected}
+                  snapshot={snapshot}
+                  gaps={gaps}
+                  clients={clients}
+                  onDelivered={() => {
+                    setReplies((n) => n + 1);
+                    void refresh();
+                  }}
+                />
               </div>
             </div>
           </>
@@ -167,28 +179,39 @@ function clock(at: number): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-type AskSessionRead = { ok: true; value: { calls: SessionCall[]; replies: SessionReply[] } | null } | { ok: false; failure: Failure };
+type AskSessionRead =
+  | { ok: true; value: { calls: SessionCall[]; replies: SessionReply[] } | null; truncated: boolean }
+  | { ok: false; failure: Failure };
 
 /**
  * *From the session* and the person's replies, read from the ask's session
- * (BR-18). Read again on every refresh, so a reply that was just delivered
- * shows once the session holds it. Drawn once the read settles.
+ * (BR-18). Read when the ask opens and again after each reply is delivered
+ * (`reread`), so the reply shows once the session holds it; a Lab refresh for
+ * anything else doesn't re-read the session. The component is keyed by the
+ * ask, so the ask it reads around never changes under it.
  */
-function AskSession({ ask, readAt }: { ask: Ask; readAt: number }) {
+function AskSession({ ask, reread }: { ask: Ask; reread: number }) {
   const { clients } = useLab();
   const [read, setRead] = useState<AskSessionRead | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
     readSessionItems(clients, ask.sessionId).then(
-      (got) => live && setRead({ ok: true, value: askSessionOf(got.items, ask.item) }),
+      (got) => live && setRead({ ok: true, value: askSessionOf(got.items, ask.item), truncated: got.truncated }),
       (error: unknown) => live && setRead({ ok: false, failure: error instanceof RunReadError ? error.failure : describeFailure(error) }),
     );
     return () => {
       live = false;
     };
-  }, [clients, ask, readAt, attempt]);
-  if (read === null) return null;
+    // `ask` is fixed for this component's life (keyed by the ask), so the session is the dependency.
+  }, [clients, ask.sessionId, reread, attempt]);
+  if (read === null) {
+    return (
+      <Meta className="text-muted-foreground" testId="inbox-session-loading">
+        Reading the session…
+      </Meta>
+    );
+  }
   if (!read.ok) {
     const retry = () => {
       setRead(null);
@@ -224,6 +247,11 @@ function AskSession({ ask, readAt }: { ask: Ask; readAt: number }) {
           )}
         </div>
       </section>
+      {read.truncated ? (
+        <p className="text-xs text-muted-foreground" data-testid="inbox-session-truncated">
+          More than shown: this session holds more than one read returns, so a later reply may not be shown here.
+        </p>
+      ) : null}
       {(found?.replies ?? []).map((reply) => (
         <div key={reply.id} className="border-l-2 border-info py-1 pl-2.5" data-testid="inbox-reply-line">
           <Meta role="count" className="text-muted-foreground" testId="inbox-reply-line-label">

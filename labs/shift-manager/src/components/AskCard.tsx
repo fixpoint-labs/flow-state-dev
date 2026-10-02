@@ -38,6 +38,7 @@ export function AskCard({ ask, titled = false }: { ask: Ask; titled?: boolean })
     },
     [answer, ask],
   );
+  // Titled: the parent supplies the title, so the card is drawn without the message.
   const item = useMemo(() => (titled ? { ...ask.item, message: "" } : ask.item), [ask.item, titled]);
   const card = (
     <SessionItemsProvider value={NO_ITEMS}>

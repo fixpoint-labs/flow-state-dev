@@ -34,7 +34,9 @@ export type StoreScreens = {
   /** Pending asks, oldest first: Inbox's order. */
   asks: StoredAsk[];
   /** Every open row (not done) on every attached board. */
-  open: Array<{ id: string; channelId: string; status: string; startedAt: number | null }>;
+  open: Array<{ id: string; channelId: string; status: string; startedAt: number | null; runSession: string | null }>;
+  /** Every seat's rows waiting on the person: Roster's task WAITING entries, by id and title. */
+  parked: Array<{ id: string; title: string; seatId: string }>;
   onShift: number;
   onCall: number;
   /** The ON CALL FOR entries every seat has: its parked rows and its asks. */
@@ -52,9 +54,45 @@ const isParked = (status: string) => status === "parked" || status === "awaiting
 /** Queued is every open row that isn't running or waiting on the person: v2's QUEUED (v2:916). */
 const isQueued = (status: string) => !DONE.has(status) && status !== RUNNING && !isParked(status) && status !== "errored";
 
-/** The shape the registry's cards decide an approval by: anything but a `human_input` that takes a submission. */
+/**
+ * The shape the registry's cards decide an approval by: anything but a
+ * `human_input` that takes a submission. Must match the approval branch of
+ * `suspensionShape` in `@flow-state-dev/react`; it is written out here because
+ * that package's only entry loads React, which goals don't depend on.
+ */
 function kindOf(item: Record<string, any>): "approval" | "question" {
   return item.reason !== "human_input" || !Array.isArray(item.allow) || !item.allow.includes("submit") ? "approval" : "question";
+}
+
+/**
+ * The order a session's items are shown in: `ts`, then `itemIndex`, then
+ * `requestId`, then `id`, strings by code unit. Must match `compareItemOrder`
+ * in `@flow-state-dev/contracts`, the order the store defines; it is written
+ * out so the oracle shares no code with what it grades.
+ */
+function byItemOrder(a: Record<string, any>, b: Record<string, any>): number {
+  if (a.ts !== b.ts) return Number(a.ts) - Number(b.ts);
+  if (a.itemIndex !== b.itemIndex) return Number(a.itemIndex) - Number(b.itemIndex);
+  if (a.requestId !== b.requestId) return String(a.requestId) < String(b.requestId) ? -1 : 1;
+  if (a.id !== b.id) return String(a.id) < String(b.id) ? -1 : 1;
+  return 0;
+}
+
+/**
+ * The session a row's run link names, or `null` for a row with no whole link
+ * (session, request and attempt): one stored before the link existed counts
+ * as its own session. This is the board row's stored `run` field, read as the
+ * store defines it.
+ */
+function runSessionOf(row: Record<string, any>): string | null {
+  const run = row.run;
+  return run != null && typeof run.sessionId === "string" && typeof run.requestId === "string" && typeof run.attempt === "number" ? run.sessionId : null;
+}
+
+/** How many sessions the running rows run in: one per linked run session, and one per unlinked running row. */
+function runningSessions(open: StoreScreens["open"]): number {
+  const running = open.filter((r) => r.status === RUNNING);
+  return new Set(running.flatMap((r) => (r.runSession === null ? [] : [r.runSession]))).size + running.filter((r) => r.runSession === null).length;
 }
 
 function firstString(args: unknown): string {
@@ -83,8 +121,8 @@ export async function readScreensStore(
     const resumed = new Set(found.filter((i) => i.type === "suspension_resume").map((i) => String(i.suspensionId)));
     const pending = found.filter((i) => i.type === "suspension" && PERSON_REASONS.has(String(i.reason)) && !resumed.has(String(i.suspensionId)));
     if (pending.length === 0) continue;
-    // The session's items come back in the store's one order, so before and after are positions.
-    const all = await api.items(String(session.id), ["suspension", "tool_output", "message"]);
+    // Ordered here, never in the order the read returned, so before and after are positions.
+    const all = (await api.items(String(session.id), ["suspension", "tool_output", "message"])).sort(byItemOrder);
     for (const ask of pending) {
       const at = all.findIndex((i) => i.id === ask.id && i.requestId === ask.requestId);
       asks.push({
@@ -113,21 +151,23 @@ export async function readScreensStore(
 
   const open = seen.rows
     .filter((r) => !DONE.has(String(r.status)))
-    .map((r) => ({ id: String(r.id), channelId: String(r.channelId), status: String(r.status), startedAt: typeof r.startedAt === "number" ? r.startedAt : null }));
+    .map((r) => ({ id: String(r.id), channelId: String(r.channelId), status: String(r.status), startedAt: typeof r.startedAt === "number" ? r.startedAt : null, runSession: runSessionOf(r) }));
   // A row is a seat's when its assignee is the seat's address or its name (the trees' convention).
   const holds = (seat: { id: string; name: string }, wanted: (status: string) => boolean) =>
     seen.rows.filter((r) => wanted(String(r.status)) && (r.assignee === seat.id || r.assignee === seat.name)).length;
+  const parked: StoreScreens["parked"] = [];
   let onShift = 0;
   let onCall = 0;
   let waits = 0;
   for (const seat of seen.seats) {
-    const parked = holds(seat, isParked);
+    const held = seen.rows.filter((r) => isParked(String(r.status)) && (r.assignee === seat.id || r.assignee === seat.name));
+    parked.push(...held.map((r) => ({ id: String(r.id), title: String(r.title ?? ""), seatId: seat.id })));
     const asked = asks.filter((a) => a.seatId === seat.id).length;
-    waits += parked + asked;
+    waits += held.length + asked;
     if (holds(seat, (s) => s === RUNNING) > 0) onShift += 1;
-    else if (parked + asked > 0) onCall += 1;
+    else if (held.length + asked > 0) onCall += 1;
   }
-  return { asks, open, onShift, onCall, waits };
+  return { asks, open, parked, onShift, onCall, waits };
 }
 
 // ---- the look table's rows --------------------------------------------------------
@@ -159,16 +199,11 @@ export const ROWS: Row[] = [
   { id: "Inbox detail title", audit: "I11", v2: { line: 597, has: "font-size:26px;line-height:1.15;letter-spacing:-.03em;font-weight:700" }, select: "[data-look=detail-title]", on: INBOX, min: anAsk, want: { family: "sans", size: 26, weight: 700, tracking: -0.03 } },
   { id: "FROM THE SESSION label", audit: "I17", v2: { line: 626, has: "font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em" }, select: "[data-testid=inbox-from-session-label]", on: INBOX, min: anAsk, want: { family: "mono", size: 10.5, tracking: 0.12 } },
   { id: "FROM THE SESSION box", audit: "I17", v2: { line: 627, has: "background:var(--card);padding:6px 11px" }, select: "[data-testid=inbox-from-session-calls]", on: INBOX, min: anAsk, want: { surface: "card" } },
-  {
-    id: "FROM THE SESSION call",
-    audit: "I17",
-    v2: { line: 629, has: "font:500 12px 'IBM Plex Mono'" },
-    select: "[data-testid=inbox-session-call] > span:not([data-state-square])",
-    on: INBOX,
-    // The first ask is the one the sweep selects: Inbox lists oldest first.
-    min: ({ store }) => 3 * (store.screens.asks[0]?.calls.length ?? 0),
-    want: { family: "mono", size: 12 },
-  },
+  // One call row per stored call: a row graded by its own count, never by how
+  // many parts a row is drawn with. The first ask is the one the sweep
+  // selects: Inbox lists oldest first.
+  { id: "FROM THE SESSION call", audit: "I17", v2: { line: 629, has: "font:500 12px 'IBM Plex Mono'" }, select: "[data-testid=inbox-session-call]", on: INBOX, min: ({ store }) => store.screens.asks[0]?.calls.length ?? 0, want: { family: "mono", size: 12 } },
+  { id: "FROM THE SESSION call text", audit: "I17", v2: { line: 629, has: "font:500 12px 'IBM Plex Mono'" }, select: "[data-testid=inbox-session-call] > span:not([data-state-square])", on: INBOX, min: ({ store }) => store.screens.asks[0]?.calls.length ?? 0, want: { family: "mono", size: 12 } },
   { id: "your reply", audit: "I18", v2: { line: 635, has: "border-left:2px solid var(--blue)" }, select: "[data-testid=inbox-reply-line]", on: INBOX, min: ({ store }) => store.screens.asks[0]?.replies.length ?? 0, want: {} },
   { id: "your reply's label", audit: "I18", v2: { line: 635, has: "font:500 10.5px 'IBM Plex Mono',monospace;color:var(--ink3)\">{{ r.label }}" }, select: "[data-testid=inbox-reply-line-label]", on: INBOX, min: ({ store }) => store.screens.asks[0]?.replies.length ?? 0, want: { family: "mono", size: 10.5 } },
   { id: "your reply's text", audit: "I18", v2: { line: 635, has: "font-size:14px;line-height:1.55" }, select: "[data-testid=inbox-reply-line-text]", on: INBOX, min: ({ store }) => store.screens.asks[0]?.replies.length ?? 0, want: { family: "sans", size: 14 } },
@@ -276,7 +311,7 @@ export function gradeContent(texts: Record<string, Read[]>, now: number, where: 
   const one = (key: string) => texts[key]?.[0]?.text ?? null;
   if (where.screen === "inbox") {
     if (store.asks.length === 0) {
-      const want = `Nothing needs you. ${plural(store.open.filter((r) => r.status === RUNNING).length, "session is", "sessions are")} still running and ${plural(store.onCall, "worker is", "workers are")} on call.`;
+      const want = `Nothing needs you. ${plural(runningSessions(store.open), "session is", "sessions are")} still running and ${plural(store.onCall, "worker is", "workers are")} on call.`;
       if (one("inboxEmpty") !== want) fail("content", `Inbox with nothing waiting reads "${one("inboxEmpty") ?? "nothing"}", the store gives "${want}" (v2:1354, audit I8)`);
       return;
     }
@@ -344,16 +379,29 @@ export function gradeContent(texts: Record<string, Read[]>, now: number, where: 
       const sub = group.parts["roster-group-sub"];
       if (sub !== GROUP_SUB[group.data.status ?? ""]) fail("content", `Roster's ${group.data.status} group says "${sub ?? ""}", v2 says "${GROUP_SUB[group.data.status ?? ""]}" (v2:1392, audit R8)`);
     }
+    const drawnTasks: string[] = [];
     for (const wait of texts.rosterWaits ?? []) {
-      const ask = wait.data.kind === "ask" ? store.asks.find((a) => a.suspensionId === wait.data.id) : undefined;
-      const want = wait.data.kind === "ask" ? (ask === undefined ? null : [`you · ${ask.kind}`, ask.message]) : [`you · ${wait.data.id}`, null];
+      // Both lines come from the store: an ask's kind and message, a parked row's id and title.
+      let want: [string, string] | null = null;
+      if (wait.data.kind === "ask") {
+        const ask = store.asks.find((a) => a.suspensionId === wait.data.id);
+        if (ask !== undefined) want = [`you · ${ask.kind}`, ask.message];
+      } else {
+        drawnTasks.push(wait.data.id ?? "");
+        const row = store.parked.find((r) => r.id === wait.data.id);
+        if (row !== undefined) want = [`you · ${row.id}`, row.title];
+      }
       if (want === null) {
-        fail("content", `Roster lists an ask ${wait.data.id} the store holds no pending ask for (audit R6)`);
+        fail("content", `Roster lists ${wait.data.kind === "ask" ? "an ask" : "a task"} ${wait.data.id} waiting on the person, and the store holds no such ${wait.data.kind === "ask" ? "pending ask" : "parked row"} (audit R6)`);
         continue;
       }
-      if (wait.parts["roster-wait-tag"] !== "WAITING" || wait.parts["roster-wait-what"] !== want[0] || (want[1] !== null && wait.parts["roster-wait-when"] !== want[1])) {
-        fail("content", `Roster's ON CALL FOR entry ${wait.data.id} reads "${wait.parts["roster-wait-tag"]} ${wait.parts["roster-wait-what"]} / ${wait.parts["roster-wait-when"]}", the store gives "WAITING ${want[0]}${want[1] === null ? "" : ` / ${want[1]}`}" (v2:1130, audit R6)`);
+      if (wait.parts["roster-wait-tag"] !== "WAITING" || wait.parts["roster-wait-what"] !== want[0] || wait.parts["roster-wait-when"] !== want[1]) {
+        fail("content", `Roster's ON CALL FOR entry ${wait.data.id} reads "${wait.parts["roster-wait-tag"]} ${wait.parts["roster-wait-what"]} / ${wait.parts["roster-wait-when"]}", the store gives "WAITING ${want[0]} / ${want[1]}" (v2:1130, audit R6)`);
       }
+    }
+    const parkedIds = store.parked.map((r) => r.id).sort();
+    if (texts.rosterWaits !== undefined && JSON.stringify(drawnTasks.sort()) !== JSON.stringify(parkedIds)) {
+      fail("content", `Roster's waiting tasks are ${list(drawnTasks)}, the store's parked rows are ${list(parkedIds)} (audit R6)`);
     }
   }
 }

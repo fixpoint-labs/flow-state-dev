@@ -132,4 +132,15 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
       "Nothing needs you. 1 session is still running and 1 worker is on call.",
     );
   });
+
+  it("counts sessions, not rows: two running rows in one run session are one session, and an unlinked row is its own", () => {
+    const seats = [{ id: "eng.coder", seatId: "eng.coder", name: "coder", team: "eng", kind: null }] as unknown as Seat[];
+    const inOne = (id: string, attempt: number) => row(id, "in_progress", { run: { sessionId: "s_coder", requestId: `req_${id}`, attempt } });
+    expect(emptyInboxSentence(snapshot([inOne("A", 1), inOne("B", 1)], [], seats))).toBe(
+      "Nothing needs you. 1 session is still running and 0 workers are on call.",
+    );
+    expect(emptyInboxSentence(snapshot([inOne("A", 1), inOne("B", 1), row("C", "in_progress")], [], seats))).toBe(
+      "Nothing needs you. 2 sessions are still running and 0 workers are on call.",
+    );
+  });
 });

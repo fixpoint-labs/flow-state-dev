@@ -231,12 +231,13 @@ describe("the composer's @mentions", () => {
 
 describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
   /** An ask in the asker's session, then Inbox open on it. */
-  async function openOnAsk(options: Parameters<typeof openAskLab>[0] = {}) {
+  async function openOnAsk(options: Parameters<typeof openAskLab>[0] = {}, beforeRender?: () => void) {
     const lab = await serveLab((await openAskLab(options)).flowState);
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     await clients.actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
+    beforeRender?.();
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
     const item = await screen.findByTestId("inbox-item");
     act(() => fireEvent.click(item));
@@ -278,6 +279,28 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     expect(screen.getByTestId("inbox-reply-line-label").textContent).toMatch(/^You · \d\d:\d\d · sent into s_ops_asker$/);
     // The ask is untouched: a reply isn't an answer.
     expect(screen.getByTestId("inbox-detail").textContent).toMatch(/Approve/);
+  });
+
+  it("says so when the ask's session holds more than one read returns, rather than dropping later replies unseen", async () => {
+    // Every page of the session read says more remain, so the read stops at its cap.
+    await openOnAsk({}, () => {
+      const real = globalThis.fetch;
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+        const url = String(i instanceof Request ? i.url : i);
+        const response = await real(i, init);
+        // Only the whole-session read Inbox's detail makes; the asks read filters by item type.
+        if (!url.includes("/sessions/s_ops_asker/state") || url.includes("item_types")) return response;
+        const body = (await response.json()) as { pagination?: Record<string, unknown> };
+        return Response.json({ ...body, pagination: { ...body.pagination, hasMore: true, nextOffset: 200 } });
+      });
+    });
+    expect((await screen.findByTestId("inbox-session-truncated")).textContent).toMatch(/^More than shown/);
+  });
+
+  it("draws no truncation note when the session's read is whole", async () => {
+    await openOnAsk();
+    await screen.findByTestId("inbox-from-session-none");
+    expect(screen.queryByTestId("inbox-session-truncated")).toBeNull();
   });
 
   it("keeps the draft and shows the seat's own reason when its door refuses", async () => {

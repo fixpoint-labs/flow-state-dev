@@ -97,13 +97,15 @@ const PARKED = new Set(["parked", "awaiting_review"]);
 const QUEUED = (status: string) => !DONE.has(status) && status !== "in_progress" && status !== "errored" && !PARKED.has(status);
 
 /**
- * What an Inbox with nothing pending says: the runs still going, and the
+ * What an Inbox with nothing pending says: the sessions still running, and the
  * workers on call, each worked out from the store. A row is a seat's when its
  * assignee is the seat's address or its name (the trees' convention).
  */
 function emptyInbox(store: Store): string {
   const rows = Object.values(store.rows).flat();
-  const running = rows.filter((r) => r.status === "in_progress").length;
+  // Sessions, not rows: running rows linked to one run session count once, and an unlinked running row is its own.
+  const live = rows.filter((r) => r.status === "in_progress");
+  const running = new Set(live.flatMap((r) => (r.runSession === null ? [] : [r.runSession]))).size + live.filter((r) => r.runSession === null).length;
   const holds = (seat: string, wanted: (status: string) => boolean) =>
     rows.some((r) => wanted(r.status) && (r.assignee === seat || r.assignee === seat.slice(seat.indexOf(".") + 1)));
   const onCall = store.seats.filter((seat) => !holds(seat, (s) => s === "in_progress") && holds(seat, (s) => PARKED.has(s))).length;
@@ -217,7 +219,7 @@ type Store = {
   seats: string[];
   channels: Array<{ id: string; kind: string; members: string[] }>;
   /** Channel id -> every stored row on its declared boards. */
-  rows: Record<string, Array<{ ref: string; id: string; status: string; title: string; assignee: string | null }>>;
+  rows: Record<string, Array<{ ref: string; id: string; status: string; title: string; assignee: string | null; runSession: string | null }>>;
   /** Suspension ids pending on a person, across the seats' sessions. */
   asks: string[];
 };
@@ -253,6 +255,11 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
           status: String(row.status),
           title: String(row.title ?? row.goal ?? row.id),
           assignee: typeof row.assignee === "string" ? row.assignee : null,
+          // The session the row's whole run link (session, request, attempt) names; none for an unlinked row.
+          runSession:
+            row.run != null && typeof row.run.sessionId === "string" && typeof row.run.requestId === "string" && typeof row.run.attempt === "number"
+              ? row.run.sessionId
+              : null,
         });
       }
     }
