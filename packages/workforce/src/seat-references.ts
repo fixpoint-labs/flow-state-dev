@@ -37,6 +37,7 @@ import type { DeclaredResources } from "@flow-state-dev/core";
 import { describe } from "./describe-value";
 import { isReferenceDefinition } from "./references-from-docs";
 import { emptyMap } from "./empty-map";
+import { validateSegment, type SegmentLabel } from "./loader/segments";
 
 /**
  * The key a seat's file names its references under.
@@ -166,20 +167,36 @@ export interface DeclaredSeatId {
  * in `name`. Neither folder name may hold a `.`, so the two shapes never
  * overlap.
  *
+ * Every dot-separated piece is held to the segment rule the loader mints by
+ * (`validateSegment`), so an id the loader could not have minted — `Bad_Name`,
+ * `eng.Lead`, an empty half, a `/` — names no seat rather than being placed.
+ *
  * @param seatId The seat's id, as the roster minted it.
- * @returns The folders, or `undefined` for an id the loader cannot mint: empty,
- *   an empty half around the dot, or a `/` anywhere.
+ * @returns The folders, or `undefined` for an id the loader cannot mint.
  *
  * @example
  * parseDeclaredSeatId("chief-of-staff"); // { name: "chief-of-staff" }
  * parseDeclaredSeatId("eng.lead");       // { team: "eng", name: "lead" }
  */
 export function parseDeclaredSeatId(seatId: string): DeclaredSeatId | undefined {
-  if (seatId.length === 0 || seatId.includes("/")) return undefined;
   const dot = seatId.indexOf(".");
-  if (dot === -1) return { name: seatId };
-  if (dot === 0 || dot === seatId.length - 1) return undefined;
-  return { team: seatId.slice(0, dot), name: seatId.slice(dot + 1) };
+  const parsed: DeclaredSeatId =
+    dot === -1 ? { name: seatId } : { team: seatId.slice(0, dot), name: seatId.slice(dot + 1) };
+  if (parsed.team !== undefined && !isSegment(parsed.team, "Team")) return undefined;
+  // A second dot stays in `name` (the minter's first-dot rule), so each piece
+  // of it is checked rather than the whole.
+  if (!parsed.name.split(".").every((piece) => isSegment(piece, "Worker"))) return undefined;
+  return parsed;
+}
+
+/** Whether `segment` passes the loader's segment rule. */
+function isSegment(segment: string, label: SegmentLabel): boolean {
+  try {
+    validateSegment(segment, label);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

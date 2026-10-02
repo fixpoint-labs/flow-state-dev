@@ -248,6 +248,15 @@ describe("parseDeclaredSeatId — the one rule for a declared seat's id (BR-5, S
     }
   });
 
+  it("refuses an id whose segments break the loader's name rule, so it has no place", () => {
+    for (const id of ["Bad_Name", "eng.Bad_Name", "Eng.lead", "con", "_meta"]) {
+      expect(parseDeclaredSeatId(id), id).toBeUndefined();
+      expect(placeOfSeat(id), id).toBeUndefined();
+    }
+    // Control: a legal dotless id is still an org seat.
+    expect(placeOfSeat("chief-of-staff")).toEqual({ team: undefined, worker: "chief-of-staff" });
+  });
+
   it("places an org seat at org/workers/<name>/, and a team seat where it always was", () => {
     expect(placeOfSeat("chief-of-staff")).toEqual({ team: undefined, worker: "chief-of-staff" });
     expect(placeOfSeat("eng.lead")).toEqual({ team: "eng", worker: "lead" });
