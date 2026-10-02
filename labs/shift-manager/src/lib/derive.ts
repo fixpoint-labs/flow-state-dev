@@ -178,6 +178,15 @@ export function addressedSeat(roster: Roster, workstream: Workstream, name: stri
 }
 
 /**
+ * What to type after `@` to reach `seat` in `workstream`: its short name, or
+ * its full id when another member shares that name, so the line always
+ * resolves through {@link addressedSeat} to this seat.
+ */
+export function mentionOf(roster: Roster, workstream: Workstream, seat: Seat): string {
+  return addressedSeat(roster, workstream, seat.name)?.id === seat.id ? seat.name : seat.id;
+}
+
+/**
  * The members of `workstream` running a task on its boards, in member order,
  * at most three: who the workstream composer offers to `@` (v2:1265). A
  * running task is one in progress; no shipped status means *in review* yet.

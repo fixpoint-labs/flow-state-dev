@@ -276,17 +276,14 @@ function sweep(args: { rows: Array<{ id: string; select: string }>; exceptions: 
   };
   const els: El[] = [];
   const matched: Record<string, number> = Object.fromEntries(args.rows.map((r) => [r.id, 0]));
-  const visible = (el: Element) => {
-    const cs = getComputedStyle(el);
-    const rect = el.getBoundingClientRect();
-    // A 1px box is a screen-reader-only label, not something drawn.
-    return cs.display !== "none" && cs.visibility === "visible" && rect.width > 1 && rect.height > 1;
-  };
   for (const el of Array.from(document.body.querySelectorAll("*"))) {
-    if (["SCRIPT", "STYLE", "TEMPLATE", "OPTION", "BR"].includes(el.tagName) || !visible(el)) continue;
+    if (["SCRIPT", "STYLE", "TEMPLATE", "OPTION", "BR"].includes(el.tagName)) continue;
+    const cs = getComputedStyle(el);
+    const box = el.getBoundingClientRect();
+    // A 1px box is a screen-reader-only label, not something drawn.
+    if (cs.display === "none" || cs.visibility !== "visible" || box.width <= 1 || box.height <= 1) continue;
     const rows = args.rows.filter((r) => el.matches(r.select)).map((r) => r.id);
     for (const id of rows) matched[id] += 1;
-    const cs = getComputedStyle(el);
     const text =
       Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.textContent!.trim().length > 0) || ["INPUT", "SELECT", "TEXTAREA"].includes(el.tagName);
     const border = (["top", "right", "bottom", "left"] as const).map((side) => ({
@@ -311,7 +308,7 @@ function sweep(args: { rows: Array<{ id: string; select: string }>; exceptions: 
       bg: cs.backgroundColor,
       radius: [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map((r) => parseFloat(r)),
       border,
-      width: el.getBoundingClientRect().width,
+      width: box.width,
       minWidth: cs.minWidth,
     });
   }
@@ -365,7 +362,7 @@ class Failures {
 
 const rgbOf = (value: string): Rgb | null => parseColour(value)?.rgb ?? null;
 const same = (a: Rgb | null, b: Rgb | null) => a !== null && b !== null && a.every((v, i) => Math.abs(v - b[i]!) <= 3);
-const cite = (row: Row) => `(v2:${row.v2.line})`;
+const cite = (row: Row) => `(v2:${row.v2.line}, audit ${row.audit})`;
 const px = (n: number) => `${Math.round(n * 100) / 100}px`;
 
 function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: LabName): void {
@@ -522,7 +519,8 @@ async function readStore(api: LabApi, tree: string): Promise<Store> {
         .map((m) => seats.find((s) => s.id === m))
         .filter((s): s is { id: string; name: string } => s !== undefined && holds(s))
         .slice(0, 3)
-        .map((s) => s.name),
+        // A name two members share reaches neither, so that member is offered by its id.
+        .map((s) => (members.filter((m) => seats.find((x) => x.id === m)?.name === s.name).length > 1 ? s.id : s.name)),
     };
   }
   return {
@@ -691,9 +689,8 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
             tokens: [...TOKENS],
           });
           const tag = `${screen} ${shift} ${width}`;
-          // The content rows read the store at the moment the screen is read.
-          const now = screen === "workstream" ? await readStore(api, LABS[lab].tree) : store;
-          grade(read, { screen, width, store: now }, lab === "devteam" ? tag : `${lab} ${tag}`, failures, lab);
+          // The page drew from the Lab as it stood at the reload, so the store read then is what it must equal.
+          grade(read, { screen, width, store }, lab === "devteam" ? tag : `${lab} ${tag}`, failures, lab);
           counts.push(`${screen} ${shift} ${width}: ${read.els.length}`);
           if (process.env.GOAL_SHOTS !== undefined) {
             mkdirSync(process.env.GOAL_SHOTS, { recursive: true });
