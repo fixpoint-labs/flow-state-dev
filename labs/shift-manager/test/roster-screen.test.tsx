@@ -67,6 +67,7 @@ function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "fai
           },
     asks: options.asks === "failed" ? { ok: false, failure: { message: "asks offline" } } : { ok: true, value: [ask("ops.asker", "q1", "Approve: ship it")] },
     resources: { ok: true, value: [] },
+    projects: { ok: true, value: { rows: [], talkKind: null } },
   };
 }
 

@@ -46,7 +46,7 @@
 import { handler, sequencer, dispatcher } from "@flow-state-dev/core";
 import { channelNotifyInputSchema, type ChannelNotifyInput } from "@flow-state-dev/workforce";
 import { z } from "zod";
-import { POST_ENTRY } from "./workforce/flows/workers/em.mts";
+import { POST_ENTRY, ROOM_ENTRY } from "./workforce/flows/workers/em.mts";
 
 /** What the router decided about one member's delivery. */
 const decisionSchema = z.object({
@@ -55,6 +55,14 @@ const decisionSchema = z.object({
   member: z.string(),
   channelId: z.string(),
   body: z.string(),
+  /**
+   * `true` for a post in a project's room. The channel kind marks every room
+   * delivery routed (each seat on the room's template answers), and this
+   * lab's workstreams declare no `routing:`, so the mark is never set on one.
+   */
+  room: z.boolean(),
+  /** The line being delivered, for a room's answer to name. */
+  postId: z.string(),
 });
 
 type Decision = z.infer<typeof decisionSchema>;
@@ -117,6 +125,8 @@ export function labNotify(options: LabNotifyOptions) {
         member: input.member,
         channelId: input.channelId,
         body: input.body,
+        room: input.routed === true,
+        postId: input.postId,
       };
       // A declared member this lab has no address for.
       if (!Object.hasOwn(addresses, input.member)) {
@@ -162,18 +172,42 @@ export function labNotify(options: LabNotifyOptions) {
       session: { key: () => member },
     } as never);
 
+  /**
+   * The same member, for a post in a project's room: its room door, which
+   * answers into the poster's talk session rather than filing anything.
+   */
+  const toSeatInRoom = (member: string) =>
+    dispatcher({
+      name: `devforce-notify-room-${member.replace(/\./g, "-")}`,
+      action: ROOM_ENTRY,
+      flowKind: addresses[member]!,
+      inputSchema: decisionSchema,
+      payload: (decision: Decision) => ({
+        channelId: decision.channelId,
+        postId: decision.postId,
+        body: decision.body,
+        member: decision.member,
+      }),
+      session: { key: () => member },
+    } as never);
+
   let seq: any = sequencer({
     name: "devforce-notify",
     inputSchema: channelNotifyInputSchema,
   }).step(decide);
 
   for (const member of members) {
-    seq = seq.stepIf(
-      (decision: Decision) => decision.target === member,
-      // One member's refusal is absorbed here as well as by the framework's own
-      // rescue, so the reason is recorded rather than only counted.
-      (toSeat(member) as any).rescue([{ block: recordRefusal }]),
-    );
+    seq = seq
+      .stepIf(
+        (decision: Decision) => decision.target === member && !decision.room,
+        // One member's refusal is absorbed here as well as by the framework's own
+        // rescue, so the reason is recorded rather than only counted.
+        (toSeat(member) as any).rescue([{ block: recordRefusal }]),
+      )
+      .stepIf(
+        (decision: Decision) => decision.target === member && decision.room,
+        (toSeatInRoom(member) as any).rescue([{ block: recordRefusal }]),
+      );
   }
 
   return seq;

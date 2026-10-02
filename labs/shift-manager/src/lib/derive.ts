@@ -4,7 +4,17 @@
  */
 import { splitSeatAddress } from "@flow-state-dev/workforce/browser";
 import { columnFor, isDone, readStatus } from "./columns";
-import { STAFF_TEAM, type Ask, type BoardRow, type Failure, type LabSnapshot, type Section, type Seat, type Workstream } from "./reads";
+import {
+  STAFF_TEAM,
+  type Ask,
+  type BoardRow,
+  type Failure,
+  type LabSnapshot,
+  type Project,
+  type Section,
+  type Seat,
+  type Workstream,
+} from "./reads";
 
 /** A loaded snapshot (not a refusal, not an unreachable Lab). */
 export type LoadedSnapshot = Exclude<LabSnapshot, { refused: Failure } | { unreachable: Failure }>;
@@ -196,6 +206,74 @@ export function teamsOf(seats: readonly Seat[]): Array<{ team: string; seats: Se
   for (const seat of seats) teams.set(seat.team, [...(teams.get(seat.team) ?? []), seat]);
   const all = [...teams].map(([team, members]) => ({ team, seats: members }));
   return [...all.filter((t) => t.team === STAFF_TEAM), ...all.filter((t) => t.team !== STAFF_TEAM)];
+}
+
+/**
+ * One workstream a project lists: its id as the row holds it, and the
+ * workstream the inventory registers under that id. `undefined` when the
+ * channel has left the tree: the id stays on the row, and is shown as gone.
+ */
+export type ListedWorkstream = { id: string; workstream: Workstream | undefined };
+
+/** A project with the workstreams its row lists, in the row's order. */
+export type ProjectGroup = { project: Project; workstreams: ListedWorkstream[] };
+
+/** PROJECTS: every project, then the workstreams no project lists. */
+export type ProjectsView = { projects: ProjectGroup[]; noProject: Workstream[] };
+
+/**
+ * PROJECTS (BR-22, D3): every project row with the workstreams it lists, a
+ * project that lists none included, and then every workstream no row lists,
+ * which is No project.
+ *
+ * Derived from the snapshot alone: no read of its own, and nothing about a
+ * project's room or anyone's talk session decides where a workstream sits.
+ * Fails when either read it groups did: the inventory's failure first, since
+ * without it no workstream can be placed.
+ */
+export function projectsOf(snapshot: LoadedSnapshot): Section<ProjectsView> {
+  if (!snapshot.inventory.ok) return snapshot.inventory;
+  if (!snapshot.projects.ok) return snapshot.projects;
+  const registered = new Map(snapshot.inventory.value.workstreams.map((w) => [w.id, w]));
+  const listed = new Set<string>();
+  const projects = snapshot.projects.value.rows.map((project) => ({
+    project,
+    workstreams: project.workstreams.map((id) => {
+      listed.add(id);
+      return { id, workstream: registered.get(id) };
+    }),
+  }));
+  return {
+    ok: true,
+    value: { projects, noProject: snapshot.inventory.value.workstreams.filter((w) => !listed.has(w.id)) },
+  };
+}
+
+/**
+ * How a person reaches a project's room (BR-23), from the row alone:
+ *
+ * - **member**: they are a member and the row lists their talk session.
+ * - **repair**: they own the project and the row lists no session of theirs:
+ *   the mint at create failed or never ran. Opening the project joins for
+ *   them, which binds them (BR-8a).
+ * - **join**: a member with no talk session yet. They join to get one.
+ * - **outsider**: not a member. The room is for its members (Q3).
+ *
+ * The row decides, never a session's state: `members` is written only by
+ * trusted code, and a session's own record of its project grants nothing.
+ */
+export type Talk =
+  | { kind: "member"; sessionId: string }
+  | { kind: "repair" }
+  | { kind: "join" }
+  | { kind: "outsider" };
+
+/** See {@link Talk}. */
+export function talkFor(project: Project, viewer: string): Talk {
+  if (!project.members.includes(viewer)) return { kind: "outsider" };
+  const own = project.sessions.find((link) => link.userId === viewer);
+  if (own !== undefined) return { kind: "member", sessionId: own.sessionId };
+  return project.ownerUserId === viewer ? { kind: "repair" } : { kind: "join" };
 }
 
 /** How many seats are in each status, and how many waits-on entries they have. */

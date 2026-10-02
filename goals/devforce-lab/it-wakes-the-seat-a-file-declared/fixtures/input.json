@@ -30,7 +30,7 @@
     }
   },
   "documents": ["engineering-handbook", "teams/eng/feature-brief"],
-  "channels": ["eng.feature"],
+  "channels": ["eng.feature", "eng.triage", "ops.oncall", "ops.release"],
   "promptTokens": [
     "CODER-INSTRUCTIONS-B42D9",
     "FEATURE-BRIEF-E61B8",

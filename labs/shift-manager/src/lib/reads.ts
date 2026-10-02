@@ -32,6 +32,11 @@
  *    pending. Not the transcript.
  * 6. **Declared documents** a browser may read, from each listed flow's
  *    manifest, for Jump to (BR-10).
+ * 7. **The organization's projects**: every row of its `projects` collection,
+ *    found by its published key pattern on a flow that serves project rooms.
+ *    PROJECTS groups the workstreams by them. A project's room is never read
+ *    here: it is read through the person's own talk session when a project's
+ *    Stream opens (`talk.ts`).
  *
  * Every read after the first fails on its own: a failed section carries its
  * failure and the rest of the snapshot is whole (BR-11). Nothing retries by
@@ -90,6 +95,41 @@ export type Workstream = {
   kind: string | null;
   /** The seat ids the channel declares as members. */
   members: string[];
+};
+
+/** One member's talk session on a project: their own way into its room. */
+export type ProjectSession = { sessionId: string; userId: string };
+
+/**
+ * A project: a row of the organization's `projects` collection. It names no
+ * team; its workstreams are channel ids from any team.
+ */
+export type Project = {
+  /** The row id, also the project's address in Shift Manager. */
+  id: string;
+  title: string;
+  /** What the project is for; its Brief tab. `null` when none was given. */
+  brief: string | null;
+  status: string;
+  ownerUserId: string;
+  /** Who may read and post the project's room. */
+  members: string[];
+  /** The channel ids the project holds, as the row lists them. */
+  workstreams: string[];
+  /** Each member's talk session, at most one per person. */
+  sessions: ProjectSession[];
+};
+
+/** The organization's projects, and the flow kind their rooms are reached through. */
+export type Projects = {
+  /** Every row, in the collection's order. */
+  rows: Project[];
+  /**
+   * The kind a person's talk session runs on, for joining a room: the kind of
+   * the session the rows were read through, whose flow serves the rooms.
+   * `null` when no listed flow serves them.
+   */
+  talkKind: string | null;
 };
 
 /**
@@ -210,6 +250,12 @@ export type LabSnapshot =
       /** The organization the Lab bound this person's sessions to. */
       orgId: string;
       inventory: Section<{ seats: Seat[]; workstreams: Workstream[] }>;
+      /**
+       * The organization's projects. A Lab whose flows declare no projects
+       * collection has none, which is not a failure: every workstream is then
+       * under No project.
+       */
+      projects: Section<Projects>;
       /** Per workstream id. Absent for a workstream when the inventory did not load. */
       boards: Record<string, Section<WorkstreamBoards>>;
       asks: Section<Ask[]>;
@@ -219,6 +265,13 @@ export type LabSnapshot =
 
 /** The organization's inventory collections, by their published key patterns. */
 const INVENTORY_PATTERNS = { seats: "inventory/seats/*", channels: "inventory/channels/*" } as const;
+
+/**
+ * The organization's projects, by its published key pattern, and the room
+ * collection a flow that serves project rooms also declares. A flow that only
+ * writes projects declares the first and not the second.
+ */
+const PROJECT_PATTERNS = { projects: "projects/*", roomLines: "room-lines/**" } as const;
 
 /** Rows per collection page: the collection route's maximum. */
 const PAGE_SIZE = 200;
@@ -296,6 +349,35 @@ export function toWorkstream(row: unknown): Workstream | undefined {
     id,
     kind: text(field(row, "kind")),
     members: Array.isArray(members) ? members.filter((m): m is string => typeof m === "string") : [],
+  };
+}
+
+/**
+ * A project row. A row missing its id, title or owner is not a project anyone
+ * can address or own, and is left out; every other field reads as empty when
+ * absent, so a row an earlier version wrote still reads (BP-030).
+ */
+export function toProject(row: unknown): Project | undefined {
+  const id = text(field(row, "id"));
+  const title = text(field(row, "title"));
+  const ownerUserId = text(field(row, "ownerUserId"));
+  if (id === null || title === null || ownerUserId === null) return undefined;
+  const sessions = field(row, "sessions");
+  return {
+    id,
+    title,
+    brief: text(field(row, "brief")),
+    status: text(field(row, "status")) ?? "active",
+    ownerUserId,
+    members: strings(field(row, "members")),
+    workstreams: strings(field(row, "workstreams")),
+    sessions: Array.isArray(sessions)
+      ? sessions.flatMap((link) => {
+          const sessionId = text(field(link, "sessionId"));
+          const userId = text(field(link, "userId"));
+          return sessionId === null || userId === null ? [] : [{ sessionId, userId }];
+        })
+      : [],
   };
 }
 
@@ -467,6 +549,36 @@ export function createLabReader(clients: LabClients): LabReader {
     };
   };
 
+  /**
+   * The organization's projects, read once, through the first listed
+   * top-level session whose flow serves project rooms (it declares the
+   * projects collection with a browser read, and the room's lines). None: the
+   * Lab has no projects, and every workstream is under No project (D3).
+   */
+  const readProjects = async (sessions: SessionSummary[]): Promise<Section<Projects>> => {
+    const byKind = new Map<string, string>();
+    for (const session of sessions) {
+      if (session.parentSessionId == null && !byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
+    }
+    try {
+      for (const [kind, sessionId] of byKind) {
+        const manifest = await manifestFor(kind, sessionId);
+        const collection = (pattern: string) =>
+          manifest.resources.find((r) => r.kind === "collection" && r.pattern === pattern);
+        const projects = collection(PROJECT_PATTERNS.projects);
+        if (projects === undefined || projects.client.state?.read !== true) continue;
+        if (collection(PROJECT_PATTERNS.roomLines) === undefined) continue;
+        const rows = (await readCollection(sessionId, projects.ref))
+          .map((row) => toProject(row.clientData))
+          .filter((p): p is Project => p !== undefined);
+        return { ok: true, value: { rows, talkKind: kind } };
+      }
+    } catch (error) {
+      return { ok: false, failure: describeFailure(error) };
+    }
+    return { ok: true, value: { rows: [], talkKind: null } };
+  };
+
   /** A workstream's attached boards and their rows. */
   const readWorkstreamBoards = async (workstream: Workstream): Promise<Section<WorkstreamBoards>> => {
     try {
@@ -568,7 +680,7 @@ export function createLabReader(clients: LabClients): LabReader {
 
     const inventory = await readInventory(sessions, orgId);
 
-    const [boardEntries, asks, resources] = await Promise.all([
+    const [boardEntries, asks, resources, projects] = await Promise.all([
       inventory.ok
         ? Promise.all(
             inventory.value.workstreams.map(async (w) => [w.id, await readWorkstreamBoards(w)] as const),
@@ -597,6 +709,7 @@ export function createLabReader(clients: LabClients): LabReader {
         }
       })(),
       readResources(sessions),
+      readProjects(sessions),
     ]);
 
     return {
@@ -604,6 +717,7 @@ export function createLabReader(clients: LabClients): LabReader {
       sessions,
       orgId,
       inventory,
+      projects,
       boards: Object.fromEntries(boardEntries),
       asks,
       resources,
