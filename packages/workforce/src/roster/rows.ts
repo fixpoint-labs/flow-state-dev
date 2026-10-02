@@ -73,6 +73,7 @@ export function toHiredSeatRow(input: {
     instructions,
     owningOrgId: input.owningOrgId ?? null,
     ownerUserId: input.ownerUserId ?? null,
+    pendingRepair: null,
   };
 }
 

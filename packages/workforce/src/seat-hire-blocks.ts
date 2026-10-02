@@ -31,6 +31,7 @@ import type {
   FlowInstance,
   InstanceOwnerPin,
   ResourceCollectionRef,
+  ResourceRef,
 } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
@@ -215,10 +216,11 @@ interface LocatedSeatRow {
  * Find a seat's roster row: the caller's own user-owned row when the flow
  * mounts that roster and it has one, otherwise the org's row (present or not).
  *
- * With `leftoverAt` (fire): when neither roster row is there, a hired
+ * With `leftoverAt` (fire): when the caller has no user-owned row, a hired
  * inventory row the caller's own fire left at the caller's user-owned address
- * (a crash after its roster row went) keeps the seat the caller's, so the
- * retry removes that row rather than looking at the org address.
+ * (a crash after its roster row went) keeps the seat the caller's, ahead of
+ * any org row, so the retry removes that row rather than firing an org-wide
+ * seat that shares the id.
  */
 async function locateSeatRow(
   ctx: BlockContext,
@@ -235,9 +237,28 @@ async function locateSeatRow(
     ownerUserId: userId,
   };
   if ((await owned.getOptional(own.key)) !== undefined) return own;
-  if (leftoverAt === undefined || (await org.roster.getOptional(org.key)) !== undefined) return org;
+  if (leftoverAt === undefined) return org;
+  // Probed before the org row: an org-wide seat can share the seat id, and a
+  // retry that fell through to it would fire that seat instead.
   const leftover = await leftoverAt.inventory.getOptional(seatAddress(leftoverAt.orgId, seatId, userId));
   return leftover?.state.hired === true ? own : org;
+}
+
+/** A row's pending-repair marker; `null` when none, or on a row from before the field (BP-030). */
+function pendingRepairOf(state: JsonObject): string | null {
+  return typeof state.pendingRepair === "string" ? state.pendingRepair : null;
+}
+
+/** A fresh marker for one re-hire's row write. */
+function newRepairToken(): string {
+  return globalThis.crypto.randomUUID();
+}
+
+/** The row no longer carries this re-hire's marker: another call finished or replaced it. */
+class RepairMoved extends Error {
+  constructor(address: string) {
+    super(`"${address}" changed while this re-hire was finishing, most likely by another repair of it. This call stopped.`);
+  }
 }
 
 function asStored(row: HiredSeatRow): JsonObject {
@@ -460,6 +481,84 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
     },
   });
 
+  /**
+   * Register a seat, counting one the registry already holds at that address
+   * under the same kind as registered (a retry's, or the one a restart
+   * registered from the row). Reads the registry's own refusal rather than
+   * `kindAt`, so it holds with `kindAt` omitted.
+   *
+   * @returns whether this call registered it.
+   */
+  const registerOnce = (seat: FlowInstance, pin: InstanceOwnerPin): boolean => {
+    try {
+      registerHiredSeat(options.register, seat, pin);
+      return true;
+    } catch (error) {
+      const refused = error as { reason?: unknown; id?: unknown; existingKind?: unknown };
+      if (refused.reason === "duplicate-id" && refused.id === seat.id && refused.existingKind === seat.kind) {
+        return false;
+      }
+      throw error;
+    }
+  };
+
+  /**
+   * The steps of a re-hire after its row is written: register, publish the
+   * inventory row, clear the row's pending-repair marker. Before each side
+   * effect the row is re-read from the store (a verified no-op write) and must
+   * still exist carrying `token`. A row `fire` deleted stops the repair, and
+   * what this call registered or published is taken back, so a fire that
+   * lands mid-repair leaves no seat and no inventory row. A row whose marker
+   * moved (another call finished or replaced it) stops it without undoing.
+   */
+  const finishRehire = async (
+    ctx: BlockContext,
+    ref: ResourceRef<JsonObject>,
+    token: string,
+    seat: FlowInstance,
+    pin: InstanceOwnerPin,
+    flow: string,
+    address: string,
+    onRegisterFailed?: (error: unknown) => Promise<void>
+  ) => {
+    const stillPending = (current: JsonObject) => {
+      if (pendingRepairOf(current) !== token) throw new RepairMoved(address);
+      return current;
+    };
+    let registered = false;
+    let published = false;
+    try {
+      await ref.updateState(stillPending);
+      try {
+        registered = registerOnce(seat, pin);
+      } catch (error) {
+        await onRegisterFailed?.(error);
+        throw error;
+      }
+      await ref.updateState(stillPending);
+      let warnings: { warning?: string };
+      try {
+        warnings = await publish(ctx, seat, flow, address);
+      } catch (error) {
+        // A fire that removed the inventory row under this write removed the
+        // roster row first; that is the fired case below, not a failed write.
+        await ref.updateState(stillPending);
+        throw new Error(
+          `"${address}" was re-hired onto "${flow}" and is serving, but its inventory row could not be ` +
+            `written: ${error instanceof Error ? error.message : String(error)}. Run the same re-hire again to finish it.`
+        );
+      }
+      published = true;
+      await ref.updateState((current) => ({ ...stillPending(current), pendingRepair: null }));
+      return warnings;
+    } catch (error) {
+      if ((error as { code?: unknown }).code !== "resource_deleted") throw error;
+      if (published) await collectionOf(ctx, SEAT_INVENTORY_RESOURCE).delete(address);
+      if (registered) options.unregister(address);
+      throw new Error(`"${address}" was fired while this re-hire was finishing. Nothing of the re-hire was kept.`);
+    }
+  };
+
   const rehire = handler({
     name: "rehire",
     description:
@@ -493,15 +592,21 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
       const pin = hiredSeatOwnerPinFromRosterOwner({ orgId, userId: old.ownerUserId });
 
       if (checked.ok) {
-        // Only a seat the start skips for its kind: a working seat changes
-        // kind by fire then hire. The one exception is this same re-hire run
-        // again after its row was written (a crash, or an inventory write that
-        // failed): the stored row is already the one it would write, so the
-        // retry finishes the registration and the inventory row, and writes no
-        // roster row.
-        if (!deepEqual(row, old)) {
+        // A seat the start serves is not repaired: a working seat changes kind
+        // by fire then hire. The one exception is a re-hire that wrote this
+        // row and didn't finish (the process died, or the inventory write
+        // failed), which the row says itself with its pending-repair marker.
+        // Only the same re-hire finishes it; a row with no marker (an older
+        // row included, BP-030) has no repair pending.
+        const token = old.pendingRepair;
+        if (token === null) {
           throw new Error(
             `"${address}" still starts on kind "${old.flow}". To change a working seat's kind, fire it and hire it again.`
+          );
+        }
+        if (!deepEqual(row, { ...old, pendingRepair: null })) {
+          throw new Error(
+            `"${address}" has an unfinished re-hire onto "${old.flow}". Run that same re-hire again to finish it.`
           );
         }
         refuseUnhireableKind(input.flow, "re-hire onto");
@@ -509,8 +614,8 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         if (live !== undefined && live !== input.flow) {
           throw new Error(`"${address}" is already served by a flow of kind "${live}", so it can't be re-hired.`);
         }
-        if (live === undefined) registerHiredSeat(options.register, checked.seat, pin);
-        return { seatId: old.seatId, address, ...(await publish(ctx, checked.seat, input.flow, address)) };
+        const warnings = await finishRehire(ctx, existing, token, checked.seat, pin, input.flow, address);
+        return { seatId: old.seatId, address, ...warnings };
       }
 
       // Everything that can refuse runs before the write.
@@ -520,45 +625,37 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         throw new Error(`"${address}" is already served by a flow of kind "${held}", so it can't be re-hired.`);
       }
       const seat = mint(orgId, row, address);
+      const token = newRepairToken();
 
-      // One version-checked write. If the row moved since it was read (another
-      // repair landed, or it was retired), this one is refused rather than
-      // written over it.
+      // One version-checked write, marked as a repair in progress until the
+      // seat is registered and published. If the row moved since it was read
+      // (another repair landed, or it was retired), this one is refused rather
+      // than written over it.
       await existing.updateState((current) => {
         if (!deepEqual(current, before)) {
           throw new Error(
             `"${address}" changed while this re-hire was being made, most likely by another repair. Nothing was written.`
           );
         }
-        return asStored(row);
+        return asStored({ ...row, pendingRepair: token });
       });
 
-      try {
-        registerHiredSeat(options.register, seat, pin);
-      } catch (error) {
+      const warnings = await finishRehire(ctx, existing, token, seat, pin, input.flow, address, async () => {
+        // Registration refused: write the old row back, while it is still this repair's.
         try {
-          await existing.updateState(() => before);
+          await existing.updateState((current) => {
+            if (pendingRepairOf(current) !== token) throw new RepairMoved(address);
+            return before;
+          });
         } catch (restoreError) {
           console.error(
             `[seat-hire] "${address}" was re-hired onto "${input.flow}" and could not be registered, and its ` +
-              `old row could not be written back either — the next boot serves it on "${input.flow}": ${String(restoreError)}`
+              `old row could not be written back either — the next boot serves it on "${input.flow}", and the ` +
+              `same re-hire run again finishes it: ${String(restoreError)}`
           );
         }
-        throw error;
-      }
-
-      // The seat is re-hired and serving from here on; only its inventory row
-      // is left. If that write fails, the same call run again finishes it
-      // (the retry branch above), so the error says so instead of undoing a
-      // repair that took.
-      try {
-        return { seatId: old.seatId, address, ...(await publish(ctx, seat, input.flow, address)) };
-      } catch (error) {
-        throw new Error(
-          `"${address}" was re-hired onto "${input.flow}" and is serving, but its inventory row could not be ` +
-            `written: ${error instanceof Error ? error.message : String(error)}. Run the same re-hire again to finish it.`
-        );
-      }
+      });
+      return { seatId: old.seatId, address, ...warnings };
     },
   });
 

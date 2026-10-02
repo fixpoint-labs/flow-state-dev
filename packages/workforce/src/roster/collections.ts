@@ -85,6 +85,15 @@ export const hiredSeatRowSchema = z.object({
    * `owningOrgId`: matching one does not imply the other.
    */
   ownerUserId: z.string().nullable().default(null),
+  /**
+   * Set while a `rehire` that wrote this row has not yet registered the seat
+   * and published its inventory row; cleared once it has. A re-hire run again
+   * finishes only a row that carries it, so a working seat is never taken for
+   * an unfinished repair. `null` — the default — on every other row, and on a
+   * row written before the field existed (BP-023, BP-030). Server-side only:
+   * not in the browser projection.
+   */
+  pendingRepair: z.string().nullable().default(null),
 });
 
 /** One stored roster row. @see hiredSeatRowSchema */
