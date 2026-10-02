@@ -25,7 +25,7 @@
 
 import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { ActionConfig, BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration";
 import { taskSchema } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
@@ -36,6 +36,8 @@ import {
   resolveChannelBoard
 } from "./channel-board";
 import { emitChannelPostLine, readChannelPostLines } from "./channel-items";
+import { incarnationOfRow } from "../roster/incarnation";
+import { INVENTORY_RACE_ATTEMPTS, isWriteConflict } from "../roster/remove";
 import {
   CHANNEL_POST_COMPONENT,
   channelTranscriptLineSchema,
@@ -62,6 +64,7 @@ import {
   membershipKey,
   seatInventoryRowSchema
 } from "../inventory/collections";
+import type { SeatInventoryRow } from "../inventory/collections";
 
 /** The built-in kind's name, and so the built-in instance's address. */
 export const CHANNEL_KIND = "channel";
@@ -862,6 +865,47 @@ const registerSeatsInputSchema = z
 /** What the seat write reports: how many rows landed. */
 export const inventorySeatsRegisteredSchema = z.object({ written: z.number() });
 
+/** The stored row is not the one the boot read: another hire's, or a declared seat's. */
+class NotTheBootsRow extends Error {}
+
+/**
+ * Publish a hired seat's row from a boot's roster, only where it is still
+ * that hire's.
+ *
+ * The roster the boot read can be older than the store: another process may
+ * since have fired the seat and hired a replacement under a new incarnation.
+ * So the row is created only where none was there when this action read the
+ * inventory, and otherwise replaced only while the stored row is a hired one
+ * carrying the same incarnation (`null` matching only `null`, a row from
+ * before incarnations). The check runs inside the version-checked write, so
+ * a row another writer put there since is checked again. A row removed after
+ * it was read is not written back: a fire removed it.
+ *
+ * @returns whether the row landed.
+ */
+async function publishBootHire(seats: ResourceCollectionRef, row: SeatInventoryRow): Promise<boolean> {
+  const incarnation = row.incarnation ?? null;
+  for (let attempt = 0; attempt < INVENTORY_RACE_ATTEMPTS; attempt += 1) {
+    const stored = await seats.getOptional(row.id);
+    try {
+      if (stored === undefined) {
+        await seats.create(row.id, row);
+        return true;
+      }
+      await stored.updateState((current) => {
+        if (current.hired !== true || incarnationOfRow(current) !== incarnation) throw new NotTheBootsRow();
+        return row;
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof NotTheBootsRow) return false;
+      if ((error as { code?: unknown }).code === "resource_deleted") return false;
+      if (!isWriteConflict(error)) throw error;
+    }
+  }
+  throw new Error("the row kept changing under this boot.");
+}
+
 /**
  * The two blocks that write the live inventory, built for one channel kind.
  *
@@ -998,8 +1042,12 @@ export function inventoryWriterActions(kind: string) {
       let written = 0;
       for (const row of input.seats) {
         try {
-          await ctx.resources.seats.upsert(row.id, row);
-          written += 1;
+          if (row.hired !== true) {
+            await ctx.resources.seats.upsert(row.id, row);
+            written += 1;
+          } else if (await publishBootHire(ctx.resources.seats, row)) {
+            written += 1;
+          }
         } catch (error) {
           problems.push(
             `seat "${row.id}" — ${error instanceof Error ? error.message : String(error)}`
