@@ -502,6 +502,15 @@ async function settleFreshRequestSetupFailure(options: {
         updatedAt: now,
         items
       };
+      // Items before the status, as every terminal write does: on a store
+      // whose `set` drops `items`, a `failed` read must not come without its
+      // error item. Only onto a record this run already holds, though; one
+      // this write creates may be lost to another request taking the id
+      // ("absent"), so its items follow the write that wins it.
+      if (current !== undefined) {
+        options.stores.request.persistItems(options.requestId, items);
+        await options.stores.request.flushItems(options.requestId);
+      }
       const written = await options.stores.request.set(
         options.requestId,
         failed,
@@ -509,8 +518,10 @@ async function settleFreshRequestSetupFailure(options: {
       );
       if (written.ok) {
         writtenIncarnation = resolveRequestIncarnation(failed);
-        options.stores.request.persistItems(options.requestId, items);
-        await options.stores.request.flushItems(options.requestId);
+        if (current === undefined) {
+          options.stores.request.persistItems(options.requestId, items);
+          await options.stores.request.flushItems(options.requestId);
+        }
         settled = true;
       }
     }
