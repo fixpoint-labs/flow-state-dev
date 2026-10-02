@@ -175,6 +175,7 @@ export default workforceAdmin();
 | `register(seat, pin)` | Puts a minted seat on the air. `pin` is `{ orgId, userId? }` for the organization the hire ran under. |
 | `unregister(address)` | Releases an address in this process and returns whether anything held it. |
 | `kindAt?(address)` | The kind serving an address right now, if any. Lets `hire` refuse an address that is already served before writing anything, and lets `fire` leave an address registered when a different kind holds it. |
+| `instanceAt?(address)` | The seat serving an address right now, if any. With it, `fire` releases only the seat its roster row minted, and a hire or re-hire stopped part-way by another call releases only its own seat. Without it, `fire` goes by the kind, and a stopped call leaves its seat registered in this process until the next start. |
 | `allowKinds?` | The subset of `kinds` these handlers may mint. |
 | `channelBoards?` | Channel board ids. For each one the new seat doesn't declare, the hire's `warning` names it, since rows filed on that board sit pending until something works them. |
 
@@ -216,11 +217,11 @@ It returns the seat id and the address the seat answers on:
 
 A hire runs in this order:
 
-1. It refuses a kind that isn't in `kinds`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served.
+1. It refuses a kind that isn't in `kinds`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served, and an address a seat declared in a worker file has an inventory row at.
 2. It mints the seat, which runs the kind's settings schema.
 3. It writes the roster row with `create()`. A second hire of the same seat id fails here with `Resource instance "workforce/roster/support.ada" already exists`, including two hires arriving at once.
 4. It calls your `register`. If that throws, the row from step 3 is deleted and the error is passed on.
-5. It writes an inventory row at `inventory/seats/<address>`. If this write fails, the seat is hired and answering but has no inventory row.
+5. It writes an inventory row at `inventory/seats/<address>`, replacing only a row left by an earlier hire at that address, and only while its own roster row is still there. If this write fails, the seat is hired and answering but has no inventory row. If the seat is fired or hired again while this hire is finishing, the hire stops and takes back only what is still its own.
 
 ### Firing
 
@@ -233,7 +234,7 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/fire \
   -d '{"userId":"you","input":{"seatId":"support.ada"}}'
 ```
 
-It refuses a seat id this organization never hired with `This organization hired no seat "support.ada".` Otherwise it deletes the roster row, then calls your `unregister` on the address (`released` is what that returned), then deletes the seat's row from the [inventory](./inventory.md). If `kindAt` reports a different kind at the address than the row names, the row is still deleted but the address stays registered, its inventory row is left alone, and `released` is `false`. Without `kindAt`, `fire` releases whatever holds the address, the same as the [hand-written fire](#firing-a-seat).
+It refuses a seat id this organization never hired with `This organization hired no seat "support.ada".` Otherwise it deletes the roster row, then calls your `unregister` on the address (`released` is what that returned), then deletes the seat's row from the [inventory](./inventory.md). If `kindAt` reports a different kind at the address than the row names, the row is still deleted but the address stays registered, its inventory row is left alone, and `released` is `false`. With `instanceAt`, it releases the address only when the seat there was minted from the row it deleted, and removes only the inventory row that seat's hire published; a declared seat's row is never removed. Without `kindAt` or `instanceAt`, `fire` releases whatever holds the address, the same as the [hand-written fire](#firing-a-seat).
 
 The row is gone straight away. When `released` is `true`, the address also stops answering **on the process that handled the request**; when it is `false`, whatever holds the address keeps answering. Work already running finishes and is saved. Nothing is cancelled and nothing is truncated.
 

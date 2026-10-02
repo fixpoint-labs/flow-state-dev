@@ -714,6 +714,21 @@ describe("rehire", () => {
     expect((await h.rows(ROSTER))["support.joe"]).toMatchObject({ pendingRepair: null });
   });
 
+  /**
+   * The inventory after a fire took back an unfinished repair: the repair
+   * published nothing, so the row at the address is still the one the seat had
+   * before it (written before incarnations), untouched. Fire removes only the
+   * fired incarnation's row; this one carries none, and no roster row backs it,
+   * so a team list leaves it out. (A real restart rewrites it with the
+   * incarnation of the seat it serves, which fire then removes.)
+   */
+  async function expectOnlyTheOldRowLeft(h: Awaited<ReturnType<typeof harness>>) {
+    const seats = await h.rows(SEATS);
+    expect(seats["acme.support.joe"]).toEqual({ id: "acme.support.joe", kind: "desk-clerk", door: "run" });
+    const listed = listedSeatRows("acme", Object.values(seats) as Array<{ id: string; hired?: boolean | null }>, []);
+    expect(listed.map((row) => row.id)).not.toContain("acme.support.joe");
+  }
+
   it("fire lands after an unfinished repair's retry loaded its row: the retry neither registers nor publishes it", async () => {
     const input = { seatId: "support.joe", flow: "desk", settings: { queue: "q" } };
     const dead = await diedAfterRehireWrite(input);
@@ -739,7 +754,7 @@ describe("rehire", () => {
     expect(h.live.held.has("acme.support.joe")).toBe(false);
     expect(again.error?.message).toMatch(/fired/);
     expect(await h.rows(ROSTER)).not.toHaveProperty("support.joe");
-    expect(await h.rows(SEATS)).not.toHaveProperty("acme.support.joe");
+    await expectOnlyTheOldRowLeft(h);
   });
 
   it("fire lands during the retry's first check of its row: what the retry registered is taken back", async () => {
@@ -768,7 +783,7 @@ describe("rehire", () => {
     expect(again.error?.message).toMatch(/fired/);
     expect(h.live.held.has("acme.support.joe")).toBe(false);
     expect(await h.rows(ROSTER)).not.toHaveProperty("support.joe");
-    expect(await h.rows(SEATS)).not.toHaveProperty("acme.support.joe");
+    await expectOnlyTheOldRowLeft(h);
   });
 
   it("the inventory write fails after the seat is re-hired: the error says so, and the same re-hire run again finishes it", async () => {
@@ -812,6 +827,8 @@ describe("rehire", () => {
     expect(again.error?.message).toMatch(/fired/);
     expect(h.live.held.has("acme.support.joe")).toBe(false);
     expect(await h.rows(ROSTER)).not.toHaveProperty("support.joe");
+    // The retry replaced the old row while its roster row was current, then
+    // took its own row back: nothing is left at the address.
     expect(await h.rows(SEATS)).not.toHaveProperty("acme.support.joe");
   });
 

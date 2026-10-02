@@ -24,32 +24,51 @@ import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { hiredSeatManifestFromStored } from "./rows";
 import { incarnationOfRow } from "./incarnation";
 
+/** How many times an inventory write or delete re-reads after losing a race. */
+export const INVENTORY_RACE_ATTEMPTS = 5;
+
+/** A store conflict: another writer moved or removed the row this call read. */
+export function isWriteConflict(error: unknown): boolean {
+  const code = (error as { code?: unknown } | undefined)?.code;
+  return code === "concurrent_modification" || code === "resource_deleted" || code === "resource_already_exists";
+}
+
 /**
- * Delete the inventory row at `address` if it belongs to `incarnation`: it
- * carries that incarnation, or none (a row from before incarnations, which
- * matches nothing newer). A row carrying another incarnation is a seat hired
- * again at the address after this one, and is left. The delete is
- * version-checked against the row just read, so a replacement that lands in
- * between conflicts and is left too.
+ * Delete the inventory row at `address` only while it is `incarnation`'s.
  *
+ * The row must not be a declared seat's (`hired: false`), and must carry
+ * `incarnation`. `null` matches only a row that carries none either, which is
+ * the one legacy path: firing a roster row from before incarnations removes
+ * the row its older hire published. The delete is version-checked against the
+ * row checked; when another writer changed it in between, the store hands
+ * back the row that replaced it, which is checked again (`recheck`) or left.
+ * Nothing here writes to a row it doesn't delete.
+ *
+ * @param recheck Check a replacing row again. Used when `incarnation` is
+ *   known dead (its roster row is gone), so a row carrying it is stale
+ *   whenever it was written. Off where the decision rests on the call's own
+ *   earlier reads, which a newer row would not match.
  * @returns whether a row was deleted.
  */
 export async function deleteOwnInventoryRow(
   inventory: ResourceCollectionRef,
   address: string,
-  incarnation: string | null
+  incarnation: string | null,
+  recheck = true
 ): Promise<boolean> {
-  const row = await inventory.getOptional(address);
-  if (row === undefined) return false;
-  const theirs = incarnationOfRow(row.state);
-  if (theirs !== null && theirs !== incarnation) return false;
-  try {
-    await inventory.delete(address);
-    return true;
-  } catch (error) {
-    if ((error as { code?: unknown }).code === "concurrent_modification") return false;
-    throw error;
+  for (let attempt = 0; attempt < INVENTORY_RACE_ATTEMPTS; attempt += 1) {
+    const row = await inventory.getOptional(address);
+    if (row === undefined) return false;
+    if (row.state.hired === false || incarnationOfRow(row.state) !== incarnation) return false;
+    try {
+      await inventory.delete(address);
+      return true;
+    } catch (error) {
+      if (!isWriteConflict(error)) throw error;
+      if (!recheck) return false;
+    }
   }
+  return false;
 }
 
 /**
@@ -119,7 +138,9 @@ export async function removeHiredSeat(options: RemoveHiredSeatOptions): Promise<
     if (leftover === undefined || leftover.state.hired !== true) {
       return { outcome: "nothing", address: options.address };
     }
-    if (!(await deleteOwnInventoryRow(options.inventory, options.address, incarnationOfRow(leftover.state)))) {
+    // Checked against the rows this call read, not re-read: a row written
+    // since may be a new hire's whose roster row this call didn't see.
+    if (!(await deleteOwnInventoryRow(options.inventory, options.address, incarnationOfRow(leftover.state), false))) {
       return { outcome: "nothing", address: options.address };
     }
     return { outcome: "already-gone", address: options.address };
@@ -140,8 +161,9 @@ export async function removeHiredSeat(options: RemoveHiredSeatOptions): Promise<
   await options.roster.delete(options.key);
   const release = options.release(address, storedKind, incarnation);
   if (release !== "held-by-another") {
-    // Only this incarnation's row: a seat hired again at the address since
-    // the roster row went keeps its own.
+    // Only this incarnation's row, re-read: the roster row is gone, so a row
+    // carrying its incarnation is stale whenever it was written, and a seat
+    // hired again at the address since keeps its own.
     await deleteOwnInventoryRow(options.inventory, address, incarnation);
   }
   return { outcome: "removed", address, storedKind, released: release === "released" };

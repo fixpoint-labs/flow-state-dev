@@ -1483,8 +1483,9 @@ partial roster.
 
 The roster and the inventory are different collections. A roster row at
 `workforce/roster/<seatId>` is the durable hire: `hire` writes it, `fire` deletes it. An
-inventory row at `inventory/seats/<address>` means *was registered in this organization* and
-is never removed.
+inventory row at `inventory/seats/<address>` means *was registered in this organization*. A
+declared seat's row is never removed; a runtime-hired seat's row is removed by `fire`, and only
+while it carries the incarnation fired.
 
 `createSeatHireCapability`'s `hire` tool writes both. `discover` lists a seat when it is still
 hired or still declared in a worker file, and has been registered in this organization. Pass
@@ -1567,7 +1568,8 @@ A duplicate seat is refused. It does not invent a kind. It does not attach board
 is present when a named channel board is unattended.
 
 It refuses an unknown kind or one outside `allowKinds` (and lists the hireable ones), an
-address already served, and a request with no organization.
+address already served, an address a declared seat's inventory row sits at (`hired: false`), and
+a request with no organization.
 
 **`fire`** takes `{ seatId, owner?, orgId? }` (extra keys are refused) and returns
 `{ seatId, address, released, alreadyGone? }`. It deletes the roster row, unregisters the
@@ -1725,8 +1727,10 @@ registered seat, one row per registered channel, and one row per seat-in-channel
 collections, so a block reads them the way it reads any other resource.
 
 **A row means registered, not open.** It records that a seat or channel was registered in this
-organization, not that the seat is working or the channel is open now. Nothing deletes a row, so a
-fired seat keeps its row. A channel's `members` are the ones it had when it registered.
+organization, not that the seat is working or the channel is open now. Declared seats' and
+channels' rows are never deleted. A runtime-hired seat's row is removed when it is fired, and
+only the row its own hire published (it carries that hire's `incarnation`). A channel's `members`
+are the ones it had when it registered.
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
@@ -1956,9 +1960,11 @@ the root exports, and reaches no Node built-in. It also exports `listedSeatRows(
 the team-list rule: of the seat inventory rows, a hired seat's is kept only while a roster row
 names its address (pass `undefined` when the roster didn't load, and no hired seat is kept), and
 every other row is kept as it is. A row says which it is in `hired`; one written before that field
-is read by its id's shape, which `isHiredSeatRow(orgId, row)` also answers. A user-owned hire's row
-(`<org>.~<user>.<seatId>`) is kept only when `owned`, the reader's own user-owned roster rows read
-on the server, has a row at that address with the same `incarnation`. The roster that would back
+is read by its id's shape, which `isHiredSeatRow(orgId, row)` also answers. A hired row is kept only when the roster
+row at its address carries the same `incarnation`; rows from before incarnations match only each
+other (`null` on both sides). The org roster publishes `incarnation` to browsers for this. A
+user-owned hire's row (`<org>.~<user>.<seatId>`) is kept only when `owned`, the reader's own
+user-owned roster rows read on the server, has a row at that address with the same `incarnation`. The roster that would back
 it is owner-private, so a browser reader has no `owned` and keeps no user-owned hire. An
 `incarnation` on the inventory row says which hire published it, not that the hire is still there. A hired seat fired
 before fire removed inventory rows is left out that way.
@@ -1973,7 +1979,7 @@ before fire removed inventory rows is left out that way.
 | `createWorkforceCapability({ roster, inventory, hiredRoster?, sources? })` | The discovery door. Installs the seat and channel sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`. Pass `hiredRoster` so a runtime hire is listed the same way a file-declared seat is. Omit it and `discover` lists only file-declared seats. |
 | `workforceManifestSources({ roster, inventory, hiredRoster? })` | The seat and channel sources on their own, for an app assembling its own manifest registry. Same `hiredRoster?` meaning as `createWorkforceCapability`. |
 | `createSeatHireCapability({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Puts catalog tools `hire` and `fire` on a worker kind. Compose it into `defineAgentWorkerFlow({ uses })`. A seat calls them by selecting `seat-hire: [tools]` with no `tools:` line, or by naming them in `tools:`; `tools: []` withholds them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. The roster row carries that organization as `owningOrgId`, so a copy read under another organization is a reload problem rather than a seat. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
-| `createSeatHireBlocks({ kinds, register, unregister, kindAt?, instanceAt?, allowKinds?, channelBoards? })` | Returns `{ hire, fire, brokenSeats, rehire }`; `hire` and `fire` are the handlers behind `createSeatHireCapability`'s catalog tools, for mounting as a flow's actions. Same options, inputs, outputs and refusals. Declare `defineHiredRosterCollection()` under `HIRED_ROSTER_RESOURCE` and `defineSeatInventoryCollection()` under `SEAT_INVENTORY_RESOURCE` on that flow. The organization comes from the session's principal; a body `orgId` is ignored, and a session whose principal names no organization cannot hire. Each hire and re-hire stamps a fresh `incarnation` on its roster row, its inventory row and the seat it mints; `fire` deletes only that incarnation's inventory row and, given `instanceAt` (the registry's instance at an address), releases only the seat minted from the row. Without `instanceAt` those checks fall back to the kind, and a `rehire` retry that finds the address already served is refused. |
+| `createSeatHireBlocks({ kinds, register, unregister, kindAt?, instanceAt?, allowKinds?, channelBoards? })` | Returns `{ hire, fire, brokenSeats, rehire }`; `hire` and `fire` are the handlers behind `createSeatHireCapability`'s catalog tools, for mounting as a flow's actions. Same options, inputs, outputs and refusals. Declare `defineHiredRosterCollection()` under `HIRED_ROSTER_RESOURCE` and `defineSeatInventoryCollection()` under `SEAT_INVENTORY_RESOURCE` on that flow. The organization comes from the session's principal; a body `orgId` is ignored, and a session whose principal names no organization cannot hire. Each hire and re-hire stamps a fresh `incarnation` on its roster row, its inventory row and the seat it mints; `fire` deletes only that incarnation's inventory row and, given `instanceAt` (the registry's instance at an address), releases only the seat minted from the row. Every side effect of `hire`, `fire` and `rehire` lands only while its target still carries the call's incarnation: the inventory row is written against the row read after checking the roster row, a declared seat's row is never written or deleted, and an address is released only when `instanceAt` shows the seat there was minted from that incarnation. A `null` incarnation (a row from before incarnations) matches only `null`. A call stopped by another hire, fire or repair of the same seat takes back only what still carries its incarnation. Without `instanceAt`, `fire` falls back to the kind, a stopped call leaves its seat registered in this process until the next start, and a `rehire` retry that finds the address already served is refused. |
 | `registerHiredSeat(register, seat, pin)` | The hire writer's register path. Refuses when `pin` has no `orgId`. The pin is the hire row's roster owner, not the address. |
 | `HiredSeatOwnerPin` | Another name for core's `InstanceOwnerPin`: `{ orgId, userId? }`, with `userId` present only for a user-owned hire row. Either name works wherever the other is expected. |
 | `SEAT_HIRE_CAPABILITY` | The capability name, `"seat-hire"`. |

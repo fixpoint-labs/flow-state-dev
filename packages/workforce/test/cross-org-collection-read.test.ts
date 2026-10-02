@@ -371,7 +371,8 @@ describe("FIX-1477 · the panel collections' client read", () => {
     expect(roster.json.items[0].clientData).toEqual({
       seatId: "support.ada",
       flow: "agent",
-      instructions: null
+      instructions: null,
+      incarnation: null
     });
     expect(JSON.stringify(roster.json)).not.toContain("LEAKED-SETTINGS");
   });

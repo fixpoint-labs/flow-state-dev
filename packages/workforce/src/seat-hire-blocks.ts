@@ -46,8 +46,8 @@ import { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire
 import { checkHiredSeatRow } from "./roster/check";
 import { HIRED_ROSTER_PREFIX, type HiredSeatRow } from "./roster/collections";
 import { hiredSeatOwnerPinFromRosterOwner, registerHiredSeat } from "./roster/register-hired-seat";
-import { deleteOwnInventoryRow, removeHiredSeat } from "./roster/remove";
-import { incarnationOf, incarnationOfRow, newIncarnation, tagIncarnation } from "./roster/incarnation";
+import { deleteOwnInventoryRow, INVENTORY_RACE_ATTEMPTS, isWriteConflict, removeHiredSeat } from "./roster/remove";
+import { incarnationOfRow, mintedFrom, newIncarnation, tagIncarnation } from "./roster/incarnation";
 import { hiredSeatManifest, seatAddress, toHiredSeatRow } from "./roster/rows";
 import { resolveHiredSeatLocation, type HiredSeatLocation, type HiredSeatOwner } from "./roster/locate";
 
@@ -261,6 +261,23 @@ class SeatMoved extends Error {
   }
 }
 
+/**
+ * The call's own roster row failed its check: carried out of an inventory
+ * write, so it isn't read as that write's conflict.
+ */
+class FenceFailed extends Error {
+  constructor(readonly reason: unknown) {
+    super(reason instanceof Error ? reason.message : String(reason));
+  }
+}
+
+/** The address has a declared seat's inventory row, which no hire writes over. */
+class DeclaredRow extends Error {
+  constructor(address: string) {
+    super(`"${address}" has a declared seat's inventory row, which a hire does not write over.`);
+  }
+}
+
 function asStored(row: HiredSeatRow): JsonObject {
   return row as unknown as JsonObject;
 }
@@ -313,6 +330,17 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
     }
   };
 
+  /**
+   * Refuse an address a declared seat's inventory row sits at (a team named
+   * like the organization), even while nothing serves it. Writes nothing.
+   */
+  const refuseDeclaredAddress = async (ctx: BlockContext, address: string): Promise<void> => {
+    const row = await collectionOf(ctx, SEAT_INVENTORY_RESOURCE).getOptional(address);
+    if (row?.state.hired === false) {
+      throw new Error(`"${address}" is a seat declared in a worker file. Hire under another id.`);
+    }
+  };
+
   /** Mint the seat a row describes, running the kind's settings schema. Writes nothing. */
   const mint = (orgId: string, row: HiredSeatRow, address: string): FlowInstance => {
     const record = hiredSeatManifest(orgId, row);
@@ -331,17 +359,65 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
     return seat;
   };
 
-  /** Publish the seat's inventory row, and say what a person should know. */
+  /**
+   * Publish the seat's inventory row, and say what a person should know.
+   *
+   * Every write runs `fence` (the call's roster row is still current) after
+   * looking at the row it replaces, and lands only on that row: a create when
+   * there was none, otherwise a version-checked replace whose check runs inside
+   * the write, so a row another writer put there since is looked at, and
+   * fenced for, again. While the call's roster row is current, no other hire's
+   * row at the address can be live (one roster row per address), so the row
+   * replaced is this incarnation's or a stale one. A declared seat's row
+   * (`hired: false`) is never written over.
+   */
   const publish = async (
     ctx: BlockContext,
     seat: FlowInstance,
     flow: string,
     address: string,
-    incarnation: string
+    incarnation: string,
+    fence: () => Promise<unknown>
   ) => {
     const door = seatDoorOf(seat);
     const inventory = collectionOf(ctx, SEAT_INVENTORY_RESOURCE);
-    await inventory.upsert(address, { id: address, kind: flow, door: door.door, hired: true, incarnation });
+    const next: JsonObject = { id: address, kind: flow, door: door.door, hired: true, incarnation };
+    const create = async () => {
+      await fence();
+      await inventory.create(address, next);
+    };
+    let written = false;
+    for (let attempt = 0; attempt < INVENTORY_RACE_ATTEMPTS && !written; attempt += 1) {
+      try {
+        const row = await inventory.getOptional(address);
+        if (row === undefined) {
+          await create();
+        } else {
+          try {
+            // The engine re-runs this against the row that won after any
+            // version conflict, so the check and the fence always precede
+            // the write that lands.
+            await row.updateState(async (current) => {
+              if (current.hired === false) throw new DeclaredRow(address);
+              await fence();
+              return next;
+            });
+          } catch (error) {
+            // Deleted since this call read it: write it fresh.
+            if (error instanceof FenceFailed || (error as { code?: unknown }).code !== "resource_deleted") throw error;
+            await create();
+          }
+        }
+        written = true;
+      } catch (error) {
+        if (error instanceof FenceFailed || !isWriteConflict(error)) throw error;
+      }
+    }
+    if (!written) {
+      throw Object.assign(new Error(`"${address}"'s inventory row kept changing under this call.`), {
+        code: "concurrent_modification",
+      });
+    }
     const warnings = [
       ...unattendedBoardWarnings(options.channelBoards ?? [], [seat]),
       ...(door.problem === undefined ? [] : [door.problem]),
@@ -365,7 +441,7 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
       const refused = error as { reason?: unknown; id?: unknown };
       if (own !== undefined && refused.reason === "duplicate-id" && refused.id === seat.id) {
         const live = options.instanceAt?.(seat.id);
-        if (live !== undefined && live.kind === seat.kind && incarnationOf(live) === own) return false;
+        if (live !== undefined && live.kind === seat.kind && mintedFrom(live, own)) return false;
       }
       throw error;
     }
@@ -375,10 +451,15 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
    * The steps after a hire or re-hire wrote its roster row: register, publish
    * the inventory row, and (for a re-hire) clear the row's pending-repair
    * marker. Before each side effect the row is re-read from the store (a
-   * verified no-op write) and must still exist carrying `incarnation`. A row
-   * `fire` deleted stops the call, and what it registered or published is
-   * taken back, so a fire that lands part-way leaves no seat and no inventory
-   * row. A row carrying another incarnation stops it without undoing.
+   * verified no-op write) and must still exist carrying `incarnation`.
+   *
+   * A conflict of any kind (the row was deleted, carries another incarnation,
+   * or another writer kept moving the inventory row) stops the call and takes
+   * back only what is still this incarnation's: the seat at the address when
+   * `instanceAt` shows it was minted from this incarnation, and the inventory
+   * row while it carries it. The other writer's seat, row and registration are
+   * left as they are. Without `instanceAt` the seat is left registered, since
+   * nothing can tell it from a seat hired again at the address.
    */
   const settle = async (
     ctx: BlockContext,
@@ -401,42 +482,55 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
       if (incarnationOfRow(current) !== incarnation) throw new SeatMoved(address);
       return current;
     };
-    let registered = false;
-    let published = false;
-    try {
-      await ref.updateState(stillOurs);
+    const fence = async () => {
       try {
-        registered = registerOnce(seat, pin, step.retry ? incarnation : undefined);
+        await ref.updateState(stillOurs);
+      } catch (error) {
+        throw new FenceFailed(error);
+      }
+    };
+    try {
+      await fence();
+      try {
+        registerOnce(seat, pin, step.retry ? incarnation : undefined);
       } catch (error) {
         await step.onRegisterFailed?.(error);
         throw error;
       }
-      await ref.updateState(stillOurs);
       let warnings: { warning?: string };
       try {
-        warnings = await publish(ctx, seat, flow, address, incarnation);
+        warnings = await publish(ctx, seat, flow, address, incarnation, fence);
       } catch (error) {
         // A fire that removed the inventory row under this write removed the
-        // roster row first; that is the fired case below, not a failed write.
-        await ref.updateState(stillOurs);
+        // roster row first; that is the conflict below, not a failed write.
+        if (error instanceof FenceFailed || isWriteConflict(error)) throw error;
+        await fence();
         if (!step.repair) throw error;
         throw new Error(
           `"${address}" was re-hired onto "${flow}" and is serving, but its inventory row could not be ` +
             `written: ${error instanceof Error ? error.message : String(error)}. Run the same re-hire again to finish it.`
         );
       }
-      published = true;
       await ref.updateState((current) =>
         step.repair && pendingRepairOf(current) === incarnation
           ? { ...stillOurs(current), pendingRepair: null }
           : stillOurs(current)
       );
       return warnings;
-    } catch (error) {
-      if ((error as { code?: unknown }).code !== "resource_deleted") throw error;
-      if (published) await deleteOwnInventoryRow(collectionOf(ctx, SEAT_INVENTORY_RESOURCE), address, incarnation);
-      if (registered) options.unregister(address);
-      throw new Error(`"${address}" was fired while this call was finishing it. Nothing of it was kept.`);
+    } catch (thrown) {
+      const error = thrown instanceof FenceFailed ? thrown.reason : thrown;
+      if (!(error instanceof SeatMoved) && !isWriteConflict(error)) throw error;
+      // Checked and removed with no await between: the seat at the address
+      // is this incarnation's, or it is left.
+      const live = options.instanceAt?.(address);
+      if (live !== undefined && mintedFrom(live, incarnation)) options.unregister(address);
+      await deleteOwnInventoryRow(collectionOf(ctx, SEAT_INVENTORY_RESOURCE), address, incarnation);
+      throw new Error(
+        (error as { code?: unknown }).code === "resource_deleted"
+          ? `"${address}" was fired while this call was finishing it. Nothing of it was kept.`
+          : `"${address}" changed while this call was finishing it, most likely by another hire, fire or ` +
+              `repair of it. This call stopped and kept nothing of its own; the other one's seat was left as it is.`
+      );
     }
   };
 
@@ -458,6 +552,7 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
           `"${address}" is already served by a flow of kind "${held}". Fire that seat first, or hire under another id.`
         );
       }
+      await refuseDeclaredAddress(ctx, address);
 
       const incarnation = newIncarnation();
       const row = toHiredSeatRow({
@@ -511,23 +606,28 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         address: seatAddress(orgId, input.seatId, located.ownerUserId),
         isHeld: (address) => options.kindAt?.(address) !== undefined,
         release: (address, storedKind, incarnation) => {
+          // With `instanceAt`, only the seat minted from this row is released:
+          // checked and removed with no await between. A `null` incarnation
+          // matches only a seat minted from a row from before incarnations,
+          // never a declared one.
+          if (options.instanceAt !== undefined) {
+            const live = options.instanceAt(address);
+            if (live === undefined) return "not-held";
+            if (!mintedFrom(live, incarnation)) {
+              console.error(
+                `[seat-hire] removed the roster row for "${address}", but the address is held by a seat ` +
+                  `that row didn't mint — leaving it registered.`
+              );
+              return "held-by-another";
+            }
+            return options.unregister(address) ? "released" : "not-held";
+          }
+          // Without it, the kind is all there is to go on.
           const liveKind = options.kindAt?.(address);
           if (liveKind !== undefined && liveKind !== storedKind) {
             console.error(
               `[seat-hire] removed the roster row for "${address}" (kind "${storedKind}"), but the ` +
                 `address is held by a flow of kind "${liveKind}" — leaving it registered.`
-            );
-            return "held-by-another";
-          }
-          // Same kind is not enough when the row says which seat it minted:
-          // a seat at the address that doesn't carry its incarnation is
-          // another one. Without `instanceAt`, or for a row from before
-          // incarnations, the kind check above is all there is.
-          const live = incarnation === null ? undefined : options.instanceAt?.(address);
-          if (live !== undefined && incarnationOf(live) !== incarnation) {
-            console.error(
-              `[seat-hire] removed the roster row for "${address}", but the address is held by a seat ` +
-                `that row didn't mint — leaving it registered.`
             );
             return "held-by-another";
           }
@@ -660,6 +760,7 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
       if (held !== undefined) {
         throw new Error(`"${address}" is already served by a flow of kind "${held}", so it can't be re-hired.`);
       }
+      await refuseDeclaredAddress(ctx, address);
       const token = newIncarnation();
       const seat = mint(orgId, { ...row, incarnation: token }, address);
 

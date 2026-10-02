@@ -17,7 +17,7 @@ describe("listedSeatRows", () => {
       { id: "acme.support.joe", kind: "desk-clerk", hired: true },
       { id: "acme.support.ada", kind: "agent", hired: true },
     ];
-    const listed = listedSeatRows("acme", rows, [{ seatId: "support.ada" }]);
+    const listed = listedSeatRows("acme", rows, [{ seatId: "support.ada", incarnation: null }]);
     expect(listed.map((row) => row.id)).toEqual(["eng.lead", "chief-of-staff", "acme.support.ada"]);
   });
 
@@ -52,8 +52,10 @@ describe("listedSeatRows", () => {
     expect(listedSeatRows("acme", rows, [], [{ ...live[0]!, incarnation: "i-2" }]).map((row) => row.id)).toEqual(["eng.lead", "chief-of-staff"]);
     // Another member's row under the same seat id backs nothing at u1's address.
     expect(listedSeatRows("acme", rows, [], [{ ...live[0]!, ownerUserId: "u2" }]).map((row) => row.id)).toEqual(["eng.lead", "chief-of-staff"]);
-    // A user-owned row from before incarnations matches no roster row.
-    expect(listedSeatRows("acme", [{ id: "acme.~u1.old", kind: "agent", hired: true }], [], [{ seatId: "old", ownerUserId: "u1", incarnation: null }])).toEqual([]);
+    // Rows from before incarnations: none on both sides match; none on one side matches nothing.
+    const legacy = { id: "acme.~u1.old", kind: "agent", hired: true };
+    expect(listedSeatRows("acme", [legacy], [], [{ seatId: "old", ownerUserId: "u1", incarnation: null }])).toEqual([legacy]);
+    expect(listedSeatRows("acme", [legacy], [], [{ seatId: "old", ownerUserId: "u1", incarnation: "i-1" }])).toEqual([]);
   });
 
   it("the row a fire leaves when it stops after deleting the owner's roster row is not listed, incarnation and all", () => {
@@ -66,12 +68,24 @@ describe("listedSeatRows", () => {
     expect(listedSeatRows("acme", rows, []).map((row) => row.id)).toEqual(["eng.lead", "chief-of-staff"]);
   });
 
+  it("an org hire's row is listed only while the roster row at its address carries the same incarnation", () => {
+    const row = { id: "acme.support.ada", kind: "agent", hired: true, incarnation: "i-1" };
+    expect(listedSeatRows("acme", [row], [{ seatId: "support.ada", incarnation: "i-1" }])).toEqual([row]);
+    // Fired and hired again at the address: the old hire's row isn't the new seat's.
+    expect(listedSeatRows("acme", [row], [{ seatId: "support.ada", incarnation: "i-2" }])).toEqual([]);
+    // A roster row from before incarnations backs only a row from before them.
+    expect(listedSeatRows("acme", [row], [{ seatId: "support.ada", incarnation: null }])).toEqual([]);
+    const legacy = { id: "acme.support.ada", kind: "agent", hired: true };
+    expect(listedSeatRows("acme", [legacy], [{ seatId: "support.ada", incarnation: null }])).toEqual([legacy]);
+    expect(listedSeatRows("acme", [legacy], [{ seatId: "support.ada", incarnation: "i-2" }])).toEqual([]);
+  });
+
   it("another organization's roster row backs nothing here, and a user-owned address is never backed by the org roster", () => {
     const rows = [
       { id: "acme.support.ada", kind: "agent", hired: true },
       { id: "acme.~u1.support.ada", kind: "agent", hired: true },
     ];
-    expect(listedSeatRows("globex", rows, [{ seatId: "support.ada" }])).toEqual([]);
-    expect(listedSeatRows("acme", rows, [{ seatId: "support.ada" }]).map((row) => row.id)).toEqual(["acme.support.ada"]);
+    expect(listedSeatRows("globex", rows, [{ seatId: "support.ada", incarnation: null }])).toEqual([]);
+    expect(listedSeatRows("acme", rows, [{ seatId: "support.ada", incarnation: null }]).map((row) => row.id)).toEqual(["acme.support.ada"]);
   });
 });
