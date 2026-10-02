@@ -27,7 +27,7 @@
 **Controls:**
 - `GOAL_CONTROL=hardcoded-accent`: Shift Manager's copy of the tool card paints its completed icon with Shift Manager's accent (`--attention`, light) as a literal class, in both builds. Must fail at **neutral** naming `tool`, light and dark, and nowhere else.
 - `GOAL_CONTROL=switch-ignored`: the switch's buttons do nothing when clicked. Must fail at **switch**, on every step after the first click, and nowhere else.
-- `GOAL_CONTROL=fonts-not-loaded`: the build as written gets the design-system stylesheet inlined without its font imports, so the families are named and no face is declared. Must fail at **themed** on the fonts, light and dark, and nowhere else.
+- `GOAL_CONTROL=fonts-not-loaded`: the build as written imports a copy of the design-system stylesheet with only its font imports blanked, so the families are named and no face is declared. Must fail at **themed** on the fonts, light and dark, and nowhere else.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -48,3 +48,4 @@
 | 2026-10-02 | origin/main (a font-load check added to themed and neutral, nothing else changed) | n/a | FAIL (before, expected) | Only **themed**, on the fonts, light and dark: text set in Space Grotesk 400, 500, 600 and IBM Plex Mono 400, and `document.fonts` declares no face of either family. Every colour and the switch pass. |
 | 2026-10-02 | fix/FIX-1736-fonts (pre-PR) | n/a | PASS | Faces loaded, light and dark: Space Grotesk 400, 500, 600, IBM Plex Mono 400. No-theme: none loaded or declared. Shell 123 elements; light 372 colours, dark 377. |
 | 2026-10-02 | fix/FIX-1736-fonts (pre-PR), `GOAL_CONTROL=fonts-not-loaded` | n/a | FAIL (expected) | Only **themed**, on the fonts, light and dark (`document.fonts`: none declared). Colours, neutral and switch pass. |
+| 2026-10-02 | fix/FIX-1736-fonts, review round (Latin subsets, IBM Plex Mono 700, weights compared as numbers) | n/a | PASS | Same faces loaded as above; no-theme none. `GOAL_CONTROL=fonts-not-loaded` (font imports blanked): FAIL (expected), only **themed** on the fonts, light and dark. |

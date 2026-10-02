@@ -12,6 +12,7 @@
  *   import { parseColour, near, readShiftManagerTheme } from "../../lib/colour.mts";
  */
 import { readFileSync } from "node:fs";
+import { stripImportsAndComments } from "../../labs/design-system/test/theme.ts";
 import { repoPath } from "./paths.mts";
 
 /** An sRGB colour, 0 to 255 per channel. */
@@ -77,7 +78,7 @@ export const hex = ([r, g, b]: Rgb): string => `#${[r, g, b].map((v) => v.toStri
 /** The custom properties `css` declares on exactly `selector` (comments and `@import`s ignored). */
 export function declarations(css: string, selector: string): Record<string, string> {
   const out: Record<string, string> = {};
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/@import[^;]*;/g, "");
+  const stripped = stripImportsAndComments(css);
   for (const m of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (m[1]!.split(",").map((s) => s.trim()).join(", ") !== selector) continue;
     for (const d of m[2]!.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) out[d[1]!] = d[2]!.trim();
@@ -108,7 +109,6 @@ export function readShiftManagerTheme(): ShiftManagerTheme {
     dark: colours(dark),
     attentionLight: light["--attention"]!,
     attentionDark: dark["--attention"]!,
-    // The quoted names, leaving out the paths of the font imports.
-    families: [...new Set([...css.replace(/@import[^;]*;/g, "").matchAll(/"([^"]+)"/g)].map((m) => m[1]!))],
+    families: [...new Set([...stripImportsAndComments(css).matchAll(/"([^"]+)"/g)].map((m) => m[1]!))],
   };
 }

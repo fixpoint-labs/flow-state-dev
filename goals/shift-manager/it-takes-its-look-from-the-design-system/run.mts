@@ -45,9 +45,9 @@
  *   GOAL_CONTROL=switch-ignored    the shift switch's buttons do nothing when
  *                                  clicked. `switch` must FAIL, and nothing
  *                                  else may fail.
- *   GOAL_CONTROL=fonts-not-loaded  the themed build inlines the design-system
- *                                  stylesheet without its font imports, so the
- *                                  families are named but no face is declared.
+ *   GOAL_CONTROL=fonts-not-loaded  the themed build imports the design-system
+ *                                  stylesheet with its font imports blanked, so
+ *                                  the families are named but no face is declared.
  *                                  `themed` must FAIL on the fonts, and
  *                                  nothing else may fail.
  *
@@ -62,6 +62,7 @@ import { pathToFileURL } from "node:url";
 import type { Browser, Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { declarations, hex, near, parseColour, readShiftManagerTheme, type Rgb } from "../../lib/colour.mts";
+import { stripImportsAndComments } from "../../../labs/design-system/test/theme.ts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
@@ -81,9 +82,11 @@ const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const RUN_LAB = join(REPO_ROOT, "goals", "shift-manager", "it-shows-and-stops-a-task-run", "lab");
 const SCRATCH = goalTmpDir("shift-manager-theme");
 const THEME = readShiftManagerTheme();
+/** The design-system stylesheet. Its only imports are its fonts (the package's test holds it to that). */
+const SHIFT_MANAGER_CSS = join(REPO_ROOT, "labs", "design-system", "shift-manager.css");
 /** Shift Manager's page background per variant, as the design-system package declares it. */
 const BACKGROUND = (() => {
-  const css = readFileSync(join(REPO_ROOT, "labs", "design-system", "shift-manager.css"), "utf8");
+  const css = readFileSync(SHIFT_MANAGER_CSS, "utf8");
   const rgb = (value: string | undefined): Rgb => {
     if (value === undefined || !/^#[0-9a-f]{6}$/i.test(value)) throw new Error(`setup: shift-manager.css declares no #rrggbb --background (got ${value})`);
     return [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16)) as Rgb;
@@ -334,6 +337,8 @@ async function switchLeg(browser: Browser, origin: string): Promise<{ failures: 
 // ---- grading -------------------------------------------------------------------
 
 const firstFamily = (value: string) => value.split(",")[0]!.trim().replace(/^["']|["']$/g, "");
+/** A font weight as a number string: computed styles and `FontFace` can spell 400 and 700 as keywords. */
+const weight = (value: string | undefined) => (value === "normal" ? "400" : value === "bold" ? "700" : (value ?? ""));
 const where = (s: Sample) => `${s.part}: ${s.el} ${s.prop}`;
 
 /** At most `n` lines per part, then a count, so one broken part can't bury the rest. */
@@ -354,14 +359,16 @@ function gradeThemed(read: PageRead, variant: "light" | "dark", tag: string): st
     if (!THEME.families.includes(firstFamily(s.value))) out.push({ part: s.part, line: `themed [${tag}] ${where(s)} → font ${firstFamily(s.value)} is not Shift Manager's` });
   }
   // The family string names the font whether or not it loaded; the loaded face is what paints it.
-  const loaded = new Set(read.faces.filter((f) => f.status === "loaded").map((f) => `${f.family} ${f.weight}`));
+  // (`document.fonts.check()` won't do: it answers true when no face of the family is declared at all.)
+  const faceOf = (f: Face) => `${f.family} ${weight(f.weight)}`;
+  const loaded = new Set(read.faces.filter((f) => f.status === "loaded").map(faceOf));
   const unloaded = new Set<string>();
   for (const s of read.fonts) {
-    const face = `${firstFamily(s.value)} ${s.weight}`;
+    const face = `${firstFamily(s.value)} ${weight(s.weight)}`;
     if (THEME.families.includes(firstFamily(s.value)) && !loaded.has(face)) unloaded.add(face);
   }
   for (const face of unloaded) {
-    const declared = read.faces.filter((f) => `${f.family} ${f.weight}` === face).map((f) => f.status);
+    const declared = read.faces.filter((f) => faceOf(f) === face).map((f) => f.status);
     out.push({ part: "fonts", line: `themed [${tag}] text is set in ${face}, but no face of it loaded (document.fonts: ${declared.length === 0 ? "none declared" : declared.join(", ")})` });
   }
   return capped(out);
@@ -379,7 +386,7 @@ function gradeNeutral(read: PageRead, tag: string): string[] {
   for (const s of read.fonts) {
     if (THEME.families.includes(firstFamily(s.value))) out.push({ part: s.part, line: `neutral [${tag}] ${where(s)} → font ${firstFamily(s.value)} is Shift Manager's` });
   }
-  const faces = new Set(read.faces.filter((f) => THEME.families.includes(f.family)).map((f) => `${f.family} ${f.weight} (${f.status})`));
+  const faces = new Set(read.faces.filter((f) => THEME.families.includes(f.family)).map((f) => `${f.family} ${weight(f.weight)} (${f.status})`));
   for (const face of faces) out.push({ part: "fonts", line: `neutral [${tag}] the page still declares a face of ${face}` });
   return capped(out);
 }
@@ -410,18 +417,17 @@ await runGoal(async () => {
           ]
         : [];
 
-  // The families named and no face behind them: the design-system stylesheet, its font imports left out.
-  const fontsNotLoaded: Patch[] =
-    CONTROL === "fonts-not-loaded"
-      ? [
-          {
-            file: "src/styles.css",
-            from: THEME_IMPORT,
-            to: readFileSync(join(REPO_ROOT, "labs", "design-system", "shift-manager.css"), "utf8").replace(/^@import [^;]*;\n/gm, ""),
-            why: "the design-system stylesheet inlined without its font imports",
-          },
-        ]
-      : [];
+  // The families named and no face behind them: the design-system stylesheet with only its font imports blanked.
+  const fontsNotLoaded: Patch[] = [];
+  if (CONTROL === "fonts-not-loaded") {
+    const sheet = readFileSync(SHIFT_MANAGER_CSS, "utf8");
+    const blanked = stripImportsAndComments(sheet);
+    if (!/@import/.test(sheet) || /@import/.test(blanked)) throw new Error("setup [control]: shift-manager.css has no font import to blank");
+    const copy = join(SCRATCH, "shift-manager.no-fonts.css");
+    mkdirSync(SCRATCH, { recursive: true });
+    writeFileSync(copy, blanked);
+    fontsNotLoaded.push({ file: "src/styles.css", from: THEME_IMPORT, to: `@import ${JSON.stringify(copy)};\n`, why: "the design-system stylesheet imported with its font imports blanked" });
+  }
 
   // Either build failing to set up is its own leg's failure; the other still runs.
   const builds: Array<{ name: "themed" | "no-theme"; pages: string }> = [];
@@ -458,7 +464,7 @@ await runGoal(async () => {
             if (missing.length > 0) failures.push(`reach [${tag}] the Session drew no registry ${missing.join(", ")}`);
           }
           failures.push(...(name === "themed" ? gradeThemed(read, variant, tag) : gradeNeutral(read, tag)));
-          const loadedFaces = read.faces.filter((f) => f.status === "loaded").map((f) => `${f.family} ${f.weight}`);
+          const loadedFaces = read.faces.filter((f) => f.status === "loaded").map((f) => `${f.family} ${weight(f.weight)}`);
           evidence.push(
             `${tag}: ${Object.entries(read.counts).map(([p, n]) => `${p} ${n}`).join(", ")} elements; ${read.colours.length} colours, ${read.fonts.length} fonts; faces loaded: ${loadedFaces.length === 0 ? "none" : [...new Set(loadedFaces)].join(", ")}`,
           );

@@ -6,10 +6,10 @@
  * theme is covered unedited. Its planted case copies one real package file to
  * a temp tree, adds one theme value, and shows the same search names it.
  */
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { registryTokenDefaults } from "../../../packages/ui/scripts/token-defaults";
 import { SHIFT_MANAGER_CSS, PACKAGE_ROOT, REPO_ROOT, findThemeValues, rule, themeValues } from "./theme";
@@ -52,24 +52,23 @@ describe("both variants", () => {
     for (const [prop, value] of Object.entries(light)) if (prop.startsWith("--radius")) expect(value, prop).toBe("0");
   });
 
-  it("bundles a face for every family it names, in the weights the design loads", () => {
-    // A family named with no face behind it falls back to the system font, silently.
+  it("imports a Latin face for every family it names, in every weight it is set in", () => {
+    // A family named with nothing loading it falls back to the system font, silently.
+    // That the faces load in a browser is the look goal's job; this keeps the imports honest.
     const require = createRequire(join(PACKAGE_ROOT, "package.json"));
-    const faces = new Set<string>();
-    for (const [, spec] of css.matchAll(/@import "([^"]+)";/g)) {
-      const file = require.resolve(spec!);
-      for (const [, body] of readFileSync(file, "utf8").matchAll(/@font-face\s*\{([^}]*)\}/g)) {
-        const family = /font-family:\s*'([^']+)'/.exec(body!)![1];
-        const weight = /font-weight:\s*(\d+)/.exec(body!)![1];
-        for (const [, url] of body!.matchAll(/url\(([^)]+)\)/g)) expect(existsSync(join(dirname(file), url!)), url).toBe(true);
-        faces.add(`${family} ${weight}`);
-      }
-    }
+    const imports = [...css.matchAll(/@import "([^"]+)";/g)].map((m) => m[1]!);
     const named = themeValues(css).filter((value) => !value.startsWith("#"));
     expect(named.sort()).toEqual(["IBM Plex Mono", "Space Grotesk"]);
-    expect([...faces].sort()).toEqual([
-      ...["400", "500", "600"].map((w) => `IBM Plex Mono ${w}`),
-      ...["400", "500", "600", "700"].map((w) => `Space Grotesk ${w}`),
+    // Each import declares its face under the exact name the tokens use ("Space Grotesk", not
+    // fontsource-variable's "Space Grotesk Variable"), or the named family still has no face.
+    const declared = new Set(
+      imports.flatMap((spec) => [...readFileSync(require.resolve(spec), "utf8").matchAll(/font-family:\s*'([^']+)'/g)].map((m) => m[1]!)),
+    );
+    expect([...declared].sort()).toEqual(named);
+    expect(imports.sort()).toEqual([
+      // 700 beyond the design's weights: highlighted code sets bold on some tokens.
+      ...["400", "500", "600", "700"].map((w) => `@fontsource/ibm-plex-mono/latin-${w}.css`),
+      ...["400", "500", "600", "700"].map((w) => `@fontsource/space-grotesk/latin-${w}.css`),
     ]);
   });
 
@@ -131,7 +130,7 @@ describe("the package stays a skin", () => {
   });
 
   it("imports only its fonts and names no Workforce word in the stylesheet", () => {
-    for (const [line] of css.matchAll(/@import[^;]*;/g)) expect(line).toMatch(/^@import "@fontsource\/[a-z-]+\/\d+\.css";$/);
+    for (const [line] of css.matchAll(/@import[^;]*;/g)) expect(line).toMatch(/^@import "@fontsource\/[a-z-]+\/latin-\d+\.css";$/);
     expect(css).not.toMatch(/workforce|needs you|roster|seat/i);
   });
 });

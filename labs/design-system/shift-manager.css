@@ -19,19 +19,21 @@
  * Two rules the values keep: `attention` (the highlighter) means only that a
  * person must act, and no other token carries it; corners are square.
  *
- * The two families are bundled, in the weights the design loads: the faces
- * come from the `@fontsource` packages this one depends on and are served
- * with the app, so an app that imports this file gets the fonts with it, and
- * one that drops the import drops them too.
+ * The two families are bundled, Latin subset only, in the weights the design
+ * loads plus IBM Plex Mono's bold, which highlighted code sets on some tokens.
+ * The faces come from the `@fontsource` packages this one depends on and are
+ * served with the app, so an app that imports this file gets the fonts with
+ * it, and one that drops the import drops them too.
  */
 
-@import "@fontsource/space-grotesk/400.css";
-@import "@fontsource/space-grotesk/500.css";
-@import "@fontsource/space-grotesk/600.css";
-@import "@fontsource/space-grotesk/700.css";
-@import "@fontsource/ibm-plex-mono/400.css";
-@import "@fontsource/ibm-plex-mono/500.css";
-@import "@fontsource/ibm-plex-mono/600.css";
+@import "@fontsource/space-grotesk/latin-400.css";
+@import "@fontsource/space-grotesk/latin-500.css";
+@import "@fontsource/space-grotesk/latin-600.css";
+@import "@fontsource/space-grotesk/latin-700.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
+@import "@fontsource/ibm-plex-mono/latin-600.css";
+@import "@fontsource/ibm-plex-mono/latin-700.css";
 
 :root {
   --background: #f8f6f0;
