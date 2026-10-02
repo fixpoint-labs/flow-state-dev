@@ -28,14 +28,16 @@ import {
   defineChannelFlow,
   hireWorkforce,
   resourcesFromDocs,
+  defineProjectBlocks,
   openChannels,
   openInventory,
   wakeMemberSeats,
+  type CreateProjectInput,
   type InventoryActionRequest,
   type OpenChannelsOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
+import { DEFAULT_ORG_ID, defineFlow } from "@flow-state-dev/core";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ASKER_KIND, defineAskerFlow } from "./asker.mts";
@@ -110,7 +112,18 @@ export type AskLabOptions = {
   bearer?: string;
   /** Add a seat named `chief-of-staff` to the ops team, on the asker kind. Default false. */
   chiefOfStaff?: boolean;
+  /**
+   * Projects to create once the inventory is open, each as `owner` (default
+   * the Lab's person) through the project writes' own `createProject`.
+   * `unbound` creates it with a talk kind no flow serves, so its owner's talk
+   * session is never minted: the row a failed mint leaves behind.
+   */
+  projects?: Array<CreateProjectInput & { owner?: string; unbound?: boolean }>;
 };
+
+/** The flow kinds the ask-lab creates projects through: one that binds the owner, one whose bind can't land. */
+const PROJECTS_KIND = "projects";
+const UNBOUND_PROJECTS_KIND = "projects-unbound";
 
 /** Build, open and hand back the Lab. */
 export async function openAskLab(options: AskLabOptions = {}) {
@@ -128,6 +141,15 @@ export async function openAskLab(options: AskLabOptions = {}) {
       channelInstances(tree.channels, { kinds: { [CHANNEL_KIND]: channelKind as never } }).map((i) => [i.kind, i]),
     ),
     ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
+    ...(options.projects === undefined
+      ? {}
+      : {
+          [PROJECTS_KIND]: defineFlow({ kind: PROJECTS_KIND, actions: defineProjectBlocks().actions } as never)(),
+          [UNBOUND_PROJECTS_KIND]: defineFlow({
+            kind: UNBOUND_PROJECTS_KIND,
+            actions: defineProjectBlocks({ talkKind: "no-such-talk-kind" }).actions,
+          } as never)(),
+        }),
   };
   const flowState = createFlowState({
     flows,
@@ -198,6 +220,21 @@ export async function openAskLab(options: AskLabOptions = {}) {
       { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: ASK_LAB_USER_ID, orgId },
     );
     if (binding.problems.length > 0) throw new Error(binding.problems.join("; "));
+
+    for (const { owner = ASK_LAB_USER_ID, unbound, ...input } of options.projects ?? []) {
+      const kind = unbound === true ? UNBOUND_PROJECTS_KIND : PROJECTS_KIND;
+      const result = (await runAction({
+        flow: flows[kind],
+        actionName: "createProject",
+        input,
+        userId: owner,
+        orgId,
+        sessionId: `projects-${owner}`,
+        stores: runtime.stores,
+        runtimeConfig: runtime.runtimeConfig,
+      } as never)) as { error?: unknown };
+      if (result.error !== undefined) throw new Error(`project ${input.id}: ${String((result.error as Error).message ?? result.error)}`);
+    }
   }
 
   return { flowState, tree, flows };

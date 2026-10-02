@@ -33,7 +33,7 @@
  * 6. **Declared documents** a browser may read, from each listed flow's
  *    manifest, for Jump to (BR-10).
  * 7. **The organization's projects**: every row of its `projects` collection,
- *    found by its published key pattern on a flow that serves project rooms.
+ *    found by its published key pattern on a workstream's channel kind.
  *    PROJECTS groups the workstreams by them. A project's room is never read
  *    here: it is read through the person's own talk session when a project's
  *    Stream opens (`talk.ts`).
@@ -271,7 +271,7 @@ const INVENTORY_PATTERNS = { seats: "inventory/seats/*", channels: "inventory/ch
  * collection a flow that serves project rooms also declares. A flow that only
  * writes projects declares the first and not the second.
  */
-const PROJECT_PATTERNS = { projects: "projects/*", roomLines: "room-lines/**" } as const;
+const PROJECT_PATTERNS = { projects: "projects/*" } as const;
 
 /** Rows per collection page: the collection route's maximum. */
 const PAGE_SIZE = 200;
@@ -550,25 +550,26 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /**
-   * The organization's projects, read once, through the first listed
-   * top-level session whose flow serves project rooms (it declares the
-   * projects collection with a browser read, and the room's lines). None: the
-   * Lab has no projects, and every workstream is under No project (D3).
+   * The organization's projects, read once, through the first workstream
+   * whose channel kind declares the projects collection with a browser read.
+   * A room is reached through a channel kind's talk entries, so that kind is
+   * the one a person joins on. None: the Lab has no projects, and every
+   * workstream is under No project (D3). With no inventory there is no
+   * workstream to read through.
    */
-  const readProjects = async (sessions: SessionSummary[]): Promise<Section<Projects>> => {
-    const byKind = new Map<string, string>();
-    for (const session of sessions) {
-      if (session.parentSessionId == null && !byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
+  const readProjects = async (inventory: Section<{ workstreams: Workstream[] }>): Promise<Section<Projects>> => {
+    if (!inventory.ok) {
+      return { ok: false, failure: { message: `Projects are read through a workstream, and the inventory did not load. ${inventory.failure.message}` } };
     }
     try {
-      for (const [kind, sessionId] of byKind) {
-        const manifest = await manifestFor(kind, sessionId);
-        const collection = (pattern: string) =>
-          manifest.resources.find((r) => r.kind === "collection" && r.pattern === pattern);
-        const projects = collection(PROJECT_PATTERNS.projects);
-        if (projects === undefined || projects.client.state?.read !== true) continue;
-        if (collection(PROJECT_PATTERNS.roomLines) === undefined) continue;
-        const rows = (await readCollection(sessionId, projects.ref))
+      for (const workstream of inventory.value.workstreams) {
+        const kind = workstream.kind ?? workstream.id;
+        const manifest = await manifestFor(kind, workstream.id);
+        const projects = manifest.resources.find(
+          (r) => r.kind === "collection" && r.pattern === PROJECT_PATTERNS.projects && r.client.state?.read === true,
+        );
+        if (projects === undefined) continue;
+        const rows = (await readCollection(workstream.id, projects.ref))
           .map((row) => toProject(row.clientData))
           .filter((p): p is Project => p !== undefined);
         return { ok: true, value: { rows, talkKind: kind } };
@@ -709,7 +710,7 @@ export function createLabReader(clients: LabClients): LabReader {
         }
       })(),
       readResources(sessions),
-      readProjects(sessions),
+      readProjects(inventory),
     ]);
 
     return {

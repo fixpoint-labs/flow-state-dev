@@ -122,7 +122,9 @@ describe("V8", () => {
     const sites = (files: string[], read: (f: string) => string) =>
       files.filter((f) => read(f).split("\n").some((line) => SEND.test(line))).map((f) => relative(src, f)).sort();
     const read = (f: string) => readFileSync(f, "utf8");
-    expect(sites(code, read)).toEqual(["lib/send.ts", "lib/transcript.ts"]);
+    // A workstream post (`transcript.ts`) and a project room's talk entries
+    // (`talk.ts`) are the two channel actions; a line to a worker goes through `send.ts`.
+    expect(sites(code, read)).toEqual(["lib/send.ts", "lib/talk.ts", "lib/transcript.ts"]);
     // The door is the one the inventory names, never an action name of Shift Manager's own.
     const sendLines = read(join(src, "lib/send.ts")).split("\n").filter((line) => SEND.test(line));
     expect(sendLines).toHaveLength(1);

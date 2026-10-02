@@ -54,15 +54,16 @@ async function runTalkAction(
   input: unknown,
 ): Promise<{ output: unknown; sessionId: string }> {
   const actions = clients.actions(kind);
+  // A new session is named here: the Lab's answer to an action started with
+  // no session names none, and its requests are read back by session.
+  const session = sessionId ?? `talk-${crypto.randomUUID()}`;
   let started: Awaited<ReturnType<typeof actions.sendAction>>;
   try {
-    started = await actions.sendAction(action, input, sessionId === undefined ? {} : { sessionId });
+    started = await actions.sendAction(action, input, { sessionId: session });
   } catch (error) {
     throw new TalkRefused(describeFailure(error).message);
   }
   const requestId = started.request.id;
-  const session = started.session?.id ?? sessionId;
-  if (session === undefined) throw new Error(`the Lab started ${action} in no session`);
 
   const until = Date.now() + TIMEOUT_MS;
   let status: Awaited<ReturnType<typeof actions.getRequestStatus>>["status"];
