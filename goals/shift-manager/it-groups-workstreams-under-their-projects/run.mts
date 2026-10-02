@@ -30,9 +30,10 @@
  *   no-gate   the room's membership check removed (Node swap of
  *             membership-gate.ts in the served Lab). Must fail at "the
  *             outsider is refused".
- *   no-retry  the room's own retry removed (Node swap of cas-retry.ts). Must
+ *   no-retry  the room's own retry removed (Node swap of cas-retry.ts). Meant to
  *             fail at both "a burst of posts lands whole" and "a burst of
- *             joins leaves one session per member".
+ *             joins leaves one session per member"; on the served in-memory
+ *             Lab it does not go red yet (goal.md says why).
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-groups-workstreams-under-their-projects/run.mts
  * Control:  GOAL_CONTROL=no-gate <the same>

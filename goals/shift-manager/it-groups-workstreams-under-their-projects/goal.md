@@ -17,7 +17,7 @@
 - **members read each other's lines:** the owner's line is in the member's read, and the member's reply is in the owner's read after the owner's cursor.
 - **a seat's answer is in the room for both:** the EM's answer to the owner's line is in both members' reads.
 - **the outsider is refused:** the outsider's `join` is refused, and so are its `read` and `post` from a session it created with the project's `resourceId` in its state. The room holds none of its lines and the row lists no session of its.
-- **a burst of posts lands whole:** both members post a burst at once. Every post completes, and the room holds each line exactly once, each at its own sequence number.
+- **a burst of posts lands whole:** both members post a burst at once, each from several sessions of theirs naming the project (the engine runs one action at a time per session, so one session per member would race only two writers). Every post completes, and the room holds each line exactly once, each at its own sequence number.
 
 **Anti-game:** expected values come from the store and the tree, never from the check or from Shift Manager's own data module. Rows are written by the profile's own code at boot. The page's lines go through its composer and the owner's talk session; the room is read back over HTTP through each member's own talk session, with each user's own bearer. The outsider legs run in the same organization, so only the membership check stands between it and the room.
 
@@ -32,8 +32,13 @@
 - `GOAL_CONTROL=unread`: the grouping ignores the rows and lists every workstream on its own. Must fail at **PROJECTS equals the store's rows**.
 - `GOAL_CONTROL=gap-tabs`: the project level as it was before projects, every tab a FIX-1650 empty state. Must fail at **a project's four tabs**.
 - `GOAL_CONTROL=no-gate`: `membership-gate.ts` answers yes for everyone. Must fail at **the outsider is refused**.
-- `GOAL_CONTROL=no-retry`: `cas-retry.ts` makes one attempt, so the room's sequence counter and a join's append to `sessions` get only the engine's own retries. Must fail at both **a burst of posts lands whole** and **a burst of joins leaves one session per member**.
+- `GOAL_CONTROL=no-retry`: `cas-retry.ts` makes one attempt, so the room's sequence counter and a join's append to `sessions` get only the engine's own retries. Meant to fail at both bursts. **It does not go red in the served host today:** the swap fires (into `room-store.ts`, `talk.ts` and `project-writes.ts`), and an instrumented run counted 520 calls through it with no conflict reaching it, even with 64 posts per member from 32 sessions each. On the in-memory store a served Lab's requests arrive spread out enough that the engine's own three attempts absorb every race. The red state is shown in process instead: `FSD_CONTROL=no-retry pnpm --filter @flow-state-dev/workforce exec vitest run test/projects.test.ts` fails both burst tests. The join burst here has one joining member (the profile's other two users are the owner, bound at create, and the outsider); a single joiner's retry re-reads its own session and needs no write, so this leg can only go red with two or more joining members.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-02 | f97b906a7+wip | n/a | PASS | platform[] storefront[eng.feature,ops.release] unassigned[eng.triage,ops.oncall]; 2 of 2 Stream posts kept; 4 channels as declared; 16 joins per project left one session per member; cross-member reads by cursor; eng.em answered for both; outsider join, forged read and post refused; 32 of 32 burst posts from 16 sessions landed once each. |
+| 2026-10-02 | f97b906a7+wip | n/a | FAIL (control `unread`, expected) | PROJECTS draws unassigned[eng.feature,eng.triage,ops.oncall,ops.release]; the cross-team project and the four tabs fail with it. |
+| 2026-10-02 | f97b906a7+wip | n/a | FAIL (control `gap-tabs`, expected) | Only a project's four tabs: every tab draws a project-*-empty state, no brief, lanes or workstreams, and no composer. |
+| 2026-10-02 | f97b906a7+wip | n/a | FAIL (control `no-gate`, expected) | Only the outsider is refused: it joined, read 6 lines through a forged session, posted 2 lines, and was listed on the row. |
+| 2026-10-02 | f97b906a7+wip | n/a | PASS (control `no-retry`, NOT red) | Swap fired into room-store.ts, talk.ts and project-writes.ts. Instrumented: 520 calls, 0 conflicts reached the room's retry. See Controls. |
