@@ -120,14 +120,6 @@ export function assertMaxDepthTwo(path: string[], verb: string): void {
 }
 
 /**
- * Union two item logs by `id`, last write wins per id, in order: `prior` keeps
- * its positions and ids new in `next` append in `next`'s order. The
- * `RequestStore.persistItems` merge contract (FIX-811), shared by the runtime's
- * terminal write of a same-request continuation and the stores that hold
- * items on the record (in-memory, filesystem); the SQL adapters do the same
- * with an UPSERT.
- */
-/**
  * A full-record `set` whose record carries no `items` keeps the items the
  * store holds (FIX-1735), on the stores that keep items on the record
  * (in-memory, filesystem). A state write in the middle of a run is built from
@@ -144,6 +136,14 @@ export function withHeldItems<T extends RequestRecord>(
   return { ...value, items: held };
 }
 
+/**
+ * Union two item logs by `id`, last write wins per id, in order: `prior` keeps
+ * its positions and ids new in `next` append in `next`'s order. The
+ * `RequestStore.persistItems` merge contract (FIX-811), shared by the runtime's
+ * terminal write of a same-request continuation and the stores that hold
+ * items on the record (in-memory, filesystem); the SQL adapters do the same
+ * with an UPSERT.
+ */
 export function mergeItemsById(
   prior: readonly OutputItem[],
   next: readonly OutputItem[]

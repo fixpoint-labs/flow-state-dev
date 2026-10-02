@@ -442,6 +442,8 @@ export class FilesystemRequestStore implements RequestStore {
     }
     return this.store.set(id, record, expectedVersion, async (current) => {
       if (!this.abortIntentMigrated.has(id)) await this.migrateLegacyAbortIntent(id, current);
+      // A record replaces `record` in the write; `undefined` writes `record`
+      // as given. Omitting `items` costs this read of the stored record.
       return keepsItems ? withHeldItems(record, current?.items) : undefined;
     });
   }

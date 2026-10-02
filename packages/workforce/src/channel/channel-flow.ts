@@ -43,7 +43,7 @@ import {
 } from "./channel-board";
 import { emitChannelPostLine, readChannelPostLines } from "./channel-items";
 import { incarnationOfRow } from "../roster/incarnation";
-import { splitSeatAddress } from "../roster/address";
+import { seatAddress, splitSeatAddress } from "../roster/address";
 import { defineHiredRosterCollection } from "../roster/collections";
 import { INVENTORY_RACE_ATTEMPTS, isWriteConflict } from "../roster/remove";
 import {
@@ -942,7 +942,7 @@ async function rosterIncarnationAt(
   address: string
 ): Promise<string | null | undefined> {
   const seatId = splitSeatAddress(orgId, address);
-  if (seatId === undefined || address !== `${orgId}.${seatId}`) return undefined;
+  if (seatId === undefined || seatAddress(orgId, seatId) !== address) return undefined;
   const current = await roster.getOptional(seatId);
   if (current === undefined) return undefined;
   return readCommitted(current, (state) => incarnationOfRow(state as Record<string, unknown>));
