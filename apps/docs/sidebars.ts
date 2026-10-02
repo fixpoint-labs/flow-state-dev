@@ -234,6 +234,7 @@ const sidebars: SidebarsConfig = {
         "workforce/built-in-worker",
         "workforce/channels",
         "workforce/inventory",
+        "workforce/projects",
         "workforce/documents-on-disk",
         "workforce/code-on-disk",
         "workforce/capabilities-on-disk",

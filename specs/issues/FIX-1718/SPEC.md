@@ -2,24 +2,6 @@
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-> **Direction draft, on soft-HOLD.** This is written onto two spikes:
-> - [FIX-1728](https://github.com/fixpoint-labs/flow-state-dev/pull/2629): a project is an org
->   row, with a conversation minted from a template.
-> - [FIX-1729](https://github.com/fixpoint-labs/flow-state-dev/pull/2632): that conversation is
->   one room per project, stored on the project.
->
-> Jake decided that FIX-1650 ships projects now ([Q2](DECISIONS.md#q2)). Two calls are on his
-> cards, and this spec is written to the recommendation for both:
-> - a shared room now ([Q1](DECISIONS.md#q1));
-> - only members read it ([Q3](DECISIONS.md#q3)).
->
-> It merges only after the epic amendment
-> ([#2622](https://github.com/fixpoint-labs/flow-state-dev/pull/2622), getting the same fold)
-> lands and Jake clears the
-> [HOLD](https://github.com/fixpoint-labs/flow-state-dev/pull/2625#issuecomment-5939811709).
-> [FIX-1727](https://linear.app/fixpoint-labs/issue/FIX-1727)'s "a project is a channel" is
-> stale.
-
 ## Who feels this, before and after
 
 | Someone who… | Today | After |
