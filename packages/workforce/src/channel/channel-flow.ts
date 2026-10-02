@@ -71,6 +71,7 @@ import {
 import { roomLineKey, roomLineSchema, type RoomLine } from "../projects/collections";
 import {
   recentTalkLines,
+  recordTalkDelivery,
   TALK_RESOURCES,
   talkAnswer,
   talkBind,
@@ -147,7 +148,17 @@ export const CHANNEL_ANSWER_ACTION = "answer";
  * take its one answer.
  */
 export const channelAnswerInputSchema = z
-  .object({ postId: z.string().min(1), body: z.string().min(1), author: z.string().min(1) })
+  .object({
+    postId: z.string().min(1),
+    body: z.string().min(1),
+    author: z.string().min(1),
+    /**
+     * The delivery's `answerToken`, handed back. Required on a project's talk
+     * session, where the answer's author is the seat the token was issued to;
+     * a declared channel ignores it.
+     */
+    token: z.string().min(1).optional()
+  })
   .strict();
 
 type ChannelAnswerInput = z.infer<typeof channelAnswerInputSchema>;
@@ -788,7 +799,13 @@ export const channelNotifyInputSchema = z.object({
    * the room's last lines before the post, up to 20. Absent on every other
    * delivery.
    */
-  recent: z.array(channelTranscriptLineSchema).optional()
+  recent: z.array(channelTranscriptLineSchema).optional(),
+  /**
+   * On a talk session's delivery, the token for this seat's answer: issued to
+   * this member alone, and handed back as the answer's `token`. The answer's
+   * author is the seat it was issued to. Absent on every other delivery.
+   */
+  answerToken: z.string().optional()
 });
 
 export type ChannelNotifyInput = z.infer<typeof channelNotifyInputSchema>;
@@ -1463,15 +1480,25 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     resources: TALK_RESOURCES,
     execute: async (posted: TalkFanOutInput, ctx): Promise<ChannelNotifyInput[]> => {
       const recent = await recentTalkLines(ctx as unknown as BlockContext, posted.projectId, posted.seq);
-      return templateSeats.map((member) => ({
-        channelId: ctx.session.identity.id,
-        member,
-        postId: roomLineKey(posted.projectId, posted.seq),
-        body: posted.body,
-        principal: posted.principal,
-        routed: true,
-        recent
-      }));
+      const postId = roomLineKey(posted.projectId, posted.seq);
+      // One delivery per seat, recorded before the seat is woken: its token is
+      // how the seat's answer proves which seat it speaks for.
+      return Promise.all(
+        templateSeats.map(async (member) => ({
+          channelId: ctx.session.identity.id,
+          member,
+          postId,
+          body: posted.body,
+          principal: posted.principal,
+          routed: true,
+          recent,
+          answerToken: await recordTalkDelivery(ctx as unknown as BlockContext, {
+            projectId: posted.projectId,
+            postId,
+            seat: member
+          })
+        }))
+      );
     }
   });
   const talkFanOut =

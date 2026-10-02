@@ -246,6 +246,28 @@ describe("a host that builds several flows", () => {
     );
   });
 
+  it("reports a later call's different template together with its other refusals, in one throw", () => {
+    defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Plan." } });
+    channelInstances([], { kinds: waking(), resources: { projects } });
+
+    // Another flow's roster: a team template that differs from the registered one, and a malformed channel.
+    forgetOrgTalkTemplate(projects);
+    const message = refusalOf(() =>
+      channelInstances(
+        [
+          channel("eng.room", { mintFor: "projects", members: ["ops.lead"] }, "Plan."),
+          channel("eng.typo", { member: ["eng.em"] })
+        ],
+        { kinds: waking(), resources: { projects } }
+      )
+    );
+    expect(message).toContain("refused 2 of 2 channels");
+    expect(message).toMatch(/channel "eng\.room" — project rooms already have a talk template in this process/);
+    expect(message).toMatch(/channel "eng\.typo" — declares `member`/);
+    // Nothing was registered over the first template.
+    expect(registeredTalkTemplate(projects)?.facts).toEqual({ seats: ["eng.em"], charter: "Plan." });
+  });
+
   it("registers one template per process: the same one again is a no-op, a different one is refused", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Plan." } });
     channelInstances([], { kinds: waking(), resources: { projects } });
@@ -298,8 +320,38 @@ function listeningKind(heard: Heard[]) {
     action: CHANNEL_ANSWER_ACTION,
     inputSchema: channelNotifyInputSchema,
     session: { id: (post: ChannelNotifyInput) => post.channelId },
-    payload: (post: ChannelNotifyInput) => ({ postId: post.postId, body: `noted: ${post.body}`, author: post.member })
+    payload: (post: ChannelNotifyInput) => ({
+      postId: post.postId,
+      body: `noted: ${post.body}`,
+      author: post.member,
+      token: post.answerToken
+    })
   });
+  // A seat answering as another template seat, with its own delivery's token.
+  const impersonate = dispatcher({
+    name: "test-answer-as-another-seat",
+    flowKind: CHANNEL_KIND,
+    action: CHANNEL_ANSWER_ACTION,
+    inputSchema: channelNotifyInputSchema,
+    session: { id: (post: ChannelNotifyInput) => post.channelId },
+    payload: (post: ChannelNotifyInput) => ({
+      postId: post.postId,
+      body: `forged by ${post.member}`,
+      author: "ops.lead",
+      token: post.answerToken
+    })
+  });
+  // Holds the genuine answer back, so a forged one would land first.
+  const later = handler({
+    name: "test-answer-later",
+    inputSchema: channelNotifyInputSchema,
+    outputSchema: channelNotifyInputSchema,
+    execute: async (post: ChannelNotifyInput) => {
+      await new Promise((r) => setTimeout(r, 300));
+      return post;
+    }
+  });
+  const impersonating = (post: ChannelNotifyInput) => post.body.startsWith("[impersonate]");
   return defineFlow({
     kind: "listener",
     cardinality: "collection",
@@ -315,6 +367,9 @@ function listeningKind(heard: Heard[]) {
             // The same delivery answered twice, as a replayed or retried delivery would.
             .tapIf((post: ChannelNotifyInput) => post.body.startsWith("[answer-twice]"), answer)
             .tapIf((post: ChannelNotifyInput) => post.body.startsWith("[answer-twice]"), answer)
+            .tapIf((post: ChannelNotifyInput) => impersonating(post) && post.member === "eng.em", impersonate)
+            .stepIf((post: ChannelNotifyInput) => impersonating(post) && post.member === "ops.lead", later)
+            .tapIf((post: ChannelNotifyInput) => impersonating(post) && post.member === "ops.lead", answer)
         }
       }
     }
@@ -601,6 +656,25 @@ describe("a project's talk template at runtime", () => {
     }, "both seats' answers despite the forged claims");
     const answers = page.lines.filter((line: { author: string | null }) => line.author !== null);
     expect(answers.map((line: { author: string }) => line.author).sort()).toEqual(["eng.em", "ops.lead"]);
+  });
+
+  it("refuses a seat answering as another seat, leaving that seat's answer to land as its own", async () => {
+    const h = await boot({ talk: { seats: ["eng.em", "ops.lead"] } });
+    await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
+    const talk = await h.sessionOf("apollo", "alice");
+    // eng.em answers at once, as ops.lead; ops.lead answers for itself a moment later.
+    await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "[impersonate] who is on call?" });
+    const page = await h.until(async () => {
+      const read = await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 });
+      return read.lines.some((line: { author: string | null }) => line.author !== null) ? read : undefined;
+    }, "ops.lead's answer");
+    await new Promise((r) => setTimeout(r, 100));
+    const answers = (await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 })).lines.filter(
+      (line: { author: string | null }) => line.author !== null
+    );
+    // The forged answer claimed nothing: ops.lead's slot holds its own words, and eng.em wrote no line.
+    expect(answers).toEqual([expect.objectContaining({ author: "ops.lead", body: "noted: [impersonate] who is on call?" })]);
+    expect(page.lines.some((line: { body: string }) => line.body.startsWith("forged"))).toBe(false);
   });
 
   it("reaches an existing talk session with an edited template at the next boot", async () => {

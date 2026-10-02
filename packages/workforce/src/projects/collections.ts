@@ -40,6 +40,8 @@ export const ROOM_SEQ_RESOURCE = "room-seq";
 export const WORKSTREAM_CLAIMS_RESOURCE = "workstream-claims";
 /** The resource-map ref of the seat answers a room holds. Not re-exported from the package root. */
 export const ROOM_ANSWERS_RESOURCE = "room-answers";
+/** The resource-map ref of the deliveries a room's fan-out made. Not re-exported from the package root. */
+export const ROOM_DELIVERIES_RESOURCE = "room-deliveries";
 
 /**
  * The route id Shift Manager gives the workstreams no project lists. A project
@@ -315,6 +317,36 @@ const ROOM_ANSWERS_COLLECTION = defineResourceCollection({
   flowIsolation: SHARED_ACROSS_FLOWS,
   prefetchMode: "lazy",
   stateSchema: roomAnswerSchema
+});
+
+/**
+ * One post's delivery to one seat, at `room-deliveries/<token>`: written by the
+ * talk fan-out before it wakes the seat, and the token handed to that seat
+ * alone. An answer names its delivery by the token, and its author is the
+ * seat the delivery was made to, never the answer's own claim. The token is
+ * unguessable, so a seat cannot answer under a delivery it was not handed. No
+ * browser read.
+ */
+export const roomDeliverySchema = z.object({
+  projectId: z.string().min(1),
+  postId: z.string().min(1),
+  seat: z.string().min(1)
+});
+
+/** @see roomDeliverySchema */
+export type RoomDelivery = z.infer<typeof roomDeliverySchema>;
+
+/** The deliveries. Not re-exported from the package root: only the talk entries read it. */
+export function defineRoomDeliveriesCollection() {
+  return ROOM_DELIVERIES_COLLECTION;
+}
+
+const ROOM_DELIVERIES_COLLECTION = defineResourceCollection({
+  pattern: "room-deliveries/*",
+  scope: "org",
+  flowIsolation: SHARED_ACROSS_FLOWS,
+  prefetchMode: "lazy",
+  stateSchema: roomDeliverySchema
 });
 
 /** Digits a sequence number is padded to, so keys sort by `seq`. */

@@ -184,15 +184,9 @@ export function registerTalkTemplate(
   template: { site: string; facts: TalkTemplateFacts },
   kind: string
 ): void {
-  const current = registrations.get(collection);
-  if (current !== undefined) {
-    if (current.site === template.site && sameFacts(current.facts, template.facts)) return;
-    throw new Error(
-      `channelInstances: project rooms already have a talk template in this process (${current.site}), and ` +
-        `${template.site} would be a second${current.site === template.site ? " with other seats or charter" : ""}. ` +
-        `Every project's room shares one template. Keep one.`
-    );
-  }
+  const conflict = talkTemplateConflict(collection, template);
+  if (conflict !== undefined) throw new Error(`channelInstances: ${conflict}`);
+  if (registrations.has(collection)) return;
   const mint = dispatcher({
     name: "project-mint-talk",
     flowKind: kind,
@@ -210,6 +204,26 @@ export function registerTalkTemplate(
     reactTo
   });
   (collection as { reactTo?: object }).reactTo = reactTo;
+}
+
+/**
+ * Why `template` cannot be registered for `collection`, or `undefined` when it
+ * can: another template is registered already. The same one (site and facts)
+ * is no conflict. The binder reports this with its other refusals, before it
+ * registers anything.
+ */
+export function talkTemplateConflict(
+  collection: object,
+  template: { site: string; facts: TalkTemplateFacts }
+): string | undefined {
+  const current = registrations.get(collection);
+  if (current === undefined) return undefined;
+  if (current.site === template.site && sameFacts(current.facts, template.facts)) return undefined;
+  return (
+    `project rooms already have a talk template in this process (${current.site}), and ` +
+    `${template.site} would be a second${current.site === template.site ? " with other seats or charter" : ""}. ` +
+    `Every project's room shares one template. Keep one.`
+  );
 }
 
 /** The talk template registered for `collection` in this process, or `undefined`. */

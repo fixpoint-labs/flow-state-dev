@@ -44,16 +44,19 @@ import { retryOnConflict } from "./cas-retry";
 import {
   defineProjectsCollection,
   defineRoomAnswersCollection,
+  defineRoomDeliveriesCollection,
   defineRoomLinesCollection,
   defineRoomSeqCollection,
   PROJECTS_RESOURCE,
   ROOM_ANSWERS_RESOURCE,
+  ROOM_DELIVERIES_RESOURCE,
   ROOM_LINES_RESOURCE,
   ROOM_SEQ_RESOURCE,
   roomLineKey,
   roomLineSchema,
   type ProjectRow,
   type RoomAnswer,
+  type RoomDelivery,
   type RoomLine,
   type RoomSeq
 } from "./collections";
@@ -119,7 +122,8 @@ export const TALK_RESOURCES = {
   [PROJECTS_RESOURCE]: defineProjectsCollection(),
   [ROOM_LINES_RESOURCE]: defineRoomLinesCollection(),
   [ROOM_SEQ_RESOURCE]: defineRoomSeqCollection(),
-  [ROOM_ANSWERS_RESOURCE]: defineRoomAnswersCollection()
+  [ROOM_ANSWERS_RESOURCE]: defineRoomAnswersCollection(),
+  [ROOM_DELIVERIES_RESOURCE]: defineRoomDeliveriesCollection()
 };
 
 function projectsOf(ctx: BlockContext): ResourceCollectionRef<ProjectRow> {
@@ -277,15 +281,64 @@ export const talkPost = handler({
   }
 });
 
-/** A seat's answer: the same closed input a channel answer takes. */
+/** A seat's answer: the same closed input a channel answer takes, with the delivery's token, which a talk answer requires. */
 const talkAnswerInputSchema = z
-  .object({ postId: z.string().min(1), body: z.string().min(1), author: z.string().min(1) })
+  .object({
+    postId: z.string().min(1),
+    body: z.string().min(1),
+    author: z.string().min(1),
+    token: z.string().min(1).optional()
+  })
   .strict();
+
+/**
+ * Record one post's delivery to one seat, and return the token to hand that
+ * seat alone. Called by the talk fan-out before it wakes the seat.
+ */
+export async function recordTalkDelivery(
+  ctx: BlockContext,
+  delivery: RoomDelivery
+): Promise<string> {
+  const deliveries = ctx.resources[ROOM_DELIVERIES_RESOURCE] as unknown as ResourceCollectionRef<RoomDelivery>;
+  const token = globalThis.crypto.randomUUID();
+  await deliveries.create(token, delivery);
+  return token;
+}
+
+/**
+ * The seat an answer speaks for: the one its delivery was made to. Refused,
+ * with nothing claimed, when the answer names no delivery of this post in this
+ * room (`answer-not-delivered`), or names an author other than that seat
+ * (`answer-not-yours`): a seat answers only for itself.
+ */
+async function deliveredSeat(
+  ctx: BlockContext,
+  projectId: string,
+  input: { postId: string; author: string; token?: string }
+): Promise<string> {
+  const deliveries = ctx.resources[ROOM_DELIVERIES_RESOURCE] as unknown as ResourceCollectionRef<RoomDelivery>;
+  const delivery = input.token === undefined ? undefined : (await deliveries.getOptional(input.token))?.state;
+  if (delivery === undefined || delivery.projectId !== projectId || delivery.postId !== input.postId) {
+    throw new ProjectRefusedError(
+      "answer-not-delivered",
+      `an answer to "${input.postId}" names no delivery of that post in project "${projectId}". A seat answers ` +
+        "a post in a project's room with the token its delivery carried."
+    );
+  }
+  if (delivery.seat !== input.author) {
+    throw new ProjectRefusedError(
+      "answer-not-yours",
+      `an answer as "${input.author}" carries the delivery made to "${delivery.seat}". A seat answers only for itself.`
+    );
+  }
+  return delivery.seat;
+}
 
 /**
  * `answer` on a talk session: a seat's line, delivered into the session of the
  * person whose post woke it. The line's `userId` is that session's owner; its
- * `author` is the seat. `postId` names what is being answered and is not
+ * `author` is the seat the post was delivered to, read off the delivery the
+ * answer's token names (`recordTalkDelivery`), never taken from the answer. `postId` names what is being answered and is not
  * stored on the line: a room line has no post id.
  *
  * One line per post and seat, crash-safe (`room-answer.ts`): the answer's
@@ -304,11 +357,14 @@ export const talkAnswer = handler({
     const ctx = rawCtx as unknown as BlockContext;
     const projectId = boundProject(ctx);
     await memberRow(ctx, projectId);
+    // The author is the seat the post was delivered to, checked before
+    // anything is claimed; the answer's own `author` only has to agree.
+    const author = await deliveredSeat(ctx, projectId, input);
     const claims = ctx.resources[ROOM_ANSWERS_RESOURCE] as unknown as ResourceCollectionRef<RoomAnswer>;
     return answerInRoom(roomOf(ctx), claims, {
       projectId,
       postId: input.postId,
-      author: input.author,
+      author,
       userId: ownerOf(ctx) as string,
       body: input.body
     });

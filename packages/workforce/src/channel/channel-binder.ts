@@ -57,6 +57,7 @@ import {
   orgTalkTemplateOf,
   registeredTalkTemplate,
   registerTalkTemplate,
+  talkTemplateConflict,
   templateSeatsProblem,
   type TalkTemplateFacts
 } from "../projects/talk-template";
@@ -751,6 +752,10 @@ export function channelInstances(
   // call registered for the process. Either way, this call's channel kind
   // runs the talk sessions, so it must be able to hold and wake it.
   const found = templates.find((template) => template.collection === PROJECTS_COLLECTION);
+  // A template found here that differs from the one an earlier call
+  // registered is refused with everything else, not after it.
+  const conflict = found === undefined ? undefined : talkTemplateConflict(PROJECTS_COLLECTION, found);
+  if (conflict !== undefined) problems.push(`${found!.site} — ${conflict}`);
   const standing = found ?? registeredTalkTemplate(PROJECTS_COLLECTION);
   if (standing !== undefined) {
     const problem = talkKindProblem(kinds, standing.facts);
