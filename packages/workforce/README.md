@@ -149,8 +149,8 @@ it reaches Node built-ins through the packages it builds on. A browser component
 
 ## Reading one seat's skills
 
-A skill is a folder with a `SKILL.md` in it. In a workforce tree, one worker's skills are spread
-across three folders: the org's, its team's, and any sitting beside the worker itself.
+A skill is a folder with a `SKILL.md` in it. In a workforce tree, a team seat's skills are spread
+across three folders: the org's, its team's, and any sitting beside the worker itself. An org seat (`org/workers/<worker>/`) has no team, so it reads two: the org's `org/skills/` and its own `org/workers/<worker>/skills/`.
 
 ```
 workforce/org/skills/triage/SKILL.md
@@ -161,7 +161,8 @@ workforce/teams/pentest/workers/recon/WORKER.md
 workforce/teams/pentest/workers/recon/skills/sweep/SKILL.md
 ```
 
-`readSeatSkills` reads all three for one worker and returns the records `initialSkills` takes.
+`readSeatSkills` reads them for one worker and returns the records `initialSkills` takes. Pass `team`
+for a team seat; leave it out for an org seat.
 
 ```ts
 import { readSeatSkills } from "@flow-state-dev/workforce/loader";
@@ -175,10 +176,10 @@ if (errors.length) throw new Error(`skills: ${errors.length} entries failed to l
 skills.map((s) => s.name).sort(); // ["port-scan", "review", "sweep", "triage"]
 ```
 
-Every skill folder at those three levels is read. Nothing has to be listed anywhere for a skill
+Every skill folder at those levels is read. Nothing has to be listed anywhere for a skill
 to be included.
 
-The set comes back level by level: the org's first, then the team's, then the worker's own. Each
+The set comes back level by level: the org's first, then the team's (for a team seat), then the worker's own. Each
 entry is `{ name, skillMd, files }`, the same record `readSkillsDirectory` returns — `name` is the
 folder name, bare, with no team prefix.
 
@@ -191,8 +192,8 @@ const clerk = await readSeatSkills("./workforce", { team: "audit", worker: "cler
 // recon.skills has pentest's `review`; clerk.skills has audit's. Neither carries the other.
 ```
 
-One name reaching a single worker from more than one of its levels is refused. All three levels
-count, so a collision can span two of them or all three:
+One name reaching a single worker from more than one of its levels is refused. Every level
+counts, so on a team seat a collision can span two of them or all three:
 
 ```ts
 errors;

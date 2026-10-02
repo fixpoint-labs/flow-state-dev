@@ -39,17 +39,20 @@ export interface HeldPackages {
  * The packages one seat holds: its own folder's, then the ones its
  * `packages:` line names, nearest library first.
  *
- * @param seatId The seat's id, for the folders a refusal names: a declared
- *   id (`<team>.<worker>`, or a dotless org seat `<worker>`, which has no team
- *   library), or a hired seat's address (`<org>.<seatId>`).
+ * @param seatId The seat's id, for the folders a refusal names: the seat id
+ *   it was hired as (`manifest.seatId ?? manifest.id`). `<team>.<worker>` is a
+ *   team seat; a dotless id is an org seat (`<worker>`), which has no team
+ *   library. A hired record with no `seatId` passes its address
+ *   (`<org>.<seatId>`) and `orgId` with it.
  * @param declared The seat's `packages:` value as written, or `undefined` when
  *   the file wrote no such line.
  * @param reach The packages in the seat's reach, as the loader joined them. A
  *   worker-level entry must name this seat's worker and a team-level one its
  *   team; any other is refused, and nothing is held.
  * @param packageBlocks The generated map, keyed by package address.
- * @param orgId The organization a hired seat's address carries, when the
- *   caller knows it (its owner pin). The org is peeled off with
+ * @param orgId The organization a hired seat's address carries, passed only
+ *   when `seatId` IS that address (a record with no `seatId`): peeling it off a
+ *   bare seat id would misread a team named like the org. The org is peeled off with
  *   `splitSeatAddress`, so an org seat hired as `<org>.<worker>` reads as the
  *   org seat it is. Without it, the declared id is the address's last two
  *   segments, which is right for every id the tree declares.

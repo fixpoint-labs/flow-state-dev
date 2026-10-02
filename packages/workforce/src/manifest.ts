@@ -36,7 +36,7 @@ export interface WorkerManifest {
    */
   body: string;
   /**
-   * The skills this seat can see — the org ∪ team ∪ own-folder union, already
+   * The skills this seat can see — the org ∪ team (team seats only) ∪ own-folder union, already
    * resolved, in level order.
    *
    * Filled by the joined loader (`readWorkforce`) and **absent on a hand-built

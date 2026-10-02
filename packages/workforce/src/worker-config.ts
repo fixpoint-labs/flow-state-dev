@@ -125,7 +125,7 @@ export function workerConfigSchema() {
     [TEAM_INSTRUCTIONS_KEY]: z.string().optional(),
 
     /**
-     * The skills this seat can see — the org ∪ team ∪ own-folder union the
+     * The skills this seat can see — the org ∪ team (team seats only) ∪ own-folder union the
      * loader resolved for it, in level order.
      *
      * **Imposed by the factory on every record, never authored**, and present
