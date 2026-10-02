@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { mkdir as mkdirAsync, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,6 +10,7 @@ import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 import { defineCapability, handler, isAbortLike, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
+  abortExitGrace,
   claudeCodeAgent,
   forwardSignalToController,
   runNamespace,
@@ -463,8 +464,14 @@ describe("claudeCodeAgent", () => {
   // run with a short grace: what they pin is that the bound, not the vendor,
   // decides when the block settles.
   describe("stops on ctx.signal firing, not on the SDK stream settling", () => {
+    const shippedGraceMs = abortExitGrace.ms;
     /** A grace far inside each test's 500ms race bound. */
-    const NEVER_EXITS_GRACE_MS = 50;
+    beforeEach(() => {
+      abortExitGrace.ms = 50;
+    });
+    afterEach(() => {
+      abortExitGrace.ms = shippedGraceMs;
+    });
 
     /** A `query` whose generator never advances past its first message, abort
      * or no abort — the fake vendor stream that never closes. */
@@ -505,7 +512,6 @@ describe("claudeCodeAgent", () => {
       });
       const block = claudeCodeAgent({
         resolveClaudeAgent: hangingQueryAfterFirstMessage(() => sawFirstMessage()),
-        abortExitGraceMs: NEVER_EXITS_GRACE_MS,
       });
       const runtime = await createTestContext({ declaredResources: block.declaredResources });
       const controller = new AbortController();
@@ -532,7 +538,6 @@ describe("claudeCodeAgent", () => {
       });
       const block = claudeCodeAgent({
         resolveClaudeAgent: hangingQueryAfterFirstMessage(() => sawFirstMessage()),
-        abortExitGraceMs: NEVER_EXITS_GRACE_MS,
       });
       const runtime = await createTestContext({ declaredResources: block.declaredResources });
       const controller = new AbortController();
@@ -584,6 +589,7 @@ describe("claudeCodeAgent", () => {
       }
 
       it("does not settle an aborted run until the vendor's transcript is complete", async () => {
+        abortExitGrace.ms = shippedGraceMs;
         const vendor = vendorStillWritingAfterAbort(100);
         const block = claudeCodeAgent({ resolveClaudeAgent: vendor.resolveClaudeAgent });
         const runtime = await createTestContext({ declaredResources: block.declaredResources });
@@ -610,12 +616,10 @@ describe("claudeCodeAgent", () => {
         expect(vendor.state.transcriptComplete).toBe(true);
       });
 
-      it("with abortExitGraceMs: 0, settles on the signal without waiting for the exit", async () => {
+      it("with no grace, settles on the signal without waiting for the exit", async () => {
+        abortExitGrace.ms = 0;
         const vendor = vendorStillWritingAfterAbort(200);
-        const block = claudeCodeAgent({
-          resolveClaudeAgent: vendor.resolveClaudeAgent,
-          abortExitGraceMs: 0,
-        });
+        const block = claudeCodeAgent({ resolveClaudeAgent: vendor.resolveClaudeAgent });
         const runtime = await createTestContext({ declaredResources: block.declaredResources });
         const controller = new AbortController();
         (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
@@ -646,7 +650,6 @@ describe("claudeCodeAgent", () => {
       });
       const block = claudeCodeAgent({
         resolveClaudeAgent,
-        abortExitGraceMs: NEVER_EXITS_GRACE_MS,
       });
       const runtime = await createTestContext({ declaredResources: block.declaredResources });
       (runtime.ctx as unknown as { signal: AbortSignal }).signal = AbortSignal.abort();
@@ -722,7 +725,6 @@ describe("claudeCodeAgent", () => {
       const block = claudeCodeAgent({
         resolveClaudeAgent,
         includePartialMessages: false,
-        abortExitGraceMs: NEVER_EXITS_GRACE_MS,
       });
       const runtime = await createTestContext({ declaredResources: block.declaredResources });
       const controller = new AbortController();

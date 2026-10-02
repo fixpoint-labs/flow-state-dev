@@ -471,21 +471,6 @@ export interface ClaudeCodeAgentOptions {
    * stream, so a slow hook slows the run and a throwing one fails it.
    */
   onSession?: HarnessSessionHook;
-  /**
-   * How long, in milliseconds, an aborted run waits for the agent's process to
-   * exit before the block settles. Default `5000`.
-   *
-   * The process keeps writing the session's transcript for a moment after it is
-   * told to stop. A run stopped early and resumed straight away would otherwise
-   * ask the agent for a conversation it has not finished writing, and be told
-   * there is none. Waiting for the exit closes that window; the bound keeps a
-   * process that never exits from holding the block, so an abort settles within
-   * this long of the signal firing.
-   *
-   * `0` settles the instant the signal fires — for a host that never resumes an
-   * aborted run and wants the tightest deadline.
-   */
-  abortExitGraceMs?: number;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
 }
@@ -704,13 +689,20 @@ function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: ()
 }
 
 /**
- * Default for {@link ClaudeCodeAgentOptions.abortExitGraceMs}.
+ * How long an aborted run waits for the agent's process to exit before the
+ * block settles. The process keeps writing the session's transcript until it
+ * exits, so a run stopped early and resumed straight away would otherwise be
+ * told its conversation does not exist. Bounded so a process that never exits
+ * cannot hold the block.
  *
  * Sized against the SDK's own shutdown: on abort it closes the process's input
  * and gives it 2s to exit before sending `SIGTERM`. A process that exits on
  * its own, or on that signal, lands inside this bound.
+ *
+ * Internal and mutable only as a test seam — not re-exported from the package.
+ * Read at abort time, so a test can shorten it for a vendor that never exits.
  */
-const DEFAULT_ABORT_EXIT_GRACE_MS = 5_000;
+export const abortExitGrace = { ms: 5_000 };
 
 /**
  * Resolve once `promise` settles (either way) or `ms` elapses, whichever is
@@ -745,15 +737,14 @@ async function settledWithin(promise: Promise<unknown>, ms: number): Promise<voi
  * wrapped in {@link ClaudeAgentRunError}, surfaced as an error item, and
  * rethrown.
  *
- * **A fired `ctx.signal` ends the run the instant it fires** (FIX-1301) —
- * `query()`'s loop is raced against the signal rather than awaited outright,
- * so the block stops WAITING the moment its own deadline fires rather than
- * whenever the SDK's stream happens to settle. The already-wired
- * `abortController` (below) still tells the SDK to stop. The block then waits
- * up to {@link ClaudeCodeAgentOptions.abortExitGraceMs} for the SDK's stream to
- * end — which it does once the agent's process has exited — so the session's
- * transcript is complete before anyone can resume it. Past that bound it stops
- * waiting. A subprocess the vendor spawned can therefore outlive the abort —
+ * **A fired `ctx.signal` stops the race against the vendor stream right away**
+ * (FIX-1301) — `query()`'s loop is raced against the signal rather than awaited
+ * outright, so the block's deadline is not bounded by whenever the SDK's stream
+ * happens to settle. The rejection itself can arrive up to
+ * {@link abortExitGrace} later: the already-wired `abortController` (below)
+ * tells the SDK to stop, and the block then waits, bounded, for the SDK's
+ * stream to end — which it does once the agent's process has exited — so the
+ * session's transcript is complete before anyone can resume it. A subprocess the vendor spawned can therefore outlive the abort —
  * the working directory's sandbox is the fence for that, not this block's
  * deadline.
  *
@@ -778,7 +769,6 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     cwd: resolveCwd,
     resume: resolveResume,
     onSession,
-    abortExitGraceMs = DEFAULT_ABORT_EXIT_GRACE_MS,
     settingSources,
     env,
     sandbox,
@@ -1148,7 +1138,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // If the signal below wins the race, `loop` is abandoned rather than
           // cancelled — it may still be running against the vendor's stream
           // (see the docblock above). The abort branch waits for it only up to
-          // `abortExitGraceMs`, so a rejection from it can still land with
+          // `abortExitGrace.ms`, so a rejection from it can still land with
           // nobody racing it, and must never become an unhandled rejection.
           loop.catch(() => {});
           const abortRace = rejectOnAbort(ctx.signal);
@@ -1167,15 +1157,8 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // shape despite OUR signal having fired and won the race.
           const abortedByOurSignal = ctx.signal.aborted;
           if (abortedByOurSignal && loop !== undefined) {
-            // **Wait, bounded, for the agent's process to exit.** The SDK ends
-            // its stream only once the process has exited (its own `return()`
-            // awaits the exit too), and the process keeps writing the session's
-            // transcript until then. Settling first hands the host a session
-            // id the agent cannot find yet: a run stopped right after it
-            // started, then resumed straight away, is told there is no such
-            // conversation. Bounded, so FIX-1301 still holds — a vendor that
-            // never exits costs at most the grace, not the run.
-            await settledWithin(loop, abortExitGraceMs);
+            // Bounded wait for the process to exit — see `abortExitGrace`.
+            await settledWithin(loop, abortExitGrace.ms);
           }
           if (abortedByOurSignal && inFlightRef.current) {
             // The abandoned loop can still be mid-`await` on its own

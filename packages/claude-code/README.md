@@ -102,9 +102,7 @@ the id itself, so passing either without `detached: true` throws at construction
 When the block's signal fires, the block tells the agent to stop, then waits for
 its process to exit before it rejects. The agent writes the session's transcript
 until it exits, so a run you cancel and resume straight away finds its
-conversation. The wait is bounded by `abortExitGraceMs` (default 5000). Past that
-the block rejects anyway. Pass `0` to reject the moment the signal fires, if you
-never resume a cancelled run.
+conversation. The wait lasts at most 5 seconds; past that the block rejects anyway.
 
 ### Giving a run its own working directory
 
