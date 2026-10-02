@@ -128,6 +128,27 @@ describe("declaring a talk template", () => {
     );
   });
 
+  it("refuses a template on a kind passed under a key that is not its own kind", () => {
+    // The flow under `custom` is the built-in channel kind: talk sessions would run a different graph.
+    defineProjectsCollection({ talk: { seats: ["eng.em"], kind: "custom" } });
+    expect(
+      refusalOf(() => channelInstances([], { kinds: { custom: defineChannelFlow() } as never, resources: { projects } }))
+    ).toMatch(/runs talk sessions on kind "custom", but the flow passed under that key is kind "channel"/);
+  });
+
+  it("refuses a seat listed twice at both declaration sites, so one post never wakes a seat twice", () => {
+    expect(() => defineProjectsCollection({ talk: { seats: ["eng.em", "ops.lead", "eng.em"] } })).toThrow(
+      /seat "eng\.em" is listed twice/
+    );
+    expect(
+      refusalOf(() =>
+        channelInstances([channel("eng.room", { mintFor: "projects", members: ["eng.em", "eng.em"] })], {
+          resources: { projects }
+        })
+      )
+    ).toMatch(/channel "eng\.room" — .*seat "eng\.em" is listed twice/);
+  });
+
   it("registers the template's kind with no channel on it, holding the template, and installs the mint on create", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Org charter." } });
     const instances = channelInstances([], { resources: { projects } });

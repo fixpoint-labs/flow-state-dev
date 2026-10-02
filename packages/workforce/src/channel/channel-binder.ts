@@ -55,7 +55,7 @@ import { PROJECTS_COLLECTION } from "../projects/collections";
 import {
   installTalkReaction,
   orgTalkTemplateOf,
-  templateSeatIdProblem,
+  templateSeatsProblem,
   type TalkTemplateFacts
 } from "../projects/talk-template";
 
@@ -134,10 +134,8 @@ function templateFileProblem(declared: Record<string, unknown>): string | undefi
     );
   }
   if (Object.hasOwn(declared, "members") && isListOfNames(declared.members)) {
-    for (const seat of declared.members) {
-      const problem = templateSeatIdProblem(seat);
-      if (problem !== undefined) return `declares \`${MINT_FOR_KEY}:\`, and ${problem}`;
-    }
+    const problem = templateSeatsProblem(declared.members);
+    if (problem !== undefined) return `declares \`${MINT_FOR_KEY}:\`, and ${problem}`;
   }
   return undefined;
 }
@@ -818,6 +816,14 @@ function templateFrom(
   const factory = Object.hasOwn(kinds, declared.kind) ? kinds[declared.kind] : undefined;
   if (factory === undefined) {
     return { problem: `runs talk sessions on kind "${declared.kind}", which was not passed to channelInstances.` };
+  }
+  if (factory.kind !== declared.kind) {
+    return {
+      problem:
+        `runs talk sessions on kind "${declared.kind}", but the flow passed under that key is kind ` +
+        `"${String(factory.kind)}" — talk sessions would run a different channel's graph. Pass the flow ` +
+        `under its own kind, or name that kind.`
+    };
   }
   if (!holdsBoards(factory)) {
     return {

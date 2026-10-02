@@ -84,7 +84,7 @@ const orgTemplates = new WeakMap<object, TalkTemplate>();
  */
 export function recordOrgTalkTemplate(collection: object, template: TalkTemplate): void {
   const problem = Array.isArray(template.seats)
-    ? template.seats.map(templateSeatIdProblem).find((found) => found !== undefined)
+    ? templateSeatsProblem(template.seats)
     : "`seats` is not a list of seat ids";
   if (problem !== undefined) throw new Error(`defineProjectsCollection: the talk template's ${problem}`);
   orgTemplates.set(collection, {
@@ -123,6 +123,23 @@ export function templateSeatIdProblem(id: unknown): string | undefined {
     validateSegment(parts[parts.length - 1]!, "Worker");
   } catch (error) {
     return `seat "${id}" is not a seat id: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  return undefined;
+}
+
+/**
+ * Why a template's seat list is not one, or `undefined` when it is: every id
+ * a seat id ({@link templateSeatIdProblem}) and none listed twice, since a
+ * seat listed twice would be woken twice by one post. Both declaration sites
+ * check with this.
+ */
+export function templateSeatsProblem(seats: readonly unknown[]): string | undefined {
+  const seen = new Set<unknown>();
+  for (const seat of seats) {
+    const problem = templateSeatIdProblem(seat);
+    if (problem !== undefined) return problem;
+    if (seen.has(seat)) return `seat "${String(seat)}" is listed twice: a post would wake it twice. List each seat once`;
+    seen.add(seat);
   }
   return undefined;
 }
