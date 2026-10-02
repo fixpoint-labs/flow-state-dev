@@ -47,7 +47,7 @@ import {
   type WorkerManifest
 } from "../src/index";
 import { CHANNEL_ANSWER_ACTION } from "../src/channel/channel-flow";
-import { forgetOrgTalkTemplate, forgetTalkTemplate } from "../src/projects/talk-template";
+import { forgetOrgTalkTemplate, forgetTalkTemplate, registeredTalkTemplate } from "../src/projects/talk-template";
 import { roomLineKey } from "../src/projects/collections";
 
 const ORG = "lab";
@@ -115,6 +115,22 @@ describe("declaring a talk template", () => {
     expect(message).not.toContain('channel "eng.feature"');
   });
 
+  it("keeps the first org template: the same one declared again is a no-op, a different one throws where it is declared", () => {
+    defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Plan." } });
+    // Any module may declare the collection; the same template again changes nothing.
+    expect(() => defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Plan." } })).not.toThrow();
+    expect(() => defineProjectsCollection()).not.toThrow();
+    // A different one is refused, and the first still stands.
+    expect(() => defineProjectsCollection({ talk: { seats: ["ops.lead"], charter: "Plan." } })).toThrow(
+      /a talk template is already declared beside this collection \(seats \["eng\.em"\]\).*\["ops\.lead"\]/
+    );
+    expect(() => defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Other." } })).toThrow(
+      /already declared beside this collection/
+    );
+    channelInstances([], { kinds: waking(), resources: { projects } });
+    expect(registeredTalkTemplate(projects)?.facts).toEqual({ seats: ["eng.em"], charter: "Plan." });
+  });
+
   it("takes a full seat id from any team and a dotless org seat id, and refuses anything else in the org default", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em", "ops.lead", "chief-of-staff"] } });
     expect(() => channelInstances([], { kinds: waking(), resources: { projects } })).not.toThrow();
@@ -160,7 +176,8 @@ describe("declaring a talk template", () => {
     expect(refusalOf(() => channelInstances([], { resources: { projects } }))).toMatch(
       /names seats, but talk sessions run on kind "channel", which was built with no `notify` block/
     );
-    // A template with no seats wakes nobody by design, so the plain kind serves it.
+    // A template with no seats wakes nobody by design, so the plain kind serves it (a fresh process).
+    forgetOrgTalkTemplate(projects);
     defineProjectsCollection({ talk: { seats: [], charter: "Just the room." } });
     expect(() => channelInstances([], { resources: { projects } })).not.toThrow();
   });

@@ -74,18 +74,31 @@ export const noteBindRefusal = handler({
 const orgTemplates = new WeakMap<object, TalkTemplate>();
 
 /**
- * Record the org-level template declared beside `collection`. Replaces an
- * earlier one.
+ * Record the org-level template declared beside `collection`. The first
+ * declaration stands: the same template declared again (any module may call
+ * `defineProjectsCollection({ talk })`) is a no-op, and a different one throws
+ * where it is declared, rather than silently replacing the first.
  *
  * @throws When `seats` is not a list of seat ids, naming the first bad one:
  *   the same check a template file's `members:` gets at bind, made here so a
- *   bad org template fails where it is declared.
+ *   bad org template fails where it is declared. And when another template is
+ *   already declared beside `collection`.
  */
 export function recordOrgTalkTemplate(collection: object, template: TalkTemplate): void {
   const problem = Array.isArray(template.seats)
     ? templateSeatsProblem(template.seats)
     : "`seats` is not a list of seat ids";
   if (problem !== undefined) throw new Error(`defineProjectsCollection: the talk template's ${problem}`);
+  const current = orgTemplates.get(collection);
+  if (current !== undefined) {
+    const facts = (t: TalkTemplate): TalkTemplateFacts => ({ seats: t.seats, charter: t.charter ?? "" });
+    if (sameFacts(facts(current), facts(template))) return;
+    throw new Error(
+      `defineProjectsCollection: a talk template is already declared beside this collection ` +
+        `(seats ${JSON.stringify(current.seats)}), and this call declares a different one ` +
+        `(seats ${JSON.stringify(template.seats)}). Every project's room shares one template: declare it once.`
+    );
+  }
   orgTemplates.set(collection, {
     seats: [...template.seats],
     ...(template.charter === undefined ? {} : { charter: template.charter })
@@ -97,7 +110,7 @@ export function orgTalkTemplateOf(collection: unknown): TalkTemplate | undefined
   return typeof collection === "object" && collection !== null ? orgTemplates.get(collection) : undefined;
 }
 
-/** Forget the org-level template declared beside `collection`. For tests that declare several in one process. */
+/** Forget the org-level template declared beside `collection`. For tests that stand for several processes in one. */
 export function forgetOrgTalkTemplate(collection: object): void {
   orgTemplates.delete(collection);
 }
