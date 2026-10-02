@@ -15,7 +15,7 @@ three times through Shift Manager's own start script, over one SQLite file it ow
 asks for is **held out**: `coder-<random hex>`, picked at run time, so no file in the repository
 can name it. The channel and its members are read off the tree, never spelled in the check.
 
-**Signal:** seven legs, read through the routes Shift Manager reads. The seat inventory comes through
+**Signal:** eight legs, read through the routes Shift Manager reads. The seat inventory comes through
 the channel's session, the stored roster through the chief of staff's, and whether a seat answers
 comes from opening a session on its address.
 
@@ -31,6 +31,16 @@ comes from opening a session on its address.
    takes it and the turn completes.
 7. **seat gone**: after a second restart the seat has no inventory row and no roster row, and its
    address no longer answers.
+8. **a seat asks** (BR-21): a declared seat, not the person, asks the chief of staff for a hire,
+   and the hire lands. DevTeam has no seat that messages another (its EM files rows, its coder and
+   reviewer run a harness), so this leg runs its own small host in process (`seat-asks.mts`): a
+   chief of staff holding `hire` on a real model, and an `ops.lead` seat whose one job posts its
+   own file's request into `ops.room` as itself. The held-out seat id lives only in that file; the
+   check starts the seat with an empty input. Nothing new carries the request: the post goes
+   through the channel's own `post` with the seat's `seatId` as author, and the channel's notify
+   hands it to the chief of staff's `onChannelPost`, where the agent kind hears a post. Graded on
+   what the channel handed the chief of staff (exactly one delivery, author `ops.lead`) and on the
+   roster row for the held-out id, on kind `agent`.
 
 **Anti-game:** no hire or fire block is called by the check. Every change goes through the chief
 of staff's own turn on a real model, and every restart is a new process over the same file. The
@@ -41,6 +51,7 @@ grade is read off the stores through the HTTP routes, never off the model's word
 | Control | Perturbs | Goes red on |
 |---|---|---|
 | `deny-fire` | the person's answer: Deny instead of Approve | **seat gone** only: the seat is still listed, rostered and answering. **answer** stays green, since the route takes a Deny and the turn completes |
+| `no-seat-delivery` | the channel's notify hands the seat's post to nobody | **a seat asks** only: no delivery to the chief of staff, and no roster row for the held-out id |
 
 The tree with no chief of staff (today's `main`) goes red at **boot**: `Unknown flow
 "chief-of-staff"`.
@@ -51,7 +62,8 @@ with a precondition message and grades nothing.
 
 **Run:** `pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts`
 
-**Control:** `GOAL_CONTROL=deny-fire pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts`
+**Controls:** `GOAL_CONTROL=deny-fire pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts`,
+`GOAL_CONTROL=no-seat-delivery pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts`
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -61,3 +73,4 @@ with a precondition message and grades nothing.
 | 2026-10-02 | 145c1eac7 (FIX-1719 PR 2, Codex round 4 + #2649 93da431f5 + #2645 c1ee781d0) | openai/gpt-5.4-mini | PASS | All six legs green; discover now names `chief-of-staff` among eng.feature's members. `deny-fire` FAILS at seat gone (listed, rostered, answering). One earlier run stopped at discover, the model answering without calling `discover`; the rerun passed. |
 | 2026-10-02 | 29c794d58+round 5 (FIX-1719 PR 2, Codex review 5394601632) | openai/gpt-5.4-mini | PASS | All six legs green with the stricter checks: the hired row is kind `coder` in the roster and the inventory, before and after the restart, and the fire raised exactly one `human_approval` naming verb, seat, kind and message. `deny-fire` FAILS at seat gone (listed, rostered, answering). |
 | 2026-10-02 | a27de5337+round 6 (FIX-1719 PR 2, Codex reviews 5394840713 + 5394907534) | openai/gpt-5.4-mini | PASS | All seven legs green; the resume and the turn settling are now their own **answer** leg. `deny-fire` FAILS at seat gone only (listed, rostered, answering); answer stays green. |
+| 2026-10-02 | fb1b751cd+BR-21 (FIX-1719 PR 2, Codex 5395145040) | openai/gpt-5.4-mini | PASS | All eight legs green, including **a seat asks**: `ops.lead` posted its own request as itself, the channel handed the chief of staff one post from `ops.lead`, and the held-out seat has a roster row on kind `agent`. `deny-fire` FAILS at seat gone only. `no-seat-delivery` FAILS at a seat asks only (no delivery, no row); every DevTeam leg stays green. |

@@ -22,15 +22,22 @@
  *   restart     after a restart the hired seat is still listed and answers
  *   ask         asked to fire it, it raises one human_approval naming the seat,
  *               and nothing changes yet
+ *   answer      the resume route takes the answer and the turn completes
  *   seat gone   on Approve, and after a second restart, the seat is gone from
  *               the inventory and the roster, and its address no longer answers
+ *   a seat asks a declared seat posts its own hire request into its channel,
+ *               the channel hands it to the chief of staff from that seat, and
+ *               the hire's roster row lands (its own small host: seat-asks.mts)
  *
- * Control:
+ * Controls:
  *
- *   deny-fire   Deny instead of Approve. Must fail at "seat gone".
+ *   deny-fire         Deny instead of Approve. Must fail at "seat gone" only.
+ *   no-seat-delivery  The channel hands the seat's post to nobody. Must fail at
+ *                     "a seat asks" only.
  *
  * Run:      pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts
  * Control:  GOAL_CONTROL=deny-fire pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts
+ * Control:  GOAL_CONTROL=no-seat-delivery pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -39,9 +46,10 @@ import { join } from "node:path";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { CODER_KIND } from "../../devforce-lab/lab/workforce/flows/workers/coder.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
+import { ASKER, runSeatAsks } from "./seat-asks.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["deny-fire"] as const;
+const CONTROLS = ["deny-fire", "no-seat-delivery"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
@@ -228,6 +236,39 @@ await runGoal(async () => {
   const failures: string[] = [];
   const evidence: string[] = [];
   const fail = (leg: string, why: string) => failures.push(`${leg}: ${why}`);
+  // The seat-asks leg's own failures, kept apart: it runs on its own host, so
+  // a failure there must not stop the DevTeam legs from being graded.
+  const seatAskFailures: string[] = [];
+  /** Every failure, the control's tag on each when one is set. */
+  const graded = (): string[] => {
+    const all = [...seatAskFailures, ...failures];
+    return CONTROL === "" ? all : all.map((f) => `[control ${CONTROL}] ${f}`);
+  };
+
+  // ---- a seat asks (BR-21): its own small host, since DevTeam has no seat
+  // that messages another. The request lives only in the asking seat's file.
+  {
+    const asked = `helper-${randomBytes(3).toString("hex")}`;
+    const result = await runSeatAsks(asked, CONTROL === "no-seat-delivery", SCRATCH);
+    const toCos = result.deliveries.filter((d) => d.member === COS);
+    const problems: string[] = [];
+    if (result.startStatus !== "completed") problems.push(`"${ASKER}" did not finish its job: ${result.startStatus}`);
+    if (toCos.length !== 1 || !toCos[0]!.delivered) {
+      problems.push(`the channel handed "${ASKER}"'s post to the chief of staff ${toCos.filter((d) => d.delivered).length} time(s), not once`);
+    } else if (toCos[0]!.author !== ASKER) {
+      problems.push(`the post the chief of staff heard is from ${JSON.stringify(toCos[0]!.author)}, not "${ASKER}"`);
+    }
+    if (!result.rostered) problems.push(`no roster row for "${asked}" after the seat's request`);
+    else if (result.rosterKind !== "agent") problems.push(`"${asked}" was hired as ${String(result.rosterKind)}, not "agent"`);
+    if (problems.length > 0) {
+      for (const problem of problems) seatAskFailures.push(`a seat asks: ${problem}`);
+    } else {
+      evidence.push(
+        `a seat asks: "${ASKER}" posted its own request as itself, the channel handed it to the chief of staff from "${ASKER}", ` +
+          `and "${asked}" has a roster row on kind agent; the check sent the seat id to no one`,
+      );
+    }
+  }
 
   /** The hired seat's address, from the inventory row whose id ends with it. */
   const reads = async (api: Awaited<ReturnType<typeof labApi>>, cosSession: string) => {
@@ -254,7 +295,7 @@ await runGoal(async () => {
     const opened = await api.openSession(COS);
     if (opened.status !== 201) {
       fail("boot", `the chief of staff's address did not answer: ${opened.status} ${JSON.stringify(opened.body)}`);
-      return { failures, evidence: "" };
+      return { failures: graded(), evidence: "" };
     }
     const cosSession = opened.body.session.id as string;
 
@@ -297,7 +338,8 @@ await runGoal(async () => {
     await stop(served);
   }
   if (failures.length > 0 || address === undefined) {
-    return { failures: failures.length > 0 ? failures : ["hire: no address to carry on with"], evidence: evidence.join("; ") };
+    if (failures.length === 0) fail("hire", "no address to carry on with");
+    return { failures: graded(), evidence: evidence.join("; ") };
   }
 
   // ---- boot 2: the hire held; then the fire, through the person's answer ----
@@ -332,7 +374,7 @@ await runGoal(async () => {
       if (typeof ask.message !== "string" || !ask.message.includes(seat)) askProblems.push(`message ${JSON.stringify(ask.message)}`);
       if (askProblems.length > 0) {
         fail("ask", `the ask is not a human_approval to fire "${seat}" (kind "${CODER_KIND}"): ${askProblems.join(", ")}`);
-        return { failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`), evidence: evidence.join("; ") };
+        return { failures: graded(), evidence: evidence.join("; ") };
       }
       if (!beforeAnswer.listed || !beforeAnswer.rostered) fail("ask", `"${seat}" changed before anyone answered`);
       else evidence.push(`ask: one ${ask.reason} "${ask.message}" ${JSON.stringify(ask.data)}, "${seat}" untouched while it waits`);
@@ -371,7 +413,7 @@ await runGoal(async () => {
   }
 
   return {
-    failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
+    failures: graded(),
     evidence: `DevTeam served three times by Shift Manager's start script over one SQLite file, the chief of staff on a real model. ${evidence.join("; ")}`,
   };
 });
