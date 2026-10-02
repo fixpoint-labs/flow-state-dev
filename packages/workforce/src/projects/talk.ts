@@ -59,7 +59,7 @@ import {
 } from "./collections";
 import { isMember } from "./membership-gate";
 import { ProjectRefusedError } from "./project-refusal";
-import { isAlreadyExists } from "./store-errors";
+import { answerInRoom } from "./room-answer";
 import { appendRoomLine, readRoom, type RoomCollections } from "./room-store";
 import type { TalkTemplateFacts } from "./talk-template";
 
@@ -288,12 +288,11 @@ const talkAnswerInputSchema = z
  * `author` is the seat. `postId` names what is being answered and is not
  * stored on the line: a room line has no post id.
  *
- * One line per post and seat. The answer is claimed first, in the room's
- * answer claims (`room-answers/<projectId>/<postId>/<author>`, written with
- * `create`), so a replayed or retried delivery lands nothing (`null`). The
- * claim is server-written storage, never session state, which a caller can
- * seed when it creates a session. A write that fails gives the claim back, so
- * the delivery can be answered again.
+ * One line per post and seat, crash-safe (`room-answer.ts`): the answer's
+ * claim, created first in server-written storage (never session state, which a
+ * caller can seed at create), records the seq and the line. A replayed or
+ * retried delivery finishes what an earlier run claimed and writes nothing
+ * twice; it returns `null` when the line had already landed.
  */
 export const talkAnswer = handler({
   name: "talk-answer",
@@ -306,24 +305,13 @@ export const talkAnswer = handler({
     const projectId = boundProject(ctx);
     await memberRow(ctx, projectId);
     const claims = ctx.resources[ROOM_ANSWERS_RESOURCE] as unknown as ResourceCollectionRef<RoomAnswer>;
-    const key = `${projectId}/${input.postId}/${input.author}`;
-    try {
-      await claims.create(key, { projectId, postId: input.postId, author: input.author });
-    } catch (error) {
-      if (isAlreadyExists(error)) return null;
-      throw error;
-    }
-    try {
-      return await appendRoomLine(roomOf(ctx), {
-        projectId,
-        userId: ownerOf(ctx) as string,
-        author: input.author,
-        body: input.body
-      });
-    } catch (error) {
-      await claims.delete(key);
-      throw error;
-    }
+    return answerInRoom(roomOf(ctx), claims, {
+      projectId,
+      postId: input.postId,
+      author: input.author,
+      userId: ownerOf(ctx) as string,
+      body: input.body
+    });
   }
 });
 
@@ -355,24 +343,33 @@ export function talkReadFor(template: TalkTemplateFacts | undefined) {
 const TALK_WAKE_LINES = 20;
 
 /**
- * The room's lines before `seq`, oldest first, at most {@link TALK_WAKE_LINES},
- * as a woken seat is handed them: a channel transcript line each, `principal`
- * the poster, `author` the seat that answered. A room line carries no time, so
- * `at` is `0`. Point reads by key, so a wake costs the same however long the
- * room is. Lines not yet written and tombstones are left out.
+ * The room's committed lines before `seq`, oldest first, at most
+ * {@link TALK_WAKE_LINES}, as a woken seat is handed them: a channel transcript
+ * line each, `principal` the poster, `author` the seat that answered. A room
+ * line carries no time, so `at` is `0`.
+ *
+ * Read as a member reads (`readRoom`), so only lines through the room's
+ * watermark: a line written past a stalled gap is not committed yet, and a
+ * seat is never shown what a member could not read. Tombstones are left out.
  */
 export async function recentTalkLines(
   ctx: BlockContext,
   projectId: string,
   seq: number
 ): Promise<ChannelTranscriptLine[]> {
-  const { lines } = roomOf(ctx);
-  const from = Math.max(1, seq - TALK_WAKE_LINES);
-  const seqs = Array.from({ length: Math.max(0, seq - from) }, (_, i) => from + i);
-  const refs = await Promise.all(seqs.map((at) => lines.getOptional(roomLineKey(projectId, at))));
-  return refs
-    .map((ref) => ref?.state)
-    .filter((line): line is RoomLine => line !== undefined && !line.tombstone)
+  return recentRoomLines(roomOf(ctx), projectId, seq);
+}
+
+/** {@link recentTalkLines} over the room's collections. Exported for tests. */
+export async function recentRoomLines(
+  rooms: RoomCollections,
+  projectId: string,
+  seq: number
+): Promise<ChannelTranscriptLine[]> {
+  const after = Math.max(0, seq - 1 - TALK_WAKE_LINES);
+  const { lines } = await readRoom(rooms, projectId, after);
+  return lines
+    .filter((line) => line.seq < seq)
     .map((line) => ({
       id: roomLineKey(projectId, line.seq),
       at: 0,

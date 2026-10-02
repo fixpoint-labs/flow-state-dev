@@ -282,13 +282,24 @@ const WORKSTREAM_CLAIMS_COLLECTION = defineResourceCollection({
 });
 
 /**
- * One seat's answer to one post in a room, claimed before the line is written,
- * at `room-answers/<projectId>/<postId>/<author>`. Written with `create` by the
- * talk `answer` entry alone, so of two deliveries of one post to one seat
- * exactly one lands a line. Server-written: nothing a caller seeds into a
- * session reaches it. No browser read.
+ * One seat's answer to one post in a room, at
+ * `room-answers/<projectId>/<postId>/<author>`: the durable record of the
+ * answer's progress (`room-answer.ts`). Created before the line, holding the
+ * seq allocated for it and the line itself, so a run that dies after the claim
+ * leaves the next delivery everything it needs to finish. Never deleted.
+ * Server-written: nothing a caller seeds into a session reaches it. No browser
+ * read.
  */
-export const roomAnswerSchema = z.object({ projectId: z.string().min(1), postId: z.string().min(1), author: z.string().min(1) });
+export const roomAnswerSchema = z.object({
+  projectId: z.string().min(1),
+  postId: z.string().min(1),
+  author: z.string().min(1),
+  /** The owner of the talk session the answer was delivered into: the line's `userId`. */
+  userId: z.string().min(1),
+  body: z.string().min(1),
+  /** The seq the line is written at. Moves only off a tombstone. */
+  seq: z.number().int().min(1)
+});
 
 /** @see roomAnswerSchema */
 export type RoomAnswer = z.infer<typeof roomAnswerSchema>;
