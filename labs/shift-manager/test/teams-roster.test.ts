@@ -16,12 +16,14 @@ const ORG = "acme";
 type Lab = {
   seats: Array<{ id: string; kind: string; hired?: boolean }>;
   roster?: Array<{ seatId: string }> | "fails";
+  /** The channel inventory's rows. Default one channel. */
+  channels?: unknown[];
 };
 
 function clientsFor(lab: Lab): LabClients {
   const collections: Record<string, unknown[] | "fails"> = {
     seats: lab.seats,
-    channels: [{ id: "eng.general", kind: "channel", members: [] }],
+    channels: lab.channels ?? [{ id: "eng.general", kind: "channel", members: [] }],
     ...(lab.roster === undefined ? {} : { roster: lab.roster }),
   };
   const manifest = {
@@ -98,6 +100,12 @@ describe("TEAMS and the roster", () => {
   it("BR-24 · the roster read fails: hired seats aren't listed, and the section says the roster didn't load", async () => {
     const value = await teams({ seats: [...declared, { id: "acme.support.ada", kind: "agent" }], roster: "fails" });
     expect(value.seats.map((seat) => seat.id)).toEqual(["eng.lead", "chief-of-staff"]);
+    expect(value.rosterUnread).toMatch(/1 hired seat isn't listed: the roster didn't load.*the roster read failed/);
+  });
+
+  it("BR-24 · a Lab whose inventory holds only hired seats says the roster didn't load, not that the inventory is empty", async () => {
+    const value = await teams({ seats: [{ id: "acme.support.ada", kind: "agent" }], roster: "fails", channels: [] });
+    expect(value.seats).toEqual([]);
     expect(value.rosterUnread).toMatch(/1 hired seat isn't listed: the roster didn't load.*the roster read failed/);
   });
 

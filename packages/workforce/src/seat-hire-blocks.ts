@@ -252,9 +252,9 @@ function listed(names: readonly string[]): string {
 }
 
 /**
- * The seat-hire handlers, model-free. `createSeatHireCapability` mounts `hire`
- * and `fire` as catalog tools; `brokenSeats` and `rehire` are mounted by the
- * caller, behind its own approval.
+ * The seat-hire handlers, model-free. `createSeatHireCapability` mounts all
+ * four as catalog tools, with `rehire` (and any verb its `askBefore` names)
+ * behind a person's approval; mounted as actions, none of them asks.
  */
 export interface SeatHireBlocks {
   readonly hire: BlockDefinition<typeof hireInput, typeof hireOutput>;
