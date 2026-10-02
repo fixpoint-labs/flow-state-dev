@@ -50,6 +50,7 @@ import { createNotifyLog } from "../../../../goals/devforce-lab/lab/notify.mts";
 import { BASE_REF, createScratchRepo } from "../../../../goals/devforce-lab/lab/scratch-repo.mts";
 import { CODER_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/coder.mts";
 import { EM_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/em.mts";
+import { setAsideLegacyOrgStore } from "./legacy-org-store.mts";
 
 /**
  * The feature the EM seat asks a person to approve when the server opens: the
@@ -75,6 +76,8 @@ const addresses = Object.fromEntries(members.filter((m) => kindOf(m) === EM_KIND
 /** Where this Lab keeps what it was told, across restarts. */
 const STORE = process.env.DEVTEAM_STORE ?? fileURLToPath(new URL("../../.fsdev/devteam.sqlite", import.meta.url));
 mkdirSync(dirname(STORE), { recursive: true });
+// A store from before the lab's org id changed is set aside, loudly, not reused.
+await setAsideLegacyOrgStore(STORE);
 
 const scratch = createScratchRepo("shift-manager");
 const harness = selectHarness();
