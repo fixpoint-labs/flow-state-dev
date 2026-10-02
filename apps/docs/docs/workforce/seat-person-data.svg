@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 540" role="img" aria-label="Where a hired seat keeps what it learns about alice. Inside the acme organization: one shared cell for alice in acme, which every hired seat in acme reads and writes unless it is flow-isolated, holding her user record and her user-scoped resources; and one cell per seat address for flow-isolated data, such as alice at acme.support.ada. In globex, alice has a separate cell of her own, which acme's seats cannot read. Outside hired seats, alice's own data, keyed by her id alone and kept by your app's other flows, is a third place that no hired seat reads or writes. Nothing moves between organizations. A projected resource is stored by your own hooks, so key its rows by the organization too.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 540" role="img" aria-label="Where a hired seat keeps what it learns about alice. Inside the acme organization: one shared cell for alice in acme, holding her user record, which every hired seat in acme shares unless it is flow-isolated, and her user-scoped resources, shared by the seats that declare them; and one cell per seat address for flow-isolated data, such as alice at acme.support.ada. In globex, alice has a separate cell of her own, which acme's seats cannot read. Outside hired seats, alice's own data, keyed by her id alone and kept by your app's other flows, is a third place that no hired seat reads or writes. Nothing moves between organizations. A projected resource is stored by your own hooks, so key its rows by the organization too.">
   <style>
     :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
             --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
@@ -34,7 +34,7 @@
     <text class="lbl" x="50" y="158">SHARED · ONE CELL FOR ALICE IN ACME</text>
     <text class="p" x="50" y="182">ctx.user.state and user-scoped resources</text>
     <text class="p" x="50" y="200">that are not flow-isolated</text>
-    <text class="muted" x="50" y="228">Every hired seat in acme reads and writes this one</text>
+    <text class="muted" x="50" y="228">Shared by every acme seat, for resources it declares</text>
     <rect class="card-sess" x="36" y="262" width="206" height="128" rx="10"/>
     <text class="lbl" x="50" y="282">FLOW-ISOLATED</text>
     <text class="code" x="50" y="304">alice ·</text>
