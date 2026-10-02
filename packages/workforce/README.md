@@ -94,8 +94,9 @@ Each record is plain data:
 lowercase letters, digits and single hyphens, at most 64 characters.
 
 An org seat, under `org/workers/<name>/`, is one seat the whole organization shares rather
-than a member of a team. Its folder is a worker slot like a team's, so one with no `WORKER.md` is
-reported in `errors`. It reads the org's skills, packages and references, then its own folder's;
+than a member of a team. A folder there with a `WORKER.md` is a worker slot like a team's, and one
+that fails to load is reported in `errors`. A folder with no `WORKER.md` is documents only: it
+declares no seat and is not reported. It reads the org's skills, packages and references, then its own folder's;
 no team level reaches it, and no `TEAM.md` instructions.
 
 A `WORKER.md` may also carry `resources:`, a list of the [file-declared

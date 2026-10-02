@@ -125,8 +125,9 @@ interface PublishedShape {
  * gets fixed fails until it is removed, and a new gap fails on arrival.
  *
  * Empty, and that is the honest answer rather than a clean bill of health.
- * Every path the published surface declares is read by something today, and
- * {@link KNOWN_UNRESOLVABLE_REFS} one level up is empty too. The list stays
+ * Every path the published surface declares is read by something today. The
+ * one ref that names nothing is one level up, in
+ * {@link KNOWN_UNRESOLVABLE_REFS}. The list stays
  * because the next gap needs somewhere to be recorded the moment it arrives,
  * and because an empty one is what makes the equality assertion say "none".
  */
@@ -166,7 +167,15 @@ const WORKER_REFS_RESOLVE: ReadonlyArray<{ file: string; quote: string }> = [
  * unresolvable ref fails on arrival, and one that starts resolving fails until
  * its row is struck.
  */
-const KNOWN_UNRESOLVABLE_REFS: ReadonlyArray<{ worker: string; owner: string }> = [];
+const KNOWN_UNRESOLVABLE_REFS: ReadonlyArray<{ worker: string; owner: string }> = [
+  {
+    worker: "build",
+    owner:
+      "FIX-1719, by decision (BP-030) — an org/workers/<name>/ folder with no WORKER.md " +
+      "is documents only, as trees written before org seats have it, so it loads clean " +
+      "and its documents' ref names no seat",
+  },
+];
 
 /**
  * Where the published surface lives. Every `.md` under these directories is
@@ -463,7 +472,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     publishedIn: {
       file: "apps/docs/docs/workforce/workers-on-disk.md",
       quote:
-        "`org/workers/<name>/` is a seat slot like a team's, so a folder there with no `WORKER.md` is reported.",
+        "A folder under `org/workers/<name>/` with a `WORKER.md` is a seat slot like a team's, and a `WORKER.md` there that fails to load is reported.",
     },
     write: (root) => writeFile(root, "org/workers/cos/WORKER.md", doc("The chief of staff.")),
     accountedFor: (out) => out.workers.includes("cos") || out.reported.includes("org/workers/cos"),
