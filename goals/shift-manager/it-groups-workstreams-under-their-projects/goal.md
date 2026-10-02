@@ -2,9 +2,9 @@
 
 **Issue:** FIX-1718
 
-**Outcome:** A person opening Shift Manager on a Lab finds every project the Lab holds, each with the workstreams its record names, then No project with the rest. Each project's four tabs show that project's work, and its Stream is one room its members share and nobody else reads.
+**Outcome:** A person opening Shift Manager on a Lab finds every project the Lab holds, each with the workstreams its record names, then No project with the rest. Each project's four tabs show that project's work, and its Stream is one room its members share and nobody else reads. A person who asks the chief of staff for projects gets them, owned by them, with their talk sessions bound.
 
-**Input:** the DevTeam profile (`labs/shift-manager/teams/devteam/fsdev.config.mts`), unedited, on a fresh store. At boot it creates two default projects through the project writes' own `createProject`: one holding a workstream from each of two teams, one holding none. Three verified users: the owner (the page's person), a member, and an outsider in the same organization. The fixture (`fixtures/input.json`) holds the lines posted and the burst sizes, and is held out: other text and other sizes must still pass. Project, workstream and seat names are read from the store and the tree at run time.
+**Input:** the DevTeam profile (`labs/shift-manager/teams/devteam/fsdev.config.mts`), unedited, on a fresh store. At boot it creates two default projects through the project writes' own `createProject`: one holding a workstream from each of two teams, one holding none. Three verified users: the owner (the page's person), a member, and an outsider in the same organization. The fixture (`fixtures/input.json`) holds the lines posted and the burst sizes, and is held out: other text and other sizes must still pass. Project, workstream and seat names are read from the store and the tree at run time. The `cos` leg asks as the member, so its rows can't be mistaken for the profile's (the owner's); the two titles it asks for carry the run's stamp, so no file names them.
 
 **Signal:** each failure is tagged with its leg.
 
@@ -17,21 +17,21 @@
 - **members read each other's lines:** the owner's line is in the member's read, and the member's reply is in the owner's read after the owner's cursor.
 - **a seat's answer is in the room for both:** the EM's answer to the owner's line is in both members' reads.
 - **the outsider is refused:** the outsider's `join` is refused, and so are its `read` and `post` from a session it created with the project's `resourceId` in its state. The room holds none of its lines and the row lists no session of its.
+- **cos** (needs a model): the member asks the chief of staff, in one line, for two projects and names the owner as a member of the first. The store then holds exactly two new rows, titled as asked, each owned by the member. The first lists the member and the owner as members, the second the member alone. Each row lists the member's talk session, and a `read` through it is let in.
 - **a burst of posts lands whole:** both members post a burst at once, each from several sessions of theirs naming the project (the engine runs one action at a time per session, so one session per member would race only two writers). Every post completes, and the room holds each line exactly once, each at its own sequence number.
 
-**Anti-game:** expected values come from the store and the tree, never from the check or from Shift Manager's own data module. Rows are written by the profile's own code at boot. The page's lines go through its composer and the owner's talk session; the room is read back over HTTP through each member's own talk session, with each user's own bearer. The outsider legs run in the same organization, so only the membership check stands between it and the room.
+**Anti-game:** expected values come from the store and the tree, never from the check or from Shift Manager's own data module. The `cos` leg grades the store, never the chief of staff's words: without the tool, the model has answered that it created both projects while the store held none. Rows are written by the profile's own code at boot. The page's lines go through its composer and the owner's talk session; the room is read back over HTTP through each member's own talk session, with each user's own bearer. The outsider legs run in the same organization, so only the membership check stands between it and the room.
 
-**Not here:** the `cos` leg (asked for two projects, the chief of staff creates two rows through its `createProject` tool) and its `no-tool` control need FIX-1719's chief-of-staff seat and a model. They land with FIX-1718's last PR.
+**Model:** `openai/gpt-5.4-mini` for the chief of staff in the `cos` leg, through the default resolver; it needs one of `AI_GATEWAY_API_KEY`, `OPENAI_API_KEY` or `OPENROUTER_API_KEY`, and fails with a precondition message when none is set. The other legs are model-free: the DevTeam harness is the lab's scripted stub, and the EM answers a room line without a model.
 
-**Model:** n/a (model-free: the DevTeam harness is the lab's scripted stub, and the EM answers a room line without a model)
-
-**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-groups-workstreams-under-their-projects/run.mts`
+**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-groups-workstreams-under-their-projects/run.mts` runs every leg. `GOAL_LEG=model-free` runs all but `cos`; `GOAL_LEG=cos` runs only `cos`. The `cos` leg runs last, because its rows are the member's and the other legs grade every row as the owner's.
 
 **Controls:** the page controls rebuild Shift Manager with one source module swapped for one under `controls/`, as `it-opens-a-lab` does; the build fails if the swap never fired. The server controls load the Lab with a Node module hook (`controls/swap-hook.mjs`) that swaps one workforce source module, and the run fails if no import was swapped.
 
 - `GOAL_CONTROL=unread`: the grouping ignores the rows and lists every workstream on its own. Must fail at **PROJECTS equals the store's rows**.
 - `GOAL_CONTROL=gap-tabs`: the project level as it was before projects, every tab a FIX-1650 empty state. Must fail at **a project's four tabs**.
 - `GOAL_CONTROL=no-gate`: `membership-gate.ts` answers yes for everyone. Must fail at **the outsider is refused**.
+- `GOAL_CONTROL=no-tool`: the Lab's `host.mts` is swapped for one whose `openLab` leaves the project tools out of the agent kind's catalog and out of every seat's `tools:`, as before the chief of staff had them. The Lab boots as before. Must fail at **cos**.
 - `GOAL_CONTROL=no-retry`: `cas-retry.ts` makes one attempt, so the room's sequence counter and a join's append to `sessions` get only the engine's own retries. Meant to fail at both bursts. **It does not go red in the served host today:** the swap fires (into `room-store.ts`, `talk.ts` and `project-writes.ts`), and an instrumented run counted 520 calls through it with no conflict reaching it, even with 64 posts per member from 32 sessions each. On the in-memory store a served Lab's requests arrive spread out enough that the engine's own three attempts absorb every race. The red state is shown in process instead: `FSD_CONTROL=no-retry pnpm --filter @flow-state-dev/workforce exec vitest run test/projects.test.ts` fails both burst tests. The join burst here has one joining member (the profile's other two users are the owner, bound at create, and the outsider); a single joiner's retry re-reads its own session and needs no write, so this leg can only go red with two or more joining members.
 
 ## Verdict log
@@ -42,3 +42,6 @@
 | 2026-10-02 | f97b906a7+wip | n/a | FAIL (control `gap-tabs`, expected) | Only a project's four tabs: every tab draws a project-*-empty state, no brief, lanes or workstreams, and no composer. |
 | 2026-10-02 | f97b906a7+wip | n/a | FAIL (control `no-gate`, expected) | Only the outsider is refused: it joined, read 6 lines through a forged session, posted 2 lines, and was listed on the row. |
 | 2026-10-02 | f97b906a7+wip | n/a | PASS (control `no-retry`, NOT red) | Swap fired into room-store.ts, talk.ts and project-writes.ts. Instrumented: 520 calls, 0 conflicts reached the room's retry. See Controls. |
+| 2026-10-02 | 438628cd0+wip (FIX-1718 PR 4) | openai/gpt-5.4-mini | FAIL (red, before the tool) | `GOAL_LEG=cos` on the merged tree with no project tool: the store held 0 new rows, while the chief of staff answered "I created both projects". |
+| 2026-10-02 | 438628cd0+wip (FIX-1718 PR 4) | openai/gpt-5.4-mini | PASS | All legs. screens and room as above; cos: asked by u_devforce_member, two new rows owned by u_devforce_member, members [member, owner] and [member], one bound talk session each. |
+| 2026-10-02 | 438628cd0+wip (FIX-1718 PR 4) | openai/gpt-5.4-mini | FAIL (control `no-tool`, expected) | Only cos: 0 new rows; the chief of staff said it doesn't have the project-creation tool. The Lab booted. |

@@ -1966,6 +1966,13 @@ defineFlow({ kind: "lab", actions: { ...projects.actions } });
   are each refused, and nothing is half written. The same owner re-sending an id gets the row back
   (`created: false`) and its talk session bound if it wasn't.
 - **`setWorkstreams { projectId, workstreams }`** replaces the list. Members only.
+- **As a seat's tools.** Put both in `defineAgentWorkerFlow({ catalog })` under the names a seat's
+  `tools:` spells. A catalog key must be the tool's own name, so wrap each in a one-step
+  `sequencer({ name: "createProject", inputSchema: createProjectInputSchema, outputSchema:
+  createProjectOutputSchema }).step(projects.createProject)`. The owner is the session the seat
+  answers in, so the project belongs to the person who asked. A kind that also reads the channel
+  inventory (the `discover` door) declares it with `projectWritesChannelInventory`: a flow refuses a
+  second declaration of the collection beside the writes'.
 - **The talk entries** are built into every channel kind. A talk session is a channel-kind session
   whose state names a project (`resourceId`), which grants nothing: every entry checks the
   session's owner against the row's `members` first, and refuses `not-a-member`.
@@ -2090,6 +2097,7 @@ before fire removed inventory rows is left out that way.
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
 | `channelInstances(manifests, { kinds?, inventory?, resources? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in channel kind. Pass the org's resource map as `resources` to read project talk templates (see [Projects](#projects)); a template's kind is returned even when no channel runs on it. Register these. |
 | `defineProjectsCollection({ talk? })` | The organization's `projects` collection: org-scoped, shared across flows, browser-readable through `expose`. `talk` is the org-level talk template. You can call `defineProjectsCollection()` anywhere you need it. Every call returns the same declaration, so they never conflict. `defineRoomLinesCollection`, `defineRoomSeqCollection` and `defineWorkstreamClaimsCollection` declare the room and the claims; none has a browser read. |
+| `projectWritesChannelInventory` | The channel inventory declaration the project writes read. A flow that installs the writes and reads the inventory itself declares that read with this object, under any accessor; its own `defineChannelInventoryCollection()` there is a resource collision when the flow is built. |
 | `defineProjectBlocks({ talkKind? })` | Returns `{ createProject, setWorkstreams, actions }`. See [Projects](#projects). `talkKind` is the kind a created project's `bind` is dispatched to, `"channel"` by default. It must match a talk template's kind, or the second of the two to be built throws. |
 | `openChannels(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. The server binds each session's organization. Idempotent. |
 | `readChannelsDirectory(root)` | Read a `teams/<id>/channels/<name>/` tree into one `ChannelManifest` per channel. Ships from the `./loader` subpath (Node only). |

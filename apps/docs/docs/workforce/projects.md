@@ -80,6 +80,63 @@ The write is a `create`, never an overwrite. An id another owner holds is refuse
 
 If your app should start with some projects already there, create them from its own code at boot, through the same `createProject` action, when the rows are absent. A re-run finds the row it already made and hands it back, so a second boot changes nothing.
 
+### Giving the writes to a seat
+
+A seat on the built-in `agent` kind can create projects for the person talking to it. Put the two blocks in the kind's tool catalog, under the names a seat's `tools:` line spells. A catalog key must match the tool's own name, so give each one its name with a one-step sequencer:
+
+```ts
+import { sequencer } from "@flow-state-dev/core";
+import {
+  createProjectInputSchema,
+  createProjectOutputSchema,
+  defineAgentWorkerFlow,
+  defineProjectBlocks,
+  setWorkstreamsInputSchema,
+  setWorkstreamsOutputSchema,
+} from "@flow-state-dev/workforce";
+
+const projects = defineProjectBlocks();
+
+const agent = defineAgentWorkerFlow({
+  catalog: {
+    createProject: sequencer({
+      name: "createProject",
+      description: "Create a project for the person you're talking to. They own it; `members` adds the user ids they name.",
+      inputSchema: createProjectInputSchema,
+      outputSchema: createProjectOutputSchema,
+    }).step(projects.createProject),
+    setWorkstreams: sequencer({
+      name: "setWorkstreams",
+      description: "Replace a project's workstreams with this list of full channel ids.",
+      inputSchema: setWorkstreamsInputSchema,
+      outputSchema: setWorkstreamsOutputSchema,
+    }).step(projects.setWorkstreams),
+  },
+});
+```
+
+A seat calls them only when its own `tools:` names them. The owner is the person whose session the seat is answering in, so a project a seat creates belongs to whoever asked for it, and `members` adds the people they name. The talk session `createProject` gets ready is that person's.
+
+The writes read the organization's [channel inventory](./inventory.md) to check workstream ids. A flow takes one declaration of a collection, so if the same kind reads the inventory itself, for example through `createWorkforceCapability`'s `discover`, declare that read with `projectWritesChannelInventory` rather than a `defineChannelInventoryCollection()` of its own:
+
+```ts
+import { defineCapability } from "@flow-state-dev/core";
+import { projectWritesChannelInventory } from "@flow-state-dev/workforce";
+
+const channelInventory = defineCapability({
+  name: "channel-inventory",
+  resources: { channelInventory: projectWritesChannelInventory },
+});
+```
+
+A second declaration of the inventory beside the writes fails when the flow is built:
+
+```text
+Resource collision in flow "agent": accessor keys "channelInventory" and "project-writes-channel-inventory" resolve to the same effective storage key (scope=org, ref=inventory/channels/*, flowIsolation=false). Pick distinct refs or flowIsolation settings.
+```
+
+[The chief of staff](./chief-of-staff.md#starting-projects) is a seat set up this way.
+
 ## One project per workstream
 
 A workstream belongs to at most one project. Each id must be a channel in the organization's [inventory](./inventory.md). Before a row is written, the write claims each of its workstreams. If two projects claim the same workstream at the same moment, exactly one of them gets it.

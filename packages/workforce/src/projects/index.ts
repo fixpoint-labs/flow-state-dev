@@ -36,6 +36,7 @@ export {
   createProjectInputSchema,
   createProjectOutputSchema,
   defineProjectBlocks,
+  projectWritesChannelInventory,
   setWorkstreamsInputSchema,
   setWorkstreamsOutputSchema,
   type CreateProjectInput,

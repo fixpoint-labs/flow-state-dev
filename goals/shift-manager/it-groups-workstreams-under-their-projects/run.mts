@@ -3,12 +3,13 @@
  * project's four tabs show that project's work, and its Stream is one room
  * its members share and nobody else reads.
  *
- * Real path, no model, out of CI. See goal.md for the contract.
+ * Real path, out of CI. The screens and room legs need no model; the cos leg
+ * runs the chief of staff on a real one. See goal.md for the contract.
  *
  * Built like `it-opens-a-lab`: Shift Manager is built with Vite into a scratch
  * directory and served by its own start script over the DevTeam profile,
- * whose config creates two default projects at boot. Two legs, graded against
- * the tree on disk and the Lab's store read through its HTTP routes:
+ * whose config creates two default projects at boot. Three legs, graded
+ * against the tree on disk and the Lab's store read through its HTTP routes:
  *
  *   screens  Chromium, as the projects' owner. PROJECTS equals the rows, then
  *            No project; the cross-team project groups both teams'
@@ -20,6 +21,14 @@
  *            seat's answer; an outsider is refused, even from a session it
  *            made naming the project; and a burst of posts from both members
  *            lands whole.
+ *   cos      HTTP, as the member, on a real model. Asked for two projects, the
+ *            chief of staff creates two rows, each owned by the person who
+ *            asked, with them (and whoever they named) as members and their
+ *            talk session bound. Runs last: its rows are the member's, and the
+ *            other legs grade every row as the owner's.
+ *
+ * Legs: `GOAL_LEG=model-free` runs screens and room, `GOAL_LEG=cos` runs cos;
+ * unset runs all three.
  *
  * Controls (each must fail; the run fails if a swap never fired):
  *
@@ -34,6 +43,8 @@
  *             fail at both "a burst of posts lands whole" and "a burst of
  *             joins leaves one session per member"; on the served in-memory
  *             Lab it does not go red yet (goal.md says why).
+ *   no-tool   the chief of staff without its project tools, as before it had
+ *             them (Node swap of the lab's host.mts). Must fail at "cos".
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-groups-workstreams-under-their-projects/run.mts
  * Control:  GOAL_CONTROL=no-gate <the same>
@@ -50,13 +61,24 @@ import { launchChromium } from "../../lib/playwright.mts";
 import { LAB_USERS } from "../../devforce-lab/lab/host.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["unread", "gap-tabs", "no-gate", "no-retry"] as const;
+const CONTROLS = ["unread", "gap-tabs", "no-gate", "no-retry", "no-tool"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
 }
 if (CONTROL !== "" && !(CONTROLS as readonly string[]).includes(CONTROL)) {
   console.error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${CONTROLS.join(", ")}`);
+  process.exit(2);
+}
+const LEG = process.env.GOAL_LEG ?? "";
+if (!["", "model-free", "cos"].includes(LEG)) {
+  console.error(`unknown GOAL_LEG "${LEG}"; known: model-free, cos`);
+  process.exit(2);
+}
+const MODEL_FREE = LEG !== "cos";
+const COS_LEG = LEG !== "model-free";
+if (CONTROL === "no-tool" && !COS_LEG) {
+  console.error("control no-tool grades the cos leg, which GOAL_LEG=model-free leaves out");
   process.exit(2);
 }
 
@@ -67,6 +89,7 @@ const fixture = loadFixture<{
   outsiderLine: string;
   burst: { windows: number; perWindow: number; body: string };
   joins: number;
+  cos: { ask: string; titles: [string, string] };
 }>(import.meta.url);
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -76,7 +99,13 @@ const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-projects");
 const CONFIG = join(SHIFT_MANAGER, "teams", "devteam", "fsdev.config.mts");
 const TREE = join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce");
+const LAB_HOST = join(REPO_ROOT, "goals", "devforce-lab", "lab", "host.mts");
 const SEAT_ANSWERS = "eng.em";
+/** The seat Shift Manager finds the chief of staff by. */
+const COS = "chief-of-staff";
+/** How long one turn of the chief of staff may take: a real model answers it. */
+const COS_TURN_MS = 180_000;
+const MODEL_KEYS = ["AI_GATEWAY_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"];
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const sorted = (values: Iterable<string>) => [...values].sort();
@@ -103,6 +132,7 @@ function pageSwapFor(control: string): { target: string; with: string } | undefi
 function serverSwapFor(control: string): { target: string; with: string } | undefined {
   if (control === "no-gate") return { target: join(PROJECTS_SRC, "membership-gate.ts"), with: join(HERE, "controls", "no-gate.ts") };
   if (control === "no-retry") return { target: join(PROJECTS_SRC, "cas-retry.ts"), with: join(HERE, "controls", "no-retry.ts") };
+  if (control === "no-tool") return { target: LAB_HOST, with: join(HERE, "controls", "no-tool.mts") };
   return undefined;
 }
 
@@ -230,7 +260,7 @@ function labApi(origin: string, user: { userId: string; bearer: string }) {
     return String(body.session.id);
   };
   /** Run one action and wait for it to end: its status, and its output or error. */
-  const act = async (kind: string, sessionId: string, action: string, input: unknown): Promise<Settled> => {
+  const act = async (kind: string, sessionId: string, action: string, input: unknown, waitMs = 60_000): Promise<Settled> => {
     const posted = await call("POST", `/${encodeURIComponent(kind)}/${encodeURIComponent(sessionId)}/actions/${encodeURIComponent(action)}`, {
       userId: user.userId,
       input,
@@ -238,7 +268,7 @@ function labApi(origin: string, user: { userId: string; bearer: string }) {
     if (posted.status !== 202) return { status: `http ${posted.status}`, output: undefined, error: JSON.stringify(posted.body) };
     const requestId = String(posted.body?.request?.id);
     let status = "in_progress";
-    for (let waited = 0; waited < 60_000 && status === "in_progress"; waited += 50) {
+    for (let waited = 0; waited < waitMs && status === "in_progress"; waited += 50) {
       status = String((await call("GET", `/${encodeURIComponent(kind)}/requests/${encodeURIComponent(requestId)}/status`)).body?.status);
       if (status === "in_progress") await sleep(50);
     }
@@ -564,7 +594,87 @@ async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; outsider:
   );
 }
 
+/**
+ * The chief of staff creates projects for the person who asks it. The person
+ * is the member, so a row the profile wrote at boot (the owner's) can't pass
+ * for one written for them. Titles carry this run's stamp, so no file in the
+ * repository names the rows graded here.
+ */
+async function cos(apis: { owner: LabApi; member: LabApi }, host: string, fail: (leg: string, why: string) => void, evidence: string[]) {
+  const leg = "cos";
+  const { owner, member: person } = apis;
+  const named = owner.user.userId;
+  const titles = fixture.cos.titles.map((t) => `${t} ${RUN_STAMP}`);
+  const before = new Set((await readStore(owner, host)).rows.map((r) => r.id));
+
+  const opened = await person.call("POST", `/${encodeURIComponent(COS)}/sessions`, { userId: person.user.userId });
+  if (opened.status !== 201) {
+    fail(leg, `the chief of staff's address did not answer: ${opened.status} ${JSON.stringify(opened.body)}`);
+    return;
+  }
+  const session = String(opened.body.session.id);
+  const ask = fixture.cos.ask.replace("{first}", titles[0]!).replace("{second}", titles[1]!).replace("{named}", named);
+  const posted = await person.call("POST", `/${encodeURIComponent(COS)}/${encodeURIComponent(session)}/actions/run`, {
+    userId: person.user.userId,
+    input: { message: ask },
+  });
+  if (posted.status >= 400) {
+    fail(leg, `the chief of staff's door refused the line: ${posted.status} ${JSON.stringify(posted.body)}`);
+    return;
+  }
+  const requestId = String(posted.body.request.id);
+  let status = "timed-out";
+  for (const until = Date.now() + COS_TURN_MS; Date.now() < until; await sleep(500)) {
+    const polled = String((await person.call("GET", `/${encodeURIComponent(COS)}/requests/${encodeURIComponent(requestId)}/status`)).body?.status);
+    if (!["pending", "queued", "in_progress", "running"].includes(polled)) {
+      status = polled;
+      break;
+    }
+  }
+  const said = async () => {
+    const body = await person.get(`/sessions/${encodeURIComponent(session)}/state?include_items=true&item_types=message&limit=200`);
+    const replies = ((body.items ?? []) as Array<{ role?: string; content?: unknown }>).filter((i) => i.role === "assistant");
+    return JSON.stringify(replies.at(-1)?.content ?? "").slice(0, 400);
+  };
+  if (status !== "completed") fail(leg, `the chief of staff's turn ended ${status}`);
+
+  const created = (await readStore(owner, host)).rows.filter((r) => !before.has(r.id));
+  if (created.length !== 2) {
+    fail(leg, `asked for two projects, the store holds ${created.length} new row(s) [${created.map((r) => r.title).join(", ")}]; the chief of staff said ${await said()}`);
+    return;
+  }
+  for (const [i, title] of titles.entries()) {
+    const row = created.find((r) => r.title.toLowerCase() === title.toLowerCase());
+    if (row === undefined) {
+      fail(leg, `no new row is titled "${title}": ${created.map((r) => r.title).join(", ")}`);
+      continue;
+    }
+    if (row.ownerUserId !== person.user.userId) fail(leg, `${row.id} is owned by ${row.ownerUserId}, not ${person.user.userId}, who asked`);
+    const wantMembers = i === 0 ? [person.user.userId, named] : [person.user.userId];
+    if (!same(row.members, wantMembers)) fail(leg, `${row.id}'s members: ${diff(wantMembers, row.members)}`);
+    // Bound: the row lists the person's talk session, and a read through it is
+    // let in, which needs the session to name the row and its owner to be a member.
+    const own = row.sessions.find((s) => s.userId === person.user.userId)?.sessionId;
+    if (own === undefined) {
+      fail(leg, `${row.id}'s row lists no talk session for ${person.user.userId}`);
+      continue;
+    }
+    const kind = String((await person.get(`/sessions/${encodeURIComponent(own)}`)).session?.flowKind ?? "");
+    const read = await person.act(kind, own, "read", { after: 0 });
+    if (read.status !== "completed") fail(leg, `${row.id}: a read through the person's talk session ended ${read.status}: ${read.error ?? ""}`);
+  }
+  evidence.push(
+    `cos: asked by ${person.user.userId}, the chief of staff created ${created.map((r) => `${r.id} {owner ${r.ownerUserId}, members [${r.members.join(",")}], ${r.sessions.length} talk session(s)}`).join(" and ")}`,
+  );
+}
+
 await runGoal(async () => {
+  if (COS_LEG && !MODEL_KEYS.some((key) => (process.env[key] ?? "") !== "")) {
+    return {
+      failures: [`precondition: the cos leg runs the chief of staff on a real model, and none of ${MODEL_KEYS.join(", ")} is set. GOAL_LEG=model-free runs the other legs without one`],
+      evidence: "",
+    };
+  }
   const pages = await buildShiftManager(CONTROL);
   const swap = serverSwapFor(CONTROL);
   const fired = swap === undefined ? undefined : join(SCRATCH, `fired-${CONTROL}-${RUN_STAMP}.log`);
@@ -585,8 +695,11 @@ await runGoal(async () => {
     for (const row of rows) {
       if (row.ownerUserId !== apis.owner.user.userId) fail("store", `${row.id} is owned by ${row.ownerUserId}, not the profile's person`);
     }
-    await screens(served, tree, apis.owner, host, fail, evidence);
-    await room(tree, apis, host, fail, evidence);
+    if (MODEL_FREE) {
+      await screens(served, tree, apis.owner, host, fail, evidence);
+      await room(tree, apis, host, fail, evidence);
+    }
+    if (COS_LEG) await cos(apis, host, fail, evidence);
   } finally {
     served.child.kill("SIGTERM");
     await served.exited;
@@ -597,6 +710,9 @@ await runGoal(async () => {
   const swapNote = fired === undefined ? "" : ` Swap fired for: ${readFileSync(fired, "utf8").trim().split("\n").map((p) => p.split("/").pop()).join(", ")}.`;
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-    evidence: `Shift Manager built with Vite and served by its start script over the DevTeam profile; the screens walked in Chromium as the owner and the room driven over HTTP as three verified users, all graded against the tree and the store. ${evidence.join("; ")}.${swapNote}`,
+    evidence: `Shift Manager built with Vite and served by its start script over the DevTeam profile; ${[
+      ...(MODEL_FREE ? ["the screens walked in Chromium as the owner and the room driven over HTTP as three verified users"] : []),
+      ...(COS_LEG ? ["the chief of staff asked over HTTP as the member, on its own model"] : []),
+    ].join("; ")}, all graded against the tree and the store. ${evidence.join("; ")}.${swapNote}`,
   };
 });

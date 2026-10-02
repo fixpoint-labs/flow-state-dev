@@ -68,10 +68,23 @@ import { noteBindRefusal, noteTalkBindKind, TALK_BIND_ACTION, talkSessionKey } f
 
 /**
  * The resource-map ref the channel inventory is read through here. Private to
- * these writes, so it never meets an app's own declaration of the inventory
- * under a common ref in the same flow (a flow refuses two under one ref).
+ * these writes, so it never meets an app's own accessor for the inventory.
  */
 const CHANNEL_INVENTORY_RESOURCE = "project-writes-channel-inventory";
+
+/**
+ * The channel inventory as the project writes declare it.
+ *
+ * A flow declares one storage key once: two accessors may share it only as one
+ * declaration. So a flow that installs the writes and also reads the inventory
+ * itself (a chief of staff's discovery door, say) declares its own read with
+ * this object, under any accessor, rather than with a
+ * `defineChannelInventoryCollection()` of its own, which that flow refuses.
+ *
+ * @example
+ *   resources: { channels: projectWritesChannelInventory }
+ */
+export const projectWritesChannelInventory = defineChannelInventoryCollection();
 
 /** What creating a project takes. Closed: nothing in it names the owner. */
 export const createProjectInputSchema = z
@@ -131,7 +144,7 @@ export type ProjectBlocks = {
 const WRITE_RESOURCES = {
   [PROJECTS_RESOURCE]: defineProjectsCollection(),
   [WORKSTREAM_CLAIMS_RESOURCE]: defineWorkstreamClaimsCollection(),
-  [CHANNEL_INVENTORY_RESOURCE]: defineChannelInventoryCollection()
+  [CHANNEL_INVENTORY_RESOURCE]: projectWritesChannelInventory
 };
 
 function refsOf(ctx: BlockContext) {

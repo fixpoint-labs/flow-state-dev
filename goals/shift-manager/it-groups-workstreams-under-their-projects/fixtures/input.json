@@ -4,5 +4,9 @@
   "memberLine": "The release window is Thursday afternoon.",
   "outsiderLine": "An outsider should never get a line into this room.",
   "burst": { "windows": 8, "perWindow": 2, "body": "burst line" },
-  "joins": 16
+  "joins": 16,
+  "cos": {
+    "ask": "I need two new projects, please. Call the first one \"{first}\" and add {named} to it as a member. Call the second one \"{second}\", just for me.",
+    "titles": ["Launch review", "Pricing research"]
+  }
 }

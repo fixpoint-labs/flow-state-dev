@@ -55,7 +55,7 @@ import {
   type FlowState,
   type PrincipalResolver,
 } from "@flow-state-dev/engine";
-import { defineCapability } from "@flow-state-dev/core";
+import { defineCapability, sequencer } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   AGENT_KIND,
@@ -68,10 +68,12 @@ import {
   createWorkforceCapability,
   defineAgentWorkerFlow,
   defineChannelFlow,
-  defineChannelInventoryCollection,
   HIRED_ROSTER_RESOURCE,
   hireWorkforce,
+  createProjectInputSchema,
+  createProjectOutputSchema,
   defineProjectBlocks,
+  projectWritesChannelInventory,
   openChannels,
   openInventory,
   reloadHiredSeats,
@@ -82,7 +84,10 @@ import {
   type CreateProjectInput,
   type CreateProjectOutput,
   type HireOptions,
+  setWorkstreamsInputSchema,
+  setWorkstreamsOutputSchema,
   type InventoryActionRequest,
+  type ProjectBlocks,
 } from "@flow-state-dev/workforce";
 import { discoverWorkforceCode } from "@flow-state-dev/workforce/codegen";
 import {
@@ -233,6 +238,39 @@ export function boardChannelOf(roster: Pick<DeclaredRoster, "channels">): Declar
 }
 
 /**
+ * The project writes as the chief of staff's tools, `createProject` and
+ * `setWorkstreams`: the same blocks the Lab's own open creates projects
+ * through, under the names its `tools:` line spells. A catalog key must be the
+ * tool's own name, so each is a one-step sequencer carrying the name and what
+ * the model reads about it.
+ *
+ * The owner is the session's user, so a project the chief of staff creates
+ * belongs to the person talking to it, who is always a member; `members` adds
+ * whoever they name.
+ */
+function chiefOfStaffProjectTools(blocks: ProjectBlocks) {
+  return {
+    createProject: sequencer({
+      name: "createProject",
+      description:
+        "Create a project for the person you are talking to. They own it and are always a member. " +
+        "`id` is a short lowercase slug; `members` adds the user ids they name; `workstreams` takes " +
+        "full channel ids (`team.channel`), each in at most one project.",
+      inputSchema: createProjectInputSchema,
+      outputSchema: createProjectOutputSchema,
+    }).step(blocks.createProject),
+    setWorkstreams: sequencer({
+      name: "setWorkstreams",
+      description:
+        "Replace a project's workstreams with this list of full channel ids. Only the project's " +
+        "members may; a workstream belongs to at most one project.",
+      inputSchema: setWorkstreamsInputSchema,
+      outputSchema: setWorkstreamsOutputSchema,
+    }).step(blocks.setWorkstreams),
+  };
+}
+
+/**
  * The organization's TypeScript resource modules (`org/resources/*.ts`), found
  * by walking the tree and imported, as the resource map `fsdev gen` would
  * render for an app. This lab has no generated module (see the header), so the
@@ -375,6 +413,13 @@ export interface OpenLabOptions {
    * it. The red state of "a run is handed the work a person approved".
    */
   dropTask?: boolean;
+  /**
+   * Leave the project tools out: not in the agent kind's catalog, and not in
+   * any seat's `tools:`, as before the chief of staff had them. Applied to the
+   * record before the mint, so the seat boots and genuinely cannot create a
+   * project. The red state of "the chief of staff creates projects".
+   */
+  withoutProjectTools?: boolean;
 }
 
 /** One skill on a worker record, as the loader shapes it. */
@@ -539,6 +584,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // what makes the seats' document reads — and BR-17 — matter.
   const resources = resourcesFromDocs(roster.documents);
 
+  // The project writes, built once: the flow that creates projects at open runs
+  // them as actions, and the chief of staff calls the same two as tools.
+  const projectBlocks = defineProjectBlocks();
+  const projectTools = chiefOfStaffProjectTools(projectBlocks);
+
   // The controls mutate the RECORD, before the mint, so a perturbed seat
   // genuinely runs on what the control gave it rather than being graded as if
   // it did.
@@ -546,6 +596,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const workers = roster.workers.map((worker) => {
     const declared = { ...worker.declared };
     if (Object.hasOwn(overrides, worker.id)) declared.document = overrides[worker.id];
+    if (options.withoutProjectTools === true && Array.isArray(declared.tools)) {
+      declared.tools = (declared.tools as string[]).filter((name) => !Object.hasOwn(projectTools, name));
+    }
     const redirected = { ...worker, declared };
     return options.mutateSkills === undefined
       ? redirected
@@ -593,8 +646,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   // The built-in `agent` kind, which the chief of staff (`org/workers/
   // chief-of-staff/`) runs on. Every seat of it gets the discovery door; a
-  // seat holds post, hire, fire and the repairs only by naming them in its
-  // `tools:`, and in this tree only the chief of staff does. A hire lands at
+  // seat holds post, hire, fire, the repairs and the project writes only by
+  // naming them in its `tools:`, and in this tree only the chief of staff does. A hire lands at
   // once; a fire, and a repair always, waits for a person's Approve in Inbox,
   // which needs durable execution (`ask` turns it on). The kind mounts no
   // members' private roster, so the chief of staff lists, fires and repairs
@@ -615,10 +668,15 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     askBefore: ["fire"],
   });
   kinds[AGENT_KIND] = defineAgentWorkerFlow({
+    // The project tools a seat names in `tools:`. The kind carries them, and
+    // only the chief of staff's line names them.
+    catalog: options.withoutProjectTools === true ? {} : projectTools,
     uses: [
       // The channel inventory, which the discovery door reads beside the seats
-      // the hire capability mounts.
-      defineCapability({ name: "lab-channel-inventory", resources: { channelInventory: defineChannelInventoryCollection() } }),
+      // the hire capability mounts. Declared with the project writes' own
+      // object, because the project tools read it too and a flow takes one
+      // declaration per storage key.
+      defineCapability({ name: "lab-channel-inventory", resources: { channelInventory: projectWritesChannelInventory } }),
       createWorkforceCapability({
         roster: { workers: roster.workers, channels: roster.channels },
         inventory: { seats: SEAT_INVENTORY_RESOURCE, channels: "channelInventory" },
@@ -673,11 +731,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     throw new Error("openLab: `projects` needs `inventory`: a project's workstreams are checked against it");
   }
   // The flow a project is created through at open: the project writes, as an
-  // app installs them. The chief of staff gets the same two as tools.
+  // app installs them. The chief of staff calls the same two as tools.
   const projectsFlow =
     options.projects === undefined
       ? undefined
-      : defineFlow({ kind: PROJECTS_KIND, actions: defineProjectBlocks().actions } as never)();
+      : defineFlow({ kind: PROJECTS_KIND, actions: projectBlocks.actions } as never)();
 
   const state = createFlowState({
     flows: {

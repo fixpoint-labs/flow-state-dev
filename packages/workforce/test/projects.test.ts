@@ -29,6 +29,7 @@ import {
   defineChannelInventoryCollection,
   defineProjectBlocks,
   defineProjectsCollection,
+  projectWritesChannelInventory,
   defineRoomLinesCollection,
   defineRoomSeqCollection,
   defineWorkstreamClaimsCollection,
@@ -264,6 +265,40 @@ async function apollo(h: Harness) {
     .sessionId as string;
   return { aliceLab, created, aliceTalk, bobTalk };
 }
+
+describe("the writes on a flow that reads the channel inventory itself", () => {
+  // A chief of staff's kind both answers "who is on which channel" and creates
+  // projects. One flow takes one declaration per storage key, so the kind's own
+  // read of the inventory has to be the writes' declaration, not a second one.
+  const readsChannels = (channels: unknown) =>
+    handler({
+      name: "list-channels",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      resources: { channels: channels as typeof inventory },
+      execute: async () => ({})
+    });
+
+  it("installs beside the flow's own read when that read uses the writes' declaration", () => {
+    const blocks = defineProjectBlocks();
+    expect(() =>
+      defineFlow({
+        kind: "reads-channels",
+        actions: { ...blocks.actions, listChannels: { block: readsChannels(projectWritesChannelInventory) } }
+      })
+    ).not.toThrow();
+  });
+
+  it("is refused beside a second declaration of the inventory, naming both accessors", () => {
+    const blocks = defineProjectBlocks();
+    expect(() =>
+      defineFlow({
+        kind: "reads-channels-twice",
+        actions: { ...blocks.actions, listChannels: { block: readsChannels(defineChannelInventoryCollection()) } }
+      })
+    ).toThrow(/same effective storage key/);
+  });
+});
 
 describe("project rows", () => {
   it("creates an org project spanning two teams, owned by the creator, listed by another member of the org", async () => {

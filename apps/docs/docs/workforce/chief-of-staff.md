@@ -2,12 +2,12 @@
 title: The chief of staff
 sidebar_position: 8.5
 sidebar_label: Chief of staff
-description: "One seat a person asks who works here, and asks to change it. Hires land at once; a fire waits for the person's approval."
+description: "One seat a person asks who works here, and asks to change it. Hires land at once; a fire waits for the person's approval. It can also start projects."
 ---
 
 # The chief of staff
 
-The chief of staff is a seat a person talks to about the organization itself. Ask it who works here or who is on a channel, and it looks it up. Ask it for another seat, and it hires one. Ask it for one fewer, and it puts the fire in front of you to approve. Nothing is removed until you do.
+The chief of staff is a seat a person talks to about the organization itself. Ask it who works here or who is on a channel, and it looks it up. Ask it for another seat, and it hires one. Ask it for one fewer, and it puts the fire in front of you to approve. Nothing is removed until you do. Give it the project tools, and it starts [projects](./projects.md) for you too.
 
 It is the only seat that hires or fires. Another seat that needs help sends the chief of staff a message and lets it decide. A Lab that doesn't declare one doesn't have one.
 
@@ -86,6 +86,32 @@ If your Lab has projects, add `chief-of-staff` to the project template's `seats`
 
 Read the seats it hired back when the app starts, as in [Reading the roster back at the next start](./durable-hire.md#reading-the-roster-back-at-the-next-start), and serve the app over a store that survives a restart. Otherwise a hire lasts only as long as the process.
 
+## Starting projects
+
+Ask the chief of staff for a project and it creates one, owned by you. You are always a member, and anyone you name joins you. Your own talk session on the project's room is ready when it answers.
+
+It needs the two project tools, `createProject` and `setWorkstreams`, in its `tools:` line and in the `agent` kind's catalog. [Giving the writes to a seat](./projects.md#giving-the-writes-to-a-seat) shows the catalog entries. Add the names to the file:
+
+```md title="workforce/org/workers/chief-of-staff/WORKER.md"
+---
+flow: agent
+tools: [hire, fire, rehire, brokenSeats, createProject, setWorkstreams]
+---
+```
+
+and tell it how to use them in the body, for example:
+
+```md
+When the person asks for a project, call `createProject` with the title they
+gave and a short lowercase `id` made from it. They own it and are always a
+member; put anyone else they name in `members`. Add workstreams only when they
+name them, by full channel id.
+```
+
+If the kind's `discover` reads channels too, declare its channel inventory with `projectWritesChannelInventory`, as that section shows. The project tools read the same collection, and the kind refuses a second declaration of it.
+
+A workstream belongs to one project at most. When the person asks for one another project holds, the tool is refused, and the chief of staff can tell them which project has it.
+
 ## The tools
 
 | Tool | What it does | Asks first |
@@ -94,8 +120,10 @@ Read the seats it hired back when the app starts, as in [Reading the roster back
 | `fire` | Removes a seat this organization hired: its roster row, its address and its inventory row | Only when `askBefore` lists `"fire"` |
 | `brokenSeats` | Lists hired seats that would not start, each with its reason. Reads only | Never |
 | `rehire` | Keeps a seat that no longer starts at its address, on a kind this app carries | Always |
+| `createProject` | Creates a project owned by the person asking, with the members and workstreams they name | Never |
+| `setWorkstreams` | Replaces a project's workstreams. The person asking must be one of its members | Never |
 
-The tools work on the organization's seats. A seat a member hired for only themselves stays with that member, and the chief of staff can't list, repair or fire it.
+The seat tools work on the organization's seats. A seat a member hired for only themselves stays with that member, and the chief of staff can't list, repair or fire it.
 
 ## What asks first
 
