@@ -7,7 +7,7 @@
 **Input:** two Labs, each served by Shift Manager's start script.
 
 - The fixture desk (`lab/`): one team, `desk`, with a seat that asks a person (the turn goal's `asker` kind) and a seat named `chief-of-staff` on the built-in `agent` kind with a real model, in one channel with one board. The check raises two approvals through the asker's own action route before the page opens, so the Lab reopens them when they are answered.
-- DevTeam's profile (`labs/shift-manager/teams/devteam`), which declares no chief of staff, for **no CoS**.
+- The same desk with no chief of staff (`lab-no-cos/`): the `asker` seat alone in its channel, for **no CoS**. DevTeam declares a chief of staff since FIX-1719, so it can no longer stand in for a Lab without one.
 
 The seat, channel and board names are read from the tree at run time. Tokens are fresh per run.
 
@@ -18,7 +18,7 @@ The seat, channel and board names are read from the tree at run time. Tokens are
 - **inline**: Approve on one summary item leaves one fewer pending suspension in the store, and both the summary and Inbox drop it.
 - **talk**: a fresh token typed to the chief of staff is a user item in one of that seat's direct sessions the moment *delivered* is drawn, and the reply on screen is that session's next assistant item, by id. No reply is drawn that the session doesn't hold.
 - **again**: a reload draws the same line and reply.
-- **no CoS**: DevTeam lands on the view with its summary and the named state in place of the composer.
+- **no CoS**: the Lab with no chief of staff lands on the view with its summary and the named state in place of the composer.
 - **reach**: the pages throw nothing.
 
 **Anti-game:** the check never reads Shift Manager's state. Its oracles are each Lab's store, read through the Lab's routes with the check's own requests: the asks' suspension items, the board's rows, the person's session listing and the chief of staff's session items. The model's words aren't graded, only that the screen shows the item the session stored. *Delivered* is graded at the instant it is drawn.

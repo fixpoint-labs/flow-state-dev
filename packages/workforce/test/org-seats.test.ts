@@ -298,6 +298,27 @@ describe("resolveHeldPackages reads an org seat's id through the parser", () => 
     expect(problems.join("\n")).toContain(deploy.path);
   });
 
+  it("reads a hired org seat's address <org>.<worker> as that org seat when the org is known", () => {
+    // Two segments: without the org peeled, "acme.cos" reads as a seat of team "acme".
+    const { held, problems } = resolveHeldPackages("acme.cos", ["house"], [house, own], {}, "acme");
+    expect(problems).toEqual([]);
+    expect(held.map((h) => h.manifest.path)).toEqual([own.path, house.path]);
+    // A user-owned address peels the same way.
+    expect(resolveHeldPackages("acme.~u_1.cos", ["house"], [house, own], {}, "acme").problems).toEqual([]);
+    // And a hired team seat keeps its team.
+    const lead = resolveHeldPackages("acme.eng.lead", ["deploy"], [deploy], {}, "acme");
+    expect(lead.problems).toEqual([]);
+    expect(lead.held.map((h) => h.manifest.path)).toEqual([deploy.path]);
+  });
+
+  it("hires an org seat from a roster row with its own folder's package held", () => {
+    // The caller that has the org: the hire, reading the row's owner pin.
+    const [seat] = hireWorkforce(
+      [{ id: "acme.cos", seatId: "cos", declared: {}, body: "", packages: [own], ownerPin: { orgId: "acme" } }],
+    );
+    expect(seat?.id).toBe("acme.cos");
+  });
+
   it("looks only in the org library for a name it cannot find", () => {
     const { problems } = resolveHeldPackages("cos", ["missing"], [house], {});
     expect(problems).toEqual([expect.stringContaining('Looked in "org/packages/missing".')]);

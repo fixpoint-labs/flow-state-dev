@@ -733,7 +733,8 @@ export function hireWorkforce(
       manifest.id,
       manifest.declared[PACKAGES_KEY],
       manifest.packages,
-      packageBlocks
+      packageBlocks,
+      manifest.ownerPin?.orgId
     );
     const packageProblems = [...heldProblems, ...heldPackageProblems(held, registry)];
     if (packageProblems.length > 0) {

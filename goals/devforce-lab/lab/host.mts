@@ -55,18 +55,29 @@ import {
   type FlowState,
   type PrincipalResolver,
 } from "@flow-state-dev/engine";
+import { defineCapability } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
+  AGENT_KIND,
   CHANNEL_KIND,
   channelBoard,
   channelBoardIds,
   channelInstances,
+  channelPostCapability,
+  createSeatHireCapability,
+  createWorkforceCapability,
+  defineAgentWorkerFlow,
   defineChannelFlow,
+  defineChannelInventoryCollection,
+  HIRED_ROSTER_RESOURCE,
   hireWorkforce,
   openChannels,
   openInventory,
+  reloadHiredSeats,
   resourcesFromDocs,
+  SEAT_INVENTORY_RESOURCE,
   type ChannelTranscriptLine,
+  type HireOptions,
   type InventoryActionRequest,
 } from "@flow-state-dev/workforce";
 import {
@@ -482,13 +493,49 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     resources,
   });
 
+  // The built-in `agent` kind, which the chief of staff (`org/workers/
+  // chief-of-staff/`) runs on. Every seat of it gets the discovery door; a
+  // seat holds post, hire, fire and the repairs only by naming them in its
+  // `tools:`, and in this tree only the chief of staff does. A hire lands at
+  // once; a fire, and a repair always, waits for a person's Approve in Inbox,
+  // which needs durable execution (`ask` turns it on). The register reaches
+  // the flow state built below, so it is bound once that exists.
+  const kinds: NonNullable<HireOptions["kinds"]> = {
+    [EM_KIND]: emKind as never,
+    [CODER_KIND]: coderKind as never,
+  };
+  let registrar: { state: FlowState; registry: { get(id: string): { kind: string } | undefined } } | undefined;
+  const seatHire = createSeatHireCapability({
+    kinds,
+    register: (seat, pin) => registrar!.state.register(seat, { pin }),
+    unregister: (id) => registrar!.state.unregister(id),
+    kindAt: (id) => registrar?.registry.get(id)?.kind,
+    allowKinds: [CODER_KIND, AGENT_KIND],
+    channelBoards: channelBoardIds(roster.channels),
+    askBefore: ["fire"],
+  });
+  kinds[AGENT_KIND] = defineAgentWorkerFlow({
+    uses: [
+      // The channel inventory, which the discovery door reads beside the seats
+      // the hire capability mounts.
+      defineCapability({ name: "lab-channel-inventory", resources: { channelInventory: defineChannelInventoryCollection() } }),
+      createWorkforceCapability({
+        roster: { workers: roster.workers, channels: roster.channels },
+        inventory: { seats: SEAT_INVENTORY_RESOURCE, channels: "channelInventory" },
+        hiredRoster: HIRED_ROSTER_RESOURCE,
+      }),
+      channelPostCapability,
+      seatHire,
+    ],
+  }) as never;
+
   // Refuses the WHOLE roster when any record cannot be hired, naming the
   // worker. Nothing is returned partially, so a refusal cannot leave a short
   // roster running.
   // Handed the tree's board ids, so a kind that stopped declaring the board
   // would be named in hire's unattended-board warning.
   const hired = hireWorkforce(workers, {
-    kinds: { [EM_KIND]: emKind as never, [CODER_KIND]: coderKind as never },
+    kinds,
     channelBoards: channelBoardIds(roster.channels),
   });
   const seats: Record<string, FlowInstance> = Object.fromEntries(
@@ -533,6 +580,17 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   } as never);
 
   const runtime = await state.getRuntime();
+  registrar = { state, registry: runtime.registry as never };
+
+  // The seats the chief of staff hired while an earlier run of this Lab was
+  // serving, read back from the roster and admitted one by one. A store that
+  // starts fresh has none. A row that no longer starts (its kind was cut) is
+  // skipped and named; `brokenSeats` lists it for the chief of staff.
+  const reload = await reloadHiredSeats({ stores: runtime.stores, orgIds: [LAB_ORG_ID], kinds });
+  for (const seat of reload.seats) {
+    state.register(seat, { pin: (seat as { ownerPin?: { orgId: string } }).ownerPin ?? { orgId: LAB_ORG_ID } });
+  }
+  for (const problem of reload.problems) console.error(`[devforce-lab] skipped a hired seat — ${problem}`);
 
   // `createFlowState` builds its own `RuntimeConfig` and takes no logger
   // option, and a hand-off's child request is started from that resolved object

@@ -60,8 +60,11 @@ export {
   registerHiredSeat,
   SEAT_HIRE_CAPABILITY,
   type HiredSeatOwnerPin,
+  type SeatHireAskData,
+  type SeatHireAskVerb,
   type SeatHireBlocks,
   type SeatHireCapabilityOptions,
+  type SeatHireToolOptions,
 } from "./seat-hire-capability";
 export {
   channelPostCapability,
