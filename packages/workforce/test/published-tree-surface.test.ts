@@ -125,8 +125,8 @@ interface PublishedShape {
  * gets fixed fails until it is removed, and a new gap fails on arrival.
  *
  * Empty, and that is the honest answer rather than a clean bill of health.
- * Every path the published surface declares is read by something today; what is
- * broken is one level up, in {@link KNOWN_UNRESOLVABLE_REFS}. The list stays
+ * Every path the published surface declares is read by something today, and
+ * {@link KNOWN_UNRESOLVABLE_REFS} one level up is empty too. The list stays
  * because the next gap needs somewhere to be recorded the moment it arrives,
  * and because an empty one is what makes the equality assertion say "none".
  */
@@ -166,14 +166,7 @@ const WORKER_REFS_RESOLVE: ReadonlyArray<{ file: string; quote: string }> = [
  * unresolvable ref fails on arrival, and one that starts resolving fails until
  * its row is struck.
  */
-const KNOWN_UNRESOLVABLE_REFS: ReadonlyArray<{ worker: string; owner: string }> = [
-  {
-    worker: "build",
-    owner:
-      "FIX-1414 — an org-level worker has no id to be addressed by, so the ref " +
-      "published for its documents names nothing hireable",
-  },
-];
+const KNOWN_UNRESOLVABLE_REFS: ReadonlyArray<{ worker: string; owner: string }> = [];
 
 /**
  * Where the published surface lives. Every `.md` under these directories is
@@ -460,6 +453,16 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     write: (root) => writeFile(root, "teams/alpha/workers/lead/WORKER.md", doc("A lead.")),
     accountedFor: (out) =>
       out.workers.includes("alpha.lead") || out.reported.includes("teams/alpha/workers/lead"),
+  },
+  {
+    shape: "org/workers/<worker>/WORKER.md",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      quote:
+        "`org/workers/<name>/` is a seat slot like a team's, so a folder there with no `WORKER.md` is reported.",
+    },
+    write: (root) => writeFile(root, "org/workers/cos/WORKER.md", doc("The chief of staff.")),
+    accountedFor: (out) => out.workers.includes("cos") || out.reported.includes("org/workers/cos"),
   },
   {
     shape: "teams/<team>/TEAM.md",
@@ -826,6 +829,31 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       out.packageBlocks.includes("teams/alpha/workers/lead/packages/refunds:issue-refund") ||
       out.reported.includes("teams/alpha/workers/lead/packages/refunds/blocks/issue-refund.ts"),
   },
+  {
+    shape: "org/workers/<worker>/packages/<package>/PACKAGE.md",
+    publishedIn: {
+      file: PACKAGES_PAGE,
+      quote: "`workforce/org/workers/<worker>/packages/<name>/PACKAGE.md`",
+    },
+    write: (root) =>
+      writeFile(root, "org/workers/build/packages/kit/PACKAGE.md", doc("A kit.")),
+    accountedFor: (out) =>
+      out.packages.includes("org/workers/build/packages/kit") ||
+      out.reported.includes("org/workers/build/packages/kit") ||
+      out.reported.includes("org/workers/build/packages/kit/PACKAGE.md"),
+  },
+  {
+    shape: "org/workers/<worker>/packages/<package>/blocks/<name>.ts",
+    publishedIn: {
+      file: PACKAGES_PAGE,
+      quote: "`workforce/org/workers/<worker>/packages/<name>/blocks/<block>.ts`",
+    },
+    write: (root) =>
+      writeFile(root, "org/workers/build/packages/kit/blocks/tool.ts", "export default {};\n"),
+    accountedFor: (out) =>
+      out.packageBlocks.includes("org/workers/build/packages/kit:tool") ||
+      out.reported.includes("org/workers/build/packages/kit/blocks/tool.ts"),
+  },
   // `.tsx` is published in a sentence and written in no tree on any page, so
   // nothing above exercises it — a declaration the suite reported full coverage
   // over while never touching it.
@@ -974,8 +1002,7 @@ function workerFromRef(ref: string): { worker: string; folder: string } | undefi
   if (name === undefined) return undefined;
 
   // `teams/<team>/workers/<name>/…` mints `<team>.<name>`; an org-level worker
-  // has no team segment, so the id it would mint is FIX-1414's to decide and
-  // the bare folder name is the most that can be asserted about it.
+  // has no team segment, and its id is the bare folder name.
   return at === 2 && segments[0] === "teams"
     ? { worker: `${segments[1]}.${name}`, folder: `teams/${segments[1]}/workers/${name}` }
     : { worker: name, folder: `org/workers/${name}` };
@@ -1122,7 +1149,7 @@ describe("the published workforce-tree surface", () => {
     // says such a folder's documents load and the missing file is reported
     // separately, so this is the case that proves the assertion below
     // discriminates: its ref is unresolved for a reason the author is TOLD, and
-    // it must not read the same as the org-level silence.
+    // it must not read the same as silence.
     await writeFile(root, "teams/alpha/workers/ghost/resources/note.md", doc("A note."));
 
     const out = await readEverything(root);

@@ -8,12 +8,15 @@
  * it back through the same door the hire went through.
  *
  * **Not the seat inventory, and deliberately beside it rather than inside it.**
- * `inventory/seats/*` answers *was registered in this org* and never deletes a
- * row — which is right for browsing and wrong for a roster, because firing a
- * seat has to remove it. Two contracts, two collections; they join on the seat
- * id and nothing else. A runtime hire writes both: the roster row is who was
- * hired (and fire deletes it), the inventory row is *was registered here*
- * and stays. Discover joins file ∪ roster against inventory.
+ * `inventory/seats/*` answers *was registered in this org*, and its boot binder
+ * never deletes a row — which is right for browsing and wrong for a roster,
+ * because firing a seat has to remove it. Two contracts, two collections; they
+ * join on the seat id and nothing else. A runtime hire writes both: the roster
+ * row is who was hired, the inventory row is *was registered here*. Fire
+ * (`removeHiredSeat`) deletes the roster row first, then the seat's inventory
+ * row; a row an earlier fire left in the inventory has no roster row, and a
+ * team list that joins the two (`listedSeatRows`) hides it. Discover joins
+ * file ∪ roster against inventory.
  *
  * These keys are a public surface on the same terms the inventory's are:
  * moving the prefix breaks every deployment that has already hired.
@@ -21,6 +24,7 @@
 
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
+import { HIRED_ROSTER_BROWSER_PATTERN } from "../seat-hire-keys";
 
 /**
  * One hired seat, as it is stored.
@@ -81,6 +85,15 @@ export const hiredSeatRowSchema = z.object({
    * `owningOrgId`: matching one does not imply the other.
    */
   ownerUserId: z.string().nullable().default(null),
+  /**
+   * Set while a `rehire` that wrote this row has not yet registered the seat
+   * and published its inventory row; cleared once it has. A re-hire run again
+   * finishes only a row that carries it, so a working seat is never taken for
+   * an unfinished repair. `null` — the default — on every other row, and on a
+   * row written before the field existed (BP-023, BP-030). Server-side only:
+   * not in the browser projection.
+   */
+  pendingRepair: z.string().nullable().default(null),
 });
 
 /** One stored roster row. @see hiredSeatRowSchema */
@@ -89,12 +102,9 @@ export type HiredSeatRow = z.infer<typeof hiredSeatRowSchema>;
 /** The collection's storage prefix, without its wildcard. Pinned; see the file header. */
 export const HIRED_ROSTER_PREFIX = "workforce/roster/";
 
-/**
- * The pattern of the org roster, the collection a browser may read. One
- * segment, so a nested `workforce/roster/~user/seat` key never matches it.
- * Pinned; see the file header.
- */
-export const HIRED_ROSTER_BROWSER_PATTERN = "workforce/roster/*";
+// The org roster's browser pattern lives in the leaf `../seat-hire-keys` so
+// the `./browser` entry can export it without this module's core import.
+export { HIRED_ROSTER_BROWSER_PATTERN };
 
 /**
  * The pattern of a user-owned roster row. Two segments, no browser read.

@@ -96,11 +96,36 @@ describe("a seat's door (BR-1, BR-2)", () => {
     expect(sent).toEqual([
       {
         seats: [
-          { id: "eng.chatty", kind: "two-door", door: null },
-          { id: "eng.lead", kind: "agent", door: "run" },
-          { id: "eng.quiet", kind: "quiet", door: null },
+          { id: "eng.chatty", kind: "two-door", door: null, hired: false },
+          { id: "eng.lead", kind: "agent", door: "run", hired: false },
+          { id: "eng.quiet", kind: "quiet", door: null, hired: false },
         ],
       },
+    ]);
+  });
+});
+
+describe("a seat's origin on its inventory row", () => {
+  it("is `hired: true` for a seat whose id is its address, and `false` for a declared one, even one named like the org", async () => {
+    // A team-list reader tells the two apart by this, not by the id's shape:
+    // `org.lead` below is a declared team `org` in organization `org`.
+    const seats = hireWorkforce(
+      [{ ...record("org.support.ada"), seatId: "support.ada" }, record("org.lead")],
+      { kinds },
+    );
+    const sent: Array<{ seats: Array<{ id: string; hired: boolean | null }> }> = [];
+    await openInventory(
+      { seats, channels: [] },
+      {
+        run: async (request) => void sent.push(request.input as (typeof sent)[number]),
+        userId: "u",
+        orgId: "org",
+        seatWriter: { flowKind: "channel" },
+      },
+    );
+    expect(sent[0]!.seats.map((row) => [row.id, row.hired])).toEqual([
+      ["org.lead", false],
+      ["org.support.ada", true],
     ]);
   });
 });

@@ -52,7 +52,11 @@
 export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
-export { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "./seat-hire-keys";
+export {
+  HIRED_ROSTER_PRIVATE_RESOURCE,
+  HIRED_ROSTER_RESOURCE,
+  SEAT_INVENTORY_RESOURCE
+} from "./seat-hire-keys";
 export {
   createSeatHireCapability,
   createSeatHireBlocks,
@@ -60,8 +64,11 @@ export {
   registerHiredSeat,
   SEAT_HIRE_CAPABILITY,
   type HiredSeatOwnerPin,
+  type SeatHireAskData,
+  type SeatHireAskVerb,
   type SeatHireBlocks,
   type SeatHireCapabilityOptions,
+  type SeatHireToolOptions,
 } from "./seat-hire-capability";
 export {
   channelPostCapability,
@@ -85,9 +92,11 @@ export {
 } from "./clear-shadowed-references";
 export {
   SEAT_REFERENCES_KEY,
+  parseDeclaredSeatId,
   placeOfReference,
   placeOfSeat,
   referenceReachableBySeat,
+  type DeclaredSeatId,
   type TreePlace,
 } from "./seat-references";
 export { splitResourceModules, type ResourceModuleHalves } from "./split-resource-modules";

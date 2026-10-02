@@ -358,7 +358,8 @@ describe("what one boot writes", () => {
       expect(rows.seats.find((row) => row.id === "eng.coder")).toEqual({
         id: "eng.coder",
         kind: "coder",
-        door: null
+        door: null,
+        hired: null
       });
 
       const channels = Object.fromEntries(rows.channels.map((row) => [row.id, row]));
@@ -394,7 +395,8 @@ describe("what one boot writes", () => {
       expect(await lab.row("inventory/seats/eng.lead")).toEqual({
         id: "eng.lead",
         kind: "agent",
-        door: null
+        door: null,
+        hired: null
       });
     } finally {
       await lab.dispose();

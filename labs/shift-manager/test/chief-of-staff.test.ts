@@ -71,6 +71,7 @@ describe("which seat is the chief of staff (V2, D2)", () => {
       id: "chief-of-staff",
       kind: "agent",
       door: "run",
+      hired: null,
       seatId: "chief-of-staff",
       team: STAFF_TEAM,
       name: "chief-of-staff",

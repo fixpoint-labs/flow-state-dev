@@ -21,10 +21,12 @@ const roots = ["packages/workforce/src", "labs/shift-manager/src"];
 const SPLIT = /\b(?:indexOf|lastIndexOf|split)\("\."\)/;
 
 /** file → why it is in or out of S2. Keyed by file, not line, so an edit nearby doesn't break it. */
+// After PR 1: `read-workforce.ts`'s `splitWorkerId` is gone (it calls
+// `parseDeclaredSeatId`), so it no longer splits and is not listed.
 const CLASSIFIED = {
-  "packages/workforce/src/loader/read-workforce.ts": "IN · splitWorkerId: joins a seat to its team's skills and TEAM.md",
-  "packages/workforce/src/seat-packages.ts": "IN · resolveHeldPackages: a seat's team from its id",
-  "packages/workforce/src/seat-references.ts": "IN · placeOfSeat: a seat's place in the tree from its id",
+  "packages/workforce/src/seat-packages.ts": "IN · resolveHeldPackages: strips a hired seat's org, then parseDeclaredSeatId",
+  "packages/workforce/src/seat-references.ts": "IN · parseDeclaredSeatId, the one rule; placeOfSeat calls it",
+  "labs/shift-manager/src/lib/derive.ts": "SEAM · chiefOfStaffOf: the name after the first dot, a dotless id whole; the Shift Manager screens own it",
   "packages/workforce/src/roster/address.ts": "OUT · splitSeatAddress: a hired address <org>.<seatId>, not a declared id",
   "packages/workforce/src/channel/channel-flow.ts": "OUT · board ids <channel>.<board>",
   "packages/workforce/src/hire.ts": "OUT · board ids, in unattendedBoardWarnings",

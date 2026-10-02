@@ -61,6 +61,8 @@ async function treeNames(): Promise<Set<string>> {
  */
 const SHIFT_MANAGER_WORDS: Record<string, string> = {
   worker: "the Tasks screen's group-by key (State / Worker / Stream); multi-seat-collab also names a kind `worker`",
+  "chief-of-staff":
+    "the seat id the Chief of Staff screen finds its seat by; DevTeam declares an org seat under it so it has one",
 };
 
 /** Quoted string literals in a file that equal a tree name. */

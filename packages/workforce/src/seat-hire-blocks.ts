@@ -1,34 +1,58 @@
 /**
- * `createSeatHireBlocks` — `hire` and `fire` as blocks, with no model in
- * front of them.
+ * `createSeatHireBlocks` — `hire`, `fire`, `brokenSeats` and `rehire` as
+ * blocks, with no model in front of them and no approval of their own.
  *
- * `createSeatHireCapability` mounts these handlers as its catalog tools. An
- * action mounts the same handlers directly.
+ * An action mounts any of the four directly, and nothing asks: the person
+ * calling the action already decided. `createSeatHireCapability` mounts all
+ * four as catalog tools and puts the ones a Lab names in `askBefore`, and
+ * `rehire` always, behind a person's approval. It reads each verb's checks and
+ * its write from {@link buildSeatHire}, so the tool and the block refuse the
+ * same things in the same words.
  *
  * Registration failure deletes the roster row written for that hire. The
- * inventory write sits after that compensation, and `fire` does not delete
- * the inventory row.
+ * inventory write sits after that compensation. `fire` removes the roster row,
+ * then the address, then the seat's inventory row, through `removeHiredSeat`,
+ * the one removal every hired seat goes through.
+ *
+ * `brokenSeats` reads through the boot reload's own per-row check, so it names
+ * exactly the stored seats the start skips. `rehire` keeps a seat that no
+ * longer starts at its address, on a kind the caller names; it never picks one.
+ *
+ * User-owned seats: when the mounting flow has the user-owned roster under
+ * `HIRED_ROSTER_PRIVATE_RESOURCE`, `fire` and `rehire` find the caller's own
+ * user-owned row first and the org's row second (as kitchen-sink's admin fire
+ * does), and `brokenSeats` lists the caller's own user-owned rows beside the
+ * org's. That collection serves a row only to the member it belongs to, so
+ * another member's user-owned seats are theirs to list and repair.
  */
 
 import { handler } from "@flow-state-dev/core";
 import type { JsonObject } from "@flow-state-dev/core";
+import { deepEqual } from "@flow-state-dev/core/helpers";
 import type {
   BlockDefinition,
   FlowInstance,
   InstanceOwnerPin,
   ResourceCollectionRef,
+  ResourceRef,
 } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "./seat-hire-keys";
+import {
+  HIRED_ROSTER_PRIVATE_RESOURCE,
+  HIRED_ROSTER_RESOURCE,
+  SEAT_INVENTORY_RESOURCE
+} from "./seat-hire-keys";
 import { seatDoorOf } from "./seat-door";
 import { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
-import type { HiredSeatRow } from "./roster/collections";
+import { checkHiredSeatRow } from "./roster/check";
+import { HIRED_ROSTER_PREFIX, type HiredSeatRow } from "./roster/collections";
 import { hiredSeatOwnerPinFromRosterOwner, registerHiredSeat } from "./roster/register-hired-seat";
-import { hiredSeatManifest, seatAddress, toHiredSeatRow } from "./roster/rows";
+import { removeHiredSeat } from "./roster/remove";
+import { encodeUserSegment, hiredSeatManifest, seatAddress, toHiredSeatRow } from "./roster/rows";
 
 /** The registry keys live in a leaf module; re-exported here by name. */
-export { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE };
+export { HIRED_ROSTER_PRIVATE_RESOURCE, HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE };
 
 /**
  * The owner pin a hired-seat register must carry: another name for core's
@@ -113,9 +137,48 @@ const fireInput = z
 
 const fireOutput = z.object({
   seatId: z.string(),
-  address: z.string(),
+  /** Where the seat answered. `null` for a row that did not read, which has no address to trust. */
+  address: z.string().nullable(),
   released: z.boolean(),
+  /**
+   * Present when the roster row was already gone and only the seat's leftover
+   * inventory row was removed: a second call after a crash between the two
+   * deletes. Only a row marked `hired: true` is removed this way.
+   */
+  alreadyGone: z.literal(true).optional(),
 });
+
+/** Ignores an org in the body, as every block here does (BP-031). */
+const brokenSeatsInput = z.object({ orgId: z.unknown().optional() }).strict();
+
+const brokenSeatOutput = z.object({
+  /**
+   * The id `fire` and `rehire` take. For an `unreadable` row, the row's key
+   * in the roster, which is what `fire` retires it by.
+   */
+  seatId: z.string(),
+  /** The row's full storage key, as the boot report names it. */
+  key: z.string(),
+  /** The kind the row stored, or `null` when the row did not read. */
+  kind: z.string().nullable(),
+  reason: z.enum(["kind-gone", "refused", "unreadable"]),
+  /** The start's own sentence for why the row is skipped. */
+  detail: z.string(),
+});
+
+const brokenSeatsOutput = z.array(brokenSeatOutput);
+
+const rehireInput = z
+  .object({
+    seatId: z.string().min(1),
+    flow: z.string().min(1),
+    /** Settings for the new kind. The old kind's are not carried over. */
+    settings: z.record(z.unknown()).default({}),
+    /** Replaces the stored instructions. Omitted, the stored ones carry over. */
+    instructions: z.string().optional(),
+    orgId: z.unknown().optional(),
+  })
+  .strict();
 
 /**
  * The org the call runs under, from the verified principal.
@@ -139,6 +202,68 @@ function collectionOf(ctx: BlockContext, key: string): ResourceCollectionRef {
   return ctx.resources[key] as unknown as ResourceCollectionRef;
 }
 
+/** The user-owned roster, when the mounting flow has it. */
+function privateRosterOf(ctx: BlockContext): ResourceCollectionRef | undefined {
+  return ctx.resources[HIRED_ROSTER_PRIVATE_RESOURCE] as unknown as ResourceCollectionRef | undefined;
+}
+
+/** Where one seat's roster row is, and whose it is. */
+interface LocatedSeatRow {
+  roster: ResourceCollectionRef;
+  key: string | Record<string, string>;
+  /** The member a user-owned row belongs to; `null` for an org-visible row. */
+  ownerUserId: string | null;
+}
+
+/**
+ * Find a seat's roster row: the caller's own user-owned row when the flow
+ * mounts that roster and it has one, otherwise the org's row (present or not).
+ *
+ * With `leftoverAt` (fire): when the caller has no user-owned row, a hired
+ * inventory row the caller's own fire left at the caller's user-owned address
+ * (a crash after its roster row went) keeps the seat the caller's, ahead of
+ * any org row, so the retry removes that row rather than firing an org-wide
+ * seat that shares the id.
+ */
+async function locateSeatRow(
+  ctx: BlockContext,
+  seatId: string,
+  leftoverAt?: { orgId: string; inventory: ResourceCollectionRef }
+): Promise<LocatedSeatRow> {
+  const owned = privateRosterOf(ctx);
+  const userId = ctx.session.identity.userId;
+  const org: LocatedSeatRow = { roster: collectionOf(ctx, HIRED_ROSTER_RESOURCE), key: seatId, ownerUserId: null };
+  if (owned === undefined || typeof userId !== "string" || userId.length === 0) return org;
+  const own: LocatedSeatRow = {
+    roster: owned,
+    key: { owner: `~${encodeUserSegment(userId)}`, seat: seatId },
+    ownerUserId: userId,
+  };
+  if ((await owned.getOptional(own.key)) !== undefined) return own;
+  if (leftoverAt === undefined) return org;
+  // Probed before the org row: an org-wide seat can share the seat id, and a
+  // retry that fell through to it would fire that seat instead.
+  const leftover = await leftoverAt.inventory.getOptional(seatAddress(leftoverAt.orgId, seatId, userId));
+  return leftover?.state.hired === true ? own : org;
+}
+
+/** A row's pending-repair marker; `null` when none, or on a row from before the field (BP-030). */
+function pendingRepairOf(state: JsonObject): string | null {
+  return typeof state.pendingRepair === "string" ? state.pendingRepair : null;
+}
+
+/** A fresh marker for one re-hire's row write. */
+function newRepairToken(): string {
+  return globalThis.crypto.randomUUID();
+}
+
+/** The row no longer carries this re-hire's marker: another call finished or replaced it. */
+class RepairMoved extends Error {
+  constructor(address: string) {
+    super(`"${address}" changed while this re-hire was finishing, most likely by another repair of it. This call stopped.`);
+  }
+}
+
 function asStored(row: HiredSeatRow): JsonObject {
   return row as unknown as JsonObject;
 }
@@ -148,21 +273,75 @@ function listed(names: readonly string[]): string {
 }
 
 /**
- * The two handlers `createSeatHireCapability` mounts as catalog tools —
- * `hire` and `fire`, model-free.
+ * The seat-hire handlers, model-free. `createSeatHireCapability` mounts all
+ * four as catalog tools, with `rehire` (and any verb its `askBefore` names)
+ * behind a person's approval; mounted as actions, none of them asks.
  */
 export interface SeatHireBlocks {
   readonly hire: BlockDefinition<typeof hireInput, typeof hireOutput>;
+  /** Remove a hired seat: a working one, or one that no longer starts (retire). */
   readonly fire: BlockDefinition<typeof fireInput, typeof fireOutput>;
+  /** The organization's stored seats the start would skip, each with its reason. Writes nothing. */
+  readonly brokenSeats: BlockDefinition<typeof brokenSeatsInput, typeof brokenSeatsOutput>;
+  /** Keep a seat that no longer starts at its address, on a kind the caller names. */
+  readonly rehire: BlockDefinition<typeof rehireInput, typeof hireOutput>;
+}
+
+/** A verb's input and output, as its block declares them. */
+export type HireInput = z.infer<typeof hireInput>;
+export type HireOutput = z.infer<typeof hireOutput>;
+export type FireInput = z.infer<typeof fireInput>;
+export type FireOutput = z.infer<typeof fireOutput>;
+export type RehireInput = z.infer<typeof rehireInput>;
+
+/**
+ * One verb that changes the roster, split where an approval goes between.
+ *
+ * `check` meets every refusal the change would meet and writes nothing.
+ * `run` is the block's whole body, refusals included.
+ */
+export interface SeatHireVerb<I, O> {
+  /**
+   * Refuse, writing nothing, if the change would fail now.
+   *
+   * @returns the kind the change concerns, for the ask to name: the kind a
+   *   hire mints or a re-hire moves onto, the kind a fired row stored, or
+   *   `null` for a row that does not read.
+   */
+  check(input: I, ctx: BlockContext): Promise<{ kind: string | null }>;
+  /** Make the change. */
+  run(input: I, ctx: BlockContext): Promise<O>;
+}
+
+/** The three roster changes, each with its check. */
+export interface SeatHireVerbs {
+  readonly hire: SeatHireVerb<HireInput, HireOutput>;
+  readonly fire: SeatHireVerb<FireInput, FireOutput>;
+  readonly rehire: SeatHireVerb<RehireInput, HireOutput>;
 }
 
 /**
- * Build `{ hire, fire }`.
+ * Build `{ hire, fire, brokenSeats, rehire }`.
  *
  * @param options Kinds, register/unregister, and the optional allowlist.
  *   Org comes from the principal at the call, not from options.
  */
 export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHireBlocks {
+  return buildSeatHire(options).blocks;
+}
+
+/**
+ * The blocks and, under them, each verb's check and write.
+ *
+ * For `createSeatHireCapability`, whose gated tools check, ask, check again
+ * and write. Not exported from the package: an app mounts the blocks.
+ *
+ * @param options As {@link createSeatHireBlocks}.
+ */
+export function buildSeatHire(options: SeatHireCapabilityOptions): {
+  blocks: SeatHireBlocks;
+  verbs: SeatHireVerbs;
+} {
   const kinds = options.kinds ?? {};
   const allow = options.allowKinds === undefined ? undefined : new Set(options.allowKinds);
 
@@ -174,56 +353,90 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
     return [...names].sort();
   };
 
-  const hire = handler({
-    name: "hire",
-    description:
-      "Mint a seat of a kind this app already registered. Names the kind and a " +
-      "seat id. Does not invent a kind, and does not attach boards.",
-    inputSchema: hireInput,
-    outputSchema: hireOutput,
-    execute: async (input, ctx) => {
-      const orgId = orgOf(ctx);
-      const address = seatAddress(orgId, input.seatId);
-      const available = hireableKindNames();
+  /** Refuse a kind this tool may not mint, or this app does not carry. Writes nothing. */
+  const refuseUnhireableKind = (flow: string, verb: string): void => {
+    const available = hireableKindNames();
+    if (allow !== undefined && !allow.has(flow)) {
+      throw new Error(`This seat may not ${verb} kind "${flow}". It may hire: ${listed(available)}.`);
+    }
+    if (!Object.hasOwn(kinds, flow) && flow !== "agent") {
+      throw new Error(`This app carries no flow kind "${flow}". It carries: ${listed(available)}.`);
+    }
+  };
 
-      if (allow !== undefined && !allow.has(input.flow)) {
-        throw new Error(
-          `This seat may not hire kind "${input.flow}". It may hire: ${listed(available)}.`
-        );
-      }
+  /** Mint the seat a row describes, running the kind's settings schema. Writes nothing. */
+  const mint = (orgId: string, row: HiredSeatRow, address: string): FlowInstance => {
+    const record = hiredSeatManifest(orgId, row);
+    // Type narrowing, not a second fence: the row was just stamped with this org.
+    if ("problem" in record) {
+      throw new Error(`"${address}" could not be hired: ${record.problem}.`);
+    }
+    const [seat] = hireWorkforce([record.manifest], {
+      kinds,
+      channelBoards: options.channelBoards,
+    });
+    if (seat === undefined) {
+      throw new Error(`"${address}" could not be hired, and no reason was given.`);
+    }
+    return seat;
+  };
 
-      if (!Object.hasOwn(kinds, input.flow) && input.flow !== "agent") {
-        throw new Error(
-          `This app carries no flow kind "${input.flow}". It carries: ${listed(available)}.`
-        );
-      }
+  /** Publish the seat's inventory row, and say what a person should know. */
+  const publish = async (ctx: BlockContext, seat: FlowInstance, flow: string, address: string) => {
+    const door = seatDoorOf(seat);
+    const inventory = collectionOf(ctx, SEAT_INVENTORY_RESOURCE);
+    await inventory.upsert(address, { id: address, kind: flow, door: door.door, hired: true });
+    const warnings = [
+      ...unattendedBoardWarnings(options.channelBoards ?? [], [seat]),
+      ...(door.problem === undefined ? [] : [door.problem]),
+    ];
+    return warnings.length > 0 ? { warning: warnings.join("\n") } : {};
+  };
 
-      const held = options.kindAt?.(address);
-      if (held !== undefined) {
-        throw new Error(
-          `"${address}" is already served by a flow of kind "${held}". Fire that seat first, or hire under another id.`
-        );
-      }
+  /** Every refusal a hire meets before it writes, and the seat it would mint. */
+  const prepareHire = (input: HireInput, ctx: BlockContext) => {
+    const orgId = orgOf(ctx);
+    const address = seatAddress(orgId, input.seatId);
+    refuseUnhireableKind(input.flow, "hire");
 
-      const row = toHiredSeatRow({
-        seatId: input.seatId,
-        flow: input.flow,
-        settings: input.settings,
-        instructions: input.instructions ?? null,
-        owningOrgId: orgId,
-      });
-      const record = hiredSeatManifest(orgId, row);
-      // Type narrowing, not a second fence: the row was just stamped with this org.
-      if ("problem" in record) {
-        throw new Error(`"${address}" could not be hired: ${record.problem}.`);
+    const held = options.kindAt?.(address);
+    if (held !== undefined) {
+      throw new Error(
+        `"${address}" is already served by a flow of kind "${held}". Fire that seat first, or hire under another id.`
+      );
+    }
+    // A declared seat is registered at its own id (`chief-of-staff`,
+    // `<team>.<name>`), so a hire that reused it would be a second seat
+    // answering to a declared seat's name.
+    const declared = options.kindAt?.(input.seatId);
+    if (declared !== undefined) {
+      throw new Error(
+        `"${input.seatId}" is the id of a seat this app declares (kind "${declared}"). Hire under another id.`
+      );
+    }
+
+    const row = toHiredSeatRow({
+      seatId: input.seatId,
+      flow: input.flow,
+      settings: input.settings,
+      instructions: input.instructions ?? null,
+      owningOrgId: orgId,
+    });
+    return { orgId, address, row, seat: mint(orgId, row, address) };
+  };
+
+  const hireVerb: SeatHireVerb<HireInput, HireOutput> = {
+    check: async (input, ctx) => {
+      prepareHire(input, ctx);
+      // The write's own duplicate refusal is `create()`; asked before an
+      // approval, it has to be read.
+      if ((await collectionOf(ctx, HIRED_ROSTER_RESOURCE).getOptional(input.seatId)) !== undefined) {
+        throw new Error(`This organization already hired a seat "${input.seatId}". Fire it first, or hire under another id.`);
       }
-      const [seat] = hireWorkforce([record.manifest], {
-        kinds,
-        channelBoards: options.channelBoards,
-      });
-      if (seat === undefined) {
-        throw new Error(`"${address}" could not be hired, and no reason was given.`);
-      }
+      return { kind: input.flow };
+    },
+    run: async (input, ctx) => {
+      const { orgId, address, row, seat } = prepareHire(input, ctx);
 
       const roster = collectionOf(ctx, HIRED_ROSTER_RESOURCE);
       await roster.create(input.seatId, asStored(row));
@@ -245,60 +458,339 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         throw error;
       }
 
-      const door = seatDoorOf(seat);
-      const inventory = collectionOf(ctx, SEAT_INVENTORY_RESOURCE);
-      await inventory.upsert(address, { id: address, kind: input.flow, door: door.door });
-
-      const warnings = [
-        ...unattendedBoardWarnings(options.channelBoards ?? [], [seat]),
-        ...(door.problem === undefined ? [] : [door.problem]),
-      ];
-      return {
-        seatId: input.seatId,
-        address,
-        ...(warnings.length > 0 ? { warning: warnings.join("\n") } : {}),
-      };
+      return { seatId: input.seatId, address, ...(await publish(ctx, seat, input.flow, address)) };
     },
+  };
+
+  /** The refusal for a fire that finds nothing of this organization's to remove. */
+  const nothingToFire = (seatId: string, address: string): Error => {
+    const declared = options.kindAt?.(address) !== undefined ? address : options.kindAt?.(seatId) !== undefined ? seatId : undefined;
+    return new Error(
+      declared === undefined
+        ? `This organization hired no seat "${seatId}".`
+        : `"${declared}" was not hired through this tool — a seat declared in a worker file is ` +
+          `removed by editing its folder, not by firing it.`
+    );
+  };
+
+  const fireVerb: SeatHireVerb<FireInput, FireOutput> = {
+    check: async (input, ctx) => {
+      const orgId = orgOf(ctx);
+      const inventory = collectionOf(ctx, SEAT_INVENTORY_RESOURCE);
+      const located = await locateSeatRow(ctx, input.seatId, { orgId, inventory });
+      const address = seatAddress(orgId, input.seatId, located.ownerUserId);
+      const existing = await located.roster.getOptional(located.key);
+      if (existing !== undefined) {
+        const checked = checkHiredSeatRow(orgId, existing.state, kinds);
+        return { kind: checked.row?.flow ?? null };
+      }
+      // What `removeHiredSeat` does with no row: a hired seat's leftover
+      // inventory row (`hired: true`) at an address nothing holds is still
+      // removed; anything else is nothing, and is refused before anyone is asked.
+      if (options.kindAt?.(address) === undefined) {
+        const leftover = await inventory.getOptional(address);
+        if (leftover !== undefined && leftover.state.hired === true) return { kind: null };
+      }
+      throw nothingToFire(input.seatId, address);
+    },
+    run: async (input, ctx) => {
+      const orgId = orgOf(ctx);
+      const inventory = collectionOf(ctx, SEAT_INVENTORY_RESOURCE);
+      const located = await locateSeatRow(ctx, input.seatId, { orgId, inventory });
+      const removed = await removeHiredSeat({
+        orgId,
+        roster: located.roster,
+        key: located.key,
+        inventory,
+        address: seatAddress(orgId, input.seatId, located.ownerUserId),
+        isHeld: (address) => options.kindAt?.(address) !== undefined,
+        release: (address, storedKind) => {
+          const liveKind = options.kindAt?.(address);
+          if (liveKind !== undefined && liveKind !== storedKind) {
+            console.error(
+              `[seat-hire] removed the roster row for "${address}" (kind "${storedKind}"), but the ` +
+                `address is held by a flow of kind "${liveKind}" — leaving it registered.`
+            );
+            return "held-by-another";
+          }
+          return options.unregister(address) ? "released" : "not-held";
+        },
+      });
+
+      switch (removed.outcome) {
+        case "removed":
+          return { seatId: input.seatId, address: removed.address, released: removed.released };
+        case "unreadable":
+          return { seatId: input.seatId, address: null, released: false };
+        case "already-gone":
+          return { seatId: input.seatId, address: removed.address, released: false, alreadyGone: true as const };
+        case "nothing":
+          throw nothingToFire(input.seatId, removed.address);
+      }
+    },
+  };
+
+  const brokenSeats = handler({
+    name: "brokenSeats",
+    description:
+      "List this organization's stored seats that would not start, each with its reason " +
+      "(kind-gone, refused, unreadable), the caller's own user-owned seats included when the " +
+      "flow mounts that roster. Reads only.",
+    inputSchema: brokenSeatsInput,
+    outputSchema: brokenSeatsOutput,
+    execute: async (_input, ctx) => {
+      const orgId = orgOf(ctx);
+      // The org's rows, and the caller's own user-owned rows when the flow
+      // mounts that roster: the same rows the start reads for this member.
+      const owned = privateRosterOf(ctx);
+      const rows = [
+        ...(await collectionOf(ctx, HIRED_ROSTER_RESOURCE).list()),
+        ...(owned === undefined ? [] : await owned.list()),
+      ];
+      const broken: Array<z.infer<typeof brokenSeatOutput>> = [];
+      for (const ref of rows) {
+        const checked = checkHiredSeatRow(orgId, ref.state, kinds);
+        if (checked.ok) continue;
+        // The id `fire` takes: the key's last segment (`~<user>/<seat>` for a
+        // user-owned row, which `fire` finds by the caller).
+        const relativeKey = (
+          ref.path.startsWith(HIRED_ROSTER_PREFIX) ? ref.path.slice(HIRED_ROSTER_PREFIX.length) : ref.path
+        ).split("/").pop()!;
+        broken.push({
+          seatId: checked.reason === "unreadable" ? relativeKey : (checked.row?.seatId ?? relativeKey),
+          key: ref.path,
+          kind: checked.row?.flow ?? null,
+          reason: checked.reason,
+          detail: checked.detail,
+        });
+      }
+      return broken.sort((left, right) => left.key.localeCompare(right.key));
+    },
+  });
+
+  /**
+   * Register a seat, counting one the registry already holds at that address
+   * under the same kind as registered (a retry's, or the one a restart
+   * registered from the row). Reads the registry's own refusal rather than
+   * `kindAt`, so it holds with `kindAt` omitted.
+   *
+   * @returns whether this call registered it.
+   */
+  const registerOnce = (seat: FlowInstance, pin: InstanceOwnerPin): boolean => {
+    try {
+      registerHiredSeat(options.register, seat, pin);
+      return true;
+    } catch (error) {
+      const refused = error as { reason?: unknown; id?: unknown; existingKind?: unknown };
+      if (refused.reason === "duplicate-id" && refused.id === seat.id && refused.existingKind === seat.kind) {
+        return false;
+      }
+      throw error;
+    }
+  };
+
+  /**
+   * The steps of a re-hire after its row is written: register, publish the
+   * inventory row, clear the row's pending-repair marker. Before each side
+   * effect the row is re-read from the store (a verified no-op write) and must
+   * still exist carrying `token`. A row `fire` deleted stops the repair, and
+   * what this call registered or published is taken back, so a fire that
+   * lands mid-repair leaves no seat and no inventory row. A row whose marker
+   * moved (another call finished or replaced it) stops it without undoing.
+   */
+  const finishRehire = async (
+    ctx: BlockContext,
+    ref: ResourceRef<JsonObject>,
+    token: string,
+    seat: FlowInstance,
+    pin: InstanceOwnerPin,
+    flow: string,
+    address: string,
+    onRegisterFailed?: (error: unknown) => Promise<void>
+  ) => {
+    const stillPending = (current: JsonObject) => {
+      if (pendingRepairOf(current) !== token) throw new RepairMoved(address);
+      return current;
+    };
+    let registered = false;
+    let published = false;
+    try {
+      await ref.updateState(stillPending);
+      try {
+        registered = registerOnce(seat, pin);
+      } catch (error) {
+        await onRegisterFailed?.(error);
+        throw error;
+      }
+      await ref.updateState(stillPending);
+      let warnings: { warning?: string };
+      try {
+        warnings = await publish(ctx, seat, flow, address);
+      } catch (error) {
+        // A fire that removed the inventory row under this write removed the
+        // roster row first; that is the fired case below, not a failed write.
+        await ref.updateState(stillPending);
+        throw new Error(
+          `"${address}" was re-hired onto "${flow}" and is serving, but its inventory row could not be ` +
+            `written: ${error instanceof Error ? error.message : String(error)}. Run the same re-hire again to finish it.`
+        );
+      }
+      published = true;
+      await ref.updateState((current) => ({ ...stillPending(current), pendingRepair: null }));
+      return warnings;
+    } catch (error) {
+      if ((error as { code?: unknown }).code !== "resource_deleted") throw error;
+      if (published) await collectionOf(ctx, SEAT_INVENTORY_RESOURCE).delete(address);
+      if (registered) options.unregister(address);
+      throw new Error(`"${address}" was fired while this re-hire was finishing. Nothing of the re-hire was kept.`);
+    }
+  };
+
+  /**
+   * Every refusal a re-hire meets before it writes, and what it would do: write
+   * a new row (`finish: false`), or finish the unfinished re-hire the row's
+   * pending-repair marker names (`finish: true`). Writes nothing, so the
+   * capability can run it before asking and the write runs it again after.
+   */
+  const prepareRehire = async (input: RehireInput, ctx: BlockContext) => {
+    const orgId = orgOf(ctx);
+    const located = await locateSeatRow(ctx, input.seatId);
+    const address = seatAddress(orgId, input.seatId, located.ownerUserId);
+    const existing = await located.roster.getOptional(located.key);
+    if (existing === undefined) {
+      throw new Error(`This organization hired no seat "${input.seatId}".`);
+    }
+
+    const before = existing.state as JsonObject;
+    const checked = checkHiredSeatRow(orgId, before, kinds);
+    if (!checked.ok && (checked.reason === "unreadable" || checked.row === undefined)) {
+      throw new Error(`"${input.seatId}" is a row that can't be read (${checked.detail}). Fire it to retire it.`);
+    }
+    const old = checked.row!;
+    const row = toHiredSeatRow({
+      seatId: old.seatId,
+      flow: input.flow,
+      settings: input.settings,
+      instructions: input.instructions ?? old.instructions,
+      owningOrgId: orgId,
+      ownerUserId: old.ownerUserId,
+    });
+    const pin = hiredSeatOwnerPinFromRosterOwner({ orgId, userId: old.ownerUserId });
+
+    if (checked.ok) {
+      // A seat the start serves is not repaired: a working seat changes kind
+      // by fire then hire. The one exception is a re-hire that wrote this
+      // row and didn't finish (the process died, or the inventory write
+      // failed), which the row says itself with its pending-repair marker.
+      // Only the same re-hire finishes it; a row with no marker (an older
+      // row included, BP-030) has no repair pending.
+      const token = old.pendingRepair;
+      if (token === null) {
+        throw new Error(
+          `"${address}" still starts on kind "${old.flow}". To change a working seat's kind, fire it and hire it again.`
+        );
+      }
+      if (!deepEqual(row, { ...old, pendingRepair: null })) {
+        throw new Error(
+          `"${address}" has an unfinished re-hire onto "${old.flow}". Run that same re-hire again to finish it.`
+        );
+      }
+      refuseUnhireableKind(input.flow, "re-hire onto");
+      const live = options.kindAt?.(address);
+      if (live !== undefined && live !== input.flow) {
+        throw new Error(`"${address}" is already served by a flow of kind "${live}", so it can't be re-hired.`);
+      }
+      return { finish: true as const, address, existing, old, token, pin, seat: checked.seat };
+    }
+
+    // Everything that can refuse runs before the write.
+    refuseUnhireableKind(input.flow, "re-hire onto");
+    const held = options.kindAt?.(address);
+    if (held !== undefined) {
+      throw new Error(`"${address}" is already served by a flow of kind "${held}", so it can't be re-hired.`);
+    }
+    return { finish: false as const, address, existing, before, old, row, pin, seat: mint(orgId, row, address) };
+  };
+
+  const rehireVerb: SeatHireVerb<RehireInput, HireOutput> = {
+    check: async (input, ctx) => {
+      await prepareRehire(input, ctx);
+      return { kind: input.flow };
+    },
+    run: async (input, ctx) => {
+      const prepared = await prepareRehire(input, ctx);
+      if (prepared.finish) {
+        const { address, existing, old, token, pin, seat } = prepared;
+        const warnings = await finishRehire(ctx, existing, token, seat, pin, input.flow, address);
+        return { seatId: old.seatId, address, ...warnings };
+      }
+      const { address, existing, before, old, row, pin, seat } = prepared;
+      const token = newRepairToken();
+
+      // One version-checked write, marked as a repair in progress until the
+      // seat is registered and published. If the row moved since it was read
+      // (another repair landed, or it was retired), this one is refused rather
+      // than written over it.
+      await existing.updateState((current) => {
+        if (!deepEqual(current, before)) {
+          throw new Error(
+            `"${address}" changed while this re-hire was being made, most likely by another repair. Nothing was written.`
+          );
+        }
+        return asStored({ ...row, pendingRepair: token });
+      });
+
+      const warnings = await finishRehire(ctx, existing, token, seat, pin, input.flow, address, async () => {
+        // Registration refused: write the old row back, while it is still this repair's.
+        try {
+          await existing.updateState((current) => {
+            if (pendingRepairOf(current) !== token) throw new RepairMoved(address);
+            return before;
+          });
+        } catch (restoreError) {
+          console.error(
+            `[seat-hire] "${address}" was re-hired onto "${input.flow}" and could not be registered, and its ` +
+              `old row could not be written back either — the next boot serves it on "${input.flow}", and the ` +
+              `same re-hire run again finishes it: ${String(restoreError)}`
+          );
+        }
+      });
+      return { seatId: old.seatId, address, ...warnings };
+    },
+  };
+
+  const hire = handler({
+    name: "hire",
+    description:
+      "Mint a seat of a kind this app already registered. Names the kind and a " +
+      "seat id. Does not invent a kind, and does not attach boards.",
+    inputSchema: hireInput,
+    outputSchema: hireOutput,
+    execute: hireVerb.run,
   });
 
   const fire = handler({
     name: "fire",
     description:
-      "Remove a runtime-hired seat from the durable roster and release its " +
-      "address in this process. The inventory row stays — it means was registered, not still hired.",
+      "Remove a runtime-hired seat: its roster row, its address in this process, and its " +
+      "inventory row. Also retires a stored seat that no longer starts.",
     inputSchema: fireInput,
     outputSchema: fireOutput,
-    execute: async (input, ctx) => {
-      const orgId = orgOf(ctx);
-      const address = seatAddress(orgId, input.seatId);
-      const roster = collectionOf(ctx, HIRED_ROSTER_RESOURCE);
-      const existing = await roster.getOptional(input.seatId);
-      if (existing === undefined) {
-        const held = options.kindAt?.(address);
-        throw new Error(
-          held === undefined
-            ? `This organization hired no seat "${input.seatId}".`
-            : `"${address}" was not hired through this tool — a seat declared in a worker file is ` +
-              `removed by editing its folder, not by firing it.`
-        );
-      }
-
-      const storedKind = String(existing.state.flow);
-      await roster.delete(input.seatId);
-
-      const liveKind = options.kindAt?.(address);
-      if (liveKind !== undefined && liveKind !== storedKind) {
-        console.error(
-          `[seat-hire] removed the roster row for "${address}" (kind "${storedKind}"), but the ` +
-            `address is held by a flow of kind "${liveKind}" — leaving it registered.`
-        );
-        return { seatId: input.seatId, address, released: false };
-      }
-
-      const released = options.unregister(address);
-      return { seatId: input.seatId, address, released };
-    },
+    execute: fireVerb.run,
   });
 
-  return { hire, fire };
+  const rehire = handler({
+    name: "rehire",
+    description:
+      "Keep a stored seat that no longer starts (its kind is gone, or refuses its settings) at " +
+      "its address, on a kind this app carries. The caller names the kind; settings are the new kind's.",
+    inputSchema: rehireInput,
+    outputSchema: hireOutput,
+    execute: rehireVerb.run,
+  });
+
+  return {
+    blocks: { hire, fire, brokenSeats, rehire },
+    verbs: { hire: hireVerb, fire: fireVerb, rehire: rehireVerb },
+  };
 }

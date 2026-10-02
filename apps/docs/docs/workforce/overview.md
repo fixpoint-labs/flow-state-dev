@@ -101,6 +101,10 @@ A workstream is a channel with the boards it holds: one place for the conversati
 
 A project groups workstreams. It is a record your organization keeps: a title, a status, an owner, its members, and links, stored once and visible to everyone in the organization. You don't write a file for each project. Each project has a room, one conversation its members share with the project's seats. You reach it through your own talk channel, which your Lab shapes once for every project, in an org-level default template declared beside the collection in `org/resources/projects.ts`. A team that wants its own can still declare one in a `CHANNEL.md` with `mintFor: projects`. Only members read or post in a project's room. Other members' lines show up when your view next reads the room, not the instant they're posted. [Projects](./projects) covers the record and how to create one.
 
+One seat helps a person run an organization. The chief of staff is who you ask who works here and who is on a channel. It also changes who works there: ask it for another seat and it hires one; ask it for one fewer and it puts the request in front of you to approve, and nothing is removed until you do. The seats it hires belong to the organization, and other seats ask it rather than hiring for themselves. It is a seat on the built-in `agent` kind, declared under `org/workers/`, and a Lab that doesn't add it doesn't have one. See [The chief of staff](./chief-of-staff).
+
+The chief of staff reads workstream channels; it never opens, closes, or renames one.
+
 ## What it will not do
 
 Workforce does not staff a task board. It does not replace flows, sessions, or resources. Sessions and resources live on the flow copy you hired.
@@ -115,6 +119,7 @@ Workforce does not staff a task board. It does not replace flows, sessions, or r
 - [Code on disk](./code-on-disk) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
 - [Hiring while the app runs](./durable-hire) — a roster hired at runtime, written to your store, reloaded on the next boot.
+- [The chief of staff](./chief-of-staff) — the one seat a person asks to hire or fire, with a fire waiting for their approval.
 - [Workforce components](./ui) — browse your flow kinds, instances and sessions, and render a roster and boards, with React components.
 - [Orchestration](../orchestration/overview) — the task board and the workers that drain it.
 - [Agents](../orchestration/agents) — board workers, `definePersona`, and `createWorkforceCapability`.

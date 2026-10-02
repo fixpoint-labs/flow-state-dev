@@ -24,8 +24,8 @@ which the `WORKER.md` files name) and the board's `coder` assignee key.
 
 0. every held-out token lives in exactly one convention file, in none of `lab/**/*.mts`, and in no
    part of the row the EM seat files — run **before** anything is built;
-1. one root produces exactly three seats on the two kinds their files name, two documents and one
-   channel; a tree naming an unregistered kind refuses the **whole** roster by name, and its
+1. one root produces exactly three team seats on the two kinds their files name, plus the org's
+   chief of staff on the built-in `agent` kind, two documents and one channel; a tree naming an unregistered kind refuses the **whole** roster by name, and its
    corrected twin hires cleanly *(BR-1, BR-2)*;
 2. each seat reports its own instructions, document ref and **exact** skill union from inside a
    running block, and the coordinator kind declares no task entry at all *(BR-3, BR-4)*;
