@@ -325,6 +325,25 @@ describe("a fire, with fire asking first", () => {
     expect(after.registry.get(HELPER_ADDRESS)).toBeUndefined();
   });
 
+  it("carries the owner a fire names through the ask to the fire it makes, and refuses one this flow can't reach unasked", async () => {
+    const stores = freshStores();
+    await withHelperHired(stores);
+    // The chief of staff mounts the organization's roster only: a seat of
+    // the caller's own is refused before anyone is asked.
+    const mine = await boot(stores, [call("fire", { seatId: HELPER, owner: "me" }), say("no")], { askBefore: ["fire"] });
+    expect((await mine.ask("let my helper go")).status).toBe("completed");
+    expect(lastToolResults(mine.seen)).toContain("user-owned roster");
+    expect(await pendingAsks(stores)).toEqual([]);
+
+    const lab = await boot(stores, [call("fire", { seatId: HELPER, owner: "organization" }), say("done")], { askBefore: ["fire"] });
+    const { requestId } = await lab.ask("let the helper go");
+    expect((await pendingAsks(stores))[0]?.data).toMatchObject({ verb: "fire", seatId: HELPER, owner: null });
+    const { finished } = await lab.answer(requestId, "approve");
+    await finished;
+    expect(await rosterRows(stores)).toEqual([]);
+    expect(lab.released).toEqual([HELPER_ADDRESS]);
+  });
+
   it("on Approve leaves alone a seat hired under the same id while the person was asked", async () => {
     const stores = freshStores();
     await withHelperHired(stores);

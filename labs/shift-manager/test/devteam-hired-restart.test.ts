@@ -60,7 +60,10 @@ describe("DevTeam, restarted after a hire died before its inventory row", () => 
     // through one of the person's sessions on a flow that declares it: here,
     // a session with the chief of staff.
     await clients.sessions.createSession({ flowKind: "chief-of-staff", userId: clients.userId });
-    snapshot = await createLabReader(clients).read();
+    const read = await createLabReader(clients).read();
+    if (read.refused !== undefined) throw new Error(`refused: ${read.refused.message}`);
+    if (read.unreachable !== undefined) throw new Error(`unreachable: ${read.unreachable.message}`);
+    snapshot = read;
   }, 120_000);
   afterAll(async () => lab?.handle.close());
 

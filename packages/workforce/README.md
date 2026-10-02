@@ -1576,7 +1576,7 @@ It refuses an unknown kind or one outside `allowKinds` (and lists the hireable o
 address already served, a seat id a file-declared seat answers on, and a request with no
 organization.
 
-**`fire`** takes `{ seatId, orgId? }` (extra keys are refused) and returns
+**`fire`** takes `{ seatId, owner?, orgId? }` (extra keys are refused) and returns
 `{ seatId, address, released, alreadyGone? }`. It deletes the roster row, unregisters the
 address when the live kind matches the stored kind, and deletes the seat's inventory row. When
 a different kind holds the address, the roster row is deleted, the address and its inventory
@@ -1585,7 +1585,7 @@ gone but whose inventory row is left (a crash between the two deletes), it remov
 when the row says `hired: true` and returns `released: false` with `alreadyGone: true`; a row
 that doesn't say so is left, and the call refused as for a seat never hired. A roster row that can't be read is deleted by its key and nothing else is
 touched (`address: null`). After `fire`, `discover` withholds the seat. `removeHiredSeat` is
-this removal on its own, for an app whose fire is its own handler.
+this removal on its own, for an app whose fire is its own handler, and `resolveHiredSeatLocation({ seatId, owner?, roster, privateRoster?, userId?, leftoverAt? })` picks the row it removes, as `fire` does.
 
 It refuses when this organization hired no seat, or when a live file-declared seat sits at that
 address (removed by editing its folder, not by firing it).
@@ -1616,24 +1616,24 @@ model should be in front of it. Inputs, outputs and refusals are the ones descri
 the tools.
 
 **`brokenSeats`** takes `{}` and returns the caller's organization's stored seats that would
-not start, each `{ seatId, key, owner, kind, reason, detail }`, with `owner` either
-`organization` or `me` (one of the caller's own user-owned seats) and `reason` one of `kind-gone`,
+not start, each `{ seatId, key, owner, kind, reason, detail }`, with `reason` one of `kind-gone`,
 `refused`, `unreadable`. It reads through the start's own per-row check, so `detail` is the
 sentence `reloadHiredSeats` puts in `problems`, and it writes nothing. For an `unreadable` row,
-`seatId` is the row's key, which `fire` retires it by. It runs the full check on every row, a
+`seatId` is the row's key, which `fire` retires it by. `owner` is `"organization"` or `"me"`,
+whose row it is; pass it to `fire` or `rehire` to reach that row. It runs the full check on every row, a
 mint included, so it is an admin read made on demand, not something to poll.
 
 User-owned seats: mount `defineHiredRosterPrivateCollection()` under
 `HIRED_ROSTER_PRIVATE_RESOURCE` on the same flow, and `brokenSeats` lists the caller's own
-user-owned rows beside the org's, and `fire` and `rehire` find the caller's own user-owned row
-first, then the org's. That collection serves a row only to the member it belongs to, so a
+user-owned rows beside the org's. `fire` and `rehire` take `owner: "organization" | "me"` to
+name which row; without it they act on the only row under the seat id, and refuse, naming both,
+when the caller has an org row and a user-owned row under it. `resolveHiredSeatLocation` is that
+choice, exported for an app's own fire. That collection serves a row only to the member it belongs to, so a
 member lists and repairs only their own; the start still names every member's. Without it, the
 four reach org-visible seats only.
 
 **`rehire`** takes `{ seatId, flow, settings?, instructions?, owner?, orgId? }` and returns
-`{ seatId, address, warning? }`. `owner` is the one `brokenSeats` reported, and picks the roster:
-with it, an org seat and one of the caller's own under the same id are told apart; omitted, the
-caller's own row is used when there is one. It keeps the seat's id and address and runs it on `flow`, with
+`{ seatId, address, warning? }`. It keeps the seat's id and address and runs it on `flow`, with
 `settings` for that kind; the stored instructions carry over unless replaced. It refuses a seat
 that would start, an `unreadable` row, a kind this app doesn't carry or `allowKinds` excludes,
 and settings the kind refuses, all before writing anything. The row is replaced in one
@@ -1971,13 +1971,15 @@ import {
 
 It exports `HIRED_ROSTER_RESOURCE`, `SEAT_INVENTORY_RESOURCE`, `HIRED_ROSTER_BROWSER_PATTERN`, `splitSeatAddress`,
 `CHANNEL_POST_COMPONENT`, `channelTranscriptLineSchema` and `ChannelTranscriptLine`, the same values
-the root exports, and reaches no Node built-in. It also exports `listedSeatRows(orgId, rows, roster)`,
+the root exports, and reaches no Node built-in. It also exports `listedSeatRows(orgId, rows, roster, owned?)`,
 the team-list rule: of the seat inventory rows, a hired seat's is kept only while a roster row
 names its address (pass `undefined` when the roster didn't load, and no hired seat is kept), and
 every other row is kept as it is. A row says which it is in `hired`; one written before that field
 is read by its id's shape, which `isHiredSeatRow(orgId, row)` also answers. A user-owned hire's row
-(`<org>.~<user>.<seatId>`) that carries an `incarnation` is kept as well, since its roster row is
-owner-private and no org roster read can back it. A hired seat fired
+(`<org>.~<user>.<seatId>`) is kept only when `owned`, the reader's own user-owned roster rows read
+on the server, has a row at that address with the same `incarnation`. The roster that would back
+it is owner-private, so a browser reader has no `owned` and keeps no user-owned hire. An
+`incarnation` on the inventory row says which hire published it, not that the hire is still there. A hired seat fired
 before fire removed inventory rows is left out that way.
 
 ## Exports
