@@ -25,7 +25,7 @@ The inventory keeps that record as data: three org-scoped resource collections t
 
 **What was registered:** the tree says where a seat or channel is declared. The inventory says which channels registered in this organization, which seats a channel was registered with (the channel row's `members`), and which channels a seat is in (the membership rows). The two layers join on the seat's `id`. A seat hired at runtime through the ready-made hire is the exception: its seat row's `id` is its address, such as `acme.support.ada`, while a channel's `members` name it `support.ada`.
 
-**Who may post:** to find out whether a post that names a member will be accepted, ask the channel. The `post` and `fileTask` blocks read `members` from the channel's session, not from the inventory, whose `members` is a copy for finding things.
+**Which author a post may name:** to find out whether a post that names a member as its `author` will be accepted, ask the channel. The `post` and `fileTask` blocks read `members` from the channel's session, not from the inventory, whose `members` is a copy for finding things.
 
 **Who is hired now:** for the seats hired at runtime and not yet fired, read the [hired roster](./durable-hire.md#the-roster). Firing a seat removes both its roster row and its inventory row. A row an earlier version left behind after a fire has no roster row; a reader that wants only current seats joins the two, and `listedSeatRows` from `@flow-state-dev/workforce/browser` does that join. Fire removes a leftover row only when the row says `hired: true`, so it never touches a declared seat's row at the same address.
 
