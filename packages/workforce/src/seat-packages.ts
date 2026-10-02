@@ -38,10 +38,11 @@ export interface HeldPackages {
  * The packages one seat holds: its own folder's, then the ones its
  * `packages:` line names, nearest library first.
  *
- * @param seatId The seat's id, for the folders a refusal names. Its last
- *   two segments are the declared id `parseDeclaredSeatId` reads
- *   (`<team>.<worker>`, or `<org>.<team>.<worker>` for a hired seat); a
- *   dotless id is an org seat (`<worker>`), which has no team library.
+ * @param seatId The seat id it was hired as (`manifest.seatId ?? manifest.id`,
+ *   never a hired seat's org-qualified address, whose org would read as a
+ *   team). `<team>.<worker>` is a team seat; a dotless id is an org seat
+ *   (`<worker>`), which has no team library. A longer id is read by its last
+ *   two segments, through `parseDeclaredSeatId`.
  * @param declared The seat's `packages:` value as written, or `undefined` when
  *   the file wrote no such line.
  * @param reach The packages in the seat's reach, as the loader joined them. A

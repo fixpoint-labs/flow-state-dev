@@ -682,8 +682,10 @@ export function hireWorkforce(
     // name among them has been shown to be one tool. This step cannot see a
     // kind's catalog, so a named package block that is also a catalog key is
     // refused by the kind at its mint (the built-in one does), not here.
+    // The seat id it was hired as, not a hired seat's org-qualified address:
+    // the same id the reference wall places the seat by.
     const { held, problems: heldProblems } = resolveHeldPackages(
-      manifest.id,
+      manifest.seatId ?? manifest.id,
       manifest.declared[PACKAGES_KEY],
       manifest.packages,
       packageBlocks

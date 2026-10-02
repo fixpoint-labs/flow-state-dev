@@ -97,7 +97,7 @@ A replacement declares `kind: "agent"`, like any other kind passed under its own
 
 A worker's skills are that worker's, stored at organization scope. Two workers on one roster never read each other's instructions. Two organizations do not share one seat's skills. Send `userId` with the input. The skills read are the ones stored for the organization the caller already belongs to. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) is where that organization comes from.
 
-Which skills a worker gets is decided by where the folders sit. Three places feed one worker:
+Which skills a worker gets is decided by where the folders sit. Three places feed a worker on a team:
 
 ```
 workforce/
@@ -119,6 +119,8 @@ workforce/
 ```
 
 The `tester` worker holds all three. The `qa` lead next door holds the first two. Nobody on another team holds `regression` at all, and no one anywhere else holds `write-regression`.
+
+A worker on no team, under `org/workers/<name>/`, is fed by two: `org/skills/` and its own `org/workers/<name>/skills/`.
 
 `readWorkforce` resolves that union per worker. [Reading the tree](./workers-on-disk.md#reading-the-tree) covers the walk and what it reports.
 

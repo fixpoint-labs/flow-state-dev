@@ -317,6 +317,18 @@ describe("resolveHeldPackages reads an org seat's id through the parser", () => 
     expect(problems.join("\n")).toContain("no team at all");
   });
 
+  it("holds a hired org seat's own package by the seat id it was hired as, not its org-qualified address", () => {
+    // `acme.research` read as a declared id is team `acme`, worker `research`;
+    // the seat was hired as `research`, an org seat, and the package is its own.
+    const mine = pkg("roster", "worker", "org/workers/research/packages/roster", { worker: "research" });
+    const [seat] = hireWorkforce([
+      { id: "acme.research", seatId: "research", declared: {}, body: "", packages: [mine], ownerPin: { orgId: "acme" } },
+    ]);
+    expect(seat?.id).toBe("acme.research");
+    const held = (seat!.config as Record<string, Array<{ path: string }>>)[SEAT_PACKAGES_KEY];
+    expect((held ?? []).map((entry) => entry.path)).toEqual([mine.path]);
+  });
+
   it("looks only in the org library for a name it cannot find", () => {
     const { problems } = resolveHeldPackages("cos", ["missing"], [house], {});
     expect(problems).toEqual([expect.stringContaining('Looked in "org/packages/missing".')]);
