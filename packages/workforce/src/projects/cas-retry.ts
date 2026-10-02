@@ -6,30 +6,20 @@
  * not enough: two members posting a burst into one room lost a post in the
  * spike that settled this design. This helper keeps going past the engine's
  * budget, with jittered backoff, for the writes that contend by design: the
- * room's counter (`room-store.ts`) and the `sessions` list on a project row
- * (`join` and `bind` in `talk.ts`).
+ * room's counter (`room-store.ts`), the `sessions` list on a project row
+ * (`join` and `bind` in `talk.ts`), and its workstream list
+ * (`setWorkstreams` in `project-writes.ts`).
  *
  * In a module of its own so a test can swap it for a single attempt and show
  * that, without it, a burst loses a write (the `no-retry` control).
  */
 
+import { isConcurrentModification } from "./store-errors";
+
 /** Attempts in all, each of which is itself the engine's three. */
 const DEFAULT_ATTEMPTS = 25;
 /** Base backoff; the wait before attempt n is up to `n * base` ms, jittered. */
 const DEFAULT_BASE_DELAY_MS = 5;
-
-/**
- * Whether `error` is the engine's lost-race refusal. Read by its code rather
- * than its class, because this package does not depend on the engine.
- */
-function isConcurrentModification(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    ((error as { code?: unknown }).code === "concurrent_modification" ||
-      (error as { name?: unknown }).name === "ConcurrentModificationError")
-  );
-}
 
 /**
  * Run `write`, and run it again whenever it loses a compare-and-swap race.

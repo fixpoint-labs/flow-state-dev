@@ -15,7 +15,8 @@
  * died between steps 1 and 2 — is filled by the next poster with a tombstone,
  * written with `create`, so exactly one of the line and its tombstone exists.
  * If the late writer then finds its key taken, it allocates again, so its post
- * is not lost.
+ * is not lost. The grace period runs from the allocation that opened the gap,
+ * so the first poster after it fills the line; nobody has to post twice.
  *
  * Reads are by key, never by listing: a page is at most `ROOM_PAGE_SIZE` point
  * reads after the cursor, so a read costs one page however long the room is.
@@ -66,7 +67,12 @@ async function counterOf(rooms: RoomCollections, projectId: string): Promise<Res
  * Hand out the room's next sequence number. Exported so a test can stand in
  * for a writer that allocated and has not written yet.
  */
-export async function allocateSeq(rooms: RoomCollections, projectId: string): Promise<number> {
+export async function allocateSeq(
+  rooms: RoomCollections,
+  projectId: string,
+  options: Pick<RoomStoreOptions, "now"> = {}
+): Promise<number> {
+  const now = options.now ?? Date.now;
   const counter = await counterOf(rooms, projectId);
   const seq = await retryOnConflict(() =>
     // The outcome comes from the invocation that committed: a CAS updater may
@@ -75,7 +81,12 @@ export async function allocateSeq(rooms: RoomCollections, projectId: string): Pr
       (mutator: (state: RoomSeq) => RoomSeq) => counter.updateState(mutator),
       (state: RoomSeq) => {
         const next = state.next + 1;
-        return { state: { ...state, next }, result: next };
+        // Opening a gap from a caught-up counter starts the stall clock now, so
+        // a line whose writer dies here is tombstoned by the first poster after
+        // the grace period, not only by a second one. A clock already running
+        // is about an earlier line and is kept.
+        const stalledSince = state.committed === state.next ? now() : (state.stalledSince ?? now());
+        return { state: { ...state, next, stalledSince }, result: next };
       }
     )
   );
@@ -177,7 +188,7 @@ export async function appendRoomLine(
   options: RoomStoreOptions = {}
 ): Promise<RoomLine> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const seq = await allocateSeq(rooms, line.projectId);
+    const seq = await allocateSeq(rooms, line.projectId, options);
     if (await writeLineAt(rooms, line, seq)) {
       await advanceCommitted(rooms, line.projectId, options);
       return { ...line, seq, tombstone: false };
