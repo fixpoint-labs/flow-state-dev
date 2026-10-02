@@ -83,11 +83,11 @@ a straight answer. Then hiring moves to a second seat, as its own issue.
   docs example with `org/workers/build/resources/` gains its `WORKER.md`.
 - **An org seat reads org-level skills, packages and references, then its own.** No team level,
   and no `TEAM.md` instructions.
-- **CoS holds `discover`, posting to channels, `hire` and `fire`.** Which project channel it joins
-  is FIX-1718's ([ER-1](../../epics/FIX-1650/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
+- **CoS holds `discover`, posting to channels, `hire` and `fire`.** It joins no project: it posts
+  to each project's room by being on FIX-1718's default template's `seats` in `org/resources/projects.ts` (a team `CHANNEL.md` template spells it `members:`) ([ER-1](../../epics/FIX-1650/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
 - **CoS hires only kinds the Lab registers**, through the capability's existing `allowKinds`.
-- **CoS mounts FIX-1621's `rehire` as a tool, gated always**, and reads `brokenSeats` through it,
-  so a seat whose kind is gone is repaired through the same door.
+- **CoS's `tools:` name FIX-1621's `brokenSeats` and `rehire` (`rehire` gated always)**, so an
+  orphan is listed with its reason and repaired through the same door.
 - **The template id is `chief-of-staff`.** Pinned so the screens can find it.
 - **The DevTeam profile moves to a store that survives a restart** and reloads hired seats at
   boot, as kitchen-sink does; it starts fresh today.

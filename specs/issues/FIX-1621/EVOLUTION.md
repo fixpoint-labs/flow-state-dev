@@ -12,3 +12,15 @@
 
 The seat-hire capability (FIX-1480) and plane isolation (FIX-1529) are dependencies, not replaced
 designs. Before building, check these against current code: an approved intent is not a shipped one.
+
+<a name="amendment-after-merge-cross-spec-alignment"></a>
+## Amendment after merge: cross-spec alignment
+
+The original review is [#2612](https://github.com/fixpoint-labs/flow-state-dev/pull/2612). This
+amendment is a new PR from `main`, shared with the epic, FIX-1718 and FIX-1719, on the EM's calls
+after a cross-spec review. The approach is unchanged.
+
+| What | Treatment | Why |
+|---|---|---|
+| "Ops" in SPEC and DECISIONS prose | **Amended** to "chief of staff"; the Linear title and the figures stay | [FIX-1719 D3](../FIX-1719/DECISIONS.md#d3): one org seat, no Ops |
+| S5, S6 and V5 | **Implementer note**: a dotless-id case such as `chief-of-staff` | FIX-1719 PR 1 makes org seat ids dotless, and this may land first |

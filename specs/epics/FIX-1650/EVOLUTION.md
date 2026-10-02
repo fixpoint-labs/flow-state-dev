@@ -19,3 +19,21 @@ evolution record.
 
 No predecessor is superseded. Re-check each cited intent against current code before
 implementing.
+
+<a name="amendment--2026-10-02--cross-spec-alignment"></a>
+## Amendment · 2026-10-02 · cross-spec alignment
+
+A cross-spec review of this set and FIX-1621, FIX-1718 and FIX-1719 found surfaces that
+disagreed; the EM's calls align them. It is a new PR from `main`;
+[#2602](https://github.com/fixpoint-labs/flow-state-dev/pull/2602),
+[#2609](https://github.com/fixpoint-labs/flow-state-dev/pull/2609) and
+[#2622](https://github.com/fixpoint-labs/flow-state-dev/pull/2622) stay the review record. No new ER
+number is added; ER-5, ER-20 and ER-25 change wording only.
+
+| Prior intent in this set | Treatment | Reason / evidence | Replacement | Compatibility |
+|---|---|---|---|---|
+| ER-5 and ER-20: every retire and fire asks | **Amended**, wording only | The ask exists only where a Lab passes it ([FIX-1719 D2](../../issues/FIX-1719/DECISIONS.md#d2)) | Both rules say approval holds through `askBefore`, and that DevTeam passes `["fire"]` | None; nothing shipped |
+| DOCS: "asking CoS for a project" on `channels.md`; paragraph 2's template is a `CHANNEL.md` with `mintFor:` | **Amended** | FIX-1718 declares the default template org-level, in `org/resources/projects.ts` | A row of its own on `projects.md`; paragraph 2 names the org-level default and keeps a team `mintFor:` allowed | None |
+| DECISIONS, Q1's narrative and pending card 3: the template is a `CHANNEL.md` with `mintFor:` | **Amended**, wording only | FIX-1718 shipped the default template org-level ([BR-6](../../issues/FIX-1718/BUSINESS-RULES.md#the-template-and-the-talk-session), #2625) | The default is declared in `org/resources/projects.ts`; a team `CHANNEL.md` with `mintFor:` stays allowed for team projects | None |
+| ER-25: each talk session is minted from "the `mintFor:` template" | **Amended**, wording only | Same as the row above: the default template is org-level ([BR-6](../../issues/FIX-1718/BUSINESS-RULES.md#the-template-and-the-talk-session), #2625) | ER-25 names both sites: the org-level default in `org/resources/projects.ts`, or a team `CHANNEL.md` with `mintFor: projects` | None |
+| PLAN seam: "the DevTeam profile's tree" | **Amended**: the tree, host and profile | Both children change the host's install on the agent kind and the profile | The widened seam row; the second lander adds | None |

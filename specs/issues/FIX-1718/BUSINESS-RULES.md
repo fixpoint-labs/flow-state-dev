@@ -90,7 +90,7 @@ Not acceptance for this issue. This is what other screens and seats consume.
 - **A room line:** `{ projectId, seq, userId, author, body }`, read only through a member's talk
   session.
 - **Shift Manager's snapshot** gains `projects`, read once per refresh beside the inventory.
-- **FIX-1719's chief of staff:** creates rows, sets `members` and `workstreams`, and joins,
-  through the entries PR 1 ships. It reaches every project's room by being on the template's
-  `members:` (D2).
+- **FIX-1719's chief of staff:** creates rows and sets `members` and `workstreams`, through the
+  entries PR 1 ships. It reaches every project's room by being on the default template's
+  `seats` in `org/resources/projects.ts`, or on a team template's `members:` (D2).
 - **Not carried:** live push, unread, invites, progress, results, a Linear pointer.
