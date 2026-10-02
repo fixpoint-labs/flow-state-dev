@@ -27,7 +27,8 @@
  *                reaches the one chosen and not the other
  *   no door      Inbox's reply to DevTeam's EM ask is disabled, naming the seat
  *   heard        Inbox's reply to the fixture seat's ask is in the ask's
- *                session, and the seat says it heard it
+ *                session, the seat says it heard it, and Inbox then draws it
+ *                under the ask as the person's reply
  *   reach        the pages throw nothing
  *
  * Controls:
@@ -479,6 +480,13 @@ await runGoal(async () => {
       else if (sent.heldAtDelivered !== true) fail("delivered", `the reply read delivered while the ask's session held no user item with it`);
       if (!(await askerApi.holds(askSession, "user", line))) fail("heard", `the ask's session ${askSession} holds no user item with the reply`);
       if (!(await askerApi.holds(askSession, "assistant", heardLine(line)))) fail("heard", `the seat never said "${heardLine(line)}" in the ask's session`);
+      // Read back from the session, the reply sits under the ask as the person's own.
+      const drawn = await page
+        .locator("[data-testid=inbox-reply-line-text]", { hasText: line })
+        .first()
+        .waitFor({ timeout: 10_000 })
+        .then(() => true, () => false);
+      if (!drawn) fail("heard", `Inbox doesn't draw the reply under the ask once the session holds it`);
       evidence.push(`Inbox reply on ${asker.id}: ${sent.state}, in the ask's session, heard`);
     });
 

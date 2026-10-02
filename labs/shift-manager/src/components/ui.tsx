@@ -98,9 +98,18 @@ export function Tabs<T extends string>({
 
 /**
  * A screen's title at v2's scale: 18px/700 on a screen (v2:215, 364, 509, 562,
- * 653, 696), 22px on Chief of Staff (v2:127).
+ * 653, 696), 22px on Chief of Staff (v2:127). `detail` is the 26px heading of
+ * a pane inside a screen, Inbox's selected ask (v2:597), drawn as an `h2`
+ * under the screen's own title.
  */
-export function ScreenTitle({ children, scale = "screen", testId }: { children: ReactNode; scale?: "screen" | "cos"; testId?: string }) {
+export function ScreenTitle({ children, scale = "screen", testId }: { children: ReactNode; scale?: "screen" | "cos" | "detail"; testId?: string }) {
+  if (scale === "detail") {
+    return (
+      <h2 className="text-[26px] leading-[1.15] font-bold tracking-[-0.03em]" data-look="detail-title" data-testid={testId}>
+        {children}
+      </h2>
+    );
+  }
   return (
     <h1
       className={`font-bold ${scale === "cos" ? "text-[22px] tracking-[-0.03em]" : "text-lg tracking-[-0.02em]"}`}

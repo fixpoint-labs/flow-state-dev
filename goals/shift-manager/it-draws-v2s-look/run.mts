@@ -31,18 +31,20 @@
  *            expected number of elements, so a missing element fails as surely
  *            as an extra one
  *
- * Which regions are graded whole grows with the screens' slices: the sidebar
- * and the shared parts now. The fonts, the radius and the highlighter are
- * graded on every element of every screen.
+ * Which regions are graded whole grows with the screens' slices: the sidebar,
+ * the shared parts, and the parts of Inbox, Tasks and Roster drawn to v2
+ * (`screens-inbox-tasks-roster.mts`, which also holds their rows and their
+ * content grade). The fonts, the radius and the highlighter are graded on
+ * every element of every screen.
  *
  * Controls (scratch patches to a copy of Shift Manager, never the checkout):
- *   GOAL_CONTROL=drift         the sidebar's team row rounded, its nav counts in
- *                              the sans. Must FAIL at surface on that row and
- *                              type on those counts, both shifts, nothing else.
+ *   GOAL_CONTROL=drift         the sidebar's team row rounded, Tasks' ID cells
+ *                              in the sans. Must FAIL at surface on that row and
+ *                              type on those cells, both shifts, nothing else.
  *   GOAL_CONTROL=unclassified  one visible element no row covers, in the
  *                              sidebar. Must FAIL at totality, naming it.
- *   GOAL_CONTROL=missing       the team rows' on-shift counts removed. Must FAIL
- *                              at that row's expected count, and nowhere else.
+ *   GOAL_CONTROL=missing       Tasks' ID column removed. Must FAIL at that
+ *                              row's expected count, and nowhere else.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-draws-v2s-look/run.mts
  * Control:  GOAL_CONTROL=drift PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-draws-v2s-look/run.mts
@@ -59,6 +61,7 @@ import { EM_KIND } from "../../devforce-lab/lab/workforce/flows/workers/em.mts";
 import { hex, parseColour, type Rgb } from "../../lib/colour.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerCopy, labApi, startShiftManager, type LabApi, type Patch } from "../../lib/shift-manager.mts";
+import * as inboxTasksRoster from "./screens-inbox-tasks-roster.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["drift", "unclassified", "missing"] as const;
@@ -93,19 +96,19 @@ const LABS = {
 type LabName = keyof typeof LABS;
 
 const SCREENS = ["workstream", "task", "tasks", "cos", "inbox", "roster", "project"] as const;
-type Screen = (typeof SCREENS)[number];
+export type Screen = (typeof SCREENS)[number];
 const SHIFTS = ["day", "night"] as const;
 type Shift = (typeof SHIFTS)[number];
 const WIDTHS = [1600, 1100] as const;
-type Width = (typeof WIDTHS)[number];
-type Leg = "type" | "surface" | "marks" | "layout" | "content" | "totality";
+export type Width = (typeof WIDTHS)[number];
+export type Leg = "type" | "surface" | "marks" | "layout" | "content" | "totality";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 // ---- the v2 look table -----------------------------------------------------------
 
 /** What the Lab's store holds that a row's expected count reads. */
-type Store = {
+export type Store = {
   /** The teams the seat inventory names, and its seats. */
   teams: number;
   seats: number;
@@ -115,11 +118,13 @@ type Store = {
   chiefOfStaff: boolean;
   /** Per channel: its stored rows, and the names of its members running one. */
   channels: Record<string, { rows: number; live: string[] }>;
+  /** What Inbox, Tasks and Roster draw (`screens-inbox-tasks-roster.mts`). */
+  screens: inboxTasksRoster.StoreScreens;
 };
-type Where = { screen: Screen; width: Width; store: Store };
+export type Where = { screen: Screen; width: Width; store: Store };
 
 /** The computed values a row's elements must have. Each is graded in its own leg. */
-type Want = {
+export type Want = {
   /** type: the first family a text element is set in. */
   family?: "sans" | "mono";
   /** type: font size in px, one value or an inclusive range. */
@@ -129,7 +134,7 @@ type Want = {
   /** type: letter-spacing, in em of the element's own size. */
   tracking?: number;
   /** surface: the background is this token. */
-  surface?: "sidebar" | "inspector";
+  surface?: "sidebar" | "inspector" | "card" | "foreground";
   /** surface: every side's border is this wide, in px, in this token. */
   border?: { width: number; colour: "foreground" };
   /** marks: the bottom border is 2px of `info`, or none painted. */
@@ -145,7 +150,7 @@ type Want = {
 };
 
 /** One row: a role, the elements that play it, what v2 gives it, and the v2 line it came from. */
-type Row = {
+export type Row = {
   id: string;
   /** The audit rows (`assets/GAPS.md`) it grades. */
   audit: string;
@@ -165,6 +170,8 @@ const OFF_COS: readonly Screen[] = SCREENS.filter((s) => s !== "cos");
 const WITH_RAIL: readonly Screen[] = ["cos", "workstream", "task"];
 const WITH_TABS: readonly Screen[] = ["workstream", "task", "project"];
 const COMPOSERS = "[data-testid=composer], [data-testid=task-composer], [data-testid=inbox-reply]";
+/** A composer is drawn on every screen that has one, except Inbox with no ask to reply under. */
+const replyBox = ({ screen, store }: Where) => (screen === "inbox" && store.screens.asks.length === 0 ? 0 : 1);
 
 const LOOK: Row[] = [
   // The frame.
@@ -203,9 +210,9 @@ const LOOK: Row[] = [
   { id: "other tab", audit: "W4", v2: { line: 222, has: "padding:8px 0;color:var(--ink3)" }, select: "[role=tablist] > [role=tab][aria-selected=false]", on: WITH_TABS, min: 1, want: { underline: "none" } },
 
   // The composers.
-  { id: "composer box", audit: "W12", v2: { line: 306, has: "border:1px solid var(--ink);background:var(--card)" }, select: `:is(${COMPOSERS}) [data-look=composer]`, on: ["workstream", "task", "inbox"], min: 1, want: { border: { width: 1, colour: "foreground" } } },
-  { id: "composer input", audit: "W12", v2: { line: 307, has: "padding:11px 12px;font-size:14px" }, select: `:is(${COMPOSERS}) [data-look=composer-input]`, on: ["workstream", "task", "inbox"], min: 1, want: { family: "sans", size: 14 } },
-  { id: "composer footer", audit: "W12", v2: { line: 308, has: "font:500 11px 'IBM Plex Mono'" }, select: `:is(${COMPOSERS}, [data-testid=cos-composer]) [data-look=composer-footer], :is(${COMPOSERS}, [data-testid=cos-composer]) [data-look=composer-footer] :is(p, span, label, button)`, on: ["workstream", "task", "inbox", "cos"], min: ({ screen }) => (screen === "cos" ? 0 : 1), want: { family: "mono", size: 11 } },
+  { id: "composer box", audit: "W12", v2: { line: 306, has: "border:1px solid var(--ink);background:var(--card)" }, select: `:is(${COMPOSERS}) [data-look=composer]`, on: ["workstream", "task", "inbox"], min: replyBox, want: { border: { width: 1, colour: "foreground" } } },
+  { id: "composer input", audit: "W12", v2: { line: 307, has: "padding:11px 12px;font-size:14px" }, select: `:is(${COMPOSERS}) [data-look=composer-input]`, on: ["workstream", "task", "inbox"], min: replyBox, want: { family: "sans", size: 14 } },
+  { id: "composer footer", audit: "W12", v2: { line: 308, has: "font:500 11px 'IBM Plex Mono'" }, select: `:is(${COMPOSERS}, [data-testid=cos-composer]) [data-look=composer-footer], :is(${COMPOSERS}, [data-testid=cos-composer]) [data-look=composer-footer] :is(p, span, label, button)`, on: ["workstream", "task", "inbox", "cos"], min: (where) => (where.screen === "cos" ? 0 : replyBox(where)), want: { family: "mono", size: 11 } },
   { id: "Chief of Staff composer box", audit: "C9", v2: { line: 175, has: "border:1.5px solid var(--ink);background:var(--card)" }, select: "[data-testid=cos-composer] [data-look=composer]", on: ["cos"], min: ({ store }) => (store.chiefOfStaff ? 1 : 0), want: { border: { width: 1.5, colour: "foreground" } } },
   { id: "Chief of Staff composer input", audit: "C9", v2: { line: 176, has: "padding:16px;font-size:16px" }, select: "[data-testid=cos-composer] [data-look=composer-input]", on: ["cos"], min: ({ store }) => (store.chiefOfStaff ? 1 : 0), want: { family: "sans", size: 16 } },
   { id: "Chief of Staff send", audit: "C9", v2: { line: 177, has: "font:500 12px 'IBM Plex Mono'" }, select: "[data-testid=cos-composer] [data-look=composer] > [data-look=composer-send]", on: ["cos"], min: ({ store }) => (store.chiefOfStaff ? 1 : 0), want: { family: "mono", size: 12 } },
@@ -216,6 +223,9 @@ const LOOK: Row[] = [
   { id: "state square, in review", audit: "F7", v2: { line: 894, has: "review: { nb: 'transparent', nbd: A, nbs: 'solid' }" }, select: "[data-state-square=review]", min: 0, want: { square: "review" } },
   { id: "state square, queued", audit: "F7", v2: { line: 895, has: "queued: { nb: 'transparent', nbd: 'rgba(var(--inkrgb),.5)', nbs: 'dashed' }" }, select: "[data-state-square=queued]", min: 0, want: { square: "queued" } },
   { id: "state square, done", audit: "F7", v2: { line: 895, has: "done: { nb: INK, nbd: INK, nbs: 'solid' }" }, select: "[data-state-square=done]", min: 0, want: { square: "done" } },
+
+  // Inbox, Tasks and Roster: their own module.
+  ...inboxTasksRoster.ROWS,
 ];
 
 /**
@@ -223,7 +233,7 @@ const LOOK: Row[] = [
  * skipped only where the theme's radius can't reach it; everything else on
  * this list is still graded for its fonts, its radius and the highlighter.
  */
-type Exception = { id: string; select: string; why: string; radius?: "skip" };
+export type Exception = { id: string; select: string; why: string; radius?: "skip" };
 const EXCEPTIONS: Exception[] = [
   { id: "organization switcher", select: "[data-testid=org-switcher], [data-testid=org-switcher] *", why: "kept by the epic (ER-1); v2's brand header waits on FIX-1650 for an organization's display name" },
   { id: "PROJECTS note", select: "[data-testid=projects] > p", why: "the named gap PROJECTS keeps until FIX-1650 ships projects" },
@@ -232,10 +242,11 @@ const EXCEPTIONS: Exception[] = [
   { id: "section failure", select: "[data-testid$=-failure], [data-testid$=-failure] *", why: "a section's Retry; v2 draws no failed state" },
   { id: "also post to the workstream", select: "[data-testid=task-also-post]", why: "the task composer's also-post box waits on FIX-1474" },
   { id: "registry pill", select: "[data-slot=badge]", why: "a registry part whose `rounded-full` is a literal the theme's radius can't reach", radius: "skip" },
+  ...inboxTasksRoster.EXCEPTIONS,
 ];
 
 /** The regions every painting element of which must be covered by a row or an exception. */
-const WHOLE = ["[data-testid=sidebar]", "[data-look=tabs]", "[data-look=composer]", "[data-look=composer-footer]", "[data-look=screen-title]"];
+const WHOLE = ["[data-testid=sidebar]", "[data-look=tabs]", "[data-look=composer]", "[data-look=composer-footer]", "[data-look=screen-title]", ...inboxTasksRoster.WHOLE];
 
 // ---- reading the page ----------------------------------------------------------
 
@@ -264,10 +275,19 @@ type Sweep = {
   faces: Array<{ family: string; weight: string; status: string }>;
   mentions: string[] | null;
   boardCount: string | null;
+  /** Per content key, what each match reads (see `inboxTasksRoster.TEXTS`), and the page's clock when it was read. */
+  texts: Record<string, inboxTasksRoster.Read[]>;
+  now: number;
 };
 
 /** Runs in the page: every visible element that paints anything, with what each row and exception matches. */
-function sweep(args: { rows: Array<{ id: string; select: string }>; exceptions: Array<{ id: string; select: string }>; whole: string[]; tokens: string[] }): Sweep {
+function sweep(args: {
+  rows: Array<{ id: string; select: string }>;
+  exceptions: Array<{ id: string; select: string }>;
+  whole: string[];
+  tokens: string[];
+  texts: Record<string, string>;
+}): Sweep {
   const describe = (el: Element) => {
     const id = el.getAttribute("data-testid");
     const look = el.getAttribute("data-look");
@@ -323,6 +343,14 @@ function sweep(args: { rows: Array<{ id: string; select: string }>; exceptions: 
   }
   probe.remove();
   const mentionEls = Array.from(document.querySelectorAll("[data-testid=composer] [data-testid=composer-mention]"));
+  const texts: Record<string, Array<{ text: string; data: Record<string, string>; parts: Record<string, string> }>> = {};
+  for (const [key, select] of Object.entries(args.texts)) {
+    texts[key] = Array.from(document.querySelectorAll<HTMLElement>(select)).map((el) => ({
+      text: el.textContent ?? "",
+      data: { ...el.dataset } as Record<string, string>,
+      parts: Object.fromEntries(Array.from(el.querySelectorAll("[data-testid]")).map((part) => [part.getAttribute("data-testid")!, part.textContent ?? ""])),
+    }));
+  }
   return {
     els,
     matched,
@@ -330,12 +358,14 @@ function sweep(args: { rows: Array<{ id: string; select: string }>; exceptions: 
     faces: Array.from(document.fonts).map((f) => ({ family: f.family.replace(/^["']|["']$/g, ""), weight: f.weight, status: f.status })),
     mentions: document.querySelector("[data-testid=composer]") === null ? null : mentionEls.map((m) => m.getAttribute("data-name") ?? ""),
     boardCount: document.querySelector("[data-testid=tab-count-board]")?.textContent ?? null,
+    texts,
+    now: Date.now(),
   };
 }
 
 // ---- grading -------------------------------------------------------------------
 
-const TOKENS = ["sidebar", "inspector", "attention", "info", "foreground"] as const;
+const TOKENS = ["sidebar", "inspector", "card", "attention", "info", "foreground"] as const;
 const FAMILY = { sans: "Space Grotesk", mono: "IBM Plex Mono" } as const;
 
 /**
@@ -482,6 +512,7 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
     }
     if (read.boardCount !== String(want.rows)) failures.add("content", `the Board tab counts ${read.boardCount ?? "nothing"}, the store holds ${want.rows} row(s) (v2:222)`, tag);
   }
+  inboxTasksRoster.gradeContent(read.texts, read.now, where, (leg, what) => failures.add(leg, what, tag));
 }
 
 // ---- the store, read by this check ----------------------------------------------
@@ -489,7 +520,7 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
 /** Suspension reasons that are a person being asked something. */
 const PERSON_REASONS = new Set(["human_approval", "human_input"]);
 
-async function readStore(api: LabApi, tree: string): Promise<Store> {
+async function readStore(api: LabApi, tree: string, userId: string): Promise<Store> {
   const roster = await readDeclaredRoster(tree);
   const host = roster.channels[0]!.id;
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
@@ -505,11 +536,13 @@ async function readStore(api: LabApi, tree: string): Promise<Store> {
           return { id, name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
         });
   const channels: Store["channels"] = {};
+  const allRows: Array<Record<string, any>> = [];
   let running = 0;
   for (const channel of roster.channels) {
     const members = (channel.declared.members as string[] | undefined) ?? [];
     const rows: Array<Record<string, any>> = [];
     for (const board of (channel.declared.boards as string[] | undefined) ?? []) rows.push(...(await api.collection(channel.id, `${channel.id}.${board}`)));
+    allRows.push(...rows.map((r) => ({ ...r, channelId: channel.id })));
     const live = rows.filter((r) => r.status === "in_progress");
     running += live.length;
     const holds = (seat: { id: string; name: string }) => live.some((r) => r.assignee === seat.id || r.assignee === seat.name);
@@ -529,6 +562,7 @@ async function readStore(api: LabApi, tree: string): Promise<Store> {
     running,
     chiefOfStaff: seats.some((s) => s.name === "chief-of-staff"),
     channels,
+    screens: await inboxTasksRoster.readScreensStore(api, userId, { seats, rows: allRows }),
   };
 }
 
@@ -596,8 +630,15 @@ async function open(page: Page, screen: Screen, ids: { channel: string; taskId: 
     case "inbox":
       await page.getByTestId("nav-inbox").click();
       await ready("inbox");
+      // An Inbox with nothing waiting has nothing to select.
+      if ((await page.getByTestId("inbox-item").count()) === 0) {
+        await ready("inbox-empty");
+        return;
+      }
       await page.getByTestId("inbox-item").first().click();
       await ready("inbox-reply");
+      // The detail reads the ask's session before it draws *From the session*.
+      await page.locator("[data-testid=inbox-from-session], [data-testid=inbox-session-failure]").first().waitFor({ timeout: 20_000 });
       return;
     case "roster":
       await page.getByTestId("nav-roster").click();
@@ -666,12 +707,13 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
       await page.getByTestId("cos-composer-input").fill(fixture.desk.line);
       await page.getByTestId("cos-composer-send").click();
       await page.locator("[data-testid=cos-item]", { hasText: fixture.desk.reply }).first().waitFor({ timeout: 30_000 });
-      screens = ["cos"];
+      // The desk has no ask and no board: Inbox and Tasks with nothing in them, and a one-seat Roster.
+      screens = ["cos", "inbox", "tasks", "roster"];
     }
     // The page read the Lab before the row was filed; read it again.
     await page.reload();
     await page.getByTestId("shell").waitFor({ timeout: 20_000 });
-    const store = await readStore(api, LABS[lab].tree);
+    const store = await readStore(api, LABS[lab].tree, injected.userId);
     evidence.push(`${lab}: ${store.teams} team(s), ${store.seats} seats, ${store.running} running, chief of staff ${store.chiefOfStaff ? "yes" : "no"}`);
 
     const counts: string[] = [];
@@ -687,6 +729,7 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
             exceptions: EXCEPTIONS.map((x) => ({ id: x.id, select: x.select })),
             whole: WHOLE,
             tokens: [...TOKENS],
+            texts: inboxTasksRoster.TEXTS,
           });
           const tag = `${screen} ${shift} ${width}`;
           // The page drew from the Lab as it stood at the reload, so the store read then is what it must equal.
@@ -720,10 +763,10 @@ function controlPatches(control: string): Patch[] {
           why: "the team row rounded",
         },
         {
-          file: "src/surfaces/Sidebar.tsx",
-          from: '<Meta role="count" className="ml-2 tabular-nums text-muted-foreground" testId={`${testId}-count`}>',
-          to: '<Meta role="count" className="ml-2 font-sans tabular-nums text-muted-foreground" testId={`${testId}-count`}>',
-          why: "the nav counts set in the sans",
+          file: "src/surfaces/Tasks.tsx",
+          from: 'className={cn(MONO_CELL, "truncate text-muted-foreground")} title={row.id} data-testid="task-row-id"',
+          to: 'className={cn(MONO_CELL, "truncate font-sans text-muted-foreground")} title={row.id} data-testid="task-row-id"',
+          why: "Tasks' ID cells set in the sans",
         },
       ];
     case "unclassified":
@@ -738,10 +781,10 @@ function controlPatches(control: string): Patch[] {
     case "missing":
       return [
         {
-          file: "src/surfaces/Sidebar.tsx",
-          from: /<Meta role="count" className="w-8 text-right tabular-nums text-muted-foreground" testId="team-on-shift">[\s\S]*?<\/Meta>/,
+          file: "src/surfaces/Tasks.tsx",
+          from: /<td className=\{cn\(MONO_CELL, "truncate text-muted-foreground"\)\} title=\{row\.id\} data-testid="task-row-id">[\s\S]*?<\/td>/,
           to: "",
-          why: "the team rows' on-shift counts removed",
+          why: "Tasks' ID column removed",
         },
       ];
     default:

@@ -10,14 +10,14 @@
 
 The look table is read against v2 itself (`specs/epics/FIX-1649/assets/design/v2/shift-manager-v2.dc.html`).
 
-**Signal:** Chromium walks every screen by clicking: workstream, task, Tasks, Chief of Staff, Inbox, Roster and project on DevTeam, and Chief of Staff on the desk. It toggles the sidebar's shift switch and the window width (1600 and 1100) in place. It reads the computed style of every visible element in one `page.evaluate` per screen state. Each failure is tagged `<leg> [<screen> <shift> <width>]` and cites the v2 line.
+**Signal:** Chromium walks every screen by clicking: workstream, task, Tasks, Chief of Staff, Inbox, Roster and project on DevTeam, and Chief of Staff, Inbox, Tasks and Roster on the desk, where Inbox is empty. It toggles the sidebar's shift switch and the window width (1600 and 1100) in place. It reads the computed style of every visible element in one `page.evaluate` per screen state. Each failure is tagged `<leg> [<screen> <shift> <width>]` and cites the v2 line.
 
 - **type**: for every family and weight the page's text is set in, `document.fonts` holds a loaded face. Each row's family, size, weight and tracking match.
 - **surface**: each row's surface token and border. Radius 0 on every element, except the registry parts the theme's radius can't reach.
 - **marks**: the highlighter sits on every needs-you element and nothing else. Also graded: v2's state squares (fill and edge), and the selected tab's 2px info underline, with none on the others.
 - **layout**: the sidebar is 248px and the rail 340px. The rail drops below 1180px, and the frame holds a 900px minimum.
-- **content**: the stream composer's @-mentions are the store's running members. The Board tab's count is the store's rows.
-- **totality**: every painting element inside a graded region (the sidebar, the tabs, the composers, the screen titles) is covered by a look-table row or a named exception. Every row matches at least its expected number of elements, so a missing element fails as surely as an extra one.
+- **content**: the stream composer's @-mentions are the store's running members. The Board tab's count is the store's rows. Inbox's sub-line, filter counts, selected title (the ask's message), *From the session* calls and reply lines, and its empty sentence equal the store's asks, rows, seats and session items. Tasks' summary, Queued count, column order, shown ids (the rows in flight) and TIME (within the sweep's clock) equal the store's rows. Roster's columns, group sub-lines and WAITING entries equal the store's seats, rows and asks.
+- **totality**: every painting element inside a graded region (the sidebar, the tabs, the composers, the screen titles, Inbox's list and detail, Tasks' header and table, Roster's columns, groups and waits) is covered by a look-table row or a named exception. Every row matches at least its expected number of elements, so a missing element fails as surely as an extra one.
 
 Which regions are graded whole grows with each slice's screens. The fonts, the radius and the highlighter are graded on every element of every screen now.
 
@@ -33,11 +33,9 @@ Which regions are graded whole grows with each slice's screens. The fonts, the r
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-draws-v2s-look/run.mts` (`GOAL_SHOTS=<dir>` saves one screenshot per screen state).
 
 **Controls** (scratch patches to the copy, never the checkout):
-- `GOAL_CONTROL=drift`: the sidebar's team row is rounded, and its nav counts are set in the sans. Must FAIL at **surface** on that row and **type** on those counts, in both shifts, at both widths, and nowhere else.
+- `GOAL_CONTROL=drift`: the sidebar's team row is rounded, and Tasks' ID cells are set in the sans. Must FAIL at **surface** on that row and **type** on those cells, in both shifts, at both widths, and nowhere else.
 - `GOAL_CONTROL=unclassified`: one visible line in the sidebar that no row covers. Must FAIL at **totality**, naming it, and nowhere else.
-- `GOAL_CONTROL=missing`: the team rows' on-shift counts are removed. Must FAIL at that row's expected count, and nowhere else.
-
-The SPEC names Tasks' ID column for `drift` and `missing`. That column arrives with slice D. Until then, both controls patch sidebar parts graded in this slice. They move to the ID column when D draws it.
+- `GOAL_CONTROL=missing`: Tasks' ID column is removed. Must FAIL at that row's expected count, and nowhere else.
 
 **Before-state:** `GOAL_PAGES=<dir>` serves pages built elsewhere instead of building (not with a control).
 
@@ -49,3 +47,7 @@ The SPEC names Tasks' ID column for `drift` and `missing`. That column arrives w
 | 2026-10-02 | feat/FIX-1737-a-foundation (pre-PR), `GOAL_CONTROL=drift` | n/a | FAIL (expected) | Only **surface** (`button[team]` 4px radius) and **type** (nav counts in Space Grotesk), both shifts, both widths, both Labs. |
 | 2026-10-02 | feat/FIX-1737-a-foundation (pre-PR), `GOAL_CONTROL=unclassified` | n/a | FAIL (expected) | Only **totality**: `p "A line no row covers"` on every screen state. |
 | 2026-10-02 | feat/FIX-1737-a-foundation (pre-PR), `GOAL_CONTROL=missing` | n/a | FAIL (expected) | Only **totality**: the team on-shift count matches 0, 1 expected, on every screen state. |
+| 2026-10-02 | feat/FIX-1737-d-inbox-tasks-roster (pre-PR) | n/a | PASS | 84 look-table rows and 10 exceptions, Inbox, Tasks and Roster graded whole. DevTeam: 3 seats, 1 running, 1 ask pending; content equal to the store on Inbox (sub-line, filter counts, title, calls, replies), Tasks (summary, Queued count, columns, ids in flight, TIME) and Roster (columns, group subs, WAITING). Desk: Inbox empty, its sentence equal to the store. |
+| 2026-10-02 | feat/FIX-1737-d-inbox-tasks-roster (pre-PR), `GOAL_CONTROL=drift` | n/a | FAIL (expected) | Only **surface** (`button[team]` 4px radius, every screen state) and **type** (Tasks ID cells in Space Grotesk, v2:677), both shifts, both widths. |
+| 2026-10-02 | feat/FIX-1737-d-inbox-tasks-roster (pre-PR), `GOAL_CONTROL=unclassified` | n/a | FAIL (expected) | Only **totality**: `p "A line no row covers"` on every screen state. |
+| 2026-10-02 | feat/FIX-1737-d-inbox-tasks-roster (pre-PR), `GOAL_CONTROL=missing` | n/a | FAIL (expected) | Only **totality**: Tasks ID matches 0, 1 expected, on Tasks in both shifts at both widths. |

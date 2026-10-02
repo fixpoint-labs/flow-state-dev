@@ -141,7 +141,8 @@ describe("empty states (BR-14, BR-28)", () => {
 
   it("Inbox and Tasks with nothing say so in a sentence", async () => {
     await openApp("/inbox");
-    expect((await screen.findByTestId("inbox-empty")).textContent).toMatch(/No seat in this Lab is waiting/);
+    // v2's sentence, with what is still going: nothing runs and nobody is on call in this Lab.
+    expect((await screen.findByTestId("inbox-empty")).textContent).toBe("Nothing needs you. 0 sessions are still running and 0 workers are on call.");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     expect((await screen.findByTestId("tasks-empty")).textContent).toMatch(/No attached board holds a row/);
   });
@@ -251,6 +252,9 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
 
   it("shows delivered only once the seat's session holds the line, through its door", async () => {
     const { clients } = await openOnAsk();
+    // The asker asks before doing anything, so its session holds no tool call before the ask.
+    expect((await screen.findByTestId("inbox-from-session-none")).textContent).toBe("No tool call before this ask.");
+    expect(screen.queryAllByTestId("inbox-reply-line")).toHaveLength(0);
     const input = screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
     // Hold the door's request open: nothing may read delivered while it is.
@@ -269,6 +273,9 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     await waitFor(() => expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("delivered"));
     expect(input.value).toBe("");
     expect(await userLines(clients, "s_ops_asker")).toContain("a reply line");
+    // Read back from the session, the line is drawn under the ask as the person's reply.
+    await waitFor(() => expect(screen.getAllByTestId("inbox-reply-line-text").map((el) => el.textContent)).toEqual(["a reply line"]));
+    expect(screen.getByTestId("inbox-reply-line-label").textContent).toMatch(/^You · \d\d:\d\d · sent into s_ops_asker$/);
     // The ask is untouched: a reply isn't an answer.
     expect(screen.getByTestId("inbox-detail").textContent).toMatch(/Approve/);
   });

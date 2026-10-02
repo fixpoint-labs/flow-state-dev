@@ -31,7 +31,7 @@ export const GAPS = {
   inReview: "What counts as in review arrives with FIX-1651.",
   now: "What a task is doing now arrives with FIX-1651.",
   harness: "Which harness a seat runs arrives with FIX-1652.",
-  cost: "A task's time and cost arrive with FIX-1651.",
+  cost: "A task's cost arrives with FIX-1652.",
   /**
    * The task screen's gaps (FIX-1664's gap registry, BUSINESS-RULES.md): each
    * names what arrives and who ships it, or says it is not planned in the

@@ -18,8 +18,10 @@
  *   TEAMS     TEAMS equals the store's seats, each under its team
  *   PROJECTS  the workstreams equal the store's channels
  *   Board     each workstream's Board equals its board's stored rows (BR-13)
- *   Tasks     Tasks equals the stored rows that aren't done
- *   Inbox     Inbox equals the stored pending asks, or names its empty state
+ *   Tasks     Tasks equals the stored rows that aren't done: the queued ones
+ *             once the Queued toggle is on, which says how many it hides
+ *   Inbox     Inbox equals the stored pending asks, or says nothing needs you
+ *             with the runs still going and the workers on call
  *   reach     every level, tab and panel opens, and each empty one is named
  *   post      a composer post is drawn, and is in the stored transcript
  *   answer    an ask approved from Inbox is no longer pending in the store
@@ -35,6 +37,9 @@
  *                    fail at "the post is in the stored transcript".
  *   unanswerable-asks  every ask is marked unanswerable. Must fail at "an
  *                    answer from Inbox lands in the store" on DevTeam.
+ *   queued-shown     Tasks treats no row as queued, so the toggle hides
+ *                    nothing. Must fail at "Tasks equals the store's open
+ *                    rows" on DevTeam, whose filed row is queued.
  *
  * Run:      pnpm tsx goals/shift-manager/it-opens-a-lab/run.mts
  * Control:  GOAL_CONTROL=static-names pnpm tsx goals/shift-manager/it-opens-a-lab/run.mts
@@ -52,7 +57,7 @@ import { Scenario, type ServedLab } from "../../multi-seat-collab/lab/run-scenar
 import { readLabTree } from "../../multi-seat-collab/lab/host.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["static-names", "optimistic-post", "unanswerable-asks"] as const;
+const CONTROLS = ["static-names", "optimistic-post", "unanswerable-asks", "queued-shown"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
@@ -86,6 +91,25 @@ type LabName = keyof typeof LABS;
 
 /** Stored statuses a board row is finished in. Tasks leaves these out. */
 const DONE = new Set(["completed", "cancelled"]);
+/** Stored statuses a row waits on a person in; `awaiting_review` is `parked`'s older word. */
+const PARKED = new Set(["parked", "awaiting_review"]);
+/** Queued: open, and neither running nor waiting on a person. Tasks hides these by default. */
+const QUEUED = (status: string) => !DONE.has(status) && status !== "in_progress" && status !== "errored" && !PARKED.has(status);
+
+/**
+ * What an Inbox with nothing pending says: the runs still going, and the
+ * workers on call, each worked out from the store. A row is a seat's when its
+ * assignee is the seat's address or its name (the trees' convention).
+ */
+function emptyInbox(store: Store): string {
+  const rows = Object.values(store.rows).flat();
+  const running = rows.filter((r) => r.status === "in_progress").length;
+  const holds = (seat: string, wanted: (status: string) => boolean) =>
+    rows.some((r) => wanted(r.status) && (r.assignee === seat || r.assignee === seat.slice(seat.indexOf(".") + 1)));
+  const onCall = store.seats.filter((seat) => !holds(seat, (s) => s === "in_progress") && holds(seat, (s) => PARKED.has(s))).length;
+  const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+  return `Nothing needs you. ${n(running, "session is", "sessions are")} still running and ${n(onCall, "worker is", "workers are")} on call.`;
+}
 /** Suspension reasons that are a person being asked something. */
 const PERSON_REASONS = new Set(["human_approval", "human_input"]);
 
@@ -111,6 +135,9 @@ function swapFor(control: string): { targets: string[]; with: string } | undefin
   }
   if (control === "unanswerable-asks") {
     return { targets: [lib("reads.ts")], with: join(HERE, "controls", "unanswerable-asks.ts") };
+  }
+  if (control === "queued-shown") {
+    return { targets: [lib("tasks.ts")], with: join(HERE, "controls", "queued-shown.ts") };
   }
   return undefined;
 }
@@ -190,7 +217,7 @@ type Store = {
   seats: string[];
   channels: Array<{ id: string; kind: string; members: string[] }>;
   /** Channel id -> every stored row on its declared boards. */
-  rows: Record<string, Array<{ ref: string; id: string; status: string; title: string }>>;
+  rows: Record<string, Array<{ ref: string; id: string; status: string; title: string; assignee: string | null }>>;
   /** Suspension ids pending on a person, across the seats' sessions. */
   asks: string[];
 };
@@ -220,7 +247,13 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
     rows[channel.id] = [];
     for (const ref of channel.boardRefs) {
       for (const row of await api.collection(channel.id, ref)) {
-        rows[channel.id]!.push({ ref, id: String(row.id), status: String(row.status), title: String(row.title ?? row.goal ?? row.id) });
+        rows[channel.id]!.push({
+          ref,
+          id: String(row.id),
+          status: String(row.status),
+          title: String(row.title ?? row.goal ?? row.id),
+          assignee: typeof row.assignee === "string" ? row.assignee : null,
+        });
       }
     }
   }
@@ -369,7 +402,9 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     // ---- Inbox ---------------------------------------------------------------
     const inboxItems = await page.getByTestId("inbox-item").count();
     if (store.asks.length === 0) {
-      if (!(await visible(page, "inbox-empty", 3_000))) fail("Inbox equals the store's pending asks", "no ask is pending and the empty state is not named");
+      const want = emptyInbox(store);
+      const said = (await visible(page, "inbox-empty", 3_000)) ? await page.getByTestId("inbox-empty").textContent() : null;
+      if (said !== want) fail("Inbox equals the store's pending asks", `no ask is pending and Inbox says ${said === null ? "nothing" : `"${said}"`}, the store gives "${want}"`);
     } else if (inboxItems !== store.asks.length) {
       fail("Inbox equals the store's pending asks", `${inboxItems} listed, ${store.asks.length} pending in the store`);
     }
@@ -378,18 +413,29 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     // ---- Tasks ---------------------------------------------------------------
     await page.getByTestId("nav-tasks").click();
     await page.getByTestId("tasks").waitFor();
-    const open_ = storedRows.filter((r) => !DONE.has(r.status)).map(key);
-    for (const grouping of ["state", "worker", "stream"]) {
-      await page.locator(`[role=tab][data-grouping=${grouping}]`).click();
-      await page.locator(`[role=tab][data-grouping=${grouping}][aria-selected=true]`).waitFor();
-      if (open_.length === 0) {
-        if (!(await visible(page, "tasks-empty", 3_000))) fail("Tasks equals the store's open rows", "no open row and the empty state is not named");
-        continue;
+    const openRows = storedRows.filter((r) => !DONE.has(r.status));
+    const open_ = openRows.map(key);
+    // Queued rows are hidden until the toggle is on, and the toggle says how many.
+    const inFlight = openRows.filter((r) => !QUEUED(r.status)).map(key);
+    const queuedCount = open_.length - inFlight.length;
+    for (const queued of [false, true]) {
+      if (queued) await page.getByTestId("tasks-queued-toggle").click();
+      for (const grouping of ["state", "worker", "stream"]) {
+        await page.locator(`[role=tab][data-grouping=${grouping}]`).click();
+        await page.locator(`[role=tab][data-grouping=${grouping}][aria-selected=true]`).waitFor();
+        if (open_.length === 0) {
+          if (!(await visible(page, "tasks-empty", 3_000))) fail("Tasks equals the store's open rows", "no open row and the empty state is not named");
+          continue;
+        }
+        const shown = (await page.getByTestId("task-row").evaluateAll((els) =>
+          els.map((e) => `${e.getAttribute("data-board-ref")}/${e.getAttribute("data-task-id")}`),
+        )) as string[];
+        const want = queued ? open_ : inFlight;
+        if (!same(shown, want)) fail("Tasks equals the store's open rows", `grouped by ${grouping}, queued ${queued ? "shown" : "hidden"}: ${diff(want, shown)}`);
       }
-      const shown = (await page.getByTestId("task-row").evaluateAll((els) =>
-        els.map((e) => `${e.getAttribute("data-board-ref")}/${e.getAttribute("data-task-id")}`),
-      )) as string[];
-      if (!same(shown, open_)) fail("Tasks equals the store's open rows", `grouped by ${grouping}: ${diff(open_, shown)}`);
+      if (open_.length === 0) break;
+      const count = await page.getByTestId("tasks-queued-count").textContent();
+      if (count !== String(queuedCount)) fail("Tasks equals the store's open rows", `the Queued toggle says ${count}, the store holds ${queuedCount} queued row(s)`);
     }
 
     // ---- Chief of Staff, where the Lab lands -----------------------------------

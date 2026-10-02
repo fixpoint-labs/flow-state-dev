@@ -25,7 +25,12 @@ import type { Ask } from "../lib/reads";
  */
 const NO_ITEMS: OutputItem[] = [];
 
-export function AskCard({ ask }: { ask: Ask }) {
+/**
+ * `titled`: the caller draws the ask's question as its own heading (Inbox's
+ * detail, v2:597), so the registry card is handed the ask without its message
+ * and the question isn't drawn twice. The card itself is unedited.
+ */
+export function AskCard({ ask, titled = false }: { ask: Ask; titled?: boolean }) {
   const { answer } = useLab();
   const resolve = useMemo<SuspensionResolver>(
     () => async ({ action, data }) => {
@@ -33,9 +38,10 @@ export function AskCard({ ask }: { ask: Ask }) {
     },
     [answer, ask],
   );
+  const item = useMemo(() => (titled ? { ...ask.item, message: "" } : ask.item), [ask.item, titled]);
   const card = (
     <SessionItemsProvider value={NO_ITEMS}>
-      <SuspensionCard item={ask.item} />
+      <SuspensionCard item={item} />
     </SessionItemsProvider>
   );
   return (

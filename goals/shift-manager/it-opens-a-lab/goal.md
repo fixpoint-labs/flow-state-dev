@@ -12,8 +12,8 @@
 - **TEAMS equals the store's seats**: the sidebar's TEAMS squares, one per seat, equal the inventory's seat rows, and each team's row has a square for exactly its seats (a seat with no team sits in the Staff row).
 - **PROJECTS equals the store's channels**: the workstream list equals the inventory's channel rows, and each workstream panel's team equals its channel's declared members.
 - **Board equals the store's rows** (BR-13): each workstream's Board tab draws exactly its declared boards' stored rows, each card with the stored status word. The task frame opened from a card titles the stored row.
-- **Tasks equals the store's open rows**: grouped by state, by worker and by stream, the rows are exactly the stored rows that are neither completed nor cancelled.
-- **Inbox equals the store's pending asks**: the count equals the stored suspensions with no resume, on seat-owned sessions, asking a person. With none pending, the empty state is named.
+- **Tasks equals the store's open rows**: grouped by state, by worker and by stream, the rows are exactly the stored rows that are neither completed nor cancelled and not queued (pending, blocked or of an unknown status). With the Queued toggle on, they are every such row. The toggle's count equals the stored queued rows.
+- **Inbox equals the store's pending asks**: the count equals the stored suspensions with no resume, on seat-owned sessions, asking a person. With none pending, Inbox says nothing needs the person, with the store's count of running rows and of seats on call.
 - **reach**: every level, tab and panel opens (Chief of Staff with its summary and panel, Inbox by its route, Tasks, the project level's four tabs, each workstream's four tabs and panel, and the task frame's four tabs and panel slot). Every empty one names what will be there. The page throws nothing.
 - **the post appears on screen**: a composer post on the first workstream is drawn.
 - **the post is in the stored transcript**: the channel's session holds exactly one `channel-post` with that body, and a reload draws it once.
@@ -31,7 +31,10 @@ The rows come from the Lab's own doors. On multi-seat-collab, the planner files 
 
 - `GOAL_CONTROL=static-names`: the seat list is written in from the DevTeam tree. A written-in seat the store also holds keeps its stored door, so only the names are written in. Must fail at **TEAMS equals the store's seats** on multi-seat-collab, naming the missing seats.
 - `GOAL_CONTROL=optimistic-post`: the workstream composer draws its own line and sends nothing, whether the line is a post (`src/lib/transcript.ts`) or an `@worker` turn (`src/lib/send.ts`). Must fail at **the post is in the stored transcript** on both Labs. This goal sends no `@worker` turn; the turn half is for checks that do, like FIX-1663's a4.
+- `GOAL_CONTROL=queued-shown`: Tasks treats no row as queued, so the Queued toggle hides nothing (`src/lib/tasks.ts`). Must fail at **Tasks equals the store's open rows** on DevTeam, whose filed row is queued, naming the extra rows and the toggle's count.
 - `GOAL_CONTROL=unanswerable-asks`: every ask is marked as one the Lab won't reopen, so no card offers an answer. Must fail at **an answer from Inbox lands in the store** on DevTeam.
+
+The empty Inbox's two counts have no control here. Neither Lab reaches an empty Inbox with a running row or a seat on call, so both counts read 0 and a sentence that never counts would still pass. `labs/shift-manager/test/inbox-tasks.test.ts` proves the counting.
 
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
@@ -50,3 +53,8 @@ The rows come from the Lab's own doors. On multi-seat-collab, the planner files 
 | 2026-10-01 | 475b3cd4b (feat/FIX-1649-shift-manager) | n/a | PASS | After the rename to Shift Manager. DevTeam served from `labs/shift-manager/teams/devteam`; the pages carry the boot-shift code, unset in this run. |
 | 2026-10-01 | feat/FIX-1723-roster (pre-PR) | n/a | PASS | TEAMS re-pointed at the team rows' status squares (one per seat); the worker list under each team is gone. devteam: 3 seats, 1 row [pending], ask approved 1 of 1. multi-seat-collab: 3 seats, 1 row [parked]. |
 | 2026-10-01 | feat/FIX-1723-roster (pre-PR), `GOAL_CONTROL=static-names` | n/a | FAIL (expected) | Only `[multi-seat-collab] TEAMS equals the store's seats`: missing [eng.builder, eng.planner], extra [eng.coder, eng.em], for the squares and for team eng's row. |
+| 2026-10-02 | feat/FIX-1737-d-inbox-tasks-roster (pre-PR) | n/a | PASS | Tasks graded with Queued hidden and shown; Inbox's empty sentence compared whole. devteam: 3 seats, 1 row [pending, queued: hidden by default, toggle says 1], inbox 1 of 1, approved 1 of 1. multi-seat-collab: 3 seats, 1 row [parked], Inbox empty with the store's sentence. |
+| 2026-10-02 | feat/FIX-1737-d-inbox-tasks-roster (pre-PR), `GOAL_CONTROL=queued-shown` | n/a | FAIL (expected) | Only `[devteam] Tasks equals the store's open rows`: the queued row shown with Queued off in all three groupings, and the toggle says 0 of 1. |
+| 2026-10-02 | feat/FIX-1737-d-inbox-tasks-roster (pre-PR), `GOAL_CONTROL=static-names` | n/a | FAIL (expected) | Only `[multi-seat-collab] TEAMS equals the store's seats`: missing [eng.builder, eng.planner], extra [eng.coder, eng.em]. |
+| 2026-10-02 | feat/FIX-1737-d-inbox-tasks-roster (pre-PR), `GOAL_CONTROL=unanswerable-asks` | n/a | FAIL (expected) | Only `[devteam] an answer from Inbox lands in the store`: 1 pending, no answer offered. |
+| 2026-10-02 | feat/FIX-1737-d-inbox-tasks-roster (pre-PR), `GOAL_CONTROL=optimistic-post` | n/a | FAIL (expected) | Only `the post is in the stored transcript`, on both Labs: 0 stored copies, gone after a reload. |
