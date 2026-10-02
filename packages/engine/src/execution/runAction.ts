@@ -1211,6 +1211,19 @@ async function runActionAttempt<
   // request would stay on this run's controller if another request took the id.
   let incarnationSettled = false;
   /**
+   * Hand the store the items this run's record is about to settle with, and
+   * wait out every item write, before a terminal write. The SQL stores keep
+   * items out of the record row, so the terminal write's own `items` never
+   * reach them, and the emitter's `item.done` hook fires after the event's
+   * `onEvent`, which can put a block's last items in the store after the
+   * status. A run that never settled which record it holds persists nothing
+   * (FIX-1735).
+   */
+  const flushSettlingItems = async (): Promise<void> => {
+    if (incarnationSettled) options.stores.request.persistItems(requestId, persistableItems());
+    await options.stores.request.flushItems(requestId);
+  };
+  /**
    * Whether a cancel is recorded on the request this run executes as. The flag
    * is read first, as the O(1) `isAbortRequested`, and only when it is set is
    * the record read, to check it is still this run's request and not a later
@@ -2204,7 +2217,7 @@ async function runActionAttempt<
         await response.emitItemDone(suspItem);
 
         if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
-        await options.stores.request.flushItems(requestId);
+        await flushSettlingItems();
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
         await flushTraces();
@@ -2397,7 +2410,7 @@ async function runActionAttempt<
     // Checkpoints are fire-and-forget at emit time but must complete before
     // the action returns so terminal deletes win their race against any
     // straggling step writes (FIX-401).
-    await options.stores.request.flushItems(requestId);
+    await flushSettlingItems();
     await options.stores.request.flushEvents(requestId);
     await flushCheckpoints();
     await flushTraces();
@@ -2680,7 +2693,7 @@ async function runActionAttempt<
     if (signalAborted || wasIntentionalAbort) {
       if (wasIntentionalAbort) {
         // --- Abort path: user explicitly stopped the request ---
-        await options.stores.request.flushItems(requestId);
+        await flushSettlingItems();
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
         await flushTraces();
@@ -2714,7 +2727,7 @@ async function runActionAttempt<
         });
       } else {
         // --- Disconnect path: client went away without explicit abort ---
-        await options.stores.request.flushItems(requestId);
+        await flushSettlingItems();
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
         await flushTraces();
@@ -2747,7 +2760,7 @@ async function runActionAttempt<
       // emitted before the drain; it is non-undefined on exactly this branch.
       const normalized = normalizedError!;
 
-      await options.stores.request.flushItems(requestId);
+      await flushSettlingItems();
       await options.stores.request.flushEvents(requestId);
       await flushCheckpoints();
       await flushTraces();
