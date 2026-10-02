@@ -25,7 +25,9 @@
 
 **Model:** `openai/gpt-5.4-mini` for the chief of staff in the `cos` leg, through the default resolver; it needs one of `AI_GATEWAY_API_KEY`, `OPENAI_API_KEY` or `OPENROUTER_API_KEY`, and fails with a precondition message when none is set. The other legs are model-free: the DevTeam harness is the lab's scripted stub, and the EM answers a room line without a model.
 
-**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-groups-workstreams-under-their-projects/run.mts` runs every leg. `GOAL_LEG=model-free` runs all but `cos`; `GOAL_LEG=cos` runs only `cos`. The `cos` leg runs last, because its rows are the member's and the other legs grade every row as the owner's.
+**Model-free run:** `GOAL_LEG=model-free` (every leg but `cos`; `pnpm goal:all --model-free` runs it this way)
+
+**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-groups-workstreams-under-their-projects/run.mts` runs every leg. `GOAL_LEG=model-free` runs all but `cos` (screens, room and restart); `GOAL_LEG=cos` runs only `cos`. The `cos` leg runs last, because its rows are the member's and the other legs grade every row as the owner's.
 
 **Controls:** the page controls rebuild Shift Manager with one source module swapped for one under `controls/`, as `it-opens-a-lab` does; the build fails if the swap never fired. The server controls load the Lab with a Node module hook (`controls/swap-hook.mjs`) that swaps one source module, and the run fails if no import was swapped.
 

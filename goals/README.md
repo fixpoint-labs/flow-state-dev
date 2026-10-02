@@ -145,6 +145,6 @@ A model-backed goal check costs real model calls, and that cost is the point —
 3. Write `run.mts` against the real path, using `goals/lib` for the scaffolding; put inputs in `fixtures/`.
 4. Run it, and record the result as the first row of the verdict log.
 
-Keep the **Model** field present and machine-readable (`**Model:** …` or `**Model.** …`) — `goal:all` reads it to decide what a `--model-free` sweep may run. `n/a` and `none` both mean model-free.
+Keep the **Model** field present and machine-readable (`**Model:** …` or `**Model.** …`) — `goal:all` reads it to decide what a `--model-free` sweep may run. `n/a` and `none` both mean model-free. A model-backed goal whose legs split can add `**Model-free run:** `NAME=value`` naming the env that runs only its model-free legs; a `--model-free` sweep then runs it with that env instead of skipping it.
 
 Reach for a new `goals/lib` helper only when a *third* goal needs the same scaffolding. Two copies is not yet a pattern; the library is for what every goal repeats, not for anything that could be shared.
