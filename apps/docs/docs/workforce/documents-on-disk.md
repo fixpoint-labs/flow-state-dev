@@ -279,7 +279,7 @@ const engineering = resourcesFromDocs(
 );
 ```
 
-The same holds one level down. Putting a `resources/` document under `workers/ada/` addresses it to that seat. It does not keep it from the others. Seats hired into one kind share that kind's flow definition, so by default every one of them reads the same row.
+A worker's folder is also only part of the name. Putting a `resources/` document under `workers/ada/` addresses it to that seat. It does not keep it from the others. Seats hired into one kind share that kind's flow definition, so by default every one of them reads the same row.
 
 Filtering decides what a whole kind installs. To narrow one seat within a kind, the seat's own file names the documents it may touch under `resources:`, and can take one read-only: see [what a `WORKER.md` says](./workers-on-disk.md#what-a-workermd-says). A seat naming a document its kind was not installed with is refused at the hire, so the filter holds.
 
