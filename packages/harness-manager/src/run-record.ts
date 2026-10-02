@@ -79,6 +79,7 @@
  * changed and does not change with the scope: a copy, never a source.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
+import { updateStateWith } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 
 /** Accessor key and storage prefix for the run record. */
@@ -473,6 +474,32 @@ export async function readRunRow(
 ): Promise<RunRecordState | undefined> {
   const ref = await collectionRef(ctx, RUNS).getOptional(topic);
   return ref?.state as RunRecordState | undefined;
+}
+
+/**
+ * The session the run's current attempt has confirmed, as STORED now, or
+ * `null` while it has confirmed none (FIX-1735).
+ *
+ * {@link readRunRow} answers from what this request read first, which is right
+ * for a decision made once and wrong for a wait: the harness confirms its
+ * session from another request, and this one would never see it. A conditional
+ * update that returns what it finds and changes nothing reads the committed
+ * row, and writes nothing. A row this request never saw stays unseen, since
+ * its absence is remembered too; the door's wait has other ways to end.
+ */
+export async function readConfirmedSession(
+  ctx: CollectionHoldingContext,
+  topic: string,
+): Promise<string | null> {
+  const ref = (await collectionRef(ctx, RUNS).getOptional(topic)) as
+    | Parameters<typeof updateStateWith<Record<string, unknown>, string | null>>[0]
+    | undefined;
+  if (ref === undefined) return null;
+  const sessionId = await updateStateWith<Record<string, unknown>, string | null>(ref, (current) => ({
+    state: current,
+    result: typeof current?.sessionId === "string" ? current.sessionId : null,
+  }));
+  return sessionId ?? null;
 }
 
 /**

@@ -59,6 +59,9 @@ afterAll(() => {
  * - `finish-later` — works for 400ms, then returns finished on its own.
  * - `ignore-stop` — works past its signal until the test releases it: a
  *   harness that does not stop in time.
+ * - `late-session` — starts, and names its session only once the test opens
+ *   the session gate; then works like `hold`. The window every real harness
+ *   has between starting and the vendor naming its session.
  */
 type Step =
   | "hold"
@@ -69,7 +72,8 @@ type Step =
   | "ask"
   | "no-session"
   | "finish-later"
-  | "ignore-stop";
+  | "ignore-stop"
+  | "late-session";
 
 interface SeenAttempt {
   prompt: string;
@@ -83,6 +87,7 @@ function stubHarness(
   exitDelayMs: number,
   settleFirst: (to: "completed" | "pending") => Promise<void>,
   released: Promise<void>,
+  sessionGate: Promise<void>,
 ) {
   return (feeds: HarnessFeeds): HarnessBlock =>
     handler({
@@ -94,6 +99,7 @@ function stubHarness(
         const step = script[seen.length] ?? "finished";
         const session = step === "no-session" ? null : resume ?? `sess_${seen.length + 1}`;
         seen.push({ prompt: input.prompt, resume, session });
+        if (step === "late-session") await sessionGate;
         if (session !== null) await feeds.onSession(session, ctx as never);
         const handle = (status: "completed" | "failed") => ({
           source: "stub/test",
@@ -106,7 +112,13 @@ function stubHarness(
           usage: null,
           cost: null,
         });
-        if (step === "hold" || step === "finish-on-stop" || step === "fail-on-stop" || step === "ignore-stop") {
+        if (
+          step === "hold" ||
+          step === "late-session" ||
+          step === "finish-on-stop" ||
+          step === "fail-on-stop" ||
+          step === "ignore-stop"
+        ) {
           const signal = (ctx as { signal: AbortSignal }).signal;
           await new Promise<void>((resolve) => {
             if (signal.aborted) return resolve();
@@ -146,6 +158,8 @@ function host(options: {
   exitDelayMs?: number;
   /** Extra fields the seeded row carries. */
   row?: Record<string, unknown>;
+  /** Holds the first prompt build until the test calls `openPrompt`: an attempt still being prepared. */
+  holdPrompt?: boolean;
 }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-door-"));
   dirs.push(dir);
@@ -164,14 +178,23 @@ function host(options: {
   const released = new Promise<void>((resolve) => {
     release = resolve;
   });
+  let openSession!: () => void;
+  const sessionGate = new Promise<void>((resolve) => {
+    openSession = resolve;
+  });
+  let openPrompt!: () => void;
+  const promptGate = new Promise<void>((resolve) => {
+    openPrompt = resolve;
+  });
   const manager = harnessManager({
     boardCollectionId: BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
     phase: {
       phase: PHASE,
-      buildPrompt: (run) => {
+      buildPrompt: async (run) => {
         builds.push({ task: run.task, feedback: run.feedback });
+        if (options.holdPrompt === true && builds.length === 1) await promptGate;
         return [
           `Work on ${run.issue}, attempt ${run.attempt}.`,
           "To ask, write it as the entire contents of this file:",
@@ -184,7 +207,14 @@ function host(options: {
     workspace: { root: join(dir, "checkouts"), sourceRepo, baseRef: "main", provisionTimeoutMs: 10_000 },
     runTimeoutMs: 20_000,
     ownership: { pollMs: 25 },
-    harness: stubHarness(options.script, seen, options.exitDelayMs ?? 0, (to) => settleFirst(to), released),
+    harness: stubHarness(
+      options.script,
+      seen,
+      options.exitDelayMs ?? 0,
+      (to) => settleFirst(to),
+      released,
+      sessionGate,
+    ),
   });
   const board = taskBoard({
     name: "door-board",
@@ -429,6 +459,8 @@ function host(options: {
     failNextRequeue,
     expireStopWait,
     release: () => release(),
+    openSession: () => openSession(),
+    openPrompt: () => openPrompt(),
     until,
     send,
     request,
@@ -480,6 +512,103 @@ describe("a person's turn into a running coding run", () => {
     // The turn spent nothing.
     expect(standing(done)).toBe(before);
     expect(done.turnReentries).toBe(1);
+  }, 60_000);
+});
+
+/** Resolve after `ms`, with `value`. */
+function after<T>(ms: number, value: T): Promise<T> {
+  return new Promise((resolve) => setTimeout(() => resolve(value), ms));
+}
+
+// Every attempt starts with no confirmed session: the run record clears it when
+// the attempt opens, and the harness names one only once the vendor answers,
+// after the prompt is built and the checkout taken. A person watching the task
+// sees it running all that time, so a line sent then is a line to a running
+// run, and the door must not tell them the run can never take one.
+describe("a turn sent while the run is still starting (FIX-1735)", () => {
+  it("holds a line sent before the harness names its session, then continues that session with it", async () => {
+    const lab = host({ script: ["late-session", "finished"] });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    const running = await lab.until((t) => t.status === "in_progress" && t.run !== undefined, "the run link");
+    await lab.until(() => lab.seen.length === 1, "attempt 1 to start its harness");
+
+    const pending = lab.send(ALICE, "please also update the README");
+    // The harness has not named its session yet: the door waits for it rather
+    // than answering for it.
+    const early = await Promise.race([pending.then((sent) => sent), after(400, "waiting" as const)]);
+    expect(early, `the door answered before the session was named: ${messageOf((early as { error?: unknown }).error)}`).toBe("waiting");
+
+    lab.openSession();
+    const sent = await pending;
+    expect(sent.error, messageOf(sent.error)).toBeUndefined();
+    expect(sent.output).toMatchObject({ outcome: "continuing" });
+    expect((await lab.request(running.run!.requestId))?.status).toBe("aborted");
+
+    await lab.until((t) => t.status === "completed", "the next attempt to finish");
+    expect(lab.seen).toHaveLength(2);
+    expect(lab.seen[1]!.prompt).toContain("please also update the README");
+    // The same coding session, the one the harness named after the line was sent.
+    expect(lab.seen[1]!.resume).toBe(lab.seen[0]!.session);
+  }, 60_000);
+
+  it("hands a line sent while the attempt is still being prepared to that attempt, and stops nothing", async () => {
+    const lab = host({ script: ["finished"], holdPrompt: true });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    const running = await lab.until((t) => t.status === "in_progress" && t.run !== undefined, "the run link");
+    await lab.until(() => lab.builds.length === 1, "attempt 1 to reach its prompt");
+
+    const pending = lab.send(ALICE, "use the blue theme");
+    await after(200, undefined);
+    lab.openPrompt();
+    const sent = await pending;
+    expect(sent.error, messageOf(sent.error)).toBeUndefined();
+    expect(sent.output).toMatchObject({ outcome: "continuing" });
+
+    const done = await lab.until((t) => t.status === "completed", "the attempt to finish");
+    // The attempt that was starting took the line into its own prompt: one
+    // attempt, never stopped.
+    expect(lab.seen).toHaveLength(1);
+    expect(lab.seen[0]!.prompt).toContain("use the blue theme");
+    expect(done.attempts).toBe(1);
+    expect((await lab.request(running.run!.requestId))?.status).toBe("completed");
+  }, 60_000);
+
+  it("says the run is still starting, and keeps nothing, when the harness never names its session in time", async () => {
+    const lab = host({ script: ["late-session", "finished"] });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    await lab.until((t) => t.status === "in_progress" && t.run !== undefined, "the run link");
+    await lab.until(() => lab.seen.length === 1, "attempt 1 to start its harness");
+
+    const pending = lab.send(ALICE, "are you there?");
+    await after(300, undefined);
+    // The door's wait runs out while the session is still unnamed.
+    const realNow = Date.now;
+    Date.now = () => realNow() + 2 * 60_000;
+    let sent: Awaited<typeof pending>;
+    try {
+      sent = await pending;
+    } finally {
+      Date.now = realNow;
+    }
+    expect(sent.error, "the door completed with no session named").toBeDefined();
+    expect(messageOf(sent.error)).toContain("This run is still starting");
+    expect(messageOf(sent.error)).not.toContain("can't continue");
+
+    // Withdrawn: once the harness names its session, a later line continues
+    // the run, and the attempt it starts is not handed the line the person was
+    // told didn't arrive.
+    lab.openSession();
+    await lab.until(() => lab.seen.length === 1, "attempt 1 to keep running");
+    const later = await lab.send(ALICE, "now go ahead");
+    expect(later.error, messageOf(later.error)).toBeUndefined();
+    expect(later.output).toMatchObject({ outcome: "continuing" });
+    await lab.until((t) => t.status === "completed", "the next attempt to finish");
+    expect(lab.seen).toHaveLength(2);
+    expect(lab.seen[1]!.prompt).toContain("now go ahead");
+    expect(lab.seen[1]!.prompt).not.toContain("are you there?");
   }, 60_000);
 });
 

@@ -116,6 +116,21 @@ export async function withdrawTurn(ctx: BlockContext, key: string): Promise<"wit
 }
 
 /**
+ * The attempt that took a kept turn into its prompt, as STORED now, or `null`
+ * while none has. Read through a conditional update that changes nothing, so
+ * it sees an attempt's take from another request (FIX-1735).
+ */
+export async function turnTakenBy(ctx: BlockContext, key: string): Promise<number | null> {
+  const ref = await turnsRef(ctx).getOptional(key);
+  if (ref === undefined) return null;
+  const taken = await updateStateWith<Record<string, unknown>, number | null>(ref, (current) => {
+    const parsed = turnStateSchema.safeParse(current ?? {});
+    return { state: current, result: parsed.success ? parsed.data.deliveredTo : null };
+  });
+  return taken ?? null;
+}
+
+/**
  * Take the turns attempt `attempt` acts on, oldest first: every turn kept for
  * it or an earlier attempt that no attempt took yet, plus those this attempt
  * already took (a replay). Marks each taken one `deliveredTo: attempt`.

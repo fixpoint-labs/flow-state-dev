@@ -11,9 +11,24 @@
  * |---|---|
  * | `in_progress` | keeps the turn, stops the attempt, parks the row for a turn, re-queues it and drains — the next attempt resumes the same coding session with the line |
  * | `in_progress`, claimed but its run not linked yet | keeps the turn for the attempt the claim started |
+ * | `in_progress`, its harness not yet named its session | keeps the turn and waits (bounded) for the attempt to start: it takes the line into its prompt, or names its session and the door goes on as for a running row |
  * | `parked` on its own question, or `pending` after an attempt | keeps the turn for the next attempt; stops nothing, unparks nothing |
  * | `parked` for an earlier turn | re-queues it (an interrupted earlier door) |
  * | not started in this session, finished, someone else's, or on a harness that named no session | refuses, by name |
+ *
+ * ## A run that is still starting
+ *
+ * Every attempt opens with no confirmed session: the run record clears it when
+ * the attempt opens, and the harness names one only once the vendor answers,
+ * after the prompt is built and the checkout taken. To a person the task reads
+ * running that whole time, so a line sent then is held, not refused (FIX-1735).
+ * The door keeps it for the attempt that is starting and waits, polling the
+ * stored record, for whichever comes first: the attempt takes it into its
+ * prompt (it acts on it now, nothing is stopped); the harness names its session
+ * (the door stops and continues the run as for any running row); or the
+ * attempt ends without naming one (refused as a harness that can't continue).
+ * A harness still silent after {@link TURN_START_WAIT_MS} is refused as still
+ * starting, so the request is never held open for a run's whole life.
  *
  * ## The drain runs where the row was claimed
  *
@@ -80,9 +95,9 @@ import {
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { findRunRowBySession, readRunRow, runTopic } from "./run-record";
+import { findRunRowBySession, readConfirmedSession, readRunRow, runTopic } from "./run-record";
 import { isRunOwner, runOwnerOf, runPrincipal } from "./run-owner";
-import { keepTurn, withdrawTurn } from "./turns";
+import { keepTurn, turnTakenBy, withdrawTurn } from "./turns";
 import { sleep } from "./workspace";
 
 /** What the door takes. Shift Manager builds it without knowing the kind. */
@@ -91,8 +106,9 @@ export const messageDoorInputSchema = z.object({ message: z.string() });
 /**
  * What the door did.
  *
- * - `continuing` — the running attempt was stopped and the next one starts
- *   now, resuming the same coding session with the message.
+ * - `continuing` — the run acts on the message now: the running attempt was
+ *   stopped and the next one starts, resuming the same coding session with
+ *   the message, or the attempt that was starting took it into its prompt.
  * - `kept` — the message waits for the run's next attempt: nothing was
  *   running, or the run could not be re-queued now.
  */
@@ -109,7 +125,8 @@ export type TurnRefusalReason =
   | "not-started"
   | "task-finished"
   | "finished-first"
-  | "cannot-continue";
+  | "cannot-continue"
+  | "still-starting";
 
 /** What a person reads for each refusal. */
 const REFUSAL_TEXT: Record<TurnRefusalReason, string> = {
@@ -118,6 +135,7 @@ const REFUSAL_TEXT: Record<TurnRefusalReason, string> = {
   "task-finished": "A finished task takes no message.",
   "finished-first": "The task finished before your message reached it.",
   "cannot-continue": "This run's harness can't continue with a message.",
+  "still-starting": "This run is still starting and can't take a message yet. Send it again once it's under way.",
 };
 
 /** The door refused. The request fails with this, so nothing reads *delivered*. */
@@ -145,6 +163,14 @@ export const TURN_STOP_WAIT_MS = 60_000;
  */
 const TURN_STOP_POLL_FIRST_MS = 100;
 const TURN_STOP_POLL_MAX_MS = 1_000;
+
+/**
+ * How long the door holds a line for an attempt whose harness has not named its
+ * session yet (FIX-1735). Covers a prompt build, a checkout and a vendor's
+ * start several times over; past it the door refuses as still starting rather
+ * than holding the person's request open for as long as the run takes.
+ */
+export const TURN_START_WAIT_MS = 60_000;
 
 /** The note a row parked for a turn carries. */
 const TURN_PARK_NOTE = "A person sent a message; the run continues with it.";
@@ -249,22 +275,27 @@ async function deliverTurn(deps: MessageDoorDeps, message: string, ctx: BlockCon
 
   // A run whose harness never confirmed a coding session has nothing to
   // continue: its next attempt would start fresh, and the line would reach a
-  // conversation that never saw the work.
-  const record = await readRunRow(ctx, runTopic(deps.boardCollectionId, issue, phase));
-  if (record?.sessionId == null) throw new TurnRefused("cannot-continue");
+  // conversation that never saw the work. A running attempt with none yet is
+  // still starting, and is waited for instead.
+  const topic = runTopic(deps.boardCollectionId, issue, phase);
+  const record = await readRunRow(ctx, topic);
+  const starting = record?.sessionId == null;
+  if (starting && row.status !== "in_progress") throw new TurnRefused("cannot-continue");
 
-  // Durable first. A claimed row's run has not started, so its claimed
-  // attempt takes the turn; otherwise the next one does.
+  // Durable first. A claimed row's run has not started, nor has an attempt
+  // still starting, so that attempt takes the turn; otherwise the next one does.
   const turnKey = await keepTurn(ctx, {
     issue,
     phase,
-    forAttempt: linked === undefined ? row.attempts : row.attempts + 1,
+    forAttempt: linked === undefined || starting ? row.attempts : row.attempts + 1,
     requestId: ctx.request.identity.id,
     message,
   });
 
   try {
-    return await continueRun(deps, tasks, row, ctx);
+    return starting
+      ? await continueOnceStarted(deps, tasks, row, topic, turnKey, ctx)
+      : await continueRun(deps, tasks, row, ctx);
   } catch (error) {
     // Anything unexpected leaves the kept turn for the next attempt.
     if (!(error instanceof TurnRefused)) throw error;
@@ -276,18 +307,66 @@ async function deliverTurn(deps: MessageDoorDeps, message: string, ctx: BlockCon
 }
 
 /**
- * The row's status as stored now. The board this request resolved is the
- * snapshot it read when it started, so a row the attempt settled since reads
- * as running there. A conditional update that returns what it finds and
- * changes nothing reads the committed row, and writes nothing.
+ * The row as stored now. The board this request resolved is the snapshot it
+ * read when it started, so a row the attempt settled since reads as running
+ * there. A conditional update that returns what it finds and changes nothing
+ * reads the committed row, and writes nothing.
  */
-async function storedStatus(ctx: BlockContext, collectionId: string, taskId: string): Promise<unknown> {
+async function storedRow(
+  ctx: BlockContext,
+  collectionId: string,
+  taskId: string,
+): Promise<Record<string, unknown> | undefined> {
   const ref = await resolveResourceCollection(ctx, collectionId)?.getOptional(taskId);
   if (ref === undefined) return undefined;
-  return updateStateWith<Record<string, unknown>, unknown>(ref, (current) => ({
+  return updateStateWith<Record<string, unknown>, Record<string, unknown> | undefined>(ref, (current) => ({
     state: current,
-    result: current?.status,
+    result: current,
   }));
+}
+
+/**
+ * With the turn kept for an attempt whose harness has not named its session:
+ * wait until that attempt takes the line, names its session, or ends. Every
+ * read is of the stored record, since this request's own reads are the
+ * snapshot it started with. See "A run that is still starting" above.
+ */
+async function continueOnceStarted(
+  deps: MessageDoorDeps,
+  tasks: TaskCollectionRef,
+  row: Task,
+  topic: string,
+  turnKey: string,
+  ctx: BlockContext,
+): Promise<Decided> {
+  const deadline = Date.now() + TURN_START_WAIT_MS;
+  let pollMs = TURN_STOP_POLL_FIRST_MS;
+  for (;;) {
+    // The session first, then the turn: an attempt takes its turns before its
+    // harness starts, so a session named by now means a turn not taken by now
+    // was not taken by this attempt, and stopping it loses nothing.
+    const session = await readConfirmedSession(ctx, topic);
+    // The attempt took the line into its own prompt: it acts on it now.
+    if ((await turnTakenBy(ctx, turnKey)) !== null) {
+      return { outcome: "continuing", taskId: row.id, requeue: false, resumeIn: null };
+    }
+    if (session !== null) return continueRun(deps, tasks, row, ctx);
+
+    const stored = await storedRow(ctx, deps.boardCollectionId, row.id);
+    const status = stored?.status;
+    if (typeof status === "string" && isTerminalStatus(status as Task["status"])) {
+      throw new TurnRefused("finished-first");
+    }
+    if (status !== "in_progress" || stored?.attempts !== row.attempts) {
+      // The attempt ended. If it named its session on the way out, the run
+      // continues from it; if not, it had none to continue.
+      if ((await readConfirmedSession(ctx, topic)) !== null) return continueRun(deps, tasks, row, ctx);
+      throw new TurnRefused("cannot-continue");
+    }
+    if (ctx.signal.aborted || Date.now() >= deadline) throw new TurnRefused("still-starting");
+    await sleep(pollMs, ctx.signal);
+    pollMs = Math.min(pollMs * 2, TURN_STOP_POLL_MAX_MS);
+  }
 }
 
 /** With the turn kept: stop the running attempt and park the row for it, or leave it kept. */
@@ -316,7 +395,7 @@ async function continueRun(
   // the row, the turn reached no one. Otherwise the kept turn stands and the
   // board decides what follows, which is also what an Interrupt gets (BR-17).
   if (first === "already-finished") {
-    const status = await storedStatus(ctx, deps.boardCollectionId, row.id);
+    const status = (await storedRow(ctx, deps.boardCollectionId, row.id))?.status;
     if (typeof status === "string" && isTerminalStatus(status as Task["status"])) {
       throw new TurnRefused("finished-first");
     }

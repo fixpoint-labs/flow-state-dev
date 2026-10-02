@@ -504,6 +504,32 @@ export function createRequestStoreConformanceTests(
       });
     });
 
+    // A running request's items are readable while it runs (FIX-1735). The
+    // runtime writes the record when the request starts and again when it
+    // settles; in between, `persistItems` is the only write its items get. A
+    // store that holds them only on the record shows a running request with no
+    // items, then every item at once when it settles.
+    it("get returns items persisted while the request runs, before its record is written again", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_inflight_conformance";
+        await store.set(requestId, makeRecord(requestId, "in_progress", []), "absent");
+
+        store.persistItems(requestId, [makeItem(requestId, 0)]);
+        await store.flushItems(requestId);
+        const first = await store.get(requestId);
+        expect((first?.items ?? []).map((item) => item.id)).toEqual([`item_${requestId}_0`]);
+
+        store.persistItems(requestId, [makeItem(requestId, 0), makeItem(requestId, 1)]);
+        await store.flushItems(requestId);
+        const second = await store.get(requestId);
+        expect((second?.items ?? []).map((item) => item.id)).toEqual([
+          `item_${requestId}_0`,
+          `item_${requestId}_1`
+        ]);
+        expect(await store.countItems(requestId)).toBe(2);
+      });
+    });
+
     // Re-persisting an item whose fields were mutated IN PLACE (same object
     // reference) must surface the latest content on `get` (FIX-839). The
     // runtime advances a block_trace across its in_progress → completed

@@ -139,8 +139,27 @@ export class InMemoryRequestStore implements RequestStore {
     for (const close of closers ?? []) close();
   }
 
-  persistItems(_requestId: string, _items: OutputItem[]): void {
-    // No-op: items already in memory via ResponseEmitter
+  /**
+   * Merge a running request's items onto its record, by id (FIX-811), so a
+   * read while it runs sees them (FIX-1735). The record is cloned on every
+   * `set` and `get`, so items the emitter holds are not on it until something
+   * writes them here; without this, a running request read as having no items
+   * until it settled. The objects are kept as given rather than cloned: the
+   * runtime advances an item in place (FIX-839) and passes the full list on
+   * every call, so a clone per streamed delta would only copy what `get`
+   * clones on the way out anyway.
+   */
+  persistItems(requestId: string, items: OutputItem[]): void {
+    const record = this.records.get(requestId);
+    if (record === undefined) return;
+    const held = record.items ?? [];
+    if (held.length === 0) {
+      this.records.set(requestId, { ...record, items: [...items] });
+      return;
+    }
+    const byId = new Map<string, OutputItem>(held.map((item) => [item.id, item]));
+    for (const item of items) byId.set(item.id, item);
+    this.records.set(requestId, { ...record, items: [...byId.values()] });
   }
 
   async flushItems(_requestId: string): Promise<void> {

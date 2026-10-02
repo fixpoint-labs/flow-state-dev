@@ -1052,6 +1052,11 @@ async function runActionAttempt<
   let priorItemsForMerge: readonly OutputItem[] = [];
   const itemsToPersist = (): OutputItem[] =>
     isReplayMode ? mergeItemsById(priorItemsForMerge, response.getItems()) : response.getItems();
+  // What a running request's incremental persists write: the log its record
+  // will hold when it settles, so a read while it runs (FIX-1735) never shows
+  // a transient item or ephemeral content the settled record leaves out.
+  const persistableItems = (): OutputItem[] =>
+    stripEphemeralContent(itemsToPersist().filter((item) => item.transient !== true));
 
   if (options.onItem !== undefined) {
     // Fan every item to the caller's listener, transient ones included (they
@@ -1555,8 +1560,8 @@ async function runActionAttempt<
         // state_snapshot items are transient by design — no items-log persist.
         return;
       }
-      if (item.transient === true) return;
-      options.stores.request.persistItems(requestId, itemsToPersist());
+      if (item.transient === true || !incarnationSettled) return;
+      options.stores.request.persistItems(requestId, persistableItems());
     },
     // FIX-479: incremental items-snapshot checkpoint while streaming text.
     // content.delta events no longer enter the persisted events log; the
@@ -1567,8 +1572,8 @@ async function runActionAttempt<
     // delta callers do not amplify disk I/O.
     onItemUpdate: (item) => {
       if (item.type === "state_snapshot") return;
-      if (item.transient === true) return;
-      options.stores.request.persistItems(requestId, itemsToPersist());
+      if (item.transient === true || !incarnationSettled) return;
+      options.stores.request.persistItems(requestId, persistableItems());
     }
   });
 
@@ -1894,6 +1899,10 @@ async function runActionAttempt<
     }
     incarnationSettled = true;
     if (registered.signal.aborted) forwardRegisteredAbort();
+    // Items persist only into the record this run now holds: one emitted
+    // before (the caller's own line) could otherwise land in a record another
+    // principal took the id with. Whatever was held back goes now.
+    options.stores.request.persistItems(requestId, persistableItems());
 
     // First poll (FIX-1026), against the request this run executes as. It
     // closes the window where the cancel was recorded between admission and

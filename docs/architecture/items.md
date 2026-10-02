@@ -149,6 +149,8 @@ The item record's physical layout varies per adapter:
 
 The Postgres shape sidesteps a write-amplification pathology that affected long-running requests on serverless deployments. The semantics are identical from the framework's perspective — `get(requestId)` returns the same `RequestRecord` shape regardless of adapter.
 
+**A running request's items are readable while it runs, on every adapter** (FIX-1735). The runtime writes the record when the request starts and when it settles; in between, `persistItems` is the only write its items get, so every adapter — the in-memory one included — merges them onto what `get` and `list({ withItems })` return. What it persists is what the settled record will hold: transient items and ephemeral content are left out, and nothing is persisted until the run has settled which record it holds (an item emitted before that is persisted the moment it has). The request-store conformance suite pins the read-while-running case.
+
 ### Streaming-text contract (FIX-479)
 
 `content.delta` events are non-replayable. The events log only carries the durable boundaries — `item.added`, `content.added`, `content.done`, `item.done`. The running text accumulates into the in-flight `MessageItem.content[i].text` (and `ReasoningItem.summary[i].text`) on each delta and the items snapshot is checkpointed via `persistItems` at the store's natural cadence.
