@@ -142,6 +142,17 @@ describe("PROJECTS (BR-22, D3)", () => {
     expect(screen.getAllByTestId("project-group").map((g) => g.getAttribute("data-project-id"))).toEqual(["desk", "empty"]);
   });
 
+  it("a member who holds no session on a flow that declares the projects still sees them, and gets Join", async () => {
+    const { baseUrl } = await lab();
+    // OTHER is a member of both projects, created none of them, and holds only a seat's session.
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
+    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: "ops.asker", userId: OTHER });
+    openApp(baseUrl, "/p/desk/stream", OTHER);
+    await screen.findByTestId("nav-project-desk", undefined, { timeout: 10_000 });
+    expect(screen.getAllByTestId("project-group").map((g) => g.getAttribute("data-project-id"))).toContain("empty");
+    await screen.findByTestId("project-join", undefined, { timeout: 10_000 });
+  });
+
   it("a failed projects read shows its failed-read state with Retry, and Retry reads it again (BR-30)", async () => {
     const { baseUrl } = await lab();
     const real = globalThis.fetch;

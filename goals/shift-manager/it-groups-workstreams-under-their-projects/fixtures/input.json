@@ -3,6 +3,6 @@
   "ownerLine": "Can someone confirm the release window for the storefront?",
   "memberLine": "The release window is Thursday afternoon.",
   "outsiderLine": "An outsider should never get a line into this room.",
-  "burst": { "windows": 8, "perWindow": 2, "body": "burst line" },
+  "burst": { "perMember": 4, "body": "burst line" },
   "joins": 4
 }

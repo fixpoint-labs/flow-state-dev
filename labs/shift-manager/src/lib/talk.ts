@@ -22,13 +22,7 @@ import { ClientHttpError } from "@flow-state-dev/client";
 import type { LabClients } from "./connection";
 import { describeFailure } from "./reads";
 
-/**
- * The flow kind every project's room is on: workforce's built-in channel kind
- * (`CHANNEL_KIND`), whichever kind a workstream runs on or the projects were
- * read through. Spelled here because the workforce browser entry doesn't
- * export it; `static.test.ts` pins the two together.
- */
-export const ROOM_KIND = "channel";
+export { ROOM_KIND } from "./reads";
 
 /** One line of a room, as `read` returns it. */
 export type RoomLine = { projectId: string; seq: number; userId: string; author: string | null; body: string; tombstone?: boolean };
