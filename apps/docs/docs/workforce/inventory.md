@@ -17,7 +17,9 @@ The inventory keeps that record as data: three org-scoped resource collections t
 | Channels | registered channel | `inventory/channels/<channelId>` |
 | Memberships | seat-in-channel | `inventory/members/<seatId>/<channelId>` |
 
-**A row means registered, not open.** It records that a seat or channel was registered in this organization. It says nothing about whether that seat is working or that channel is open now. Nothing deletes a row, so a fired seat keeps its row, and a seat or channel a later roster no longer names keeps its row too. Label rows that way wherever you show them.
+**A row means registered, not open.** It records that a seat or channel was registered in this organization. It says nothing about whether that seat is working or that channel is open now. Nothing deletes a row for going missing, so a fired seat keeps its row, and a seat or channel a later roster no longer names keeps its row too. Label rows that way wherever you show them.
+
+There is one removal. When a `CHANNEL.md` becomes a project talk template (`mintFor: projects`), it is no longer a channel, so the next `openInventory` removes its channel row and membership rows through the `seatWriter`. Discovery never lists a template as a channel, even before that boot runs.
 
 ## When to use which source
 
@@ -252,10 +254,11 @@ The DevTool's [Inventory tab](../devtool/overview.md#inventory) makes the same r
 
 ## Writing from your own kind
 
-A channel kind you wrote yourself gets rows when it carries the writer. `inventoryWriterActions(kind)` gives back its two blocks by action name. Split them across `actions` and `internal.actions`, the way the built-in kind does:
+A channel kind you wrote yourself gets rows when it carries the writer. `inventoryWriterActions(kind)` gives back its three blocks by action name. Split them across `actions` and `internal.actions`, the way the built-in kind does:
 
 - `registerChannelInInventory` is safe to leave public. It takes no input and builds its row from the channel's own open session.
 - `registerSeatsInInventory` is not. Its whole input is the row data, so it belongs only in `internal.actions`, where only the `runAction({ source: "internal", ... })` call `openInventory` makes can reach it.
+- `retireChannelsInInventory` belongs there too. Its input is the ids of channel rows to remove.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -275,7 +278,10 @@ const briefingKind = defineFlow({
     registerChannelInInventory: writer.registerChannelInInventory,
   },
   internal: {
-    actions: { registerSeatsInInventory: writer.registerSeatsInInventory },
+    actions: {
+      registerSeatsInInventory: writer.registerSeatsInInventory,
+      retireChannelsInInventory: writer.retireChannelsInInventory,
+    },
   },
 });
 ```

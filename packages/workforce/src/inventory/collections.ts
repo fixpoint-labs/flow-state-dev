@@ -27,7 +27,9 @@
  * that prefix; {@link membershipKey} spells the row.
  *
  * These keys are a public surface. Moving one is a breaking change for any app
- * whose rows are already persisted, because nothing here ever deletes a row.
+ * whose rows are already persisted, because nothing here deletes a row for going
+ * missing (the one removal is a channel row whose id became a project talk
+ * template; see `open-inventory.ts`).
  *
  * ## The browser read
  *
@@ -50,7 +52,8 @@
  * Each read names its fields with `expose` rather than the identity default
  * (BP-015), so a key added to a row later stays server-side until someone adds
  * it to the list. A row means *was registered in this organization*, not *is
- * open now*: nothing deletes one, so a reader must label it that way.
+ * open now*: nothing deletes one for going missing, so a reader must label it
+ * that way.
  */
 
 import { defineResourceCollection } from "@flow-state-dev/core";

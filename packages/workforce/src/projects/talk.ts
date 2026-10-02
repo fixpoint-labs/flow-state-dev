@@ -308,8 +308,9 @@ export async function recordTalkDelivery(
 /**
  * The seat an answer speaks for: the one its delivery was made to. Refused,
  * with nothing claimed, when the answer names no delivery of this post in this
- * room (`answer-not-delivered`), or names an author other than that seat
- * (`answer-not-yours`): a seat answers only for itself.
+ * room (`answer-not-delivered`), or names an author other than that seat, or
+ * comes back through a session other than the one the delivery came from
+ * (`answer-not-yours`): a seat answers only for itself, to the post's poster.
  */
 async function deliveredSeat(
   ctx: BlockContext,
@@ -331,12 +332,20 @@ async function deliveredSeat(
       `an answer as "${input.author}" carries the delivery made to "${delivery.seat}". A seat answers only for itself.`
     );
   }
+  const self = ctx.session.identity.id;
+  if (delivery.sessionId !== self) {
+    throw new ProjectRefusedError(
+      "answer-not-yours",
+      `an answer to "${input.postId}" came through session "${self}", but its delivery came from session ` +
+        `"${delivery.sessionId}". A seat answers a post through the poster's session.`
+    );
+  }
   return delivery.seat;
 }
 
 /**
  * `answer` on a talk session: a seat's line, delivered into the session of the
- * person whose post woke it. The line's `userId` is that session's owner; its
+ * person whose post woke it, and refused through any other. The line's `userId` is that session's owner; its
  * `author` is the seat the post was delivered to, read off the delivery the
  * answer's token names (`recordTalkDelivery`), never taken from the answer. `postId` names what is being answered and is not
  * stored on the line: a room line has no post id.
@@ -399,14 +408,16 @@ export function talkReadFor(template: TalkTemplateFacts | undefined) {
 const TALK_WAKE_LINES = 20;
 
 /**
- * The room's committed lines before `seq`, oldest first, at most
+ * The room's last committed lines below `seq`, oldest first, at most
  * {@link TALK_WAKE_LINES}, as a woken seat is handed them: a channel transcript
  * line each, `principal` the poster, `author` the seat that answered. A room
  * line carries no time, so `at` is `0`.
  *
  * Read as a member reads (`readRoom`), so only lines through the room's
  * watermark: a line written past a stalled gap is not committed yet, and a
- * seat is never shown what a member could not read. Tombstones are left out.
+ * seat is never shown what a member could not read. The window ends at the
+ * watermark, not at the post: a post allocated far past a stalled gap still
+ * gets the lines before the gap. Tombstones are left out.
  */
 export async function recentTalkLines(
   ctx: BlockContext,
@@ -422,7 +433,8 @@ export async function recentRoomLines(
   projectId: string,
   seq: number
 ): Promise<ChannelTranscriptLine[]> {
-  const after = Math.max(0, seq - 1 - TALK_WAKE_LINES);
+  const committed = (await rooms.seq.getOptional(projectId))?.state.committed ?? 0;
+  const after = Math.max(0, Math.min(committed, seq - 1) - TALK_WAKE_LINES);
   const { lines } = await readRoom(rooms, projectId, after);
   return lines
     .filter((line) => line.seq < seq)
