@@ -11,8 +11,6 @@ A handbook, a glossary, an escalation procedure: the reference material a team s
 
 Two folders hold documents, and the one you pick decides where the text lives from then on.
 
-![A references document is the file itself and its folder bounds who reaches it; a resources document is a stored row and its folder is only a namespace](./documents-reach.svg)
-
 Choose by who does the editing. A company handbook goes in `references/`: you change it by editing the file and deploying, and nothing running in the product can overwrite it. An agent's working notes go in `resources/`, where a block or the agent itself can write and the text survives the turn.
 
 `readReferencesDirectory` and `readResourcesDirectory` turn the folder tree into plain records. `referencesFromDocs` and `resourcesFromDocs` turn those records into the resource maps you pass to `defineFlow`.
@@ -252,11 +250,11 @@ Both functions throw rather than collecting. A record that cannot become a resou
 
 ## Who reaches what
 
-**For a `references/` document, the folder is the boundary.** A seat reaches the references at or above its own place in the tree: the organization's, its own team's, and its own folder's. Not another team's, and not a teammate's folder. You write no filter, and there is no setting to get wrong.
+![A references document is the file in your repository, re-read on each request, and its folder is a wall: the seat ada reads the organization's references, its own team's and its own folder's, and not a teammate's folder, another team's, or an org seat's folder. A resources document is seeded from its file and is then a stored row each organization gets its own copy of; its folder is only part of its name, so every seat on a flow that installed it reaches it unless you filter the records before installing them](./documents-reach.svg)
 
-An unreachable reference is not an empty read. The accessor is not on the seat's map at all, so `ctx.resources.get("teams/support/escalation")` throws `is not registered`.
+A folder means two different things here. Under `references/`, it is a wall: a seat reads the references of its organization, its team and its own folder, and nothing beside them. Under `resources/`, it is only part of the name: every document there is the organization's, and a flow that installs them reaches all of them unless you filter.
 
-To let a reference reach more people, move the file up the tree. Nothing on the install side widens it.
+You write no filter for a reference, and there is no setting to widen it: to let a reference reach more people, move the file up the tree. An unreachable reference is not an empty read. The accessor is not on the seat's map at all, so `ctx.resources.get("teams/support/escalation")` throws `is not registered`.
 
 A seat can ask for less than its place gives it, by listing what it wants in its own file. The list narrows and never widens, so naming a document the seat could not already reach refuses the whole roster at the hire, naming the seat and the ref:
 
@@ -273,9 +271,7 @@ Leaving the key out means every reference at or above the seat. Writing `referen
 
 A reference under `org/workers/<name>/references/` belongs to the org seat declared in that folder. That seat reaches it, along with the organization's references. No other seat does, and no team's references reach an org seat, because it has no team.
 
-**For a `resources/` document, the folder is a namespace and nothing more.** Every one is org-scoped, and a generator's resource tools reach every installed document marked `llmReadable`. Install a whole tree on one flow and every team's writable documents are reachable from it, one team from another included.
-
-So if you want a team's writable documents kept to that team, filter the records before installing them:
+To keep a team's `resources/` documents to that team, filter the records before installing them:
 
 ```ts
 const engineering = resourcesFromDocs(

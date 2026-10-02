@@ -131,12 +131,9 @@ that way: booting past it runs those workers short of instructions someone wrote
 Instructions written in a `TEAM.md` reach only that team's workers. They ride each worker's own
 configuration, so a worker on another team never sees them.
 
-Documents under `teams/<team>/resources/` work the other way. They are installed on a worker
-*kind*, so every worker of that kind can read every team's documents. The folder addresses a
-document; it does not fence it. To give one team's workers only its own documents, filter the
-records before installing them: [Who reaches what](./documents-on-disk.md#who-reaches-what) shows
-how, and covers a worker's own folder too. A document under `teams/<team>/references/` is the other
-case: that folder does fence it, to that team's workers.
+![A references document's folder is a wall: a seat reads the organization's references, its own team's and its own folder's, and nothing beside them. A resources document's folder is only part of its name: every seat on a flow that installed it reaches it, any team included, unless you filter the records before installing them](./documents-reach.svg)
+
+Team documents work differently by folder. Under `teams/<team>/resources/` they reach every worker of the kind that installed them, whatever its team; under `teams/<team>/references/` they reach only that team's workers. [Who reaches what](./documents-on-disk.md#who-reaches-what) shows how to filter the first.
 
 ## A worker's identity
 

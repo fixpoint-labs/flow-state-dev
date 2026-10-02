@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 548" role="img" aria-labelledby="title desc">
   <title id="title">references and resources: where the text lives and who reaches it</title>
-  <desc id="desc">A document in references is the file itself, re-read on each request; nothing running in the product can write it, and the folder is the boundary: the seat ada reaches the organization's references, its own team's, and its own folder's, but not a teammate's folder or another team's. A document in resources is seeded from the file at first boot and is then a stored org-scoped row the product writes; its folder is only a namespace, so to keep a team's documents to that team you filter the records before installing them.</desc>
+  <desc id="desc">A document in references is the file itself, re-read on each request; nothing running in the product can write it, and the folder is the boundary: the seat ada reaches the organization's references, its own team's, and its own folder's, but not a teammate's folder, another team's, or the folder of an org seat such as build, which reaches only the organization's references and its own. A document in resources is seeded from the file at first boot and is then a stored org-scoped row the product writes; its folder is only a namespace, so to keep a team's documents to that team you filter the records before installing them.</desc>
   <defs>
     <style>
       :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
@@ -56,12 +56,17 @@
   <text x="84" y="324" class="code">workers/ivan/references/</text>
   <text x="84" y="348" class="nope">ada cannot: a teammate</text>
 
-  <rect x="342" y="176" width="132" height="202" rx="10" class="no"/>
-  <text x="354" y="198" class="h">Support team</text>
-  <text x="354" y="218" class="code">teams/support/</text>
-  <text x="354" y="234" class="code">  references/</text>
-  <text x="354" y="276" class="nope">ada cannot:</text>
-  <text x="354" y="294" class="nope">another team</text>
+  <rect x="342" y="176" width="132" height="96" rx="10" class="no"/>
+  <text x="354" y="198" class="code">teams/support/</text>
+  <text x="354" y="214" class="code">  references/</text>
+  <text x="354" y="242" class="nope">ada cannot:</text>
+  <text x="354" y="258" class="nope">another team</text>
+
+  <rect x="342" y="282" width="132" height="96" rx="10" class="no"/>
+  <text x="354" y="304" class="code">workers/build/</text>
+  <text x="354" y="320" class="code">  references/</text>
+  <text x="354" y="348" class="nope">ada cannot:</text>
+  <text x="354" y="364" class="nope">an org seat</text>
 
   <!-- resources -->
   <rect x="524" y="84" width="368" height="324" rx="14" class="wall-org"/>
