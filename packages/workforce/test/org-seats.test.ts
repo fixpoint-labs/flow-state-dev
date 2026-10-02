@@ -361,6 +361,15 @@ describe("resolveHeldPackages reads an org seat's id through the parser", () => 
     expect((held ?? []).map((entry) => entry.path)).toEqual([library.path]);
   });
 
+  it("refuses a seat id that matches neither declared shape, rather than reading its last two segments", () => {
+    // `a.b.c` is no seat the loader can mint; cut to `b.c` it would read as
+    // worker `c` on team `b` and hold team b's library.
+    const bLibrary = pkg("deploy", "team", "teams/b/packages/deploy", { team: "b" });
+    const { held, problems } = resolveHeldPackages("a.b.c", ["deploy"], [bLibrary], {});
+    expect(held).toEqual([]);
+    expect(problems).toEqual([expect.stringContaining('"a.b.c"')]);
+  });
+
   it("looks only in the org library for a name it cannot find", () => {
     const { problems } = resolveHeldPackages("cos", ["missing"], [house], {});
     expect(problems).toEqual([expect.stringContaining('Looked in "org/packages/missing".')]);

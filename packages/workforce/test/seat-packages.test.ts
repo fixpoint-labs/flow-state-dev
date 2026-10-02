@@ -413,14 +413,19 @@ describe("a record whose reach holds a package that is not this worker's to reac
     expect(held.map((entry) => entry.path)).toEqual([refunds.path, escalation.path]);
   });
 
-  it("reads the owner off a hired seat id with the org in front", () => {
-    const own = resolveHeldPackages("acme.support.clerk", ["escalation"], clerkReach, packageBlocks);
+  it("reads a hired seat's owner off its seat id, and refuses its org-qualified address", () => {
+    const own = resolveHeldPackages("support.clerk", ["escalation"], clerkReach, packageBlocks);
     expect(own.problems).toEqual([]);
     expect(own.held.map(({ manifest }) => manifest.path)).toEqual([refunds.path, escalation.path]);
 
-    const other = resolveHeldPackages("acme.support.greeter", undefined, [...siblingReach, refunds], {});
+    const other = resolveHeldPackages("support.greeter", undefined, [...siblingReach, refunds], {});
     expect(other.held.map(({ manifest }) => manifest.path)).toEqual([]);
     expect(other.problems.join("\n")).toContain(refunds.path);
+
+    // The address is not cut down to its last two segments: it is refused, by name.
+    const address = resolveHeldPackages("acme.support.clerk", ["escalation"], clerkReach, packageBlocks);
+    expect(address.held).toEqual([]);
+    expect(address.problems).toEqual([expect.stringContaining('"acme.support.clerk"')]);
   });
 });
 

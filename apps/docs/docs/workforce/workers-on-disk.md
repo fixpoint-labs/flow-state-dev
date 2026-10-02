@@ -47,9 +47,9 @@ workforce/
     …
 ```
 
-Org seats are rare. Each is one seat the whole organization shares, such as a chief of staff, rather than a member of any team. The examples below leave it out.
+An org seat is one seat the whole organization shares, such as a chief of staff, rather than a member of any team.
 
-Every example below reads this tree.
+Every example below reads the first tree, the one without `org/`.
 
 ## What a WORKER.md says
 
@@ -182,7 +182,7 @@ interface WorkerManifest {
 }
 ```
 
-`skills` is the union of the skills folders that worker draws from. A team seat draws from three: the org's, its team's, and any sitting beside the worker itself. An org seat has no team, so it draws from two: the org's and its own. [Skills](./built-in-worker.md#skills) covers where each one goes and which workers read it. If you only want the worker records and not their skills, `readWorkforceDirectory` reads the same tree and leaves `skills` off.
+`skills` is the union of the skills folders that worker draws from. A team seat draws from three: the org's, its team's, and any sitting beside the worker itself. An [org seat](#what-is-passed-over-in-silence) draws from two: the org's and its own. [Skills](./built-in-worker.md#skills) covers where each one goes and which workers read it. If you only want the worker records and not their skills, `readWorkforceDirectory` reads the same tree and leaves `skills` off.
 
 For the `lead` folder above:
 
@@ -539,7 +539,7 @@ There is a file convention for the code half too. Put a flow kind in `workforce/
 ## What this does not do
 
 - Reading the **Markdown** does not resolve tool or capability names. `tools: [board, search]` comes off the file as two strings; whether anything backs those names is checked at the hire, by the kind the worker runs on. The code walk is what registers the names a worker's list can resolve to. The built-in checks them [against its catalog](./built-in-worker.md#tools). A kind you write decides for itself.
-- It does not read the whole tree. `readWorkforceDirectory` opens worker slots only, `org/workers/<worker>/` and `teams/<team>/workers/<worker>/`; `readWorkforce` opens those plus the skills folders each worker draws from ([Skills](./built-in-worker.md#skills)) and each worker's packages ([Packages on disk](./packages-on-disk.md)). A team seat draws skills from the org's folder, its team's and its own, and packages from its own folder and the team and org libraries. An org seat has no team, so it draws only from the org's folders and its own. A team's `resources/` documents are read by a separate loader at startup, [`readResourcesDirectory`](./documents-on-disk.md). Its `blocks/` folder is not read at startup at all — that folder is scanned when you build, by [`fsdev gen`](./code-on-disk.md). A `tools/` folder is not a slot this convention reads, and `fsdev gen` says so rather than passing it over.
+- It does not read the whole tree. `readWorkforceDirectory` opens worker slots only, `org/workers/<worker>/` and `teams/<team>/workers/<worker>/`; `readWorkforce` opens those plus the skills folders each worker draws from ([Skills](./built-in-worker.md#skills)) and each worker's packages ([Packages on disk](./packages-on-disk.md)). A team's `resources/` documents are read by a separate loader at startup, [`readResourcesDirectory`](./documents-on-disk.md). Its `blocks/` folder is not read at startup at all — that folder is scanned when you build, by [`fsdev gen`](./code-on-disk.md). A `tools/` folder is not a slot this convention reads, and `fsdev gen` says so rather than passing it over.
 - It does not follow symlinks inside the tree. A team, a worker slot, a `WORKER.md`, a skill folder — any of these that is a shortcut to somewhere else is refused rather than read. The root you hand it is refused too, with or without a trailing slash. It does not cover a root named through a `.` segment, or anything above the root, so a path that passes through a shortcut on its way in still reads. If you keep the tree behind a symlink on purpose, hand over the path it points at.
 - It does not watch the tree. Read it once, at startup, and re-run `fsdev gen` when the code folders change.
 - It does not staff a [task board](../orchestration/task-board.md). A hired seat is an address you open a session against; a board's workers are in-process and claim tasks from a collection. A board calls its registry entries seats too. Same idea, different mechanism.

@@ -39,11 +39,10 @@ export interface HeldPackages {
  * The packages one seat holds: its own folder's, then the ones its
  * `packages:` line names, nearest library first.
  *
- * @param seatId The seat's id, for the folders a refusal names: the seat id
- *   it was hired as (`manifest.seatId ?? manifest.id`). `<team>.<worker>` is a
- *   team seat; a dotless id is an org seat (`<worker>`), which has no team
- *   library. A hired record with no `seatId` passes its address
- *   (`<org>.<seatId>`) and `orgId` with it.
+ * @param seatId The seat id it was hired as (`manifest.seatId ?? manifest.id`).
+ *   `<team>.<worker>` is a team seat; a dotless id is an org seat (`<worker>`),
+ *   which has no team library. A hired record with no `seatId` passes its
+ *   address (`<org>.<seatId>`) and `orgId` with it. Any other id is refused.
  * @param declared The seat's `packages:` value as written, or `undefined` when
  *   the file wrote no such line.
  * @param reach The packages in the seat's reach, as the loader joined them. A
@@ -65,15 +64,26 @@ export function resolveHeldPackages(
   orgId?: string
 ): HeldPackages {
   const problems: string[] = [];
-  // A hired seat's id carries its org in front. Peeled by the org where the
-  // caller knows it; otherwise the declared id is the last two segments at
-  // most. `parseDeclaredSeatId` is the one rule for what remains.
-  const declaredPart =
-    (orgId === undefined ? undefined : splitSeatAddress(orgId, seatId)) ??
-    seatId.split(".").slice(-2).join(".");
+  // A hired record with no `seatId` passes its address and the org to peel off
+  // it. What remains is parsed whole, never cut down: `a.b.c` matches neither
+  // shape, and its last two segments would read as a seat on team `b`.
+  const declaredPart = (orgId === undefined ? undefined : splitSeatAddress(orgId, seatId)) ?? seatId;
   const declaredId = parseDeclaredSeatId(declaredPart);
-  const team = declaredId?.team;
-  const seatName = declaredId?.name ?? "";
+  // With nothing in reach and no line, there is nothing to place: a hand-built
+  // record keyed some other way is not this step's to refuse.
+  if (declaredId === undefined && (reach ?? []).length === 0 && declared === undefined) {
+    return { held: [], problems };
+  }
+  if (declaredId === undefined) {
+    problems.push(
+      `has the id "${seatId}", which is neither an org seat ("<worker>") nor a team seat ` +
+        `("<team>.<worker>"), so no package can be placed as its own. A hired seat is resolved ` +
+        `by its \`seatId\`, not its org-qualified address.`
+    );
+    return { held: [], problems };
+  }
+  const team = declaredId.team;
+  const seatName = declaredId.name;
   const worker = team === undefined ? seatName : `${team}.${seatName}`;
 
   // The level says what kind of package it is, not whose: the owner on the
