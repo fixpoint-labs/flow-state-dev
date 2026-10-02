@@ -134,6 +134,8 @@ interface BootOptions {
   streaming?: boolean;
   /** Turn on the capability's `refuseRosterAdmin` setting. */
   refuseRosterAdmin?: boolean;
+  /** Hand the capability `instanceAt`, as a Lab does, so a retried re-hire counts a seat its row minted as its own. */
+  instanceAt?: boolean;
 }
 
 /**
@@ -156,6 +158,7 @@ async function boot(stores: StoreRegistry, script: Step[], options: BootOptions 
     allowKinds: ["agent"],
     ...(options.askBefore === undefined ? {} : { askBefore: options.askBefore }),
     ...(options.refuseRosterAdmin === undefined ? {} : { refuseRosterAdmin: options.refuseRosterAdmin }),
+    ...(options.instanceAt === true ? { instanceAt: (id: string) => registry.get(id) } : {}),
   });
   kinds.agent = defineAgentWorkerFlow({ uses: [seatHire] });
 
@@ -656,5 +659,121 @@ describe("what asks, and where it can't", () => {
     expect(() =>
       createSeatHireCapability({ register: () => {}, unregister: () => true, askBefore: ["rehire" as never] }),
     ).toThrow(/askBefore names "rehire"/);
+  });
+});
+
+describe("an approved fire stays fenced to the approved row", () => {
+  /**
+   * A view of `stores` that, once armed, runs `meanwhile` right after the
+   * `at`-th load of the roster, as another request in the same
+   * process would between two awaits. The read still answers what it found.
+   */
+  function interleavingAt(stores: StoreRegistry, at: number, meanwhile: () => Promise<void>) {
+    const state = { armed: false, reads: 0, ran: false };
+    const resourceState = new Proxy(stores.resourceState, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (typeof value !== "function") return value;
+        return async (...args: unknown[]) => {
+          const result = await value.apply(target, args);
+          // The context loads the roster through one prefix read and serves
+          // the check and the removal from it.
+          if (state.armed && prop === "getByPrefix" && args[2] === HIRED_ROSTER_PREFIX) {
+            state.reads += 1;
+            if (state.reads === at && !state.ran) {
+              state.ran = true;
+              await meanwhile();
+            }
+          }
+          return result;
+        };
+      },
+    });
+    return { view: { ...stores, resourceState } as StoreRegistry, state };
+  }
+
+  it("leaves alone a replacement hired between the approval's check and the removal", async () => {
+    const stores = freshStores();
+    await withHelperHired(stores);
+    const key = `${HIRED_ROSTER_PREFIX}${HELPER}`;
+    const original = (await stores.resourceState.get("org", ORG, key))!.state as Record<string, unknown>;
+    // The replacement another request writes: fired and hired again under the same id.
+    const replacement = { ...original, incarnation: "replacement-incarnation", instructions: "The new helper." };
+    const { view, state } = interleavingAt(stores, 1, async () => {
+      await stores.resourceState.set("org", ORG, key, replacement as never, "any");
+    });
+    const asked = await boot(stores, [call("fire", { seatId: HELPER }), say("done")], { askBefore: ["fire"], view });
+    const { requestId } = await asked.ask("let the helper go");
+
+    state.armed = true;
+    const { finished } = await asked.answer(requestId, "approve");
+    await finished;
+    expect(state.ran).toBe(true);
+
+    // The replacement keeps its row, the address and its inventory row, and
+    // the model is told the seat changed, not handed a store error.
+    expect((await stores.resourceState.get("org", ORG, key))?.state).toEqual(replacement);
+    expect(await inventoryRows(stores)).toContain(HELPER_ADDRESS);
+    expect(asked.released).toEqual([]);
+    expect(lastToolResults(asked.seen)).toContain("changed while you were asked");
+  });
+});
+
+describe("an approved re-hire that dies part-way", () => {
+  /** A view of `stores` that, once armed, never answers an inventory write. */
+  function dyingAtInventoryWrite(stores: StoreRegistry) {
+    const state = { armed: false, held: 0 };
+    const resourceState = new Proxy(stores.resourceState, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          const writes = prop === "set" || prop === "delete";
+          if (state.armed && writes && typeof args[2] === "string" && args[2].startsWith("inventory/seats/")) {
+            state.held += 1;
+            return new Promise(() => {});
+          }
+          return value.apply(target, args);
+        };
+      },
+    });
+    return { view: { ...stores, resourceState } as StoreRegistry, state };
+  }
+
+  it("finishes on recovery: the pending repair is this approval's own, so it completes rather than being refused", async () => {
+    const stores = freshStores();
+    const key = `${HIRED_ROSTER_PREFIX}${HELPER}`;
+    await stores.resourceState.set(
+      "org",
+      ORG,
+      key,
+      { ...toHiredSeatRow({ seatId: HELPER, flow: "retired-kind", owningOrgId: ORG }), incarnation: "old-incarnation" } as never,
+      "any",
+    );
+    const { view, state } = dyingAtInventoryWrite(stores);
+    const doomed = await boot(stores, [call("rehire", { seatId: HELPER, flow: "agent" }), say("never reached")], {
+      reloadProblems: 1,
+      view,
+      instanceAt: true,
+    });
+    const { requestId } = await doomed.ask("put the helper back on the agent kind");
+    expect((await stores.request.get(requestId))?.status).toBe("suspended");
+
+    // Approved; the process dies after the repair row is written, before the inventory row is.
+    state.armed = true;
+    void (await doomed.answer(requestId, "approve")).finished;
+    for (let i = 0; i < 200 && state.held === 0; i++) await new Promise((r) => setTimeout(r, 5));
+    expect(state.held).toBe(1);
+    expect((await stores.resourceState.get("org", ORG, key))?.state).toMatchObject({ flow: "agent", pendingRepair: expect.any(String) });
+
+    const next = reopen(stores);
+    // The restart serves the repaired row; the recovery finishes the repair onto that seat.
+    const restarted = await boot(next, [say("done")], { instanceAt: true });
+    expect(await restarted.recover(requestId)).toBe("completed");
+
+    expect(lastToolResults(restarted.seen)).not.toContain("changed while you were asked");
+    expect((await next.resourceState.get("org", ORG, key))?.state).toMatchObject({ flow: "agent", pendingRepair: null });
+    expect(await inventoryRows(next)).toContain(HELPER_ADDRESS);
+    expect(restarted.registry.get(HELPER_ADDRESS)?.kind).toBe("agent");
   });
 });

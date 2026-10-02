@@ -314,9 +314,26 @@ function refuseIfReplaced(verb: string, address: string, approved: SeatHireCheck
   if (approved.owner === now.owner && approved.incarnation === now.incarnation && (verb !== "fire" || approved.kind === now.kind)) {
     return;
   }
-  throw new Error(
+  throw seatChanged(verb, address);
+}
+
+/** The refusal for an approved change whose row is no longer the one approved. */
+function seatChanged(verb: string, address: string): Error {
+  return new Error(
     `The seat "${address}" changed while you were asked: it is not the one you approved, so the ${verb} was not made. Ask again if it should be.`
   );
+}
+
+/**
+ * The token an approved re-hire writes as its pending repair: minted once per
+ * tool call and kept on the request, like the check. So a recovery that finds
+ * the repair row it wrote knows the row as its own and finishes it, while a
+ * pending repair some other call wrote is still a replacement.
+ */
+async function repairTokenOnce(ctx: BlockContext): Promise<string> {
+  const call = ctx._blockIdentity?.blockInstanceId;
+  if (ctx.runOnce === undefined || call === undefined) return newIncarnation();
+  return await ctx.runOnce(`seat-hire-repair-token:${call}`, async () => newIncarnation());
 }
 
 /**
@@ -815,6 +832,10 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
         key: located.key,
         inventory,
         address: seatAddress(orgId, input.seatId, located.ownerUserId),
+        // After an approval, only the row the person approved: checked against
+        // the removal's own read and its version-checked delete, so a row
+        // fired and hired again since the check above is left alone.
+        ...(approved === undefined ? {} : { incarnation: approved.incarnation }),
         isHeld: (address) => options.instanceAt?.(address) !== undefined || options.kindAt?.(address) !== undefined,
         release: (address, storedKind, incarnation) => {
           // With `instanceAt`, only the seat minted from this row is released:
@@ -855,6 +876,8 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
           return { seatId: input.seatId, address: removed.address, released: false, alreadyGone: true as const };
         case "nothing":
           throw nothingToFire(input.seatId, removed.address);
+        case "replaced":
+          throw seatChanged("fire", removed.address);
       }
     },
   };
@@ -904,7 +927,12 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
    * pending-repair marker names (`finish: true`). Writes nothing, so the
    * capability can run it before asking and the write runs it again after.
    */
-  const prepareRehire = async (input: RehireInput, ctx: BlockContext, owner: HiredSeatOwner | undefined = input.owner) => {
+  const prepareRehire = async (
+    input: RehireInput,
+    ctx: BlockContext,
+    owner: HiredSeatOwner | undefined = input.owner,
+    ownToken?: string
+  ) => {
     const orgId = orgOf(ctx);
     // Re-hire acts only on a row that exists, so there is no leftover to find.
     const located = await locateSeatRow(ctx, input.seatId, owner, null);
@@ -965,7 +993,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       throw new Error(`"${address}" is already served by a flow of kind "${held}", so it can't be re-hired.`);
     }
     await refuseDeclaredAddress(ctx, address);
-    const token = newIncarnation();
+    const token = ownToken ?? newIncarnation();
     const seat = mint(orgId, { ...row, incarnation: token }, address);
     return { finish: false as const, target, address, existing, before, old, row, token, pin, seat };
   };
@@ -973,8 +1001,14 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
   const rehireVerb: SeatHireVerb<RehireInput, HireOutput> = {
     check: async (input, ctx) => (await prepareRehire(input, ctx)).target,
     run: async (input, ctx, approved) => {
-      const prepared = await prepareRehire(input, ctx, input.owner ?? approvedOwner(approved));
-      if (approved !== undefined) refuseIfReplaced("re-hire", prepared.address, approved, prepared.target);
+      // An approved re-hire writes the token kept for this call, so a
+      // recovery after the row write finds a pending repair it knows as its
+      // own and finishes it. Any other row, a pending repair another call
+      // wrote included, is checked against what the person approved.
+      const ownToken = approved === undefined ? undefined : await repairTokenOnce(ctx);
+      const prepared = await prepareRehire(input, ctx, input.owner ?? approvedOwner(approved), ownToken);
+      const ours = prepared.finish && ownToken !== undefined && prepared.token === ownToken;
+      if (approved !== undefined && !ours) refuseIfReplaced("re-hire", prepared.address, approved, prepared.target);
       if (prepared.finish) {
         const { address, existing, old, token, pin, seat } = prepared;
         const warnings = await settle(ctx, existing, token, seat, pin, input.flow, address, {
