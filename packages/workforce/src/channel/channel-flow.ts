@@ -1576,48 +1576,46 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     execute: async (posted: TalkFanOutInput, ctx): Promise<ChannelNotifyInput[]> => {
       const recent = await recentTalkLines(ctx as unknown as BlockContext, posted.projectId, posted.seq);
       const postId = roomLineKey(posted.projectId, posted.seq);
-      // One delivery per post, seat and session, recorded `pending` before the
-      // seat is woken and marked `delivered` after (`talkDelivered`): its token
-      // is how the seat's answer proves which seat it speaks for. A replay
-      // wakes a still-pending delivery again with its token, and skips a
-      // delivered one. Every row is attempted before a failure is reported, so
-      // a row that failed beside persisted siblings leaves them pending for
-      // the replay rather than half-recorded and forgotten.
-      const settled = await Promise.allSettled(
-        templateSeats.map(async (member) => {
-          const answerToken = await recordTalkDelivery(ctx as unknown as BlockContext, {
-            projectId: posted.projectId,
-            postId,
-            seat: member,
-            sessionId: ctx.session.identity.id
-          });
-          return answerToken === undefined
-            ? undefined
-            : {
-                channelId: ctx.session.identity.id,
-                member,
-                postId,
-                body: posted.body,
-                principal: posted.principal,
-                routed: true,
-                recent,
-                answerToken
-              };
-        })
-      );
-      const failed = settled.find((outcome) => outcome.status === "rejected");
-      if (failed !== undefined) throw failed.reason;
-      return settled.flatMap((outcome) =>
-        outcome.status === "fulfilled" && outcome.value !== undefined ? [outcome.value] : []
-      );
+      // One wake per seat; each is recorded, woken and marked in its own
+      // rescued run (`talkDeliver`), so one seat's failure is that seat's alone.
+      return templateSeats.map((member) => ({
+        channelId: ctx.session.identity.id,
+        member,
+        postId,
+        body: posted.body,
+        principal: posted.principal,
+        routed: true,
+        recent
+      }));
     }
   });
+  // One delivery per post, seat and session, recorded `pending` before the
+  // seat is woken and marked `delivered` after (`talkDelivered`): its token is
+  // how the seat's answer proves which seat it speaks for. A replay wakes a
+  // still-pending delivery again with its token; a delivered one comes back
+  // with no token and is not woken.
+  const talkRecorded = handler({
+    name: "channel-talk-recorded",
+    inputSchema: channelNotifyInputSchema,
+    outputSchema: channelNotifyInputSchema,
+    resources: TALK_RESOURCES,
+    execute: async (delivery: ChannelNotifyInput, ctx): Promise<ChannelNotifyInput> => {
+      const answerToken = await recordTalkDelivery(ctx as unknown as BlockContext, {
+        projectId: talkProjectOf(ctx.session.state) as string,
+        postId: delivery.postId as string,
+        seat: delivery.member,
+        sessionId: delivery.channelId
+      });
+      return answerToken === undefined ? delivery : { ...delivery, answerToken };
+    }
+  });
+  const toWake = (delivery: ChannelNotifyInput): boolean => delivery.answerToken !== undefined;
   // After a seat's wake has been dispatched: its delivery stops being one a
   // replay would wake again.
   const talkDelivered = handler({
     name: "channel-talk-delivered",
     inputSchema: channelNotifyInputSchema,
-    outputSchema: z.object({}),
+    outputSchema: z.object({ delivered: z.literal(true) }),
     resources: TALK_RESOURCES,
     execute: async (delivery: ChannelNotifyInput, ctx) => {
       await markTalkDelivered(ctx as unknown as BlockContext, {
@@ -1625,20 +1623,48 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         seat: delivery.member,
         sessionId: delivery.channelId
       });
-      return {};
+      return { delivered: true as const };
+    }
+  });
+  // One seat's record, wake and mark, rescued together: a failed record, or a
+  // refused or failed wake, skips the mark, so the delivery stays `pending`
+  // (or unrecorded) for a replay, and the failure is that seat's alone. `notify` runs bare here rather than as `deliver`,
+  // whose own rescue would turn the refusal into a success the mark follows.
+  const talkDeliver =
+    notify === undefined
+      ? undefined
+      : sequencer({ name: "channel-talk-deliver", inputSchema: channelNotifyInputSchema })
+          .step(talkRecorded)
+          .tapIf(toWake, notify)
+          .stepIf(toWake, talkDelivered)
+          .rescue([{ block: noteDeliveryRefusal }]);
+  // Every seat attempted, then any refused one reported: a fan-out with a seat
+  // left `pending` did not complete, and says so.
+  const talkSettled = handler({
+    name: "channel-talk-settled",
+    inputSchema: z.array(z.unknown()),
+    outputSchema: z.object({ woken: z.number() }),
+    execute: async (outcomes: unknown[]) => {
+      const refused = outcomes.filter(
+        (outcome): outcome is { delivered: false; reason: string } =>
+          typeof outcome === "object" && outcome !== null && (outcome as { delivered?: unknown }).delivered === false
+      );
+      if (refused.length > 0) {
+        throw new Error(
+          `${refused.length} of ${outcomes.length} seat wakes were not dispatched and stay pending for a replay:\n  - ` +
+            refused.map((outcome) => outcome.reason).join("\n  - ")
+        );
+      }
+      return { woken: outcomes.length };
     }
   });
   const talkFanOut =
-    deliver === undefined || templateSeats.length === 0
+    talkDeliver === undefined || templateSeats.length === 0
       ? undefined
       : sequencer({ name: "channel-talk-fan-out", inputSchema: talkFanOutInputSchema })
           .step(talkDeliveries)
-          .forEach(
-            (deliveries: ChannelNotifyInput[]) => deliveries,
-            sequencer({ name: "channel-talk-deliver", inputSchema: channelNotifyInputSchema })
-              .tap(deliver)
-              .tap(talkDelivered)
-          );
+          .forEach((deliveries: ChannelNotifyInput[]) => deliveries, talkDeliver)
+          .step(talkSettled);
   const talkPostEntry =
     talkFanOut === undefined
       ? talkPost
