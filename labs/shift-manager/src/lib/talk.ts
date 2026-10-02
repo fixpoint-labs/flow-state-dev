@@ -163,28 +163,78 @@ export async function joinRoom(clients: LabClients, kind: string, projectId: str
   return sessionId;
 }
 
+/** How an open room view keeps reading. */
+export type RoomRefreshOptions = {
+  /** The wait after a read that found new lines, or after a wake. Default 1 s. */
+  minMs?: number;
+  /** The longest wait while the room is quiet. Default 15 s. */
+  maxMs?: number;
+  /** Whether the view is on screen; a hidden view doesn't read. Default: the document is visible. */
+  visible?: () => boolean;
+};
+
 /**
- * After a post at `postSeq`, read the room again until each of its seats has
- * a line after the post, or `timeoutMs` runs out. A seat takes as long as it
- * takes to answer, so this waits on the room's own progress rather than on a
- * quiet spell; a seat still working when the bound runs out is read on the
- * next focus. `read` reads the room's new lines and returns every line held.
+ * The one refresh loop of an open room view. It reads the room's new lines
+ * (`read` returns how many it found) from the view's cursor, sooner while
+ * lines are arriving and backing off to `maxMs` while the room is quiet.
+ * `wake` reads at once and starts the wait over, which is what a post does:
+ * the seats it woke answer into the room, and the next reads pick them up.
+ * Nothing here waits on a particular seat or ties a line to the post before it.
  *
- * @returns whether every seat answered within the bound.
+ * There is only ever one read in flight and one timer pending, however often
+ * it is woken. `stop` ends it, and nothing reads after that. A read that
+ * fails counts as a quiet one; the view shows the failure.
  */
-export async function untilAnswered(
-  read: () => Promise<readonly RoomLine[]>,
-  postSeq: number,
-  seats: readonly string[],
-  options: { timeoutMs?: number; pollMs?: number } = {},
-): Promise<boolean> {
-  const until = Date.now() + (options.timeoutMs ?? 30_000);
-  for (;;) {
-    const answered = new Set((await read()).filter((l) => l.seq > postSeq && l.author !== null).map((l) => l.author));
-    if (seats.every((seat) => answered.has(seat))) return true;
-    if (Date.now() >= until) return false;
-    await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? 1_000));
-  }
+export function startRoomRefresh(read: () => Promise<number>, options: RoomRefreshOptions = {}): { wake(): void; stop(): void } {
+  const minMs = options.minMs ?? 1_000;
+  const maxMs = options.maxMs ?? 15_000;
+  const visible = options.visible ?? (() => typeof document === "undefined" || document.visibilityState !== "hidden");
+  let delay = minMs;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let stopped = false;
+  let reading = false;
+  let wokenWhileReading = false;
+
+  const schedule = (ms: number) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => void tick(), ms);
+  };
+  const tick = async () => {
+    if (stopped) return;
+    if (reading) {
+      wokenWhileReading = true;
+      return;
+    }
+    if (!visible()) {
+      schedule(maxMs);
+      return;
+    }
+    reading = true;
+    let fresh = 0;
+    try {
+      fresh = await read();
+    } catch {
+      fresh = 0;
+    }
+    reading = false;
+    if (stopped) return;
+    delay = wokenWhileReading || fresh > 0 ? minMs : Math.min(delay * 2, maxMs);
+    schedule(wokenWhileReading ? 0 : delay);
+    wokenWhileReading = false;
+  };
+
+  schedule(delay);
+  return {
+    wake() {
+      if (stopped) return;
+      delay = minMs;
+      schedule(0);
+    },
+    stop() {
+      stopped = true;
+      clearTimeout(timer);
+    },
+  };
 }
 
 /**
