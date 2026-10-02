@@ -162,7 +162,11 @@ const installed = new WeakMap<object, string>();
  * host that builds several flows and calls `channelInstances` more than once
  * keeps the one a template installed.
  *
- * @throws When a reaction this module installed mints on another kind.
+ * The kind must also be the one every `createProject` binds on
+ * ({@link noteTalkBindKind}), or a create would ready two sessions.
+ *
+ * @throws When a reaction this module installed mints on another kind, or a
+ *   `createProject` binds on another kind.
  */
 export function installTalkReaction(collection: object, kind: string): void {
   const target = collection as { reactTo?: { created?: unknown } };
@@ -173,6 +177,8 @@ export function installTalkReaction(collection: object, kind: string): void {
         `template now names kind "${kind}". The projects collection is one per process, so its rooms run on one kind.`
     );
   }
+  const other = [...(bindKinds.get(collection) ?? [])].find((bound) => bound !== kind);
+  if (other !== undefined) throw new Error(talkKindMismatch(other, kind));
   const mint = dispatcher({
     name: "project-mint-talk",
     flowKind: kind,
@@ -188,8 +194,44 @@ export function installTalkReaction(collection: object, kind: string): void {
   target.reactTo = reactTo;
 }
 
-/** Remove the reaction this module installed on `collection`. For tests that boot several hosts in one process. */
+/**
+ * The kinds `defineProjectBlocks` built a `createProject` binding on, per
+ * collection. `createProject` binds its creator on its kind and the template's
+ * reaction binds on the template's, under one key: on two kinds they are two
+ * sessions, so the two must agree.
+ */
+const bindKinds = new WeakMap<object, Set<string>>();
+
+function talkKindMismatch(bindKind: string, templateKind: string): string {
+  return (
+    `createProject binds talk sessions on kind "${bindKind}" (\`defineProjectBlocks({ talkKind })\`, ` +
+    `"channel" by default), and the talk template mints them on kind "${templateKind}". Each create would ` +
+    `ready two talk sessions on two kinds. Name the same kind in both.`
+  );
+}
+
+/**
+ * Note the kind a `createProject` dispatches `bind` to. Refuses one that
+ * differs from the kind an installed template reaction mints on; whichever of
+ * the two is built second throws, so the mismatch fails at boot either way.
+ *
+ * @throws When a template reaction on `collection` mints on another kind.
+ */
+export function noteTalkBindKind(collection: object, kind: string): void {
+  const reactTo = (collection as { reactTo?: object }).reactTo;
+  const templateKind = reactTo === undefined ? undefined : installed.get(reactTo);
+  if (templateKind !== undefined && templateKind !== kind) throw new Error(talkKindMismatch(kind, templateKind));
+  const kinds = bindKinds.get(collection) ?? new Set<string>();
+  kinds.add(kind);
+  bindKinds.set(collection, kinds);
+}
+
+/**
+ * Remove the reaction this module installed on `collection`, and the bind
+ * kinds noted on it. For tests that boot several hosts in one process.
+ */
 export function forgetTalkReaction(collection: object): void {
   const target = collection as { reactTo?: object };
   if (target.reactTo !== undefined && installed.has(target.reactTo)) delete target.reactTo;
+  bindKinds.delete(collection);
 }

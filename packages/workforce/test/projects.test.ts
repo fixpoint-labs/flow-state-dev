@@ -364,6 +364,34 @@ describe("project rows", () => {
     expect((await h.inspectRow(winner, ["ops.oncall"])).claims["ops.oncall"]).toBe(winner);
   });
 
+  it("hands a re-sent create of a project that holds workstreams its row back, rather than refusing it on its own claims", async () => {
+    const h = await boot();
+    const brokenLab = await h.openSession("alice", "lab-broken");
+    // Committed with its claims, and left unbound: its bind was refused.
+    await h.ok("alice", "lab-broken", brokenLab, "createProject", {
+      id: "atlas",
+      title: "Atlas",
+      workstreams: ["eng.feature", "ops.release"]
+    });
+    expect((await h.inspectRow("atlas")).row.sessions).toEqual([]);
+
+    // The owner re-sends it, workstreams and all, from a fresh session.
+    const lab = await h.openSession("alice", "lab");
+    const resent = await h.ok("alice", "lab", lab, "createProject", {
+      id: "atlas",
+      title: "Atlas",
+      workstreams: ["eng.feature", "ops.release"]
+    });
+    expect(resent.created).toBe(false);
+    expect(resent.project.workstreams).toEqual(["eng.feature", "ops.release"]);
+    // The re-send is the repair path: the owner's talk session is bound now.
+    await h.sessionFor("atlas", "alice");
+    expect((await h.inspectRow("atlas", ["eng.feature", "ops.release"])).claims).toEqual({
+      "eng.feature": "atlas",
+      "ops.release": "atlas"
+    });
+  });
+
   it("re-binds a row whose mint failed after commit, by each repair path, and binds once", async () => {
     const h = await boot();
     const brokenLab = await h.openSession("alice", "lab-broken");
@@ -496,6 +524,84 @@ describe("project rows under racing writes", () => {
       expect(after.claims[id]).toBe(after.row.workstreams.includes(id) ? "p" : null);
     }
   });
+  it("releases a failed edit's stamp when the row dropped the workstream while the edit was restoring it", async () => {
+    const h = await boot();
+    const lab = await h.openSession("alice", "lab");
+    await h.ok("alice", "lab", lab, "createProject", { id: "q", title: "Q", workstreams: ["ops.oncall"] });
+    await h.ok("alice", "lab", lab, "createProject", { id: "p", title: "P", workstreams: ["eng.feature"] });
+    const recorded = (await h.inspectRow("p")).row.claimTokens?.["eng.feature"] as string | undefined;
+    const [editA, editB] = [await h.openSession("alice", "lab"), await h.openSession("alice", "lab")];
+
+    const states = h.stores.resourceState;
+    const set = states.set.bind(states);
+    let raced = false;
+    // Edit A stamps eng.feature, is refused on ops.oncall (q holds it), and
+    // hands eng.feature's claim back to the row's token. Just before that
+    // hand-back lands, edit B commits [] and finds the claim still carrying
+    // A's stamp, so it can't release it.
+    states.set = async (scopeType, scopeId, key, state, expected) => {
+      const token = (state as { token?: string }).token;
+      if (!raced && isKey(key, "workstream-claims", "eng.feature") && token !== undefined && token === recorded) {
+        raced = true;
+        await h.ok("alice", "lab", editB, "setWorkstreams", { projectId: "p", workstreams: [] });
+      }
+      return set(scopeType, scopeId, key, state, expected);
+    };
+    const refused = await h.act("alice", "lab", editA, "setWorkstreams", { projectId: "p", workstreams: ["eng.feature", "ops.oncall"] });
+    states.set = set;
+    expect(recorded).toBeTypeOf("string");
+    expect(raced).toBe(true);
+    expect(refusal(refused)).toContain("workstream-claimed");
+
+    // The committed row lists nothing, so nothing may hold eng.feature for p.
+    const after = await h.inspectRow("p", ["eng.feature"]);
+    expect(after.row.workstreams).toEqual([]);
+    expect(after.claims["eng.feature"]).toBeNull();
+    const bobLab = await h.openSession("bob", "lab");
+    await h.ok("bob", "lab", bobLab, "createProject", { id: "r", title: "R", workstreams: ["eng.feature"] });
+  });
+
+  it("never shares a claim between duplicate creates, so the refused one releases nothing the other relies on", async () => {
+    const h = await boot();
+    const lab = await h.openSession("alice", "lab");
+    await h.ok("alice", "lab", lab, "createProject", { id: "q", title: "Q", workstreams: ["ops.oncall"] });
+    const [first, second] = [await h.openSession("alice", "lab"), await h.openSession("alice", "lab")];
+
+    const states = h.stores.resourceState;
+    const set = states.set.bind(states);
+    let raced = false;
+    let other: Awaited<ReturnType<Harness["act"]>> | undefined;
+    // The first duplicate creates eng.feature's claim; before it reaches
+    // ops.oncall (q holds it), the second duplicate runs whole, over
+    // eng.feature alone.
+    states.set = async (scopeType, scopeId, key, state, expected) => {
+      const result = await set(scopeType, scopeId, key, state, expected);
+      if (!raced && result.ok && isKey(key, "workstream-claims", "eng.feature")) {
+        raced = true;
+        other = await h.act("alice", "lab", second, "createProject", { id: "dup", title: "Dup", workstreams: ["eng.feature"] });
+      }
+      return result;
+    };
+    const refused = await h.act("alice", "lab", first, "createProject", {
+      id: "dup",
+      title: "Dup",
+      workstreams: ["eng.feature", "ops.oncall"]
+    });
+    states.set = set;
+    expect(raced).toBe(true);
+    expect(refusal(refused)).toContain("workstream-claimed");
+
+    // Whichever way it fell, the claims match the rows: a row listing
+    // eng.feature holds its claim, and with no such row nobody does.
+    const after = await h.inspectRow("dup", ["eng.feature"]);
+    if (after.row === null) {
+      expect(refusal(other!)).toContain("workstream-claimed");
+      expect(after.claims["eng.feature"]).toBeNull();
+    } else {
+      expect(after.row.workstreams).toEqual(["eng.feature"]);
+      expect(after.claims["eng.feature"]).toBe("dup");
+    }
+  });
 });
 
 describe("a project's room", () => {
@@ -557,6 +663,24 @@ describe("a project's room", () => {
     expect(row.sessions.map((s: { userId: string }) => s.userId).sort()).toEqual(["alice", "bob"]);
     const seen = await h.ok("alice", CHANNEL_KIND, aliceTalk, "read", { after: 0 });
     expect(seen.lines.map((l: RoomLine) => l.body)).toEqual(["secret plan"]);
+  });
+
+  it("refuses to join from a declared channel's session, which keeps its channel path", async () => {
+    const h = await boot();
+    await apollo(h);
+    const channel = await h.openSession("bob", CHANNEL_KIND, { members: ["bob", "alice"], instructions: "Feature work." });
+    const join = await h.act("bob", CHANNEL_KIND, channel, "join", { projectId: "apollo" });
+    expect(join.settled).not.toBe("completed");
+    expect(refusal(join)).toContain("talk-on-a-channel");
+
+    // Nothing was bound: the session names no project, the row lists bob's
+    // own talk session only, and a post there stays a channel post.
+    const state = await h.call("GET", "bob", ["sessions", channel, "state"]);
+    expect(state.json?.state?.resourceId ?? null).toBeNull();
+    const row = (await h.inspectRow("apollo")).row;
+    expect(row.sessions.map((s: { sessionId: string }) => s.sessionId)).not.toContain(channel);
+    await h.ok("bob", CHANNEL_KIND, channel, "post", { body: "still the channel" });
+    expect((await postedLines(h.stores, channel)).length).toBe(1);
   });
 
   it("lands every post of a parallel burst from four members", async () => {

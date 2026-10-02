@@ -25,9 +25,17 @@
  * token this write stamped (a write that failed) or the token the row it
  * replaced recorded (a workstream its committed write dropped). A claim
  * another write has re-stamped since is that write's, and stays.
- * `setWorkstreams` commits only while every claim it lists still carries its
- * token, and takes what it dropped from the row it actually replaced, never
- * from what it read first.
+ * `createProject` only creates claims, never adopts one: a claim its id
+ * already holds is refused like any other, so two duplicate creates never
+ * share one. `setWorkstreams` commits only while every claim it lists still
+ * carries its token, takes what it dropped from the row it actually replaced,
+ * never from what it read first, and when it fails hands its stamps back
+ * against the row as it stands then, checked again after.
+ *
+ * What this does not cover: a writer that dies between stamping a claim and
+ * finishing leaves that claim with a token no row records. Its project can
+ * list and drop the workstream again to clear it; no other project can take
+ * it until then.
  *
  * **Re-sending a create.** The same owner sending the same id again gets the
  * existing row back, unchanged, and its talk session bound if it was not:
@@ -56,7 +64,7 @@ import {
 import { isMember } from "./membership-gate";
 import { isAlreadyExists, isConcurrentModification, isResourceDeleted } from "./store-errors";
 import { ProjectRefusedError } from "./project-refusal";
-import { noteBindRefusal, TALK_BIND_ACTION, talkSessionKey } from "./talk-template";
+import { noteBindRefusal, noteTalkBindKind, TALK_BIND_ACTION, talkSessionKey } from "./talk-template";
 
 /**
  * The resource-map ref the channel inventory is read through here. Private to
@@ -156,6 +164,10 @@ const claimedBy = (id: string, holder: string | undefined) =>
     "workstream-claimed",
     `workstream "${id}" belongs to project "${holder ?? "(unknown)"}". A workstream belongs to at most one project.`
   );
+
+/** The token `row` recorded for `id`, or `undefined` when the row does not list it. */
+const listedToken = (row: ProjectRow | undefined, id: string): string | undefined =>
+  row?.workstreams.includes(id) === true ? row.claimTokens[id] : undefined;
 
 /**
  * A claim as the store holds it now, not as this request first read it.
@@ -264,13 +276,12 @@ const writeProject = handler({
     await assertDeclaredChannels(ctx, workstreams);
     const { claims } = refsOf(ctx);
     const token = newToken();
-    // What this call created, to release if the row is not written. A claim
-    // this id already holds is kept as it is, with its own token: a duplicate
-    // create of the same id is in flight, or one died between its claims and
-    // its row. It is not re-stamped, so whichever duplicate wins the row
-    // records the token the claim really carries.
+    // Every claim is created here, never adopted: a claim this id already
+    // holds belongs to a duplicate create still in flight (or one that never
+    // finished), and sharing it would leave each duplicate releasing a claim
+    // the other relies on. So the claims this call holds are exactly the ones
+    // it created, and nobody else's row can list them.
     const taken: string[] = [];
-    const claimTokens: Record<string, string> = {};
     const releaseTaken = (keep: ReadonlySet<string>) =>
       Promise.all(taken.filter((id) => !keep.has(id)).map((id) => releaseIfStamped(ctx, input.id, id, token)));
     try {
@@ -278,12 +289,9 @@ const writeProject = handler({
         try {
           await claims.create(id, { projectId: input.id, token });
           taken.push(id);
-          claimTokens[id] = token;
         } catch (error) {
           if (!isAlreadyExists(error)) throw error;
-          const held = (await claims.getOptional(id))?.state;
-          if (held?.projectId !== input.id) throw claimedBy(id, held?.projectId);
-          claimTokens[id] = held.token;
+          throw claimedBy(id, (await claims.getOptional(id))?.state.projectId);
         }
       }
     } catch (error) {
@@ -298,14 +306,14 @@ const writeProject = handler({
       ownerUserId: owner,
       members: unique([owner, ...(input.members ?? [])]),
       workstreams,
-      claimTokens,
+      claimTokens: Object.fromEntries(workstreams.map((id) => [id, token])),
       sessions: []
     });
     try {
       await projects.create(input.id, row);
     } catch (error) {
-      // A duplicate create won the row. It may have kept a claim this call
-      // created; release only the ones the winning row does not list.
+      // A duplicate create won the row. Its claims are its own; release ours,
+      // keeping any the winning row lists all the same.
       const winner = isAlreadyExists(error) ? (await projects.getOptional(input.id))?.state : undefined;
       await releaseTaken(new Set(winner?.workstreams ?? []));
       if (winner === undefined) throw error;
@@ -411,9 +419,19 @@ const setWorkstreams = handler({
 
 /**
  * After a `setWorkstreams` that did not commit: hand each claim it stamped back
- * to the row as it now stands. A claim the row lists gets the row's token back;
- * one it does not list is released. Either only while the claim still carries
- * this write's token.
+ * to the row. Decided against the row as it stands at that moment, then
+ * checked again after: a write that committed in between and dropped the
+ * workstream found this write's stamp on the claim and could not release it,
+ * so the release falls to this write.
+ *
+ * - The row lists the workstream: put the row's token back, while the claim
+ *   still carries this write's. Then re-read the row; if it no longer lists the
+ *   workstream with that token, release the claim while it carries it.
+ * - The row does not list it: release it while it carries this write's token.
+ *   No committed row records that token, so nothing relies on such a claim.
+ *
+ * Every delete is conditioned on the token and the claim's version, so a
+ * claim another write stamped meanwhile is left to that write.
  */
 async function settleFailedStamps(
   ctx: BlockContext,
@@ -422,15 +440,17 @@ async function settleFailedStamps(
   stamped: readonly string[],
   token: string
 ): Promise<void> {
-  let current: ProjectRow | undefined;
-  try {
-    await row.updateState((state) => state);
-    current = row.state;
-  } catch (error) {
-    if (!isResourceDeleted(error)) console.error(`[projects] could not re-read project "${projectId}": ${String(error)}`);
-  }
+  const current = async (): Promise<ProjectRow | undefined> => {
+    try {
+      await row.updateState((state) => state);
+      return row.state;
+    } catch (error) {
+      if (!isResourceDeleted(error)) console.error(`[projects] could not re-read project "${projectId}": ${String(error)}`);
+      return undefined;
+    }
+  };
   for (const id of stamped) {
-    const rowToken = current?.workstreams.includes(id) ? current.claimTokens[id] : undefined;
+    const rowToken = listedToken(await current(), id);
     if (rowToken === undefined) {
       await releaseIfStamped(ctx, projectId, id, token);
       continue;
@@ -441,6 +461,7 @@ async function settleFailedStamps(
     } catch (error) {
       console.error(`[projects] could not restore the claim on workstream "${id}": ${String(error)}`);
     }
+    if (listedToken(await current(), id) !== rowToken) await releaseIfStamped(ctx, projectId, id, rowToken);
   }
 }
 
@@ -452,7 +473,9 @@ async function settleFailedStamps(
  *   defineFlow({ kind: "lab", actions: { ...projects.actions } });
  */
 export function defineProjectBlocks(options: ProjectBlocksOptions = {}): ProjectBlocks {
-  const createProject = createProjectSequence(options.talkKind ?? CHANNEL_KIND);
+  const talkKind = options.talkKind ?? CHANNEL_KIND;
+  noteTalkBindKind(defineProjectsCollection(), talkKind);
+  const createProject = createProjectSequence(talkKind);
   return {
     createProject,
     setWorkstreams,

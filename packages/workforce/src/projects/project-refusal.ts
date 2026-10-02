@@ -16,6 +16,7 @@
  * - `workstream-claimed`: another project holds the workstream.
  * - `talk-not-bound`: a room entry ran on a session bound to no project.
  * - `talk-bound-elsewhere`: the session is already bound to another project.
+ * - `talk-on-a-channel`: the session is a declared channel's; a project is joined from a session of its own.
  * - `author-on-a-person-post`: a person's line named an `author`; seats answer through `answer`.
  */
 export type ProjectRefusalReason =
@@ -27,6 +28,7 @@ export type ProjectRefusalReason =
   | "workstream-claimed"
   | "talk-not-bound"
   | "talk-bound-elsewhere"
+  | "talk-on-a-channel"
   | "author-on-a-person-post";
 
 /** A project write or room entry refused on the project's own terms. */
