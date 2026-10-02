@@ -92,5 +92,5 @@ Not acceptance for this issue. This is what other screens and seats consume.
 - **Shift Manager's snapshot** gains `projects`, read once per refresh beside the inventory.
 - **FIX-1719's chief of staff:** creates rows and sets `members` and `workstreams`, through the
   entries PR 1 ships. It reaches every project's room by being on the default template's
-  `members:` (D2).
+  `seats` in `org/resources/projects.ts`, or on a team template's `members:` (D2).
 - **Not carried:** live push, unread, invites, progress, results, a Linear pointer.
