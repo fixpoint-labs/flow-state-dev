@@ -14,8 +14,8 @@ and publishes nothing a user of the framework or of Shift Manager reads.
   epic's shared section), `apps/docs/docs/workforce/projects.md`,
   `apps/docs/docs/workforce/channels.md` (*A room per project*),
   `apps/docs/docs/workforce/chief-of-staff.md`, `apps/docs/docs/workforce/durable-hire.md`,
-  `apps/docs/docs/workforce/workers-on-disk.md`, `packages/workforce/README.md` and
-  `labs/shift-manager/README.md`. The epic's [DOCS.md](../../epics/FIX-1650/DOCS.md) assigns
+  `apps/docs/docs/workforce/workers-on-disk.md`, `packages/workforce/README.md`,
+  `labs/shift-manager/README.md`, and the pentest Lab's own `goals/pentest-lab/lab/README.md`. The epic's [DOCS.md](../../epics/FIX-1650/DOCS.md) assigns
   each to its child. A page that breaks a step is a finding, fixed on its own route, never
   edited in the closure PR.
 - **The epic's docs polish** runs at wrap ([epic PLAN → Wrap](../../epics/FIX-1650/PLAN.md#wrap)),

@@ -27,7 +27,7 @@ that commit.**
 | **The real need** | The [epic's goal](../../epics/FIX-1650/SPEC.md#the-goal-and-how-well-know-its-met) on the assembled set, as [ER-9](../../epics/FIX-1650/BUSINESS-RULES.md#the-closure) and the [closure rule](../../../docs/contributing/orchestration.md#the-closure-issue-every-epic-ends-in-qa) ask; projects org-wide and usually cross-team (Jake) |
 | **Smaller, and rejected** | "Re-run each child's check on one commit." FIX-1718's and FIX-1719's checks each stop where the other starts: neither asks CoS for a project in a browser, and FIX-1621's runs on kitchen-sink's kind |
 | **Bigger, and not this issue's** | Product work of any kind · what sits on a board (FIX-1651) · the CoS and Roster screens (FIX-1722, FIX-1723) · live push of room lines · docs polish (the epic's wrap) |
-| **Not done if** | A leg ran on a tree other than DevTeam's · checks ran on different commits · a project was graded that CoS didn't create in this run · no graded project spans two teams · a CoS step was retried until it passed · a restart was skipped · a control never failed, or failed at setup · a finding was fixed in the closure PR, or deferred |
+| **Not done if** | A leg ran on a tree other than DevTeam's · checks ran on different commits · a project was graded that CoS didn't create in this run · no graded project spans two teams · a CoS step was retried until it passed · a restart was skipped · a fire or retire landed without Approve, or a Deny changed something · a seat other than CoS hired · a fired or retired seat is back after a restart, or still in TEAMS · a cut kind was mapped onto another without a person asking · a project's data or conversation is in session state · a control never failed, or failed at setup · a finding was fixed in the closure PR, or deferred |
 
 ```mermaid
 flowchart LR
@@ -37,7 +37,7 @@ flowchart LR
   A -->|"rows, rooms, outsider shut out, after a restart"| P["PASS · the epic's goal is met"]
   B -->|"seat there, then gone, across restarts"| P
   C -->|"named, retired on Approve, next start clean"| P
-  X["controls · deny-fire · no-cos · no-tool · deny-retire · today's main"] -.-> A
+  X["controls · deny-fire · no-cos · no-tool · today's main"] -.-> A
   X -.-> B
   X -.-> C
   P -.->|"under each control, its own leg"| F["must FAIL · names the step"]
@@ -48,16 +48,16 @@ exactly one leg at its own step.
 
 | How we verify | |
 |---|---|
-| **Goal check** | `goals/shift-manager/one-person-runs-a-labs-projects-and-people/`, real Chromium on a production build of the one commit, legs a to c then the controls. Committed by the closure PR so it keeps running. Verdict in that PR |
-| **Signal** | Per step in [PLAN.md → Checks](PLAN.md#checks). a: two rows CoS created, owned by the person, one listing workstreams of two teams; four tabs each; a post and a seat's answer in the room; the outsider sees both rows and no conversation. b: hire with no ask raised; fire with an ask, gone only after Approve; a kill mid-change leaves it whole. c: CoS names the seat `kind-gone`; after Approve, no refused seat at start |
+| **Goal check** | `goals/shift-manager/one-person-runs-a-labs-projects-and-people/`, real Chromium on a production build of the one commit, legs a to c then the controls. Committed by the closure PR. Run on demand, at this closure and each later epic closure that touches CoS; not a CI gate (QR-5). Verdict in that PR |
+| **Signal** | Per step in [PLAN.md → Checks](PLAN.md#checks). a: two rows CoS created, owned by the person, one listing workstreams of two teams; four tabs each; a post and a seat's answer in the room; the outsider sees both rows and no conversation. b: hire with no ask raised; fire with an ask that survives a restart, gone only after Approve; a team seat asked to hire doesn't. c: CoS names the seat `kind-gone`; after Approve, no refused seat at start |
 | **Model** | Real: every CoS turn and the room's answer. Each is graded once, never retried ([D2](DECISIONS.md#d2)) |
 | **Input** | The DevTeam profile (`labs/shift-manager/teams/devteam`) over `goals/devforce-lab/lab/` as the children leave it, plus [D1](DECISIONS.md#d1)'s workstreams; a store file fresh per run, kept across its restarts |
 | **Anti-game** | No assertion on a child's output or Shift Manager's state. Only rows CoS created in this run are graded; the profile's default projects are left alone. Every change goes through a CoS turn or an Inbox click |
-| **Control that must fail** | `deny-fire`: b's "seat gone" FAILS. `no-cos` (CoS's document removed): the same hire asked of a team seat, "seat appears" FAILS. `no-tool`: a's "two rows" FAILS. `deny-retire`: c's clean start FAILS. Today's `main`: all three legs FAIL |
+| **Control that must fail** | `deny-fire`: b's "seat gone" FAILS. `no-cos` (CoS's document removed): the same hire asked of a team seat, "seat appears" FAILS. `no-tool`: a's "two rows" FAILS. Today's `main`: all three legs FAIL |
 
 Part 2 walks the one team the legs don't: someone building the next Lab ([D3](DECISIONS.md#d3)).
-Part 3 re-runs every child's check; part 4 sweeps the epic's seams and its Layer 1 fence. All on
-the same commit.
+Part 3 re-runs every child's check on its green path, skipping the controls part 1 already
+failed; part 4 asserts the epic's seams and its Layer 1 fence by script. All on the same commit.
 
 ## What changes
 
@@ -97,4 +97,4 @@ The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
 Improvement · closure (QA) · `goals/` only · medium, repeats per finding · 1 PR after a clean run
 · epic [FIX-1650](../../epics/FIX-1650/SPEC.md), closure · required · runs after FIX-1621,
-FIX-1718 and FIX-1719 merge · Linear [FIX-1720](https://linear.app/fixpoint-labs/issue/FIX-1720)
+FIX-1718 and FIX-1719 merge, and FIX-1722 and FIX-1723, the surfaces the legs drive · Linear [FIX-1720](https://linear.app/fixpoint-labs/issue/FIX-1720)

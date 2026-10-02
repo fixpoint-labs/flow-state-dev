@@ -56,6 +56,7 @@ It comes down to whose project is graded: grouping on the default row proves app
 between. Then the model, not CoS, is the variable, and the plan names a stronger one.
 
 **What being wrong costs:** a full re-run for a model's off day, about nine graded turns each time.
+With [QR-15](BUSINESS-RULES.md#what-happens-to-a-finding), any finding re-runs the whole plan, so one miss costs one full run.
 
 ![D2: a CoS miss is a finding, chosen, beside retrying each ask; decided by what a person does when CoS misses](figures/d2-no-retry.svg)
 
@@ -68,7 +69,7 @@ It comes down to what a person does: they ask once, so a retry grades a CoS nobo
 |---|---|
 | **Instead of** | (a) The closure worker adding CoS and a project template to the pentest Lab from these specs. (b) No journey: the DevTeam Lab already opted in |
 | **Because** | The epic's fourth team "declares one talk template for its projects and opts into CoS as one document". DevTeam's opt-in was written by the implementers, who read the specs; only a reader who has the docs alone tests what a Lab author gets. (a) proves what the implementers knew. (b) skips the team the closure rule says to walk |
-| **Locks in** | An isolated sub-agent sees only the published pages (DOCS.md lists them) and a scratch copy of `goals/pentest-lab/lab/`. It writes the CoS document, the capability install, the project collection and template, and lists every step it had to guess. Then the person asks CoS for a project and a seat in Shift Manager over that copy. Each guessed step and each failed step is a finding. Nothing is committed |
+| **Locks in** | An isolated sub-agent sees only the published pages [DOCS.md](DOCS.md) lists, the pentest Lab's README, and a scratch copy of `goals/pentest-lab/lab/`. It writes the CoS document, the capability install, the project collection and template. Then the person asks CoS for a project and a seat in Shift Manager over that copy. A step no page covers is a failed step, reason *doc silent*, filed like any other. Nothing is committed |
 
 **What would change my mind:** the docs naming a generator that adds CoS to a Lab. Then the writer
 runs it.
@@ -107,8 +108,9 @@ It comes down to the reader: only a docs-only writer tests what a Lab author rea
 | Alternative | Why not |
 |---|---|
 | Kitchen-sink's tree, or the pentest Lab, for legs a to c | The epic pins the DevTeam profile; the Architect rules kitchen-sink out |
+| A kill racing the Approve inside the committed check | It can't fail on demand; a probe once, and a fault-injected test at FIX-1719's resume path |
 | Driving CoS over HTTP instead of the browser | Grades a route, not what a person touches; FIX-1719's check already does it |
-| Skip a child's check because a leg covers it | None is fully covered: re-hire, the three-user room and the burst controls are the children's alone |
+| Skip a child's whole check because a leg covers it | None is fully covered: re-hire, the three-user room and the burst controls are the children's alone. Only the controls part 1 already failed are skipped |
 | Fix a small gap inside the closure PR | A gap is a child of the epic, on its own route |
 
 ## Open / Settled
@@ -124,3 +126,9 @@ leaves no unclaimed workstream, is read off FIX-1718's merged plan (S11, S12) an
   docs alone.
 - **D1's vehicle (Oct 2)** — the epic coordinator kept the recommendation and moved the vehicle
   from a new child of FIX-1650 to FIX-1718's PR 3, which already owns the DevTeam tree (S11).
+- **Review round 1 (Oct 2)** — second-look, the Architect's stamp and Cursor. FIX-1722 and FIX-1723
+  gate the run, since the legs drive their surfaces; the kill race left the committed check for a
+  probe and FIX-1719's resume path; the check runs on demand, not in CI; part 3 runs green paths
+  and skips the controls part 1 already failed; part 4's required rows are scripted, the rest
+  observations; steps and rules trimmed (a6, b2, b5, `deny-retire` cut, since retire rides the
+  fire path); J4's writer pinned to the docs and the pentest README, a guess being a failed step.
