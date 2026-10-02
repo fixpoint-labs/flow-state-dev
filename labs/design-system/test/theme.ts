@@ -20,11 +20,12 @@ export type Declarations = Record<string, string>;
 
 /**
  * The declarations of every rule whose selector list is exactly `selectors`,
- * written with `, ` between selectors (`":root, .dark"`).
+ * written with `, ` between selectors (`":root, .dark"`). Comments and
+ * `@import` statements are skipped.
  */
 export function rule(css: string, selectors: string): Declarations {
   const out: Declarations = {};
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/@import[^;]*;/g, "");
   for (const match of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (match[1]!.split(",").map((s) => s.trim()).join(", ") !== selectors) continue;
     for (const decl of match[2]!.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) out[decl[1]!] = decl[2]!.trim();
@@ -36,10 +37,10 @@ export function rule(css: string, selectors: string): Declarations {
  * Every value in the stylesheet a copy of which would carry Shift Manager's look
  * into another package: colour literals (lowercased) and the quoted font
  * family names. Generic families (`ui-monospace`, `sans-serif`) are not ours
- * and not collected.
+ * and not collected, and neither are the font imports' paths.
  */
 export function themeValues(css: string): string[] {
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/@import[^;]*;/g, "");
   const colours = (stripped.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []).map((c) => c.toLowerCase());
   const families = [...stripped.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
   return [...new Set([...colours, ...families])];

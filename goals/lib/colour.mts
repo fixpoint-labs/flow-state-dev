@@ -74,10 +74,10 @@ export const near = (a: Rgb, b: Rgb): boolean => a.every((v, i) => Math.abs(v - 
 /** A colour as `#rrggbb`. */
 export const hex = ([r, g, b]: Rgb): string => `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 
-/** The custom properties `css` declares on exactly `selector` (comments ignored). */
+/** The custom properties `css` declares on exactly `selector` (comments and `@import`s ignored). */
 export function declarations(css: string, selector: string): Record<string, string> {
   const out: Record<string, string> = {};
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/@import[^;]*;/g, "");
   for (const m of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (m[1]!.split(",").map((s) => s.trim()).join(", ") !== selector) continue;
     for (const d of m[2]!.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) out[d[1]!] = d[2]!.trim();
@@ -108,6 +108,7 @@ export function readShiftManagerTheme(): ShiftManagerTheme {
     dark: colours(dark),
     attentionLight: light["--attention"]!,
     attentionDark: dark["--attention"]!,
-    families: [...new Set([...css.matchAll(/"([^"]+)"/g)].map((m) => m[1]!))],
+    // The quoted names, leaving out the paths of the font imports.
+    families: [...new Set([...css.replace(/@import[^;]*;/g, "").matchAll(/"([^"]+)"/g)].map((m) => m[1]!))],
   };
 }

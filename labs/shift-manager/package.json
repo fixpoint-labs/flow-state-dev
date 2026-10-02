@@ -42,7 +42,7 @@
   },
   "devDependencies": {
     "@flow-state-dev/orchestration": "workspace:*",
-    "@tailwindcss/postcss": "^4.1.12",
+    "@tailwindcss/vite": "^4.2.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.1.12",

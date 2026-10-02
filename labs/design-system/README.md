@@ -16,8 +16,11 @@ match the cards.
 Two rules the values keep. Yellow (`attention`) means only that a person must act. Corners are
 square.
 
-Fonts are named, not bundled: Space Grotesk for the interface and headings, IBM Plex Mono
-for labels and ids. Load them in your app, or the system fallbacks show.
+Fonts come with it: Space Grotesk for the interface and headings, IBM Plex Mono for labels
+and ids. The stylesheet imports their faces from the `@fontsource` packages, so your bundler
+serves the font files with your app and no page fetches them from a font CDN. That needs a
+CSS pipeline that rebases `url()`s inside imported stylesheets; in Vite, run Tailwind as
+`@tailwindcss/vite` rather than through PostCSS.
 
 Nothing in FSD's own packages may carry one of these values; `pnpm --filter
 @flow-state-dev/design-system test` fails if one does. The values come from the final Claude

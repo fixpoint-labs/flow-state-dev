@@ -6,9 +6,10 @@
  * theme is covered unedited. Its planted case copies one real package file to
  * a temp tree, adds one theme value, and shows the same search names it.
  */
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { registryTokenDefaults } from "../../../packages/ui/scripts/token-defaults";
 import { SHIFT_MANAGER_CSS, PACKAGE_ROOT, REPO_ROOT, findThemeValues, rule, themeValues } from "./theme";
@@ -49,6 +50,27 @@ describe("both variants", () => {
     expect(light["--font-mono"]).toMatch(/^"IBM Plex Mono"/);
     expect(light["--font-display"]).toMatch(/^"Space Grotesk"/);
     for (const [prop, value] of Object.entries(light)) if (prop.startsWith("--radius")) expect(value, prop).toBe("0");
+  });
+
+  it("bundles a face for every family it names, in the weights the design loads", () => {
+    // A family named with no face behind it falls back to the system font, silently.
+    const require = createRequire(join(PACKAGE_ROOT, "package.json"));
+    const faces = new Set<string>();
+    for (const [, spec] of css.matchAll(/@import "([^"]+)";/g)) {
+      const file = require.resolve(spec!);
+      for (const [, body] of readFileSync(file, "utf8").matchAll(/@font-face\s*\{([^}]*)\}/g)) {
+        const family = /font-family:\s*'([^']+)'/.exec(body!)![1];
+        const weight = /font-weight:\s*(\d+)/.exec(body!)![1];
+        for (const [, url] of body!.matchAll(/url\(([^)]+)\)/g)) expect(existsSync(join(dirname(file), url!)), url).toBe(true);
+        faces.add(`${family} ${weight}`);
+      }
+    }
+    const named = themeValues(css).filter((value) => !value.startsWith("#"));
+    expect(named.sort()).toEqual(["IBM Plex Mono", "Space Grotesk"]);
+    expect([...faces].sort()).toEqual([
+      ...["400", "500", "600"].map((w) => `IBM Plex Mono ${w}`),
+      ...["400", "500", "600", "700"].map((w) => `Space Grotesk ${w}`),
+    ]);
   });
 
   it("points the navigator and panels at the tokens, in both variants", () => {
@@ -102,14 +124,14 @@ describe("the fence", () => {
 });
 
 describe("the package stays a skin", () => {
-  it("depends on nothing from FSD, Workforce included", () => {
+  it("depends on nothing from FSD, Workforce included: only its fonts", () => {
     const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as Record<string, unknown>;
     const deps = { ...(manifest.dependencies as object), ...(manifest.peerDependencies as object) };
-    expect(Object.keys(deps)).toEqual([]);
+    expect(Object.keys(deps).sort()).toEqual(["@fontsource/ibm-plex-mono", "@fontsource/space-grotesk"]);
   });
 
-  it("imports nothing and names no Workforce word in the stylesheet", () => {
-    expect(css).not.toMatch(/@import/);
+  it("imports only its fonts and names no Workforce word in the stylesheet", () => {
+    for (const [line] of css.matchAll(/@import[^;]*;/g)) expect(line).toMatch(/^@import "@fontsource\/[a-z-]+\/\d+\.css";$/);
     expect(css).not.toMatch(/workforce|needs you|roster|seat/i);
   });
 });

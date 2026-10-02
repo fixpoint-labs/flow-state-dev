@@ -18,7 +18,20 @@
  *
  * Two rules the values keep: `attention` (the highlighter) means only that a
  * person must act, and no other token carries it; corners are square.
+ *
+ * The two families are bundled, in the weights the design loads: the faces
+ * come from the `@fontsource` packages this one depends on and are served
+ * with the app, so an app that imports this file gets the fonts with it, and
+ * one that drops the import drops them too.
  */
+
+@import "@fontsource/space-grotesk/400.css";
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
 
 :root {
   --background: #f8f6f0;
