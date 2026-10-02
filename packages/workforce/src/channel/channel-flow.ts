@@ -1119,16 +1119,18 @@ export function inventoryWriterActions(kind: string) {
         const row = await ctx.resources.channels.getOptional(id);
         if (row === undefined) continue;
         const members = [...(row.state.members ?? [])];
-        // The channel row first, then the membership rows it names: a crash
-        // between them leaves a stale membership row, never a channel row
-        // claiming a member the index has lost.
-        await ctx.resources.channels.delete(id);
+        // The membership rows first, the channel row last. The channel row is
+        // the only record of which membership rows exist, so it goes only once
+        // they are all gone: a run that fails partway leaves it standing, and
+        // the next boot's run finishes the job instead of skipping an id whose
+        // membership rows would otherwise be orphaned.
         for (const seatId of members) {
           const key = membershipKey(seatId, id);
           if ((await ctx.resources.memberships.getOptional(key)) !== undefined) {
             await ctx.resources.memberships.delete(key);
           }
         }
+        await ctx.resources.channels.delete(id);
         retired += 1;
       }
       return { retired };

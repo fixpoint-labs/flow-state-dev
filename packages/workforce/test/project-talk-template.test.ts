@@ -196,6 +196,23 @@ describe("declaring a talk template", () => {
     expect(registeredTalkTemplate(projects)?.facts).toEqual({ seats: ["eng.em"], charter: "Plan." });
   });
 
+  it("accepts later calls that reach the same template through another alias or order, and still refuses a different one", () => {
+    defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Plan." } });
+    channelInstances([], { kinds: waking(), resources: { projects } });
+    // The same collection and facts, under another ref, and under two refs in the other order.
+    expect(() => channelInstances([], { kinds: waking(), resources: { workProjects: projects } })).not.toThrow();
+    expect(() => channelInstances([], { kinds: waking(), resources: { b: projects, a: projects } })).not.toThrow();
+    expect(() => channelInstances([], { kinds: waking(), resources: { a: projects, b: projects } })).not.toThrow();
+    expect(registeredTalkTemplate(projects)?.facts).toEqual({ seats: ["eng.em"], charter: "Plan." });
+
+    // Other facts under any alias are a second template.
+    forgetOrgTalkTemplate(projects);
+    defineProjectsCollection({ talk: { seats: ["ops.lead"], charter: "Plan." } });
+    expect(() => channelInstances([], { kinds: waking(), resources: { workProjects: projects } })).toThrow(
+      /already have a talk template in this process .*with other seats or charter/
+    );
+  });
+
   it("binds a roster with no template as today: no reaction, and a template file is never opened or registered", async () => {
     const plain = channelInstances([channel("eng.feature", { members: ["eng.em"] })], { resources: { projects } });
     expect((projects as { reactTo?: unknown }).reactTo).toBeUndefined();
@@ -290,14 +307,20 @@ describe("a host that builds several flows", () => {
     // The same roster bound again, as a host binding it once per flow does.
     expect(() => channelInstances([], { kinds: waking(), resources: { projects } })).not.toThrow();
 
-    // Another template, at another site or with other seats, is a second one.
+    // The same facts from another site are the same template; other seats, at any site, are a second one.
     forgetOrgTalkTemplate(projects);
     expect(() =>
       channelInstances([channel("eng.room", { mintFor: "projects", members: ["eng.em"] }, "Plan.")], {
         kinds: waking(),
         resources: { projects }
       })
-    ).toThrow(/already have a talk template in this process .*channel "eng\.room" would be a second\./);
+    ).not.toThrow();
+    expect(() =>
+      channelInstances([channel("eng.room", { mintFor: "projects", members: ["ops.lead"] }, "Plan.")], {
+        kinds: waking(),
+        resources: { projects }
+      })
+    ).toThrow(/already have a talk template in this process .*channel "eng\.room" would be a second with other seats or charter\./);
     defineProjectsCollection({ talk: { seats: ["ops.lead"], charter: "Plan." } });
     expect(() => channelInstances([], { kinds: waking(), resources: { projects } })).toThrow(
       /already have a talk template in this process \(the talk template beside "projects" in the org's resources\).*with other seats or charter/

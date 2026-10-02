@@ -174,8 +174,8 @@ const registrations = new WeakMap<object, Registration>();
  * reaction is too, and the template lives beside it: every `channelInstances`
  * call builds its channel kind from {@link registeredTalkTemplate}, whether or
  * not that call was handed the template's site. Registering the same template
- * again (the same site and facts, as a host that binds one roster per flow
- * does) is a no-op. Nothing here ever removes a registration.
+ * again (the same collection and facts, under any ref, as a host that binds
+ * one roster per flow does) is a no-op. Nothing here ever removes a registration.
  *
  * @throws When another template is already registered for `collection`.
  */
@@ -208,8 +208,10 @@ export function registerTalkTemplate(
 
 /**
  * Why `template` cannot be registered for `collection`, or `undefined` when it
- * can: another template is registered already. The same one (site and facts)
- * is no conflict. The binder reports this with its other refusals, before it
+ * can: another template is registered already. Matched by the collection
+ * (the registration's key) and the facts: the same facts reached under
+ * another ref, or another order, are the same template. `site` is only the
+ * diagnostic. The binder reports this with its other refusals, before it
  * registers anything.
  */
 export function talkTemplateConflict(
@@ -218,10 +220,10 @@ export function talkTemplateConflict(
 ): string | undefined {
   const current = registrations.get(collection);
   if (current === undefined) return undefined;
-  if (current.site === template.site && sameFacts(current.facts, template.facts)) return undefined;
+  if (sameFacts(current.facts, template.facts)) return undefined;
   return (
     `project rooms already have a talk template in this process (${current.site}), and ` +
-    `${template.site} would be a second${current.site === template.site ? " with other seats or charter" : ""}. ` +
+    `${template.site} would be a second with other seats or charter. ` +
     `Every project's room shares one template. Keep one.`
   );
 }
