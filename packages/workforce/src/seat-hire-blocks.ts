@@ -901,7 +901,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       ];
       const broken: Array<z.infer<typeof brokenSeatOutput>> = [];
       for (const { ref, owner } of rows) {
-        const checked = checkHiredSeatRow(orgId, ref.state, kinds);
+        const checked = checkHiredSeatRow(orgId, ref.state, kinds, ref.path);
         if (checked.ok) continue;
         // The id `fire` takes: the key's last segment (`~<user>/<seat>` for a
         // user-owned row, which `fire` finds by the caller).
@@ -944,7 +944,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
 
     const before = existing.state as JsonObject;
     const target = { kind: input.flow, owner: located.ownerUserId, incarnation: incarnationOfRow(before) };
-    const checked = checkHiredSeatRow(orgId, before, kinds);
+    const checked = checkHiredSeatRow(orgId, before, kinds, input.seatId);
     if (!checked.ok && (checked.reason === "unreadable" || checked.row === undefined)) {
       throw new Error(`"${input.seatId}" is a row that can't be read (${checked.detail}). Fire it to retire it.`);
     }
@@ -987,6 +987,9 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
         );
       }
       refuseUnhireableKind(input.flow, "re-hire onto");
+      // Finishing writes the seat out like any re-hire, so it meets the same
+      // refusal: a row left from before the app turned it on is not finished.
+      if (options.refuseRosterAdmin === true) refuseRosterAdminIn(input.settings, "re-hire");
       const live = options.kindAt?.(address);
       if (live !== undefined && live !== input.flow) {
         throw new Error(`"${address}" is already served by a flow of kind "${live}", so it can't be re-hired.`);

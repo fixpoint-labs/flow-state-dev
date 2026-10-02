@@ -1,0 +1,99 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="What changes, leg by leg. Type: today the system sans with monospace on three labels, checked only as a family string; after, both fonts loaded and IBM Plex Mono on every meta role, graded on every element. Surface: today the sidebar and rails lighter than the page with 4px and full corners left; after, v2's darker sidebar and inspector surfaces and radius 0 outside the named registry parts. Marks: today the highlighter only on Roster and task states as words; after, the highlighter on exactly what waits on a person and a state square on every task state. Layout: today 256 and 288 pixel columns at every width; after, v2's 248, 340 and 400 with the rail dropping below 1180. Content: today no ID or TIME column, queued shown, asks in a side column; after, the 18 drawable content rows, read against the store. Below, the build: PR A, the foundation and the check, then B, C and D in parallel, each adding its screens to one v2 look table."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .head  { fill:var(--surface-2); }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .flight{ fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .div   { stroke:var(--rule); stroke-width:1; stroke-dasharray:3 3; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-c   { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="header">
+    <text class="t-lbl" x="16" y="24">LEG</text>
+    <text class="t-lbl" x="120" y="24">TODAY · WHAT SHIPS</text>
+    <text class="t-lbl" x="400" y="24">TODAY · CHECKED BY</text>
+    <text class="t-lbl" x="560" y="24">AFTER · DRAWN TO V2, GRADED BY THE PROBE</text>
+  </g>
+
+  <g id="type">
+    <text class="t-b" x="16" y="56">type</text>
+    <rect class="gone" x="120" y="38" width="264" height="34" rx="4"/>
+    <text class="t-s" x="130" y="58">system sans · mono on 3 labels of 40</text>
+    <text class="t-g" x="400" y="58">a family string only</text>
+    <rect class="new" x="560" y="38" width="364" height="34" rx="4"/>
+    <text class="t-s" x="570" y="58">both fonts loaded · mono on every meta role · title scale</text>
+  </g>
+  <g id="surface">
+    <text class="t-b" x="16" y="100">surface</text>
+    <rect class="gone" x="120" y="82" width="264" height="34" rx="4"/>
+    <text class="t-s" x="130" y="102">sidebar lighter than page · 4px corners</text>
+    <text class="t-g" x="400" y="102">--radius tokens only</text>
+    <rect class="new" x="560" y="82" width="364" height="34" rx="4"/>
+    <text class="t-s" x="570" y="102">sidebar and inspector surfaces · radius 0 everywhere*</text>
+  </g>
+  <g id="marks">
+    <text class="t-b" x="16" y="144">marks</text>
+    <rect class="gone" x="120" y="126" width="264" height="34" rx="4"/>
+    <text class="t-s" x="130" y="146">highlighter on Roster only · states as words</text>
+    <text class="t-g" x="400" y="146">nothing</text>
+    <rect class="new" x="560" y="126" width="364" height="34" rx="4"/>
+    <text class="t-s" x="570" y="146">highlighter on exactly what waits on you · state squares</text>
+  </g>
+  <g id="layout">
+    <text class="t-b" x="16" y="188">layout</text>
+    <rect class="gone" x="120" y="170" width="264" height="34" rx="4"/>
+    <text class="t-s" x="130" y="190">256 · 288 at every width · asks in a column</text>
+    <text class="t-g" x="400" y="190">nothing</text>
+    <rect class="new" x="560" y="170" width="364" height="34" rx="4"/>
+    <text class="t-s" x="570" y="190">248 · 340 · 400 · rail drops below 1180 · asks in feed</text>
+  </g>
+  <g id="content">
+    <text class="t-b" x="16" y="232">content</text>
+    <rect class="gone" x="120" y="214" width="264" height="34" rx="4"/>
+    <text class="t-s" x="130" y="234">no ID or TIME column · queued shown</text>
+    <text class="t-g" x="400" y="234">data by test id</text>
+    <rect class="new" x="560" y="214" width="364" height="34" rx="4"/>
+    <text class="t-s" x="570" y="234">18 drawable rows, read against the store</text>
+  </g>
+  <text class="t-s" x="560" y="266">* outside the registry parts the check lists by name</text>
+
+  <line class="div" x1="16" y1="282" x2="924" y2="282"/>
+
+  <g id="build">
+    <text class="t-lbl" x="16" y="306">THE BUILD · AFTER FIX-1736 LOADS THE FONTS</text>
+    <rect class="flight" x="16" y="322" width="250" height="80" rx="5"/>
+    <text class="t-lbl" x="30" y="342">PR A · 10 ROWS</text>
+    <text class="t-b" x="30" y="362">foundation and the check</text>
+    <text class="t-s" x="30" y="380">shared parts · frame · v2 look table</text>
+    <path class="arrow" d="M266 340 L336 326"/>
+    <path class="arrow" d="M266 362 L336 368"/>
+    <path class="arrow" d="M266 384 L336 412"/>
+    <rect class="flight" x="336" y="306" width="300" height="38" rx="5"/>
+    <text class="t-s" x="350" y="329">B · sidebar and Chief of Staff · 15 rows</text>
+    <rect class="flight" x="336" y="350" width="300" height="38" rx="5"/>
+    <text class="t-s" x="350" y="373">C · workstream, task, board · 10 rows</text>
+    <rect class="flight" x="336" y="394" width="300" height="38" rx="5"/>
+    <text class="t-s" x="350" y="417">D · Inbox, Tasks, Roster · 18 rows</text>
+    <path class="arrow" d="M636 325 L700 362"/>
+    <path class="arrow" d="M636 369 L700 369"/>
+    <path class="arrow" d="M636 413 L700 376"/>
+    <rect class="new" x="700" y="340" width="224" height="58" rx="5"/>
+    <text class="t-b" x="714" y="362">assembled check on main</text>
+    <text class="t-c" x="714" y="382">then the closure's leg d</text>
+  </g>
+</svg>

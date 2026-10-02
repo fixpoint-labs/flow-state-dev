@@ -126,6 +126,21 @@ describe("a stored hire whose address a file-declared seat now has", () => {
   }, 120_000);
 });
 
+describe("an org worker folder named like one of the Lab's own flows", () => {
+  it("refuses to open, naming the folder, rather than replacing that flow", async () => {
+    // `channel` is the channel kind's flow id: an org seat's id is its bare folder name.
+    const root = join(mkdtempSync(join(tmpdir(), "devforce-tree-")), "workforce");
+    cpSync(LAB_TREE, root, { recursive: true });
+    mkdirSync(join(root, "org", "workers", "channel"), { recursive: true });
+    writeFileSync(
+      join(root, "org", "workers", "channel", "WORKER.md"),
+      "---\ndescription: Named like the channel kind.\nflow: agent\n---\n\nYou are a seat called channel.\n",
+    );
+    const file = await seededStore({});
+    await expect(open(file, root)).rejects.toThrow(/seat "channel".*already the flow "channel"/);
+  }, 120_000);
+});
+
 describe("a re-hire the process died in after its roster write", () => {
   it("finishes when the chief of staff runs it again after the restart, and clears the marker", async () => {
     const token = "inc-rehire";

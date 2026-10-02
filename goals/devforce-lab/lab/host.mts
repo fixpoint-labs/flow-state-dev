@@ -74,6 +74,7 @@ import {
   createProjectOutputSchema,
   defineProjectBlocks,
   projectWritesChannelInventory,
+  mergeSeatFlows,
   openChannels,
   openInventory,
   reloadHiredSeats,
@@ -762,12 +763,20 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     throw new Error(`DEVFORCE_LAB_WRITE_LATENCY_MS must be a positive number of milliseconds, not "${latencyEnv}"`);
   }
   if (writeLatency !== undefined) console.error(`[devforce-lab] holding checked store writes up to ${writeLatency}ms`);
-  const state = createFlowState({
-    flows: {
+
+  // One record for the Lab's own flows and its seats. An org seat's id is its
+  // bare folder name, so a folder named like one of the Lab's flows (`channel`,
+  // `projects`) would take that flow's key; `mergeSeatFlows` refuses it, by name.
+  const flows: Record<string, unknown> = mergeSeatFlows(
+    {
       ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
-      ...Object.fromEntries(hired.map((seat) => [seat.id, seat])),
       ...(projectsFlow === undefined ? {} : { [PROJECTS_KIND]: projectsFlow }),
     },
+    hired,
+  );
+
+  const state = createFlowState({
+    flows,
     // A goal that grades a burst sets DEVFORCE_LAB_WRITE_LATENCY_MS, so the
     // burst's writes really race (`write-latency.mts`). Unset, the store is as given.
     stores: { default: { primary: writeLatency === undefined ? options.stores : withWriteLatency(options.stores, writeLatency) } },
@@ -891,10 +900,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // The inventory, in-process, under the lab's organization, once the channel
   // sessions it registers from exist. A problem fails the open, naming it.
   if (options.inventory === true) {
-    const flows: Record<string, unknown> = {
-      ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
-      ...seats,
-    };
     const run = async (request: InventoryActionRequest): Promise<unknown> => {
       const result = (await runAction({
         flow: flows[request.flowKind],

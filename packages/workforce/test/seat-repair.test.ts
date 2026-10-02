@@ -429,6 +429,48 @@ describe("retire is fire", () => {
   });
 });
 
+describe("a row stored under a key that isn't its seat id", () => {
+  /** `legacy-key` holds an envelope naming `support.lin`, a working seat stored under its own key. */
+  async function mismatchedStore(h: Awaited<ReturnType<typeof harness>>) {
+    await h.seed("legacy-key", row({ seatId: "support.lin", flow: "desk-clerk" }));
+    await h.seed("support.lin", row({ seatId: "support.lin", flow: "desk", settings: { queue: "q" } }));
+    await h.seedInventory("acme.support.lin", "desk");
+    const started = await h.reload();
+    for (const seat of started.seats) h.live.register(seat);
+    return started;
+  }
+
+  it("is listed as unreadable under its storage key, as the start names it", async () => {
+    const h = await harness();
+    const started = await mismatchedStore(h);
+    const listed = await h.run("brokenSeats", {});
+    expect(listed.output).toEqual([
+      expect.objectContaining({ seatId: "legacy-key", key: `${ROSTER}legacy-key`, reason: "unreadable" }),
+    ]);
+    expect(started.problems.join("\n")).toMatch(/legacy-key.*support\.lin/);
+  });
+
+  it("fire by that key removes only that row; the seat its envelope names keeps its row, address and inventory row", async () => {
+    const h = await harness();
+    await mismatchedStore(h);
+    const fired = await h.run("fire", { seatId: "legacy-key" });
+    expect(fired.error).toBeUndefined();
+    expect(fired.output).toEqual({ seatId: "legacy-key", address: null, released: false });
+    expect(Object.keys(await h.rows(ROSTER))).toEqual(["support.lin"]);
+    expect(h.live.held.has("acme.support.lin")).toBe(true);
+    expect(Object.keys(await h.rows(SEATS))).toEqual(["acme.support.lin"]);
+  });
+
+  it("rehire by that key is refused, and nothing changes", async () => {
+    const h = await harness();
+    await mismatchedStore(h);
+    const before = await h.snapshot();
+    const rehired = await h.run("rehire", { seatId: "legacy-key", flow: "desk", settings: { queue: "q" } });
+    expect(rehired.error?.message).toMatch(/can't be read/);
+    expect(await h.snapshot()).toEqual(before);
+  });
+});
+
 describe("a user-owned seat whose kind was cut", () => {
   const OWNED = `~${encodeUserSegment("u1")}/research`;
   const ownedRow = (flow: string) => row({ seatId: "research", flow, ownerUserId: "u1", instructions: "Read." });

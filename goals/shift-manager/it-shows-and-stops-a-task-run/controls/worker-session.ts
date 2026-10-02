@@ -7,20 +7,25 @@
  * seat flow (the "latest session of this seat" near-miss), and no request
  * stream is followed, since that conversation is not the run. The goal must
  * fail at "items equal the run session's".
+ *
+ * A seat whose flow holds no other session (a per-task coder whose only
+ * session is its run) gets the next near-miss, the newest other session this
+ * person holds on any flow. The read never falls back to the run session
+ * itself, which would leave the Session right and the control toothless.
  */
 import type { LabClients } from "../../../../labs/shift-manager/src/lib/connection.ts";
 import { readSessionItems as readAsWritten, type RequestFollower, type SessionItems } from "../../../../labs/shift-manager/src/lib/run.ts";
 
 export * from "../../../../labs/shift-manager/src/lib/run.ts";
 
-/** The newest other listed session on the same flow as `sessionId`. */
+/** The newest other listed session on the same flow as `sessionId`, else on any flow. Never `sessionId`. */
 async function workerSession(clients: LabClients, sessionId: string): Promise<string> {
   const flowId = (await clients.sessions.getSession(sessionId)).flowId;
   const listed = await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" });
-  const other = listed
-    .filter((s) => s.flowId === flowId && s.id !== sessionId)
-    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-  return other?.id ?? sessionId;
+  const others = listed.filter((s) => s.id !== sessionId).sort((a, b) => b.updatedAt - a.updatedAt);
+  const other = others.find((s) => s.flowId === flowId) ?? others[0];
+  if (other === undefined) throw new Error(`control worker-session: this person holds no session but the run ${sessionId}`);
+  return other.id;
 }
 
 export async function readSessionItems(clients: LabClients, sessionId: string): Promise<SessionItems> {

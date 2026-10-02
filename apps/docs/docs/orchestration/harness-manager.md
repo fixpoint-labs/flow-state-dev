@@ -144,6 +144,7 @@ What happens depends on where the task is:
 | The task is | Your message |
 |---|---|
 | Running | Stops the attempt and continues the session with your message. The action answers `continuing` |
+| Running, but its harness hasn't opened its coding session yet | Held for up to a minute while the attempt starts. If the attempt picks your message up as it starts, it works on it straight away; if the harness opens its session first, it's handled as Running. Either way the action answers `continuing`. A harness that still hasn't opened one after a minute is refused with *this run is still starting* |
 | Running, but it didn't stop in time or couldn't be restarted | Kept, and given to the next attempt. The action answers `kept` |
 | About to start an attempt | Kept, and given to that attempt. The action answers `kept` |
 | Waiting on its own question, or between attempts | Kept, and given to the next attempt. The action answers `kept` |

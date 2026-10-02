@@ -84,11 +84,12 @@ describe("finding the run (V1, D1)", () => {
 });
 
 describe("the Session's items (V1, V2; BR-5, BR-8)", () => {
-  it("a running request's items come from its stream through the run's flow, not the session read, and are this task's alone", async () => {
+  it("a running request's items are in the session read while it runs, the stream brings the rest, and both are this task's alone", async () => {
     const row = await linked("held", "drainer");
-    // The session read holds only finished requests' items: a running run has none there yet.
+    // The session read already holds what the running request has finished so far, and only its own.
     const { items: stored } = await readSessionItems(clients, row.run!.sessionId);
-    expect(taskItems(stored, row.boardRef, row.id).items).toEqual([]);
+    const storedShown = taskItems(stored, row.boardRef, row.id).items;
+    expect(storedShown.every((i) => i.taskId === row.id && i.requestId === row.run!.requestId)).toBe(true);
 
     const flowId = await resolveRunFlow(clients, row.run!.sessionId);
     const streamed: OutputItem[] = [];
@@ -106,6 +107,11 @@ describe("the Session's items (V1, V2; BR-5, BR-8)", () => {
       }, "three narrated steps on the stream");
       expect(seen.shared).toBe(false);
       expect(seen.items.every((i) => i.taskId === row.id && i.requestId === row.run!.requestId)).toBe(true);
+      // A fresh session read of the still-running request now carries its finished steps too.
+      const { items: later } = await readSessionItems(clients, row.run!.sessionId);
+      const laterShown = taskItems(later, row.boardRef, row.id).items;
+      expect(laterShown.filter((i) => i.type === "message").length).toBeGreaterThanOrEqual(3);
+      expect(laterShown.every((i) => i.requestId === row.run!.requestId)).toBe(true);
     } finally {
       stream.close();
     }

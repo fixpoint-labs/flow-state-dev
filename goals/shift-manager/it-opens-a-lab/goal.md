@@ -27,10 +27,10 @@ The rows come from the Lab's own doors. On multi-seat-collab, the planner files 
 
 **Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-opens-a-lab/run.mts`
 
-**Controls:** each control rebuilds Shift Manager with one source module swapped for a module under `controls/`. The build fails if the swap never fired.
+**Controls:** each control rebuilds Shift Manager with source modules swapped for a module under `controls/`. The build fails if a swap never fired.
 
-- `GOAL_CONTROL=static-names`: the seat list is written in from the DevTeam tree. Must fail at **TEAMS equals the store's seats** on multi-seat-collab, naming the missing seats.
-- `GOAL_CONTROL=optimistic-post`: the composer draws its own line and sends nothing. Must fail at **the post is in the stored transcript** on both Labs.
+- `GOAL_CONTROL=static-names`: the seat list is written in from the DevTeam tree. A written-in seat the store also holds keeps its stored door, so only the names are written in. Must fail at **TEAMS equals the store's seats** on multi-seat-collab, naming the missing seats.
+- `GOAL_CONTROL=optimistic-post`: the workstream composer draws its own line and sends nothing, whether the line is a post (`src/lib/transcript.ts`) or an `@worker` turn (`src/lib/send.ts`). Must fail at **the post is in the stored transcript** on both Labs. This goal sends no `@worker` turn; the turn half is for checks that do, like FIX-1663's a4.
 - `GOAL_CONTROL=unanswerable-asks`: every ask is marked as one the Lab won't reopen, so no card offers an answer. Must fail at **an answer from Inbox lands in the store** on DevTeam.
 
 ## Verdict log
