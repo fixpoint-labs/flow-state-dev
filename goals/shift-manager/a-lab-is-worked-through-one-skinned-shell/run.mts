@@ -460,13 +460,17 @@ const CHILDREN: Child[] = [
   { id: "P3.3 multi-seat-collab it-hands-a-row-between-two-seats-in-view", run: "goals/multi-seat-collab/it-hands-a-row-between-two-seats-in-view/run.mts" },
 ];
 
+/** NODE_ENV as launched. An in-process vite.build() sets it to "production" and never restores it,
+ *  which would make Part 3's vitest children stub out node: built-ins. */
+const LAUNCH_NODE_ENV = process.env.NODE_ENV;
+
 /** Run one command to its end, keeping its output in a log beside the scratch builds. */
 function runLogged(label: string, cmd: string, args: string[], env: Record<string, string | undefined>): Promise<{ code: number; out: string; log: string }> {
   const log = join(SCRATCH, "part3", `${label.replace(/[^a-z0-9.-]+/gi, "_")}.log`);
   mkdirSync(join(SCRATCH, "part3"), { recursive: true });
   return new Promise((resolve) => {
     let out = "";
-    const merged: Record<string, string | undefined> = { ...process.env, ...env };
+    const merged: Record<string, string | undefined> = { ...process.env, NODE_ENV: LAUNCH_NODE_ENV, ...env };
     for (const key of Object.keys(merged)) if (merged[key] === undefined) delete merged[key];
     const child = spawn(cmd, args, { cwd: REPO_ROOT, env: merged as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"] });
     child.stdout.on("data", (d) => (out += String(d)));
