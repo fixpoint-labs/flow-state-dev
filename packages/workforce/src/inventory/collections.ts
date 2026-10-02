@@ -88,6 +88,15 @@ export const seatInventoryRowSchema = z.object({
    * boot rewrites it.
    */
   door: z.string().nullable().default(null),
+  /**
+   * Where the seat came from: `true` for a seat hired at runtime (its id is
+   * its address, `<org>.<seatId>`), `false` for a declared one. A team list
+   * reads this rather than the id's shape, because a declared team can share
+   * the organization's name. `null` on a row written before the field existed
+   * (BP-023, BP-030), or by a caller that couldn't say; the next boot rewrites
+   * a seat that is still registered.
+   */
+  hired: z.boolean().nullable().default(null),
 });
 
 /** One row of the seat inventory. @see seatInventoryRowSchema */

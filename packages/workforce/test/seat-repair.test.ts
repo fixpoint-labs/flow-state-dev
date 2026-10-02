@@ -12,12 +12,17 @@ import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
-import { createSeatHireBlocks, HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "../src/seat-hire-blocks";
+import {
+  createSeatHireBlocks,
+  HIRED_ROSTER_PRIVATE_RESOURCE,
+  HIRED_ROSTER_RESOURCE,
+  SEAT_INVENTORY_RESOURCE,
+} from "../src/seat-hire-blocks";
 import type { SeatHireCapabilityOptions } from "../src/seat-hire-blocks";
-import { defineHiredRosterCollection } from "../src/roster/collections";
+import { defineHiredRosterCollection, defineHiredRosterPrivateCollection } from "../src/roster/collections";
 import { defineSeatInventoryCollection } from "../src/inventory/collections";
 import { reloadHiredSeats } from "../src/roster/reload";
-import { toHiredSeatRow } from "../src/roster/rows";
+import { encodeUserSegment, toHiredSeatRow } from "../src/roster/rows";
 import { workerConfigSchema } from "../src/worker-config";
 
 const ROSTER = "workforce/roster/";
@@ -53,7 +58,7 @@ function liveRegistry() {
   };
 }
 
-async function harness(over: Partial<SeatHireCapabilityOptions> = {}) {
+async function harness(over: Partial<SeatHireCapabilityOptions> = {}, mount: { userOwned?: boolean } = {}) {
   const live = liveRegistry();
   const blocks = createSeatHireBlocks({
     kinds,
@@ -67,6 +72,7 @@ async function harness(over: Partial<SeatHireCapabilityOptions> = {}) {
     resources: {
       [HIRED_ROSTER_RESOURCE]: defineHiredRosterCollection(),
       [SEAT_INVENTORY_RESOURCE]: defineSeatInventoryCollection(),
+      ...(mount.userOwned ? { [HIRED_ROSTER_PRIVATE_RESOURCE]: defineHiredRosterPrivateCollection() } : {}),
     },
     actions: {
       hire: { block: blocks.hire },
@@ -80,13 +86,13 @@ async function harness(over: Partial<SeatHireCapabilityOptions> = {}) {
   const stores = runtime.stores;
   let n = 0;
 
-  const run = async (action: string, input: unknown, orgId = "acme") => {
+  const run = async (action: string, input: unknown, orgId = "acme", userId = "u1") => {
     n += 1;
     const result = (await runAction({
       flow: ops,
       actionName: action,
       input,
-      userId: "u1",
+      userId,
       orgId,
       sessionId: `s-${n}`,
       stores,
@@ -98,8 +104,10 @@ async function harness(over: Partial<SeatHireCapabilityOptions> = {}) {
   const seed = async (key: string, state: Record<string, unknown>, orgId = "acme") => {
     await stores.resourceState.set("org", orgId, `${ROSTER}${key}`, state as never, "any" as never);
   };
-  const seedInventory = async (address: string, kind: string, orgId = "acme") => {
-    await stores.resourceState.set("org", orgId, `${SEATS}${address}`, { id: address, kind, door: "run" } as never, "any" as never);
+  /** `hired` as the row says it; omitted, the row predates the field. */
+  const seedInventory = async (address: string, kind: string, orgId = "acme", hired?: boolean) => {
+    const state = { id: address, kind, door: "run", ...(hired === undefined ? {} : { hired }) };
+    await stores.resourceState.set("org", orgId, `${SEATS}${address}`, state as never, "any" as never);
   };
   const rows = async (prefix: string, orgId = "acme") =>
     Object.fromEntries(
@@ -236,6 +244,20 @@ describe("retire is fire", () => {
     expect(Object.keys(await h.rows(SEATS))).toEqual(["acme.lead"]);
   });
 
+  it("BR-11 · with no `kindAt`, a declared worker's inventory row at the fired address is left alone and the fire refused", async () => {
+    // Org `acme`, declared worker `acme.lead`: `fire({ seatId: "lead" })`
+    // computes the same address. Without `kindAt` nothing says it is held, so
+    // only the row's own origin keeps fire off it.
+    const h = await harness({ kindAt: undefined });
+    await h.seedInventory("acme.lead", "desk", "acme", false);
+    await h.seedInventory("acme.old", "desk"); // written before rows said where they came from
+    for (const seatId of ["lead", "old"]) {
+      const fired = await h.run("fire", { seatId });
+      expect(fired.error?.message).toMatch(new RegExp(`hired no seat "${seatId}"`));
+    }
+    expect(Object.keys(await h.rows(SEATS)).sort()).toEqual(["acme.lead", "acme.old"]);
+  });
+
   it("BR-11 · a seat this org never hired is refused, as today", async () => {
     const h = await harness();
     const fired = await h.run("fire", { seatId: "support.nobody" });
@@ -250,6 +272,50 @@ describe("retire is fire", () => {
     expect(fired.output).toEqual({ seatId: "support.bad", address: null, released: false });
     expect(Object.keys(await h.rows(ROSTER)).sort()).toEqual(["support.ada", "support.joe", "support.lin"]);
     expect(await h.rows(SEATS)).toEqual(seatsBefore);
+  });
+});
+
+describe("a user-owned seat whose kind was cut", () => {
+  const OWNED = `~${encodeUserSegment("u1")}/research`;
+  const ownedRow = (flow: string) => row({ seatId: "research", flow, ownerUserId: "u1", instructions: "Read." });
+
+  it("the start and brokenSeats name it alike for its owner; another member's list leaves it out", async () => {
+    const h = await harness({}, { userOwned: true });
+    await cutKindStore(h);
+    await h.seed(OWNED, ownedRow("desk-clerk"));
+    const listed = (await h.run("brokenSeats", {})).output as Array<{ seatId: string; key: string; detail: string }>;
+    const started = await h.reload();
+    expect(listed.find((entry) => entry.key === `${ROSTER}${OWNED}`)).toMatchObject({ seatId: "research" });
+    expect(new Set(listed.map((entry) => `organization "acme", row "${entry.key}" — ${entry.detail}`))).toEqual(
+      new Set(started.problems),
+    );
+    // The user-owned roster serves a row only to its member.
+    const others = (await h.run("brokenSeats", {}, "acme", "u2")).output as Array<{ key: string }>;
+    expect(others.map((entry) => entry.key)).not.toContain(`${ROSTER}${OWNED}`);
+  });
+
+  it("rehire keeps it user-owned at its address, and the next start serves it", async () => {
+    const h = await harness({}, { userOwned: true });
+    await h.seed(OWNED, ownedRow("desk-clerk"));
+    const rehired = await h.run("rehire", { seatId: "research", flow: "desk", settings: { queue: "q" } });
+    expect(rehired.error).toBeUndefined();
+    expect(rehired.output).toEqual({ seatId: "research", address: "acme.~u1.research" });
+    expect(h.live.kindAt("acme.~u1.research")).toBe("desk");
+    expect((await h.rows(ROSTER))[OWNED]).toMatchObject({ flow: "desk", ownerUserId: "u1", instructions: "Read." });
+    expect((await h.rows(SEATS))["acme.~u1.research"]).toMatchObject({ kind: "desk", hired: true });
+    const started = await h.reload();
+    expect(started.problems).toEqual([]);
+    expect(started.seats.map((seat) => seat.id)).toEqual(["acme.~u1.research"]);
+  });
+
+  it("fire retires it: its row goes, and the next start names nothing", async () => {
+    const h = await harness({}, { userOwned: true });
+    await h.seed(OWNED, ownedRow("desk-clerk"));
+    const fired = await h.run("fire", { seatId: "research" });
+    expect(fired.error).toBeUndefined();
+    expect(fired.output).toEqual({ seatId: "research", address: "acme.~u1.research", released: false });
+    expect(await h.rows(ROSTER)).toEqual({});
+    expect((await h.reload()).problems).toEqual([]);
   });
 });
 

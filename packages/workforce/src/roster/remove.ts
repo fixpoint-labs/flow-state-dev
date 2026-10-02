@@ -12,11 +12,12 @@
  * the address is released, then the seat's inventory row (keyed by its
  * address) goes. A crash between the two deletes leaves an inventory row with
  * no roster row, which a team list that joins the two hides, and which the
- * next call for the same seat removes.
+ * next call for the same seat removes, when the row says it was a runtime
+ * hire's (`hired: true`).
  *
- * What it never touches: a declared seat's inventory row (a seat whose address
- * something else holds is not this row's to remove), the seat's sessions,
- * state and resources, and channel membership rows.
+ * What it never touches: a declared seat's inventory row (one whose address
+ * something else holds, or that doesn't say it was hired), the seat's
+ * sessions, state and resources, and channel membership rows.
  */
 
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
@@ -61,7 +62,7 @@ export type RemovedHiredSeat =
   | { outcome: "removed"; address: string; storedKind: string; released: boolean }
   /** The row could not be read; it was removed by its key, and nothing else was touched. */
   | { outcome: "unreadable"; problem: string }
-  /** No roster row, but an inventory row was left at the address; it was removed. */
+  /** No roster row, but a hired seat's inventory row was left at the address; it was removed. */
   | { outcome: "already-gone"; address: string }
   /** Nothing of this seat's was found. The caller words the refusal. */
   | { outcome: "nothing"; address: string };
@@ -76,12 +77,16 @@ export async function removeHiredSeat(options: RemoveHiredSeatOptions): Promise<
   const existing = await options.roster.getOptional(options.key);
 
   if (existing === undefined) {
-    // A crash between the two deletes (or a fire from before this path
-    // removed inventory rows) leaves this. Removed only when nothing holds
-    // the address: a held one belongs to a seat this path does not own.
+    // A crash between the two deletes leaves this. Removed only with positive
+    // evidence the row is a runtime hire's: nothing holds the address, and the
+    // row itself says `hired: true`. A declared seat's row can sit at the same
+    // address (a team named like the org), and a row that predates the field
+    // can't say; both are left, and a team list hides the second.
     if (options.isHeld(options.address)) return { outcome: "nothing", address: options.address };
     const leftover = await options.inventory.getOptional(options.address);
-    if (leftover === undefined) return { outcome: "nothing", address: options.address };
+    if (leftover === undefined || leftover.state.hired !== true) {
+      return { outcome: "nothing", address: options.address };
+    }
     await options.inventory.delete(options.address);
     return { outcome: "already-gone", address: options.address };
   }

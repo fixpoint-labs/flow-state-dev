@@ -335,6 +335,34 @@ describe("a fire, with fire asking first", () => {
     expect(await pendingAsks(stores)).toEqual([]);
     expect(lab.registry.get(COS)).toBeDefined();
   });
+
+  it("asks before clearing a hired seat's leftover inventory row, and refuses one that never said it was hired", async () => {
+    // A crash between fire's two deletes leaves a `hired: true` inventory row
+    // with no roster row; fire still clears it, so the ask is still owed. A
+    // row with no `hired` mark is nothing fire removes, so nobody is asked.
+    const leftover = async (stores: StoreRegistry, hired: boolean) =>
+      stores.resourceState.set(
+        "org",
+        ORG,
+        `inventory/seats/${HELPER_ADDRESS}`,
+        { id: HELPER_ADDRESS, kind: "agent", door: null, ...(hired ? { hired: true } : {}) } as never,
+        "any",
+      );
+
+    const marked = freshStores();
+    await leftover(marked, true);
+    const asked = await boot(marked, [call("fire", { seatId: HELPER })], { askBefore: ["fire"] });
+    expect((await asked.ask("clear the helper")).status).toBe("suspended");
+    expect((await pendingAsks(marked))[0]?.data).toEqual({ verb: "fire", seatId: HELPER, kind: null });
+
+    const unmarked = freshStores();
+    await leftover(unmarked, false);
+    const refused = await boot(unmarked, [call("fire", { seatId: HELPER }), say("no")], { askBefore: ["fire"] });
+    expect((await refused.ask("clear the helper")).status).toBe("completed");
+    expect(lastToolResults(refused.seen)).toContain("This organization hired no seat");
+    expect(await pendingAsks(unmarked)).toEqual([]);
+    expect(await inventoryRows(unmarked)).toContain(HELPER_ADDRESS);
+  });
 });
 
 describe("the approve crash promise", () => {

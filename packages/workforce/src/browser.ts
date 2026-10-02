@@ -12,9 +12,13 @@
  * the workspace packages it reaches, and fails on any Node built-in.
  */
 
-export { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "./seat-hire-keys";
+export {
+  HIRED_ROSTER_BROWSER_PATTERN,
+  HIRED_ROSTER_RESOURCE,
+  SEAT_INVENTORY_RESOURCE
+} from "./seat-hire-keys";
 export { splitSeatAddress } from "./roster/address";
-export { listedSeatRows } from "./inventory/listed-seats";
+export { isHiredSeatRow, listedSeatRows } from "./inventory/listed-seats";
 export {
   CHANNEL_POST_COMPONENT,
   channelTranscriptLineSchema,

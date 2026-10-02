@@ -17,6 +17,13 @@
  * `brokenSeats` reads through the boot reload's own per-row check, so it names
  * exactly the stored seats the start skips. `rehire` keeps a seat that no
  * longer starts at its address, on a kind the caller names; it never picks one.
+ *
+ * User-owned seats: when the mounting flow has the user-owned roster under
+ * `HIRED_ROSTER_PRIVATE_RESOURCE`, `fire` and `rehire` find the caller's own
+ * user-owned row first and the org's row second (as kitchen-sink's admin fire
+ * does), and `brokenSeats` lists the caller's own user-owned rows beside the
+ * org's. That collection serves a row only to the member it belongs to, so
+ * another member's user-owned seats are theirs to list and repair.
  */
 
 import { handler } from "@flow-state-dev/core";
@@ -30,17 +37,21 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "./seat-hire-keys";
+import {
+  HIRED_ROSTER_PRIVATE_RESOURCE,
+  HIRED_ROSTER_RESOURCE,
+  SEAT_INVENTORY_RESOURCE
+} from "./seat-hire-keys";
 import { seatDoorOf } from "./seat-door";
 import { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
 import { checkHiredSeatRow } from "./roster/check";
 import { HIRED_ROSTER_PREFIX, type HiredSeatRow } from "./roster/collections";
 import { hiredSeatOwnerPinFromRosterOwner, registerHiredSeat } from "./roster/register-hired-seat";
 import { removeHiredSeat } from "./roster/remove";
-import { hiredSeatManifest, seatAddress, toHiredSeatRow } from "./roster/rows";
+import { encodeUserSegment, hiredSeatManifest, seatAddress, toHiredSeatRow } from "./roster/rows";
 
 /** The registry keys live in a leaf module; re-exported here by name. */
-export { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE };
+export { HIRED_ROSTER_PRIVATE_RESOURCE, HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE };
 
 /**
  * The owner pin a hired-seat register must carry: another name for core's
@@ -130,8 +141,8 @@ const fireOutput = z.object({
   released: z.boolean(),
   /**
    * Present when the roster row was already gone and only the seat's leftover
-   * inventory row was removed: a fire from before fire removed inventory rows,
-   * or a second call after a crash between the two deletes.
+   * inventory row was removed: a second call after a crash between the two
+   * deletes. Only a row marked `hired: true` is removed this way.
    */
   alreadyGone: z.literal(true).optional(),
 });
@@ -188,6 +199,33 @@ function orgOf(ctx: BlockContext): string {
 
 function collectionOf(ctx: BlockContext, key: string): ResourceCollectionRef {
   return ctx.resources[key] as unknown as ResourceCollectionRef;
+}
+
+/** The user-owned roster, when the mounting flow has it. */
+function privateRosterOf(ctx: BlockContext): ResourceCollectionRef | undefined {
+  return ctx.resources[HIRED_ROSTER_PRIVATE_RESOURCE] as unknown as ResourceCollectionRef | undefined;
+}
+
+/** Where one seat's roster row is, and whose it is. */
+interface LocatedSeatRow {
+  roster: ResourceCollectionRef;
+  key: string | Record<string, string>;
+  /** The member a user-owned row belongs to; `null` for an org-visible row. */
+  ownerUserId: string | null;
+}
+
+/**
+ * Find a seat's roster row: the caller's own user-owned row when the flow
+ * mounts that roster and it has one, otherwise the org's row (present or not).
+ */
+async function locateSeatRow(ctx: BlockContext, seatId: string): Promise<LocatedSeatRow> {
+  const owned = privateRosterOf(ctx);
+  const userId = ctx.session.identity.userId;
+  if (owned !== undefined && typeof userId === "string" && userId.length > 0) {
+    const key = { owner: `~${encodeUserSegment(userId)}`, seat: seatId };
+    if ((await owned.getOptional(key)) !== undefined) return { roster: owned, key, ownerUserId: userId };
+  }
+  return { roster: collectionOf(ctx, HIRED_ROSTER_RESOURCE), key: seatId, ownerUserId: null };
 }
 
 function asStored(row: HiredSeatRow): JsonObject {
@@ -311,7 +349,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
   const publish = async (ctx: BlockContext, seat: FlowInstance, flow: string, address: string) => {
     const door = seatDoorOf(seat);
     const inventory = collectionOf(ctx, SEAT_INVENTORY_RESOURCE);
-    await inventory.upsert(address, { id: address, kind: flow, door: door.door });
+    await inventory.upsert(address, { id: address, kind: flow, door: door.door, hired: true });
     const warnings = [
       ...unattendedBoardWarnings(options.channelBoards ?? [], [seat]),
       ...(door.problem === undefined ? [] : [door.problem]),
@@ -402,29 +440,31 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
   const fireVerb: SeatHireVerb<FireInput, FireOutput> = {
     check: async (input, ctx) => {
       const orgId = orgOf(ctx);
-      const address = seatAddress(orgId, input.seatId);
-      const existing = await collectionOf(ctx, HIRED_ROSTER_RESOURCE).getOptional(input.seatId);
+      const located = await locateSeatRow(ctx, input.seatId);
+      const address = seatAddress(orgId, input.seatId, located.ownerUserId);
+      const existing = await located.roster.getOptional(located.key);
       if (existing !== undefined) {
         const checked = checkHiredSeatRow(orgId, existing.state, kinds);
         return { kind: checked.row?.flow ?? null };
       }
-      // What `removeHiredSeat` does with no row: a leftover inventory row at an
-      // address nothing holds is still removed; anything else is nothing.
-      if (options.kindAt?.(address) === undefined && options.kindAt?.(input.seatId) === undefined) {
-        if ((await collectionOf(ctx, SEAT_INVENTORY_RESOURCE).getOptional(address)) !== undefined) {
-          return { kind: null };
-        }
+      // What `removeHiredSeat` does with no row: a hired seat's leftover
+      // inventory row (`hired: true`) at an address nothing holds is still
+      // removed; anything else is nothing, and is refused before anyone is asked.
+      if (options.kindAt?.(address) === undefined) {
+        const leftover = await collectionOf(ctx, SEAT_INVENTORY_RESOURCE).getOptional(address);
+        if (leftover !== undefined && leftover.state.hired === true) return { kind: null };
       }
       throw nothingToFire(input.seatId, address);
     },
     run: async (input, ctx) => {
       const orgId = orgOf(ctx);
+      const located = await locateSeatRow(ctx, input.seatId);
       const removed = await removeHiredSeat({
         orgId,
-        roster: collectionOf(ctx, HIRED_ROSTER_RESOURCE),
-        key: input.seatId,
+        roster: located.roster,
+        key: located.key,
         inventory: collectionOf(ctx, SEAT_INVENTORY_RESOURCE),
-        address: seatAddress(orgId, input.seatId),
+        address: seatAddress(orgId, input.seatId, located.ownerUserId),
         isHeld: (address) => options.kindAt?.(address) !== undefined,
         release: (address, storedKind) => {
           const liveKind = options.kindAt?.(address);
@@ -456,19 +496,28 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
     name: "brokenSeats",
     description:
       "List this organization's stored seats that would not start, each with its reason " +
-      "(kind-gone, refused, unreadable). Reads only.",
+      "(kind-gone, refused, unreadable), the caller's own user-owned seats included when the " +
+      "flow mounts that roster. Reads only.",
     inputSchema: brokenSeatsInput,
     outputSchema: brokenSeatsOutput,
     execute: async (_input, ctx) => {
       const orgId = orgOf(ctx);
-      const rows = await collectionOf(ctx, HIRED_ROSTER_RESOURCE).list();
+      // The org's rows, and the caller's own user-owned rows when the flow
+      // mounts that roster: the same rows the start reads for this member.
+      const owned = privateRosterOf(ctx);
+      const rows = [
+        ...(await collectionOf(ctx, HIRED_ROSTER_RESOURCE).list()),
+        ...(owned === undefined ? [] : await owned.list()),
+      ];
       const broken: Array<z.infer<typeof brokenSeatOutput>> = [];
       for (const ref of rows) {
         const checked = checkHiredSeatRow(orgId, ref.state, kinds);
         if (checked.ok) continue;
-        const relativeKey = ref.path.startsWith(HIRED_ROSTER_PREFIX)
-          ? ref.path.slice(HIRED_ROSTER_PREFIX.length)
-          : ref.path;
+        // The id `fire` takes: the key's last segment (`~<user>/<seat>` for a
+        // user-owned row, which `fire` finds by the caller).
+        const relativeKey = (
+          ref.path.startsWith(HIRED_ROSTER_PREFIX) ? ref.path.slice(HIRED_ROSTER_PREFIX.length) : ref.path
+        ).split("/").pop()!;
         broken.push({
           seatId: checked.reason === "unreadable" ? relativeKey : (checked.row?.seatId ?? relativeKey),
           key: ref.path,
@@ -484,9 +533,9 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
   /** Every refusal a re-hire meets before it writes, and what it would write. */
   const prepareRehire = async (input: RehireInput, ctx: BlockContext) => {
     const orgId = orgOf(ctx);
-    const address = seatAddress(orgId, input.seatId);
-    const roster = collectionOf(ctx, HIRED_ROSTER_RESOURCE);
-    const existing = await roster.getOptional(input.seatId);
+    const located = await locateSeatRow(ctx, input.seatId);
+    const address = seatAddress(orgId, input.seatId, located.ownerUserId);
+    const existing = await located.roster.getOptional(located.key);
     if (existing === undefined) {
       throw new Error(`This organization hired no seat "${input.seatId}".`);
     }

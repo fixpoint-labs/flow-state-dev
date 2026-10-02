@@ -12,7 +12,7 @@ import { createLabReader, type LabSnapshot } from "../src/lib/reads";
 const ORG = "acme";
 
 type Lab = {
-  seats: Array<{ id: string; kind: string }>;
+  seats: Array<{ id: string; kind: string; hired?: boolean }>;
   roster?: Array<{ seatId: string }> | "fails";
 };
 
@@ -77,6 +77,18 @@ describe("TEAMS and the roster", () => {
     expect(value.seats.map((seat) => [seat.id, seat.team])).toEqual([
       ["eng.lead", "eng"],
       ["chief-of-staff", "Staff"],
+    ]);
+    expect(value.rosterUnread).toBeUndefined();
+  });
+
+  it("BR-23 · a declared team that shares the organization's name stays listed under its team, with no roster row", async () => {
+    // Org `acme`, declared team `acme`: the id splits as an address in `acme`,
+    // and only the row's `hired: false` tells it from a hire.
+    const value = await teams({ seats: [...declared, { id: "acme.support", kind: "agent", hired: false }] });
+    expect(value.seats.map((seat) => [seat.id, seat.team, seat.name, seat.seatId])).toEqual([
+      ["eng.lead", "eng", "lead", "eng.lead"],
+      ["chief-of-staff", "Staff", "chief-of-staff", "chief-of-staff"],
+      ["acme.support", "acme", "support", "acme.support"],
     ]);
     expect(value.rosterUnread).toBeUndefined();
   });

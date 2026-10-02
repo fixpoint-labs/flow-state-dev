@@ -61,6 +61,22 @@ export interface InventorySeat {
    * by forgetting them: pass `{}` to say the seat has no door.
    */
   actions: Readonly<Record<string, unknown>>;
+  /**
+   * The seat's settings, which `hireWorkforce` stamps with its `seatId`. A
+   * seat whose `seatId` differs from its `id` was hired at runtime (its id is
+   * an address); one whose `seatId` is its `id` was declared. The row's
+   * `hired` is read from this; omitted, the row says `null` (unknown).
+   */
+  config?: unknown;
+}
+
+/** `true` for a runtime hire, `false` for a declared seat, `null` when the seat doesn't say. */
+function hiredOf(seat: InventorySeat): boolean | null {
+  const seatId =
+    typeof seat.config === "object" && seat.config !== null
+      ? (seat.config as { readonly seatId?: unknown }).seatId
+      : undefined;
+  return typeof seatId === "string" ? seatId !== seat.id : null;
 }
 
 /** What the binder registers: the seats that were hired, and the channels that were opened. */
@@ -264,10 +280,17 @@ export async function openInventory(
     try {
       await options.run({
         action: INVENTORY_REGISTER_SEATS,
-        // Id, kind and door only. A seat's row is the whole of what the
+        // Id, kind, door and origin only. A seat's row is the whole of what the
         // inventory knows about it, and everything else on a record is the
         // declared layer's to answer.
-        input: { seats: seats.map((seat) => ({ id: seat.id, kind: seat.kind, door: seatDoorOf(seat).door })) },
+        input: {
+          seats: seats.map((seat) => ({
+            id: seat.id,
+            kind: seat.kind,
+            door: seatDoorOf(seat).door,
+            hired: hiredOf(seat),
+          })),
+        },
         userId: options.userId,
         orgId,
         flowKind: writer.flowKind,
