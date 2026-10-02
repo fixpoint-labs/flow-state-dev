@@ -316,6 +316,31 @@ describe("roster admin, when the app keeps it with the seats it declares", () =>
     expect(lastToolResults(lab.seen)).not.toMatch(/roster tools/);
     expect(await rosterRows(stores)).toEqual(["deputy"]);
   });
+
+  it("with refuseRosterAdmin, refuses to finish a pending re-hire whose settings grant the roster tools", async () => {
+    // What a re-hire left when it died after its roster write, from before
+    // the app turned the refusal on: a row onto `agent` holding `hire`.
+    const stores = freshStores();
+    const key = `${HIRED_ROSTER_PREFIX}${HELPER}`;
+    const token = "inc-pending";
+    const row = {
+      ...toHiredSeatRow({ seatId: HELPER, flow: "agent", settings: { tools: ["hire"] }, owningOrgId: ORG }),
+      incarnation: token,
+      pendingRepair: token,
+    };
+    await stores.resourceState.set("org", ORG, key, row as never, "any");
+    const lab = await boot(
+      stores,
+      [call("rehire", { seatId: HELPER, flow: "agent", settings: { tools: ["hire"] } }), say("done")],
+      { refuseRosterAdmin: true },
+    );
+    expect((await lab.ask("finish the helper's re-hire")).status).toBe("completed");
+
+    expect(await pendingAsks(stores)).toEqual([]);
+    expect(lastToolResults(lab.seen)).toContain("keeps the roster tools with the seats it declares");
+    expect((await stores.resourceState.get("org", ORG, key))?.state).toMatchObject({ pendingRepair: token });
+    expect(await inventoryRows(stores)).not.toContain(HELPER_ADDRESS);
+  });
 });
 
 describe("a fire, with fire asking first", () => {

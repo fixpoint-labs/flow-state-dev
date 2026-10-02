@@ -80,6 +80,7 @@ export {
   type PostToChannelInput,
 } from "./channel-post-capability";
 export { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
+export { mergeSeatFlows } from "./merge-seat-flows";
 export { seatDoorOf, type SeatDoor } from "./seat-door";
 export { resourcesFromDocs } from "./resources-from-docs";
 export { referencesFromDocs, referenceBody } from "./references-from-docs";

@@ -17,7 +17,7 @@
  *   boot        the chief of staff is listed from the tree, on the agent kind,
  *               with a door; no other declared seat names a hire or fire tool
  *   discover    asked who is on the feature channel, it names every declared
- *               seat by its full id
+ *               seat by its full id, with the kind its file declares
  *   hire        asked for a seat, it hires one at once: no ask is raised, the
  *               seat is listed, its roster row is written, its address answers
  *   discover hired  in a fresh session, asked which seats were hired, it names
@@ -61,6 +61,15 @@ import { ASKER, runSeatAsks } from "./seat-asks.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["deny-fire", "no-seat-delivery", "hide-hired-from-discover"] as const;
+
+/** A reply's own text as lines: `lastReply` hands back the content as one JSON string. */
+function linesOf(reply: string): string[] {
+  const parsed = JSON.parse(reply) as unknown;
+  const text = Array.isArray(parsed)
+    ? parsed.map((part) => String((part as { text?: unknown }).text ?? "")).join("\n")
+    : String(parsed);
+  return text.split("\n");
+}
 
 /** Whether `text` names `id` exactly: not inside a longer id, not as a bare suffix of it. */
 function standsAlone(text: string, id: string): boolean {
@@ -331,14 +340,24 @@ await runGoal(async () => {
     evidence.push(`boot: "${COS}" listed on kind ${String(cos?.kind)} with door ${String(cos?.door)}, and no other declared seat names hire or fire`);
 
     // discover
-    const asked = await api.say(cosSession, `Who is on the ${channel.id} channel? Look it up and list the seat ids.`);
+    const asked = await api.say(cosSession, `Who is on the ${channel.id} channel? Look up the channel, then look up each of its seats, and list every seat's id with the worker kind it runs on, one seat per line.`);
     const answer = await api.lastReply(cosSession);
-    // Each member by its full seat id, standing alone: a bare "em" could be a guess
-    // from the channel's name, and "eng.em" inside a longer id is not that seat.
-    const missing = members.filter((m) => !standsAlone(answer, m));
+    // Each member by its full seat id, standing alone (a bare "em" could be a
+    // guess from the channel's name, and "eng.em" inside a longer id is not that
+    // seat), with the kind its file declares on the same line, also exact.
+    const kindOf = (id: string) => tree.workers.find((w) => w.id === id)?.declared.flow as string | undefined;
+    const lines = linesOf(answer);
+    const missing: string[] = [];
+    const wrongKind: string[] = [];
+    for (const member of members) {
+      const line = lines.find((l) => standsAlone(l, member));
+      if (line === undefined) missing.push(member);
+      else if (kindOf(member) === undefined || !standsAlone(line, kindOf(member)!)) wrongKind.push(`${member} (kind ${String(kindOf(member))})`);
+    }
     if (asked.status !== "completed") fail("discover", `the turn ended ${asked.status}`);
-    else if (missing.length > 0) fail("discover", `the answer does not name ${missing.join(", ")} by full seat id:${answer.slice(0, 300)}`);
-    else evidence.push(`discover: asked who is on ${channel.id}, the answer named ${members.join(", ")}`);
+    else if (missing.length > 0) fail("discover", `the answer does not name ${missing.join(", ")} by full seat id: ${answer.slice(0, 300)}`);
+    else if (wrongKind.length > 0) fail("discover", `the answer names ${wrongKind.join(", ")} without that kind: ${answer.slice(0, 300)}`);
+    else evidence.push(`discover: asked who is on ${channel.id}, the answer named ${members.map((m) => `${m} (${String(kindOf(m))})`).join(", ")}`);
 
     // hire
     const hired = await api.say(cosSession, `Please hire one more coder for the team, with the seat id "${seat}".`);
@@ -373,12 +392,7 @@ await runGoal(async () => {
         const fresh = (await api.openSession(COS)).body.session.id as string;
         const turn = await api.say(fresh, "Which seats has this organization hired? Look it up and give each one's full seat id and the worker kind it was hired into.");
         const reply = await api.lastReply(fresh);
-        // The reply's own text, so its lines are real lines and not one JSON string.
-        const parsed = JSON.parse(reply) as unknown;
-        const text = Array.isArray(parsed)
-          ? parsed.map((part) => String((part as { text?: unknown }).text ?? "")).join("\n")
-          : String(parsed);
-        const line = text.split("\n").find((l) => standsAlone(l, seat) || standsAlone(l, address!));
+        const line = linesOf(reply).find((l) => standsAlone(l, seat) || standsAlone(l, address!));
         if (turn.status !== "completed") fail("discover hired", `the turn ended ${turn.status}`);
         else if (line === undefined) fail("discover hired", `the answer does not name "${seat}" by its full seat id: ${reply.slice(0, 400)}`);
         else if (!standsAlone(line, CODER_KIND)) fail("discover hired", `the answer names "${seat}" without its kind "${CODER_KIND}": ${line.slice(0, 300)}`);

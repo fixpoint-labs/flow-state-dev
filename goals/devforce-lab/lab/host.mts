@@ -71,6 +71,7 @@ import {
   defineChannelInventoryCollection,
   HIRED_ROSTER_RESOURCE,
   hireWorkforce,
+  mergeSeatFlows,
   openChannels,
   openInventory,
   reloadHiredSeats,
@@ -578,17 +579,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   // One record for the Lab's own flows and its seats. An org seat's id is its
   // bare folder name, so a folder named like one of the Lab's flows (`channel`)
-  // would take that flow's key; it is refused here, by name, not overwritten.
-  const flows: Record<string, unknown> = Object.fromEntries(instances.map((instance) => [instance.kind, instance]));
-  for (const seat of hired) {
-    if (Object.hasOwn(flows, seat.id)) {
-      throw new Error(
-        `openLab: the worker "${seat.id}" can't be declared: "${seat.id}" is already the id of the Lab's "${seat.id}" flow. ` +
-          `Rename its folder.`,
-      );
-    }
-    flows[seat.id] = seat;
-  }
+  // would take that flow's key; `mergeSeatFlows` refuses it, by name.
+  const flows: Record<string, unknown> = mergeSeatFlows(
+    Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
+    hired,
+  );
 
   const state = createFlowState({
     flows,

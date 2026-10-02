@@ -137,7 +137,7 @@ describe("an org worker folder named like one of the Lab's own flows", () => {
       "---\ndescription: Named like the channel kind.\nflow: agent\n---\n\nYou are a seat called channel.\n",
     );
     const file = await seededStore({});
-    await expect(open(file, root)).rejects.toThrow(/"channel".*already the id of the Lab's "channel" flow/);
+    await expect(open(file, root)).rejects.toThrow(/seat "channel".*already the flow "channel"/);
   }, 120_000);
 });
 

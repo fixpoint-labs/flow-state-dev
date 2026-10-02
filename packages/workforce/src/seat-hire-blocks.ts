@@ -987,6 +987,9 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
         );
       }
       refuseUnhireableKind(input.flow, "re-hire onto");
+      // Finishing writes the seat out like any re-hire, so it meets the same
+      // refusal: a row left from before the app turned it on is not finished.
+      if (options.refuseRosterAdmin === true) refuseRosterAdminIn(input.settings, "re-hire");
       const live = options.kindAt?.(address);
       if (live !== undefined && live !== input.flow) {
         throw new Error(`"${address}" is already served by a flow of kind "${live}", so it can't be re-hired.`);
