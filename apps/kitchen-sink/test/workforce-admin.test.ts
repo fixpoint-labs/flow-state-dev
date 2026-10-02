@@ -529,6 +529,30 @@ describe("fire", () => {
     expect(seats).toEqual([`inventory/seats/${ORG}.support.bob`]);
   });
 
+  it("a fire that died after removing the caller's own row: the retry removes that seat's leftover inventory row and leaves an org seat sharing the id", async () => {
+    const registrar = stubRegistrar();
+    const flow = adminFlow();
+    const stores = createInMemoryStores();
+    const address = `${ORG}.~admin.support.ada`;
+    await callAdmin(flow, stores, "hire", { seatId: "support.ada", flow: "agent", settings: { model: "front-model" } });
+    // What a boot publishes for the seat, then what the dead fire left: its
+    // own roster row and its address gone, the inventory row not.
+    await stores.resourceState.set("org", ORG, `inventory/seats/${address}`, { id: address, kind: "agent", door: "run", hired: true, incarnation: null }, "any");
+    const ownKey = Object.keys(await stores.resourceState.getByPrefix("org", ORG, "workforce/roster/")).find((key) => key.includes("~admin"))!;
+    const own = await stores.resourceState.get("org", ORG, ownKey);
+    await stores.resourceState.delete("org", ORG, ownKey, own!.version);
+    registrar.held.delete(address);
+    // An org seat under the same id, from when this app's hire wrote the flat key.
+    const legacy = { seatId: "support.ada", flow: "agent", settings: { model: "front-model" }, instructions: null };
+    await stores.resourceState.set("org", ORG, "workforce/roster/support.ada", legacy, "any");
+
+    const retried = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
+    expectAccepted(retried);
+    expect(retried.output).toMatchObject({ address, released: false });
+    expect(Object.keys(await stores.resourceState.getByPrefix("org", ORG, "inventory/seats/"))).toEqual([]);
+    expect(Object.keys(await stores.resourceState.getByPrefix("org", ORG, "workforce/roster/"))).toEqual(["workforce/roster/support.ada"]);
+  });
+
   it("a legacy org row and the caller's own row under one seat id: no owner is refused, and owner picks the row", async () => {
     const registrar = stubRegistrar();
     const flow = adminFlow();

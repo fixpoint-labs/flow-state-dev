@@ -18,6 +18,12 @@ type Lab = {
   roster?: Array<{ seatId: string; incarnation?: string | null }> | "fails";
   /** The channel rows; one channel when omitted. */
   channels?: unknown[];
+  /**
+   * The roster is declared only by an `agent` flow whose one session is a
+   * dispatch child of the channel session, as when the viewer's only agent
+   * session was spawned by a dispatch.
+   */
+  rosterOnChildSession?: boolean;
 };
 
 function clientsFor(lab: Lab): LabClients {
@@ -26,25 +32,28 @@ function clientsFor(lab: Lab): LabClients {
     channels: lab.channels ?? [{ id: "eng.general", kind: "channel", members: [] }],
     ...(lab.roster === undefined ? {} : { roster: lab.roster }),
   };
+  const rosterEntry = { kind: "collection", ref: "roster", pattern: "workforce/roster/*", scope: "org", client: { state: { read: true } } };
   const manifest = {
     resources: [
       { kind: "collection", ref: "seats", pattern: "inventory/seats/*", scope: "org", client: { state: { read: true } } },
       { kind: "collection", ref: "channels", pattern: "inventory/channels/*", scope: "org", client: { state: { read: true } } },
-      ...(lab.roster === undefined
-        ? []
-        : [{ kind: "collection", ref: "roster", pattern: "workforce/roster/*", scope: "org", client: { state: { read: true } } }]),
+      ...(lab.roster === undefined || lab.rosterOnChildSession ? [] : [rosterEntry]),
     ],
   };
+  const childManifest = { resources: [rosterEntry] };
   return {
     userId: "u1",
     sessions: {
-      listSessions: async () => [{ id: "s1", flowKind: "channel", parentSessionId: null, updatedAt: 0 }],
+      listSessions: async () => [
+        { id: "s1", flowKind: "channel", parentSessionId: null, updatedAt: 0 },
+        ...(lab.rosterOnChildSession ? [{ id: "s2", flowKind: "agent", parentSessionId: "s1", updatedAt: 0 }] : []),
+      ],
       getSession: async () => ({ orgId: ORG }),
       getSessionState: async () => ({ items: [] }),
       listSessionRequests: async () => [],
     },
     resources: {
-      getResourceManifest: async () => manifest,
+      getResourceManifest: async (sessionId: string) => (sessionId === "s2" ? childManifest : manifest),
       listCollectionItems: async (_sessionId: string, ref: string) => {
         const rows = collections[ref];
         if (rows === "fails") throw new Error("the roster read failed");
@@ -121,6 +130,16 @@ describe("TEAMS and the roster", () => {
       roster: [],
     });
     expect(value.seats.map((seat) => seat.id)).toEqual(["eng.lead", "chief-of-staff"]);
+  });
+
+  it("the only session on a flow that declares the roster is a dispatch child: the roster is still read, and the hired seat listed", async () => {
+    const value = await teams({
+      seats: [...declared, { id: "acme.support.ada", kind: "agent", hired: true, incarnation: "i-1" }],
+      roster: [{ seatId: "support.ada", incarnation: "i-1" }],
+      rosterOnChildSession: true,
+    });
+    expect(value.seats.map((seat) => seat.id)).toEqual(["eng.lead", "chief-of-staff", "acme.support.ada"]);
+    expect(value.rosterUnread).toBeUndefined();
   });
 
   it("BR-24 · the roster read fails: hired seats aren't listed, and the section says the roster didn't load", async () => {

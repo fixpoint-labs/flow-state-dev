@@ -237,7 +237,7 @@ function locateSeatRow(
   ctx: BlockContext,
   seatId: string,
   owner: HiredSeatOwner | undefined,
-  leftoverAt?: { orgId: string; inventory: ResourceCollectionRef }
+  leftoverAt: { orgId: string; inventory: ResourceCollectionRef } | null
 ): Promise<HiredSeatLocation> {
   return resolveHiredSeatLocation({
     seatId,
@@ -701,7 +701,8 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
     outputSchema: hireOutput,
     execute: async (input, ctx) => {
       const orgId = orgOf(ctx);
-      const located = await locateSeatRow(ctx, input.seatId, input.owner);
+      // Re-hire acts only on a row that exists, so there is no leftover to find.
+      const located = await locateSeatRow(ctx, input.seatId, input.owner, null);
       const address = seatAddress(orgId, input.seatId, located.ownerUserId);
       const existing = await located.roster.getOptional(located.key);
       if (existing === undefined) {
@@ -774,7 +775,8 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
             `"${address}" changed while this re-hire was being made, most likely by another repair. Nothing was written.`
           );
         }
-        return asStored({ ...row, pendingRepair: token, incarnation: token });
+        // Onto the stored row, so a key a newer version wrote is kept.
+        return { ...current, ...asStored({ ...row, pendingRepair: token, incarnation: token }) };
       });
 
       const warnings = await settle(ctx, existing, token, seat, pin, input.flow, address, {

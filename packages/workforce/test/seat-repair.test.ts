@@ -621,6 +621,35 @@ describe("rehire", () => {
     expect(started.seats.map((seat) => [seat.id, seat.kind])).toContainEqual(["acme.support.joe", "desk"]);
   });
 
+  it("a field this version doesn't know, written by a newer one, survives the re-hire and the retry that finishes it", async () => {
+    // A mixed-version deployment: a newer worker stored a roster field this
+    // version has no name for. Re-hire rewrites the row; the field is not its
+    // to drop.
+    const h = await harness({
+      register: () => {
+        throw new Error("process died");
+      },
+    });
+    await cutKindStore(h);
+    await h.seed("support.joe", { ...row({ seatId: "support.joe", flow: "desk-clerk" }), addedLater: { tier: "gold" } });
+    const input = { seatId: "support.joe", flow: "desk", settings: { queue: "q" } };
+    const realSet = h.stores.resourceState.set.bind(h.stores.resourceState);
+    let dead: Record<string, Record<string, unknown>> | undefined;
+    vi.spyOn(h.stores.resourceState, "set").mockImplementation(async (...args) => {
+      const result = await realSet(...args);
+      if (String(args[2]) === `${ROSTER}support.joe` && dead === undefined) dead = await h.snapshot();
+      return result;
+    });
+    expect((await h.run("rehire", input)).error?.message).toMatch(/process died/);
+    vi.restoreAllMocks();
+    expect(dead![`${ROSTER}support.joe`]).toMatchObject({ flow: "desk", addedLater: { tier: "gold" } });
+
+    const after = await harness();
+    await after.restartFrom(dead!);
+    expect((await after.run("rehire", input)).error).toBeUndefined();
+    expect((await after.rows(ROSTER))["support.joe"]).toMatchObject({ flow: "desk", pendingRepair: null, addedLater: { tier: "gold" } });
+  });
+
   it("BR-14 · a refused seat is re-hired with settings the kind accepts, and new instructions replace the old", async () => {
     const h = await harness();
     await cutKindStore(h);

@@ -36,13 +36,15 @@ export interface ResolveHiredSeatLocationOptions {
   /** The caller, from the verified session. */
   userId?: string;
   /**
-   * For a fire's retry: when the caller has no user-owned row and names no
-   * owner, a hired inventory row at the caller's user-owned address (the one
-   * a fire leaves when it stops after deleting that row) keeps the seat the
-   * caller's, ahead of any org row, so the retry removes that row rather than
-   * firing an org seat that shares the id.
+   * Required, so a fire can't leave it out by accident. A fire passes the
+   * organization and the seat inventory: when the caller has no user-owned
+   * row and names no owner, a hired inventory row at the caller's user-owned
+   * address (the one a fire leaves when it stops after deleting that row)
+   * keeps the seat the caller's, ahead of any org row, so the retry removes
+   * that row rather than firing an org seat that shares the id. `null` for a
+   * caller that acts only on a row that exists (a re-hire).
    */
-  leftoverAt?: { orgId: string; inventory: ResourceCollectionRef };
+  leftoverAt: { orgId: string; inventory: ResourceCollectionRef } | null;
 }
 
 /**
@@ -81,7 +83,7 @@ export async function resolveHiredSeatLocation(options: ResolveHiredSeatLocation
     }
     return own;
   }
-  if (leftoverAt === undefined) return org;
+  if (leftoverAt === null) return org;
   // Probed before the org row: an org seat can share the seat id, and a retry
   // that fell through to it would fire that seat instead.
   const leftover = await leftoverAt.inventory.getOptional(seatAddress(leftoverAt.orgId, seatId, userId));

@@ -401,4 +401,24 @@ describe("hire, fire and rehire interleaved at every store call", () => {
     // the boot read it is not written back.
     expect(windows).toEqual([]);
   }, 120_000);
+
+  it("a boot carrying a declared seat at an address, with a runtime hire of that address landing at any of its store calls", async () => {
+    // A rolling deploy: the old process read a declaration the new one has
+    // dropped, and the new one hired the same address. The boot's declared
+    // row must not replace the hire's.
+    const { runs, windows } = await everyInterleaving(
+      "boot (stale declared row) | hire",
+      async () => ({}),
+      {
+        action: "boot",
+        input: { seats: [{ id: "acme.support.ada", kind: "desk", door: "run", hired: false, incarnation: null }] },
+        label: "boot",
+      },
+      [hireAda("first", "hire")],
+      "support.ada"
+    );
+    expect(runs).toBeGreaterThan(1);
+    // The named window is never reached here: every end state is fully consistent.
+    expect(windows).toEqual([]);
+  }, 120_000);
 });

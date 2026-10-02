@@ -865,26 +865,39 @@ const registerSeatsInputSchema = z
 /** What the seat write reports: how many rows landed. */
 export const inventorySeatsRegisteredSchema = z.object({ written: z.number() });
 
-/** The stored row is not the one the boot read: another hire's, or a declared seat's. */
+/** The stored row is not one this boot may replace. */
 class NotTheBootsRow extends Error {}
 
 /**
- * Publish a hired seat's row from a boot's roster, only where it is still
- * that hire's.
+ * Whether a boot's row may replace the row stored at its address.
  *
- * The roster the boot read can be older than the store: another process may
- * since have fired the seat and hired a replacement under a new incarnation.
- * So the row is created only where none was there when this action read the
- * inventory, and otherwise replaced only while the stored row is a hired one
- * carrying the same incarnation (`null` matching only `null`, a row from
- * before incarnations). The check runs inside the version-checked write, so
- * a row another writer put there since is checked again. A row removed after
- * it was read is not written back: a fire removed it.
+ * A runtime hire's row (`hired: true`) is replaced only by the same hire: a
+ * hired row carrying the same incarnation (`null` matching only `null`, a row
+ * from before incarnations). A declared seat's row is replaced only by a
+ * declared row, and a boot's hired row never replaces it. A row from before
+ * `hired` existed is replaced by a declared row, and by a hired one carrying
+ * its incarnation.
+ */
+function bootMayReplace(stored: Record<string, unknown>, row: SeatInventoryRow): boolean {
+  if (row.hired === true) return stored.hired !== false && incarnationOfRow(stored) === (row.incarnation ?? null);
+  return stored.hired !== true;
+}
+
+/**
+ * Write one seat row from a boot's roster, only where it is still the boot's
+ * to write.
+ *
+ * The roster the boot read can be older than the store: during a rolling
+ * deploy another process may have fired the seat and hired a replacement, or
+ * dropped a declaration and hired the same address. So the row is created
+ * only where none was there when this action read the inventory, and
+ * otherwise replaced only while {@link bootMayReplace} holds. The check runs
+ * inside the version-checked write, so a row another writer put there since is
+ * checked again. A row removed after it was read is not written back.
  *
  * @returns whether the row landed.
  */
-async function publishBootHire(seats: ResourceCollectionRef, row: SeatInventoryRow): Promise<boolean> {
-  const incarnation = row.incarnation ?? null;
+async function publishBootSeatRow(seats: ResourceCollectionRef, row: SeatInventoryRow): Promise<boolean> {
   for (let attempt = 0; attempt < INVENTORY_RACE_ATTEMPTS; attempt += 1) {
     const stored = await seats.getOptional(row.id);
     try {
@@ -893,7 +906,7 @@ async function publishBootHire(seats: ResourceCollectionRef, row: SeatInventoryR
         return true;
       }
       await stored.updateState((current) => {
-        if (current.hired !== true || incarnationOfRow(current) !== incarnation) throw new NotTheBootsRow();
+        if (!bootMayReplace(current, row)) throw new NotTheBootsRow();
         return row;
       });
       return true;
@@ -1042,12 +1055,7 @@ export function inventoryWriterActions(kind: string) {
       let written = 0;
       for (const row of input.seats) {
         try {
-          if (row.hired !== true) {
-            await ctx.resources.seats.upsert(row.id, row);
-            written += 1;
-          } else if (await publishBootHire(ctx.resources.seats, row)) {
-            written += 1;
-          }
+          if (await publishBootSeatRow(ctx.resources.seats, row)) written += 1;
         } catch (error) {
           problems.push(
             `seat "${row.id}" — ${error instanceof Error ? error.message : String(error)}`
