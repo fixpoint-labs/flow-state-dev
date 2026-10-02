@@ -14,14 +14,21 @@
  * session holds it. What is drawn below it is what the session stores, read
  * back when the view opens and after each line, never on the snapshot's
  * refresh. Nothing is drawn in the seat's voice that its session doesn't hold.
+ *
+ * **Drawn in design v2's form (v2:120-180).** A 720px feed under v2's header,
+ * the summary as unboxed prose with its asks in one bordered list, each
+ * tagged with the highlighter; the seat's messages labelled with the time;
+ * and the composer pinned under the feed with suggestions above it. The
+ * registry's cards (the ask's Approve and Reject, the messages) are drawn as
+ * the registry draws them.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext } from "@flow-state-dev/react";
 import { AskCard } from "../components/AskCard";
 import { chatAssistantRenderers } from "../components/flow-state/chat-assistant";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { TurnComposer } from "../components/TurnComposer";
-import { PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
+import { Meta, PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { currentConversation, newConversationId, readConversation, sendToChiefOfStaff } from "../lib/cos";
 import { chiefOfStaffOf, seatStates, shiftSummary, streamCounts, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
@@ -29,34 +36,108 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { describeFailure, type Failure, type Seat } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { RunReadError, type SessionItems } from "../lib/run";
+import { chiefOfStaffSuggestions, clockTime } from "../lib/shell";
+import { setChiefOfStaffWorking, useChiefOfStaffWorking } from "../lib/working";
 import type { Gaps } from "../gaps";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export function ChiefOfStaffView({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
+  const lead = (
+    <>
+      <Header snapshot={snapshot} />
+      <ShiftSummary snapshot={snapshot} />
+    </>
+  );
+  return <Conversation snapshot={snapshot} gaps={gaps} lead={lead} />;
+}
+
+/**
+ * v2's Chief of Staff frame (v2:122-180): the feed in a 720px column padded
+ * 36/32, and the composer under it, outside the scroll, in the same column.
+ */
+function Frame({ children, composer }: { children: ReactNode; composer?: ReactNode }) {
   return (
-    <div className="h-full overflow-y-auto" data-testid="cos">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-5">
-        <header>
-          <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">CHIEF OF STAFF</p>
-          <ScreenTitle scale="cos">Your shift</ScreenTitle>
-        </header>
-        <ShiftSummary snapshot={snapshot} />
-        <Conversation snapshot={snapshot} gaps={gaps} />
+    <div className="flex h-full flex-col" data-testid="cos">
+      <div className="min-h-0 flex-1 overflow-y-auto px-8 pt-9 pb-3" data-look="cos-feed">
+        <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6" data-look="cos-column">
+          {children}
+        </div>
       </div>
+      {composer === undefined ? null : (
+        <div className="px-8 pt-2.5 pb-[22px]">
+          <div className="mx-auto w-full max-w-[720px]">{composer}</div>
+        </div>
+      )}
     </div>
   );
 }
 
-/** The summary: what waits on the person, and what is running (D1). */
+/**
+ * v2's header (v2:125-128): the 40px CS square, the title, and a mono line
+ * with the seat's status and what it watches, or *working…* while it works on
+ * a line from this page (v2:1424).
+ */
+function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
+  const working = useChiefOfStaffWorking();
+  let sub: string | null = null;
+  if (working) sub = "working…";
+  else if (snapshot.inventory.ok) {
+    const { seats, workstreams } = snapshot.inventory.value;
+    const cos = chiefOfStaffOf(seats, snapshot.orgId);
+    const status = cos.kind === "one" ? seatStates(snapshot).seats.get(cos.seat.id)?.status : undefined;
+    const watching = `watching ${plural(workstreams.length, "stream", "streams")} and ${plural(seats.length, "worker", "workers")}`;
+    sub = status === undefined ? watching : `${status} · ${watching}`;
+  }
+  return (
+    <header className="flex items-center gap-3" data-testid="cos-header">
+      <span
+        className="flex size-10 shrink-0 items-center justify-center bg-primary font-mono text-[13px] font-semibold text-primary-foreground"
+        data-look="avatar"
+        aria-hidden
+      >
+        CS
+      </span>
+      <div className="min-w-0">
+        <ScreenTitle scale="cos">Chief of Staff</ScreenTitle>
+        {sub === null ? null : (
+          <Meta className="block text-[11.5px] text-muted-foreground" testId="cos-sub">
+            {sub}
+          </Meta>
+        )}
+      </div>
+    </header>
+  );
+}
+
+/** The highlighter tag v2 sets on what waits on the person (v2:142): an ask, here. */
+function NeedsYouTag() {
+  return (
+    <span
+      className="shrink-0 border border-foreground bg-attention px-[5px] py-px font-mono text-[9.5px] font-semibold tracking-[0.12em] text-attention-foreground"
+      data-look="needs-tag"
+    >
+      NEEDS YOU
+    </span>
+  );
+}
+
+/**
+ * The summary: what waits on the person, and what is running (D1). Drawn as
+ * v2 draws the opening of the feed, unboxed 16px prose under a mono label
+ * (v2:135-136), with the asks as v2's one bordered list (v2:138-153). The
+ * label says whose summary it is: Shift Manager's, not the seat's.
+ */
 function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
   const { refresh } = useLab();
   const retry = () => void refresh();
   const { asks, running } = shiftSummary(snapshot);
   return (
-    <section aria-label="Shift summary" className="border bg-card p-4" data-testid="cos-summary">
-      <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">SHIFT SUMMARY · FROM SHIFT MANAGER</p>
-      <div className="mt-2 space-y-1 text-sm">
+    <section aria-label="Shift summary" className="flex flex-col gap-2.5" data-testid="cos-summary">
+      <p className="font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
+        SHIFT SUMMARY · FROM SHIFT MANAGER
+      </p>
+      <div className="text-base leading-[1.55]" data-look="summary-prose">
         {asks.ok ? (
           <p data-testid="cos-summary-asks">
             {asks.value.length === 0 ? (
@@ -79,20 +160,28 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
         )}
       </div>
       {asks.ok && asks.value.length > 0 ? (
-        <ol className="mt-3 space-y-3" data-testid="cos-asks">
-          {asks.value.map((ask) => (
-            <li key={ask.item.suspensionId} data-testid="cos-ask" data-suspension-id={ask.item.suspensionId}>
-              <p className="mb-1 text-xs text-muted-foreground">
-                {ask.seatId ?? "unknown seat"} asks{" · "}
-                <button
-                  type="button"
-                  className="underline underline-offset-2"
-                  onClick={() => navigate({ level: "inbox", suspensionId: ask.item.suspensionId })}
-                  data-testid="cos-ask-open"
-                >
-                  open in Inbox
-                </button>
-              </p>
+        <ol className="flex flex-col border border-foreground bg-card" data-testid="cos-asks">
+          {asks.value.map((ask, i) => (
+            <li
+              key={ask.item.suspensionId}
+              className={`flex flex-col gap-[9px] px-3.5 py-3 ${i > 0 ? "border-t border-foreground/15" : ""}`}
+              data-testid="cos-ask"
+              data-suspension-id={ask.item.suspensionId}
+            >
+              <div className="flex items-baseline gap-[9px]">
+                <NeedsYouTag />
+                <p className="min-w-0 font-mono text-[11px] font-medium text-muted-foreground" data-look="ask-meta">
+                  {ask.seatId ?? "unknown seat"} asks{" · "}
+                  <button
+                    type="button"
+                    className="text-info hover:text-foreground"
+                    onClick={() => navigate({ level: "inbox", suspensionId: ask.item.suspensionId })}
+                    data-testid="cos-ask-open"
+                  >
+                    open in Inbox
+                  </button>
+                </p>
+              </div>
               <AskCard ask={ask} />
             </li>
           ))}
@@ -102,38 +191,63 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
   );
 }
 
-/** The conversation, or the named state in its place (BR-10 to BR-12). */
-function Conversation({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
+/** The conversation, or the named state in its place (BR-10 to BR-12), under `lead`. */
+function Conversation({ snapshot, gaps, lead }: { snapshot: LoadedSnapshot; gaps: Gaps; lead: ReactNode }) {
   const { refresh } = useLab();
   if (!snapshot.inventory.ok) {
-    return <SectionFailure what="The chief of staff" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="cos-seat-failure" />;
+    return (
+      <Frame>
+        {lead}
+        <SectionFailure what="The chief of staff" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="cos-seat-failure" />
+      </Frame>
+    );
   }
   const cos = chiefOfStaffOf(snapshot.inventory.value.seats, snapshot.orgId);
   if (cos.kind === "none") {
     return (
-      <section className="border border-dashed p-4 text-sm" data-testid="cos-none">
-        <p className="font-medium">{gaps.chiefOfStaff.none.title}</p>
-        <p className="mt-1 text-muted-foreground">{gaps.chiefOfStaff.none.body}</p>
-      </section>
+      <Frame>
+        {lead}
+        <section className="border border-dashed p-4 text-sm" data-testid="cos-none">
+          <p className="font-medium">{gaps.chiefOfStaff.none.title}</p>
+          <p className="mt-1 text-muted-foreground">{gaps.chiefOfStaff.none.body}</p>
+        </section>
+      </Frame>
     );
   }
   if (cos.kind === "several") {
     return (
-      <section className="border border-dashed p-4 text-sm" data-testid="cos-several">
-        <p>{gaps.chiefOfStaff.several}</p>
-        <ul className="mt-1 list-inside list-disc text-muted-foreground">
-          {cos.seats.map((seat) => (
-            <li key={seat.id}>{seat.id}</li>
-          ))}
-        </ul>
-      </section>
+      <Frame>
+        {lead}
+        <section className="border border-dashed p-4 text-sm" data-testid="cos-several">
+          <p>{gaps.chiefOfStaff.several}</p>
+          <ul className="mt-1 list-inside list-disc text-muted-foreground">
+            {cos.seats.map((seat) => (
+              <li key={seat.id}>{seat.id}</li>
+            ))}
+          </ul>
+        </section>
+      </Frame>
     );
   }
-  return <Talk key={cos.seat.id} seat={cos.seat} sessions={snapshot.sessions} gaps={gaps} />;
+  return (
+    <Talk key={cos.seat.id} seat={cos.seat} sessions={snapshot.sessions} gaps={gaps} lead={lead} suggestions={chiefOfStaffSuggestions(snapshot)} />
+  );
 }
 
-/** The conversation with one seat: its stored items, and the composer. */
-function Talk({ seat, sessions, gaps }: { seat: Seat; sessions: readonly SessionSummary[]; gaps: Gaps }) {
+/** The conversation with one seat: its stored items in the feed, and the composer under it. */
+function Talk({
+  seat,
+  sessions,
+  gaps,
+  lead,
+  suggestions,
+}: {
+  seat: Seat;
+  sessions: readonly SessionSummary[];
+  gaps: Gaps;
+  lead: ReactNode;
+  suggestions: readonly string[];
+}) {
   const { clients, refresh } = useLab();
   // The session a first line opened, until the snapshot lists it (BR-14).
   const [opened, setOpened] = useState<string | null>(null);
@@ -146,7 +260,7 @@ function Talk({ seat, sessions, gaps }: { seat: Seat; sessions: readonly Session
   const [stored, setStored] = useState<{ sessionId: string; read: SessionItems } | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [reads, setReads] = useState(0);
-  const [working, setWorking] = useState(false);
+  const working = useChiefOfStaffWorking();
 
   useEffect(() => {
     if (sessionId === null) return;
@@ -177,60 +291,77 @@ function Talk({ seat, sessions, gaps }: { seat: Seat; sessions: readonly Session
           ? "Reading the conversation first…"
           : null;
 
+  const composer = (
+    <TurnComposer
+      testId="cos-composer"
+      scale="cos"
+      label={`Message ${seat.id}`}
+      placeholder={`Message ${seat.id}…`}
+      blocked={blocked}
+      suggestions={suggestions}
+      send={async (message) => {
+        const target = sessionId ?? (fresh.current ??= newConversationId());
+        setChiefOfStaffWorking(true);
+        try {
+          await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId: target }, message);
+          setOpened(target);
+        } catch (error) {
+          // The Lab may have opened the session before the line failed. The
+          // listing says whether it did; the composer says what failed.
+          void refresh();
+          throw error;
+        } finally {
+          setChiefOfStaffWorking(false);
+          setReads((n) => n + 1);
+        }
+      }}
+    />
+  );
+
   return (
-    <section aria-label={`Conversation with ${seat.id}`} className="border" data-testid="cos-conversation" data-seat-id={seat.id} data-session-id={sessionId ?? ""}>
-      <header className="border-b px-4 py-2">
-        <p className="text-sm font-medium">{seat.id}</p>
-        <p className="text-xs text-muted-foreground">Your chief of staff. What it says here is what its session holds.</p>
-      </header>
-      {failure !== undefined ? (
-        <div className="p-4">
+    <Frame composer={composer}>
+      {lead}
+      <section
+        aria-label={`Conversation with ${seat.id}`}
+        className="flex flex-col gap-6"
+        data-testid="cos-conversation"
+        data-seat-id={seat.id}
+        data-session-id={sessionId ?? ""}
+      >
+        {failure !== undefined ? (
           <SectionFailure what="The conversation" failure={failure} onRetry={() => setReads((n) => n + 1)} testId="cos-conversation-failure" />
-        </div>
-      ) : sessionId === null ? (
-        <p className="px-4 py-3 text-sm text-muted-foreground" data-testid="cos-conversation-empty">
-          You haven't talked with {seat.id} yet. Your first line starts the conversation.
-        </p>
-      ) : read === undefined ? (
-        <p className="px-4 py-3 text-sm text-muted-foreground">Reading the conversation…</p>
-      ) : (
-        <FlowProvider renderers={chatAssistantRenderers}>
-          <Items stored={read} />
-        </FlowProvider>
-      )}
-      {working ? (
-        <p className="px-4 pb-2 text-xs text-muted-foreground" data-testid="cos-working">
-          {seat.id} is working on it…
-        </p>
-      ) : null}
-      <TurnComposer
-        testId="cos-composer"
-        scale="cos"
-        label={`Message ${seat.id}`}
-        placeholder={`Message ${seat.id}…`}
-        blocked={blocked}
-        send={async (message) => {
-          const target = sessionId ?? (fresh.current ??= newConversationId());
-          setWorking(true);
-          try {
-            await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId: target }, message);
-            setOpened(target);
-          } catch (error) {
-            // The Lab may have opened the session before the line failed. The
-            // listing says whether it did; the composer says what failed.
-            void refresh();
-            throw error;
-          } finally {
-            setWorking(false);
-            setReads((n) => n + 1);
-          }
-        }}
-      />
-    </section>
+        ) : sessionId === null ? (
+          <p className="text-sm text-muted-foreground" data-testid="cos-conversation-empty">
+            You haven't talked with {seat.id} yet. Your first line starts the conversation.
+          </p>
+        ) : read === undefined ? (
+          <p className="text-sm text-muted-foreground" data-testid="cos-conversation-reading">
+            Reading the conversation…
+          </p>
+        ) : (
+          <FlowProvider renderers={chatAssistantRenderers}>
+            <Items stored={read} />
+          </FlowProvider>
+        )}
+        {working ? (
+          // v2's thinking line (v2:167-169), saying only what is true: the seat has the line.
+          <p className="flex items-center gap-2 font-mono text-[11.5px] font-medium text-muted-foreground" data-testid="cos-working">
+            <span className="size-[7px] shrink-0 bg-info" data-look="working" aria-hidden />
+            {seat.id} is working on it…
+          </p>
+        ) : null}
+      </section>
+    </Frame>
   );
 }
 
-/** The session's items as stored, with the same render filters the task session applies. */
+/**
+ * The session's items as stored, with the same render filters the task
+ * session applies. Each item is the registry's own rendering; around it the
+ * shell draws v2's label over each of the seat's messages, "CHIEF OF STAFF"
+ * and the time it was written (v2:135), and an ask the seat raised as a
+ * needs-you line that opens Inbox, where it is answered.
+ */
 function Items({ stored }: { stored: SessionItems }) {
   const { renderers } = useFlowContext();
   const answered = useMemo(
@@ -247,29 +378,49 @@ function Items({ stored }: { stored: SessionItems }) {
   return (
     <SessionItemsProvider value={stored.items}>
       {stored.truncated ? (
-        <p className="px-4 pt-3 text-xs text-muted-foreground" data-testid="cos-truncated">
+        <p className="text-xs text-muted-foreground" data-testid="cos-truncated">
           More than shown: this conversation holds more than one read returns.
         </p>
       ) : null}
-      <ol className="flex flex-col gap-2 px-4 py-3" data-testid="cos-items">
-        {shown.map((item) => (
-          <li
-            key={`${item.requestId}/${item.id}`}
-            data-testid="cos-item"
-            data-item-id={item.id}
-            data-request-id={item.requestId}
-            data-item-type={item.type}
-            data-role={(item as { role?: string }).role ?? ""}
-          >
-            {item.type === "suspension" && !answered.has((item as { suspensionId?: string }).suspensionId) ? (
-              <button type="button" className="text-sm underline" onClick={() => navigate({ level: "inbox", suspensionId: null })}>
-                Waiting on you: answer it in Inbox
-              </button>
-            ) : (
-              <ItemRenderer item={item} />
-            )}
-          </li>
-        ))}
+      <ol className="flex flex-col gap-2.5" data-testid="cos-items">
+        {shown.map((item) => {
+          const role = (item as { role?: string }).role ?? "";
+          return (
+            <li
+              key={`${item.requestId}/${item.id}`}
+              data-testid="cos-item"
+              data-item-id={item.id}
+              data-request-id={item.requestId}
+              data-item-type={item.type}
+              data-role={role}
+            >
+              {item.type === "message" && role === "assistant" ? (
+                <p className="mb-2.5 flex items-baseline gap-2 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
+                  CHIEF OF STAFF
+                  <span className="tracking-normal" data-look="message-time">
+                    {clockTime(item.ts)}
+                  </span>
+                </p>
+              ) : null}
+              {item.type === "suspension" && !answered.has((item as { suspensionId?: string }).suspensionId) ? (
+                <button
+                  type="button"
+                  className="flex items-baseline gap-[9px] text-left"
+                  onClick={() => navigate({ level: "inbox", suspensionId: null })}
+                >
+                  <NeedsYouTag />
+                  <span className="font-mono text-[11px] font-medium text-info" data-look="ask-meta">
+                    Waiting on you: answer it in Inbox
+                  </span>
+                </button>
+              ) : (
+                <div data-look="registry-item">
+                  <ItemRenderer item={item} />
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ol>
     </SessionItemsProvider>
   );

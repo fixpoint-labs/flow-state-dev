@@ -12,18 +12,26 @@
  * read shows its section's Retry and nothing else changes (BR-11).
  *
  * Drawn in design v2's frame: 248px wide on v2's sidebar surface, darker than
- * the page; square; labels, counts and the footer in mono (v2:26-113).
+ * the page; square; labels, counts and the footer in mono (v2:26-113). Chief
+ * of Staff is v2's bordered entry; Inbox, Tasks and Roster carry v2's icons;
+ * Inbox's count wears the highlighter only while an ask waits, and Tasks' is
+ * blue; the current row is v2's blue tint at 700; each workstream has its `#`
+ * and its needs-you or running dot; TEAMS says what its counts are; and the
+ * footer ends its counts with the person's initials (v2:52-113, 1173-1188).
  */
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import type { ColorScheme, ShiftLook } from "../lib/color-scheme";
 import { navigate, NO_PROJECT, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
-import { openRows, seatStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
-import { Meta, PartialMark, SectionFailure, ShiftMark } from "../components/ui";
+import { openRows, seatStates, shiftCounts, streamCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { initialsOf } from "../lib/shell";
+import { useChiefOfStaffWorking } from "../lib/working";
+import { Meta, PartialMark, SectionFailure, ShiftMark, StateSquare } from "../components/ui";
 import type { Gaps } from "../gaps";
 
 function NavItem({
   label,
+  icon,
   count,
   mark,
   active,
@@ -31,6 +39,8 @@ function NavItem({
   testId,
 }: {
   label: string;
+  /** v2's 14px line icon, drawn before the label (v2:58, 63, 68). */
+  icon?: ReactNode;
   count?: number | string;
   /** Drawn after the count. */
   mark?: ReactNode;
@@ -44,11 +54,14 @@ function NavItem({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       data-testid={testId}
-      className={`flex w-full items-center justify-between px-2 py-1.5 text-left text-[13.5px] ${
-        active ? "bg-accent font-medium text-accent-foreground" : "hover:bg-accent/60"
+      className={`flex w-full items-center gap-[9px] px-[7px] py-1.5 text-left text-[13.5px] ${
+        active ? "bg-accent font-bold text-accent-foreground" : "font-medium hover:bg-foreground/6"
       }`}
     >
-      <span className="truncate">{label}</span>
+      {icon}
+      <span className="flex-1 truncate" data-look="nav-label">
+        {label}
+      </span>
       {count === undefined ? null : (
         <Meta role="count" className="ml-2 tabular-nums text-muted-foreground" testId={`${testId}-count`}>
           {count}
@@ -59,9 +72,89 @@ function NavItem({
   );
 }
 
-function Heading({ children, onClick, testId }: { children: string; onClick?: () => void; testId: string }) {
-  const className = "block px-2 pt-4 pb-1.5 text-muted-foreground";
-  const label = <Meta role="label">{children}</Meta>;
+/** v2's 14px line icons for Inbox, Tasks and Roster (v2:58, 63, 68), stroked in the text's colour. */
+const ICON_PATHS = {
+  inbox: "M1.5 1.5h11v11h-11z M1.5 8.5h3.2l1 1.8h2.6l1-1.8h3.2",
+  tasks: "M1.5 3h2 M5.5 3h7 M1.5 7h2 M5.5 7h7 M1.5 11h2 M5.5 11h7",
+  roster: "M1.5 1.5h4.5v4.5h-4.5z M8 1.5h4.5v4.5h-4.5z M1.5 8h4.5v4.5h-4.5z M8 8h4.5v4.5h-4.5z",
+} as const;
+
+function NavIcon({ name }: { name: keyof typeof ICON_PATHS }) {
+  return (
+    <svg viewBox="0 0 14 14" className="size-3.5 shrink-0 text-foreground" aria-hidden data-look="nav-icon">
+      <path d={ICON_PATHS[name]} fill="none" stroke="currentColor" strokeWidth={1.2} />
+    </svg>
+  );
+}
+
+/**
+ * The Chief of Staff entry, v2's bordered card row (v2:52-56): an 18px CS
+ * square, the name at 600, inverted to ink when it is the current screen, and
+ * a blue dot while the chief of staff works on a line sent from this page.
+ */
+function ChiefOfStaffEntry({ active }: { active: boolean }) {
+  const working = useChiefOfStaffWorking();
+  return (
+    <button
+      type="button"
+      onClick={() => navigate({ level: "cos" })}
+      aria-current={active ? "page" : undefined}
+      data-testid="nav-cos"
+      className={`mb-[5px] flex w-full items-center gap-[9px] border p-[7px] text-left text-[13.5px] font-semibold ${
+        active ? "border-primary bg-primary text-primary-foreground" : "border-foreground/30 bg-card text-foreground hover:border-foreground"
+      }`}
+    >
+      <span
+        className={`flex size-[18px] shrink-0 items-center justify-center border font-mono text-[7.5px] font-semibold ${
+          active ? "border-primary-foreground bg-primary-foreground text-primary" : "border-primary bg-primary text-primary-foreground"
+        }`}
+        data-look="avatar"
+        aria-hidden
+      >
+        CS
+      </span>
+      <span className="flex-1 truncate" data-look="nav-label">
+        Chief of Staff
+      </span>
+      <span className={`size-[7px] shrink-0 ${working ? "bg-info" : ""}`} data-look="working" data-working={working} aria-hidden />
+    </button>
+  );
+}
+
+/**
+ * A workstream under PROJECTS (v2:88): a mono `#`, its name, and a dot, the
+ * highlighter while one of its members' asks waits on the person, else blue
+ * while a row on its boards runs, else none (v2:1183-1184).
+ */
+function StreamItem({ id, state, active }: { id: string; state: "needs" | "run" | null; active: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={() => navigate({ level: "workstream", channelId: id, tab: "stream" })}
+      aria-current={active ? "page" : undefined}
+      data-testid={`nav-workstream-${id}`}
+      data-dot={state ?? "none"}
+      className={`flex w-full items-center gap-[7px] px-1.5 py-[5px] text-left text-[13px] ${
+        active ? "bg-accent font-semibold text-accent-foreground" : "hover:bg-foreground/6"
+      }`}
+    >
+      <Meta className="text-[11.5px] text-muted-foreground">#</Meta>
+      <span className="min-w-0 flex-1 truncate" data-look="nav-label">
+        {id}
+      </span>
+      {state === null ? null : <StateSquare state={state} className="size-1.5" />}
+    </button>
+  );
+}
+
+function Heading({ children, aside, onClick, testId }: { children: string; aside?: string; onClick?: () => void; testId: string }) {
+  const className = "flex justify-between px-1.5 pt-4 pb-1.5 text-muted-foreground";
+  const label = (
+    <>
+      <Meta role="label">{children}</Meta>
+      {aside === undefined ? null : <Meta role="label">{aside}</Meta>}
+    </>
+  );
   return onClick === undefined ? (
     <p className={className} data-testid={testId}>
       {label}
@@ -120,7 +213,7 @@ const SHIFTS: Array<{ scheme: ColorScheme; label: string }> = [
 function ShiftSwitch({ look }: { look: ShiftLook }) {
   const current = useSyncExternalStore(look.subscribe, look.current);
   return (
-    <div role="group" aria-label="Shift" className="mt-2 grid grid-cols-2 border border-foreground font-mono text-[11px]" data-testid="shift-switch">
+    <div role="group" aria-label="Shift" className="grid grid-cols-2 border border-foreground font-mono text-[11px]" data-testid="shift-switch">
       {SHIFTS.map(({ scheme, label }, i) => (
         <button
           key={scheme}
@@ -146,7 +239,17 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
 
   const inboxCount = loaded === undefined ? "…" : loaded.asks.ok ? loaded.asks.value.length : "!";
   const tasksCount = loaded === undefined ? "…" : openRows(loaded).length;
-  const liveSessions = loaded === undefined ? null : loaded.sessions.length;
+  const waiting = loaded !== undefined && loaded.asks.ok && loaded.asks.value.length > 0;
+  // Each workstream's dot (v2:1183-1184): needs-you first, then running.
+  const streams = loaded === undefined ? undefined : streamCounts(loaded);
+  const dots = new Map(
+    streams?.ok === true
+      ? streams.value.map(({ workstream, needsYou, running }) => [
+          workstream.id,
+          (needsYou ?? 0) > 0 ? ("needs" as const) : running.ok && running.value > 0 ? ("run" as const) : null,
+        ])
+      : [],
+  );
   const states = loaded === undefined || !loaded.inventory.ok ? undefined : seatStates(loaded);
   const counts = states === undefined ? undefined : shiftCounts(states);
   const partial = states?.partial === true ? <PartialMark title={gaps.roster.partial} /> : null;
@@ -168,28 +271,40 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
         </button>
 
         <div className="mt-3 space-y-0.5">
-          <NavItem
-            label="Chief of Staff"
-            active={route.level === "cos"}
-            onClick={() => navigate({ level: "cos" })}
-            testId="nav-cos"
-          />
+          <ChiefOfStaffEntry active={route.level === "cos"} />
           <NavItem
             label="Inbox"
-            count={inboxCount}
+            icon={<NavIcon name="inbox" />}
+            mark={
+              // v2's badge (v2:60): the highlighter only while an ask waits on the person.
+              <span
+                className={`px-[5px] font-mono text-[10.5px] font-semibold tabular-nums ${waiting ? "bg-attention text-attention-foreground" : "text-muted-foreground"}`}
+                data-look="meta-count"
+                data-testid="nav-inbox-count"
+                data-waiting={waiting}
+              >
+                {inboxCount}
+              </span>
+            }
             active={route.level === "inbox"}
             onClick={() => navigate({ level: "inbox", suspensionId: null })}
             testId="nav-inbox"
           />
           <NavItem
             label="Tasks"
-            count={tasksCount}
+            icon={<NavIcon name="tasks" />}
+            mark={
+              <Meta role="count" className="ml-2 tabular-nums text-info" testId="nav-tasks-count">
+                {tasksCount}
+              </Meta>
+            }
             active={route.level === "tasks" || route.level === "task"}
             onClick={() => navigate({ level: "tasks", by: "state" })}
             testId="nav-tasks"
           />
           <NavItem
             label="Roster"
+            icon={<NavIcon name="roster" />}
             count={counts === undefined ? undefined : `${counts["on shift"]}·${counts["on call"]}`}
             mark={partial}
             active={route.level === "roster" && route.team === null}
@@ -206,12 +321,11 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
             <>
               <p className="px-2 pb-1 text-xs text-muted-foreground">{gaps.projectWorkstreams.title}; workstreams:</p>
               {loaded.inventory.value.workstreams.map((w) => (
-                <NavItem
+                <StreamItem
                   key={w.id}
-                  label={w.id}
+                  id={w.id}
+                  state={dots.get(w.id) ?? null}
                   active={route.level === "workstream" && route.channelId === w.id}
-                  onClick={() => navigate({ level: "workstream", channelId: w.id, tab: "stream" })}
-                  testId={`nav-workstream-${w.id}`}
                 />
               ))}
             </>
@@ -220,7 +334,9 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
           )}
         </div>
 
-        <Heading testId="teams-heading">TEAMS</Heading>
+        <Heading testId="teams-heading" aside="on shift">
+          TEAMS
+        </Heading>
         <div data-testid="teams">
           {loaded?.inventory.ok && loaded.inventory.value.rosterUnread !== undefined ? (
             <p className="px-2 py-1 text-xs text-muted-foreground" data-testid="teams-roster-unread">
@@ -237,7 +353,7 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
                 data-testid="team"
                 data-team={team}
                 className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-[13px] ${
-                  route.level === "roster" && route.team === team ? "bg-accent font-medium text-accent-foreground" : "hover:bg-accent/60"
+                  route.level === "roster" && route.team === team ? "bg-accent text-accent-foreground" : "hover:bg-foreground/6"
                 }`}
               >
                 <span className="flex-1 truncate">{team}</span>
@@ -261,23 +377,35 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
           )}
         </div>
       </div>
-      <footer className="border-t px-3 pt-2.5 pb-3 font-mono text-[11px] font-medium text-muted-foreground" data-testid="sidebar-footer" data-look="meta-meta">
-        {counts === undefined ? null : (
-          <p className="mb-1 flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5">
-              <ShiftMark status="on shift" />
-              <span data-testid="footer-on-shift">{counts["on shift"]} on shift</span>
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <ShiftMark status="on call" />
-              <span data-testid="footer-on-call">{counts["on call"]} on call</span>
-            </span>
-            {partial}
-          </p>
-        )}
-        <span data-testid="sessions-live">{liveSessions === null ? "sessions unknown" : `${liveSessions} sessions`}</span>
-        {" · "}
-        <span data-testid="current-user">{clients.userId}</span>
+      <footer
+        className="flex flex-col gap-[9px] border-t border-foreground/20 px-3 pt-2.5 pb-3 font-mono text-[11px] font-medium text-muted-foreground"
+        data-testid="sidebar-footer"
+        data-look="meta-meta"
+      >
+        <p className="flex items-center gap-3">
+          {counts === undefined ? null : (
+            <>
+              <span className="inline-flex items-center gap-1.5">
+                <ShiftMark status="on shift" />
+                <span data-testid="footer-on-shift">{counts["on shift"]} on shift</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <ShiftMark status="on call" />
+                <span data-testid="footer-on-call">{counts["on call"]} on call</span>
+              </span>
+              {partial}
+            </>
+          )}
+          <span
+            className="ml-auto flex size-[22px] shrink-0 items-center justify-center border border-foreground text-[10px] text-foreground"
+            title={clients.userId}
+            aria-label={`Signed in as ${clients.userId}`}
+            data-testid="footer-user"
+            data-look="avatar"
+          >
+            {initialsOf(clients.userId)}
+          </span>
+        </p>
         {look === undefined ? null : <ShiftSwitch look={look} />}
       </footer>
     </nav>
