@@ -102,8 +102,7 @@ FAILS. It answers "which readers assume a team"; it does not change behaviour.
 ## At implement time
 
 - FIX-1621's spec is on `main`: `fire` is its one remove path, and it pins `brokenSeats` and
-  `rehire` on `createSeatHireBlocks` for this issue to mount. Its prose still says "Ops" where it
-  means the admin seat; read that as CoS.
+  `rehire` on `createSeatHireBlocks` for this issue to mount.
 - Shift Manager's `toSeat` (`labs/shift-manager/src/lib/reads.ts:258`) reads a dotless id as its
   own team. FIX-1723 owns that screen; tell its thread, don't edit it.
 - Check whether `createFlowState` refuses two flows with one key. If it overwrites, the DevTeam

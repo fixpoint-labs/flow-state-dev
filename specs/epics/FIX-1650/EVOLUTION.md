@@ -27,8 +27,8 @@ A cross-spec review of this set and FIX-1621, FIX-1718 and FIX-1719 found surfac
 disagreed; the EM's calls align them. It is a new PR from `main`;
 [#2602](https://github.com/fixpoint-labs/flow-state-dev/pull/2602),
 [#2609](https://github.com/fixpoint-labs/flow-state-dev/pull/2609) and
-[#2622](https://github.com/fixpoint-labs/flow-state-dev/pull/2622) stay the review record. No rule
-is added.
+[#2622](https://github.com/fixpoint-labs/flow-state-dev/pull/2622) stay the review record. No new ER
+number is added; ER-5, ER-20 and ER-25 change wording only.
 
 | Prior intent in this set | Treatment | Reason / evidence | Replacement | Compatibility |
 |---|---|---|---|---|

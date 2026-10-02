@@ -6,7 +6,7 @@
 
 | Someone who… | Today | After |
 |---|---|---|
-| **runs a Lab alone and wants to know who is on what** | Nobody to ask. They open TEAMS and the boards and piece it together | They ask the chief of staff (CoS), the one org seat that reads the roster and posts to a project's channel |
+| **runs a Lab alone and wants to know who is on what** | Nobody to ask. They open TEAMS and the boards and piece it together | They ask the chief of staff (CoS), the one org seat that reads the roster and posts to a project's room, through the default project template |
 | **needs one more coder** | Edits a `WORKER.md` and restarts, or writes and guards a hire action | Asks CoS. CoS hires a seat of a kind the Lab allows, without asking, and the seat is still there after a restart |
 | **needs one fewer** | Edits files and restarts | Asks CoS. CoS raises the fire in Inbox; Approve removes the seat, Deny leaves it ([D2](DECISIONS.md#d2)) |
 | **is a seat that thinks the team needs help** | Has no way to ask | Messages CoS, and CoS decides whether to hire. No seat but CoS hires ([D3](DECISIONS.md#d3)) |
