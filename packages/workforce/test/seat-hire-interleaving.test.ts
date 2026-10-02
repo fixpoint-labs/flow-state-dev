@@ -421,4 +421,42 @@ describe("hire, fire and rehire interleaved at every store call", () => {
     // The named window is never reached here: every end state is fully consistent.
     expect(windows).toEqual([]);
   }, 120_000);
+
+  it("a hire, with a boot carrying a stale declared seat at its address landing at any of its store calls", async () => {
+    // The other side of the same race: the boot read no row and creates its
+    // declared one while the hire is between its checks and its publish. The
+    // hire can't write over a declared row, so it has to take back what it
+    // did, not stay serving with no row of its own.
+    const declared = { id: "acme.support.ada", kind: "desk", door: "run", hired: false, incarnation: null };
+    const { runs, windows } = await everyInterleaving(
+      "hire | boot (stale declared row)",
+      async () => ({}),
+      hireAda("first", "hire"),
+      [{ action: "boot", input: { seats: [declared] }, label: "boot" }],
+      "support.ada"
+    );
+    expect(runs).toBeGreaterThan(2);
+    // The named window is never reached here: every end state is fully consistent.
+    expect(windows).toEqual([]);
+  }, 120_000);
+
+  it("a re-hire, with a boot carrying a stale declared seat at its address landing at any of its store calls", async () => {
+    // The seat's old inventory row is gone (a pre-field fire left none), so
+    // the boot reads no row and creates its declared one mid re-hire.
+    const declared = { id: "acme.support.joe", kind: "desk", door: "run", hired: false, incarnation: null };
+    const legacy = toHiredSeatRow({ seatId: "support.joe", flow: "desk-clerk", owningOrgId: "acme" });
+    const { runs, windows } = await everyInterleaving(
+      "rehire | boot (stale declared row)",
+      async (w) => {
+        await w.seed(`${ROSTER}support.joe`, legacy as never);
+        return {};
+      },
+      { action: "rehire", input: { seatId: "support.joe", flow: "desk", settings: { queue: "q" } }, label: "rehire" },
+      [{ action: "boot", input: { seats: [declared] }, label: "boot" }],
+      "support.joe"
+    );
+    expect(runs).toBeGreaterThan(2);
+    // The named window is never reached here: every end state is fully consistent.
+    expect(windows).toEqual([]);
+  }, 120_000);
 });

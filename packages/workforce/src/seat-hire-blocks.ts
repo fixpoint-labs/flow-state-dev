@@ -573,8 +573,12 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       retry?: boolean;
       /** Clear `pendingRepair` as the last write (a re-hire). */
       repair?: boolean;
-      /** Undo the row write when registration is refused. */
-      onRegisterFailed?: (error: unknown) => Promise<void>;
+      /**
+       * Undo this call's roster write, only while the row is still this
+       * call's: when registration is refused, and when a declared seat's
+       * inventory row turned up at the address before the publish.
+       */
+      undoRowWrite?: () => Promise<void>;
     }
   ) => {
     const stillOurs = (current: JsonObject) => {
@@ -593,7 +597,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       try {
         registerOnce(seat, pin, step.retry ? incarnation : undefined);
       } catch (error) {
-        await step.onRegisterFailed?.(error);
+        await step.undoRowWrite?.();
         throw error;
       }
       let warnings: { warning?: string };
@@ -603,6 +607,20 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
         // A fire that removed the inventory row under this write removed the
         // roster row first; that is the conflict below, not a failed write.
         if (error instanceof FenceFailed || isWriteConflict(error)) throw error;
+        if (error instanceof DeclaredRow) {
+          // A boot wrote a declared seat's row here after this call checked
+          // the address (a rolling deploy whose old process still declares
+          // it). A hire never writes over one, so it takes back what it did:
+          // the seat it registered, then its roster row. The declared row and
+          // anything else at the address are left.
+          const live = options.instanceAt?.(address);
+          if (live !== undefined && mintedFrom(live, incarnation)) options.unregister(address);
+          await step.undoRowWrite?.();
+          throw new Error(
+            `"${address}" was taken by a declared seat's inventory row while this call was finishing it, ` +
+              `and a hire does not write over a declared seat. This call took back its seat and its roster row.`
+          );
+        }
         await fence();
         if (!step.repair) throw error;
         throw new Error(
@@ -689,9 +707,14 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       // this hire — not from `seat.id`. Address is a name the caller can type;
       // it is not evidence of ownership (FIX-1529 / F2-PLAN).
       const warnings = await settle(ctx, written, incarnation, seat, { orgId }, input.flow, address, {
-        onRegisterFailed: async () => {
+        undoRowWrite: async () => {
           try {
-            await roster.delete(input.seatId);
+            // Only while the row is still this hire's; the delete is
+            // version-checked against the row read.
+            const current = await roster.getOptional(input.seatId);
+            if (current !== undefined && incarnationOfRow(current.state) === incarnation) {
+              await roster.delete(input.seatId);
+            }
           } catch (cleanupError) {
             console.error(
               `[seat-hire] "${address}" was written and could not be registered, and its row could ` +
@@ -947,8 +970,8 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
 
       const warnings = await settle(ctx, existing, token, seat, pin, input.flow, address, {
         repair: true,
-        onRegisterFailed: async () => {
-          // Registration refused: write the old row back, while it is still this repair's.
+        undoRowWrite: async () => {
+          // Write the old row back, while it is still this repair's.
           try {
             await existing.updateState((current) => {
               if (pendingRepairOf(current) !== token) throw new SeatMoved(address);
