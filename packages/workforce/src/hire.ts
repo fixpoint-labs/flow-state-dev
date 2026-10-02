@@ -772,8 +772,13 @@ export function hireWorkforce(
     // anything. What keeps that from touching an app with no references is the
     // wall itself: a kind holding none hands `base` straight back, including
     // handing back `undefined` so the seat is minted with no map at all.
+    //
+    // Placed by the seat id, not the address: a runtime hire answers on an
+    // org-qualified address (`acme.engineering.ada`), and its place in the
+    // tree is the seat id it was hired as (`engineering.ada`).
+    const placedAs = manifest.seatId ?? manifest.id;
     const wall = applyReferenceWall({
-      seatId: manifest.id,
+      seatId: placedAs,
       declared: manifest.declared[SEAT_REFERENCES_KEY],
       hasDeclared: Object.hasOwn(manifest.declared, SEAT_REFERENCES_KEY),
       catalog: options.references,
@@ -828,7 +833,7 @@ export function hireWorkforce(
         minted: seat.resources as DeclaredResources | undefined,
         allowed: wall.reachable,
         catalog: options.references,
-        seatId: manifest.id,
+        seatId: placedAs,
         kind
       });
       if (crossed.length > 0) {
