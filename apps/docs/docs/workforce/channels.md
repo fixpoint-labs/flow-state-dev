@@ -17,9 +17,9 @@ A channel can also be [routed](#routing-a-channel). Each post from a person then
 
 A **flow kind** is a definition you register. A **session** is one conversation running on a registered flow, with its own durable state. A channel's **members** are the names it lists, usually [hired workers](./workers-on-disk.md).
 
-A channel is a session, not a new type beside flows and collections. The framework ships the kind, which is called `channel`, and every channel you open is another named session on that one registered instance. Two channels, one instance. A hundred channels, still one instance.
+A channel is a session, not a new type beside flows and collections. The framework ships the kind, which is called `channel`, and every channel you open is another named session on that one registered instance. What differs per channel (who the members are, what the charter says, what has been said) lives in that session. A member is a name. The seat it names, when your app has hired one, is a flow of its own, outside the channel.
 
-If you arrived from [workers on disk](./workers-on-disk.md), where one `WORKER.md` becomes one running flow copy, channels work differently. What differs per channel (who the members are, what the charter says, what has been said) lives in each session's own state.
+![A channel is a session on the shared channel instance; each member seat is a separate flow](./channels-parts.svg)
 
 Session state is also why the conversation stays in one place. A post is a request into the channel's session, so the work and the record land on the channel rather than on whoever posted.
 

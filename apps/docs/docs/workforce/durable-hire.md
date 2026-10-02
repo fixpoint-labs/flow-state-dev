@@ -577,6 +577,8 @@ Once registered, the seat answers its owner only. Any other member gets `404 Unk
 
 ## What is stored, and where
 
+![A hired seat is two rows in the organization's store and one registered seat in each process](./durable-hire-store.svg)
+
 ### The roster
 
 One row per seat in the organization's scope: at `workforce/roster/<seatId>`, or at `workforce/roster/~<user>/<seatId>` for a user-owned seat. It is read through the same storage adapter as everything else the app persists, so a Postgres-backed app keeps its roster in Postgres and an in-memory app keeps it for as long as the process lives.

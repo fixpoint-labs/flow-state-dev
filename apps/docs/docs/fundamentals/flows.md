@@ -71,7 +71,9 @@ const chatFlow = defineFlow({ kind: "my-chat", ... });
 export default chatFlow();
 ```
 
-A definition describes a flow. A registered instance names one configured copy of it. Most flows have exactly one copy, and that is the default: a flow is a **singleton** unless you say otherwise, and its instance id is its `kind`. Calling the factory with no argument gives you that instance; `chatFlow({ id: "my-chat" })` is the same thing spelled out, and any other id is refused.
+![A definition in your code, registered instances in the process, and sessions in the store, each owned by one instance](./flow-type-instance-session.svg)
+
+A definition describes a flow. A registered instance names one configured copy of it. Most flows have exactly one copy, and that is the default: a flow is a **singleton** unless you say otherwise, and its instance id is its `kind`. Calling the factory with no argument gives you that instance; `chatFlow({ id: "my-chat" })` is the same thing spelled out, and registering a singleton under any other id is refused.
 
 To run several configured copies of one definition on one server, declare the definition a **collection** and give every instance its own id:
 
