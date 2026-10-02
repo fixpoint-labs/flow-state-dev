@@ -1,7 +1,7 @@
 import { z, type ZodTypeAny } from "zod";
 import { OutputValidationError } from "../errors/output-validation-error";
 import { isAbortLike, rootCause } from "../errors/abort";
-import { SuspensionError, SuspensionRejectedError } from "../errors/suspension-error";
+import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError } from "../errors/suspension-error";
 import { jsonSchema } from "ai";
 import { jsonrepair } from "jsonrepair";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -99,7 +99,7 @@ import {
   type PromptFileConfigMeta,
 } from "./internal/message-assembly";
 import { buildToolExecutor } from "./internal/tool-executor";
-import { emitToolOutputAround } from "./internal/emit-tool-output";
+import { emitToolOutputAround, ToolModelOutputMapError } from "./internal/emit-tool-output";
 
 const DEFAULT_MAX_ITERATIONS = 8;
 const DEFAULT_REPAIR_ATTEMPTS = 1;
@@ -1435,6 +1435,13 @@ async function executeOwnedStepToolCalls(
       throw s.error;
     }
   }
+  // A mapper that threw is the framework's failure, not the tool's: fail the
+  // run rather than tell the model the call failed.
+  for (const s of settled) {
+    if (!s.ok && s.error instanceof ToolModelOutputMapError) {
+      throw s.error;
+    }
+  }
   return settled;
 }
 
@@ -1614,17 +1621,19 @@ async function runResumeStep(
       if (entry === undefined) {
         output = { type: "error-text", value: `Model called unknown tool "${c.toolName}"` };
       } else {
-        try {
-          const real = await entry.execute(c.arguments, {
-            toolCallId: c.toolCallId,
-            stepNumber: resumeStep.stepNumber,
-          });
+        // A mapper that throws is not the tool's failure: the executor records
+        // it and rethrows, and it propagates below as it does in the live loop.
+        const ran = await entry
+          .execute(c.arguments, { toolCallId: c.toolCallId, stepNumber: resumeStep.stepNumber })
+          .then((real) => ({ ok: true as const, real }), (err: unknown) => ({ ok: false as const, err }));
+        if (ran.ok) {
           const mapped = entry.mapModelOutput !== undefined
-            ? await entry.mapModelOutput(real, ctx)
+            ? await entry.mapModelOutput(ran.real, ctx)
             : undefined;
-          output = toolResultOutputForModel(real, mapped);
-          toolResults.push({ toolCallId: c.toolCallId, toolName: c.toolName, result: real });
-        } catch (err) {
+          output = toolResultOutputForModel(ran.real, mapped);
+          toolResults.push({ toolCallId: c.toolCallId, toolName: c.toolName, result: ran.real });
+        } else {
+          const err = ran.err;
           if (err instanceof SuspensionRejectedError) {
             // Denial: emit a COMPLETED tool_output so later cycles treat it as
             // resolved (not a re-enterable failed gate), and surface the denial
@@ -1654,10 +1663,27 @@ async function runResumeStep(
               async () => denial,
             );
             output = toolResultOutputForModel(denial);
-          } else {
-            // SuspensionError (still pending) or any other control-flow error
-            // propagates to re-suspend / fail the run.
+          } else if (
+            err instanceof SuspensionError ||
+            err instanceof SuspensionTimeoutError ||
+            err instanceof ToolModelOutputMapError
+          ) {
+            // Still pending (or timed out): control flow, so it propagates to
+            // re-suspend / fail the run.
             throw err;
+          } else if (ctx.signal?.aborted === true && isAbortLike(err)) {
+            // The request was cancelled while the tool ran: that stops the
+            // run. Handed to the model as a failed call, the step's later
+            // tools would run and the model would be asked again.
+            throw err;
+          } else {
+            // An ordinary tool error after the gate (the tool's own refusal on
+            // re-entry) is a failed tool call, as it is in the live loop: the
+            // model is told, and the run goes on. The tool executor already
+            // recorded it as a failed `tool_output`, so a later resume replays
+            // the same text.
+            const message = err instanceof Error ? err.message : String(err);
+            output = { type: "error-text", value: failedToolResultText(c.toolName, message) };
           }
         }
       }

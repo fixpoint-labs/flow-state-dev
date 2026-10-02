@@ -13,12 +13,13 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, FlowIdentityConflictError, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
+  buildSeatHire,
   createSeatHireBlocks,
   HIRED_ROSTER_PRIVATE_RESOURCE,
   HIRED_ROSTER_RESOURCE,
   SEAT_INVENTORY_RESOURCE,
 } from "../src/seat-hire-blocks";
-import type { SeatHireCapabilityOptions } from "../src/seat-hire-blocks";
+import type { SeatHireCapabilityOptions, SeatHireChecked } from "../src/seat-hire-blocks";
 import { defineHiredRosterCollection, defineHiredRosterPrivateCollection } from "../src/roster/collections";
 import { defineSeatInventoryCollection } from "../src/inventory/collections";
 import { reloadHiredSeats } from "../src/roster/reload";
@@ -425,6 +426,48 @@ describe("retire is fire", () => {
     expect(fired.output).toEqual({ seatId: "support.bad", address: null, released: false });
     expect(Object.keys(await h.rows(ROSTER)).sort()).toEqual(["support.ada", "support.joe", "support.lin"]);
     expect(await h.rows(SEATS)).toEqual(seatsBefore);
+  });
+});
+
+describe("a row stored under a key that isn't its seat id", () => {
+  /** `legacy-key` holds an envelope naming `support.lin`, a working seat stored under its own key. */
+  async function mismatchedStore(h: Awaited<ReturnType<typeof harness>>) {
+    await h.seed("legacy-key", row({ seatId: "support.lin", flow: "desk-clerk" }));
+    await h.seed("support.lin", row({ seatId: "support.lin", flow: "desk", settings: { queue: "q" } }));
+    await h.seedInventory("acme.support.lin", "desk");
+    const started = await h.reload();
+    for (const seat of started.seats) h.live.register(seat);
+    return started;
+  }
+
+  it("is listed as unreadable under its storage key, as the start names it", async () => {
+    const h = await harness();
+    const started = await mismatchedStore(h);
+    const listed = await h.run("brokenSeats", {});
+    expect(listed.output).toEqual([
+      expect.objectContaining({ seatId: "legacy-key", key: `${ROSTER}legacy-key`, reason: "unreadable" }),
+    ]);
+    expect(started.problems.join("\n")).toMatch(/legacy-key.*support\.lin/);
+  });
+
+  it("fire by that key removes only that row; the seat its envelope names keeps its row, address and inventory row", async () => {
+    const h = await harness();
+    await mismatchedStore(h);
+    const fired = await h.run("fire", { seatId: "legacy-key" });
+    expect(fired.error).toBeUndefined();
+    expect(fired.output).toEqual({ seatId: "legacy-key", address: null, released: false });
+    expect(Object.keys(await h.rows(ROSTER))).toEqual(["support.lin"]);
+    expect(h.live.held.has("acme.support.lin")).toBe(true);
+    expect(Object.keys(await h.rows(SEATS))).toEqual(["acme.support.lin"]);
+  });
+
+  it("rehire by that key is refused, and nothing changes", async () => {
+    const h = await harness();
+    await mismatchedStore(h);
+    const before = await h.snapshot();
+    const rehired = await h.run("rehire", { seatId: "legacy-key", flow: "desk", settings: { queue: "q" } });
+    expect(rehired.error?.message).toMatch(/can't be read/);
+    expect(await h.snapshot()).toEqual(before);
   });
 });
 
@@ -919,5 +962,114 @@ describe("rehire", () => {
       expect(roster["support.joe"]).toMatchObject({ flow: "desk" });
       expect(seats["acme.support.joe"]).toMatchObject({ kind: "desk" });
     }
+  });
+});
+
+describe("a broken org seat and the caller's own seat under one id", () => {
+  const OWNED = `~${encodeUserSegment("u1")}/research`;
+
+  it("brokenSeats names whose row it is, and rehire with that owner repairs the org row, leaving the caller's alone", async () => {
+    const h = await harness({}, { userOwned: true });
+    await h.seed("research", row({ seatId: "research", flow: "desk-clerk" }));
+    await h.seed(OWNED, row({ seatId: "research", flow: "desk", settings: { queue: "mine" }, ownerUserId: "u1" }));
+    const mine = (await h.rows(ROSTER))[OWNED];
+
+    const listed = (await h.run("brokenSeats", {})).output as Array<{ seatId: string; owner: string }>;
+    expect(listed).toEqual([expect.objectContaining({ seatId: "research", owner: "organization" })]);
+
+    // Without the owner, two rows under the id is a refusal, not a guess.
+    expect((await h.run("rehire", { seatId: "research", flow: "desk", settings: { queue: "q" } })).error?.message).toMatch(
+      /names two seats/
+    );
+
+    const rehired = await h.run("rehire", { seatId: "research", flow: "desk", settings: { queue: "q" }, owner: "organization" });
+    expect(rehired.error).toBeUndefined();
+    expect(rehired.output).toEqual({ seatId: "research", address: "acme.research" });
+    expect((await h.rows(ROSTER))["research"]).toMatchObject({ flow: "desk", ownerUserId: null });
+    expect((await h.rows(ROSTER))[OWNED]).toEqual(mine);
+  });
+
+  it("brokenSeats calls the caller's own broken row theirs, and rehire with owner \"me\" reaches it", async () => {
+    const h = await harness({}, { userOwned: true });
+    await h.seed(OWNED, row({ seatId: "research", flow: "desk-clerk", ownerUserId: "u1" }));
+    const listed = (await h.run("brokenSeats", {})).output as Array<{ seatId: string; owner: string }>;
+    expect(listed).toEqual([expect.objectContaining({ seatId: "research", owner: "me" })]);
+    const rehired = await h.run("rehire", { seatId: "research", flow: "desk", settings: { queue: "q" }, owner: "me" });
+    expect(rehired.output).toEqual({ seatId: "research", address: "acme.~u1.research" });
+  });
+});
+
+describe("an approved fire, when the caller gains a seat of their own under the id while asked", () => {
+  it("fires the organization's row the person approved, and leaves the caller's new one alone", async () => {
+    const live = liveRegistry();
+    const { verbs } = buildSeatHire({
+      kinds,
+      register: live.register,
+      unregister: live.unregister,
+      kindAt: live.kindAt,
+      instanceAt: (id: string) => live.held.get(id),
+    } as SeatHireCapabilityOptions);
+    const OWNED = `~${encodeUserSegment("u1")}/research`;
+    // The check and the fire made on Approve run in two requests, as they do
+    // around a suspension; the caller's own row appears in between.
+    let checked: SeatHireChecked | undefined;
+    const check = handler({
+      name: "check",
+      inputSchema: z.object({ seatId: z.string() }),
+      outputSchema: z.unknown(),
+      execute: async (input, ctx) => {
+        checked = await verbs.fire.check(input, ctx);
+        return {};
+      },
+    });
+    const fire = handler({
+      name: "fire",
+      inputSchema: z.object({ seatId: z.string(), approved: z.boolean() }),
+      outputSchema: z.unknown(),
+      execute: async ({ approved, ...input }, ctx) => verbs.fire.run(input, ctx, approved ? checked : undefined),
+    });
+    const ops = defineFlow({
+      kind: "ops",
+      resources: {
+        [HIRED_ROSTER_RESOURCE]: defineHiredRosterCollection(),
+        [SEAT_INVENTORY_RESOURCE]: defineSeatInventoryCollection(),
+        [HIRED_ROSTER_PRIVATE_RESOURCE]: defineHiredRosterPrivateCollection(),
+      },
+      actions: { check: { block: check }, fire: { block: fire } },
+    } as never)();
+    const state = createFlowState({ flows: { ops: ops as never }, stores: { default: { primary: inMemoryStores() } } });
+    const runtime = await state.getRuntime();
+    const stores = runtime.stores;
+    const seed = (key: string, value: Record<string, unknown>) =>
+      stores.resourceState.set("org", "acme", `${ROSTER}${key}`, value as never, "any" as never);
+    let n = 0;
+    const run = async (actionName: string, input: unknown) => {
+      n += 1;
+      return (await runAction({
+        flow: ops,
+        actionName,
+        input,
+        userId: "u1",
+        orgId: "acme",
+        sessionId: `s-${n}`,
+        stores,
+        runtimeConfig: { ...runtime.runtimeConfig },
+      } as never)) as { output?: unknown; error?: { message: string } };
+    };
+
+    await seed("research", row({ seatId: "research", flow: "desk", settings: { queue: "org" }, incarnation: "inc-org" }));
+    expect((await run("check", { seatId: "research" })).error).toBeUndefined();
+    expect(checked).toEqual({ kind: "desk", owner: null, incarnation: "inc-org" });
+    await seed(OWNED, row({ seatId: "research", flow: "desk", settings: { queue: "mine" }, ownerUserId: "u1" }));
+
+    // Unbound to an approval, two rows under the id is a refusal: what the
+    // approved owner is there to get past.
+    expect((await run("fire", { seatId: "research", approved: false })).error?.message).toMatch(/names two seats/);
+
+    const fired = await run("fire", { seatId: "research", approved: true });
+    expect(fired.error).toBeUndefined();
+    expect(fired.output).toMatchObject({ seatId: "research", address: "acme.research" });
+    const left = Object.keys(await stores.resourceState.getByPrefix("org", "acme", ROSTER)).map((key) => key.slice(ROSTER.length));
+    expect(left).toEqual([OWNED]);
   });
 });

@@ -47,9 +47,11 @@ import {
   encodeUserSegment,
   hiredSeatManifest,
   hireWorkforce,
+  newIncarnation,
   removeHiredSeat,
   resolveHiredSeatLocation,
   seatAddress,
+  tagIncarnation,
   toHiredSeatRow,
   type HiredSeatRelease,
   type HiredSeatRow,
@@ -195,6 +197,9 @@ const hire = handler({
       instructions: input.instructions ?? null,
       owningOrgId: orgId,
       ownerUserId: userId,
+      // A fresh one per hire, so a fire of this seat can tell its rows from a
+      // replacement's at the same address.
+      incarnation: newIncarnation(),
     });
 
     // Minted from exactly what will be stored, not from the request — so a
@@ -210,6 +215,8 @@ const hire = handler({
     if (seat === undefined) {
       throw new Error(`"${address}" could not be hired, and no reason was given.`);
     }
+    // The seat carries the row's incarnation, as a boot's reload tags it.
+    tagIncarnation(seat, row.incarnation);
 
     // User-owned, so the key is nested. The browser roster is single-segment
     // and does not list it. `create`, never `upsert`: the already-exists throw

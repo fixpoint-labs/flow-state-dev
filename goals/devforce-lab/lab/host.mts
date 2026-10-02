@@ -55,18 +55,30 @@ import {
   type FlowState,
   type PrincipalResolver,
 } from "@flow-state-dev/engine";
+import { defineCapability } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
+  AGENT_KIND,
   CHANNEL_KIND,
   channelBoard,
   channelBoardIds,
   channelInstances,
+  channelPostCapability,
+  createSeatHireCapability,
+  createWorkforceCapability,
+  defineAgentWorkerFlow,
   defineChannelFlow,
+  defineChannelInventoryCollection,
+  HIRED_ROSTER_RESOURCE,
   hireWorkforce,
+  mergeSeatFlows,
   openChannels,
   openInventory,
+  reloadHiredSeats,
   resourcesFromDocs,
+  SEAT_INVENTORY_RESOURCE,
   type ChannelTranscriptLine,
+  type HireOptions,
   type InventoryActionRequest,
 } from "@flow-state-dev/workforce";
 import {
@@ -98,9 +110,13 @@ import {
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 
-/** Who the lab runs as, and the org every document read is bound to. */
+/**
+ * Who the lab runs as, and the org every document read is bound to. The org id
+ * is a legal address segment (lowercase, hyphenated) because a seat the chief
+ * of staff hires is addressed `<org>.<seatId>`.
+ */
 export const LAB_USER_ID = "u_devforce_lab";
-export const LAB_ORG_ID = "org_devforce_lab";
+export const LAB_ORG_ID = "devforce-lab";
 
 /**
  * Host-owned verified identity for this lab's HTTP door (FIX-1515).
@@ -482,13 +498,57 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     resources,
   });
 
+  // The built-in `agent` kind, which the chief of staff (`org/workers/
+  // chief-of-staff/`) runs on. Every seat of it gets the discovery door; a
+  // seat holds post, hire, fire and the repairs only by naming them in its
+  // `tools:`, and in this tree only the chief of staff does. A hire lands at
+  // once; a fire, and a repair always, waits for a person's Approve in Inbox,
+  // which needs durable execution (`ask` turns it on). The kind mounts no
+  // members' private roster, so the chief of staff lists, fires and repairs
+  // the organization's seats only. The register reaches
+  // the flow state built below, so it is bound once that exists.
+  const kinds: NonNullable<HireOptions["kinds"]> = {
+    [EM_KIND]: emKind as never,
+    [CODER_KIND]: coderKind as never,
+  };
+  let registrar: { state: FlowState; registry: { get(id: string): FlowInstance | undefined } } | undefined;
+  const seatHire = createSeatHireCapability({
+    kinds,
+    register: (seat, pin) => registrar!.state.register(seat, { pin }),
+    unregister: (id) => registrar!.state.unregister(id),
+    kindAt: (id) => registrar?.registry.get(id)?.kind,
+    // The registry's own instance, so a re-hire stopped after its row write
+    // counts the seat a restart registered from that row as its own and
+    // finishes, and fire releases only the seat its row minted.
+    instanceAt: (id) => registrar?.registry.get(id),
+    allowKinds: [CODER_KIND, AGENT_KIND],
+    channelBoards: channelBoardIds(roster.channels),
+    askBefore: ["fire"],
+    // Roster admin stays with the chief of staff: a hired seat can't be given it.
+    refuseRosterAdmin: true,
+  });
+  kinds[AGENT_KIND] = defineAgentWorkerFlow({
+    uses: [
+      // The channel inventory, which the discovery door reads beside the seats
+      // the hire capability mounts.
+      defineCapability({ name: "lab-channel-inventory", resources: { channelInventory: defineChannelInventoryCollection() } }),
+      createWorkforceCapability({
+        roster: { workers: roster.workers, channels: roster.channels },
+        inventory: { seats: SEAT_INVENTORY_RESOURCE, channels: "channelInventory" },
+        hiredRoster: HIRED_ROSTER_RESOURCE,
+      }),
+      channelPostCapability,
+      seatHire,
+    ],
+  }) as never;
+
   // Refuses the WHOLE roster when any record cannot be hired, naming the
   // worker. Nothing is returned partially, so a refusal cannot leave a short
   // roster running.
   // Handed the tree's board ids, so a kind that stopped declaring the board
   // would be named in hire's unattended-board warning.
   const hired = hireWorkforce(workers, {
-    kinds: { [EM_KIND]: emKind as never, [CODER_KIND]: coderKind as never },
+    kinds,
     channelBoards: channelBoardIds(roster.channels),
   });
   const seats: Record<string, FlowInstance> = Object.fromEntries(
@@ -517,11 +577,16 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           kinds: { [CHANNEL_KIND]: channelKind as never },
         });
 
+  // One record for the Lab's own flows and its seats. An org seat's id is its
+  // bare folder name, so a folder named like one of the Lab's flows (`channel`)
+  // would take that flow's key; `mergeSeatFlows` refuses it, by name.
+  const flows: Record<string, unknown> = mergeSeatFlows(
+    Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
+    hired,
+  );
+
   const state = createFlowState({
-    flows: {
-      ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
-      ...Object.fromEntries(hired.map((seat) => [seat.id, seat])),
-    },
+    flows,
     stores: { default: { primary: options.stores } },
     // A configured resolver, so the development-organization fallback does
     // not answer an unauthenticated HTTP read (FIX-1515 / BR-17).
@@ -533,6 +598,27 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   } as never);
 
   const runtime = await state.getRuntime();
+  registrar = { state, registry: runtime.registry as never };
+
+  // The seats the chief of staff hired while an earlier run of this Lab was
+  // serving, read back from the roster and admitted one by one. A store that
+  // starts fresh has none. A row that no longer starts (its kind was cut) is
+  // skipped and named; `brokenSeats` lists it for the chief of staff.
+  // A seat the registry refuses (its address is now a file-declared seat's,
+  // say) is that seat's problem, not the Lab's: it is named and skipped, and
+  // the rows after it still load.
+  const reload = await reloadHiredSeats({ stores: runtime.stores, orgIds: [LAB_ORG_ID], kinds });
+  const reloaded: FlowInstance[] = [];
+  const reloadProblems = [...reload.problems];
+  for (const seat of reload.seats) {
+    try {
+      state.register(seat, { pin: (seat as { ownerPin?: { orgId: string } }).ownerPin ?? { orgId: LAB_ORG_ID } });
+      reloaded.push(seat);
+    } catch (error) {
+      reloadProblems.push(`"${seat.id}" could not be registered: ${messageOf(error)}`);
+    }
+  }
+  for (const problem of reloadProblems) console.error(`[devforce-lab] skipped a hired seat — ${problem}`);
 
   // `createFlowState` builds its own `RuntimeConfig` and takes no logger
   // option, and a hand-off's child request is started from that resolved object
@@ -622,10 +708,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // The inventory, in-process, under the lab's organization, once the channel
   // sessions it registers from exist. A problem fails the open, naming it.
   if (options.inventory === true) {
-    const flows: Record<string, unknown> = {
-      ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
-      ...seats,
-    };
     const run = async (request: InventoryActionRequest): Promise<unknown> => {
       const result = (await runAction({
         flow: flows[request.flowKind],
@@ -641,8 +723,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       if (result?.error !== undefined) throw new Error(messageOf(result.error));
       return result;
     };
+    // The seats reloaded from the roster too, not only the declared ones: a
+    // hire that died after its roster row and before its inventory row is
+    // serving again now, and this is what lists it. Each row carries the
+    // incarnation of the roster row it was minted from.
     const opened = await openInventory(
-      { seats: hired, channels: roster.channels },
+      { seats: [...hired, ...reloaded], channels: roster.channels },
       { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
     );
     if (opened.problems.length > 0) {

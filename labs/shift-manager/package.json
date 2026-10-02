@@ -22,6 +22,7 @@
     "@flow-state-dev/fsdev": "workspace:*",
     "@flow-state-dev/node": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
+    "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/workforce": "workspace:*",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@streamdown/cjk": "^1.0.2",
