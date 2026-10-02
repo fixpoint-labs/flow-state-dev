@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { updateStateWith, withOutcome } from "../src/helpers/update-state-with";
+import { readCommitted, updateStateWith, withOutcome } from "../src/helpers/update-state-with";
 
 type Counter = { n: number; tag?: string };
 
@@ -218,5 +218,18 @@ describe("withOutcome", () => {
     });
 
     expect(result).toBeUndefined();
+  });
+});
+
+describe("readCommitted", () => {
+  it("projects the state the runner settles on, and hands that state back unchanged", async () => {
+    // The runner's retry is how a stale snapshot is corrected: the projection
+    // that reaches the caller is the one taken from the committed state.
+    const ref = replayingRef({ n: 1, tag: "snapshot" }, { n: 2, tag: "committed" });
+
+    const tag = await readCommitted(ref, (s) => s.tag);
+
+    expect(tag).toBe("committed");
+    expect(ref.committed).toEqual([{ n: 2, tag: "committed" }]);
   });
 });

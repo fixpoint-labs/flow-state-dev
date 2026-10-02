@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 520" role="img" aria-labelledby="title desc">
+  <title id="title">What a project is</title>
+  <desc id="desc">An organization project groups related workstreams and gives its members one shared private conversation.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#334155"/>
+    </marker>
+    <style>
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 1.5; }
+      .org { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 1.75; }
+      .room { fill: #f0fdf4; stroke: #15803d; stroke-width: 1.75; }
+      .out { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.5; stroke-dasharray: 5 4; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: #334155; }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
+      .edge { stroke: #334155; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <text x="28" y="36" class="title">A project groups work and gives its people one private room</text>
+  <text x="28" y="58" class="muted">Organization-level data — not a file, not a CHANNEL.md</text>
+
+  <rect x="40" y="90" width="240" height="140" rx="12" class="org"/>
+  <text x="56" y="122" class="h">Organization</text>
+  <text x="56" y="148" class="p">Owns the projects list</text>
+  <text x="56" y="170" class="p">Anyone in the org can</text>
+  <text x="56" y="190" class="p">see that a project exists</text>
+  <text x="56" y="212" class="muted">The room stays private</text>
+
+  <rect x="320" y="90" width="260" height="140" rx="12" class="box"/>
+  <text x="336" y="122" class="h">Project</text>
+  <text x="336" y="148" class="p">Title · brief · owner</text>
+  <text x="336" y="170" class="p">Members (who’s on it)</text>
+  <text x="336" y="192" class="p">Workstreams it groups</text>
+  <text x="336" y="214" class="muted">eng.feature · ops.release …</text>
+
+  <rect x="620" y="90" width="220" height="140" rx="12" class="room"/>
+  <text x="636" y="122" class="h">Members-only room</text>
+  <text x="636" y="148" class="p">One shared conversation</text>
+  <text x="636" y="170" class="p">Every member posts here</text>
+  <text x="636" y="192" class="p">Non-members can’t read</text>
+  <text x="636" y="214" class="muted">Each person has a talk session</text>
+
+  <path class="edge" d="M280 160 H315"/>
+  <path class="edge" d="M580 160 H615"/>
+
+  <text x="40" y="280" class="h">What people do</text>
+
+  <rect x="40" y="300" width="250" height="100" rx="10" class="box"/>
+  <text x="56" y="328" class="h">Create / update</text>
+  <text x="56" y="352" class="p">Start a project with a name</text>
+  <text x="56" y="372" class="p">Attach workstreams now</text>
+  <text x="56" y="392" class="p">or add them later</text>
+
+  <rect x="315" y="300" width="250" height="100" rx="10" class="box"/>
+  <text x="331" y="328" class="h">Join as a member</text>
+  <text x="331" y="352" class="p">Owner invites people</text>
+  <text x="331" y="372" class="p">Each gets their own</text>
+  <text x="331" y="392" class="p">session into the same room</text>
+
+  <rect x="590" y="300" width="250" height="100" rx="10" class="box"/>
+  <text x="606" y="328" class="h">Talk in the room</text>
+  <text x="606" y="352" class="p">Post and read together</text>
+  <text x="606" y="372" class="p">Everyone sees one order</text>
+  <text x="606" y="392" class="p">No pushes — read to catch up</text>
+
+  <rect x="40" y="430" width="800" height="44" rx="10" class="out"/>
+  <text x="56" y="458" class="p">Workstreams with no project still show up under “No project.” A workstream belongs to at most one project.</text>
+</svg>

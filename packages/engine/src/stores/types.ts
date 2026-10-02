@@ -727,8 +727,10 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * the full set. Order is preserved — existing items keep their position, new
    * ids append. This lets a same-request continuation (suspend → resume under
    * the same id) persist only its post-resume items while a `get` still returns
-   * the full pause→continue history. The in-memory adapter's no-op satisfies
-   * this trivially (items live on the record); persistent adapters UPSERT.
+   * the full pause→continue history. The in-memory and filesystem adapters
+   * merge onto the record (`mergeItemsById`); the SQL adapters UPSERT. Items
+   * persisted while the request runs are readable before it settles
+   * (FIX-1735).
    *
    * Content-update contract (FIX-839): "last-write-wins per id" is by item
    * CONTENT, not object reference. The runtime mutates a single item object in

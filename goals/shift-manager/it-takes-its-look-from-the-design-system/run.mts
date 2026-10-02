@@ -22,11 +22,15 @@
  *   reach      each swept registry part (message, reasoning, tool, code block)
  *              is drawn at least once in the task's Session
  *   themed     on the themed build, every colour painted on the shell and on
- *              each swept part is one of Shift Manager's values for that variant, and
- *              every font is one of its families
+ *              each swept part is one of Shift Manager's values for that variant,
+ *              every font is one of its families, and the page holds a loaded
+ *              face (`document.fonts`, status `loaded`) for every family and
+ *              weight its text is set in: the family named but not loaded, or
+ *              a weight the browser has to synthesize, fails
  *   neutral    leg c: on the no-theme build, no colour painted on the shell or
- *              on a swept part is any Shift Manager value (either variant), and no
- *              font is one of its families
+ *              on a swept part is any Shift Manager value (either variant), no
+ *              font is one of its families, and the page declares no face of
+ *              one, so the fonts arrive with the import and only with it
  *   switch     on the themed build, in a fresh browser: clicking Night shift
  *              while the OS prefers light paints the page's background with
  *              Shift Manager's dark value, clicking Day shift while the OS
@@ -41,6 +45,11 @@
  *   GOAL_CONTROL=switch-ignored    the shift switch's buttons do nothing when
  *                                  clicked. `switch` must FAIL, and nothing
  *                                  else may fail.
+ *   GOAL_CONTROL=fonts-not-loaded  the themed build imports the design-system
+ *                                  stylesheet with its font imports blanked, so
+ *                                  the families are named but no face is declared.
+ *                                  `themed` must FAIL on the fonts, and
+ *                                  nothing else may fail.
  *
  * Run:     PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-takes-its-look-from-the-design-system/run.mts
  * Control: GOAL_CONTROL=hardcoded-accent PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-takes-its-look-from-the-design-system/run.mts
@@ -53,11 +62,12 @@ import { pathToFileURL } from "node:url";
 import type { Browser, Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { declarations, hex, near, parseColour, readShiftManagerTheme, type Rgb } from "../../lib/colour.mts";
+import { stripImportsAndComments } from "../../../labs/design-system/test/theme.ts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["hardcoded-accent", "switch-ignored"] as const;
+const CONTROLS = ["hardcoded-accent", "switch-ignored", "fonts-not-loaded"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
@@ -72,9 +82,11 @@ const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const RUN_LAB = join(REPO_ROOT, "goals", "shift-manager", "it-shows-and-stops-a-task-run", "lab");
 const SCRATCH = goalTmpDir("shift-manager-theme");
 const THEME = readShiftManagerTheme();
+/** The design-system stylesheet. Its only imports are its fonts (the package's test holds it to that). */
+const SHIFT_MANAGER_CSS = join(REPO_ROOT, "labs", "design-system", "shift-manager.css");
 /** Shift Manager's page background per variant, as the design-system package declares it. */
 const BACKGROUND = (() => {
-  const css = readFileSync(join(REPO_ROOT, "labs", "design-system", "shift-manager.css"), "utf8");
+  const css = readFileSync(SHIFT_MANAGER_CSS, "utf8");
   const rgb = (value: string | undefined): Rgb => {
     if (value === undefined || !/^#[0-9a-f]{6}$/i.test(value)) throw new Error(`setup: shift-manager.css declares no #rrggbb --background (got ${value})`);
     return [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16)) as Rgb;
@@ -180,8 +192,10 @@ async function rowWithRun(origin: string): Promise<string> {
 
 // ---- reading the page --------------------------------------------------------
 
-type Sample = { part: string; el: string; prop: string; value: string };
-type PageRead = { counts: Record<string, number>; colours: Sample[]; fonts: Sample[]; probes: Record<string, string> };
+type Sample = { part: string; el: string; prop: string; value: string; weight?: string };
+/** One `document.fonts` entry: the family unquoted, its weight and its load status. */
+type Face = { family: string; weight: string; status: string };
+type PageRead = { counts: Record<string, number>; colours: Sample[]; fonts: Sample[]; faces: Face[]; probes: Record<string, string> };
 
 /**
  * Runs in the page: every painted colour and font on the shell and inside each
@@ -217,7 +231,7 @@ function readPage(args: { swept: Record<string, string>; probeValues: string[] }
       }
     }
     if (cs.outlineStyle !== "none" && parseFloat(cs.outlineWidth) > 0) push("outline-color", cs.outlineColor);
-    if (hasText) fonts.push({ part, el: describe(el), prop: "font-family", value: cs.fontFamily });
+    if (hasText) fonts.push({ part, el: describe(el), prop: "font-family", value: cs.fontFamily, weight: cs.fontWeight });
     return true;
   };
   const shell = document.querySelector("[data-testid=shell]");
@@ -241,7 +255,8 @@ function readPage(args: { swept: Record<string, string>; probeValues: string[] }
     probes[value] = getComputedStyle(probe).color;
   }
   probe.remove();
-  return { counts, colours, fonts, probes };
+  const faces = Array.from(document.fonts).map((f) => ({ family: f.family.replace(/^["']|["']$/g, ""), weight: f.weight, status: f.status }));
+  return { counts, colours, fonts, faces, probes };
 }
 
 /** Open the task from Tasks, open what its Session draws closed, and read one pass. */
@@ -268,6 +283,8 @@ async function readPass(page: Page, origin: string, taskId: string, dark: boolea
     dark,
     { timeout: 10_000 },
   );
+  // Faces load when text first needs them; read once every pending load has settled.
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
   return page.evaluate(readPage, { swept: SWEPT, probeValues: [...THEME.light, ...THEME.dark] });
 }
 
@@ -320,6 +337,8 @@ async function switchLeg(browser: Browser, origin: string): Promise<{ failures: 
 // ---- grading -------------------------------------------------------------------
 
 const firstFamily = (value: string) => value.split(",")[0]!.trim().replace(/^["']|["']$/g, "");
+/** A font weight as a number string: computed styles and `FontFace` can spell 400 and 700 as keywords. */
+const weight = (value: string | undefined) => (value === "normal" ? "400" : value === "bold" ? "700" : (value ?? ""));
 const where = (s: Sample) => `${s.part}: ${s.el} ${s.prop}`;
 
 /** At most `n` lines per part, then a count, so one broken part can't bury the rest. */
@@ -339,6 +358,19 @@ function gradeThemed(read: PageRead, variant: "light" | "dark", tag: string): st
   for (const s of read.fonts) {
     if (!THEME.families.includes(firstFamily(s.value))) out.push({ part: s.part, line: `themed [${tag}] ${where(s)} → font ${firstFamily(s.value)} is not Shift Manager's` });
   }
+  // The family string names the font whether or not it loaded; the loaded face is what paints it.
+  // (`document.fonts.check()` won't do: it answers true when no face of the family is declared at all.)
+  const faceOf = (f: Face) => `${f.family} ${weight(f.weight)}`;
+  const loaded = new Set(read.faces.filter((f) => f.status === "loaded").map(faceOf));
+  const unloaded = new Set<string>();
+  for (const s of read.fonts) {
+    const face = `${firstFamily(s.value)} ${weight(s.weight)}`;
+    if (THEME.families.includes(firstFamily(s.value)) && !loaded.has(face)) unloaded.add(face);
+  }
+  for (const face of unloaded) {
+    const declared = read.faces.filter((f) => faceOf(f) === face).map((f) => f.status);
+    out.push({ part: "fonts", line: `themed [${tag}] text is set in ${face}, but no face of it loaded (document.fonts: ${declared.length === 0 ? "none declared" : declared.join(", ")})` });
+  }
   return capped(out);
 }
 
@@ -354,6 +386,8 @@ function gradeNeutral(read: PageRead, tag: string): string[] {
   for (const s of read.fonts) {
     if (THEME.families.includes(firstFamily(s.value))) out.push({ part: s.part, line: `neutral [${tag}] ${where(s)} → font ${firstFamily(s.value)} is Shift Manager's` });
   }
+  const faces = new Set(read.faces.filter((f) => THEME.families.includes(f.family)).map((f) => `${f.family} ${weight(f.weight)} (${f.status})`));
+  for (const face of faces) out.push({ part: "fonts", line: `neutral [${tag}] the page still declares a face of ${face}` });
   return capped(out);
 }
 
@@ -383,10 +417,22 @@ await runGoal(async () => {
           ]
         : [];
 
+  // The families named and no face behind them: the design-system stylesheet with only its font imports blanked.
+  const fontsNotLoaded: Patch[] = [];
+  if (CONTROL === "fonts-not-loaded") {
+    const sheet = readFileSync(SHIFT_MANAGER_CSS, "utf8");
+    const blanked = stripImportsAndComments(sheet);
+    if (!/@import/.test(sheet) || /@import/.test(blanked)) throw new Error("setup [control]: shift-manager.css has no font import to blank");
+    const copy = join(SCRATCH, "shift-manager.no-fonts.css");
+    mkdirSync(SCRATCH, { recursive: true });
+    writeFileSync(copy, blanked);
+    fontsNotLoaded.push({ file: "src/styles.css", from: THEME_IMPORT, to: `@import ${JSON.stringify(copy)};\n`, why: "the design-system stylesheet imported with its font imports blanked" });
+  }
+
   // Either build failing to set up is its own leg's failure; the other still runs.
   const builds: Array<{ name: "themed" | "no-theme"; pages: string }> = [];
   for (const [name, patches] of [
-    ["themed", control],
+    ["themed", [...control, ...fontsNotLoaded]],
     ["no-theme", [{ file: "src/styles.css", from: THEME_IMPORT, to: "", why: "the design-system import line removed" }, ...control]],
   ] as const) {
     try {
@@ -418,7 +464,10 @@ await runGoal(async () => {
             if (missing.length > 0) failures.push(`reach [${tag}] the Session drew no registry ${missing.join(", ")}`);
           }
           failures.push(...(name === "themed" ? gradeThemed(read, variant, tag) : gradeNeutral(read, tag)));
-          evidence.push(`${tag}: ${Object.entries(read.counts).map(([p, n]) => `${p} ${n}`).join(", ")} elements; ${read.colours.length} colours, ${read.fonts.length} fonts`);
+          const loadedFaces = read.faces.filter((f) => f.status === "loaded").map((f) => `${f.family} ${weight(f.weight)}`);
+          evidence.push(
+            `${tag}: ${Object.entries(read.counts).map(([p, n]) => `${p} ${n}`).join(", ")} elements; ${read.colours.length} colours, ${read.fonts.length} fonts; faces loaded: ${loadedFaces.length === 0 ? "none" : [...new Set(loadedFaces)].join(", ")}`,
+          );
           if (process.env.GOAL_KEEP === "1") await page.screenshot({ path: join(SCRATCH, `${name}-${variant}.png`), fullPage: true });
         }
         if (errors.length > 0) failures.push(`reach [${name}] the page threw: ${errors.join(" | ")}`);

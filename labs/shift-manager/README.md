@@ -54,9 +54,9 @@ Set `VITE_LAB_URL` to proxy to a Lab on another address.
 
 ## What a Lab's config provides
 
-Shift Manager reads a Lab only through the routes its `FlowState` serves. It doesn't build anything for the Lab, so the config has to export a server that is already set up. The first five items below happen in the config, or in a module it imports, before the default export. The last two are files in the Lab's tree.
+Shift Manager reads a Lab only through the routes its `FlowState` serves. It doesn't build anything for the Lab, so the config has to export a server that is already set up. Documents and the chief of staff are files in the Lab's tree.
 
-**A `FlowState`, as the default export.** Build it and finish the boot steps below first. An `.mts` config can use top-level `await`. If the Lab keeps its assembly in a host module, have that module return the `FlowState` so the config can export it:
+**A `FlowState`, as the default export.** Build it and finish the setup below first. An `.mts` config can use top-level `await`. If the Lab keeps its assembly in a host module, have that module return the `FlowState` so the config can export it:
 
 ```ts title="fsdev.config.mts"
 import { openLab } from "./host.mts"; // the Lab's own assembly
@@ -65,6 +65,29 @@ const lab = await openLab({ /* the Lab's own options */ });
 
 export default lab.state;
 ```
+
+A host module can do some of this setup for you. When its options say they open the inventory or hand the page the Lab's user, turn them on and leave the matching `openInventory` call and `devtool` setting out of the config. The same goes for the organization and the channels when the host names its own `resolvePrincipal` and calls `openChannels` itself. The config then only picks the store and the options, and default-exports the `FlowState` the host returns. The [`devteam`](#team-profiles) profile's config works this way:
+
+```ts title="teams/devteam/fsdev.config.mts (excerpt)"
+const lab = await openLab({
+  stores: inMemoryStores(),
+  inventory: true, // its host opens the channels, then the inventory
+  devtool: true, // its host hands the page the Lab's user
+  // ...options of its own
+});
+
+export default lab.state;
+```
+
+**A store.** Set it with `stores: { default: { primary: <adapter> } }` on `createFlowState`. Any adapter works. They differ in what survives a restart:
+
+| Adapter | Import | The Lab after a restart |
+|---------|--------|-------------------------|
+| `inMemoryStores()` | `@flow-state-dev/engine` | Empty. Sessions, asks, board rows and the inventory are gone, and each start is a fresh Lab. |
+| `sqliteStores({ filename })` | `@flow-state-dev/store-sqlite` | Kept in the file. A relative `filename` lands under the directory you ran the command in. |
+| `postgresStores(options)` | `@flow-state-dev/store-postgres` | Kept in the database. |
+
+To open a Lab and work it, use `inMemoryStores()`. Pick SQLite or Postgres when the Lab should keep what it holds across a restart. [`goals/multi-seat-collab/lab/fsdev.config.mts`](../../goals/multi-seat-collab/lab/fsdev.config.mts) runs on SQLite.
 
 **An organization.** Every request a Lab serves runs in an organization, and Shift Manager shows it in the sidebar. A Lab names its own with `resolvePrincipal` on `createFlowState`, which returns who a request is:
 
@@ -151,6 +174,8 @@ You are the chief of staff for this team. Answer questions about who is working 
 ```
 
 What it can do is up to its instructions and the tools you give it. Shift Manager only carries your lines to it and shows what it answers. A Lab with two seats of that name gets a line naming both, and Shift Manager talks to neither.
+
+A Lab with no chief of staff needs nothing in its config. Every screen works, and Chief of Staff shows the summary of asks and runs. Where the conversation would be, it says "This Lab declares no chief of staff" and how to declare one. That message needs an open inventory (above). With no inventory, the conversation area shows an error about the inventory instead.
 
 `test/fixtures/ask-lab/lab.mts` is a small Lab that does all of the above in one file.
 

@@ -24,13 +24,14 @@
  *   post      a composer post is drawn, and is in the stored transcript
  *   answer    an ask approved from Inbox is no longer pending in the store
  *
- * Controls rebuild Shift Manager with one source module swapped for a module under
- * `controls/` (a Vite `resolveId` plugin; the build fails if the swap never
+ * Controls rebuild Shift Manager with source modules swapped for a module under
+ * `controls/` (a Vite `resolveId` plugin; the build fails if a swap never
  * fired):
  *
  *   static-names     seats written in from the DevTeam tree. Must fail at
  *                    "TEAMS equals the store's seats" on multi-seat-collab.
- *   optimistic-post  the composer draws its own line and sends nothing. Must
+ *   optimistic-post  the composer draws its own line and sends nothing, on
+ *                    both its paths (`transcript.ts` and `send.ts`). Must
  *                    fail at "the post is in the stored transcript".
  *   unanswerable-asks  every ask is marked unanswerable. Must fail at "an
  *                    answer from Inbox lands in the store" on DevTeam.
@@ -101,16 +102,17 @@ const diff = (want: Iterable<string>, got: Iterable<string>) => {
 
 // ---- building Shift Manager --------------------------------------------------------
 
-/** The control's module swap: which source file, for which module under `controls/`. */
-function swapFor(control: string): { target: string; with: string } | undefined {
+/** The control's module swap: which source files, for which module under `controls/`. */
+function swapFor(control: string): { targets: string[]; with: string } | undefined {
+  const lib = (file: string) => join(SHIFT_MANAGER, "src", "lib", file);
   if (control === "static-names") {
-    return { target: join(SHIFT_MANAGER, "src", "lib", "reads.ts"), with: join(HERE, "controls", "static-names.ts") };
+    return { targets: [lib("reads.ts")], with: join(HERE, "controls", "static-names.ts") };
   }
   if (control === "optimistic-post") {
-    return { target: join(SHIFT_MANAGER, "src", "lib", "transcript.ts"), with: join(HERE, "controls", "optimistic-post.ts") };
+    return { targets: [lib("transcript.ts"), lib("send.ts")], with: join(HERE, "controls", "optimistic-post.ts") };
   }
   if (control === "unanswerable-asks") {
-    return { target: join(SHIFT_MANAGER, "src", "lib", "reads.ts"), with: join(HERE, "controls", "unanswerable-asks.ts") };
+    return { targets: [lib("reads.ts")], with: join(HERE, "controls", "unanswerable-asks.ts") };
   }
   return undefined;
 }
@@ -121,7 +123,7 @@ async function buildShiftManager(control: string): Promise<string> {
   const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
   const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
   const swap = swapFor(control);
-  let swapped = 0;
+  const swapped = new Set<string>();
   const staticSeats =
     control === "static-names"
       ? (await readDeclaredRoster(LABS.devteam.tree)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }))
@@ -142,15 +144,17 @@ async function buildShiftManager(control: string): Promise<string> {
               async resolveId(this: any, source: string, importer: string | undefined, options: Record<string, unknown>) {
                 if (importer === undefined || importer === swap.with) return null;
                 const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-                if (resolved?.id !== swap.target) return null;
-                swapped += 1;
+                const id: string | undefined = resolved?.id;
+                if (id === undefined || !swap.targets.includes(id)) return null;
+                swapped.add(id);
                 return swap.with;
               },
             },
           ],
   });
-  if (swap !== undefined && swapped === 0) {
-    throw new Error(`control ${control}: the build never imported ${swap.target}, so nothing was swapped`);
+  const missed = swap?.targets.filter((target) => !swapped.has(target)) ?? [];
+  if (missed.length > 0) {
+    throw new Error(`control ${control}: the build never imported ${missed.join(", ")}, so nothing was swapped there`);
   }
   return outDir;
 }
