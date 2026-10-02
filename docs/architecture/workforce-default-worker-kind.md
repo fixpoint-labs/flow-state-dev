@@ -49,7 +49,7 @@ flowchart TD
   H -->|absent flow:| A[built-in worker kind]
   H -->|unregistered name| X[refuse, by name]
   A --> P["prompt: [default, teamInstructions, instructions, package instructions]"]
-  A --> S["skills: org ∪ team ∪ seat<br/>stored per seat"]
+  A --> S["skills: org ∪ team (team seats) ∪ seat<br/>stored per seat"]
   A --> M["memory: existing scopes<br/>composed in by the app"]
   A --> T[model + tools from configSchema]
 ```
@@ -77,7 +77,7 @@ would simply stop receiving an authored value. The narrowed map it produces repl
 flow-level resource map for that seat; `packages/workforce/src/seat-resources.ts` is canonical for
 the grant shapes and the refusals.
 
-**`tools` is reserved across hireable kinds, for one meaning: the names of tools this seat may call.** It is not a contract key — a kind declares it itself, or does not declare it at all — but a kind that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, then the blocks of the packages it holds; a name none of those register goes on to the kind's catalog). A package's block never shadows a catalog tool: a name that is both a held package's block and a key in the built-in `agent` kind's catalog is refused at the mint, naming the package and the catalog. The names that resolved to the seat's own folders or its packages are moved onto `seatTools` as live blocks. The hire step also keeps whether the file wrote a `tools:` line at all, decided before that split: the key reaches the kind only when a line was written, and stays present even when every name was the seat's own and the list emptied. An omitted line is never filled in as `[]`, so a kind can tell a written list from an omitted one; the built-in `agent` kind reads an unset `tools` (omitted, or a hand-built key with no value) as no line, at startup and on every turn, and grants it the tools of the capability presets the seat picked and the blocks of the packages it holds, and a written one exactly its names. A kind is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
+**`tools` is reserved across hireable kinds, for one meaning: the names of tools this seat may call.** It is not a contract key — a kind declares it itself, or does not declare it at all — but a kind that declares it may not give it some other meaning, because the hire step reads it. A name in `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's for a team seat, then the blocks of the packages it holds; a name none of those register goes on to the kind's catalog). A package's block never shadows a catalog tool: a name that is both a held package's block and a key in the built-in `agent` kind's catalog is refused at the mint, naming the package and the catalog. The names that resolved to the seat's own folders or its packages are moved onto `seatTools` as live blocks. The hire step also keeps whether the file wrote a `tools:` line at all, decided before that split: the key reaches the kind only when a line was written, and stays present even when every name was the seat's own and the list emptied. An omitted line is never filled in as `[]`, so a kind can tell a written list from an omitted one; the built-in `agent` kind reads an unset `tools` (omitted, or a hand-built key with no value) as no line, at startup and on every turn, and grants it the tools of the capability presets the seat picked and the blocks of the packages it holds, and a written one exactly its names. A kind is free to decide what it checks the remaining names against, and free to declare no `tools` at all; what it may not do is use the key for unrelated string configuration, which the hire step would rewrite.
 
 The reservation is written down rather than enforced, and it is not new: the pentest lab's `probe` kind re-implemented this fence from its description alone (`goals/pentest-lab/lab/workforce/flows/workers/probe.mts`) and arrived at the same meaning, which is what a real convention looks like before anyone states it. Stating it is cheaper than the alternative — probing each kind to decide whether to resolve its `tools` would put the behaviour behind a guess, and this step removed kind-probing after a probe produced a false accusation (`admissionHint`, `packages/workforce/src/hire.ts`).
 
@@ -135,7 +135,8 @@ for every team in every tree that has no file.
 `seatPackages` carries the packages a seat holds (FIX-1459): each one's `name`, `path`,
 `instructions` (the `PACKAGE.md` body, absent when empty) and `tools` (its blocks, live). A seat
 holds every package in its own `packages/` folder and the ones its `packages:` line names from its
-team's library or, failing that, the org's (`packages/workforce/src/seat-packages.ts`). The text
+team's library or, failing that, the org's (`packages/workforce/src/seat-packages.ts`). An org seat
+(`org/workers/<name>/`) has no team, so its `packages:` line names from the org's library only. The text
 arrives on the worker record from the loader (`packages/workforce/src/loader/read-packages-directory.ts`),
 the blocks on the generated `packageBlocks` map that `fsdev gen` writes, and the hire step is the
 one place they meet. Like `teamInstructions`, the key is imposed **only when a seat holds one**, so a
@@ -278,7 +279,8 @@ second one is the one that gets missed.
 
 ### The drawer — isolation
 
-The seat's *view* already works: `org ∪ teams/<thatTeam> ∪ workers/<thatSeat>`
+The seat's *view* already works: `org ∪ teams/<thatTeam> ∪ workers/<thatSeat>` for a team seat, and
+`org ∪ org/workers/<thatSeat>` for an org seat, which has no team
 (`packages/workforce/src/loader/read-seat-skills.ts:187-189`), with a name reaching one seat
 from two levels refused rather than shadowed (`duplicateSkillNameMessage`, same file).
 

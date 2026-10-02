@@ -99,10 +99,11 @@ export const seatInventoryRowSchema = z.object({
   hired: z.boolean().nullable().default(null),
   /**
    * The incarnation of the hire or repair that published this row (see
-   * `roster/incarnation.ts`). Fire deletes the row only when it carries the
-   * incarnation fired, or none, so a seat hired again at the same address
-   * keeps its row. `null` on a declared seat's row and on a row written before
-   * the field (BP-023, BP-030).
+   * `roster/incarnation.ts`). Fire deletes a hired seat's row only when it
+   * carries the incarnation fired (`null` only for a roster row from before
+   * incarnations), so a seat hired again at the same address keeps its row,
+   * and never deletes a declared seat's. `null` on a declared seat's row and
+   * on a row written before the field (BP-023, BP-030).
    */
   incarnation: z.string().nullable().default(null),
 });

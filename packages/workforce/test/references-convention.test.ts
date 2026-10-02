@@ -54,6 +54,7 @@ import type { WorkerManifest } from "../src/manifest";
 import { SEAT_REFERENCES_KEY, placeOfReference } from "../src/seat-references";
 import { SEAT_RESOURCES_KEY } from "../src/seat-resources";
 import { workerConfigSchema } from "../src/worker-config";
+import { hiredSeatManifest, toHiredSeatRow } from "../src/roster/rows";
 
 const ORG = "org_fix1467";
 const USER = "user_fix1467";
@@ -1006,5 +1007,31 @@ describe("an org seat's own references/ reach that seat alone", () => {
     const { ctx } = await ctxFor(deploy);
     expect(handleFor(ctx, "workers/build/runbook")).toBeUndefined();
     expect(await handleFor(ctx, ORG_HANDBOOK)!.readContent()).toBe("ORG HANDBOOK v1");
+  });
+});
+
+describe("a runtime-hired seat on a kind with references", () => {
+  it("mints at its org-qualified address, and its wall is drawn from the seat id it was hired as", async () => {
+    // The hire row's address carries the organization (`acme.engineering.ada`);
+    // the place in the tree is the seat id (`engineering.ada`).
+    const bound = hiredSeatManifest("acme", toHiredSeatRow({ seatId: ENG_SEAT, flow: KIND, owningOrgId: "acme" }));
+    if ("problem" in bound) throw new Error(bound.problem);
+    expect(bound.manifest.id).toBe(`acme.${ENG_SEAT}`);
+
+    const { seat: hired } = await seatOn(await tree(), bound.manifest);
+    expect(hired?.id).toBe(`acme.${ENG_SEAT}`);
+    // Under the organization the hire pinned it to.
+    const ctx = await createExecutionContext({
+      flow: hired!,
+      actionName: "run",
+      requestId: "req_hired",
+      sessionId: "sess_hired",
+      userId: USER,
+      orgId: "acme",
+      stores: createInMemoryStores(),
+    });
+    expect(await handleFor(ctx, ORG_HANDBOOK)!.readContent()).toBe("ORG HANDBOOK v1");
+    expect(handleFor(ctx, ENG_HANDBOOK)).toBeDefined();
+    expect(handleFor(ctx, SALES_HANDBOOK)).toBeUndefined();
   });
 });

@@ -178,9 +178,11 @@ export function defineHiredRosterCollection() {
     // broadcast to every browser in the org. What a roster panel needs is who
     // the seat is, not how it was configured. The other three are the seat's
     // identity and are what "a user can see the workers in their org" means.
+    // `incarnation` is an opaque id the seat's inventory row publishes too; a
+    // team list matches the two by it (`listedSeatRows`).
     client: {
       state: { read: true },
-      expose: ["seatId", "flow", "instructions"],
+      expose: ["seatId", "flow", "instructions", "incarnation"],
     },
   });
 }

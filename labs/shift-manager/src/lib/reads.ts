@@ -535,7 +535,9 @@ export function createLabReader(clients: LabClients): LabReader {
    * flow that declares it. A failure, or no listed flow declaring it, is the
    * section's failure: the caller then lists no hired seat.
    */
-  const readRoster = async (byKind: ReadonlyMap<string, string>): Promise<Section<Array<{ seatId: string }>>> => {
+  const readRoster = async (
+    byKind: ReadonlyMap<string, string>,
+  ): Promise<Section<Array<{ seatId: string; incarnation: string | null }>>> => {
     try {
       for (const [kind, sessionId] of byKind) {
         const manifest = await manifestFor(kind, sessionId);
@@ -548,7 +550,7 @@ export function createLabReader(clients: LabClients): LabReader {
           ok: true,
           value: rows.flatMap((row) => {
             const seatId = text(field(row.clientData, "seatId"));
-            return seatId === null ? [] : [{ seatId }];
+            return seatId === null ? [] : [{ seatId, incarnation: text(field(row.clientData, "incarnation")) }];
           }),
         };
       }
@@ -582,13 +584,21 @@ export function createLabReader(clients: LabClients): LabReader {
           readCollection(sessionId, seatsRef),
           readCollection(sessionId, channelsRef),
         ]);
-        const registered = seatRows.map((r) => toSeat(r.clientData, orgId)).filter((s): s is Seat => s !== undefined);
+        // Each seat beside the incarnation its row carries, which the
+        // team-list rule matches against the roster row's.
+        const rows = seatRows.flatMap((r) => {
+          const seat = toSeat(r.clientData, orgId);
+          return seat === undefined
+            ? []
+            : [{ id: seat.id, hired: seat.hired, incarnation: text(field(r.clientData, "incarnation")), seat }];
+        });
+        const registered = rows.map((row) => row.seat);
         // A hired seat is listed only while the roster backs it: Workforce's
         // team-list rule, applied once here so every screen draws the same list.
         // The roster is read only when a hired seat's row is there to check.
         const anyHired = registered.some((seat) => isHiredSeatRow(orgId, seat));
         const roster = anyHired ? await readRoster(byKind) : ({ ok: true, value: [] } as const);
-        const seats = listedSeatRows(orgId, registered, roster.ok ? roster.value : undefined);
+        const seats = listedSeatRows(orgId, rows, roster.ok ? roster.value : undefined).map((row) => row.seat);
         const hiddenForNoRoster = registered.length - seats.length;
         const rosterUnread =
           roster.ok || hiddenForNoRoster === 0
@@ -597,8 +607,8 @@ export function createLabReader(clients: LabClients): LabReader {
         const workstreams = channelRows
           .map((r) => toWorkstream(r.clientData))
           .filter((w): w is Workstream => w !== undefined);
-        // Empty means nothing was registered, not that nothing is listed: hired
-        // seats hidden for an unread roster are reported through `rosterUnread`.
+        // Empty means nothing registered, not nothing listed: hired seats the
+        // roster can't vouch for are a listed inventory with `rosterUnread`.
         if (registered.length === 0 && workstreams.length === 0) {
           return {
             ok: false,
