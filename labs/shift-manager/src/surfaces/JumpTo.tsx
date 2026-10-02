@@ -1,5 +1,5 @@
 /**
- * Jump to (⌘K): find a workstream, a worker, a task or a declared document by
+ * Jump to (⌘K): find Chief of Staff, a workstream, a worker, a task or a declared document by
  * name, from the one snapshot, and go there (BR-10). A document opens
  * read-only. A Lab that serves no document to the browser gets a line saying
  * so, and a failed read of them says what the Lab answered. Up and Down move
@@ -11,7 +11,7 @@ import { allRows, type LoadedSnapshot } from "../lib/derive";
 import { navigate, type Route } from "../lib/routes";
 import type { Gaps } from "../gaps";
 
-type Entry = { group: "Workstreams" | "Workers" | "Tasks" | "Resources"; label: string; hint: string; to: Route };
+type Entry = { group: "Views" | "Workstreams" | "Workers" | "Tasks" | "Resources"; label: string; hint: string; to: Route };
 
 /** The most results drawn per group. */
 const PER_GROUP = 8;
@@ -26,6 +26,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
     const workstreams = snapshot.inventory.ok ? snapshot.inventory.value.workstreams : [];
     const seats = snapshot.inventory.ok ? snapshot.inventory.value.seats : [];
     return [
+      { group: "Views", label: "Chief of Staff", hint: "where Shift Manager opens", to: { level: "cos" } },
       ...workstreams.map((w): Entry => ({ group: "Workstreams", label: w.id, hint: `${w.members.length} members`, to: { level: "workstream", channelId: w.id, tab: "stream" } })),
       ...seats.map((s): Entry => ({ group: "Workers", label: s.id, hint: s.kind ?? "", to: { level: "tasks", by: "worker" } })),
       ...allRows(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),
@@ -35,7 +36,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
 
   const needle = query.trim().toLowerCase();
   const found = index.filter((e) => needle === "" || e.label.toLowerCase().includes(needle));
-  const groups = (["Workstreams", "Workers", "Tasks", "Resources"] as const).map((g) => [g, found.filter((e) => e.group === g).slice(0, PER_GROUP)] as const);
+  const groups = (["Views", "Workstreams", "Workers", "Tasks", "Resources"] as const).map((g) => [g, found.filter((e) => e.group === g).slice(0, PER_GROUP)] as const);
   // The results in the order they are drawn, which is the order the arrows walk.
   const shown = groups.flatMap(([, entries]) => entries);
   const highlighted = Math.min(active, shown.length - 1);

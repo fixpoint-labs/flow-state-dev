@@ -74,6 +74,18 @@ export const GAPS = {
     /** `@name` that names no member of this workstream. Drawn after the name. */
     noWorker: "is not a worker in this workstream.",
   },
+  /** The Chief of Staff view's gaps and named states (BR-9, BR-11, BR-12, BR-20). */
+  chiefOfStaff: {
+    /** BR-20: the rail's ON CALL before shift status ships. */
+    onCall: "Who is on call arrives with FIX-1723.",
+    /** BR-11: the Lab's inventory holds no chief-of-staff seat. */
+    none: {
+      title: "This Lab declares no chief of staff",
+      body: "Shift Manager talks to the seat named chief-of-staff. Declare one on the built-in agent kind: in a team's workers/ folder today, or under org/workers/ once org seats ship (FIX-1719).",
+    },
+    /** BR-12: drawn before the seats' ids. */
+    several: "More than one seat is named chief-of-staff, so Shift Manager talks to neither:",
+  },
   resources: "This Lab serves no documents to the browser, so there is nothing to open here yet.",
   inboxScope:
     "Inbox lists the asks in sessions you started, and in the runs those started. Asks in another member's sessions are not listed; an organization-wide view is FIX-1652's call.",
