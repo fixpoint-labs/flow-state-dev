@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 524" role="img" aria-labelledby="title desc">
+  <title id="title">Inventory rows, channel state and the hired roster</title>
+  <desc id="desc">The inventory is three org-scoped collections: one row per registered seat, one per registered channel, and one per seat in a channel. Rows record that something was registered and are never deleted. The author a post claims is checked against the channel's own session state, not by the inventory. Which seats are hired now is the hired roster, whose rows are deleted on fire.</desc>
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .wall-sess { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 2; }
+      .wall-org { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
+      .card { fill: #ffffff; stroke: #334155; stroke-width: 1.5; }
+      .card-sess { fill: #ffffff; stroke: #1d4ed8; stroke-width: 1.5; }
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 1.5; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: #334155; }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #0f172a; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="524" rx="16" class="bg"/>
+
+  <text x="28" y="36" class="title">The inventory records. The channel decides.</text>
+  <text x="28" y="58" class="muted">Which seats: registered here, named by a channel, hired now</text>
+
+  <!-- Inventory -->
+  <rect x="28" y="84" width="536" height="300" rx="14" class="wall-org"/>
+  <text x="44" y="108" class="h">Inventory, in the organization's store</text>
+  <text x="44" y="126" class="muted">Any block or page in the organization can read it</text>
+
+  <rect x="44" y="142" width="248" height="104" rx="10" class="card"/>
+  <text x="58" y="166" class="h">Seat row</text>
+  <text x="58" y="186" class="code">inventory/seats/&lt;seatId&gt;</text>
+  <text x="58" y="210" class="code">id · kind · door</text>
+
+  <rect x="304" y="142" width="244" height="104" rx="10" class="card"/>
+  <text x="318" y="166" class="h">Channel row</text>
+  <text x="318" y="186" class="code">inventory/channels/&lt;id&gt;</text>
+  <text x="318" y="210" class="code">id · kind · members</text>
+  <text x="318" y="228" class="code">openedAt</text>
+
+  <rect x="44" y="258" width="504" height="64" rx="10" class="card"/>
+  <text x="58" y="282" class="h">Membership row, one per seat in a channel</text>
+  <text x="58" y="302" class="code">inventory/members/&lt;seatId&gt;/&lt;channelId&gt;</text>
+
+  <text x="44" y="348" class="p">Means "was registered here". Not "is open now".</text>
+  <text x="44" y="368" class="muted">Nothing deletes a row, not a fire and not a later roster.</text>
+
+  <!-- Right side -->
+  <rect x="584" y="84" width="308" height="140" rx="14" class="wall-sess"/>
+  <text x="600" y="108" class="h">The channel's own session</text>
+  <text x="600" y="130" class="code">members</text>
+  <text x="600" y="152" class="p">Checks a post’s author against it.</text>
+  <text x="600" y="170" class="p">post and fileTask read it here.</text>
+  <text x="600" y="198" class="muted">Ask the channel, not the inventory.</text>
+
+  <rect x="584" y="244" width="308" height="140" rx="14" class="wall-org"/>
+  <text x="600" y="268" class="h">The hired roster</text>
+  <text x="600" y="290" class="code">workforce/roster/&lt;seatId&gt;</text>
+  <text x="600" y="312" class="p">Which seats are hired now.</text>
+  <text x="600" y="330" class="p">Deleted when a seat is fired.</text>
+  <text x="600" y="358" class="muted">Seats from WORKER.md have none.</text>
+
+  <!-- Not a copy -->
+  <rect x="28" y="404" width="864" height="104" rx="12" class="box"/>
+  <text x="44" y="428" class="h">Not a copy</text>
+  <text x="44" y="452" class="p">The channel row's members is a copy for finding things. The author check on a post reads the channel’s session.</text>
+  <text x="44" y="472" class="p">An inventory row outlives a fire. For the seats an organization has now, read the hired roster.</text>
+  <text x="44" y="492" class="p">The tree says what the workforce is meant to be. The inventory says what was registered in this organization.</text>
+</svg>

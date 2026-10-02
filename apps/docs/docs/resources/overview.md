@@ -47,13 +47,7 @@ Config options:
 
 ## Resources vs scope state
 
-| | Scope state | Resources |
-|--|-------------|-----------|
-| **Mental model** | Config flags and counters | Files with structured metadata |
-| **Shape** | Flat key-value object | Named container: content body + typed state |
-| **Content** | No | Yes — rich text, markdown, code, templates |
-| **Identity** | Field names (shared namespace) | Resource name (isolated namespace) |
-| **Collision risk** | Fields can conflict across blocks | Each resource is self-contained |
+![Session state is flat fields on the session record; a resource is its own record in the resource store](./state-vs-resources.svg)
 
 Use **scope state** for simple fields: mode flags, counters, config values. Use **resources** when you're working with content that has structure — documents, plans, artifacts, knowledge bases. See [State vs Resources](/docs/resources/storage) for more guidance on when to use which.
 

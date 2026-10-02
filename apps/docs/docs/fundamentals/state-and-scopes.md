@@ -10,7 +10,7 @@ This page walks through the scopes and the basic patterns you'll use every day. 
 
 ## The four scopes
 
-State is organized into four hierarchical scopes:
+State is organized into four scopes, each its own record with its own key:
 
 | Scope | Question it answers | Lifetime |
 |-------|---------------------|----------|
@@ -18,6 +18,8 @@ State is organized into four hierarchical scopes:
 | **Session** | What does this conversation need to remember? | Across requests in a conversation |
 | **User** | What does this person need across all their conversations? | Across sessions for a user |
 | **Org** | What does the team need to share? | Across sessions in an org |
+
+![Request, session, user and org state are four separate records, each with its own key](./state-scopes.svg)
 
 Most of your state lives at the session level. The other three matter, but they show up after you've shipped your first conversation. Start with session.
 
@@ -230,7 +232,7 @@ This mirrors how resources work: a resource without a `client` config is invisib
 
 You'll reach for these less often than session, but each has a specific job.
 
-**Request** is scratch space for one execution. Intermediate processing results between blocks, retry counters, temporary flags. It vanishes when the action completes.
+**Request** is scratch space for one execution. Intermediate processing results between blocks, retry counters, temporary flags. The next request cannot see it.
 
 ```ts
 requestStateSchema: z.object({ retryCount: z.number().default(0) })
@@ -282,16 +284,9 @@ You read the tenant in a block the same way as any identity field: `ctx.session.
 
 Apps that never send the header do nothing: with no tenant id, a session keys on its own id alone. [Persistence](/docs/persistence/overview#tenant-isolation) covers the storage side, including what a persistent adapter does to an existing database.
 
-## Why four scopes?
+## State tied to a run
 
-Two scopes would force you to choose between "per-request" and "everything else." Six would create unnecessary ceremony. Four maps cleanly to the real boundaries:
-
-- **Request** — scratch space that doesn't pollute the conversation.
-- **Session** — the conversational memory.
-- **User** — what follows a person across conversations.
-- **Org** — what a team shares.
-
-These four are tied to identity. Blocks can also hold state tied to *execution* — a generator remembering what it's loaded so far, a sequencer counting its own loop passes — that lives and dies with one run. See [Block State](/docs/advanced/block-state) for that primitive.
+The four scopes are tied to identity. Blocks can also hold state tied to *execution* — a generator remembering what it's loaded so far, a sequencer counting its own loop passes — that lives and dies with one run. See [Block State](/docs/advanced/block-state) for that primitive.
 
 ## When to declare state at the flow level
 

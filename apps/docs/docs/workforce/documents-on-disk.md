@@ -11,10 +11,7 @@ A handbook, a glossary, an escalation procedure: the reference material a team s
 
 Two folders hold documents, and the one you pick decides where the text lives from then on.
 
-| Folder | The body an agent reads | Who can change it | Which seats reach it |
-|---|---|---|---|
-| `references/` | the file on disk, re-read on each request | whoever edits the file in your repository | every seat at or below the folder it sits in |
-| `resources/` | the file's body at first boot, then whatever the product last wrote | the file, until something writes it; the product after that | every seat the flow installed it on |
+![A references document is the file itself and its folder bounds who reaches it; a resources document is a stored row and its folder is only a namespace](./documents-reach.svg)
 
 Choose by who does the editing. A company handbook goes in `references/`: you change it by editing the file and deploying, and nothing running in the product can overwrite it. An agent's working notes go in `resources/`, where a block or the agent itself can write and the text survives the turn.
 
@@ -251,15 +248,6 @@ Both functions throw rather than collecting. A record that cannot become a resou
 ## Who reaches what
 
 **For a `references/` document, the folder is the boundary.** A seat reaches the references at or above its own place in the tree: the organization's, its own team's, and its own folder's. Not another team's, and not a teammate's folder. You write no filter, and there is no setting to get wrong.
-
-```
-teams/engineering/workers/ada/     a seat here reads…
-  org/references/code-of-conduct                     yes — the organization is above everyone
-  teams/engineering/references/handbook              yes — its own team
-  teams/engineering/workers/ada/references/runbook   yes — its own folder
-  teams/engineering/workers/ivan/references/runbook  no  — a teammate's folder
-  teams/support/references/escalation                no  — another team
-```
 
 An unreachable reference is not an empty read. The accessor is not on the seat's map at all, so `ctx.resources.get("teams/support/escalation")` throws `is not registered`.
 

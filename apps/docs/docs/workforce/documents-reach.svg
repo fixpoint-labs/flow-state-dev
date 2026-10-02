@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 548" role="img" aria-labelledby="title desc">
+  <title id="title">references and resources: where the text lives and who reaches it</title>
+  <desc id="desc">A document in references is the file itself, re-read on each request; nothing running in the product can write it, and the folder is the boundary: the seat ada reaches the organization's references, its own team's, and its own folder's, but not a teammate's folder or another team's. A document in resources is seeded from the file at first boot and is then a stored org-scoped row the product writes; its folder is only a namespace, so to keep a team's documents to that team you filter the records before installing them.</desc>
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .wall-org { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
+      .wall-sess { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 2; }
+      .wall-file { fill: #f8fafc; stroke: #334155; stroke-width: 2; }
+      .card { fill: #ffffff; stroke: #334155; stroke-width: 1.5; }
+      .reach { fill: #ffffff; stroke: #15803d; stroke-width: 1.75; }
+      .no { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.5; stroke-dasharray: 5 4; }
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 1.5; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: #334155; }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #0f172a; }
+      .yes { font: 700 12px ui-sans-serif, system-ui, sans-serif; fill: #15803d; }
+      .nope { font: 700 12px ui-sans-serif, system-ui, sans-serif; fill: #94a3b8; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="548" rx="16" class="bg"/>
+
+  <text x="28" y="36" class="title">references/ and resources/: where the text lives, who reaches it</text>
+  <text x="28" y="58" class="muted">Same tree, same refs. Different owner of the text, and a different boundary.</text>
+
+  <!-- references -->
+  <rect x="28" y="84" width="476" height="324" rx="14" class="wall-file"/>
+  <text x="44" y="108" class="h">references/: the file is the text</text>
+  <text x="44" y="126" class="muted">Re-read on each request. The product cannot write it.</text>
+
+  <rect x="44" y="142" width="444" height="250" rx="12" class="reach"/>
+  <text x="58" y="164" class="h">org/references/</text>
+  <text x="400" y="164" class="yes">ada reads</text>
+
+  <rect x="58" y="176" width="270" height="202" rx="10" class="reach"/>
+  <text x="72" y="198" class="h">teams/engineering/references/</text>
+  <text x="250" y="216" class="yes">ada reads</text>
+
+  <rect x="72" y="228" width="242" height="64" rx="8" class="reach"/>
+  <text x="84" y="250" class="code">workers/ada/references/</text>
+  <text x="84" y="276" class="yes">ada reads: its own folder</text>
+
+  <rect x="72" y="302" width="242" height="62" rx="8" class="no"/>
+  <text x="84" y="324" class="code">workers/ivan/references/</text>
+  <text x="84" y="348" class="nope">ada cannot: a teammate</text>
+
+  <rect x="342" y="176" width="132" height="202" rx="10" class="no"/>
+  <text x="354" y="198" class="h">Support team</text>
+  <text x="354" y="218" class="code">teams/support/</text>
+  <text x="354" y="234" class="code">  references/</text>
+  <text x="354" y="276" class="nope">ada cannot:</text>
+  <text x="354" y="294" class="nope">another team</text>
+
+  <!-- resources -->
+  <rect x="524" y="84" width="368" height="324" rx="14" class="wall-org"/>
+  <text x="540" y="108" class="h">resources/: a stored row</text>
+  <text x="540" y="126" class="muted">The file seeds it at first boot. Then it is data.</text>
+
+  <rect x="540" y="142" width="336" height="116" rx="10" class="card"/>
+  <text x="554" y="166" class="h">teams/engineering/scratch</text>
+  <text x="554" y="188" class="p">Organization scope. The product,</text>
+  <text x="554" y="206" class="p">a block or the agent can write it.</text>
+  <text x="554" y="232" class="muted">Editing the file later does not</text>
+  <text x="554" y="248" class="muted">change a row that was written.</text>
+
+  <rect x="540" y="270" width="336" height="122" rx="10" class="box"/>
+  <text x="554" y="294" class="h">The folder is a namespace only</text>
+  <text x="554" y="316" class="p">Every seat on a flow that installed it</text>
+  <text x="554" y="334" class="p">reaches it, any team included.</text>
+  <text x="554" y="360" class="muted">To keep it to a team, filter the records</text>
+  <text x="554" y="376" class="muted">before you install them.</text>
+
+  <!-- Not a copy -->
+  <rect x="28" y="428" width="864" height="104" rx="12" class="box"/>
+  <text x="44" y="452" class="h">Not a copy</text>
+  <text x="44" y="476" class="p">A reference is never stored: the file in your repository is the only copy. Change it by editing and deploying.</text>
+  <text x="44" y="496" class="p">A resource row is not the file. After its first write, the row is the text and the file is only where it started.</text>
+  <text x="44" y="516" class="p">Each organization gets its own row. flowIsolation: true gives each seat its own row instead of one shared.</text>
+</svg>

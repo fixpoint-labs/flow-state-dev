@@ -17,9 +17,9 @@ A channel can also be [routed](#routing-a-channel). Each post from a person then
 
 A **flow kind** is a definition you register. A **session** is one conversation running on a registered flow, with its own durable state. A channel's **members** are the names it lists, usually [hired workers](./workers-on-disk.md).
 
-A channel is a session, not a new type beside flows and collections. The framework ships the kind, which is called `channel`, and every channel you open is another named session on that one registered instance. Two channels, one instance. A hundred channels, still one instance.
+A channel is a session, not a new type beside flows and collections. The framework ships the kind, which is called `channel`, and every channel you open is another named session on that one registered instance. What differs per channel (who the members are, what the charter says, what has been said) lives in that session. Each member is a seat: a flow of its own, outside the channel.
 
-If you arrived from [workers on disk](./workers-on-disk.md), where one `WORKER.md` becomes one running flow copy, channels work differently. What differs per channel (who the members are, what the charter says, what has been said) lives in each session's own state.
+![A channel is a session on the shared channel instance; each member seat is a separate flow](./channels-parts.svg)
 
 Session state is also why the conversation stays in one place. A post is a request into the channel's session, so the work and the record land on the channel rather than on whoever posted.
 
@@ -50,7 +50,7 @@ No line says which kind it runs. An omitted `flow:` selects the built-in, which 
 
 `members` is the channel's roster. It decides who gets woken when somebody posts, and it is checked when a post claims to be from a particular member. It is the declared list and nothing else writes it: there is no join or leave verb yet, so changing who is in a channel means editing the record and opening a fresh channel. An edit to `members` does not reach a channel that is already open.
 
-Six keys are declarable: `flow`, `description`, `members`, `boards`, `instructions` and `routing`. [Routing a channel](#routing-a-channel) covers the last. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
+Seven keys are declarable: `flow`, `description`, `members`, `boards`, `boardActions`, `instructions` and `routing`. [Holding a board](#holding-a-board) covers `boards` and `boardActions`, and [Routing a channel](#routing-a-channel) covers `routing`. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
 
 ## Channels on disk
 

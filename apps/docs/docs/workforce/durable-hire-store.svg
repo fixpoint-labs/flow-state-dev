@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 560" role="img" aria-labelledby="title desc">
+  <title id="title">Where a hired seat lives</title>
+  <desc id="desc">A hired seat is written to the organization's scope in your store as a roster row, and the ready-made hire also writes an inventory row. The running process holds the registered seat, loaded from the roster at start. The roster row lists who is hired now and is deleted on fire; the inventory row records that the seat was ever registered and is never deleted. The process copy is lost on restart and rebuilt from the roster.</desc>
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .wall-store { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
+      .wall-proc { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 2; }
+      .card { fill: #ffffff; stroke: #334155; stroke-width: 1.5; }
+      .card-sess { fill: #ffffff; stroke: #1d4ed8; stroke-width: 1.5; }
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 1.5; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: #334155; }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #0f172a; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="560" rx="16" class="bg"/>
+
+  <text x="28" y="36" class="title">Where a hired seat lives</text>
+  <text x="28" y="58" class="muted">Two rows in your store, one seat in each process. Only the roster decides what a start loads.</text>
+
+  <!-- Store -->
+  <rect x="28" y="84" width="604" height="320" rx="14" class="wall-store"/>
+  <text x="44" y="108" class="h">Your store, organization scope</text>
+  <text x="44" y="126" class="muted">Survives restarts and redeploys. One copy per organization.</text>
+
+  <rect x="44" y="142" width="280" height="250" rx="10" class="card"/>
+  <text x="58" y="166" class="h">Roster row</text>
+  <text x="58" y="186" class="code">workforce/roster/support.ada</text>
+  <text x="58" y="212" class="p">seatId · flow · instructions</text>
+  <text x="58" y="232" class="p">settings</text>
+  <text x="58" y="256" class="muted">The browser reads the first three.</text>
+  <text x="58" y="273" class="muted">Settings stay on the server.</text>
+  <text x="58" y="300" class="p">Who is hired now</text>
+  <text x="58" y="320" class="muted">Deleted when the seat is fired</text>
+  <text x="58" y="348" class="muted">User-owned seat:</text>
+  <text x="58" y="366" class="code">workforce/roster/~&lt;user&gt;/&lt;seatId&gt;</text>
+  <text x="58" y="382" class="muted">Only its owner reads it</text>
+
+  <rect x="336" y="142" width="280" height="250" rx="10" class="card"/>
+  <text x="350" y="166" class="h">Inventory row</text>
+  <text x="350" y="186" class="code">inventory/seats/acme.support.ada</text>
+  <text x="350" y="212" class="p">id · kind</text>
+  <text x="350" y="256" class="muted">Written by the ready-made hire.</text>
+  <text x="350" y="273" class="muted">A hire you write adds one only</text>
+  <text x="350" y="290" class="muted">if your handler writes it.</text>
+  <text x="350" y="320" class="p">Was ever registered here</text>
+  <text x="350" y="340" class="muted">Never deleted, not even on fire</text>
+
+  <!-- Process -->
+  <rect x="648" y="84" width="244" height="320" rx="14" class="wall-proc"/>
+  <text x="664" y="108" class="h">Each running process</text>
+  <text x="664" y="126" class="muted">Gone on restart, rebuilt at start</text>
+
+  <rect x="664" y="142" width="212" height="160" rx="10" class="card-sess"/>
+  <text x="678" y="166" class="h">The registered seat</text>
+  <text x="678" y="186" class="code">acme.support.ada</text>
+  <text x="678" y="208" class="muted">Its address: org, then seat id</text>
+  <text x="678" y="234" class="code">seatId: "support.ada"</text>
+  <text x="678" y="252" class="muted">The id it knows itself by</text>
+  <text x="678" y="278" class="p">Pinned to its organization</text>
+  <text x="678" y="294" class="muted">Other callers get 404</text>
+
+  <text x="664" y="330" class="p">At start, reloadHiredSeats</text>
+  <text x="664" y="348" class="p">reads the roster rows and</text>
+  <text x="664" y="366" class="p">hires them. Your app</text>
+  <text x="664" y="384" class="p">registers what comes back.</text>
+
+  <!-- Not a copy -->
+  <rect x="28" y="424" width="864" height="116" rx="12" class="box"/>
+  <text x="44" y="448" class="h">Not a copy</text>
+  <text x="44" y="472" class="p">The roster row and the inventory row answer different questions: who is hired now, and who was ever registered.</text>
+  <text x="44" y="492" class="p">The process serves what it loaded at start. A seat hired on another instance answers here after this one restarts.</text>
+  <text x="44" y="512" class="p">Firing deletes the roster row. Sessions, state and resources the seat wrote are left alone.</text>
+  <text x="44" y="530" class="muted">Seats declared in WORKER.md files have no roster row. They are read from disk at every start.</text>
+</svg>

@@ -320,6 +320,7 @@ lead.config;
 // { instructions: "You are the engineering lead. …",
 //   seatSkills: [],
 //   seatTools: [],
+//   seatId: "engineering.lead",
 //   model: "openai/gpt-5.4-mini",
 //   tools: ["board", "search"] }
 ```
@@ -331,7 +332,7 @@ Schema defaults fill in. `support.intake` declared no settings beyond its `flow`
 ```ts
 const intake = seats.find((seat) => seat.id === "support.intake")!;
 
-intake.config; // { seatSkills: [], seatTools: [], desk: "front" }
+intake.config; // { seatSkills: [], seatTools: [], seatId: "support.intake", desk: "front" }
 ```
 
 Every `config` is frozen. A worker asking for something its flow never declared does not quietly run without it:

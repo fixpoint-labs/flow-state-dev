@@ -512,11 +512,13 @@ Once registered, the seat answers its owner only. Any other member gets `404 Unk
 
 ## What is stored, and where
 
+![A hired seat is two rows in the organization's store and one registered seat in each process](./durable-hire-store.svg)
+
 ### The roster
 
 One row per seat in the organization's scope: at `workforce/roster/<seatId>`, or at `workforce/roster/~<user>/<seatId>` for a user-owned seat. It is read through the same storage adapter as everything else the app persists, so a Postgres-backed app keeps its roster in Postgres and an in-memory app keeps it for as long as the process lives.
 
-The roster is not the [inventory](./inventory.md). An inventory row means *was registered in this organization* and is never removed. A roster row is removed when the seat is fired. A seat hired through [`createSeatHireBlocks`](#the-ready-made-hire-and-fire-handlers) or the `seat-hire` tools gets both rows. A seat hired by a handler you wrote gets only the rows it writes: the `hire-seat` handler in [Hiring a seat](#hiring-a-seat) writes a roster row and no inventory row. Anything that wants one list of every seat, declared and hired, joins the two itself.
+The roster is not the [inventory](./inventory.md). A roster row lists who is hired now and is deleted on fire; an inventory row records that the seat was registered and stays. [`createSeatHireBlocks`](#the-ready-made-hire-and-fire-handlers) and the `seat-hire` tools write both rows. A handler you wrote gets only the rows it writes: the `hire-seat` handler in [Hiring a seat](#hiring-a-seat) writes no inventory row. Anything that wants one list of every seat, declared and hired, joins the two itself.
 
 ### What a seat saves for a person
 

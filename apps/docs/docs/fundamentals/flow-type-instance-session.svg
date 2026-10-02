@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 528" role="img" aria-labelledby="title desc">
+  <title id="title">Definition, instance and session: what each is and where it lives</title>
+  <desc id="desc">defineFlow returns a definition in your code: its kind, what a copy's settings may carry, and the webhooks, schedules and MCP entry points every copy serves. Calling it makes an instance with its own id and settings, which you register; the settings stay in the process and are never stored. Requests address an instance by its id. Sessions live in the store and are owned by the instance that created them; they record the kind only as a label. A session named through a different instance is refused.</desc>
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .wall-sess { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 2; }
+      .wall-org { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
+      .wall-file { fill: #f8fafc; stroke: #334155; stroke-width: 2; }
+      .card { fill: #ffffff; stroke: #334155; stroke-width: 1.5; }
+      .card-sess { fill: #ffffff; stroke: #1d4ed8; stroke-width: 1.5; }
+      .card-line { fill: #ffffff; stroke: #15803d; stroke-width: 1.5; }
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 1.5; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: #334155; }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #0f172a; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="528" rx="16" class="bg"/>
+
+  <text x="28" y="36" class="title">Definition, instance, session: where each lives</text>
+  <text x="28" y="58" class="muted">The definition describes. The instance answers. The session remembers.</text>
+
+  <!-- Code -->
+  <rect x="28" y="84" width="264" height="300" rx="14" class="wall-file"/>
+  <text x="44" y="108" class="h">Your code</text>
+  <text x="44" y="126" class="muted">The definition</text>
+
+  <rect x="44" y="142" width="232" height="226" rx="10" class="card"/>
+  <text x="58" y="166" class="h">defineFlow()</text>
+  <text x="58" y="194" class="code">kind: "review"</text>
+  <text x="58" y="214" class="p">cardinality · configSchema</text>
+  <text x="58" y="234" class="p">webhooks · schedules · mcp</text>
+  <text x="58" y="254" class="p">entries only the flow can call</text>
+  <text x="58" y="286" class="muted">Shared by every instance.</text>
+  <text x="58" y="304" class="muted">Answers no request itself:</text>
+  <text x="58" y="324" class="code">/api/flows/review/…</text>
+  <text x="58" y="342" class="muted">is a miss for a collection.</text>
+
+  <!-- Process -->
+  <rect x="312" y="84" width="280" height="300" rx="14" class="wall-sess"/>
+  <text x="328" y="108" class="h">Registered instances</text>
+  <text x="328" y="126" class="muted">In the process. Requests name the id.</text>
+
+  <rect x="328" y="142" width="248" height="104" rx="10" class="card-sess"/>
+  <text x="342" y="166" class="h">review-east</text>
+  <text x="342" y="186" class="code">config: { region: "east" }</text>
+  <text x="342" y="210" class="muted">Settings stay in the process.</text>
+  <text x="342" y="226" class="muted">Never listed, never stored.</text>
+
+  <rect x="328" y="258" width="248" height="56" rx="10" class="card-sess"/>
+  <text x="342" y="282" class="h">review-west</text>
+  <text x="342" y="300" class="muted">Same kind, its own id and settings</text>
+
+  <rect x="328" y="326" width="248" height="42" rx="10" class="box"/>
+  <text x="342" y="352" class="muted">A singleton's id is its kind</text>
+
+  <!-- Store -->
+  <rect x="612" y="84" width="280" height="300" rx="14" class="wall-org"/>
+  <text x="628" y="108" class="h">Your store</text>
+  <text x="628" y="126" class="muted">Survives restarts and deploys</text>
+
+  <rect x="628" y="142" width="248" height="152" rx="10" class="card-line"/>
+  <text x="642" y="166" class="h">Session chat-1</text>
+  <text x="642" y="188" class="code">flowId: "review-east"</text>
+  <text x="642" y="206" class="muted">Its owner</text>
+  <text x="642" y="230" class="code">flowKind: "review"</text>
+  <text x="642" y="248" class="muted">A label for listings. Not an address.</text>
+  <text x="642" y="276" class="p">Its state and its requests</text>
+
+  <text x="628" y="322" class="p">Named through review-west:</text>
+  <text x="628" y="342" class="code">409 wrong-instance-session</text>
+  <text x="628" y="362" class="muted">refused before anything runs</text>
+
+  <!-- Not a copy -->
+  <rect x="28" y="404" width="864" height="104" rx="12" class="box"/>
+  <text x="44" y="428" class="h">Not a copy</text>
+  <text x="44" y="452" class="p">An instance is the definition plus an id and settings. The definition is unchanged and shared.</text>
+  <text x="44" y="472" class="p">A session belongs to one instance. Two instances of one kind never share a session.</text>
+  <text x="44" y="492" class="p">Settings are not stored. A request resumed after a deploy runs on the settings the new process started with.</text>
+</svg>

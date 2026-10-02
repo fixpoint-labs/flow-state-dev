@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 484" role="img" aria-labelledby="title desc">
+  <title id="title">Scope state and resources: same scope, different records</title>
+  <desc id="desc">A session's state is one flat record of fields that every block in the flow shares. A session-scoped resource is a separate named record in the resource store, keyed by its scope and path, holding a content body and its own typed state. Blocks read state through ctx.session and a resource through ctx.resources. A generator sees a resource only when it is marked llmReadable, and the browser sees either one only through a client config. A resource is not a field of session state.</desc>
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .wall-sess { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 2; }
+      .wall-org { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
+      .card { fill: #ffffff; stroke: #334155; stroke-width: 1.5; }
+      .card-sess { fill: #ffffff; stroke: #1d4ed8; stroke-width: 1.5; }
+      .card-line { fill: #ffffff; stroke: #15803d; stroke-width: 1.5; }
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 1.5; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: #334155; }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #0f172a; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="484" rx="16" class="bg"/>
+
+  <text x="28" y="36" class="title">Scope state and resources: same scope, different records</text>
+  <text x="28" y="58" class="muted">Both below are session-scoped. Neither one holds the other.</text>
+
+  <!-- Session state -->
+  <rect x="28" y="84" width="300" height="264" rx="14" class="wall-sess"/>
+  <text x="44" y="108" class="h">Session state</text>
+  <text x="44" y="126" class="muted">On the session record</text>
+
+  <rect x="44" y="142" width="268" height="104" rx="10" class="card-sess"/>
+  <text x="58" y="166" class="code">mode: "agent"</text>
+  <text x="58" y="186" class="code">messageCount: 4</text>
+  <text x="58" y="214" class="muted">Flat fields. One namespace that</text>
+  <text x="58" y="230" class="muted">every block in the flow shares.</text>
+
+  <text x="44" y="276" class="p">Read and write:</text>
+  <text x="44" y="296" class="code">ctx.session.state</text>
+  <text x="44" y="326" class="muted">Flags, counters, small settings</text>
+
+  <!-- Resources -->
+  <rect x="348" y="84" width="544" height="264" rx="14" class="wall-org"/>
+  <text x="364" y="108" class="h">Resources</text>
+  <text x="364" y="126" class="muted">Their own store, keyed by scope, then path</text>
+
+  <rect x="364" y="142" width="252" height="154" rx="10" class="card-line"/>
+  <text x="378" y="166" class="h">draft</text>
+  <text x="378" y="186" class="code">session/draft</text>
+  <text x="378" y="212" class="p">content: the body</text>
+  <text x="378" y="232" class="p">state: its own typed fields</text>
+  <text x="378" y="262" class="code">ctx.resources.draft</text>
+  <text x="378" y="280" class="muted">Self-contained, versioned</text>
+
+  <rect x="628" y="142" width="248" height="154" rx="10" class="card-line"/>
+  <text x="642" y="166" class="h">One item of a collection</text>
+  <text x="642" y="186" class="code">session/files/readme.md</text>
+  <text x="642" y="212" class="p">Same shape, one record</text>
+  <text x="642" y="232" class="p">per item</text>
+  <text x="642" y="262" class="muted">Documents, plans, artifacts</text>
+
+  <text x="364" y="322" class="muted">A user or org resource can also be kept per flow copy, with flowIsolation.</text>
+
+  <!-- Not a copy -->
+  <rect x="28" y="368" width="864" height="100" rx="12" class="box"/>
+  <text x="44" y="392" class="h">Not a copy, and who sees what</text>
+  <text x="44" y="416" class="p">A resource is not a field of session state. Writing one never touches the other.</text>
+  <text x="44" y="436" class="p">Blocks use both. A generator sees a resource only when it is llmReadable, and writes it only when llmWritable.</text>
+  <text x="44" y="456" class="p">The browser sees neither unless a client config exposes it.</text>
+</svg>
