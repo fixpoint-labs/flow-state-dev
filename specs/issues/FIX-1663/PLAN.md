@@ -50,6 +50,7 @@ its shipped routes, never with Shift Manager's own state.
 | b0 | **Open the pentest Lab from the README.** An isolated sub-agent that sees only Shift Manager's README and `goals/pentest-lab/lab/` (not these specs, not DevForce's config) writes a pentest config to scratch, never over S2, and returns it with every step it had to guess. The closure worker then compares it with the committed S2: a semantic difference (what the server boots: flows, stores, the org it names, the inventory, who the page reads as), not formatting or comments, is a finding. It also lists every line that differs from DevForce's config other than for the tree. Start Shift Manager over the scratch copy with the README's command once to show it boots; leg b runs over S2 |
 | b | **Leg b.** The same reach as a3 on the pentest tree: TEAMS lists `pentest` and `audit` with exactly the store's seats, the `findings` workstream opens with every tab, and its composer's post is in the channel's stored transcript before the stream shows it. `git diff` of `labs/shift-manager` against the commit is empty, and no file there names a pentest seat, team or channel. **Every Lab opens under an org.** Over a Lab with no resolver (`labs/shift-manager/test/fixtures/ask-lab/fsdev.config.mts`, booted with no bearer), Shift Manager opens under the dev org `__fsd_default_org__` (`DEFAULT_ORG_ID`, sanctioned by FIX-1442), which the org switcher names; on both Labs the switcher names the store's org, and no screen renders org-less or as an empty app |
 | c | **Leg c.** On the no-theme build, for each theme pass (`--shift day`, then `--shift night`): visit every surface a3 reaches, and read the computed colour, background, border and font of every swept part against every value the design-system package's Shift Manager theme declares (both variants, normalised). Zero matches. Then FIX-1655's static check over `packages/**` finds none |
+| d | **Leg d** (added by the epic's 2026-10-02 amendment). On the build legs a and c use, over the DevForce tree: FIX-1737's goal check, `goals/shift-manager/it-draws-v2s-look/`, run as its `goal.md` says, day then night, at both widths. Every element on every screen matches its v2 look-table row or is on its exceptions list, and both fonts are loaded. Run as a subprocess, not re-implemented |
 
 **Leg c's sweep, by name.** The `@flow-state-dev/ui` registry cards Shift Manager draws: the
 message, reasoning, tool, code block and ask cards, located through the install list
@@ -69,6 +70,7 @@ Shift Manager is absent, and that is its expected red.
 |---|---|---|---|---|
 | Today's `main` | Shift Manager | a · b | c's static half | Epic goal |
 | `hardcoded-accent` | The tool card's token: Shift Manager's accent as a literal, in Shift Manager's copy (S3) | c, naming the tool card | a · b | Epic goal; name shared with FIX-1655 |
+| FIX-1737's `drift` | One sidebar row rounded, Tasks' ID cells in sans (a scratch patch FIX-1737's goal names) | d, naming both, day and night | a · b · c | FIX-1737 |
 | `GOAL_CONTROL=static-names` | Reading the tree: DevForce's names compiled in | b, at TEAMS, naming a pentest seat | a · c | FIX-1662 |
 | `GOAL_CONTROL=optimistic-post` | The send: the composer draws the line without posting | a4, at the turn in the running task session · b's post step, at the stored transcript | a1 to a3 · b's reach · c | FIX-1662 |
 | FIX-1664's control(s) | As `goals/shift-manager/it-shows-and-stops-a-task-run/goal.md` names | As that goal names, mapped onto a2 or a4 | The rest | FIX-1664 |
@@ -117,7 +119,7 @@ A doc gap follows [QR-20](BUSINESS-RULES.md#what-happens-to-a-finding).
 |---|---|
 | Goal check | `goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/` |
 | Pentest config | `goals/pentest-lab/lab/fsdev.config.mts` |
-| Legs | `a1` to `a4`, `b0`, `b`, `c`; journeys `J3`, `J4` |
+| Legs | `a1` to `a4`, `b0`, `b`, `c`, `d`; journeys `J3`, `J4` |
 | Controls | `hardcoded-accent` and `no-org` (scratch patches, no switch), FIX-1662's `static-names` and `optimistic-post`, FIX-1664's and FIX-1690's as their goals name them |
 
 Everything else is yours to name.

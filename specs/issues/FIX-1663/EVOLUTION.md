@@ -18,3 +18,12 @@ reads it here. The goal, D1 and the rules for findings are unchanged.
 | **Leg b's org step.** *"Opening either Lab with no org is refused"*, read off the epic's *"a Lab … opens with no org"*; source [`../../epics/FIX-1649/SPEC.md#the-goal-and-how-well-know-its-met`](../../epics/FIX-1649/SPEC.md#the-goal-and-how-well-know-its-met) and [`../../epics/FIX-1649/assets/design/DESIGN.md`](../../epics/FIX-1649/assets/design/DESIGN.md) (*no org-less mode*) | **Amended**, the check only | The dev org `__fsd_default_org__` (`DEFAULT_ORG_ID`) is an org, sanctioned by FIX-1442; the EM call on [#2529](https://github.com/fixpoint-labs/flow-state-dev/pull/2529) opens a Lab with no resolver under it. Engineering call by the epic coordinator | PLAN b's org step: the switcher names the dev org on a Lab with no resolver and the store's org on both trees; never org-less or empty. New scratch control `no-org` must fail it | The epic's promise is unchanged; only this spec's reading of it was too strict |
 
 No predecessor is superseded.
+
+## Amendment · 2026-10-02 · leg d, v2's look
+
+The epic's [2026-10-02 amendment](../../epics/FIX-1649/EVOLUTION.md#amendment--2026-10-02--v2s-look)
+makes v2's look part of the epic's goal (ER-16) and adds a leg for it.
+
+| Prior intent and precise source | Treatment | Reason / evidence | Replacement | Compatibility |
+|---|---|---|---|---|
+| The goal check's legs, a to c; source [`PLAN.md#checks`](PLAN.md#checks) and [`PLAN.md#controls`](PLAN.md#controls) | **Amended**, one leg added | No leg read the look against v2; the audit behind FIX-1737 found 51 look and layout gaps no check noticed | Check `d` runs FIX-1737's `it-draws-v2s-look` on the closure commit; control `drift` must fail it and leave a to c green | Legs a to c, their controls and the rules for findings are unchanged. A run already in flight before FIX-1737 merges cannot pass d, since FIX-1737 blocks this issue |
