@@ -1895,6 +1895,36 @@ membershipPrefix("");
 // Error: Inventory seatId must not be empty
 ```
 
+## Projects
+
+A project is a row in the organization's `projects` collection: a title, a brief, an owner, its
+`members`, the workstreams (declared channels, from any team) it groups, and each member's talk
+session. Declare the collection once in `workforce/org/resources/projects.ts` with
+`defineProjectsCollection()`. The guide is the docs site's Workforce → Projects page.
+
+```ts
+import { defineProjectBlocks } from "@flow-state-dev/workforce";
+
+const projects = defineProjectBlocks();
+defineFlow({ kind: "lab", actions: { ...projects.actions } });
+```
+
+- **`createProject { id, title, brief?, members?, workstreams? }`** writes a row with `create`.
+  The owner is the calling session's owner, and is always a member. An id held by another owner,
+  `unassigned`, a workstream not in the channel inventory, and a workstream another project holds
+  are each refused, and nothing is half written. The same owner re-sending an id gets the row back
+  (`created: false`) and its talk session bound if it wasn't.
+- **`setWorkstreams { projectId, workstreams }`** replaces the list. Members only.
+- **The talk entries** are built into every channel kind. A talk session is a channel-kind session
+  whose state names a project (`resourceId`), which grants nothing: every entry checks the
+  session's owner against the row's `members` first, and refuses `not-a-member`.
+  `join { projectId }` returns the member's one talk session (the listed one, or the calling session,
+  now bound); `bind` is the same as an internal entry. `post { body }` and `answer` add a line to
+  `room-lines`, and `read { after }` returns committed lines after a cursor, 200 at most. On any
+  other session, `post`, `read` and `answer` behave as before.
+
+Refusals are `ProjectRefusedError`, with a `reason`.
+
 ## Importing from a browser component
 
 The package root is server code. The channel floor reaches the task board, which imports
@@ -1970,6 +2000,8 @@ the root exports, and reaches no Node built-in.
 | `ChannelRoute` / `ChannelRouting` | What `routeByPurpose` returns, and a channel file's `routing:` as read (`{ fallback }`). |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
 | `channelInstances(manifests, { kinds?, inventory? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in channel kind. Register these. |
+| `defineProjectsCollection()` | The organization's `projects` collection: org-scoped, shared across flows, browser-readable through `expose`. Always the same declaration, so it can sit in `org/resources/projects.ts` and beside the project blocks in one flow. `defineRoomLinesCollection`, `defineRoomSeqCollection` and `defineWorkstreamClaimsCollection` declare the room and the claims; none has a browser read. |
+| `defineProjectBlocks({ talkKind? })` | Returns `{ createProject, setWorkstreams, actions }`. See [Projects](#projects). `talkKind` is the kind a created project's `bind` is dispatched to, `"channel"` by default. |
 | `openChannels(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. The server binds each session's organization. Idempotent. |
 | `readChannelsDirectory(root)` | Read a `teams/<id>/channels/<name>/` tree into one `ChannelManifest` per channel. Ships from the `./loader` subpath (Node only). |
 | `ChannelManifest` | One channel record: `{ id, declared, body }`. |

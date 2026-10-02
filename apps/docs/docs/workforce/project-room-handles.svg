@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 520" role="img" aria-labelledby="title desc">
+  <title id="title">Many talk sessions, one room</title>
+  <desc id="desc">Alice, Bob and Cara each have one talk session on the project. Alice's two windows share her one session. The project row lists one session per person, and every session is a handle onto the same single room in the organization's data.</desc>
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .person { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.5; stroke-dasharray: 5 4; }
+      .win { fill: #ffffff; stroke: #94a3b8; stroke-width: 1.25; }
+      .sess { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 1.5; }
+      .wall-org { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
+      .card { fill: #ffffff; stroke: #334155; stroke-width: 1.5; }
+      .room { fill: #ffffff; stroke: #15803d; stroke-width: 2; }
+      .box { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: #334155; }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #0f172a; }
+      .tie { stroke: #94a3b8; stroke-width: 1.25; fill: none; }
+      .handle { stroke: #1d4ed8; stroke-width: 1.75; fill: none; }
+      .dot { fill: #1d4ed8; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="520" rx="16" class="bg"/>
+
+  <text x="28" y="36" class="title">Many talk sessions, one room</text>
+  <text x="28" y="58" class="muted">Project “Storefront”: Alice (owner), Bob and Cara are members</text>
+
+  <!-- Alice -->
+  <rect x="28" y="84" width="312" height="112" rx="12" class="person"/>
+  <text x="44" y="106" class="h">Alice</text>
+  <rect x="44" y="118" width="88" height="28" rx="6" class="win"/>
+  <text x="56" y="137" class="muted">Window 1</text>
+  <rect x="44" y="154" width="88" height="28" rx="6" class="win"/>
+  <text x="56" y="173" class="muted">Window 2</text>
+  <path class="tie" d="M132 132 H150 V140 H164"/>
+  <path class="tie" d="M132 168 H150 V140"/>
+  <rect x="164" y="100" width="160" height="80" rx="10" class="sess"/>
+  <text x="178" y="124" class="h">Talk session s-1</text>
+  <text x="178" y="146" class="p">owner: alice</text>
+  <text x="178" y="166" class="muted">Both windows use it</text>
+
+  <!-- Bob -->
+  <rect x="28" y="212" width="312" height="112" rx="12" class="person"/>
+  <text x="44" y="234" class="h">Bob</text>
+  <rect x="44" y="264" width="88" height="28" rx="6" class="win"/>
+  <text x="56" y="283" class="muted">Window 1</text>
+  <path class="tie" d="M132 278 H164"/>
+  <rect x="164" y="228" width="160" height="80" rx="10" class="sess"/>
+  <text x="178" y="252" class="h">Talk session s-2</text>
+  <text x="178" y="274" class="p">owner: bob</text>
+
+  <!-- Cara -->
+  <rect x="28" y="340" width="312" height="112" rx="12" class="person"/>
+  <text x="44" y="362" class="h">Cara</text>
+  <rect x="44" y="392" width="88" height="28" rx="6" class="win"/>
+  <text x="56" y="411" class="muted">Window 1</text>
+  <path class="tie" d="M132 406 H164"/>
+  <rect x="164" y="356" width="160" height="80" rx="10" class="sess"/>
+  <text x="178" y="380" class="h">Talk session s-3</text>
+  <text x="178" y="402" class="p">owner: cara</text>
+
+  <!-- Organization -->
+  <rect x="380" y="84" width="512" height="368" rx="14" class="wall-org"/>
+  <text x="396" y="108" class="h">Organization data</text>
+
+  <rect x="396" y="122" width="480" height="92" rx="10" class="card"/>
+  <text x="410" y="146" class="h">Project row</text>
+  <text x="410" y="168" class="code">sessions: alice → s-1 · bob → s-2 · cara → s-3</text>
+  <text x="410" y="192" class="muted">At most one entry per person. Joining from a second window returns s-1.</text>
+
+  <rect x="396" y="232" width="480" height="204" rx="12" class="room"/>
+  <text x="410" y="258" class="h">The room (one per project)</text>
+  <text x="410" y="278" class="code">room-lines/storefront/… · room-seq/storefront</text>
+  <rect x="410" y="294" width="452" height="28" rx="6" class="box"/>
+  <text x="422" y="313" class="p">1 · alice · “Ship checkout Friday”</text>
+  <rect x="410" y="328" width="452" height="28" rx="6" class="box"/>
+  <text x="422" y="347" class="p">2 · bob · “API ready for review”</text>
+  <rect x="410" y="362" width="452" height="28" rx="6" class="box"/>
+  <text x="422" y="381" class="p">3 · cara · “Docs updated”</text>
+  <text x="410" y="416" class="muted">Every session reads the same lines in the same order</text>
+
+  <!-- Handles: each session reaches the one room -->
+  <path class="handle" d="M324 140 H356 V300 H396"/>
+  <path class="handle" d="M324 268 H356"/>
+  <path class="handle" d="M324 396 H356 V300"/>
+  <circle cx="324" cy="140" r="3.5" class="dot"/>
+  <circle cx="324" cy="268" r="3.5" class="dot"/>
+  <circle cx="324" cy="396" r="3.5" class="dot"/>
+  <circle cx="396" cy="300" r="3.5" class="dot"/>
+
+  <text x="28" y="482" class="p">Each session is one person’s handle on the room. A post through any of them adds a line to the same room.</text>
+  <text x="28" y="502" class="muted">Lines are not pushed into a session. Each session reads after a cursor to catch up.</text>
+</svg>

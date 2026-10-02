@@ -121,3 +121,4 @@ export type { WorkerManifest, TeamManifest, ResourceDoc, PackageManifest } from 
 export * from "./channel";
 export * from "./inventory";
 export * from "./roster";
+export * from "./projects";

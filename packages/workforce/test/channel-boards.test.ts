@@ -46,7 +46,9 @@ describe("declaring a board", () => {
   it("holds none, and declares no board resource, when the file names no board", () => {
     const instances = channelInstances([record("eng.quiet")]);
     const resources = (instances[0]!.resources ?? {}) as Record<string, unknown>;
-    expect(Object.keys(resources)).toEqual([]);
+    // Only the project-room collections every kind carries for its talk
+    // sessions; no board.
+    expect(Object.keys(resources).sort()).toEqual(["projects", "room-lines", "room-seq"]);
   });
 
   it("refuses a `boards:` that is not a list of plain names, naming the channel", () => {
@@ -170,7 +172,7 @@ describe("the roster's minted ids", () => {
 describe("the built-in kind's own surface", () => {
   it("adds the board actions only when it was built holding one", () => {
     const boardless = defineChannelFlow()();
-    expect(Object.keys(boardless.actions)).toEqual(["post", "read"]);
+    expect(Object.keys(boardless.actions)).toEqual(["post", "read", "join"]);
 
     const holding = defineChannelFlow({ boards: ["eng.feature.triage"] })();
     expect(Object.keys(holding.actions)).toContain("fileTask");
