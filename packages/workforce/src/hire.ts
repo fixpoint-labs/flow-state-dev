@@ -97,6 +97,54 @@ const RESERVED_KEYS = [
  */
 const builtInAgentWorkerFlow = defineAgentWorkerFlow() as unknown as AnyFlowType;
 
+/**
+ * The kinds a hire resolves a `flow:` against: the built-in `agent` underneath
+ * the caller's map, so a caller's own `agent` wins.
+ *
+ * Shared with the roster's per-row check (`roster/check.ts`), which decides a
+ * stored seat's kind is gone before anything is minted, and has to decide it
+ * against exactly this map.
+ */
+export function resolvableKinds(kinds: HireOptions["kinds"]): Record<string, AnyFlowType> {
+  return { [AGENT_KIND]: builtInAgentWorkerFlow, ...kinds };
+}
+
+function availableKinds(kindNames: readonly string[]): string {
+  return kindNames.length > 0 ? kindNames.map((k) => `"${k}"`).join(", ") : "(none)";
+}
+
+function missingKindReason(kind: string, available: string): string {
+  return `names flow kind "${kind}", which was not passed to hireWorkforce. Kinds passed: ${available}`;
+}
+
+function hireRefusalMessage(refused: number, total: number, problems: readonly string[]): string {
+  return (
+    `hireWorkforce refused ${refused} of ${total} worker${total === 1 ? "" : "s"}; ` +
+    `nothing was hired:\n  - ${problems.join("\n  - ")}`
+  );
+}
+
+/**
+ * What `hireWorkforce` throws for one record whose only fault is a kind it was
+ * not passed — the same sentence, built without a hire.
+ *
+ * The roster's per-row check names a stored seat whose kind is gone before it
+ * mints anything, and the boot report it feeds must not change wording because
+ * of that. One builder for both is what keeps them saying the same thing.
+ *
+ * @param manifestId The record's id (a hired seat's address).
+ * @param kind The kind it names.
+ * @param kinds The caller's kind map, as passed to `hireWorkforce`.
+ */
+export function missingKindRefusal(
+  manifestId: string,
+  kind: string,
+  kinds: HireOptions["kinds"]
+): string {
+  const available = availableKinds(Object.keys(resolvableKinds(kinds)));
+  return hireRefusalMessage(1, 1, [`worker "${manifestId}" — ${missingKindReason(kind, available)}`]);
+}
+
 export interface HireOptions {
   /**
    * The flows the app defined, by kind — `defineFlow(...)` results, passed
@@ -439,7 +487,7 @@ export function hireWorkforce(
   // replacing the kind (`defineAgentWorkerFlow({ ... })` registered here), never a
   // second option on this function. A roster hired with `kinds: {}` therefore
   // carries an empty tool catalog, because nothing ever merges into ours.
-  const kinds: Record<string, AnyFlowType> = { [AGENT_KIND]: builtInAgentWorkerFlow, ...options.kinds };
+  const kinds = resolvableKinds(options.kinds);
 
   // One ref cannot be both a document and a reference. Checked here as well as
   // at the loader, the same two-door reason every other refusal in this file
@@ -459,8 +507,7 @@ export function hireWorkforce(
     );
   }
 
-  const kindNames = Object.keys(kinds);
-  const available = kindNames.length > 0 ? kindNames.map((k) => `"${k}"`).join(", ") : "(none)";
+  const available = availableKinds(Object.keys(kinds));
 
   const ordered = [...manifests].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const seats: FlowInstance[] = [];
@@ -605,7 +652,7 @@ export function hireWorkforce(
     // hand us something that is not a flow factory at all.
     const factory = Object.hasOwn(kinds, kind) ? kinds[kind] : undefined;
     if (factory === undefined) {
-      refuse(`names flow kind "${kind}", which was not passed to hireWorkforce. Kinds passed: ${available}`);
+      refuse(missingKindReason(kind, available));
       continue;
     }
 
@@ -872,10 +919,7 @@ export function hireWorkforce(
   // which happens in the loop above.
 
   if (problems.length > 0) {
-    throw new Error(
-      `hireWorkforce refused ${refusedWorkers.size} of ${ordered.length} worker${ordered.length === 1 ? "" : "s"}; ` +
-        `nothing was hired:\n  - ${problems.join("\n  - ")}`
-    );
+    throw new Error(hireRefusalMessage(refusedWorkers.size, ordered.length, problems));
   }
 
   // After the refusals, deliberately: a roster that did not hire has nothing

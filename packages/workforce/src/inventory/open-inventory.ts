@@ -24,11 +24,13 @@
  * file-time answer under a live name. What the row buys is that the two
  * disagreeing becomes *visible* instead of silent.
  *
- * **Nothing is ever deleted.** A row means *was registered in this org*, not
+ * **The binder deletes nothing.** A row means *was registered in this org*, not
  * *still declared*. A roster handed to one boot may be a partial one, and a
  * binder that reconciled against it would drop the row of a live channel
  * another process opened. A reader tolerates a row naming something it cannot
- * reach; there is no undoing a row that should not have been removed.
+ * reach; there is no undoing a row that should not have been removed. The one
+ * delete is `fire`'s (`removeHiredSeat`), which knows exactly which hired seat
+ * it removes.
  */
 
 import { kindOf, orderedById } from "../channel/channel-binder";
@@ -38,6 +40,7 @@ import {
 } from "../channel/channel-flow";
 import type { ChannelManifest } from "../manifest";
 import { seatDoorOf } from "../seat-door";
+import { incarnationOf } from "../roster/incarnation";
 
 /**
  * One registered seat, as the binder needs it.
@@ -59,6 +62,22 @@ export interface InventorySeat {
    * by forgetting them: pass `{}` to say the seat has no door.
    */
   actions: Readonly<Record<string, unknown>>;
+  /**
+   * The seat's settings, which `hireWorkforce` stamps with its `seatId`. A
+   * seat whose `seatId` differs from its `id` was hired at runtime (its id is
+   * an address); one whose `seatId` is its `id` was declared. The row's
+   * `hired` is read from this; omitted, the row says `null` (unknown).
+   */
+  config?: unknown;
+}
+
+/** `true` for a runtime hire, `false` for a declared seat, `null` when the seat doesn't say. */
+function hiredOf(seat: InventorySeat): boolean | null {
+  const seatId =
+    typeof seat.config === "object" && seat.config !== null
+      ? (seat.config as { readonly seatId?: unknown }).seatId
+      : undefined;
+  return typeof seatId === "string" ? seatId !== seat.id : null;
 }
 
 /** What the binder registers: the seats that were hired, and the channels that were opened. */
@@ -140,6 +159,10 @@ export interface OpenInventoryOptions {
    * nothing, and the binder has no other way to tell: an action's return value
    * arrives in whatever shape that door gives it, so the rejection is the only
    * signal this package can read.
+   *
+   * Return the action's output, or a run result carrying it as `output`
+   * (`runAction`'s shape), and `InventoryBinding.seats` counts the seat rows
+   * that actually landed; any other return counts the rows sent.
    */
   run: (request: InventoryActionRequest) => Promise<unknown>;
 
@@ -175,7 +198,14 @@ export interface OpenInventoryOptions {
 
 /** What one boot wrote, and what it could not. */
 export interface InventoryBinding {
-  /** How many seat rows were written. */
+  /**
+   * How many seat rows were written. A row the boot may no longer write — the
+   * store already holds a newer hire's row at that address — is left and not
+   * counted. The count is the seat action's own, read from what `run`
+   * returns: the action's output, or a run result carrying it as `output`.
+   * A door whose return carries neither (an HTTP action client returns no
+   * output) gets the number of rows sent instead.
+   */
   seats: number;
   /** How many channels registered themselves. */
   channels: number;
@@ -185,6 +215,19 @@ export interface InventoryBinding {
    * which of these is fatal.
    */
   problems: string[];
+}
+
+/**
+ * The seat action's `written` count from what the door returned: the action's
+ * output itself, or a run result carrying it as `output` (what `runAction`
+ * returns). `undefined` when the return carries neither.
+ */
+function writtenOf(ran: unknown): number | undefined {
+  const read = (value: unknown) => {
+    const written = (value as { written?: unknown } | null | undefined)?.written;
+    return typeof written === "number" ? written : undefined;
+  };
+  return read(ran) ?? read((ran as { output?: unknown } | null | undefined)?.output);
 }
 
 function messageOf(error: unknown): string {
@@ -199,10 +242,12 @@ function messageOf(error: unknown): string {
  * to register in, and the failure is named rather than silent. The seat half
  * does not care about the order.
  *
- * Re-running over an unchanged roster is a no-op: every write is an upsert
- * keyed by the record's own id, so nothing duplicates and nothing appends. A
- * channel that has been open since an earlier boot keeps its original
- * `openedAt`.
+ * Re-running over an unchanged roster is a no-op: every write is keyed by the
+ * record's own id, so nothing duplicates and nothing appends. A channel that
+ * has been open since an earlier boot keeps its original `openedAt`. A seat
+ * row is written only where the boot may still write it (no row when read, or
+ * a stored row of the same seat), so a boot whose roster is older than the
+ * store never replaces a runtime hire's row.
  *
  * @param roster  The hired seats and the opened channel records.
  * @param options `run`: the action door. `seatWriter`: the flow the seat rows
@@ -260,12 +305,20 @@ export async function openInventory(
   if (seats.length > 0) {
     const writer = options.seatWriter!;
     try {
-      await options.run({
+      const ran = await options.run({
         action: INVENTORY_REGISTER_SEATS,
-        // Id, kind and door only. A seat's row is the whole of what the
+        // Id, kind, door, origin and incarnation only. A seat's row is the whole of what the
         // inventory knows about it, and everything else on a record is the
         // declared layer's to answer.
-        input: { seats: seats.map((seat) => ({ id: seat.id, kind: seat.kind, door: seatDoorOf(seat).door })) },
+        input: {
+          seats: seats.map((seat) => ({
+            id: seat.id,
+            kind: seat.kind,
+            door: seatDoorOf(seat).door,
+            hired: hiredOf(seat),
+            incarnation: incarnationOf(seat) ?? null,
+          })),
+        },
         userId: options.userId,
         orgId,
         flowKind: writer.flowKind,
@@ -274,7 +327,9 @@ export async function openInventory(
         // `InventoryActionRequest.source`.
         source: "internal"
       });
-      seatsWritten = seats.length;
+      // The action skips a row the boot may no longer write (a newer hire's),
+      // so its own count is the one reported, when the door hands it back.
+      seatsWritten = writtenOf(ran) ?? seats.length;
     } catch (error) {
       // Collected, not thrown: an app whose channels all registered is not an
       // app with no inventory, and the caller is the one that knows whether a
