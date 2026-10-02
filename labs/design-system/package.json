@@ -12,6 +12,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --root ."
   },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.0",
+    "@fontsource/space-grotesk": "^5.2.0"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.9.3",

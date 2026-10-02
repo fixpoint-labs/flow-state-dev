@@ -15,6 +15,15 @@ export const REPO_ROOT = resolve(PACKAGE_ROOT, "../..");
 /** The stylesheet an app imports. */
 export const SHIFT_MANAGER_CSS = join(PACKAGE_ROOT, "shift-manager.css");
 
+/**
+ * `css` with its comments and `@import` statements removed: what is left is the
+ * rules and their values, so an import path is never read as a selector or a
+ * font family. Shared with the goals that read this stylesheet.
+ */
+export function stripImportsAndComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/@import[^;]*;/g, "");
+}
+
 /** Custom property → value, for one rule. */
 export type Declarations = Record<string, string>;
 
@@ -24,7 +33,7 @@ export type Declarations = Record<string, string>;
  */
 export function rule(css: string, selectors: string): Declarations {
   const out: Declarations = {};
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const stripped = stripImportsAndComments(css);
   for (const match of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (match[1]!.split(",").map((s) => s.trim()).join(", ") !== selectors) continue;
     for (const decl of match[2]!.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) out[decl[1]!] = decl[2]!.trim();
@@ -36,10 +45,10 @@ export function rule(css: string, selectors: string): Declarations {
  * Every value in the stylesheet a copy of which would carry Shift Manager's look
  * into another package: colour literals (lowercased) and the quoted font
  * family names. Generic families (`ui-monospace`, `sans-serif`) are not ours
- * and not collected.
+ * and not collected, and neither are the font imports' paths.
  */
 export function themeValues(css: string): string[] {
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const stripped = stripImportsAndComments(css);
   const colours = (stripped.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []).map((c) => c.toLowerCase());
   const families = [...stripped.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
   return [...new Set([...colours, ...families])];
