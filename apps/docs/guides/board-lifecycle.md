@@ -21,7 +21,7 @@ the drain runs — you can watch the difference from the CLI.
 
 ![A task board is two things with different lifetimes. The task rows are stored data: each task's goal, status, assignee, input and output, kept at the backing you choose, which sets how long they last. The sequencer backing lasts one board.drain call, the request backing, the default, lasts the whole request, and the resource backing, at session, user or org scope, lasts across requests. The drain, board.drain, is a block you mount in a flow and runs only inside a request: it claims pending rows, hands each to its worker, marks it completed or errored, and stops when nothing is left. A board is not a background queue. Rows nobody drains wait where they are, and a row added by another request wakes nothing. To run work outside the request that made it, dispatch a fresh flow run that builds and drains its own board](./board-two-things.svg)
 
-A board is stored rows and a drain. The rows sit at the backing you choose, which decides how long they last. The drain is a block that claims and runs rows, and only while a request is running it. Rows nobody drains wait where they are. `taskBoard(config)` gives you both:
+A board is stored rows and a drain. The rows sit at the backing you choose, which decides how long they last. The drain is a block that claims rows and runs them, and it only works while a request is executing it. Rows nobody drains wait where they are. `taskBoard(config)` gives you both:
 
 ```ts
 const board = taskBoard({
@@ -229,9 +229,8 @@ resolves again.
 
 ## What a board is not
 
-A board is not a background job queue, as the [plate above](#a-board-is-two-things)
-shows. A foreground request appending tasks while a separate background process
-drains the same board is not supported today. To run work outside the request
+A board is not a background job queue. A foreground request appending tasks
+while a separate background process drains the same board is not supported. To run work outside the request
 that created it, dispatch a fresh flow run (see [Background jobs](./background-jobs-bullmq))
 that builds and drains its own board.
 
