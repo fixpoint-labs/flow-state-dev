@@ -364,6 +364,34 @@ describe("project rows", () => {
     expect((await h.inspectRow(winner, ["ops.oncall"])).claims["ops.oncall"]).toBe(winner);
   });
 
+  it("hands a re-sent create of a project that holds workstreams its row back, rather than refusing it on its own claims", async () => {
+    const h = await boot();
+    const brokenLab = await h.openSession("alice", "lab-broken");
+    // Committed with its claims, and left unbound: its bind was refused.
+    await h.ok("alice", "lab-broken", brokenLab, "createProject", {
+      id: "atlas",
+      title: "Atlas",
+      workstreams: ["eng.feature", "ops.release"]
+    });
+    expect((await h.inspectRow("atlas")).row.sessions).toEqual([]);
+
+    // The owner re-sends it, workstreams and all, from a fresh session.
+    const lab = await h.openSession("alice", "lab");
+    const resent = await h.ok("alice", "lab", lab, "createProject", {
+      id: "atlas",
+      title: "Atlas",
+      workstreams: ["eng.feature", "ops.release"]
+    });
+    expect(resent.created).toBe(false);
+    expect(resent.project.workstreams).toEqual(["eng.feature", "ops.release"]);
+    // The re-send is the repair path: the owner's talk session is bound now.
+    await h.sessionFor("atlas", "alice");
+    expect((await h.inspectRow("atlas", ["eng.feature", "ops.release"])).claims).toEqual({
+      "eng.feature": "atlas",
+      "ops.release": "atlas"
+    });
+  });
+
   it("re-binds a row whose mint failed after commit, by each repair path, and binds once", async () => {
     const h = await boot();
     const brokenLab = await h.openSession("alice", "lab-broken");
