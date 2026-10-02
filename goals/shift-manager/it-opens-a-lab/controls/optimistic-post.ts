@@ -25,6 +25,8 @@ import {
 } from "../../../../labs/shift-manager/src/lib/transcript.ts";
 
 export * from "../../../../labs/shift-manager/src/lib/transcript.ts";
+import type { sendTurn as realSendTurn } from "../../../../labs/shift-manager/src/lib/send.ts";
+
 export { TurnNotDelivered, type TurnTarget } from "../../../../labs/shift-manager/src/lib/send.ts";
 
 const drawn = new Map<string, ChannelTranscriptLine[]>();
@@ -47,6 +49,4 @@ export async function readTranscriptPage(
 }
 
 /** Read the line as delivered; the seat's door is never called. */
-export async function sendTurn(): Promise<{ requestId: string }> {
-  return { requestId: "never-sent" };
-}
+export const sendTurn: typeof realSendTurn = async () => ({ requestId: "never-sent" });

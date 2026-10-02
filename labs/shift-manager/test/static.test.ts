@@ -111,7 +111,7 @@ describe("V8", () => {
     // Planted: a palette class, a hex value, and token values pasted back into the stylesheet.
     expect(literalColours(join(src, "x.tsx"), `<p className="text-green-600" />`)).toHaveLength(1);
     expect(literalColours(join(src, "x.tsx"), `const c = "#ff0000";`)).toHaveLength(1);
-    expect(literalColours(join(src, "styles.css"), `/* Token definitions */\n--x: hsl(0 0% 0%);\n/* End of token definitions. */`)).toHaveLength(1);
+    expect(literalColours(join(src, "styles.css"), `:root {\n  --background: hsl(0 0% 100%);\n}`)).toHaveLength(1);
   });
 
   it("sends a person's line only through the one send path, to the door the inventory names (V7, ER-15)", () => {
