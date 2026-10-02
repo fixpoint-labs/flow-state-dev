@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 540" role="img" aria-label="A task board is two things with different lifetimes. The task rows are stored data: each task's goal, status, assignee, input and output, kept at the backing you choose, which sets how long they last. The sequencer backing lasts one board.drain call, the request backing, the default, lasts the whole request, and the resource backing, at session, user or org scope, lasts across requests. The drain, board.drain, is a block you mount in a flow and runs only inside a request: it claims pending rows, hands each to its worker, marks it completed or errored, and stops when nothing is left. A board is not a background queue. Rows nobody drains wait where they are, and a row added by another request wakes nothing. To run work outside the request that made it, dispatch a fresh flow run that builds and drains its own board.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 540" role="img" aria-label="A task board is two things with different lifetimes. The task rows are stored data: each task's goal, status, assignee, input and output, kept at the backing you choose, which sets how long they last. The sequencer backing lasts one board.drain call, the request backing, the default, lasts the whole request, and the resource backing, at session, user or org scope, lasts across requests. The drain, board.drain, is a block you mount in a flow and runs only inside a request: it claims pending rows, hands each to its worker, marks it completed or errored, and stops when no row is left it can run, which can leave rows waiting on a dependency or a person. A board is not a background queue. Rows nobody drains wait where they are, and a row added by another request wakes nothing. To run work outside the request that made it, dispatch a fresh flow run that builds and drains its own board.">
   <style>
     :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
             --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
@@ -60,7 +60,7 @@
     <text class="p" x="586" y="182">Claims the pending rows.</text>
     <text class="p" x="586" y="204">Hands each to its worker.</text>
     <text class="p" x="586" y="226">Marks it completed or errored.</text>
-    <text class="p" x="586" y="248">Stops when nothing is left.</text>
+    <text class="p" x="586" y="248">Stops when no row is left it can run.</text>
     <text class="h" x="576" y="306">Only inside a request</text>
     <text class="p" x="576" y="330">No request running it, no work done.</text>
     <text class="muted" x="576" y="356">A row added by another request</text>
