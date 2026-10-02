@@ -806,7 +806,9 @@ const { resources } = splitResourceModules(resourceModules);
 const instances = channelInstances(channels, { kinds, resources });
 ```
 
-The kind the rooms run on has to be able to wake seats, so build it with a notify block, as in `kinds: { channel: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }`. Left to the built-in kind, a template that names seats is refused, because no post would wake them. To run rooms on a kind of your own, name it as the template's `kind` and as `defineProjectBlocks({ talkKind })`. The two have to match, and a mismatch is refused at boot.
+Rooms run on the built-in channel kind, and that kind has to be able to wake seats, so build it with a notify block, as in `kinds: { channel: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }`. Left as the plain built-in, a template that names seats is refused, because no post would wake them.
+
+If your app calls `channelInstances` more than once, say once per flow, only one call needs `resources`. The first call that finds the template keeps it for the whole process, and every other call builds its channel kind with the same seats and charter. A call that finds a different template is refused.
 
 A team can declare the template in a `CHANNEL.md` instead, by marking it `mintFor: projects`. Its `members:` are the seats and its body is the charter:
 
@@ -827,7 +829,7 @@ What a template does:
 - **It applies to every project's room, and edits land at the next restart.** The seats and charter are built onto the channel kind each time the app boots and are never copied into a session. An edit reaches every room, including ones that already exist.
 - **A post wakes each seat once, as the person who posted.** Each seat keeps one conversation per person per room, and gets the room's last 20 lines along with the post. Its reply goes into the room, where every member reads it. A seat answers a post once, even when the post reaches it twice. A seat's reply wakes nobody.
 - **Other members' lines arrive on the next read, not live.** Your own post shows up when you post it. Everyone else's appears the next time your view calls `read`.
-- **It holds no board and routes no post.** A template that declares `boards:`, `routing:` or `boardActions:` is refused.
+- **It holds no board, routes no post, and picks no kind.** A template that declares `flow:`, `boards:`, `routing:` or `boardActions:` is refused.
 - **Rooms aren't in the inventory.** The inventory lists the channels you declared, and no talk session is ever one of its rows.
 
 When a template is in place, any code that creates a project inside a flow turn also gets the creator's talk session ready, in the same turn. `createProject` does that with or without a template. A row your code writes outside a turn gets none, and its members reach the room through `join`.

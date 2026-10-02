@@ -47,16 +47,17 @@ import {
   type WorkerManifest
 } from "../src/index";
 import { CHANNEL_ANSWER_ACTION } from "../src/channel/channel-flow";
-import { forgetOrgTalkTemplate, forgetTalkReaction } from "../src/projects/talk-template";
+import { forgetOrgTalkTemplate, forgetTalkTemplate } from "../src/projects/talk-template";
+import { roomLineKey } from "../src/projects/collections";
 
 const ORG = "lab";
 const projects = defineProjectsCollection();
 
 // Each test declares the org template it needs, as a fresh process would;
-// neither the template nor the reaction leaks into the next.
+// neither the template, its registration nor the reaction leaks into the next.
 afterEach(() => {
   forgetOrgTalkTemplate(projects);
-  forgetTalkReaction(projects);
+  forgetTalkTemplate(projects);
 });
 
 /** A team's channel record. */
@@ -77,11 +78,7 @@ function refusalOf(run: () => unknown): string {
 }
 
 /** The built-in kind built waking seats, as a host with a talk template passes it. */
-const waking = (kind: string = CHANNEL_KIND) => {
-  const flow = defineChannelFlow({ notify: wakeMemberSeats([]) });
-  if (kind !== CHANNEL_KIND) Object.assign(flow, { kind });
-  return { [kind]: flow } as never;
-};
+const waking = () => ({ [CHANNEL_KIND]: defineChannelFlow({ notify: wakeMemberSeats([]) }) }) as never;
 
 describe("declaring a talk template", () => {
   it("refuses a template with a board, an unknown or wrong collection, a bad seat id, and two templates for one collection, all at once", () => {
@@ -96,21 +93,24 @@ describe("declaring a talk template", () => {
           channel("ops.nowhere", { mintFor: "tickets" }),
           channel("ops.notes", { mintFor: "notes" }),
           channel("ops.badseat", { mintFor: "projects", members: ["a.b.c"] }),
+          channel("ops.flowed", { mintFor: "projects", flow: "channel" }),
           channel("eng.typo", { member: ["eng.em"] })
         ],
         { kinds: waking(), resources: { projects, notes: other } }
       )
     );
     // Every refusal of the boot, named, in one message.
-    expect(message).toContain("refused 6 of 8 declarations");
+    expect(message).toContain("refused 7 of 9 declarations");
     expect(message).toMatch(/channel "ops\.boarded" — .*`mintFor:` and `boards:`/);
     expect(message).toMatch(/channel "ops\.nowhere" — names collection "tickets", which is not in the org's resources/);
     expect(message).toMatch(/channel "ops\.notes" — names "notes", which is not the projects collection/);
     expect(message).toMatch(/channel "ops\.badseat" — .*seat "a\.b\.c" is not a seat id/);
     expect(message).toMatch(/channel "eng\.typo" — declares `member`/);
+    // A template runs on the built-in kind; there is no kind to choose.
+    expect(message).toMatch(/channel "ops\.flowed" — .*`mintFor:` and `flow:`.*runs on the built-in channel kind/);
     // The org default and the team template for one collection are refused together, in one line naming both.
     expect(message).toMatch(
-      /the "projects" collection has 2 talk templates: the talk template beside "projects" in the org's resources on kind "channel"; channel "eng\.room" on kind "channel"/
+      /the "projects" collection has 2 talk templates: the talk template beside "projects" in the org's resources; channel "eng\.room"\./
     );
     expect(message).not.toContain('channel "eng.feature"');
   });
@@ -126,22 +126,19 @@ describe("declaring a talk template", () => {
     expect(() => defineProjectsCollection({ talk: { seats: ["a.b.c"] } })).toThrow(/seat "a\.b\.c" is not a seat id/);
   });
 
-  it("refuses a template on a kind defineChannelFlow did not build", () => {
-    defineProjectsCollection({ talk: { seats: ["eng.em"], kind: "custom" } });
-    const custom = Object.assign(() => defineFlow({ kind: "custom", cardinality: "singleton", actions: {} })(), {
-      kind: "custom"
+  it("refuses a talk kind defineChannelFlow did not build, or one filed under the built-in's key", () => {
+    defineProjectsCollection({ talk: { seats: ["eng.em"] } });
+    const custom = Object.assign(() => defineFlow({ kind: CHANNEL_KIND, cardinality: "singleton", actions: {} })(), {
+      kind: CHANNEL_KIND
     });
-    expect(refusalOf(() => channelInstances([], { kinds: { custom } as never, resources: { projects } }))).toMatch(
-      /runs talk sessions on kind "custom", which is not a kind `defineChannelFlow` built/
+    expect(refusalOf(() => channelInstances([], { kinds: { [CHANNEL_KIND]: custom } as never, resources: { projects } }))).toMatch(
+      /the talk template beside "projects" in the org's resources — .*not one `defineChannelFlow` built/
     );
-  });
-
-  it("refuses a template on a kind passed under a key that is not its own kind", () => {
-    // The flow under `custom` is the built-in channel kind: talk sessions would run a different graph.
-    defineProjectsCollection({ talk: { seats: ["eng.em"], kind: "custom" } });
-    expect(
-      refusalOf(() => channelInstances([], { kinds: { custom: defineChannelFlow() } as never, resources: { projects } }))
-    ).toMatch(/runs talk sessions on kind "custom", but the flow passed under that key is kind "channel"/);
+    // A kind of another name under the built-in's key would run a different graph.
+    const other = Object.assign(defineChannelFlow({ notify: wakeMemberSeats([]) }), { kind: "other" });
+    expect(refusalOf(() => channelInstances([], { kinds: { [CHANNEL_KIND]: other } as never, resources: { projects } }))).toMatch(
+      /the flow passed under that key is kind "other"/
+    );
   });
 
   it("refuses a seat listed twice at both declaration sites, so one post never wakes a seat twice", () => {
@@ -161,7 +158,7 @@ describe("declaring a talk template", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"] } });
     // The default: `channelInstances` seeds the built-in kind, which wakes nobody.
     expect(refusalOf(() => channelInstances([], { resources: { projects } }))).toMatch(
-      /names seats, but runs talk sessions on kind "channel", which was built with no `notify` block/
+      /names seats, but talk sessions run on kind "channel", which was built with no `notify` block/
     );
     // A template with no seats wakes nobody by design, so the plain kind serves it.
     defineProjectsCollection({ talk: { seats: [], charter: "Just the room." } });
@@ -213,40 +210,42 @@ describe("declaring a talk template", () => {
 });
 
 describe("a host that builds several flows", () => {
-  it("keeps the mint a template installed when a later channelInstances call carries no template", () => {
+  it("builds every later call's channel kind from the one registered template, with or without resources", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"] } });
     channelInstances([channel("eng.feature", { members: ["eng.em"] })], { kinds: waking(), resources: { projects } });
     const installed = (projects as { reactTo?: unknown }).reactTo;
     expect(installed).toBeDefined();
 
-    // A second flow's channels, bound with no resources and no template.
-    channelInstances([channel("ops.release", { members: ["ops.lead"] })]);
+    // A second flow's channels, bound with no resources: the reaction stands,
+    // and its channel kind is built holding the template (`onTalkPosted`).
+    const later = channelInstances([channel("ops.release", { members: ["ops.lead"] })], { kinds: waking() });
     expect((projects as { reactTo?: unknown }).reactTo).toBe(installed);
-  });
+    expect(later.map((instance) => instance.kind)).toEqual([CHANNEL_KIND]);
+    expect(Object.keys((later[0] as unknown as { internal?: { actions?: object } }).internal?.actions ?? {})).toContain("onTalkPosted");
 
-  it("refuses a createProject that binds on another kind than the template mints on, whichever is built second", () => {
-    // createProject first (the built-in kind by default), then a template on "talk".
-    defineProjectBlocks();
-    defineProjectsCollection({ talk: { seats: ["eng.em"], kind: "talk" } });
-    expect(() => channelInstances([], { kinds: waking("talk"), resources: { projects } })).toThrow(
-      /createProject binds talk sessions on kind "channel".*the talk template mints them on kind "talk"/
+    // A later call whose channel kind could not wake the registered seats is refused, naming the template.
+    expect(refusalOf(() => channelInstances([channel("ops.release", { members: ["ops.lead"] })]))).toMatch(
+      /the talk template registered in this process \(the talk template beside "projects" in the org's resources\) — names seats/
     );
-    expect((projects as { reactTo?: unknown }).reactTo).toBeUndefined();
-    forgetTalkReaction(projects);
-
-    // The template first, then a createProject left on the default.
-    channelInstances([], { kinds: waking("talk"), resources: { projects } });
-    expect(() => defineProjectBlocks()).toThrow(/createProject binds talk sessions on kind "channel"/);
-    // Naming the template's kind is the fix: one kind, one session per create.
-    expect(() => defineProjectBlocks({ talkKind: "talk" })).not.toThrow();
   });
 
-  it("refuses a second call that would mint project talk sessions on another kind", () => {
-    defineProjectsCollection({ talk: { seats: ["eng.em"] } });
+  it("registers one template per process: the same one again is a no-op, a different one is refused", () => {
+    defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Plan." } });
     channelInstances([], { kinds: waking(), resources: { projects } });
-    defineProjectsCollection({ talk: { seats: ["eng.em"], kind: "talk" } });
-    expect(() => channelInstances([], { kinds: waking("talk"), resources: { projects } })).toThrow(
-      /already mint on kind "channel" in this process, and a template now names kind "talk"/
+    // The same roster bound again, as a host binding it once per flow does.
+    expect(() => channelInstances([], { kinds: waking(), resources: { projects } })).not.toThrow();
+
+    // Another template, at another site or with other seats, is a second one.
+    forgetOrgTalkTemplate(projects);
+    expect(() =>
+      channelInstances([channel("eng.room", { mintFor: "projects", members: ["eng.em"] }, "Plan.")], {
+        kinds: waking(),
+        resources: { projects }
+      })
+    ).toThrow(/already have a talk template in this process .*channel "eng\.room" would be a second\./);
+    defineProjectsCollection({ talk: { seats: ["ops.lead"], charter: "Plan." } });
+    expect(() => channelInstances([], { kinds: waking(), resources: { projects } })).toThrow(
+      /already have a talk template in this process \(the talk template beside "projects" in the org's resources\).*with other seats or charter/
     );
   });
 });
@@ -351,20 +350,24 @@ type Answer = { status: number; json: any };
  * the channel kind built waking them, and `channelInstances` reading the org
  * template (when `talk` is given) from the resources.
  */
-async function boot(options: { talk?: { seats: string[]; charter?: string }; stores?: StoreRegistry; seats?: string[] }) {
+async function boot(options: {
+  talk?: { seats: string[]; charter?: string };
+  stores?: StoreRegistry;
+  seats?: string[];
+  /** Build the host's channel kind from a second `channelInstances` call made without `resources`. */
+  laterCall?: boolean;
+}) {
   const heard: Heard[] = [];
   const seats = hireWorkforce((options.seats ?? ["eng.em", "ops.lead", "chief-of-staff"]).map(seatRecord), {
     kinds: { listener: listeningKind(heard) as never }
   });
-  // No template stands for a fresh process: nothing declared, nothing installed.
-  if (options.talk === undefined) {
-    forgetOrgTalkTemplate(projects);
-    forgetTalkReaction(projects);
-  } else defineProjectsCollection({ talk: options.talk });
-  const [kind] = channelInstances([], {
-    kinds: { [CHANNEL_KIND]: defineChannelFlow({ notify: wakeMemberSeats(seats) }) as never },
-    resources: { projects }
-  });
+  // Each boot stands for a fresh process: nothing declared or registered before it.
+  forgetOrgTalkTemplate(projects);
+  forgetTalkTemplate(projects);
+  if (options.talk !== undefined) defineProjectsCollection({ talk: options.talk });
+  const kinds = { [CHANNEL_KIND]: defineChannelFlow({ notify: wakeMemberSeats(seats) }) as never };
+  const [first] = channelInstances([], { kinds, resources: { projects } });
+  const [kind] = options.laterCall === true ? channelInstances([], { kinds }) : [first];
   // A roster with no template registers no channel kind at all; projects still talk on the built-in.
   const talkKind = kind ?? defineChannelFlow({ notify: wakeMemberSeats(seats) })();
   const stores = options.stores ?? inMemoryStores();
@@ -542,6 +545,43 @@ describe("a project's talk template at runtime", () => {
     }, "both seats' answers");
     await new Promise((r) => setTimeout(r, 200));
     const page = await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 });
+    const answers = page.lines.filter((line: { author: string | null }) => line.author !== null);
+    expect(answers.map((line: { author: string }) => line.author).sort()).toEqual(["eng.em", "ops.lead"]);
+  });
+
+  it("wakes the seats, with the charter, from a channel kind built by a later call that passed no resources", async () => {
+    const h = await boot({ talk: { seats: ["eng.em", "ops.lead"], charter: "Plan the work." }, laterCall: true });
+    await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
+    const talk = await h.sessionOf("apollo", "alice");
+    await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "hello" });
+    await h.until(async () => (h.heard.length === 2 ? true : undefined), "both seats woken");
+    expect(h.heard.map((run) => run.seat).sort()).toEqual(["eng.em", "ops.lead"]);
+    expect(await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 })).toMatchObject({
+      charter: "Plan the work.",
+      seats: ["eng.em", "ops.lead"]
+    });
+  });
+
+  it("lands every seat's answer for a member whose talk session was created holding forged answer claims", async () => {
+    const h = await boot({ talk: { seats: ["eng.em", "ops.lead"] } });
+    await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice", "bob"] });
+    // Bob creates his session seeding claims for the room's next posts, then makes it his talk session.
+    const forged: Record<string, number> = {};
+    for (let seq = 0; seq <= 4; seq += 1) {
+      for (const seat of ["eng.em", "ops.lead"]) forged[JSON.stringify([roomLineKey("apollo", seq), seat])] = seq;
+    }
+    const created = await h.call("POST", "bob", [CHANNEL_KIND, "sessions"], {
+      userId: "bob",
+      state: { talkAnsweredPosts: forged }
+    });
+    const seeded = created.json.session.id as string;
+    expect((await h.ok("bob", CHANNEL_KIND, seeded, "join", { projectId: "apollo" })).sessionId).toBe(seeded);
+
+    await h.ok("bob", CHANNEL_KIND, seeded, "post", { body: "[answer] status?" });
+    const page = await h.until(async () => {
+      const read = await h.ok("bob", CHANNEL_KIND, seeded, "read", { after: 0 });
+      return read.lines.filter((line: { author: string | null }) => line.author !== null).length === 2 ? read : undefined;
+    }, "both seats' answers despite the forged claims");
     const answers = page.lines.filter((line: { author: string | null }) => line.author !== null);
     expect(answers.map((line: { author: string }) => line.author).sort()).toEqual(["eng.em", "ops.lead"]);
   });

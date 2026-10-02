@@ -38,6 +38,8 @@ export const ROOM_LINES_RESOURCE = "room-lines";
 export const ROOM_SEQ_RESOURCE = "room-seq";
 /** The resource-map ref of the workstream claims. */
 export const WORKSTREAM_CLAIMS_RESOURCE = "workstream-claims";
+/** The resource-map ref of the seat answers a room holds. Not re-exported from the package root. */
+export const ROOM_ANSWERS_RESOURCE = "room-answers";
 
 /**
  * The route id Shift Manager gives the workstreams no project lists. A project
@@ -277,6 +279,31 @@ const WORKSTREAM_CLAIMS_COLLECTION = defineResourceCollection({
   flowIsolation: SHARED_ACROSS_FLOWS,
   prefetchMode: "lazy",
   stateSchema: workstreamClaimSchema
+});
+
+/**
+ * One seat's answer to one post in a room, claimed before the line is written,
+ * at `room-answers/<projectId>/<postId>/<author>`. Written with `create` by the
+ * talk `answer` entry alone, so of two deliveries of one post to one seat
+ * exactly one lands a line. Server-written: nothing a caller seeds into a
+ * session reaches it. No browser read.
+ */
+export const roomAnswerSchema = z.object({ projectId: z.string().min(1), postId: z.string().min(1), author: z.string().min(1) });
+
+/** @see roomAnswerSchema */
+export type RoomAnswer = z.infer<typeof roomAnswerSchema>;
+
+/** The seat-answer claims. Not re-exported from the package root: only the talk entries read it. */
+export function defineRoomAnswersCollection() {
+  return ROOM_ANSWERS_COLLECTION;
+}
+
+const ROOM_ANSWERS_COLLECTION = defineResourceCollection({
+  pattern: "room-answers/**",
+  scope: "org",
+  flowIsolation: SHARED_ACROSS_FLOWS,
+  prefetchMode: "lazy",
+  stateSchema: roomAnswerSchema
 });
 
 /** Digits a sequence number is padded to, so keys sort by `seq`. */
