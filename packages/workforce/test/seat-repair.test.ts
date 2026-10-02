@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createFlowState, FlowIdentityConflictError, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import {
   createSeatHireBlocks,
   HIRED_ROSTER_PRIVATE_RESOURCE,
@@ -49,8 +49,12 @@ function liveRegistry() {
   const held = new Map<string, FlowInstance>();
   return {
     held,
+    // Refuses a taken address the way the engine's registry does.
     register: (seat: FlowInstance) => {
-      if (held.has(seat.id)) throw new Error(`"${seat.id}" is already registered`);
+      const existing = held.get(seat.id);
+      if (existing !== undefined) {
+        throw new FlowIdentityConflictError({ reason: "duplicate-id", kind: seat.kind, id: seat.id, existingKind: existing.kind });
+      }
       held.set(seat.id, seat);
     },
     unregister: (id: string) => held.delete(id),
@@ -171,6 +175,31 @@ async function cutKindStore(h: Awaited<ReturnType<typeof harness>>) {
   for (const [seatId, kind] of [["support.joe", "desk-clerk"], ["support.lin", "desk"], ["support.ada", "desk"]] as const) {
     await h.seedInventory(`acme.${seatId}`, kind);
   }
+}
+
+/**
+ * Re-hire `support.joe` in a process that dies right after the roster write
+ * (registration throws), and return the store as that process left it:
+ * captured after the write and before the write-back a dead process never runs.
+ */
+async function diedAfterRehireWrite(input: Record<string, unknown>) {
+  let dead: Record<string, Record<string, unknown>> | undefined;
+  const first = await harness({
+    register: () => {
+      throw new Error("process died");
+    },
+  });
+  await cutKindStore(first);
+  const realSet = first.stores.resourceState.set.bind(first.stores.resourceState);
+  let writes = 0;
+  vi.spyOn(first.stores.resourceState, "set").mockImplementation(async (...args) => {
+    const result = await realSet(...args);
+    if (String(args[2]) === `${ROSTER}support.joe` && ++writes === 1) dead = await first.snapshot();
+    return result;
+  });
+  expect((await first.run("rehire", input)).error?.message).toMatch(/process died/);
+  vi.restoreAllMocks();
+  return dead!;
 }
 
 describe("brokenSeats", () => {
@@ -367,6 +396,38 @@ describe("a user-owned seat whose kind was cut", () => {
     expect(await h.rows(SEATS)).toEqual({});
   });
 
+  it("the same retry when an org-wide seat shares the seat id: the caller's leftover goes, and the org seat is untouched", async () => {
+    let crash = true;
+    const h = await harness(
+      {
+        unregister: (id: string) => {
+          if (crash) throw new Error("process died between the deletes");
+          return h.live.held.delete(id);
+        },
+      },
+      { userOwned: true },
+    );
+    await h.seed(OWNED, ownedRow("desk-clerk"));
+    await h.run("rehire", { seatId: "research", flow: "desk", settings: { queue: "q" } });
+    crash = false;
+    const org = await h.run("hire", { seatId: "research", flow: "desk", settings: { queue: "org" } });
+    expect(org.error).toBeUndefined();
+    crash = true;
+
+    const first = await h.run("fire", { seatId: "research" });
+    expect(first.error?.message).toMatch(/process died/);
+    expect(Object.keys(await h.rows(ROSTER))).toEqual(["research"]);
+
+    crash = false;
+    h.live.held.delete("acme.~u1.research"); // the restart: the user-owned seat is not served
+    const second = await h.run("fire", { seatId: "research" });
+    expect(second.error).toBeUndefined();
+    expect(second.output).toEqual({ seatId: "research", address: "acme.~u1.research", released: false, alreadyGone: true });
+    expect(Object.keys(await h.rows(ROSTER))).toEqual(["research"]);
+    expect(Object.keys(await h.rows(SEATS))).toEqual(["acme.research"]);
+    expect(h.live.held.has("acme.research")).toBe(true);
+  });
+
   it("fire retires it: its row goes, and the next start names nothing", async () => {
     const h = await harness({}, { userOwned: true });
     await h.seed(OWNED, ownedRow("desk-clerk"));
@@ -459,38 +520,92 @@ describe("rehire", () => {
     expect(started.problems.join("\n")).not.toContain("support.joe");
   });
 
-  it("BR-17 · the process dies after the write: the same re-hire run after the restart finishes the inventory row, writing no roster row", async () => {
-    let dead: Record<string, Record<string, unknown>> | undefined;
-    const first = await harness({
-      register: () => {
-        throw new Error("process died");
-      },
-    });
-    await cutKindStore(first);
-    // The row write landed; capture the store as the dying process left it,
-    // before this process's own write-back (which a dead one never runs).
-    const realSet = first.stores.resourceState.set.bind(first.stores.resourceState);
-    let writes = 0;
-    vi.spyOn(first.stores.resourceState, "set").mockImplementation(async (...args) => {
-      const result = await realSet(...args);
-      if (String(args[2]) === `${ROSTER}support.joe` && ++writes === 1) dead = await first.snapshot();
-      return result;
-    });
+  it("BR-17 · the process dies after the write: the same re-hire run after the restart finishes the inventory row and clears the pending repair", async () => {
     const input = { seatId: "support.joe", flow: "desk", settings: { queue: "q" } };
-    expect((await first.run("rehire", input)).error?.message).toMatch(/process died/);
-    vi.restoreAllMocks();
+    const dead = await diedAfterRehireWrite(input);
+    expect(dead[`${ROSTER}support.joe`]).toMatchObject({ flow: "desk", pendingRepair: expect.any(String) });
 
     const h = await harness();
-    const started = await h.restartFrom(dead!);
+    const started = await h.restartFrom(dead);
     expect(started.seats.map((seat) => [seat.id, seat.kind])).toContainEqual(["acme.support.joe", "desk"]);
     expect((await h.rows(SEATS))["acme.support.joe"]).toMatchObject({ kind: "desk-clerk" });
-    const rosterBefore = await h.versions(ROSTER);
 
     const again = await h.run("rehire", input);
     expect(again.error).toBeUndefined();
     expect(again.output).toEqual({ seatId: "support.joe", address: "acme.support.joe" });
     expect((await h.rows(SEATS))["acme.support.joe"]).toMatchObject({ kind: "desk", hired: true });
-    expect(await h.versions(ROSTER)).toEqual(rosterBefore);
+    expect((await h.rows(ROSTER))["support.joe"]).toMatchObject({ flow: "desk", settings: { queue: "q" }, pendingRepair: null });
+    // Finished: the same call now meets a working seat with nothing pending.
+    expect((await h.run("rehire", input)).error?.message).toMatch(/still starts/);
+  });
+
+  it("an unfinished repair finishes with no `kindAt`: the seat the restart registered counts as registered", async () => {
+    const input = { seatId: "support.joe", flow: "desk", settings: { queue: "q" } };
+    const dead = await diedAfterRehireWrite(input);
+    const h = await harness({ kindAt: undefined });
+    await h.restartFrom(dead);
+    const again = await h.run("rehire", input);
+    expect(again.error).toBeUndefined();
+    expect(h.live.held.get("acme.support.joe")?.kind).toBe("desk");
+    expect((await h.rows(SEATS))["acme.support.joe"]).toMatchObject({ kind: "desk", hired: true });
+    expect((await h.rows(ROSTER))["support.joe"]).toMatchObject({ pendingRepair: null });
+  });
+
+  it("fire lands after an unfinished repair's retry loaded its row: the retry neither registers nor publishes it", async () => {
+    const input = { seatId: "support.joe", flow: "desk", settings: { queue: "q" } };
+    const dead = await diedAfterRehireWrite(input);
+    const h = await harness();
+    await h.restartFrom(dead);
+
+    // The retry loads the roster when it starts; run `fire` to completion
+    // right after, so the retry works from a row the store no longer holds.
+    const realLoad = h.stores.resourceState.getByPrefix.bind(h.stores.resourceState);
+    let fired: Promise<{ error?: unknown }> | undefined;
+    vi.spyOn(h.stores.resourceState, "getByPrefix").mockImplementation(async (...args) => {
+      const loaded = await realLoad(...args);
+      if (fired === undefined && String(args[2]).startsWith(ROSTER)) {
+        fired = Promise.resolve({});
+        fired = h.run("fire", { seatId: "support.joe" }) as Promise<{ error?: unknown }>;
+        expect((await fired).error).toBeUndefined();
+      }
+      return loaded;
+    });
+    const again = await h.run("rehire", input);
+    vi.restoreAllMocks();
+    expect(fired).toBeDefined();
+    expect(h.live.held.has("acme.support.joe")).toBe(false);
+    expect(again.error?.message).toMatch(/fired/);
+    expect(await h.rows(ROSTER)).not.toHaveProperty("support.joe");
+    expect(await h.rows(SEATS)).not.toHaveProperty("acme.support.joe");
+  });
+
+  it("fire lands during the retry's first check of its row: what the retry registered is taken back", async () => {
+    const input = { seatId: "support.joe", flow: "desk", settings: { queue: "q" } };
+    const dead = await diedAfterRehireWrite(input);
+    const h = await harness();
+    await h.restartFrom(dead);
+
+    // Run `fire` to completion during the retry's first store read of the row,
+    // which then answers with the row as it was: the retry registers, and its
+    // next check finds the row gone.
+    const realGet = h.stores.resourceState.get.bind(h.stores.resourceState);
+    let fired: Promise<unknown> | undefined;
+    vi.spyOn(h.stores.resourceState, "get").mockImplementation(async (...args) => {
+      const result = await realGet(...args);
+      if (fired === undefined && String(args[2]) === `${ROSTER}support.joe`) {
+        fired = Promise.resolve(); // the fire's own reads pass through
+        fired = h.run("fire", { seatId: "support.joe" });
+        expect(((await fired) as { error?: unknown }).error).toBeUndefined();
+      }
+      return result;
+    });
+    const again = await h.run("rehire", input);
+    vi.restoreAllMocks();
+    expect(fired).toBeDefined();
+    expect(again.error?.message).toMatch(/fired/);
+    expect(h.live.held.has("acme.support.joe")).toBe(false);
+    expect(await h.rows(ROSTER)).not.toHaveProperty("support.joe");
+    expect(await h.rows(SEATS)).not.toHaveProperty("acme.support.joe");
   });
 
   it("the inventory write fails after the seat is re-hired: the error says so, and the same re-hire run again finishes it", async () => {
@@ -508,6 +623,52 @@ describe("rehire", () => {
     expect((await h.rows(SEATS))["acme.support.joe"]).toMatchObject({ kind: "desk", hired: true });
     // A different re-hire of the now-working seat is still refused (BR-18).
     expect((await h.run("rehire", { ...input, settings: { queue: "other" } })).error?.message).toMatch(/still starts/);
+  });
+
+  it("fire lands just before an unfinished repair's retry writes the inventory row: the retry takes it back, leaving no seat and no inventory row", async () => {
+    const input = { seatId: "support.joe", flow: "desk", settings: { queue: "q" } };
+    const dead = await diedAfterRehireWrite(input);
+    const h = await harness();
+    await h.restartFrom(dead);
+
+    // Run `fire` to completion when the retry is about to write the seat's
+    // inventory row, then let that write land.
+    const realSet = h.stores.resourceState.set.bind(h.stores.resourceState);
+    let fired: Promise<{ error?: unknown }> | undefined;
+    vi.spyOn(h.stores.resourceState, "set").mockImplementation(async (...args) => {
+      if (fired === undefined && String(args[2]) === `${SEATS}acme.support.joe`) {
+        fired = Promise.resolve({});
+        fired = h.run("fire", { seatId: "support.joe" }) as Promise<{ error?: unknown }>;
+        expect((await fired).error).toBeUndefined();
+      }
+      return realSet(...args);
+    });
+    const again = await h.run("rehire", input);
+    vi.restoreAllMocks();
+    expect(fired).toBeDefined();
+    expect(again.error?.message).toMatch(/fired/);
+    expect(h.live.held.has("acme.support.joe")).toBe(false);
+    expect(await h.rows(ROSTER)).not.toHaveProperty("support.joe");
+    expect(await h.rows(SEATS)).not.toHaveProperty("acme.support.joe");
+  });
+
+  it("BR-18 · a working seat re-hired with its own kind and settings is refused, on a row from before repairs were marked", async () => {
+    const h = await harness();
+    // No `pendingRepair` key at all: a row written before the field (BP-030).
+    await h.seed("support.ada", {
+      seatId: "support.ada",
+      flow: "desk",
+      settings: { queue: "billing" },
+      instructions: null,
+      owningOrgId: "acme",
+      ownerUserId: null,
+    });
+    const before = await h.versions(ROSTER);
+    const result = await h.run("rehire", { seatId: "support.ada", flow: "desk", settings: { queue: "billing" } });
+    expect(result.error?.message).toMatch(/still starts/);
+    expect(await h.versions(ROSTER)).toEqual(before);
+    expect(h.live.held.has("acme.support.ada")).toBe(false);
+    expect(await h.rows(SEATS)).toEqual({});
   });
 
   it("BR-18 · a seat that would start, and an unreadable row, are refused", async () => {

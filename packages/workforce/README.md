@@ -1632,9 +1632,11 @@ that would start, an `unreadable` row, a kind this app doesn't carry or `allowKi
 and settings the kind refuses, all before writing anything. The row is replaced in one
 version-checked write, so of two repairs of one seat arriving together one is refused. A failed
 registration writes the old row back. If the process dies after the row is written, or the
-inventory write fails after the seat is serving, the same call run again finishes the
-registration and the inventory row without writing the roster row again; a different re-hire of
-that now-working seat is refused.
+inventory write fails after the seat is serving, the same call run again finishes it. The row
+write marks the row `pendingRepair` until the seat is registered and published, and only a marked
+row is finished; a seat the registry already holds under that kind counts as registered. Any
+other re-hire of a working seat is refused. Each step re-reads the row first: if `fire` removed it
+meanwhile, the re-hire stops and takes back what it registered or published.
 
 None of the four asks for approval. Mount `brokenSeats` and `rehire` behind one.
 
@@ -2040,7 +2042,7 @@ before fire removed inventory rows is left out that way.
 | `CHANNEL_POST_COMPONENT` / `emitChannelPostLine(ctx, line)` / `readChannelPostLines(ctx, schema)` | The component name a post's line is kept under; keep a line as that item, resolving once it is stored and rejecting if the write fails; read the posted lines in the history window back, parsed by the kind's own line schema. For a channel kind of your own. |
 | `defineHiredRosterCollection()` | The hired roster's browser collection: one org-scoped row per org-visible seat, at `workforce/roster/<seatId>`. One segment, so a user-owned row is not listed. Takes no options. Write org-visible rows with `create()` — its already-exists throw is what refuses a duplicate hire, and `upsert()` loses that refusal silently. |
 | `defineHiredRosterPrivateCollection()` | The server-side writer for a user-owned row, at `workforce/roster/~<escaped user>/<seatId>`. No browser read. It is an owner-private collection (`ownerPrivate: { param: "owner" }`): a row is served only to the member it belongs to, and any other collection whose pattern can reach those rows is refused at startup. Declare `workforce/roster/*` for the org roster. |
-| `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions, owningOrgId, ownerUserId }`. `owningOrgId` and `ownerUserId` are nullable and default to `null`. The envelope is closed; `settings` is a passthrough bag belonging to the kind's own schema. |
+| `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions, owningOrgId, ownerUserId, pendingRepair }`. `owningOrgId`, `ownerUserId` and `pendingRepair` (set only while a `rehire` is unfinished; not published to browsers) are nullable and default to `null`. The envelope is closed; `settings` is a passthrough bag belonging to the kind's own schema. |
 | `HIRED_ROSTER_PREFIX` | The roster's storage prefix, `"workforce/roster/"`. Moving it strands every roster already written. |
 | `HIRED_ROSTER_BROWSER_PATTERN` / `HIRED_ROSTER_PRIVATE_PATTERN` | The two roster collections' patterns, `"workforce/roster/*"` and `"workforce/roster/[owner]/[seat]"`. Like the prefix, they spell stored keys. |
 | `seatAddress(orgId, seatId, ownerUserId?)` / `splitSeatAddress(orgId, address)` | Join an organization and a seat id into the address a hired seat answers on, and take the seat id back out. Org-visible is `<org>.<seatId>`. User-owned is `<org>.~<user>.<seatId>`, with the user escaped. The pin is the hire row, not the address. Throws when the organization is not one legal address segment, or when the seat id starts with `~`. |
