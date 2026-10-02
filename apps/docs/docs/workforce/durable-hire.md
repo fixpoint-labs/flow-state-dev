@@ -239,7 +239,9 @@ The row is gone straight away. When `released` is `true`, the address also stops
 
 Firing removes the seat, not its history. Sessions, state and resources it wrote are left alone. If you want those gone, delete them yourself.
 
-Because firing removes the seat's inventory row, a team list built from the inventory stops showing it. A seat fired by an earlier version left its inventory row behind. A reader that joins the inventory with the roster hides it, because no roster row backs it: `listedSeatRows` from `@flow-state-dev/workforce/browser` is that join, and Shift Manager's team list uses it. Calling `fire` again for that seat removes the leftover row and answers with `released: false` and `alreadyGone: true`.
+Because firing removes the seat's inventory row, a team list built from the inventory stops showing it. A seat fired by an earlier version left its inventory row behind. A reader that joins the inventory with the roster hides it, because no roster row backs it: `listedSeatRows` from `@flow-state-dev/workforce/browser` is that join, and Shift Manager's team list uses it.
+
+If the process dies between the two deletes, the inventory row is left too. Calling `fire` again for that seat removes it and answers with `released: false` and `alreadyGone: true`. It only does that for a row marked `hired: true`. A declared seat can sit at the same address, so a row that doesn't say it was hired is never removed this way.
 
 ## Calling a hired seat
 
@@ -338,7 +340,7 @@ Cut a kind from your app and every seat hired into it stops coming back. The sta
   },
 ```
 
-`brokenSeats` lists the stored seats in the caller's organization that wouldn't start. It runs the same check the start runs, so the two lists always agree, and it writes nothing:
+`brokenSeats` lists the stored seats in the caller's organization that wouldn't start. It runs the same check the start runs, so the two lists always agree, and it writes nothing. The check mints each seat, healthy ones included, so treat it as an admin read you make when you need it, not something to poll:
 
 ```bash
 curl -X POST localhost:3000/api/flows/workforce-admin/actions/brokenSeats \
@@ -379,6 +381,8 @@ The old kind's settings are not carried over, since they were written for a diff
 Neither handler asks anyone. They are what you run once a person has said yes, so in a flow a model drives, put them behind an approval: raise a `human_approval` suspension with `ctx.suspend`, and fire or re-hire only when it resumes with Approve. Both are safe to run again if the process dies part-way, so a restart between the ask and the answer leaves the seat as it was until someone answers.
 
 Nothing here picks a kind for you or loads a missing one. If you want the old kind's seats back as they were, ship the kind again.
+
+**User-owned seats.** The start names a [user-owned seat](#hiring-a-seat-only-one-member-can-reach) whose kind is gone like any other. For the handlers to reach it, declare `defineHiredRosterPrivateCollection()` on the same flow under `HIRED_ROSTER_PRIVATE_RESOURCE`. Then `brokenSeats` lists the caller's own user-owned seats beside the organization's, and `fire` and `rehire` look for the caller's own seat first, then the organization's. That collection only ever serves a row to the member it belongs to, so each member lists and repairs their own. Without it, the handlers reach organization-wide seats only.
 
 ## Writing the handlers yourself
 

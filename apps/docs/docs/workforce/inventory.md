@@ -35,7 +35,7 @@ The two layers join on one thing: the `id`.
 
 **Who may post to a channel:** the channel itself, checking its own session state. The `post` and `fileTask` blocks read `members` from the channel's session, not from the inventory. To find out whether a seat's post will be accepted, ask the channel. The inventory's `members` is a copy for finding things, not the check.
 
-For the seats hired at runtime and not yet fired, read the [hired roster](./durable-hire.md#the-roster). Firing a seat removes both its roster row and its inventory row. A row an earlier version left behind after a fire has no roster row; a reader that wants only current seats joins the two, and `listedSeatRows` from `@flow-state-dev/workforce/browser` does that join.
+For the seats hired at runtime and not yet fired, read the [hired roster](./durable-hire.md#the-roster). Firing a seat removes both its roster row and its inventory row. A row an earlier version left behind after a fire has no roster row; a reader that wants only current seats joins the two, and `listedSeatRows` from `@flow-state-dev/workforce/browser` does that join. Fire removes a leftover row only when the row says `hired: true`, so it never touches a declared seat's row at the same address.
 
 ## Wiring the boot
 
@@ -174,12 +174,14 @@ const seatChannels = handler({
 **Seat:**
 
 ```ts
-{ id: "engineering.lead", kind: "agent", door: "run" }
+{ id: "engineering.lead", kind: "agent", door: "run", hired: false }
 ```
+
+`hired` says where the seat came from: `true` for a seat hired at runtime, whose id is its address, and `false` for one declared in a worker file. Read it rather than the id's shape, because a declared team can share the organization's name. A row written before the field existed has `hired: null` until the next boot rewrites it.
 
 `door` names an action on the seat's flow: the one that takes a person's message for this seat. It is the kind's one public action that declares `userMessage` and takes `{ message }`. The built-in worker's is named `run`, which is unrelated to the `run` callback above. A kind with no such action gets `door: null`, and an app should say that seat takes no message rather than guess. A kind with two gets `null` too, and the hire warns, naming both: `hireWorkforce` logs it as a `[workforce]` console warning, and a seat hired at runtime returns it in the hire's `warnings`.
 
-`openInventory` reads the door from each seat's `actions`, so pass it the seats `hireWorkforce` returned. A seat you build by hand needs `actions` too; pass `{}` for one that takes no message.
+`openInventory` reads the door from each seat's `actions`, and `hired` from its settings, so pass it the seats `hireWorkforce` returned. A seat you build by hand needs `actions` too; pass `{}` for one that takes no message.
 
 **Channel:**
 

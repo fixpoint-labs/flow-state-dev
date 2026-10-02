@@ -48,7 +48,12 @@ import { ClientHttpError, type ResourceManifest, type SessionSummary } from "@fl
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
-import { listedSeatRows, splitSeatAddress } from "@flow-state-dev/workforce/browser";
+import {
+  HIRED_ROSTER_BROWSER_PATTERN,
+  isHiredSeatRow,
+  listedSeatRows,
+  splitSeatAddress
+} from "@flow-state-dev/workforce/browser";
 import type { LabClients } from "./connection";
 
 /** Why a read did not load. */
@@ -72,6 +77,12 @@ export type Seat = {
    * written before doors were published.
    */
   door: string | null;
+  /**
+   * Whether the row says the seat was hired at runtime (`true`) or declared
+   * (`false`); `null` on a row written before rows said, which is then read
+   * by its id's shape.
+   */
+  hired: boolean | null;
   /**
    * The id boards and channels name the seat by: for a hired seat the
    * `<seatId>` inside its `<org>.<seatId>` address, otherwise `id` itself.
@@ -236,7 +247,7 @@ export type LabSnapshot =
 const INVENTORY_PATTERNS = { seats: "inventory/seats/*", channels: "inventory/channels/*" } as const;
 
 /** The organization's hired roster, by its published key pattern. */
-const ROSTER_PATTERN = "workforce/roster/*";
+const ROSTER_PATTERN = HIRED_ROSTER_BROWSER_PATTERN;
 
 /** Rows per collection page: the collection route's maximum. */
 const PAGE_SIZE = 200;
@@ -292,17 +303,20 @@ export const STAFF_TEAM = "Staff";
  *   is everything before the first one;
  * - an id with no dot is an org seat, and sits in {@link STAFF_TEAM}.
  *
- * A team whose id equals the organization's would read as hired; nothing in a
- * Lab today names one so.
+ * Which of the first two a row is comes from the row's own `hired` field, so
+ * a declared team that shares the organization's name stays a team. A row
+ * written before the field existed is read by its id's shape.
  */
 export function toSeat(row: unknown, orgId: string): Seat | undefined {
   const id = text(field(row, "id"));
   if (id === null) return undefined;
-  const address = splitSeatAddress(orgId, id) ?? id;
+  const flag = field(row, "hired");
+  const hired = typeof flag === "boolean" ? flag : null;
+  const address = (isHiredSeatRow(orgId, { id, hired }) ? splitSeatAddress(orgId, id) : undefined) ?? id;
   const dot = address.indexOf(".");
   const team = dot > 0 ? address.slice(0, dot) : STAFF_TEAM;
   const name = dot > 0 ? address.slice(dot + 1) : address;
-  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), seatId: address, team, name };
+  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), hired, seatId: address, team, name };
 }
 
 /** A channel inventory row. A row written before `members` existed reads as none (BP-030). */
@@ -490,7 +504,7 @@ export function createLabReader(clients: LabClients): LabReader {
         // A hired seat is listed only while the roster backs it: Workforce's
         // team-list rule, applied once here so every screen draws the same list.
         // The roster is read only when a hired seat's row is there to check.
-        const anyHired = registered.some((seat) => seat.id !== seat.seatId);
+        const anyHired = registered.some((seat) => isHiredSeatRow(orgId, seat));
         const roster = anyHired ? await readRoster(byKind) : ({ ok: true, value: [] } as const);
         const seats = listedSeatRows(orgId, registered, roster.ok ? roster.value : undefined);
         const hiddenForNoRoster = registered.length - seats.length;

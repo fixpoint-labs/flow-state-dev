@@ -27,7 +27,7 @@ import { readDeclaredFlow } from "../declared-flow";
 import { AGENT_KIND } from "../agent-worker-flow";
 import { hireWorkforce, missingKindRefusal, resolvableKinds, type HireOptions } from "../hire";
 import type { HiredSeatRow } from "./collections";
-import { hiredSeatManifestFromStored, parseHiredSeatRow, type RowProblem } from "./rows";
+import { hiredSeatManifestFromStored, parseHiredSeatRow } from "./rows";
 
 /** Why a stored row does not become a seat. Pinned names; see the file header. */
 type BrokenSeatReason = "kind-gone" | "refused" | "unreadable";
@@ -61,17 +61,14 @@ export function checkHiredSeatRow(
   stored: unknown,
   kinds: HireOptions["kinds"]
 ): HiredSeatRowCheck {
+  // The row is parsed for its fields, and the record is read through the same
+  // walk the reload uses (which parses again) so the two can't disagree on
+  // which rows count. One small row, read on demand; not worth a second walk.
   const parsed = parseHiredSeatRow(stored);
-  const record = hiredSeatManifestFromStored(orgId, stored);
-  if ("problem" in record || "problem" in parsed) {
-    return {
-      ok: false,
-      reason: "unreadable",
-      detail: "problem" in record ? record.problem : (parsed as RowProblem).problem,
-      ...("row" in parsed ? { row: parsed.row } : {}),
-    };
-  }
+  if ("problem" in parsed) return { ok: false, reason: "unreadable", detail: parsed.problem };
   const row = parsed.row;
+  const record = hiredSeatManifestFromStored(orgId, stored);
+  if ("problem" in record) return { ok: false, reason: "unreadable", detail: record.problem, row };
 
   // The kind, resolved by the rule the hire itself uses, before any mint.
   const declared = readDeclaredFlow(record.manifest.declared, AGENT_KIND);

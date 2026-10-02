@@ -24,6 +24,7 @@
 
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
+import { HIRED_ROSTER_BROWSER_PATTERN } from "../seat-hire-keys";
 
 /**
  * One hired seat, as it is stored.
@@ -92,12 +93,9 @@ export type HiredSeatRow = z.infer<typeof hiredSeatRowSchema>;
 /** The collection's storage prefix, without its wildcard. Pinned; see the file header. */
 export const HIRED_ROSTER_PREFIX = "workforce/roster/";
 
-/**
- * The pattern of the org roster, the collection a browser may read. One
- * segment, so a nested `workforce/roster/~user/seat` key never matches it.
- * Pinned; see the file header.
- */
-export const HIRED_ROSTER_BROWSER_PATTERN = "workforce/roster/*";
+// The org roster's browser pattern lives in the leaf `../seat-hire-keys` so
+// the `./browser` entry can export it without this module's core import.
+export { HIRED_ROSTER_BROWSER_PATTERN };
 
 /**
  * The pattern of a user-owned roster row. Two segments, no browser read.
