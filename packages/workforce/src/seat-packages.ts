@@ -73,7 +73,9 @@ export function resolveHeldPackages(
     const owner =
       candidate.level === "worker" && candidate.worker !== worker
         ? ["worker", candidate.worker]
-        : candidate.level === "team" && candidate.team !== team
+        : // An org seat has no team, so every team-level package is refused;
+          // a team seat's must name its team, and an ownerless one names none.
+          candidate.level === "team" && (team === undefined || candidate.team !== team)
           ? ["team", candidate.team]
           : undefined;
     if (owner === undefined) continue;

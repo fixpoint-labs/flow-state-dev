@@ -301,6 +301,22 @@ describe("resolveHeldPackages reads an org seat's id through the parser", () => 
     expect(problems.join("\n")).toContain(deploy.path);
   });
 
+  it("refuses a team library with no owning team on its record, even when it names that package", () => {
+    // A hand-built or widened record can drop the optional `team`. An org
+    // seat has no team, so no team-level package is ever its own.
+    const ownerless = pkg("deploy", "team", "teams/eng/packages/deploy");
+    const { held, problems } = resolveHeldPackages("cos", ["deploy"], [house, ownerless], {});
+    expect(held).toEqual([]);
+    expect(problems.join("\n")).toContain(ownerless.path);
+  });
+
+  it("refuses a team library with no owning team on its record for a team seat too", () => {
+    const ownerless = pkg("deploy", "team", "teams/eng/packages/deploy");
+    const { held, problems } = resolveHeldPackages("eng.lead", ["deploy"], [house, ownerless], {});
+    expect(held).toEqual([]);
+    expect(problems.join("\n")).toContain("no team at all");
+  });
+
   it("looks only in the org library for a name it cannot find", () => {
     const { problems } = resolveHeldPackages("cos", ["missing"], [house], {});
     expect(problems).toEqual([expect.stringContaining('Looked in "org/packages/missing".')]);

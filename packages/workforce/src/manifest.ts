@@ -19,7 +19,10 @@ import type { InstanceOwnerPin } from "@flow-state-dev/core/types";
  */
 export interface WorkerManifest {
   /**
-   * Team-qualified identity, "<teamId>.<name>" — e.g. "engineering.lead". The whole
+   * The worker's identity, in one of two declared shapes:
+   * - a team seat (`teams/<teamId>/workers/<name>/`) is "<teamId>.<name>", e.g. "engineering.lead";
+   * - an org seat (`org/workers/<name>/`) has no team and is the bare "<name>", e.g. "chief-of-staff".
+   * Read it with `parseDeclaredSeatId` rather than splitting on the dot. The whole
    * identity and the flow address.
    * Dot-joined, not slash-joined: a "/" here is unroutable (decision 2).
    * Minted once, by the loader, in one helper — and the record's only identity field.
