@@ -510,12 +510,16 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     [EM_KIND]: emKind as never,
     [CODER_KIND]: coderKind as never,
   };
-  let registrar: { state: FlowState; registry: { get(id: string): { kind: string } | undefined } } | undefined;
+  let registrar: { state: FlowState; registry: { get(id: string): FlowInstance | undefined } } | undefined;
   const seatHire = createSeatHireCapability({
     kinds,
     register: (seat, pin) => registrar!.state.register(seat, { pin }),
     unregister: (id) => registrar!.state.unregister(id),
     kindAt: (id) => registrar?.registry.get(id)?.kind,
+    // The registry's own instance, so a re-hire stopped after its row write
+    // counts the seat a restart registered from that row as its own and
+    // finishes, and fire releases only the seat its row minted.
+    instanceAt: (id) => registrar?.registry.get(id),
     allowKinds: [CODER_KIND, AGENT_KIND],
     channelBoards: channelBoardIds(roster.channels),
     askBefore: ["fire"],
@@ -592,11 +596,21 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // serving, read back from the roster and admitted one by one. A store that
   // starts fresh has none. A row that no longer starts (its kind was cut) is
   // skipped and named; `brokenSeats` lists it for the chief of staff.
+  // A seat the registry refuses (its address is now a file-declared seat's,
+  // say) is that seat's problem, not the Lab's: it is named and skipped, and
+  // the rows after it still load.
   const reload = await reloadHiredSeats({ stores: runtime.stores, orgIds: [LAB_ORG_ID], kinds });
+  const reloaded: FlowInstance[] = [];
+  const reloadProblems = [...reload.problems];
   for (const seat of reload.seats) {
-    state.register(seat, { pin: (seat as { ownerPin?: { orgId: string } }).ownerPin ?? { orgId: LAB_ORG_ID } });
+    try {
+      state.register(seat, { pin: (seat as { ownerPin?: { orgId: string } }).ownerPin ?? { orgId: LAB_ORG_ID } });
+      reloaded.push(seat);
+    } catch (error) {
+      reloadProblems.push(`"${seat.id}" could not be registered: ${messageOf(error)}`);
+    }
   }
-  for (const problem of reload.problems) console.error(`[devforce-lab] skipped a hired seat — ${problem}`);
+  for (const problem of reloadProblems) console.error(`[devforce-lab] skipped a hired seat — ${problem}`);
 
   // `createFlowState` builds its own `RuntimeConfig` and takes no logger
   // option, and a hand-off's child request is started from that resolved object
@@ -710,7 +724,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // serving again now, and this is what lists it. Each row carries the
     // incarnation of the roster row it was minted from.
     const opened = await openInventory(
-      { seats: [...hired, ...reload.seats], channels: roster.channels },
+      { seats: [...hired, ...reloaded], channels: roster.channels },
       { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
     );
     if (opened.problems.length > 0) {
