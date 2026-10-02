@@ -249,6 +249,8 @@ describe("hire, fire and rehire interleaved at every store call", () => {
   it("a hire, with a fire and then a replacement hire landing at any two of its store calls", async () => {
     const { runs, windows } = await everyInterleaving("hire | fire, replacement hire", async () => ({}), hireAda("first", "hire"), [fireAda, hireAda("second", "replacement")], "support.ada");
     expect(runs).toBeGreaterThan(10);
+    // The named window is never reached here: every end state is fully consistent.
+    expect(windows).toEqual([]);
   }, 120_000);
 
   it("a fire, with a replacement hire landing at any of its store calls", async () => {
@@ -263,6 +265,8 @@ describe("hire, fire and rehire interleaved at every store call", () => {
       "support.ada"
     );
     expect(runs).toBeGreaterThan(3);
+    // The named window is never reached here: every end state is fully consistent.
+    expect(windows).toEqual([]);
   }, 120_000);
 
   it("a re-hire of a seat whose kind was cut, with a fire and then a replacement hire landing at any two of its store calls", async () => {
@@ -281,6 +285,8 @@ describe("hire, fire and rehire interleaved at every store call", () => {
       "support.joe"
     );
     expect(runs).toBeGreaterThan(10);
+    // The named window is never reached here: every end state is fully consistent.
+    expect(windows).toEqual([]);
   }, 120_000);
 
   it("a fire's retry with no roster row left (only its leftover inventory row), with a replacement hire landing at any of its store calls", async () => {
@@ -306,7 +312,7 @@ describe("hire, fire and rehire interleaved at every store call", () => {
   it("the same, with the inventory read when fire first asks for it rather than at action start", async () => {
     // The read is then a store call after fire saw no roster row, so a
     // replacement hire can finish in between and its row be the one read.
-    const { runs } = await everyInterleaving(
+    const { runs, windows } = await everyInterleaving(
       "fire retry (lazy inventory) | replacement hire",
       async (w) => {
         await w.seed(`${SEATS}acme.support.ada`, { id: "acme.support.ada", kind: "desk", door: "run", hired: true, incarnation: "i-fired" });
@@ -318,6 +324,7 @@ describe("hire, fire and rehire interleaved at every store call", () => {
       { lazyInventory: true }
     );
     expect(runs).toBeGreaterThan(2);
+    expect(windows.every((story) => story.includes("stops [0]"))).toBe(true);
   }, 120_000);
 
   it("fire of a row from before incarnations, with a declared seat's row at the same address: the declared row is never touched", async () => {
@@ -336,6 +343,8 @@ describe("hire, fire and rehire interleaved at every store call", () => {
       "support.ada"
     );
     expect(runs).toBeGreaterThan(3);
+    // The named window is never reached here: every end state is fully consistent.
+    expect(windows).toEqual([]);
     // And on its own: fire removes the roster row and leaves the declared row.
     const w = await world();
     await w.seed(`${ROSTER}support.ada`, toHiredSeatRow({ seatId: "support.ada", flow: "desk", settings: { queue: "q" }, owningOrgId: "acme" }) as never);
