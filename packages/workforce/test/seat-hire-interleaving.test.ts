@@ -25,6 +25,7 @@ import { createSeatHireBlocks, HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } 
 import type { SeatHireCapabilityOptions } from "../src/seat-hire-blocks";
 import { defineHiredRosterCollection } from "../src/roster/collections";
 import { defineSeatInventoryCollection } from "../src/inventory/collections";
+import { INVENTORY_REGISTER_SEATS, inventoryWriterActions } from "../src/channel/channel-flow";
 import { incarnationOf } from "../src/roster/incarnation";
 import { listedSeatRows } from "../src/inventory/listed-seats";
 import { toHiredSeatRow } from "../src/roster/rows";
@@ -47,7 +48,16 @@ const desk = defineFlow({
   actions: { run: { inputSchema: z.object({}), block: noop } },
 });
 
-type Op = { action: "hire" | "fire" | "rehire"; input: Record<string, unknown>; label: string };
+type Rows = (prefix: string) => Promise<Record<string, Record<string, unknown>>>;
+/**
+ * `input` may be read from the world just before the operation runs (a boot
+ * carries the roster as it read it), and never during an interleaving.
+ */
+type Op = {
+  action: "hire" | "fire" | "rehire" | "boot";
+  input: Record<string, unknown> | ((rows: Rows) => Promise<Record<string, unknown>>);
+  label: string;
+};
 type Outcome = { label: string; error?: string };
 
 /**
@@ -78,7 +88,17 @@ async function world(options: { lazyInventory?: boolean } = {}) {
         ? { ...defineSeatInventoryCollection(), prefetchMode: "lazy" }
         : defineSeatInventoryCollection(),
     },
-    actions: { hire: { block: blocks.hire }, fire: { block: blocks.fire }, rehire: { block: blocks.rehire } },
+    actions: {
+      hire: { block: blocks.hire },
+      fire: { block: blocks.fire },
+      rehire: { block: blocks.rehire },
+    },
+  } as never)();
+  // The inventory write `openInventory` runs at boot, with the seats the boot
+  // read, on the channel kind that carries it.
+  const booter = defineFlow({
+    kind: "booter",
+    actions: { boot: inventoryWriterActions("booter")[INVENTORY_REGISTER_SEATS] },
   } as never)();
   const state = createFlowState({ flows: { ops: ops as never }, stores: { default: { primary: inMemoryStores() } } });
   const runtime = await state.getRuntime();
@@ -113,9 +133,9 @@ async function world(options: { lazyInventory?: boolean } = {}) {
   const run = async (op: Op): Promise<Outcome> => {
     n += 1;
     const result = (await runAction({
-      flow: ops,
+      flow: op.action === "boot" ? booter : ops,
       actionName: op.action,
-      input: op.input,
+      input: typeof op.input === "function" ? await op.input(rows) : op.input,
       userId: "u1",
       orgId: "acme",
       sessionId: `s-${n}`,
@@ -133,22 +153,24 @@ async function world(options: { lazyInventory?: boolean } = {}) {
   const interleave = async (primary: Op, competitors: Op[], stops: number[]) => {
     const outcomes: Outcome[] = [];
     due = competitors.map((op, i) => ({ at: stops[i]!, run: async () => void outcomes.push(await run(op)) }));
+    const resolved: Op = typeof primary.input === "function" ? { ...primary, input: await primary.input(rows) } : primary;
     calls = 0;
     primaryRunning = true;
-    const own = await run(primary).finally(() => {
+    const own = await run(resolved).finally(() => {
       primaryRunning = false;
     });
     for (const rest of due.splice(0)) await rest.run();
     return { outcomes: [own, ...outcomes], calls };
   };
 
-  const rows = async (prefix: string) =>
-    Object.fromEntries(
+  async function rows(prefix: string): Promise<Record<string, Record<string, unknown>>> {
+    return Object.fromEntries(
       Object.entries(await stores.resourceState.getByPrefix("org", "acme", prefix)).map(([key, value]) => [
         key.slice(prefix.length),
         (value as { state: Record<string, unknown> }).state,
       ]),
     );
+  }
   const seed = (key: string, value: Record<string, unknown>) =>
     stores.resourceState.set("org", "acme", key, value as never, "any" as never);
 
@@ -352,5 +374,31 @@ describe("hire, fire and rehire interleaved at every store call", () => {
     expect((await w.run(fireAda)).error).toBeUndefined();
     expect(await w.rows(ROSTER)).toEqual({});
     expect((await w.rows(SEATS))["acme.support.ada"]).toEqual(declared);
+  }, 120_000);
+
+  it("a boot carrying the roster it read before a fire and a replacement hire, with those landing at any two of its store calls", async () => {
+    // Another process booted and read the roster while the first hire was
+    // current; the fire and the replacement hire land around its inventory
+    // write. The replacement's row must survive the boot's stale one.
+    const { runs, windows } = await everyInterleaving(
+      "boot (stale roster) | fire, replacement hire",
+      async (w) => {
+        expect((await w.run(hireAda("first", "setup"))).error).toBeUndefined();
+        return {};
+      },
+      {
+        action: "boot",
+        input: async (rows) => ({
+          seats: [{ id: "acme.support.ada", kind: "desk", door: "run", hired: true, incarnation: (await rows(ROSTER))["support.ada"]!.incarnation }],
+        }),
+        label: "boot",
+      },
+      [fireAda, hireAda("second", "replacement")],
+      "support.ada"
+    );
+    expect(runs).toBeGreaterThan(2);
+    // The named window is never reached here: a row the fire removed after
+    // the boot read it is not written back.
+    expect(windows).toEqual([]);
   }, 120_000);
 });

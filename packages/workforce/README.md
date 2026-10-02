@@ -1814,7 +1814,11 @@ the channel's session state, not the inventory; the row is a copy for finding th
 
 **Running it twice.** Every write is an upsert keyed by the record's id. Nothing duplicates, and a
 channel registered on an earlier boot keeps its original `openedAt`. A row stays where it is when a
-later roster no longer names the seat or channel.
+later roster no longer names the seat or channel. A hired seat's row is the exception to the upsert:
+the roster a boot read can be older than the store, so the boot creates the row only where there was
+none when it read the inventory, and otherwise replaces it only while the stored row is a hired one
+carrying the same incarnation. Another hire's row, a declared seat's row, and a row a fire removed
+after the boot read it are left as they are.
 
 **What lands in `problems`.** `openInventory` returns `{ seats, channels, problems }`. A channel
 whose session is not open, or whose kind declares no registration action, is named in `problems` and
