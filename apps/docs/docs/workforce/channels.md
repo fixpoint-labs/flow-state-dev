@@ -15,13 +15,9 @@ A channel can also be [routed](#routing-a-channel). Each post from a person then
 
 ## What a channel is
 
-A **flow kind** is a definition you register. A **session** is one conversation running on a registered flow, with its own durable state. A channel's **members** are the names it lists, usually [hired workers](./workers-on-disk.md).
+![Where each part of a channel lives. The channel kind is one registered instance, and every channel is a session on it. The support.desk session holds its members and charter in session state, and its transcript as channel-post items, with channel-route items recording where a routed post went. A woken seat answers from a session of its own. A post is checked against the members in the session's state, never the inventory's copy. The board's rows live in the organization's task ledger, under the channel's id plus the board's name, and the board names are read from CHANNEL.md at every start. The inventory row is organization data too: a copy of the members, for finding which channels a seat is in. Only the seat's answer line reaches the channel.](./channel-parts.svg)
 
-A channel is a session, not a new type beside flows and collections. The framework ships the kind, which is called `channel`, and every channel you open is another named session on that one registered instance. What differs per channel (who the members are, what the charter says, what has been said) lives in that session. A member is a name. The seat it names, when your app has hired one, is a flow of its own, outside the channel.
-
-![A channel is a session on the shared channel instance; each member seat is a separate flow](./channels-parts.svg)
-
-Session state is also why the conversation stays in one place. A post is a request into the channel's session, so the work and the record land on the channel rather than on whoever posted.
+Each channel is a session on a channel kind, the built-in `channel` unless its file names another. Look at what sits inside the session (members, charter and transcript) and what sits outside it (a member's seat, the board's rows, the inventory row). A post's `author` is checked against the members in the session. The inventory's list is only for finding which channels a seat is in.
 
 :::tip When a channel, and when something else
 
