@@ -624,6 +624,61 @@ describe("a channel that becomes a project talk template", () => {
   });
 });
 
+describe("retiring a template's old channel row", () => {
+  it("keeps the channel row until every membership row is gone, so a failed run is finished by the next", async () => {
+    const base = inMemoryStores() as any;
+    // One membership delete fails, once.
+    let failNext = true;
+    let wrapped: any;
+    const adapter = {
+      capabilities: base.capabilities,
+      resolve: async () => {
+        if (wrapped !== undefined) return wrapped;
+        const registry = await base.resolve();
+        const resourceState = new Proxy(registry.resourceState, {
+          get(target, key) {
+            const value = Reflect.get(target, key);
+            if (key !== "delete") return typeof value === "function" ? value.bind(target) : value;
+            return async (...args: any[]) => {
+              if (failNext && String(args[2]).endsWith("members/eng.coder/eng.room")) {
+                failNext = false;
+                throw new Error("the membership delete failed");
+              }
+              return value.apply(target, args);
+            };
+          }
+        });
+        wrapped = new Proxy(registry, {
+          get: (target, key) => (key === "resourceState" ? resourceState : Reflect.get(target, key))
+        });
+        return wrapped;
+      }
+    };
+    const before = [record("eng.room")];
+    const first = await host(before, { inventory: true, adapter });
+    try {
+      expect((await bind(first, { channels: before })).problems).toEqual([]);
+    } finally {
+      await first.dispose();
+    }
+
+    const after = [record("eng.room", { mintFor: "projects" })];
+    const second = await host([record("eng.other")], { inventory: true, adapter, open: [] });
+    try {
+      const failed = await bind(second, { channels: after, seats: [] });
+      expect(failed.problems).toEqual([expect.stringMatching(/could not be retired .*membership delete failed/)]);
+      // The channel row, which names the members, outlives the failure.
+      expect(await second.keys()).toContain("inventory/channels/eng.room");
+
+      // The next run finishes it: no channel row, no membership row.
+      expect((await bind(second, { channels: after, seats: [] })).problems).toEqual([]);
+      expect((await second.keys()).filter((key) => key.endsWith("/eng.room"))).toEqual([]);
+    } finally {
+      await second.dispose();
+    }
+  });
+});
+
 describe("an app that never turns the inventory on", () => {
   it("declares nothing and writes nothing, and its channels behave as they did (BR-13)", async () => {
     const roster = [record("eng.standup")];
