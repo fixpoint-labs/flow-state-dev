@@ -125,9 +125,8 @@ interface PublishedShape {
  * gets fixed fails until it is removed, and a new gap fails on arrival.
  *
  * Empty, and that is the honest answer rather than a clean bill of health.
- * Every path the published surface declares is read by something today. The
- * one ref that names nothing is one level up, in
- * {@link KNOWN_UNRESOLVABLE_REFS}. The list stays
+ * Every path the published surface declares is read by something today, and
+ * {@link KNOWN_UNRESOLVABLE_REFS} one level up is empty too. The list stays
  * because the next gap needs somewhere to be recorded the moment it arrives,
  * and because an empty one is what makes the equality assertion say "none".
  */
@@ -167,15 +166,7 @@ const WORKER_REFS_RESOLVE: ReadonlyArray<{ file: string; quote: string }> = [
  * unresolvable ref fails on arrival, and one that starts resolving fails until
  * its row is struck.
  */
-const KNOWN_UNRESOLVABLE_REFS: ReadonlyArray<{ worker: string; owner: string }> = [
-  {
-    worker: "build",
-    owner:
-      "FIX-1719, by decision (BP-030) — an org/workers/<name>/ folder with no WORKER.md " +
-      "is documents only, as trees written before org seats have it, so it loads clean " +
-      "and its documents' ref names no seat",
-  },
-];
+const KNOWN_UNRESOLVABLE_REFS: ReadonlyArray<{ worker: string; owner: string }> = [];
 
 /**
  * Where the published surface lives. Every `.md` under these directories is
@@ -472,7 +463,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     publishedIn: {
       file: "apps/docs/docs/workforce/workers-on-disk.md",
       quote:
-        "A folder under `org/workers/<name>/` with a `WORKER.md` is a seat slot like a team's, and a `WORKER.md` there that fails to load is reported.",
+        "`org/workers/<name>/` is a seat slot like a team's, so a folder there with no `WORKER.md` is reported.",
     },
     write: (root) => writeFile(root, "org/workers/cos/WORKER.md", doc("The chief of staff.")),
     accountedFor: (out) => out.workers.includes("cos") || out.reported.includes("org/workers/cos"),
@@ -632,8 +623,11 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       file: "apps/docs/docs/workforce/documents-on-disk.md",
       quote: ORG_WORKER_DOC_REF_ROW,
     },
-    write: (root) =>
-      writeFile(root, "org/workers/build/resources/playbook.md", doc("A playbook.")),
+    // Beside its WORKER.md, as in the docs tree: the folder is the `build` seat.
+    write: async (root) => {
+      await writeFile(root, "org/workers/build/WORKER.md", doc("The build seat."));
+      await writeFile(root, "org/workers/build/resources/playbook.md", doc("A playbook."));
+    },
     accountedFor: (out) =>
       out.documents.includes("workers/build/playbook") ||
       out.reported.includes("org/workers/build/resources/playbook.md"),
@@ -1166,6 +1160,11 @@ describe("the published workforce-tree surface", () => {
     await writeFile(root, "teams/alpha/workers/ghost/resources/note.md", doc("A note."));
 
     const out = await readEverything(root);
+
+    // The published example names a seat that exists: the docs tree gives
+    // `org/workers/build/` its WORKER.md, so its runbook's ref resolves to a
+    // loaded seat, not merely to a reported folder.
+    expect(out.workers).toContain("build");
 
     // The class policy, applied to an address instead of a path: a ref that
     // names a worker must name one that loaded, or one whose absence was
