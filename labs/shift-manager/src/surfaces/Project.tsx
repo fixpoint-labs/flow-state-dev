@@ -366,7 +366,8 @@ export function RoomView({
       setEarlier({ reading: false, failure: describeFailure(error).message });
     }
   };
-  const retry = () => void readNew().catch(() => undefined);
+  /** Read now; once the loop runs, through it, so the read also arms a fresh burst. */
+  const retry = () => (refresh.current === undefined ? void readNew().catch(() => undefined) : refresh.current.wake());
 
   // Read on open, on focus, on coming back to the tab and after a post, each
   // followed by a bounded burst of reads that then rests (DECISIONS Q3): other
@@ -445,10 +446,14 @@ export function RoomView({
         placeholder="Post a line to the project's room…"
         send={post}
         onKept={async () => {
-          // Thrown when the read fails: the composer keeps the draft and says so.
-          await readNew();
-          // The post woke the room's seats; the loop reads their answers as they land.
-          refresh.current?.wake();
+          try {
+            // Thrown when the read fails: the composer keeps the draft and says so.
+            await readNew();
+          } finally {
+            // The post woke the room's seats, whether or not the read-back worked;
+            // the loop reads their answers as they land.
+            refresh.current?.wake();
+          }
         }}
       />
     </div>

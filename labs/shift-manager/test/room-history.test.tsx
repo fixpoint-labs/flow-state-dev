@@ -131,6 +131,74 @@ describe("the room view (BR-23)", () => {
     }
   });
 
+  describe("a failed read re-arms the loop, so the room catches up once the Lab answers again", () => {
+    /** A room lines can be added to, whose reads fail while `down`. */
+    function liveRoom() {
+      const state = { end: 1, down: false, reads: 0 };
+      const page = async (after: number): Promise<RoomPage> => {
+        state.reads += 1;
+        if (state.down) throw new Error("the Lab is restarting");
+        const through = Math.min(state.end, after + ROOM_PAGE);
+        if (through <= after) return { lines: [], nextCursor: after, charter: "", seats: [] };
+        const lines = Array.from({ length: through - after }, (_, i): RoomLine => {
+          const seq = after + 1 + i;
+          return { projectId: "desk", seq, userId: "u", author: null, body: `line ${seq}` };
+        });
+        return { lines, nextCursor: through, charter: "", seats: [] };
+      };
+      return { state, page };
+    }
+    const tick = (ms: number) =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+
+    it("Retry after a failed read arms a burst, not one read", async () => {
+      vi.useFakeTimers();
+      try {
+        const room = liveRoom();
+        render(<RoomView sessionId="talk-1" page={room.page} post={async () => undefined} />);
+        await tick(10);
+        room.state.down = true;
+        // Focus reads, fails, and the burst rests on its failures.
+        await act(async () => window.dispatchEvent(new Event("focus")));
+        await tick(60 * 60_000);
+        expect(screen.getByTestId("room-failure")).toBeTruthy();
+
+        room.state.down = false;
+        await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+        await tick(10);
+        // A seat answers a few seconds later: the re-armed burst picks it up.
+        room.state.end = 2;
+        await tick(30_000);
+        expect(screen.getByText("line 2")).toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("a post whose read-back fails still wakes the loop for the seats' answers", async () => {
+      vi.useFakeTimers();
+      try {
+        const room = liveRoom();
+        render(<RoomView sessionId="talk-1" page={room.page} post={async () => undefined} />);
+        await tick(60 * 60_000); // opened, and resting
+        room.state.down = true;
+        fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "hello" } });
+        await act(async () => fireEvent.click(screen.getByTestId("composer-send")));
+        await tick(10);
+        expect(screen.getByText(/reading it back failed/)).toBeTruthy();
+
+        room.state.down = false;
+        room.state.end = 3;
+        await tick(30_000);
+        expect(screen.getByText("line 3")).toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   it("a room that fits on one page shows everything and no Load earlier", async () => {
     const room = stubRoom(3);
     render(<RoomView sessionId="talk-1" page={room.page} post={async () => undefined} />);
