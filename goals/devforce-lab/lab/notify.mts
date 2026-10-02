@@ -63,6 +63,8 @@ const decisionSchema = z.object({
   room: z.boolean(),
   /** The line being delivered, for a room's answer to name. */
   postId: z.string(),
+  /** A room delivery's answer token, handed back with the seat's answer. */
+  answerToken: z.string().optional(),
 });
 
 type Decision = z.infer<typeof decisionSchema>;
@@ -127,6 +129,7 @@ export function labNotify(options: LabNotifyOptions) {
         body: input.body,
         room: input.routed === true,
         postId: input.postId,
+        ...(input.answerToken === undefined ? {} : { answerToken: input.answerToken }),
       };
       // A declared member this lab has no address for.
       if (!Object.hasOwn(addresses, input.member)) {
@@ -187,6 +190,7 @@ export function labNotify(options: LabNotifyOptions) {
         postId: decision.postId,
         body: decision.body,
         member: decision.member,
+        token: decision.answerToken,
       }),
       session: { key: () => member },
     } as never);
