@@ -5,7 +5,7 @@
  * older pages only when asked ("Load earlier").
  */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RoomView } from "../src/surfaces/Project";
 import { findRoomEnd, readRoomEarlier, readRoomTail, ROOM_PAGE, type RoomLine, type RoomPage } from "../src/lib/talk";
 
@@ -94,6 +94,41 @@ describe("the room view (BR-23)", () => {
     expect(screen.getByText("line 4601")).toBeTruthy();
     expect(screen.queryByText("line 4600")).toBeNull();
     expect(room.reads.length - onOpen).toBe(1);
+  });
+
+  it("a quiet open room stops reading after a bounded burst, and focus re-arms it (DECISIONS Q3)", async () => {
+    vi.useFakeTimers();
+    try {
+      const room = stubRoom(3);
+      render(<RoomView sessionId="talk-1" page={room.page} post={async () => undefined} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10);
+      });
+      expect(screen.getByText("line 3")).toBeTruthy();
+      // An hour of a quiet room left open: a timer that never stops would read ~240 times.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60 * 60_000);
+      });
+      const afterHour = room.reads.length;
+      expect(afterHour).toBeLessThanOrEqual(12);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60 * 60_000);
+      });
+      expect(room.reads.length).toBe(afterHour);
+
+      // Focus reads at once and arms another bounded burst.
+      await act(async () => {
+        window.dispatchEvent(new Event("focus"));
+        await vi.advanceTimersByTimeAsync(10);
+      });
+      expect(room.reads.length).toBeGreaterThan(afterHour);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60 * 60_000);
+      });
+      expect(room.reads.length - afterHour).toBeLessThanOrEqual(10);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a room that fits on one page shows everything and no Load earlier", async () => {

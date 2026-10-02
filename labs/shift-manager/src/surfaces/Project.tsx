@@ -368,9 +368,10 @@ export function RoomView({
   };
   const retry = () => void readNew().catch(() => undefined);
 
-  // Read on open, then keep reading while the view is open: other members'
-  // lines and the seats' answers arrive through this one loop. Focus and
-  // coming back to the tab read at once. Unmounting stops it.
+  // Read on open, on focus, on coming back to the tab and after a post, each
+  // followed by a bounded burst of reads that then rests (DECISIONS Q3): other
+  // members' lines and the seats' answers arrive through this one loop.
+  // Unmounting stops it.
   useEffect(() => {
     retry();
     const loop = startRoomRefresh(readNew);
@@ -433,7 +434,7 @@ export function RoomView({
             ) : null}
             {failureView === null ? null : <li>{failureView}</li>}
             <li className="text-xs text-muted-foreground" data-testid="room-note">
-              New lines show here as they arrive while the room is open.
+              New lines are read when you open this room, come back to it, or post.
             </li>
           </ol>
         )}
