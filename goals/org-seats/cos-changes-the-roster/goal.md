@@ -15,7 +15,7 @@ three times through Shift Manager's own start script, over one SQLite file it ow
 asks for is **held out**: `coder-<random hex>`, picked at run time, so no file in the repository
 can name it. The channel and its members are read off the tree, never spelled in the check.
 
-**Signal:** six legs, read through the routes Shift Manager reads. The seat inventory comes through
+**Signal:** seven legs, read through the routes Shift Manager reads. The seat inventory comes through
 the channel's session, the stored roster through the chief of staff's, and whether a seat answers
 comes from opening a session on its address.
 
@@ -27,9 +27,10 @@ comes from opening a session on its address.
 4. **restart**: after a restart the hired seat is still listed, still rostered, and still answers.
 5. **ask**: asked to fire it, the turn suspends on one `human_approval` naming the verb, the seat
    and its kind. Nothing has changed yet.
-6. **seat gone**: the approval goes through the engine's resume route, as Inbox sends it. After a
-   second restart the seat has no inventory row and no roster row, and its address no longer
-   answers.
+6. **answer**: the approval goes through the engine's resume route, as Inbox sends it. The route
+   takes it and the turn completes.
+7. **seat gone**: after a second restart the seat has no inventory row and no roster row, and its
+   address no longer answers.
 
 **Anti-game:** no hire or fire block is called by the check. Every change goes through the chief
 of staff's own turn on a real model, and every restart is a new process over the same file. The
@@ -39,7 +40,7 @@ grade is read off the stores through the HTTP routes, never off the model's word
 
 | Control | Perturbs | Goes red on |
 |---|---|---|
-| `deny-fire` | the person's answer: Deny instead of Approve | **seat gone**: the seat is still listed, rostered and answering |
+| `deny-fire` | the person's answer: Deny instead of Approve | **seat gone** only: the seat is still listed, rostered and answering. **answer** stays green, since the route takes a Deny and the turn completes |
 
 The tree with no chief of staff (today's `main`) goes red at **boot**: `Unknown flow
 "chief-of-staff"`.
@@ -58,3 +59,5 @@ with a precondition message and grades nothing.
 | 2026-10-02 | a65594ee1+wip (FIX-1719 PR 2) | openai/gpt-5.4-mini | PASS | All six legs green. `deny-fire` FAILS at seat gone (listed, rostered, answering). With `org/` removed from the tree it FAILS at boot (`Unknown flow "chief-of-staff"`). The fire only suspended once core's lazily loaded models carried `generateStep`/`streamStep`; before that, the ask came back to the model as a failed tool call and the turn completed with no approval raised. |
 | 2026-10-02 | 3307072fd (FIX-1719 PR 2, Codex round 2 + #2649 round 5) | openai/gpt-5.4-mini | PASS | All six legs green; the ask now carries `owner: null` and the row's incarnation. `deny-fire` FAILS at seat gone (listed, rostered, answering). One earlier `deny-fire` run stopped at discover instead, the model answering without naming the members; the rerun reached seat gone. |
 | 2026-10-02 | 145c1eac7 (FIX-1719 PR 2, Codex round 4 + #2649 93da431f5 + #2645 c1ee781d0) | openai/gpt-5.4-mini | PASS | All six legs green; discover now names `chief-of-staff` among eng.feature's members. `deny-fire` FAILS at seat gone (listed, rostered, answering). One earlier run stopped at discover, the model answering without calling `discover`; the rerun passed. |
+| 2026-10-02 | 29c794d58+round 5 (FIX-1719 PR 2, Codex review 5394601632) | openai/gpt-5.4-mini | PASS | All six legs green with the stricter checks: the hired row is kind `coder` in the roster and the inventory, before and after the restart, and the fire raised exactly one `human_approval` naming verb, seat, kind and message. `deny-fire` FAILS at seat gone (listed, rostered, answering). |
+| 2026-10-02 | a27de5337+round 6 (FIX-1719 PR 2, Codex reviews 5394840713 + 5394907534) | openai/gpt-5.4-mini | PASS | All seven legs green; the resume and the turn settling are now their own **answer** leg. `deny-fire` FAILS at seat gone only (listed, rostered, answering); answer stays green. |

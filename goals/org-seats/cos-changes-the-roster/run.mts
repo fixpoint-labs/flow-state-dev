@@ -37,6 +37,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { CODER_KIND } from "../../devforce-lab/lab/workforce/flows/workers/coder.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
@@ -105,7 +106,17 @@ async function stop(served: Served): Promise<void> {
 
 // ---- the Lab's routes ------------------------------------------------------------
 
-type Item = { id: string; type: string; role?: string; requestId?: string; suspensionId?: string; data?: unknown; content?: unknown };
+type Item = {
+  id: string;
+  type: string;
+  role?: string;
+  requestId?: string;
+  suspensionId?: string;
+  reason?: string;
+  message?: string;
+  data?: unknown;
+  content?: unknown;
+};
 
 async function labApi(origin: string) {
   // The person's identity and bearer, as the page is handed them.
@@ -223,11 +234,15 @@ await runGoal(async () => {
     const inventory = await api.collection(channel.id, "inventory/seats/*");
     const roster = await api.collection(cosSession, "workforce/roster/*");
     const row = inventory.find((r) => typeof r.id === "string" && (r.id as string).endsWith(`.${seat}`));
+    const rosterRow = roster.find((r) => r.seatId === seat);
     return {
       inventory,
       listed: row !== undefined,
       address: row?.id as string | undefined,
-      rostered: roster.some((r) => r.seatId === seat),
+      rostered: rosterRow !== undefined,
+      // The kind the seat was hired onto, as each collection records it.
+      listedKind: row?.kind as string | undefined,
+      rosterKind: rosterRow?.flow as string | undefined,
     };
   };
 
@@ -269,6 +284,9 @@ await runGoal(async () => {
     if (asksAfterHire !== 0) fail("hire", `${asksAfterHire} approval(s) were raised for a hire`);
     if (!afterHire.listed) fail("hire", `no inventory row for "${seat}": ${JSON.stringify(afterHire.inventory.map((r) => r.id))}`);
     if (!afterHire.rostered) fail("hire", `no roster row for "${seat}"; the chief of staff said ${(await api.lastReply(cosSession)).slice(0, 400)}`);
+    if (afterHire.listed && afterHire.rostered && (afterHire.listedKind !== CODER_KIND || afterHire.rosterKind !== CODER_KIND)) {
+      fail("hire", `"${seat}" was hired as kind ${String(afterHire.rosterKind)} (roster) / ${String(afterHire.listedKind)} (inventory), not "${CODER_KIND}"`);
+    }
     address = afterHire.address;
     if (address !== undefined) {
       const answers = await api.openSession(address);
@@ -289,6 +307,9 @@ await runGoal(async () => {
     const cosSession = (await api.openSession(COS)).body.session.id as string;
     const afterRestart = await reads(api, cosSession);
     if (!afterRestart.listed || !afterRestart.rostered) fail("restart", `after a restart "${seat}" is listed=${afterRestart.listed}, rostered=${afterRestart.rostered}`);
+    else if (afterRestart.listedKind !== CODER_KIND || afterRestart.rosterKind !== CODER_KIND) {
+      fail("restart", `after a restart "${seat}" is kind ${String(afterRestart.rosterKind)} (roster) / ${String(afterRestart.listedKind)} (inventory), not "${CODER_KIND}"`);
+    }
     const answers = await api.openSession(address);
     if (answers.status !== 201) fail("restart", `after a restart "${address}" does not answer: ${answers.status}`);
     else evidence.push(`restart: "${seat}" still listed, rostered and answering`);
@@ -299,19 +320,34 @@ await runGoal(async () => {
     const beforeAnswer = await reads(api, cosSession);
     if (fire.status !== "suspended" || ask === undefined) {
       fail("ask", `the fire did not wait for a person: the turn ended ${fire.status} with ${asks.length} ask(s); the chief of staff said ${(await api.lastReply(cosSession)).slice(0, 400)}`);
+    } else if (asks.length !== 1) {
+      // Exactly one: a second ask on the request would be a second change waiting.
+      fail("ask", `the fire raised ${asks.length} asks, not one: ${JSON.stringify(asks.map((a) => a.data))}`);
     } else {
-      if (ask.data?.verb !== "fire" || ask.data?.seatId !== seat) fail("ask", `the ask names ${JSON.stringify(ask.data)}`);
+      const askProblems: string[] = [];
+      if (ask.reason !== "human_approval") askProblems.push(`reason ${JSON.stringify(ask.reason)}`);
+      if (ask.data?.verb !== "fire") askProblems.push(`verb ${JSON.stringify(ask.data?.verb)}`);
+      if (ask.data?.seatId !== seat) askProblems.push(`seat ${JSON.stringify(ask.data?.seatId)}`);
+      if (ask.data?.kind !== CODER_KIND) askProblems.push(`kind ${JSON.stringify(ask.data?.kind)}`);
+      if (typeof ask.message !== "string" || !ask.message.includes(seat)) askProblems.push(`message ${JSON.stringify(ask.message)}`);
+      if (askProblems.length > 0) {
+        fail("ask", `the ask is not a human_approval to fire "${seat}" (kind "${CODER_KIND}"): ${askProblems.join(", ")}`);
+        return { failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`), evidence: evidence.join("; ") };
+      }
       if (!beforeAnswer.listed || !beforeAnswer.rostered) fail("ask", `"${seat}" changed before anyone answered`);
-      else evidence.push(`ask: one human_approval ${JSON.stringify(ask.data)}, "${seat}" untouched while it waits`);
+      else evidence.push(`ask: one ${ask.reason} "${ask.message}" ${JSON.stringify(ask.data)}, "${seat}" untouched while it waits`);
 
       const action = CONTROL === "deny-fire" ? "reject" : "approve";
       const resumed = await api.call("POST", `/${encodeURIComponent(COS)}/requests/${encodeURIComponent(fire.requestId)}/resume`, {
         suspensionId: ask.suspensionId,
         action,
       });
-      if (resumed.status >= 400) fail("seat gone", `the resume route refused ${action}: ${resumed.status} ${JSON.stringify(resumed.body)}`);
+      // The answer is its own leg, so the control can only go red on what the
+      // answer did to the seat, never on a refused resume or a stuck turn.
+      if (resumed.status >= 400) fail("answer", `the resume route refused ${action}: ${resumed.status} ${JSON.stringify(resumed.body)}`);
       const settled = await api.settle(COS, fire.requestId, true);
-      if (settled !== "completed") fail("seat gone", `after ${action} the turn ended ${settled}`);
+      if (settled !== "completed") fail("answer", `after ${action} the turn ended ${settled}`);
+      if (resumed.status < 400 && settled === "completed") evidence.push(`answer: the resume route took ${action} and the turn completed`);
     }
   } finally {
     await stop(served);

@@ -359,6 +359,20 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
     expect(JSON.stringify(live?.result)).toContain("mapper broke");
     expect(resumed?.status).toBe(live?.status);
     expect(JSON.stringify(resumed?.result)).toContain("mapper broke");
+
+    // The record says what happened: the call did not complete. A completed
+    // `tool_output` here would let a later recovery replay it as a success.
+    for (const record of [live, resumed]) {
+      const ops = (record!.items ?? []).filter(
+        (i) =>
+          i.type === "tool_output" &&
+          (i as { blockName?: string }).blockName === "op" &&
+          (i as { error?: { code?: string } }).error?.code !== "SUSPENSION"
+      ) as Array<{ status?: string; error?: { code?: string; message?: string } }>;
+      expect(ops.map((o) => o.status)).toEqual(["failed"]);
+      expect(ops[0]!.error?.code).toBe("MODEL_OUTPUT_MAP_FAILED");
+      expect(ops[0]!.error?.message).toContain("mapper broke");
+    }
   });
 
   // 2a. REJECTION visibility — denial inherits the generator's itemVisibility --

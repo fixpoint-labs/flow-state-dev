@@ -412,7 +412,7 @@ function settingsSchema(
       .superRefine((seatSkills, ctx) => {
         // Both sources fill ONE catalog, so a bare name arriving from both has
         // no answer — the same rule the loader already applies across a seat's
-        // three levels, rather than a second precedence story beside it.
+        // levels, rather than a second precedence story beside it.
         for (const skill of seatSkills) {
           if (!appSkillNames.has(skill.name)) continue;
           ctx.addIssue({

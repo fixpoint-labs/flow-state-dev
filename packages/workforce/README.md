@@ -72,6 +72,8 @@ Describe each worker in a folder instead of in code. `readWorkforceDirectory` wa
 `<root>/org/workers/<workerName>/` and `<root>/teams/<teamId>/workers/<workerName>/`, reads each
 worker's `WORKER.md`, and returns one record per worker. `readWorkforce` wraps it, joining each seat's resolved skills, its
 team's instructions and the [packages](#packages-from-files) in its reach onto the records it hands back.
+An org seat has no team, so its record carries no `teamInstructions`, and its skills come from two
+levels, the org's and its own.
 
 ```ts
 import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";
@@ -91,9 +93,10 @@ Each record is plain data:
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
 lowercase letters, digits and single hyphens, at most 64 characters.
 
-An org seat, under `org/workers/<name>/`, is rare: one seat the whole organization shares rather
-than a member of a team. Its folder is a worker slot like a team's, so one with no `WORKER.md` is
-reported in `errors`. It reads the org's skills, packages and references, then its own folder's;
+An org seat, under `org/workers/<name>/`, is one seat the whole organization shares rather
+than a member of a team. A folder there with a `WORKER.md` is a worker slot like a team's, and one
+that fails to load is reported in `errors`. A folder with no `WORKER.md` is documents only: it
+declares no seat and is not reported. It reads the org's skills, packages and references, then its own folder's;
 no team level reaches it, and no `TEAM.md` instructions.
 
 A `WORKER.md` may also carry `resources:`, a list of the [file-declared
@@ -1498,8 +1501,10 @@ while it carries the incarnation fired.
 `createSeatHireCapability`'s `hire` tool writes both. `discover` lists a seat when it is still
 hired or still declared in a worker file, and has been registered in this organization. Pass
 `hiredRoster` on `createWorkforceCapability` so a runtime hire is listed the same way a
-file-declared seat is. A file-declared description wins over a same-id hire. After `fire`,
-the inventory row remains and `discover` withholds the seat.
+file-declared seat is. A file-declared description wins over a same-id hire. After `fire`, a
+hired seat's roster row and its inventory row are both gone, so `discover` does not list it. A
+fire that stopped between the two leaves the inventory row; `discover` withholds the seat, since
+no roster row backs it.
 
 ### Hire and fire as catalog tools
 
@@ -2101,7 +2106,7 @@ before fire removed inventory rows is left out that way.
 | `readWorkforceDirectory(root)` | Read every `org/workers/<name>/` and `teams/<id>/workers/<name>/` folder into one `WorkerManifest` per worker, org seats first, without their skills. Ships from the `./loader` subpath (Node only). |
 | `readPackagesDirectory(root)` | Read every `packages/<name>/PACKAGE.md` at the org, team and worker levels into one `PackageManifest` each, returning `{ packages, errors }`. Ships from the `./loader` subpath (Node only). |
 | `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Leave `team` out for an org seat: it reads `org/skills` and `org/workers/<worker>/skills`. Ships from the `./loader` subpath (Node only). |
-| `parseDeclaredSeatId(id)` | Read a declared seat's id back into its folders: `"<name>"` is an org seat, `{ name }`; `"<teamId>.<name>"` a team seat, `{ team, name }`. `undefined` for an id the loader cannot mint. The one rule every reader that needs a seat's team uses. Pass a record's `seatId ?? id`: a runtime hire's `id` is its org-qualified address, whose org would read as a team. Ships from the package root. |
+| `parseDeclaredSeatId(id)` | Read a declared seat's id back into its folders: `"<name>"` is an org seat, `{ name }`; `"<teamId>.<name>"` a team seat, `{ team, name }`. `undefined` for an id that matches neither shape. For a runtime-hired seat, pass `seatId`, not `id`: its `id` is the `<orgId>.<seatId>` address, which would parse as a team seat. Ships from the package root. |
 | `openRoot(root)` / `walkTeams(root, report)` | The walk every reader above shares: open the configured root (throwing on a symlinked or unreadable one, with or without a trailing separator, and on one spelled with a `..` that steps back through an earlier segment — pass the path it resolves to; a `.` segment and anything above the root are not checked), then enumerate `teams/`, reporting a team folder that is refused or unreadable and yielding the rest. `report` may be `async` and is awaited before the walk moves on. What a reader does *inside* a team stays its own. Ships from the `./loader` subpath (Node only). |
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |

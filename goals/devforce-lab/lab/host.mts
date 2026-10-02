@@ -683,6 +683,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     allowKinds: [CODER_KIND, AGENT_KIND],
     channelBoards: channelBoardIds(roster.channels),
     askBefore: ["fire"],
+    // Roster admin stays with the chief of staff: a hired seat can't be given it.
+    refuseRosterAdmin: true,
   });
   kinds[AGENT_KIND] = defineAgentWorkerFlow({
     // The project tools a seat names in `tools:`. The kind carries them, and

@@ -47,9 +47,9 @@ workforce/
     …
 ```
 
-Org seats are rare. Each is one seat the whole organization shares, such as a chief of staff, rather than a member of any team. The examples below leave it out.
+An org seat is one seat the whole organization shares, such as a chief of staff, rather than a member of any team.
 
-Every example below reads this tree.
+Every example below reads the first tree, the one without `org/`.
 
 ## What a WORKER.md says
 
@@ -182,7 +182,7 @@ interface WorkerManifest {
 }
 ```
 
-`skills` is the union of the skills folders that worker draws from. A team seat draws from three: the org's, its team's, and any sitting beside the worker itself. An org seat has no team, so it draws from two: the org's and its own. [Skills](./built-in-worker.md#skills) covers where each one goes and which workers read it. If you only want the worker records and not their skills, `readWorkforceDirectory` reads the same tree and leaves `skills` off.
+`skills` is the union of the skills folders that worker draws from. A team seat draws from three: the org's, its team's, and any sitting beside the worker itself. An [org seat](#the-tree) draws from two: the org's and its own. [Skills](./built-in-worker.md#skills) covers where each one goes and which workers read it. If you only want the worker records and not their skills, `readWorkforceDirectory` reads the same tree and leaves `skills` off.
 
 For the `lead` folder above:
 
@@ -215,7 +215,7 @@ An `errors[].path` never includes the root and is always slash-separated: it sta
 
 What lands in `errors`:
 
-- a worker folder with no `WORKER.md`, including one that holds only other files (custom behavior is [a flow kind](#when-a-worker-needs-more-than-settings), not a second file in the folder);
+- a team's worker folder with no `WORKER.md`, including one that holds only other files (custom behavior is [a flow kind](#when-a-worker-needs-more-than-settings), not a second file in the folder);
 - a `WORKER.md` with no frontmatter, or one whose `description` is missing, empty, or not a string;
 - a `WORKER.md` that declares `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` or `teamInstructions:`, none of which is a setting a worker declares — team instructions go in the team's own [`TEAM.md`](#what-a-teammd-says);
 - a team or worker folder name that breaks the naming rules;
@@ -257,7 +257,7 @@ A reported folder is a worker your app was supposed to have, so logging a warnin
 
 A team's `channels/`, `resources/`, `skills/` or `tools/` folder, a `workers/` folder at the top of the tree, a `README.md` sitting inside `teams/<team>/workers/`, an OS or editor file such as `.DS_Store`: none of these produces a worker, and none is reported. The rule is that the path occupies a worker slot, `teams/<team>/workers/<worker>/` or `org/workers/<worker>/`, not that the path looks like a worker.
 
-`org/workers/<name>/` is a seat slot like a team's, so a folder there with no `WORKER.md` is reported. An org seat reads the organization's skills, packages and references, then its own folder's. It has no team, so no team's folders reach it and no `TEAM.md` instructions apply.
+A folder under `org/workers/<name>/` with a `WORKER.md` is a seat slot like a team's, and a `WORKER.md` there that fails to load is reported. A folder there with no `WORKER.md` declares no seat and is not reported: it holds documents only, and they load as they always have. An org seat reads the organization's skills, packages and references, then its own folder's. It has no team, so no team's folders reach it and no `TEAM.md` instructions apply.
 
 Passed over by the *worker* walk is not the same as unread. A team's `skills/` folder is read by the separate walk described under [Skills](./built-in-worker.md#skills), its `resources/` folder by [Documents on disk](./documents-on-disk.md), its `packages/` folder by [Packages on disk](./packages-on-disk.md), and its `TEAM.md` by the team walk described [above](#what-a-teammd-says). A `TEAM.md` anywhere else — at `org/`, or at the root — is read by nothing and reported by nothing. There is no org-wide instruction layer.
 
@@ -539,7 +539,7 @@ There is a file convention for the code half too. Put a flow kind in `workforce/
 ## What this does not do
 
 - Reading the **Markdown** does not resolve tool or capability names. `tools: [board, search]` comes off the file as two strings; whether anything backs those names is checked at the hire, by the kind the worker runs on. The code walk is what registers the names a worker's list can resolve to. The built-in checks them [against its catalog](./built-in-worker.md#tools). A kind you write decides for itself.
-- It does not read the whole tree. `readWorkforceDirectory` opens worker slots only, `org/workers/<worker>/` and `teams/<team>/workers/<worker>/`; `readWorkforce` opens those plus the skills folders each worker draws from ([Skills](./built-in-worker.md#skills)) and each worker's packages ([Packages on disk](./packages-on-disk.md)). A team seat draws skills from the org's folder, its team's and its own, and packages from its own folder and the team and org libraries. An org seat has no team, so it draws only from the org's folders and its own. A team's `resources/` documents are read by a separate loader at startup, [`readResourcesDirectory`](./documents-on-disk.md). Its `blocks/` folder is not read at startup at all — that folder is scanned when you build, by [`fsdev gen`](./code-on-disk.md). A `tools/` folder is not a slot this convention reads, and `fsdev gen` says so rather than passing it over.
+- It does not read the whole tree. `readWorkforceDirectory` opens worker slots only, `org/workers/<worker>/` and `teams/<team>/workers/<worker>/`; `readWorkforce` opens those plus the skills folders each worker draws from ([Skills](./built-in-worker.md#skills)) and each worker's packages ([Packages on disk](./packages-on-disk.md)). A team's `resources/` documents are read by a separate loader at startup, [`readResourcesDirectory`](./documents-on-disk.md). Its `blocks/` folder is not read at startup at all — that folder is scanned when you build, by [`fsdev gen`](./code-on-disk.md). A `tools/` folder is not a slot this convention reads, and `fsdev gen` says so rather than passing it over.
 - It does not follow symlinks inside the tree. A team, a worker slot, a `WORKER.md`, a skill folder — any of these that is a shortcut to somewhere else is refused rather than read. The root you hand it is refused too, with or without a trailing slash. It does not cover a root named through a `.` segment, or anything above the root, so a path that passes through a shortcut on its way in still reads. If you keep the tree behind a symlink on purpose, hand over the path it points at.
 - It does not watch the tree. Read it once, at startup, and re-run `fsdev gen` when the code folders change.
 - It does not staff a [task board](../orchestration/task-board.md). A hired seat is an address you open a session against; a board's workers are in-process and claim tasks from a collection. A board calls its registry entries seats too. Same idea, different mechanism.

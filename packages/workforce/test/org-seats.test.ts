@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import { hireWorkforce } from "../src/hire";
-import { readWorkforce, readWorkforceDirectory } from "../src/loader";
+import { readResourcesDirectory, readWorkforce, readWorkforceDirectory } from "../src/loader";
 import { SEAT_PACKAGES_KEY, type PackageManifest } from "../src/manifest";
 import { resolveHeldPackages } from "../src/seat-packages";
 import {
@@ -74,8 +74,6 @@ describe("the roster reader walks org/workers/ (BR-1, BR-3, BR-6)", () => {
   it("reports a broken org slot under its path, and keeps every other seat", async () => {
     await write("org/workers/chief-of-staff/WORKER.md", workerMd("the chief of staff"));
     await write("teams/eng/workers/lead/WORKER.md", workerMd("the lead"));
-    // No WORKER.md: the slot is a seat that should exist and does not.
-    await write("org/workers/build/resources/runbook.md", "---\ndescription: x\n---\nbody");
     // A name the segment rules refuse.
     await write("org/workers/Bad_Name/WORKER.md", workerMd("bad"));
     // A file under workers/ occupies no slot, so it says nothing.
@@ -91,15 +89,43 @@ describe("the roster reader walks org/workers/ (BR-1, BR-3, BR-6)", () => {
       expect(workers.map((w) => w.id)).toEqual(["chief-of-staff", "eng.lead"]);
       expect(errors.map((e) => `${e.kind} @ ${e.path}`).sort()).toEqual([
         "worker-load-failed @ org/workers/Bad_Name",
-        "worker-load-failed @ org/workers/build",
         "worker-load-failed @ org/workers/linked",
       ]);
       const byPath = new Map(errors.map((e) => [e.path, e.error.message]));
-      expect(byPath.get("org/workers/build")).toMatch(/has no WORKER\.md/);
       expect(byPath.get("org/workers/linked")).toMatch(/Symlinked worker folder/);
     } finally {
       await fs.rm(outside, { recursive: true, force: true });
     }
+  });
+
+  it("reads an org worker folder with no WORKER.md as documents only: no seat, no error, its documents still load", async () => {
+    // Trees written before org seats keep documents at org/workers/<name>/
+    // with no WORKER.md. They loaded clean then, and must still: the folder
+    // declares no seat, and its documents load as they always did.
+    await write("org/workers/build/resources/runbook.md", "---\ndescription: x\n---\nbody");
+    await write("org/workers/build/references/style.md", "---\ndescription: s\n---\nbody");
+    await write("teams/eng/workers/lead/WORKER.md", workerMd("the lead"));
+
+    const { workers, errors } = await readWorkforceDirectory(root);
+    expect(errors).toEqual([]);
+    expect(workers.map((w) => w.id)).toEqual(["eng.lead"]);
+
+    const read = await readWorkforce(root);
+    expect(read.errors).toEqual([]);
+    expect(read.workers.map((w) => w.id)).toEqual(["eng.lead"]);
+
+    const resources = await readResourcesDirectory(root);
+    expect(resources.errors).toEqual([]);
+    expect(resources.documents.map((d) => d.ref)).toEqual(["workers/build/runbook"]);
+  });
+
+  it("still reports an org folder whose WORKER.md is there and fails to parse", async () => {
+    await write("org/workers/build/WORKER.md", "You build things.\n");
+    await write("org/workers/build/resources/runbook.md", "---\ndescription: x\n---\nbody");
+
+    const { workers, errors } = await readWorkforceDirectory(root);
+    expect(workers).toEqual([]);
+    expect(errors.map((e) => `${e.kind} @ ${e.path}`)).toEqual(["worker-load-failed @ org/workers/build"]);
   });
 
   it("refuses a WORKER.md key the framework imposes, by name, as for a team seat (BR-4)", async () => {
@@ -359,6 +385,15 @@ describe("resolveHeldPackages reads an org seat's id through the parser", () => 
     ]);
     const held = (seat!.config as Record<string, Array<{ path: string }>>)[SEAT_PACKAGES_KEY];
     expect((held ?? []).map((entry) => entry.path)).toEqual([library.path]);
+  });
+
+  it("refuses a seat id that matches neither declared shape, rather than reading its last two segments", () => {
+    // `a.b.c` is no seat the loader can mint; cut to `b.c` it would read as
+    // worker `c` on team `b` and hold team b's library.
+    const bLibrary = pkg("deploy", "team", "teams/b/packages/deploy", { team: "b" });
+    const { held, problems } = resolveHeldPackages("a.b.c", ["deploy"], [bLibrary], {});
+    expect(held).toEqual([]);
+    expect(problems).toEqual([expect.stringContaining('"a.b.c"')]);
   });
 
   it("looks only in the org library for a name it cannot find", () => {

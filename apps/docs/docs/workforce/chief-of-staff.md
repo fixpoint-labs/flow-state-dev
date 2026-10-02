@@ -22,7 +22,7 @@ The file goes under `org/workers/`, beside `teams/`. Its folder name is its id, 
 description: Who works here, and the one seat that changes it.
 flow: agent
 model: openai/gpt-5.4-mini
-tools: [hire, fire, rehire, brokenSeats]
+tools: [hire, fire, rehire, brokenSeats, post-to-channel]
 ---
 
 You are the chief of staff for this organization.
@@ -38,20 +38,23 @@ You can't fire yourself or any seat declared in the organization's files.
 Those change when someone edits their folder.
 ```
 
-Then give the `agent` kind the tools, with `askBefore: ["fire"]` so a fire waits for a person:
+Then give the `agent` kind the tools, with `askBefore: ["fire"]` so a fire waits for a person, and `refuseRosterAdmin: true` so a seat it hires can't be handed the same tools:
 
 ```ts title="src/workforce.ts"
+import { defineCapability } from "@flow-state-dev/core";
 import {
+  channelPostCapability,
   createSeatHireCapability,
   createWorkforceCapability,
   defineAgentWorkerFlow,
+  defineChannelInventoryCollection,
   HIRED_ROSTER_RESOURCE,
   SEAT_INVENTORY_RESOURCE,
   type HireOptions,
 } from "@flow-state-dev/workforce";
 
 import { deskClerkFlow } from "./flows/desk-clerk";
-import { kindAt, registerSeat, releaseSeat } from "./registry-access";
+import { instanceAt, kindAt, registerSeat, releaseSeat } from "./registry-access";
 import { roster } from "./roster";
 
 // Typed as the whole map, so the `agent` entry can be added below.
@@ -62,27 +65,34 @@ const seatHire = createSeatHireCapability({
   register: registerSeat,
   unregister: releaseSeat,
   kindAt,
+  instanceAt,
   allowKinds: ["desk-clerk", "agent"],
   askBefore: ["fire"],
+  refuseRosterAdmin: true,
 });
 
 kinds.agent = defineAgentWorkerFlow({
   uses: [
+    defineCapability({
+      name: "channel-inventory",
+      resources: { channelInventory: defineChannelInventoryCollection() },
+    }),
     createWorkforceCapability({
       roster: { workers: roster.workers, channels: roster.channels },
-      inventory: { seats: SEAT_INVENTORY_RESOURCE },
+      inventory: { seats: SEAT_INVENTORY_RESOURCE, channels: "channelInventory" },
       hiredRoster: HIRED_ROSTER_RESOURCE,
     }),
+    channelPostCapability,
     seatHire,
   ],
 });
 ```
 
-`registry-access.ts` is the module from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate), with one more export: `kindAt(address)` returns the kind of the flow registered at that address, read from `(await flowState.getRuntime()).registry` once the app is up. The hire tools use it to refuse a declared seat by name.
+`registry-access.ts` is the module from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate), with two more exports, both read from `(await flowState.getRuntime()).registry` once the app is up. `kindAt(address)` returns the kind of the flow registered at that address; the hire tools use it to refuse a declared seat by name. `instanceAt(address)` returns the flow instance registered at that address, or `undefined`. The hire tools use it to tell a seat they minted apart from another seat at the same address, so a re-hire interrupted by a restart completes, and `fire` releases only its own seat.
 
-`createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
+`createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. With the channel inventory under `inventory.channels`, `discover` also answers who is on a channel. `channelPostCapability` adds `post-to-channel`, so the chief of staff can answer in a channel it is a member of. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
 
-Installing the tools on a kind doesn't hand them to every seat of it. A seat holds `hire` or `fire` only when its own `tools:` names it, so keep those names in the chief of staff's file and no other.
+Installing the tools on a kind doesn't hand them to every seat of it. A seat holds `hire` or `fire` only when its own `tools:` names it, so keep those names in the chief of staff's file and no other. `refuseRosterAdmin: true` keeps them out of the seats the chief of staff hires, too. Leave it off and a hire may name them like any other tool.
 
 If your Lab has projects, add `chief-of-staff` to the project template's `seats` (or a team `CHANNEL.md` template's `members:`), so the chief of staff is in every project's room.
 
@@ -172,6 +182,8 @@ Asking needs durable execution, so turn it on with `durable: true` on `createFlo
 "fire" waits for a person's approval here, and this app can't ask for one: it runs without durable execution. Nothing was changed.
 ```
 
+It also needs a model FSD can run one step at a time. The ask happens inside a tool call, and FSD can only pause a request there when the model has the single-step methods: `generateStep`, and `streamStep` when it streams. Models from the built-in AI SDK adapter have them. A custom model without them, or a fallback group none of whose models has them, can't ask. [Suspending inside generators](../advanced/generator-and-router-suspend-resume.md) covers a pause inside a tool call.
+
 `askBefore` applies to the tools a model calls. The handlers [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers) returns, mounted as actions, never ask.
 
 ## What it can't do
@@ -179,4 +191,5 @@ Asking needs durable execution, so turn it on with `durable: true` on `createFlo
 - **Fire itself, or any declared seat.** `fire` answers that a seat declared in a worker file is removed by editing its folder.
 - **Hire under a declared seat's id.** A hire that reuses one is refused, naming the kind already there.
 - **Hire a kind outside `allowKinds`.** The refusal lists the kinds it may hire.
+- **Hire another seat that can hire, with `refuseRosterAdmin: true`.** A hire or re-hire whose settings name `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or pick the `seat-hire` capability under `capabilities:`, is refused, whatever the kind. Roster admin stays with the seats your app declares. This is a setting on the capability, off unless you turn it on.
 - **Open, close or rename a channel.** Channels are declared on disk.

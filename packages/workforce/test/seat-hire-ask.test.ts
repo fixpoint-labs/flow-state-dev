@@ -132,6 +132,8 @@ interface BootOptions {
   reloadProblems?: number;
   /** Drive the model through `streamStep`, as a real provider's is. */
   streaming?: boolean;
+  /** Turn on the capability's `refuseRosterAdmin` setting. */
+  refuseRosterAdmin?: boolean;
 }
 
 /**
@@ -153,6 +155,7 @@ async function boot(stores: StoreRegistry, script: Step[], options: BootOptions 
     kindAt: (id) => registry.get(id)?.kind,
     allowKinds: ["agent"],
     ...(options.askBefore === undefined ? {} : { askBefore: options.askBefore }),
+    ...(options.refuseRosterAdmin === undefined ? {} : { refuseRosterAdmin: options.refuseRosterAdmin }),
   });
   kinds.agent = defineAgentWorkerFlow({ uses: [seatHire] });
 
@@ -275,6 +278,40 @@ describe("a hire, with only fire asking first (BR-8)", () => {
     expect(lastToolResults(lab.seen)).toContain(`is the id of a seat this app declares`);
     expect(await rosterRows(stores)).toEqual([]);
     expect(await pendingAsks(stores)).toEqual([]);
+  });
+});
+
+describe("roster admin, when the app keeps it with the seats it declares", () => {
+  it("with refuseRosterAdmin, refuses a hire whose settings grant the roster tools, by a tools line or by picking the seat-hire capability", async () => {
+    // An app that keeps hiring with its chief of staff: a seat it hires can't
+    // be handed the same tools, whatever the kind.
+    const stores = freshStores();
+    const lab = await boot(
+      stores,
+      [
+        call("hire", { seatId: "deputy", flow: "agent", settings: { tools: ["hire", "fire"] } }, "h1"),
+        call("hire", { seatId: "deputy2", flow: "agent", settings: { capabilities: { "seat-hire": ["tools"] } } }, "h2"),
+        say("done"),
+      ],
+      { refuseRosterAdmin: true },
+    );
+    expect((await lab.ask("hire two deputies who can hire")).status).toBe("completed");
+    const results = lastToolResults(lab.seen);
+    expect(results.match(/keeps the roster tools with the seats it declares/g)).toHaveLength(2);
+    expect(await rosterRows(stores)).toEqual([]);
+  });
+
+  it("without it, a hired seat may be given the roster tools like any other tool", async () => {
+    // The refusal is a setting an app opts into, not a rule of the tool:
+    // left off, a hire that names `hire` goes through.
+    const stores = freshStores();
+    const lab = await boot(stores, [
+      call("hire", { seatId: "deputy", flow: "agent", settings: { tools: ["hire"] } }, "h1"),
+      say("done"),
+    ]);
+    expect((await lab.ask("hire a deputy who can hire")).status).toBe("completed");
+    expect(lastToolResults(lab.seen)).not.toMatch(/roster tools/);
+    expect(await rosterRows(stores)).toEqual(["deputy"]);
   });
 });
 

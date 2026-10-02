@@ -150,7 +150,7 @@ See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 `readSkillsDirectory` takes a root, so a skills folder can sit wherever you point it. In an app that
 describes its workers in folders (see [Workers on disk](/docs/workforce/workers-on-disk)), a
 worker on a team has its skills spread across three folders: the whole app's, its team's, and any
-sitting beside the worker itself. A worker on no team (under `org/workers/`) has two: the whole
+sitting beside the worker itself. An org seat, one under `org/workers/`, has two: the whole
 app's and its own. The same tree holds a team's shared documents, in
 [`resources/`](/docs/workforce/documents-on-disk).
 
@@ -171,7 +171,7 @@ const { skills, errors } = await readSeatSkills("./workforce", {
 });
 ```
 
-Leave `team` out for a worker on no team, and it reads `org/skills/` and
+Leave `team` out for an org seat, and it reads `org/skills/` and
 `org/workers/<worker>/skills/` instead.
 
 Every skill folder at those levels is read, so nothing has to be listed anywhere for a skill to

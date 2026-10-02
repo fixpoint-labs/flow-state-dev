@@ -42,7 +42,9 @@ import { z } from "zod";
 import {
   HIRED_ROSTER_PRIVATE_RESOURCE,
   HIRED_ROSTER_RESOURCE,
-  SEAT_INVENTORY_RESOURCE
+  SEAT_INVENTORY_RESOURCE,
+  SEAT_ADMIN_TOOLS,
+  SEAT_HIRE_CAPABILITY,
 } from "./seat-hire-keys";
 import { seatDoorOf } from "./seat-door";
 import { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
@@ -106,6 +108,14 @@ export interface SeatHireCapabilityOptions {
    * unrelated one of the same kind.
    */
   instanceAt?: (id: string) => FlowInstance | undefined;
+  /**
+   * Keep roster admin with the seats the app declares. When `true`, `hire` and
+   * `rehire` refuse settings that would give the new seat the roster tools: a
+   * `tools:` line naming `hire`, `fire`, `rehire` or `brokenSeats`, or a
+   * `capabilities:` pick of `seat-hire`. Default `false`: a hired seat may be
+   * given them like any other tool.
+   */
+  refuseRosterAdmin?: boolean;
   /**
    * Kinds this tool may mint, as a subset of {@link SeatHireCapabilityOptions.kinds}.
    * Omitted, every kind on the map (plus the built-in `agent`) is hireable.
@@ -255,6 +265,25 @@ function locateSeatRow(
 /** A row's pending-repair marker; `null` when none, or on a row from before the field (BP-030). */
 function pendingRepairOf(state: JsonObject): string | null {
   return typeof state.pendingRepair === "string" ? state.pendingRepair : null;
+}
+
+/**
+ * Refuse settings that would hand the seat roster admin, whatever its kind:
+ * a `tools:` line naming a seat-hire tool, or a `capabilities:` pick of the
+ * seat-hire capability. Applied only under the `refuseRosterAdmin` option.
+ */
+function refuseRosterAdminIn(settings: Record<string, unknown> | undefined, verb: string): void {
+  const tools = settings?.tools;
+  const named = Array.isArray(tools) ? tools.filter((name) => SEAT_ADMIN_TOOLS.includes(name as string)) : [];
+  const capabilities = settings?.capabilities;
+  const picked =
+    capabilities !== null && typeof capabilities === "object" && Object.hasOwn(capabilities, SEAT_HIRE_CAPABILITY);
+  if (named.length === 0 && !picked) return;
+  const what = named.length > 0 ? `the tools ${named.map((name) => `"${name}"`).join(", ")}` : `the "${SEAT_HIRE_CAPABILITY}" capability`;
+  throw new Error(
+    `This ${verb} asks for ${what}. This app keeps the roster tools with the seats it declares: ` +
+      `a seat this tool hires can't hire, fire or repair seats. Hire it without them.`
+  );
 }
 
 /** The row no longer carries this call's incarnation: another call replaced it. */
@@ -656,6 +685,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
     const orgId = orgOf(ctx);
     const address = seatAddress(orgId, input.seatId);
     refuseUnhireableKind(input.flow, "hire");
+    if (options.refuseRosterAdmin === true) refuseRosterAdminIn(input.settings, "hire");
 
     const held = options.kindAt?.(address);
     if (held !== undefined) {
@@ -929,6 +959,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
 
     // Everything that can refuse runs before the write.
     refuseUnhireableKind(input.flow, "re-hire onto");
+    if (options.refuseRosterAdmin === true) refuseRosterAdminIn(input.settings, "re-hire");
     const held = options.kindAt?.(address);
     if (held !== undefined) {
       throw new Error(`"${address}" is already served by a flow of kind "${held}", so it can't be re-hired.`);

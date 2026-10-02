@@ -115,7 +115,8 @@ export interface ReadWorkforceDirectoryResult {
  * walk somewhere else entirely, is a wiring mistake, not a per-worker one.
  *
  * A root with no `org/workers/` and no `teams/` is an empty result: an app may
- * declare no workers in files. Everything else that goes wrong lands in
+ * declare no workers in files. An `org/workers/<name>/` folder with no
+ * `WORKER.md` holds documents only and is passed over without an error. Everything else that goes wrong lands in
  * `errors`, so one bad folder never costs an app its other workers.
  */
 export async function readWorkforceDirectory(
@@ -182,13 +183,14 @@ async function readWorkerSlots(
     }
 
     const workerName = path.basename(step.dir);
-    let loaded: WorkerManifest;
+    let loaded: WorkerManifest | undefined;
     try {
       loaded = await readWorkerSlot(teamId, workerName, step.dir);
     } catch (err) {
       errors.push({ path: step.path, error: err as Error, kind: "worker-load-failed" });
       continue;
     }
+    if (loaded === undefined) continue;
 
     // A separate condition for a caller, so it is a separate branch: a folder
     // that could not be read is an author's typo, and a file declaring what
@@ -208,17 +210,25 @@ async function readWorkerSlots(
 /**
  * Read one worker slot into a manifest. Throws when the slot cannot produce
  * one; the caller turns that into an `errors` entry keyed by the slot's path.
+ * Returns `undefined` for an org folder with no `WORKER.md`: that folder holds
+ * documents only and declares no seat.
  */
 async function readWorkerSlot(
   teamId: string | undefined,
   workerName: string,
   workerDir: string,
-): Promise<WorkerManifest> {
+): Promise<WorkerManifest | undefined> {
+  const md = await classify(path.join(workerDir, WORKER_MD));
+
+  // Trees written before org seats keep documents at `org/workers/<name>/`
+  // with no WORKER.md, and loaded clean. Such a folder is not a seat, so it is
+  // passed over here, name rules included; its documents load as before. A
+  // team's worker folder has always had to be a seat, and still does.
+  if (teamId === undefined && md.kind === "absent") return undefined;
+
   // Identity first: a slot whose segments break the rules has no id to be
   // reported under, so there is nothing to be gained by reading its file.
   const id = mintWorkerId(teamId, workerName);
-
-  const md = await classify(path.join(workerDir, WORKER_MD));
 
   if (md.kind === "symlink") {
     throw refusedSymlink(WORKER_MD, `${workerName}/${WORKER_MD}`);

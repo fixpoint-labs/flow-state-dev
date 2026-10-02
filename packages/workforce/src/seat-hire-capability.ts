@@ -54,7 +54,8 @@ import {
 } from "./seat-hire-blocks";
 
 /** The capability name a worker file spells under `capabilities:`. */
-export const SEAT_HIRE_CAPABILITY = "seat-hire";
+export { SEAT_HIRE_CAPABILITY } from "./seat-hire-keys";
+import { SEAT_HIRE_CAPABILITY } from "./seat-hire-keys";
 
 /** Re-exported so existing imports of this module keep resolving. */
 export {
