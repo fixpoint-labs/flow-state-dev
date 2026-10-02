@@ -857,7 +857,7 @@ describe("a fired seat leaves the browser's inventory read (FIX-1621 BR-9)", () 
     expect(hired.status).toBe(200);
     // The row a hire through the tools wrote carries the agent kind's door.
     expect(hired.json.items.map((item: any) => item.clientData)).toEqual([
-      { id: address, kind: "agent", door: "run" }
+      { id: address, kind: "agent", door: "run", hired: true }
     ]);
     await act("fire", { seatId: "eng.ada" });
     // The fire happened: the address is released and the roster row is gone.

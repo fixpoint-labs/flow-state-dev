@@ -169,7 +169,7 @@ const SHARED_ACROSS_FLOWS = false;
  * schema declares today, named rather than defaulted (BP-015). A key a later
  * change adds to a row stays server-side until it is added here too.
  */
-const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door"] as const;
+const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "hired"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */
 const CHANNEL_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */

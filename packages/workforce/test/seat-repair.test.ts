@@ -7,7 +7,7 @@
  * since cut it; `desk` is still carried, and its settings now require a
  * `queue`.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
@@ -125,8 +125,39 @@ async function harness(over: Partial<SeatHireCapabilityOptions> = {}, mount: { u
     );
   const reload = (orgIds = ["acme"]) => reloadHiredSeats({ stores, orgIds, kinds });
 
-  return { live, run, seed, seedInventory, rows, versions, reload, stores };
+  /** Every org row as it stands: what a process that died now leaves on disk. */
+  const snapshot = async (orgId = "acme") =>
+    Object.fromEntries(
+      Object.entries(await stores.resourceState.getByPrefix("org", orgId, "")).map(([key, value]) => [
+        key,
+        (value as { state: Record<string, unknown> }).state,
+      ]),
+    );
+  /** Load a dead process's rows, then boot: register every seat the start serves. */
+  const restartFrom = async (rows: Record<string, Record<string, unknown>>, orgId = "acme") => {
+    for (const [key, state] of Object.entries(rows)) {
+      await stores.resourceState.set("org", orgId, key, state as never, "any" as never);
+    }
+    const started = await reload([orgId]);
+    for (const seat of started.seats) live.register(seat);
+    return started;
+  };
+  /** Make the next write of a seat inventory row reject, as a store that is briefly down would. */
+  const failNextInventoryWrite = () => {
+    const set = stores.resourceState.set.bind(stores.resourceState);
+    const spy = vi.spyOn(stores.resourceState, "set").mockImplementation(async (...args) => {
+      if (String(args[2]).startsWith(SEATS)) {
+        spy.mockRestore();
+        throw new Error("the store is unavailable");
+      }
+      return set(...args);
+    });
+  };
+
+  return { live, run, seed, seedInventory, rows, versions, reload, snapshot, restartFrom, failNextInventoryWrite, stores };
 }
+
+afterEach(() => vi.restoreAllMocks());
 
 const row = (over: Parameters<typeof toHiredSeatRow>[0]) =>
   toHiredSeatRow({ owningOrgId: "acme", ...over }) as unknown as Record<string, unknown>;
@@ -308,6 +339,34 @@ describe("a user-owned seat whose kind was cut", () => {
     expect(started.seats.map((seat) => seat.id)).toEqual(["acme.~u1.research"]);
   });
 
+  it("fire dies after its user-owned roster row is gone: the retry keeps it the caller's and removes the leftover inventory row", async () => {
+    let crash = true;
+    const h = await harness(
+      {
+        unregister: () => {
+          if (crash) throw new Error("process died between the deletes");
+          return false;
+        },
+      },
+      { userOwned: true },
+    );
+    await h.seed(OWNED, ownedRow("desk-clerk"));
+    await h.run("rehire", { seatId: "research", flow: "desk", settings: { queue: "q" } });
+    expect((await h.rows(SEATS))["acme.~u1.research"]).toMatchObject({ hired: true });
+
+    const first = await h.run("fire", { seatId: "research" });
+    expect(first.error?.message).toMatch(/process died/);
+    expect(await h.rows(ROSTER)).toEqual({});
+    expect(Object.keys(await h.rows(SEATS))).toEqual(["acme.~u1.research"]);
+
+    crash = false;
+    h.live.held.clear(); // the restart: nothing holds the address
+    const second = await h.run("fire", { seatId: "research" });
+    expect(second.error).toBeUndefined();
+    expect(second.output).toEqual({ seatId: "research", address: "acme.~u1.research", released: false, alreadyGone: true });
+    expect(await h.rows(SEATS)).toEqual({});
+  });
+
   it("fire retires it: its row goes, and the next start names nothing", async () => {
     const h = await harness({}, { userOwned: true });
     await h.seed(OWNED, ownedRow("desk-clerk"));
@@ -398,6 +457,57 @@ describe("rehire", () => {
     const started = await atDeath!;
     expect(started.seats.map((seat) => [seat.id, seat.kind])).toContainEqual(["acme.support.joe", "desk"]);
     expect(started.problems.join("\n")).not.toContain("support.joe");
+  });
+
+  it("BR-17 · the process dies after the write: the same re-hire run after the restart finishes the inventory row, writing no roster row", async () => {
+    let dead: Record<string, Record<string, unknown>> | undefined;
+    const first = await harness({
+      register: () => {
+        throw new Error("process died");
+      },
+    });
+    await cutKindStore(first);
+    // The row write landed; capture the store as the dying process left it,
+    // before this process's own write-back (which a dead one never runs).
+    const realSet = first.stores.resourceState.set.bind(first.stores.resourceState);
+    let writes = 0;
+    vi.spyOn(first.stores.resourceState, "set").mockImplementation(async (...args) => {
+      const result = await realSet(...args);
+      if (String(args[2]) === `${ROSTER}support.joe` && ++writes === 1) dead = await first.snapshot();
+      return result;
+    });
+    const input = { seatId: "support.joe", flow: "desk", settings: { queue: "q" } };
+    expect((await first.run("rehire", input)).error?.message).toMatch(/process died/);
+    vi.restoreAllMocks();
+
+    const h = await harness();
+    const started = await h.restartFrom(dead!);
+    expect(started.seats.map((seat) => [seat.id, seat.kind])).toContainEqual(["acme.support.joe", "desk"]);
+    expect((await h.rows(SEATS))["acme.support.joe"]).toMatchObject({ kind: "desk-clerk" });
+    const rosterBefore = await h.versions(ROSTER);
+
+    const again = await h.run("rehire", input);
+    expect(again.error).toBeUndefined();
+    expect(again.output).toEqual({ seatId: "support.joe", address: "acme.support.joe" });
+    expect((await h.rows(SEATS))["acme.support.joe"]).toMatchObject({ kind: "desk", hired: true });
+    expect(await h.versions(ROSTER)).toEqual(rosterBefore);
+  });
+
+  it("the inventory write fails after the seat is re-hired: the error says so, and the same re-hire run again finishes it", async () => {
+    const h = await harness();
+    await cutKindStore(h);
+    const input = { seatId: "support.joe", flow: "desk", settings: { queue: "q" } };
+    h.failNextInventoryWrite();
+    const first = await h.run("rehire", input);
+    expect(first.error?.message).toMatch(/is serving, but its inventory row could not be written.*store is unavailable.*same re-hire again/s);
+    expect(h.live.kindAt("acme.support.joe")).toBe("desk");
+    expect((await h.rows(SEATS))["acme.support.joe"]).toMatchObject({ kind: "desk-clerk" });
+
+    const again = await h.run("rehire", input);
+    expect(again.error).toBeUndefined();
+    expect((await h.rows(SEATS))["acme.support.joe"]).toMatchObject({ kind: "desk", hired: true });
+    // A different re-hire of the now-working seat is still refused (BR-18).
+    expect((await h.run("rehire", { ...input, settings: { queue: "other" } })).error?.message).toMatch(/still starts/);
   });
 
   it("BR-18 · a seat that would start, and an unreadable row, are refused", async () => {
