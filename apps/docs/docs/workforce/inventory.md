@@ -21,19 +21,11 @@ The inventory keeps that record as data: three org-scoped resource collections t
 
 ## When to use which source
 
-**Where the seat exists:** the tree (the `WORKER.md` folder).
+![The inventory records what was registered; the channel's own session checks a post's author; the hired roster lists who is hired now](./inventory-rows.svg)
 
-**Where the channel is declared:** the tree (the `CHANNEL.md` folder).
+The tree says where a seat or channel is declared. The inventory says which channels registered in this organization, which seats a channel was registered with (the channel row's `members`), and which channels a seat is in (the membership rows). The two layers join on the seat's `id`. A seat hired at runtime through the ready-made hire is the exception: its seat row's `id` is its address, such as `acme.support.ada`, while a channel's `members` name it `support.ada`.
 
-**Which channels have registered in this org:** the inventory.
-
-**Which seats a channel was registered with:** the inventory's channel row, which holds `members`.
-
-**Which channels a seat is in:** the inventory's membership index.
-
-The two layers join on one thing: the `id`.
-
-**Who may post to a channel:** the channel itself, checking its own session state. The `post` and `fileTask` blocks read `members` from the channel's session, not from the inventory. To find out whether a seat's post will be accepted, ask the channel. The inventory's `members` is a copy for finding things, not the check.
+To find out whether a post that names a member will be accepted, ask the channel. The `post` and `fileTask` blocks read `members` from the channel's session, not from the inventory, whose `members` is a copy for finding things.
 
 For the seats hired at runtime and not yet fired, read the [hired roster](./durable-hire.md#the-roster). Firing a seat removes both its roster row and its inventory row. A row an earlier version left behind after a fire has no roster row; a reader that wants only current seats joins the two, and `listedSeatRows` from `@flow-state-dev/workforce/browser` does that join. Fire removes a leftover row only when the row says `hired: true`, so it never touches a declared seat's row at the same address.
 

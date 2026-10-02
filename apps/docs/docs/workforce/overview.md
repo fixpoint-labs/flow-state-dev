@@ -21,11 +21,11 @@ Reach for [Orchestration](../orchestration/overview) when you want to coordinate
 
 A Workforce app is a roster, the channels that roster talks in, and the boards its work sits on. A board is a list of tasks, each one something somebody takes and finishes. You describe the roster in files, hire it, and open sessions against the seats you get back.
 
+![A worker file describes a worker, a seat runs it, and the store keeps what it does](./workforce-overview.svg)
+
 - **The roster outlives the process.** A team you hire while the app is running is still there after a restart or a redeploy, because the hire is written to the store your app uses. See [Hiring while the app runs](./durable-hire).
 - **A channel is what a reader opens.** A channel is a named session on a kind the framework ships, and its transcript is the part of that conversation a person or another agent should read. A routed channel sends each post to the one member whose job fits it. See [Channels](./channels).
 - **The screens are importable.** One navigator browses the whole workforce, and the roster and a board, as columns or as a live list, ship beside it as components from `@flow-state-dev/react`. See [Workforce components](./ui).
-
-Files are the authoring path. A `WORKER.md` in a worker's folder, under a team or under `org/`, and a `CHANNEL.md` in a team are how a roster is written down. Hiring at runtime adds to that roster; it doesn't replace the tree.
 
 For a working example, the [kitchen-sink reference app](https://github.com/fixpoint-labs/flow-state-dev/tree/main/apps/kitchen-sink) is a support desk built this way: four specialists and one routed channel, declared under its `workforce/` folder, with a board for cases that need a person.
 
@@ -97,7 +97,9 @@ Pass a flow under a key that is not its own `kind` and the hire is refused. [Wor
 
 ## What it will not do
 
-Workforce does not staff a task board. It does not replace flows, sessions, or resources. Sessions and resources live on the flow copy you hired.
+- Workforce does not staff a task board. A task's `assignee` names a board worker, never a seat.
+- It does not replace flows, sessions, or resources. Sessions and resources live on the seat you hired.
+- Hiring at runtime adds to the roster in your files. It doesn't replace the tree.
 
 ## Related pages
 

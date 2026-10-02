@@ -33,7 +33,7 @@ const artifactResource = defineResource({
 
 `defineResource() requires an explicit scope of "session", "user", or "org" (got …)`
 
-The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. Both are versioned, both support atomic operations. A state write persists only when the result satisfies `stateSchema` and is an object, not an array (see [What gets stored](#what-gets-stored) for how its values are saved). See [Writing resource state](#writing-resource-state) for the write methods, and [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes) for what a rejected write does.
+The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. The state is versioned and supports atomic operations. The content is not versioned: a later write replaces an earlier one. A state write persists only when the result satisfies `stateSchema` and is an object, not an array (see [What gets stored](#what-gets-stored) for how its values are saved). See [Writing resource state](#writing-resource-state) for the write methods, and [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes) for what a rejected write does.
 
 Config options:
 
@@ -47,13 +47,9 @@ Config options:
 
 ## Resources vs scope state
 
-| | Scope state | Resources |
-|--|-------------|-----------|
-| **Mental model** | Config flags and counters | Files with structured metadata |
-| **Shape** | Flat key-value object | Named container: content body + typed state |
-| **Content** | No | Yes — rich text, markdown, code, templates |
-| **Identity** | Field names (shared namespace) | Resource name (isolated namespace) |
-| **Collision risk** | Fields can conflict across blocks | Each resource is self-contained |
+![Session state is flat fields on the session record; a resource is its own record in the resource store](./state-vs-resources.svg)
+
+Scope state is one flat set of fields that every block in the flow shares, so two blocks can collide on a field name. A resource is its own named record, with a content body and typed state, so it can't collide with anything.
 
 Use **scope state** for simple fields: mode flags, counters, config values. Use **resources** when you're working with content that has structure — documents, plans, artifacts, knowledge bases. See [State vs Resources](/docs/resources/storage) for more guidance on when to use which.
 

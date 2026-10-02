@@ -93,9 +93,15 @@ const seats = hireWorkforce(workers, {
 
 A replacement declares `kind: "agent"`, like any other kind passed under its own name. It also declares `cardinality: "collection"`, which is what lets one definition have many copies. Leave that out and each seat mints, then is refused when you register it.
 
+## What a worker keeps
+
+A conversation keeps its recent turns, the organization keeps the worker's skills, and memory, once you add it, is kept per person.
+
+![A conversation holds recent turns, a worker's skills are kept per organization, and memory is kept per person](./built-in-worker-memory.svg)
+
 ## Skills
 
-A worker's skills are that worker's, stored at organization scope. Two workers on one roster never read each other's instructions. Two organizations do not share one seat's skills. Send `userId` with the input. The skills read are the ones stored for the organization the caller already belongs to. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) is where that organization comes from.
+A worker's skills are that worker's, stored at organization scope. Send `userId` with the input. The skills read are the ones stored for the organization the caller already belongs to. [Authentication](../server/authentication.md#every-request-runs-in-an-organization) is where that organization comes from.
 
 Which skills a worker gets is decided by where the folders sit. Three places feed a worker on a team:
 

@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 478" role="img" aria-labelledby="title desc">
+  <title id="title">What a built-in worker keeps, and who shares it</title>
+  <desc id="desc">One conversation is one session: it holds the recent turns, up to the history window of 50, and the skills made active in it; nothing in it reaches another conversation. Each worker's skills are stored per organization and per worker, so two workers never read each other's and two organizations do not share them. Memory is off until you add it; when on, it is kept per person and shared by the workers serving that person unless isolateUserState gives each worker its own.</desc>
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .wall-sess { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 2; }
+      .wall-org { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
+      .out { fill: #f8fafc; stroke: #94a3b8; stroke-width: 2; stroke-dasharray: 6 4; }
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 1.5; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: #334155; }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #0f172a; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="478" rx="16" class="bg"/>
+
+  <text x="28" y="36" class="title">What a built-in worker keeps, and who shares it</text>
+  <text x="28" y="58" class="muted">Each lives in its own place.</text>
+
+  <!-- Conversation -->
+  <rect x="28" y="84" width="272" height="250" rx="14" class="wall-sess"/>
+  <text x="44" y="108" class="h">One conversation</text>
+  <text x="44" y="126" class="muted">A session: a direct chat, or one channel</text>
+  <text x="44" y="158" class="p">The recent turns</text>
+  <text x="44" y="176" class="muted">Up to the history window, 50 by default.</text>
+  <text x="44" y="192" class="muted">Older turns fall out. Nothing summarizes.</text>
+  <text x="44" y="222" class="p">Skills made active here</text>
+  <text x="44" y="240" class="code">activeSkills</text>
+  <text x="44" y="276" class="muted">Nothing said here reaches the worker's</text>
+  <text x="44" y="292" class="muted">other conversations.</text>
+
+  <!-- Skills -->
+  <rect x="320" y="84" width="272" height="250" rx="14" class="wall-org"/>
+  <text x="336" y="108" class="h">One worker, one organization</text>
+  <text x="336" y="126" class="muted">Stored at organization scope</text>
+  <text x="336" y="158" class="p">The worker's skills</text>
+  <text x="336" y="176" class="code">skills</text>
+  <text x="336" y="198" class="muted">Seeded from the folders around</text>
+  <text x="336" y="214" class="muted">its WORKER.md</text>
+  <text x="336" y="250" class="p">Two workers never read each</text>
+  <text x="336" y="268" class="p">other's. Two organizations do</text>
+  <text x="336" y="286" class="p">not share one worker's skills.</text>
+
+  <!-- Memory -->
+  <rect x="612" y="84" width="280" height="250" rx="14" class="out"/>
+  <text x="628" y="108" class="h">One person</text>
+  <text x="628" y="126" class="muted">Memory: off until you add it</text>
+  <text x="628" y="158" class="p">What the worker remembers</text>
+  <text x="628" y="176" class="p">about the person it serves</text>
+  <text x="628" y="208" class="muted">Default: one store, shared by the</text>
+  <text x="628" y="224" class="muted">workers serving that person</text>
+  <text x="628" y="256" class="code">isolateUserState: true</text>
+  <text x="628" y="274" class="muted">Each worker gets its own, keyed on</text>
+  <text x="628" y="290" class="muted">its id. Renaming it starts fresh.</text>
+
+  <!-- Not a copy -->
+  <rect x="28" y="354" width="864" height="104" rx="12" class="box"/>
+  <text x="44" y="378" class="h">Not a copy</text>
+  <text x="44" y="402" class="p">A conversation holds which skills are active in it. The skills themselves live with the worker, per organization.</text>
+  <text x="44" y="422" class="p">Memory is about a person, not a conversation. A new conversation starts with no turns but the same memory.</text>
+  <text x="44" y="444" class="muted">isolateUserState is set once for the whole kind: a roster is all shared or all separate.</text>
+</svg>
