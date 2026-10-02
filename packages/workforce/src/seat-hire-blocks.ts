@@ -268,8 +268,20 @@ class SeatMoved extends Error {
  * Refuse an approved change when the seat id now names a different row than
  * the one the person was asked about: another hire under the same id, a
  * different kind, or the other owner's seat.
+ *
+ * Only reached when a row is there to change. One with no incarnation (an
+ * older row, or one a writer stamped none on) is refused: a replacement
+ * written the same way would carry none either, and nothing else tells the
+ * two apart.
  */
 function refuseIfReplaced(verb: string, address: string, approved: SeatHireChecked, now: SeatHireChecked): void {
+  if (approved.incarnation === null || now.incarnation === null) {
+    throw new Error(
+      `The seat "${address}" carries no incarnation on its roster row (it was written before incarnations, or ` +
+        `by a writer that stamps none), so this approval can't be tied to the seat you were asked about, and the ` +
+        `${verb} was not made.`
+    );
+  }
   if (approved.owner === now.owner && approved.incarnation === now.incarnation && (verb !== "fire" || approved.kind === now.kind)) {
     return;
   }

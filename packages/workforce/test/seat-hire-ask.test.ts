@@ -414,6 +414,45 @@ describe("a fire, with fire asking first", () => {
     expect(lab.registry.get(COS)).toBeDefined();
   });
 
+  it("on Approve refuses a seat whose row carries no incarnation, so a replacement written the same way isn't fired unasked", async () => {
+    // A writer that stamps no incarnation (an older row, or `toHiredSeatRow`'s
+    // default) can fire and replace the seat while the person is asked; with
+    // no stamp on either row, nothing tells the replacement from the original.
+    const stores = freshStores();
+    const key = `${HIRED_ROSTER_PREFIX}${HELPER}`;
+    await stores.resourceState.set("org", ORG, key, toHiredSeatRow({ seatId: HELPER, flow: "agent", owningOrgId: ORG }) as never, "any");
+    const asked = await boot(stores, [call("fire", { seatId: HELPER }), say("done")], { askBefore: ["fire"] });
+    const { requestId } = await asked.ask("let the helper go");
+    expect((await pendingAsks(stores))[0]?.data).toMatchObject({ verb: "fire", seatId: HELPER, incarnation: null });
+
+    const replacement = toHiredSeatRow({ seatId: HELPER, flow: "agent", owningOrgId: ORG, instructions: "The new helper." });
+    await stores.resourceState.set("org", ORG, key, replacement as never, "any");
+
+    const { finished } = await asked.answer(requestId, "approve");
+    await finished;
+    expect(lastToolResults(asked.seen)).toContain("carries no incarnation");
+    expect(await rosterRows(stores)).toEqual([HELPER]);
+    expect((await stores.resourceState.get("org", ORG, key))?.state).toEqual(replacement);
+    expect(asked.released).toEqual([]);
+  });
+
+  it("on Approve refuses a re-hire of a row with no incarnation, even when a different-kind row replaced it", async () => {
+    const stores = freshStores();
+    const key = `${HIRED_ROSTER_PREFIX}${HELPER}`;
+    await stores.resourceState.set("org", ORG, key, toHiredSeatRow({ seatId: HELPER, flow: "retired-kind", owningOrgId: ORG }) as never, "any");
+    const asked = await boot(stores, [call("rehire", { seatId: HELPER, flow: "agent" }), say("done")], { reloadProblems: 1 });
+    const { requestId } = await asked.ask("put the helper back on the agent kind");
+
+    const replacement = toHiredSeatRow({ seatId: HELPER, flow: "another-retired-kind", owningOrgId: ORG });
+    await stores.resourceState.set("org", ORG, key, replacement as never, "any");
+
+    const { finished } = await asked.answer(requestId, "approve");
+    await finished;
+    expect(lastToolResults(asked.seen)).toContain("carries no incarnation");
+    expect((await stores.resourceState.get("org", ORG, key))?.state).toEqual(replacement);
+    expect(asked.registry.get(`${ORG}.${HELPER}`)).toBeUndefined();
+  });
+
   it("asks before clearing a hired seat's leftover inventory row, and refuses one that never said it was hired", async () => {
     // A crash between fire's two deletes leaves a `hired: true` inventory row
     // with no roster row; fire still clears it, so the ask is still owed. A
