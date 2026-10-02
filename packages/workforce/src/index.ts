@@ -46,9 +46,11 @@
  * `roster/reload.ts` owns reading a whole roster back at the next boot, and
  * the two are a different contract from the inventory's on purpose — a roster
  * row is deletable because firing a seat is half of what a roster is for,
- * while an inventory row means *was registered here*. A declared seat's or
- * channel's inventory row is never removed; a runtime-hired seat's is removed
- * by its fire, and only while it carries the incarnation fired.
+ * while an inventory row means *was registered here*. A declared seat's
+ * inventory row is never removed; a runtime-hired seat's is removed by its
+ * fire, and only while it carries the incarnation fired. A channel's row stays
+ * until its `CHANNEL.md` becomes a project talk template (`mintFor:`), when
+ * the next `openInventory` retires it.
  */
 
 export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";
