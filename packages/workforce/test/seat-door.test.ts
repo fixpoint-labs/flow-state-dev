@@ -15,6 +15,8 @@ import { openInventory } from "../src/inventory/open-inventory";
 import type { WorkerManifest } from "../src/manifest";
 import { seatDoorOf } from "../src/seat-door";
 import { workerConfigSchema } from "../src/worker-config";
+import { checkHiredSeatRow } from "../src/roster/check";
+import { toHiredSeatRow } from "../src/roster/rows";
 
 const message = z.object({ message: z.string() });
 const echo = handler({ name: "door-echo", inputSchema: message, outputSchema: message, execute: (i) => i });
@@ -96,9 +98,9 @@ describe("a seat's door (BR-1, BR-2)", () => {
     expect(sent).toEqual([
       {
         seats: [
-          { id: "eng.chatty", kind: "two-door", door: null, hired: false },
-          { id: "eng.lead", kind: "agent", door: "run", hired: false },
-          { id: "eng.quiet", kind: "quiet", door: null, hired: false },
+          { id: "eng.chatty", kind: "two-door", door: null, hired: false, incarnation: null },
+          { id: "eng.lead", kind: "agent", door: "run", hired: false, incarnation: null },
+          { id: "eng.quiet", kind: "quiet", door: null, hired: false, incarnation: null },
         ],
       },
     ]);
@@ -127,5 +129,22 @@ describe("a seat's origin on its inventory row", () => {
       ["org.lead", false],
       ["org.support.ada", true],
     ]);
+  });
+
+  it("keeps a hired seat's incarnation when the boot rewrites its row, so a user-owned hire stays listed after a restart", async () => {
+    const row = toHiredSeatRow({ seatId: "research", flow: "agent", owningOrgId: "org", ownerUserId: "u1", incarnation: "i-9" });
+    const checked = checkHiredSeatRow("org", row, kinds);
+    if (!checked.ok) throw new Error(checked.detail);
+    const sent: Array<{ seats: Array<{ id: string; incarnation: string | null }> }> = [];
+    await openInventory(
+      { seats: [checked.seat], channels: [] },
+      {
+        run: async (request) => void sent.push(request.input as (typeof sent)[number]),
+        userId: "u",
+        orgId: "org",
+        seatWriter: { flowKind: "channel" },
+      },
+    );
+    expect(sent[0]!.seats.map((seat) => [seat.id, seat.incarnation])).toEqual([["org.~u1.research", "i-9"]]);
   });
 });

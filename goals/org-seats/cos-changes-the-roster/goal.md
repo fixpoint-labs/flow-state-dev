@@ -56,3 +56,4 @@ with a precondition message and grades nothing.
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-10-02 | a65594ee1+wip (FIX-1719 PR 2) | openai/gpt-5.4-mini | PASS | All six legs green. `deny-fire` FAILS at seat gone (listed, rostered, answering). With `org/` removed from the tree it FAILS at boot (`Unknown flow "chief-of-staff"`). The fire only suspended once core's lazily loaded models carried `generateStep`/`streamStep`; before that, the ask came back to the model as a failed tool call and the turn completed with no approval raised. |
+| 2026-10-02 | 3307072fd (FIX-1719 PR 2, Codex round 2 + #2649 round 5) | openai/gpt-5.4-mini | PASS | All six legs green; the ask now carries `owner: null` and the row's incarnation. `deny-fire` FAILS at seat gone (listed, rostered, answering). One earlier `deny-fire` run stopped at discover instead, the model answering without naming the members; the rerun reached seat gone. |

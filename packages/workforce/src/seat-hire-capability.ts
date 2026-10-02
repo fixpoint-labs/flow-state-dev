@@ -49,6 +49,7 @@ import {
   type HiredSeatOwnerPin,
   type SeatHireBlocks,
   type SeatHireCapabilityOptions,
+  type SeatHireChecked,
   type SeatHireVerb,
 } from "./seat-hire-blocks";
 
@@ -76,6 +77,14 @@ export interface SeatHireAskData {
   seatId: string;
   /** The kind hired or re-hired onto, the kind a fired seat stored, or `null` for a row that does not read. */
   kind: string | null;
+  /** The member whose own seat this is; `null` for an org-visible seat, and for a hire. */
+  owner: string | null;
+  /**
+   * Which hire wrote the row the person is asked about; `null` when there is
+   * no row (a hire) or the row carries none. Approve changes that row only: a
+   * seat id that names another row by then is refused.
+   */
+  incarnation: string | null;
 }
 
 export interface SeatHireToolOptions extends SeatHireCapabilityOptions {
@@ -143,9 +152,12 @@ function askMessage(data: SeatHireAskData): string {
  * refusals are the check again.
  *
  * The runtime re-enters the tool from the top on Approve, and on a restart
- * that picks up an approved request, so the check before the ask runs again
- * then too: a change that has since stopped being possible is refused rather
- * than asked twice or made. A re-entry after the change landed meets its
+ * that picks up an approved request. What the first check found is kept on
+ * the request (`runOnce`), so the change made on Approve is bound to the row
+ * the person was asked about: if the seat id names another row by then (the
+ * seat was fired and hired again), the change is refused. The write runs its
+ * own refusals again too, so a change that has since stopped being possible
+ * is refused rather than made. A re-entry after the change landed meets its
  * write's own refusal (a second hire of one id) or no-op (a fire of a seat
  * already gone), so it is never made twice.
  */
@@ -160,8 +172,8 @@ function asking<I extends { seatId: string }, O>(
     inputSchema: block.inputSchema as ZodTypeAny,
     outputSchema: block.outputSchema as ZodTypeAny,
     execute: async (input: I, ctx: BlockContext) => {
-      const { kind } = await run.check(input, ctx);
-      const data: SeatHireAskData = { verb, seatId: input.seatId, kind };
+      const checked = await checkedOnce(run, input, ctx);
+      const data: SeatHireAskData = { verb, seatId: input.seatId, ...checked };
       const cannotAsk = (why: string) =>
         new Error(`"${block.name}" waits for a person's approval here, and this app can't ask for one: ${why} Nothing was changed.`);
       if (ctx.suspend === undefined) throw cannotAsk("it runs without durable execution.");
@@ -178,7 +190,27 @@ function asking<I extends { seatId: string }, O>(
         if (error instanceof SuspensionError || error instanceof SuspensionRejectedError) throw error;
         throw cannotAsk(error instanceof Error ? error.message : String(error));
       }
-      return await run.run(input, ctx);
+      return await run.run(input, ctx, checked);
     },
   }) as unknown as BlockDefinition<ZodTypeAny, ZodTypeAny>;
+}
+
+/**
+ * The verb's check as it ran before the ask: run once per tool call and kept
+ * on the request, so a re-entry after Approve, or after a restart, binds the
+ * change to what the person saw. A refusal is kept as its message and thrown
+ * fresh, because a rejecting `runOnce` would leave an unhandled rejection.
+ */
+async function checkedOnce<I>(run: SeatHireVerb<I, unknown>, input: I, ctx: BlockContext): Promise<SeatHireChecked> {
+  const call = ctx._blockIdentity?.blockInstanceId;
+  if (ctx.runOnce === undefined || call === undefined) return run.check(input, ctx);
+  const kept = await ctx.runOnce(`seat-hire-ask:${call}`, async () => {
+    try {
+      return { checked: await run.check(input, ctx) };
+    } catch (error) {
+      return { refused: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  if ("refused" in kept) throw new Error(kept.refused);
+  return kept.checked;
 }

@@ -14,7 +14,7 @@ import { serveLab, type ServedLab } from "./helpers/serve-lab";
 const ORG = "acme";
 
 type Lab = {
-  seats: Array<{ id: string; kind: string; hired?: boolean }>;
+  seats: Array<{ id: string; kind: string; hired?: boolean; incarnation?: string }>;
   roster?: Array<{ seatId: string }> | "fails";
   /** The channel inventory's rows. Default one channel. */
   channels?: unknown[];
@@ -95,6 +95,17 @@ describe("TEAMS and the roster", () => {
       ["acme.support", "acme", "support", "acme.support"],
     ]);
     expect(value.rosterUnread).toBeUndefined();
+  });
+
+  it("a user-owned hire isn't listed: its roster row is owner-private, and the incarnation on its inventory row proves no roster row is still there", async () => {
+    // The state a fire leaves when it stops after deleting the owner's roster
+    // row: the inventory row, incarnation and all, unchanged. Shift Manager
+    // reads only what a browser can, so it can't tell that from a live hire.
+    const value = await teams({
+      seats: [...declared, { id: "acme.~u1.research", kind: "agent", hired: true, incarnation: "i-1" }],
+      roster: [],
+    });
+    expect(value.seats.map((seat) => seat.id)).toEqual(["eng.lead", "chief-of-staff"]);
   });
 
   it("BR-24 · the roster read fails: hired seats aren't listed, and the section says the roster didn't load", async () => {

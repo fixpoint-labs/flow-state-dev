@@ -9,11 +9,11 @@
  * deletes anything; a reader that sweeps rows at start would race a hire in
  * another process.
  *
- * A leaf (BP-019): its only import is the address split, so a browser panel
+ * A leaf (BP-019): its only import is the address helpers, so a browser panel
  * takes it from `@flow-state-dev/workforce/browser` without the runtime.
  */
 
-import { splitSeatAddress } from "../roster/address";
+import { seatAddress, splitSeatAddress } from "../roster/address";
 
 /**
  * Keep the inventory rows a team list should show.
@@ -25,20 +25,37 @@ import { splitSeatAddress } from "../roster/address";
  * (`hired` null or absent) is read by its id's shape: an address in `orgId`
  * (`<org>.<seatId>`, or `<org>.~<user>.<seatId>`) counts as hired.
  *
+ * A user-owned hire's row (`<org>.~<user>.<seatId>`) is backed only by its
+ * owner's own roster row, which is owner-private: only a reader that has it
+ * can pass it as `owned`, and the row is listed only when that roster row
+ * carries the same `incarnation`. The incarnation on the inventory row says
+ * which hire published it, not that the hire is still there: a fire that
+ * stopped after deleting the roster row leaves it as it was. A browser
+ * reader cannot read the owner-private roster, so it lists no user-owned hire.
+ *
  * @param orgId The organization the rows were read in.
- * @param rows Seat inventory rows, as read, with their `hired` field when they carry one.
+ * @param rows Seat inventory rows, as read, with their `hired` and `incarnation` fields when they carry them.
  * @param roster The organization's roster rows a browser can read (their
  *   `seatId`s), or `undefined` when the roster did not load. With no roster,
- *   no hired seat is listed: a seat the reader can't show is hired isn't shown as hired.
+ *   no org hire is listed: a seat the reader can't show is hired isn't shown as hired.
+ * @param owned The reader's own user-owned roster rows, read on the server as
+ *   that user. Omitted, no user-owned hire is listed.
  * @returns the rows to list, in the order given.
  */
-export function listedSeatRows<T extends { id: string; hired?: boolean | null }>(
+export function listedSeatRows<T extends { id: string; hired?: boolean | null; incarnation?: string | null }>(
   orgId: string,
   rows: readonly T[],
-  roster: readonly { seatId: string }[] | undefined
+  roster: readonly { seatId: string }[] | undefined,
+  owned: readonly { seatId: string; ownerUserId: string; incarnation: string | null }[] = []
 ): T[] {
   const backed = new Set((roster ?? []).map((row) => `${orgId}.${row.seatId}`));
-  return rows.filter((row) => !isHiredSeatRow(orgId, row) || backed.has(row.id));
+  const ownedAt = new Map(owned.map((row) => [seatAddress(orgId, row.seatId, row.ownerUserId), row.incarnation]));
+  return rows.filter(
+    (row) =>
+      !isHiredSeatRow(orgId, row) ||
+      backed.has(row.id) ||
+      (typeof row.incarnation === "string" && ownedAt.get(row.id) === row.incarnation)
+  );
 }
 
 /**

@@ -22,6 +22,35 @@
 
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { hiredSeatManifestFromStored } from "./rows";
+import { incarnationOfRow } from "./incarnation";
+
+/**
+ * Delete the inventory row at `address` if it belongs to `incarnation`: it
+ * carries that incarnation, or none (a row from before incarnations, which
+ * matches nothing newer). A row carrying another incarnation is a seat hired
+ * again at the address after this one, and is left. The delete is
+ * version-checked against the row just read, so a replacement that lands in
+ * between conflicts and is left too.
+ *
+ * @returns whether a row was deleted.
+ */
+export async function deleteOwnInventoryRow(
+  inventory: ResourceCollectionRef,
+  address: string,
+  incarnation: string | null
+): Promise<boolean> {
+  const row = await inventory.getOptional(address);
+  if (row === undefined) return false;
+  const theirs = incarnationOfRow(row.state);
+  if (theirs !== null && theirs !== incarnation) return false;
+  try {
+    await inventory.delete(address);
+    return true;
+  } catch (error) {
+    if ((error as { code?: unknown }).code === "concurrent_modification") return false;
+    throw error;
+  }
+}
 
 /**
  * What releasing the address found: `released` when this call unregistered the
@@ -46,8 +75,11 @@ export interface RemoveHiredSeatOptions {
    * address is used otherwise.
    */
   address: string;
-  /** Release the address, given the kind the row stored. */
-  release: (address: string, storedKind: string) => HiredSeatRelease;
+  /**
+   * Release the address, given the kind the row stored and the incarnation
+   * it carried (`null` on a row from before incarnations).
+   */
+  release: (address: string, storedKind: string, incarnation: string | null) => HiredSeatRelease;
   /**
    * Whether something answers on an address right now. With no roster row, a
    * held address is a seat this path does not own (a declared one), so its
@@ -87,7 +119,9 @@ export async function removeHiredSeat(options: RemoveHiredSeatOptions): Promise<
     if (leftover === undefined || leftover.state.hired !== true) {
       return { outcome: "nothing", address: options.address };
     }
-    await options.inventory.delete(options.address);
+    if (!(await deleteOwnInventoryRow(options.inventory, options.address, incarnationOfRow(leftover.state)))) {
+      return { outcome: "nothing", address: options.address };
+    }
     return { outcome: "already-gone", address: options.address };
   }
 
@@ -101,10 +135,14 @@ export async function removeHiredSeat(options: RemoveHiredSeatOptions): Promise<
 
   const address = record.manifest.id;
   const storedKind = String(existing.state.flow);
+  // Read before the delete: a deleted ref reads as its schema defaults.
+  const incarnation = incarnationOfRow(existing.state);
   await options.roster.delete(options.key);
-  const release = options.release(address, storedKind);
+  const release = options.release(address, storedKind, incarnation);
   if (release !== "held-by-another") {
-    await options.inventory.delete(address);
+    // Only this incarnation's row: a seat hired again at the address since
+    // the roster row went keeps its own.
+    await deleteOwnInventoryRow(options.inventory, address, incarnation);
   }
   return { outcome: "removed", address, storedKind, released: release === "released" };
 }

@@ -529,6 +529,29 @@ describe("fire", () => {
     expect(seats).toEqual([`inventory/seats/${ORG}.support.bob`]);
   });
 
+  it("a legacy org row and the caller's own row under one seat id: no owner is refused, and owner picks the row", async () => {
+    const registrar = stubRegistrar();
+    const flow = adminFlow();
+    const stores = createInMemoryStores();
+    await callAdmin(flow, stores, "hire", { seatId: "support.ada", flow: "agent", settings: { model: "front-model" } });
+    // A row from when this app's hire wrote the flat, org-visible key.
+    const legacy = { seatId: "support.ada", flow: "agent", settings: { model: "front-model" }, instructions: null };
+    await stores.resourceState.set("org", ORG, "workforce/roster/support.ada", legacy, "any");
+    const keys = async () => Object.keys(await stores.resourceState.getByPrefix("org", ORG, "workforce/roster/")).sort();
+    const both = await keys();
+    expect(both).toHaveLength(2);
+
+    const refused = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
+    expectRefused(refused, /"support\.ada" names two seats: the organization's and yours/);
+    expect(await keys()).toEqual(both);
+
+    const fired = await callAdmin(flow, stores, "fire", { seatId: "support.ada", owner: "organization" });
+    expectAccepted(fired);
+    expect(fired.output).toMatchObject({ address: `${ORG}.support.ada` });
+    expect(await keys()).toEqual(both.filter((key) => key !== "workforce/roster/support.ada"));
+    expect(registrar.held.has(`${ORG}.~admin.support.ada`)).toBe(true);
+  });
+
   it("refuses a seat this organization does not hold", async () => {
     stubRegistrar();
     const flow = adminFlow();

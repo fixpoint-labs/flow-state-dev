@@ -44,6 +44,28 @@ describe("listedSeatRows", () => {
     expect(listedSeatRows("acme", rows, undefined).map((row) => row.id)).toEqual(["eng.lead", "chief-of-staff"]);
   });
 
+  it("a user-owned hire's row is listed only while its owner's roster row carries the same incarnation", () => {
+    const rows = [...declared, { id: "acme.~u1.research", kind: "agent", hired: true, incarnation: "i-1" }];
+    const live = [{ seatId: "research", ownerUserId: "u1", incarnation: "i-1" }];
+    expect(listedSeatRows("acme", rows, [], live).map((row) => row.id)).toEqual(["eng.lead", "chief-of-staff", "acme.~u1.research"]);
+    // The owner's row is another hire's now: this inventory row isn't its.
+    expect(listedSeatRows("acme", rows, [], [{ ...live[0]!, incarnation: "i-2" }]).map((row) => row.id)).toEqual(["eng.lead", "chief-of-staff"]);
+    // Another member's row under the same seat id backs nothing at u1's address.
+    expect(listedSeatRows("acme", rows, [], [{ ...live[0]!, ownerUserId: "u2" }]).map((row) => row.id)).toEqual(["eng.lead", "chief-of-staff"]);
+    // A user-owned row from before incarnations matches no roster row.
+    expect(listedSeatRows("acme", [{ id: "acme.~u1.old", kind: "agent", hired: true }], [], [{ seatId: "old", ownerUserId: "u1", incarnation: null }])).toEqual([]);
+  });
+
+  it("the row a fire leaves when it stops after deleting the owner's roster row is not listed, incarnation and all", () => {
+    // The crash state: the private roster row is gone, the inventory row is
+    // exactly what the hire published. Its incarnation says which hire
+    // published it, not that the hire is still there.
+    const rows = [...declared, { id: "acme.~u1.research", kind: "agent", hired: true, incarnation: "i-1" }];
+    expect(listedSeatRows("acme", rows, [], []).map((row) => row.id)).toEqual(["eng.lead", "chief-of-staff"]);
+    // A reader that can't read the owner's roster (a browser) can't back it either.
+    expect(listedSeatRows("acme", rows, []).map((row) => row.id)).toEqual(["eng.lead", "chief-of-staff"]);
+  });
+
   it("another organization's roster row backs nothing here, and a user-owned address is never backed by the org roster", () => {
     const rows = [
       { id: "acme.support.ada", kind: "agent", hired: true },

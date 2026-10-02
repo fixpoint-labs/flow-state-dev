@@ -94,6 +94,14 @@ export const hiredSeatRowSchema = z.object({
    * not in the browser projection.
    */
   pendingRepair: z.string().nullable().default(null),
+  /**
+   * The incarnation this row brought into being (see `incarnation.ts`): a
+   * fresh id on every hire and re-hire, stamped on the inventory row it
+   * publishes and the seat minted from it. `null` on a row written before the
+   * field (BP-023, BP-030), or by a writer that doesn't stamp one.
+   * Server-side only: not in the browser projection.
+   */
+  incarnation: z.string().nullable().default(null),
 });
 
 /** One stored roster row. @see hiredSeatRowSchema */

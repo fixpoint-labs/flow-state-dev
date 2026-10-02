@@ -1,7 +1,7 @@
 import { z, type ZodTypeAny } from "zod";
 import { OutputValidationError } from "../errors/output-validation-error";
 import { isAbortLike, rootCause } from "../errors/abort";
-import { SuspensionError, SuspensionRejectedError } from "../errors/suspension-error";
+import { SuspensionError, SuspensionRejectedError, SuspensionTimeoutError } from "../errors/suspension-error";
 import { jsonSchema } from "ai";
 import { jsonrepair } from "jsonrepair";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -1654,10 +1654,18 @@ async function runResumeStep(
               async () => denial,
             );
             output = toolResultOutputForModel(denial);
-          } else {
-            // SuspensionError (still pending) or any other control-flow error
-            // propagates to re-suspend / fail the run.
+          } else if (err instanceof SuspensionError || err instanceof SuspensionTimeoutError) {
+            // Still pending (or timed out): control flow, so it propagates to
+            // re-suspend / fail the run.
             throw err;
+          } else {
+            // An ordinary tool error after the gate (the tool's own refusal on
+            // re-entry) is a failed tool call, as it is in the live loop: the
+            // model is told, and the run goes on. The tool executor already
+            // recorded it as a failed `tool_output`, so a later resume replays
+            // the same text.
+            const message = err instanceof Error ? err.message : String(err);
+            output = { type: "error-text", value: failedToolResultText(c.toolName, message) };
           }
         }
       }

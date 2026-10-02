@@ -359,7 +359,8 @@ describe("what one boot writes", () => {
         id: "eng.coder",
         kind: "coder",
         door: null,
-        hired: null
+        hired: null,
+        incarnation: null
       });
 
       const channels = Object.fromEntries(rows.channels.map((row) => [row.id, row]));
@@ -396,7 +397,8 @@ describe("what one boot writes", () => {
         id: "eng.lead",
         kind: "agent",
         door: null,
-        hired: null
+        hired: null,
+        incarnation: null
       });
     } finally {
       await lab.dispose();
