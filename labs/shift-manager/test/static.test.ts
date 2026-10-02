@@ -1,9 +1,10 @@
 /**
  * V8, static: Shift Manager's source names nothing from a Lab's tree (BR-5), draws
- * no literal colour outside its token definitions, and its registry copies
- * are byte-equal to their source. Its copies are exactly what its install list
- * (`pnpm ui:add`) ships, its token definitions are the registry's `tokens`
- * item unedited, and its look is the design-system package's one import.
+ * no literal colour of its own, and its registry copies are byte-equal to
+ * their source. Its copies are exactly what its install list (`pnpm ui:add`)
+ * ships, its token definitions are the registry's `tokens` item unedited, kept
+ * as that item's own installed file beside the copies, and its look is the
+ * design-system package's one import.
  *
  * The tree names are read from the two goal trees themselves, so a seat or
  * channel added there is checked too. Each check is shown to reach the code
@@ -23,6 +24,8 @@ const copies = join(src, "components/flow-state");
 const primitives = join(src, "components/ui");
 const registry = join(repo, "packages/ui/registry/components");
 const styles = readFileSync(join(src, "styles.css"), "utf8");
+/** Where the install writes the registry's `tokens` item: the stylesheet `components.json` names. */
+const TOKENS = "tokens.css";
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -77,17 +80,14 @@ const PALETTE =
 const LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color)\(/;
 
 /**
- * Literal colours in Shift Manager's own source: everything but the token
- * definitions, the registry copies and the primitives they import. Those two
- * are installed, not written here; the registry's palette census covers the
- * copies.
+ * Literal colours in Shift Manager's own source: everything but the registry
+ * copies (the `tokens` item's file among them) and the primitives they import.
+ * Those are installed, not written here; the registry's palette census covers
+ * the copies, and the test below holds the tokens file to its item.
  */
 function literalColours(file: string, text: string): string[] {
-  if (file.startsWith(copies) || file.startsWith(primitives + "/")) return [];
-  const scanned = file.endsWith("styles.css")
-    ? text.replace(/\/\* Token definitions[\s\S]*?\/\* End of token definitions\. \*\//, "")
-    : text;
-  return scanned
+  if (file.startsWith(copies + "/") || file.startsWith(primitives + "/")) return [];
+  return text
     .split("\n")
     .map((line, i) => ({ line, i }))
     .filter(({ line }) => PALETTE.test(line) || LITERAL.test(line))
@@ -105,13 +105,13 @@ describe("V8", () => {
     expect(namedIn(`const seat = "${planted}";`, names)).toEqual([planted]);
   });
 
-  it("draws no literal colour outside the token definitions", () => {
+  it("draws no literal colour of its own", () => {
     expect(sources.length).toBeGreaterThan(10);
     expect(sources.flatMap((file) => literalColours(file, readFileSync(file, "utf8")))).toEqual([]);
-    // Planted: a palette class, a hex value, and a colour function outside the token block.
+    // Planted: a palette class, a hex value, and token values pasted back into the stylesheet.
     expect(literalColours(join(src, "x.tsx"), `<p className="text-green-600" />`)).toHaveLength(1);
     expect(literalColours(join(src, "x.tsx"), `const c = "#ff0000";`)).toHaveLength(1);
-    expect(literalColours(join(src, "styles.css"), `/* Token definitions */\n--x: hsl(0 0% 0%);\n/* End of token definitions. */\n.a { color: hsl(1 1% 1%); }`)).toHaveLength(1);
+    expect(literalColours(join(src, "styles.css"), `/* Token definitions */\n--x: hsl(0 0% 0%);\n/* End of token definitions. */`)).toHaveLength(1);
   });
 
   it("sends a person's line only through the one send path, to the door the inventory names (V7, ER-15)", () => {
@@ -170,7 +170,9 @@ describe("V8", () => {
   it("keeps every registry copy byte-equal to its source, and holds exactly what its install list ships", () => {
     const shipped = installedFiles();
     expect(shipped.size).toBeGreaterThan(8);
-    expect(walk(copies).map((file) => relative(copies, file)).sort()).toEqual([...shipped.keys()].sort());
+    // Beside the copied files, the `tokens` item's own file, which the list reaches through a dependency.
+    expect(reachesTokens()).toBe(true);
+    expect(walk(copies).map((file) => relative(copies, file)).sort()).toEqual([...shipped.keys(), TOKENS].sort());
     for (const [copy, source] of shipped) {
       expect(readFileSync(join(copies, copy)), copy).toEqual(readFileSync(join(repo, "packages/ui", source)));
     }
@@ -178,15 +180,26 @@ describe("V8", () => {
     expect(installedFiles(["approval"]).has("message.tsx")).toBe(false);
   });
 
-  it("defines its tokens as the registry's tokens item, unedited", () => {
+  it("keeps its tokens as the registry's tokens item, unedited, in the file the install writes it to", () => {
+    // `fsdev ui add` writes a theme item's values into the stylesheet `components.json` names.
+    const components = JSON.parse(readFileSync(join(pkg, "components.json"), "utf8")) as { tailwind: { css: string } };
+    expect(components.tailwind.css).toBe(relative(pkg, join(copies, TOKENS)));
+    const css = readFileSync(join(copies, TOKENS), "utf8");
     const tokens = registryItems().get("tokens")!;
     const base = tokens.css!["@layer base"]!;
     for (const [selector, values] of Object.entries(base)) {
       for (const [name, value] of Object.entries(values)) {
-        expect(styles, `${selector} ${name}`).toMatch(new RegExp(`${selector.replace(".", "\\.")} \\{[^}]*${name}: ${value.replace(/[()%.]/g, "\\$&")};`));
+        expect(css, `${selector} ${name}`).toMatch(new RegExp(`${selector.replace(".", "\\.")} \\{[^}]*${name}: ${value.replace(/[()%.]/g, "\\$&")};`));
       }
     }
-    for (const [name, value] of Object.entries(tokens.cssVars!.theme!)) expect(styles).toContain(`--${name}: ${value};`);
+    for (const [name, value] of Object.entries(tokens.cssVars!.theme!)) expect(css).toContain(`--${name}: ${value};`);
+    // Nothing but the item: every value it declares is one the item names.
+    const declared = [...css.matchAll(/(--[a-z-]+):/g)].map((m) => m[1]!);
+    const named = new Set([...Object.keys(tokens.cssVars!.theme!).map((n) => `--${n}`), ...Object.values(base).flatMap((v) => Object.keys(v))]);
+    expect(declared.filter((name) => !named.has(name))).toEqual([]);
+    // The stylesheet takes it by one import, and restates none of it.
+    expect(styles.match(new RegExp(`^@import "\\./${relative(src, join(copies, TOKENS)).replace(/[./]/g, "\\$&")}";$`, "gm"))).toHaveLength(1);
+    expect(styles).not.toMatch(/--attention\s*:/);
   });
 
   it("takes its look from the design-system package's one import (FIX-1688)", () => {
@@ -213,6 +226,18 @@ function registryItems(): Map<string, RegistryItem> {
 function installList(): string[] {
   const script = (JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")) as { scripts: Record<string, string> }).scripts["ui:add"];
   return /^fsdev ui add ((?:[a-z-]+ ?)+)$/.exec(script ?? "")?.[1]!.trim().split(" ") ?? [];
+}
+
+/** Whether the listed items reach the `tokens` item through their registry dependencies. */
+function reachesTokens(items = installList()): boolean {
+  const byName = registryItems();
+  const seen = new Set<string>();
+  const visit = (name: string): boolean => {
+    if (seen.has(name)) return false;
+    seen.add(name);
+    return name === "tokens" || (byName.get(name)?.registryDependencies ?? []).some(visit);
+  };
+  return items.some(visit);
 }
 
 /** Every registry file the listed items ship into `components/flow-state/`, through their registry dependencies, as copy → source. */
