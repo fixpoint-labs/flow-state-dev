@@ -84,7 +84,7 @@
  * didn't reach the task that the task acted on.
  */
 import { handler, sequencer, type DefinedCapability } from "@flow-state-dev/core";
-import { updateStateWith } from "@flow-state-dev/core/helpers";
+import { readCommitted } from "@flow-state-dev/core/helpers";
 import { dispatchThroughSeam, markDispatcher, type BlockContext } from "@flow-state-dev/core/types";
 import {
   isTerminalStatus,
@@ -95,7 +95,7 @@ import {
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { findRunRowBySession, readConfirmedSession, readRunRow, runTopic } from "./run-record";
+import { findRunRowBySession, readConfirmedSession, readRunRow, runTopic, sessionConfirmedBy } from "./run-record";
 import { isRunOwner, runOwnerOf, runPrincipal } from "./run-owner";
 import { keepTurn, turnTakenBy, withdrawTurn } from "./turns";
 import { sleep } from "./workspace";
@@ -171,6 +171,27 @@ const TURN_STOP_POLL_MAX_MS = 1_000;
  * than holding the person's request open for as long as the run takes.
  */
 export const TURN_START_WAIT_MS = 60_000;
+
+/**
+ * Ask `check` until it answers, soon at first and then backing off (see
+ * {@link TURN_STOP_POLL_FIRST_MS}). `undefined` once `waitMs` has passed, or
+ * the request was aborted, with no answer.
+ */
+async function pollUntil<T>(
+  waitMs: number,
+  signal: AbortSignal,
+  check: () => Promise<T | undefined>,
+): Promise<T | undefined> {
+  const deadline = Date.now() + waitMs;
+  let pollMs = TURN_STOP_POLL_FIRST_MS;
+  for (;;) {
+    const answer = await check();
+    if (answer !== undefined) return answer;
+    if (signal.aborted || Date.now() >= deadline) return undefined;
+    await sleep(pollMs, signal);
+    pollMs = Math.min(pollMs * 2, TURN_STOP_POLL_MAX_MS);
+  }
+}
 
 /** The note a row parked for a turn carries. */
 const TURN_PARK_NOTE = "A person sent a message; the run continues with it.";
@@ -278,19 +299,36 @@ async function deliverTurn(deps: MessageDoorDeps, message: string, ctx: BlockCon
   // conversation that never saw the work. A running attempt with none yet is
   // still starting, and is waited for instead.
   const topic = runTopic(deps.boardCollectionId, issue, phase);
-  const record = await readRunRow(ctx, topic);
-  const starting = record?.sessionId == null;
-  if (starting && row.status !== "in_progress") throw new TurnRefused("cannot-continue");
-
-  // Durable first. A claimed row's run has not started, nor has an attempt
-  // still starting, so that attempt takes the turn; otherwise the next one does.
-  const turnKey = await keepTurn(ctx, {
-    issue,
-    phase,
-    forAttempt: linked === undefined || starting ? row.attempts : row.attempts + 1,
-    requestId: ctx.request.identity.id,
-    message,
-  });
+  const keep = (forAttempt: number) =>
+    keepTurn(ctx, { issue, phase, forAttempt, requestId: ctx.request.identity.id, message });
+  let turnKey: string;
+  let starting: boolean;
+  if (row.status === "in_progress") {
+    // Durable first, then the record. The attempt takes its turns after it
+    // opens the record and before its harness names a session, so a record
+    // read after this keep that names no session for this attempt is an
+    // attempt that will still take the turn, and one that names it has taken
+    // its turns already and leaves this one to the next. Read first, the
+    // attempt could open and take its turns between the read and the keep,
+    // and a record this request first read absent stays absent to it.
+    turnKey = await keep(row.attempts);
+    // Decided once from this read; the wait re-reads the stored record
+    // (`readConfirmedSession`), since the harness names its session from another request.
+    const record = await readRunRow(ctx, topic);
+    // A linked attempt is stopped once a session is named, so only a session
+    // it named counts: one an earlier attempt left means it has not opened
+    // yet, and will take the turn. A claimed row's run is not linked, so
+    // nothing is stopped, and any confirmed session keeps the line for it.
+    starting =
+      linked === undefined
+        ? record?.sessionId == null
+        : sessionConfirmedBy(record, row.attempts) === null;
+  } else {
+    // Between attempts: the next attempt takes the turn.
+    if ((await readRunRow(ctx, topic))?.sessionId == null) throw new TurnRefused("cannot-continue");
+    starting = false;
+    turnKey = await keep(row.attempts + 1);
+  }
 
   try {
     return starting
@@ -319,10 +357,7 @@ async function storedRow(
 ): Promise<Record<string, unknown> | undefined> {
   const ref = await resolveResourceCollection(ctx, collectionId)?.getOptional(taskId);
   if (ref === undefined) return undefined;
-  return updateStateWith<Record<string, unknown>, Record<string, unknown> | undefined>(ref, (current) => ({
-    state: current,
-    result: current,
-  }));
+  return readCommitted<Record<string, unknown>, Record<string, unknown> | undefined>(ref, (current) => current);
 }
 
 /**
@@ -339,13 +374,11 @@ async function continueOnceStarted(
   turnKey: string,
   ctx: BlockContext,
 ): Promise<Decided> {
-  const deadline = Date.now() + TURN_START_WAIT_MS;
-  let pollMs = TURN_STOP_POLL_FIRST_MS;
-  for (;;) {
+  const decided = await pollUntil(TURN_START_WAIT_MS, ctx.signal, async (): Promise<Decided | undefined> => {
     // The session first, then the turn: an attempt takes its turns before its
     // harness starts, so a session named by now means a turn not taken by now
     // was not taken by this attempt, and stopping it loses nothing.
-    const session = await readConfirmedSession(ctx, topic);
+    const session = await readConfirmedSession(ctx, topic, row.attempts);
     // The attempt took the line into its own prompt: it acts on it now.
     if ((await turnTakenBy(ctx, turnKey)) !== null) {
       return { outcome: "continuing", taskId: row.id, requeue: false, resumeIn: null };
@@ -360,13 +393,13 @@ async function continueOnceStarted(
     if (status !== "in_progress" || stored?.attempts !== row.attempts) {
       // The attempt ended. If it named its session on the way out, the run
       // continues from it; if not, it had none to continue.
-      if ((await readConfirmedSession(ctx, topic)) !== null) return continueRun(deps, tasks, row, ctx);
+      if ((await readConfirmedSession(ctx, topic, row.attempts)) !== null) return continueRun(deps, tasks, row, ctx);
       throw new TurnRefused("cannot-continue");
     }
-    if (ctx.signal.aborted || Date.now() >= deadline) throw new TurnRefused("still-starting");
-    await sleep(pollMs, ctx.signal);
-    pollMs = Math.min(pollMs * 2, TURN_STOP_POLL_MAX_MS);
-  }
+    return undefined;
+  });
+  if (decided === undefined) throw new TurnRefused("still-starting");
+  return decided;
 }
 
 /** With the turn kept: stop the running attempt and park the row for it, or leave it kept. */
@@ -407,13 +440,10 @@ async function continueRun(
   // answers `already-finished`, and until then it rewrites the same flag, so
   // a repeat is idempotent. An attempt that outlasts the wait is not parked:
   // the turn is kept, and the attempt after it gets the line.
-  const deadline = Date.now() + TURN_STOP_WAIT_MS;
-  let pollMs = TURN_STOP_POLL_FIRST_MS;
-  while ((await ctx.session.stopRequest(runRequest)) === "stopped") {
-    if (ctx.signal.aborted || Date.now() >= deadline) return kept;
-    await sleep(pollMs, ctx.signal);
-    pollMs = Math.min(pollMs * 2, TURN_STOP_POLL_MAX_MS);
-  }
+  const ended = await pollUntil(TURN_STOP_WAIT_MS, ctx.signal, async () =>
+    (await ctx.session.stopRequest(runRequest)) === "stopped" ? undefined : true,
+  );
+  if (ended === undefined) return kept;
 
   // Park it for a turn, fenced to the attempt that was stopped. Refused when
   // that attempt settled the row first, or another claim holds it.

@@ -1,3 +1,4 @@
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
@@ -116,4 +117,22 @@ export function assertMaxDepthTwo(path: string[], verb: string): void {
       `${verb} supports depth-1 or depth-2 paths; received path of length ${path.length}`
     );
   }
+}
+
+/**
+ * Union two item logs by `id`, last write wins per id, in order: `prior` keeps
+ * its positions and ids new in `next` append in `next`'s order. The
+ * `RequestStore.persistItems` merge contract (FIX-811), shared by the runtime's
+ * terminal write of a same-request continuation and the stores that hold
+ * items on the record (in-memory, filesystem); the SQL adapters do the same
+ * with an UPSERT.
+ */
+export function mergeItemsById(
+  prior: readonly OutputItem[],
+  next: readonly OutputItem[]
+): OutputItem[] {
+  const byId = new Map<string, OutputItem>();
+  for (const item of prior) byId.set(item.id, item);
+  for (const item of next) byId.set(item.id, item);
+  return [...byId.values()];
 }

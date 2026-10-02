@@ -20,6 +20,7 @@ import {
 } from "./shared";
 import {
   matchesRequestStatusFilter,
+  mergeItemsById,
   withRequestSourceDefault,
   withStoredAbortRequested
 } from "../shared";
@@ -140,26 +141,18 @@ export class InMemoryRequestStore implements RequestStore {
   }
 
   /**
-   * Merge a running request's items onto its record, by id (FIX-811), so a
-   * read while it runs sees them (FIX-1735). The record is cloned on every
-   * `set` and `get`, so items the emitter holds are not on it until something
-   * writes them here; without this, a running request read as having no items
-   * until it settled. The objects are kept as given rather than cloned: the
-   * runtime advances an item in place (FIX-839) and passes the full list on
-   * every call, so a clone per streamed delta would only copy what `get`
-   * clones on the way out anyway.
+   * Merge a running request's items onto its record by id (the FIX-811
+   * contract), so a read while it runs sees them (FIX-1735). The record is
+   * cloned on every `set` and `get`, so items the emitter holds are not on it
+   * until something writes them here; without this, a running request read as
+   * having no items until it settled. The objects are kept as given rather
+   * than cloned: the runtime advances an item in place (FIX-839), and `get`
+   * clones on the way out.
    */
   persistItems(requestId: string, items: OutputItem[]): void {
     const record = this.records.get(requestId);
     if (record === undefined) return;
-    const held = record.items ?? [];
-    if (held.length === 0) {
-      this.records.set(requestId, { ...record, items: [...items] });
-      return;
-    }
-    const byId = new Map<string, OutputItem>(held.map((item) => [item.id, item]));
-    for (const item of items) byId.set(item.id, item);
-    this.records.set(requestId, { ...record, items: [...byId.values()] });
+    this.records.set(requestId, { ...record, items: mergeItemsById(record.items ?? [], items) });
   }
 
   async flushItems(_requestId: string): Promise<void> {

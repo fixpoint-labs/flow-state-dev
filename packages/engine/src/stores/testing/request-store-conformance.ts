@@ -471,8 +471,8 @@ export function createRequestStoreConformanceTests(
     // A get-returns-merged check across a same-request continuation (FIX-811).
     // The runtime persists incrementally via `persistItems` AND writes the
     // merged set onto the record at each transition via `set`; both adapter
-    // mechanisms (the in-memory record-backed no-op and a persistent store's
-    // UPSERT) must surface the full ordered log on a subsequent `get`.
+    // mechanisms (a record-backed merge and a persistent store's UPSERT) must
+    // surface the full ordered log on a subsequent `get`.
     it("get returns the full ordered item log after a continuation appends items", async () => {
       await withStore(async (store) => {
         const requestId = "req_merge_conformance";
@@ -527,6 +527,24 @@ export function createRequestStoreConformanceTests(
           `item_${requestId}_1`
         ]);
         expect(await store.countItems(requestId)).toBe(2);
+      });
+    });
+
+    // The merge is the contract, not a replace (FIX-811): a call that carries
+    // only some of the log adds to what is held rather than dropping the rest.
+    // (Calls coalesced before a flush may keep only the latest list: the
+    // runtime hands over the whole log on every call.)
+    it("persistItems unions a partial list into the held items", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_union_conformance";
+        await store.set(requestId, makeRecord(requestId, "in_progress", []), "absent");
+        const ids = (n: number[]) => n.map((i) => `item_${requestId}_${i}`);
+
+        store.persistItems(requestId, [makeItem(requestId, 0), makeItem(requestId, 1)]);
+        await store.flushItems(requestId);
+        store.persistItems(requestId, [makeItem(requestId, 2)]);
+        await store.flushItems(requestId);
+        expect(((await store.get(requestId))?.items ?? []).map((item) => item.id)).toEqual(ids([0, 1, 2]));
       });
     });
 

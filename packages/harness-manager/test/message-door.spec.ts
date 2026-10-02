@@ -10,7 +10,7 @@
  * The door is called the way Shift Manager calls it: the `message` action, into the
  * session the task's run link names.
  */
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -88,6 +88,7 @@ function stubHarness(
   settleFirst: (to: "completed" | "pending") => Promise<void>,
   released: Promise<void>,
   sessionGate: Promise<void>,
+  atHarnessStart: () => Promise<void>,
 ) {
   return (feeds: HarnessFeeds): HarnessBlock =>
     handler({
@@ -99,6 +100,7 @@ function stubHarness(
         const step = script[seen.length] ?? "finished";
         const session = step === "no-session" ? null : resume ?? `sess_${seen.length + 1}`;
         seen.push({ prompt: input.prompt, resume, session });
+        await atHarnessStart();
         if (step === "late-session") await sessionGate;
         if (session !== null) await feeds.onSession(session, ctx as never);
         const handle = (status: "completed" | "failed") => ({
@@ -160,6 +162,8 @@ function host(options: {
   row?: Record<string, unknown>;
   /** Holds the first prompt build until the test calls `openPrompt`: an attempt still being prepared. */
   holdPrompt?: boolean;
+  /** Runs as each attempt's harness starts, before it names a session. */
+  atHarnessStart?: () => Promise<void>;
 }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-door-"));
   dirs.push(dir);
@@ -214,6 +218,7 @@ function host(options: {
       (to) => settleFirst(to),
       released,
       sessionGate,
+      async () => options.atHarnessStart?.(),
     ),
   });
   const board = taskBoard({
@@ -404,6 +409,48 @@ function host(options: {
     return seenAt;
   };
 
+  /** The kept turns, as stored now: the person's words and the attempt that took each. */
+  const turns = async (): Promise<Array<{ message: string; deliveredTo: number | null }>> => {
+    const rt = await runtime();
+    const rows = await rt.stores.resourceState.getByPrefix("user", ALICE, "turns/");
+    return Object.values(rows).map((row: any) => ({ message: row.state.message, deliveredTo: row.state.deliveredTo }));
+  };
+
+  /**
+   * Hold the first store write to a user key under `prefix` until the test
+   * releases it. `arrived` resolves once that write is waiting.
+   */
+  const holdWrite = async (prefix: string): Promise<{ arrived: Promise<void>; release: () => void }> => {
+    const stores = (await runtime()).stores;
+    const original = stores.resourceState.set.bind(stores.resourceState);
+    let arrive!: () => void;
+    const arrived = new Promise<void>((resolve) => {
+      arrive = resolve;
+    });
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let armed = true;
+    stores.resourceState.set = async (...args: any[]) => {
+      if (armed && args[0] === "user" && String(args[2]).startsWith(prefix)) {
+        armed = false;
+        arrive();
+        await released;
+      }
+      return original(...(args as [any, any, any, any, any]));
+    };
+    return { arrived, release };
+  };
+
+  /** The session the run record holds, as stored now. */
+  const recordedSession = async (): Promise<string | null> => {
+    const rt = await runtime();
+    const rows = await rt.stores.resourceState.getByPrefix("user", ALICE, "runs/");
+    const named = Object.values(rows).map((row: any) => row.state?.sessionId).find((id) => typeof id === "string");
+    return named ?? null;
+  };
+
   /** The stored version of the row, which moves on every write to it. */
   const rowVersion = async (): Promise<number | undefined> => {
     const rt = await runtime();
@@ -461,6 +508,9 @@ function host(options: {
     release: () => release(),
     openSession: () => openSession(),
     openPrompt: () => openPrompt(),
+    holdWrite,
+    recordedSession,
+    turns,
     until,
     send,
     request,
@@ -575,6 +625,78 @@ describe("a turn sent while the run is still starting (FIX-1735)", () => {
     expect((await lab.request(running.run!.requestId))?.status).toBe("completed");
   }, 60_000);
 
+  // The door's wait reads the session first and the turn second, and stops the
+  // attempt once a session is named and the turn is not taken. That is only
+  // safe because an attempt takes its turns before its harness starts: a turn
+  // it will act on is marked taken before any session can be named.
+  it("marks a turn kept for a starting attempt taken before that attempt's harness starts", async () => {
+    let atStart: Array<{ message: string; deliveredTo: number | null }> | undefined;
+    const lab = host({
+      script: ["finished"],
+      holdPrompt: true,
+      atHarnessStart: async () => {
+        atStart ??= await lab.turns();
+      },
+    });
+    await lab.act(ALICE, "seed");
+    await lab.act(ALICE, "drain");
+    await lab.until(() => lab.builds.length === 1, "attempt 1 to reach its prompt");
+
+    const pending = lab.send(ALICE, "use the blue theme");
+    await after(200, undefined);
+    expect(await lab.turns(), "the door kept no turn").toEqual([{ message: "use the blue theme", deliveredTo: null }]);
+    lab.openPrompt();
+    await pending;
+    expect(atStart).toEqual([{ message: "use the blue theme", deliveredTo: 1 }]);
+  }, 60_000);
+
+  // The door decides from the run record and keeps the turn. A first attempt
+  // has no record until it opens, and a record this request first read absent
+  // stays absent to it. So if the door read the record, and the attempt then
+  // opened, took its turns and named its session before the door's keep
+  // landed, a door that read first would wait on a session it can never see,
+  // for a turn no running attempt will take.
+  it("continues the run with a line whose keep lands after the attempt opened and took its turns", async () => {
+    const lab = host({ script: ["hold", "finished"] });
+    await lab.act(ALICE, "seed");
+    const opening = await lab.holdWrite("runs/");
+    const draining = lab.act(ALICE, "drain");
+    await opening.arrived;
+    const running = await lab.until((t) => t.status === "in_progress" && t.run !== undefined, "the run link");
+
+    const keeping = await lab.holdWrite("turns/");
+    const pending = lab.send(ALICE, "use the blue theme");
+    await keeping.arrived;
+    opening.release();
+    await lab.until(() => lab.seen.length === 1, "attempt 1 to start its harness");
+    while ((await lab.recordedSession()) === null) await after(25, undefined);
+    keeping.release();
+
+    // A door that cannot see the session would hold the line until its wait
+    // runs out; run the clock past it rather than wait a minute.
+    const early = await Promise.race([pending, after(2_000, "waiting" as const)]);
+    let sent: Awaited<typeof pending>;
+    if (early === "waiting") {
+      vi.setSystemTime(Date.now() + 2 * 60_000);
+      try {
+        sent = await pending;
+      } finally {
+        vi.useRealTimers();
+      }
+    } else {
+      sent = early;
+    }
+    expect(sent.error, messageOf(sent.error)).toBeUndefined();
+    expect(sent.output).toMatchObject({ outcome: "continuing" });
+    expect((await lab.request(running.run!.requestId))?.status).toBe("aborted");
+
+    await lab.until((t) => t.status === "completed", "the next attempt to finish");
+    await draining;
+    expect(lab.seen).toHaveLength(2);
+    expect(lab.seen[1]!.prompt).toContain("use the blue theme");
+    expect(lab.seen[1]!.resume).toBe(lab.seen[0]!.session);
+  }, 60_000);
+
   it("says the run is still starting, and keeps nothing, when the harness never names its session in time", async () => {
     const lab = host({ script: ["late-session", "finished"] });
     await lab.act(ALICE, "seed");
@@ -585,13 +707,12 @@ describe("a turn sent while the run is still starting (FIX-1735)", () => {
     const pending = lab.send(ALICE, "are you there?");
     await after(300, undefined);
     // The door's wait runs out while the session is still unnamed.
-    const realNow = Date.now;
-    Date.now = () => realNow() + 2 * 60_000;
+    vi.setSystemTime(Date.now() + 2 * 60_000);
     let sent: Awaited<typeof pending>;
     try {
       sent = await pending;
     } finally {
-      Date.now = realNow;
+      vi.useRealTimers();
     }
     expect(sent.error, "the door completed with no session named").toBeDefined();
     expect(messageOf(sent.error)).toContain("This run is still starting");

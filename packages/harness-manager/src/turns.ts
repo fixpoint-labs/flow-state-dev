@@ -16,8 +16,9 @@
  *
  * ## The key: `<issue>/<phase>/<forAttempt>/<id>`
  *
- * `forAttempt` is the attempt the turn was kept for: the row's `attempts` plus
- * one when it was kept. `id` names the door request that kept it, hashed so the
+ * `forAttempt` is the attempt the turn was kept for: the row's `attempts` when
+ * it was kept for a running row (that attempt, if still starting, takes it;
+ * otherwise the next), plus one for a row between attempts. `id` names the door request that kept it, hashed so the
  * key grammar holds, which makes the keep **create-only**: a replay of the
  * door's step writes nothing new.
  *
@@ -43,7 +44,7 @@
  * too, so both resolve the same rows.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
-import { updateStateWith } from "@flow-state-dev/core/helpers";
+import { readCommitted, updateStateWith } from "@flow-state-dev/core/helpers";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { hashKeySegment, issuePhasePrefix } from "./workspace";
@@ -123,9 +124,9 @@ export async function withdrawTurn(ctx: BlockContext, key: string): Promise<"wit
 export async function turnTakenBy(ctx: BlockContext, key: string): Promise<number | null> {
   const ref = await turnsRef(ctx).getOptional(key);
   if (ref === undefined) return null;
-  const taken = await updateStateWith<Record<string, unknown>, number | null>(ref, (current) => {
+  const taken = await readCommitted<Record<string, unknown>, number | null>(ref, (current) => {
     const parsed = turnStateSchema.safeParse(current ?? {});
-    return { state: current, result: parsed.success ? parsed.data.deliveredTo : null };
+    return parsed.success ? parsed.data.deliveredTo : null;
   });
   return taken ?? null;
 }

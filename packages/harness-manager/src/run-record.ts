@@ -79,7 +79,7 @@
  * changed and does not change with the scope: a copy, never a source.
  */
 import { defineResourceCollection } from "@flow-state-dev/core";
-import { updateStateWith } from "@flow-state-dev/core/helpers";
+import { readCommitted, type UpdateStateRunner } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 
 /** Accessor key and storage prefix for the run record. */
@@ -477,28 +477,42 @@ export async function readRunRow(
 }
 
 /**
- * The session the run's current attempt has confirmed, as STORED now, or
- * `null` while it has confirmed none (FIX-1735).
+ * The session `record` says attempt `attempt` (or a later one) confirmed, or
+ * `null`. A session left by an earlier attempt is not this attempt's: it opens
+ * by clearing it, so until then the attempt has confirmed nothing. A record
+ * written before attempts were recorded counts its session as the current one.
+ */
+export function sessionConfirmedBy(
+  record: { sessionId?: string | null; attempt?: number | null } | undefined,
+  attempt: number,
+): string | null {
+  if (typeof record?.sessionId !== "string") return null;
+  if (record.attempt != null && record.attempt < attempt) return null;
+  return record.sessionId;
+}
+
+/**
+ * The session attempt `attempt` (or a later one) has confirmed, as STORED now,
+ * or `null` while it has confirmed none (FIX-1735).
  *
  * {@link readRunRow} answers from what this request read first, which is right
  * for a decision made once and wrong for a wait: the harness confirms its
  * session from another request, and this one would never see it. A conditional
  * update that returns what it finds and changes nothing reads the committed
  * row, and writes nothing. A row this request never saw stays unseen, since
- * its absence is remembered too; the door's wait has other ways to end.
+ * its absence is remembered too; the door keeps its turn before it reads, so
+ * an attempt that opens a row it never saw takes that turn itself.
  */
 export async function readConfirmedSession(
   ctx: CollectionHoldingContext,
   topic: string,
+  attempt: number,
 ): Promise<string | null> {
-  const ref = (await collectionRef(ctx, RUNS).getOptional(topic)) as
-    | Parameters<typeof updateStateWith<Record<string, unknown>, string | null>>[0]
-    | undefined;
+  const ref = await collectionRef(ctx, RUNS).getOptional(topic);
   if (ref === undefined) return null;
-  const sessionId = await updateStateWith<Record<string, unknown>, string | null>(ref, (current) => ({
-    state: current,
-    result: typeof current?.sessionId === "string" ? current.sessionId : null,
-  }));
+  const sessionId = await readCommitted<Record<string, unknown>, string | null>(ref, (current) =>
+    sessionConfirmedBy(current as { sessionId?: string | null; attempt?: number | null } | undefined, attempt),
+  );
   return sessionId ?? null;
 }
 
@@ -509,8 +523,14 @@ export async function readConfirmedSession(
  * ledger — whose row shape is the substrate's `Task`, not ours — resolves
  * through the same helper.
  */
+/** One row as {@link ReadableCollection.getOptional} hands it back: its state, and the write a committed read runs through. */
+interface CollectionRow extends UpdateStateRunner<Record<string, unknown>> {
+  state: unknown;
+  path: string;
+}
+
 interface ReadableCollection {
-  getOptional(key: string): Promise<{ state: unknown; path: string } | undefined>;
+  getOptional(key: string): Promise<CollectionRow | undefined>;
   upsert(key: string, update: Record<string, unknown>): Promise<unknown>;
   list(prefix?: string): Promise<Array<{ state: unknown; path: string }>>;
 }
