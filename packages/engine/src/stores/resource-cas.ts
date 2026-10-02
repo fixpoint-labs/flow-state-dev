@@ -17,7 +17,7 @@
  * | Conflict, **create-if-absent** | **Terminal** {@link ResourceAlreadyExistsError} | Refreshes to the winner's version and retries, **overwriting the winner** |
  * | `signal` aborted | Stop before backoff **and** before persisting | No signal; `cas.ts`'s `wait()` is an unabortable timer — **persists after cancellation** |
  * | Retry budget exhausted | {@link ConcurrentModificationError} | same |
- * | Mutator output equals the cached state | Suppress **only against a re-read, verified version** | Returns `committed: false` *before* `persist`, ahead of its only version check — **silently drops a deliberate write** |
+ * | Mutator output equals the cached state | Suppress **only against a re-read, verified version** | same — given its scope's `reread`; without one it cannot verify, so it persists and lets the version check decide |
  * | Single-field literal patch | Stays on CAS — there is no hint surface here | `runDurableMutation` (`state-container.ts`) routes a commutative hint to `runCommutative`, which persists **once, with no retry behind it**. Whether that one write is version-checked is the adapter's to decide: `createScopePersist` (`scope-persist.ts`) maps `expectedVersion` to `"any"` only INSIDE its four delta-verb branches, each guarded on `typeof store.<verb> === "function"`. Against an adapter advertising none, the same hint falls through to a **version-checked full-record `set` at the raw numeric version** — a single attempt that can lose the write, reported as `false` rather than retried |
  *
  * The no-op and commutative rows are the subtle ones. A no-op decided against an

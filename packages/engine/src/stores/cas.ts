@@ -5,9 +5,9 @@
  * Resource state has its own (`./resource-cas.ts`) rather than calling this,
  * because its conflict *policy* differs even though the shape does not: a
  * conflict against a deleted resource and a losing create-if-absent are both
- * terminal there, where this driver retries every conflict; it suppresses a
- * no-op only against a re-read version, where this one decides before
- * `persist`; and it takes an `AbortSignal`, which this one does not. That
+ * terminal there, where this driver retries every conflict; and it takes an
+ * `AbortSignal`, which this one does not. Both suppress a no-op only against
+ * a re-read, verified version (see `CASReread`). That
  * file's header carries the full policy table. Changing anything below is
  * worth checking against it, since the two are meant to diverge deliberately
  * rather than drift.
@@ -92,10 +92,27 @@ export type CASPersist<TState> = (
   hint: CASMutationHint
 ) => Promise<CASPersistResult<TState>>;
 
+/**
+ * Re-reads the stored state and version, used to verify a deep-equal no-op
+ * before skipping `persist`. Resolves `undefined` when no record exists.
+ */
+export type CASReread<TState> = () => Promise<
+  { state: TState; version: number } | undefined
+>;
+
 export type RunWithCASOptions<TState> = {
   container: StateContainer<TState>;
   mutator: CASMutator<TState>;
   persist: CASPersist<TState>;
+  /**
+   * Verifies a no-op against the store. When the mutator's output equals the
+   * container's cached state, the cache may be stale: another writer can have
+   * changed the stored value since this context last read it. The skip is
+   * taken only when `reread` confirms the stored version is the one the
+   * container holds. Without `reread` the skip cannot be verified, so the
+   * write goes to `persist` and its version check decides.
+   */
+  reread?: CASReread<TState>;
   options?: CASOptions;
   /**
    * Intent hint forwarded to `persist`. Defaults to `{ kind: "set" }` when
@@ -131,10 +148,11 @@ export function waitForCASRetry(attempt: number, options?: CASOptions): Promise<
 }
 
 /**
- * Outcome of `runWithCAS`. `committed` is `false` when the proposed next
- * state was structurally equal to the current state — no persist call was
- * made, no version bump, and the caller should treat the operation as a
- * no-op (skip downstream side effects like SSE emits).
+ * Outcome of `runWithCAS`. `committed` is `false` only for a verified no-op:
+ * the proposed next state equalled the stored state at a version `reread`
+ * confirmed (or no record exists to write to). No persist call was made, no
+ * version bump, and the caller should skip downstream side effects like SSE
+ * emits.
  */
 export type RunWithCASResult<TState> = {
   state: Readonly<TState>;
@@ -147,6 +165,7 @@ export async function runWithCAS<TState>({
   container,
   mutator,
   persist,
+  reread,
   options,
   hint
 }: RunWithCASOptions<TState>): Promise<RunWithCASResult<TState>> {
@@ -160,36 +179,31 @@ export async function runWithCAS<TState>({
     const expectedVersion = container.getVersion();
     const nextState = await mutator(current);
 
-    // No-op short-circuit: if the mutator's output is structurally equal to
-    // the current state, skip persist and signal `committed: false`. The CAS
-    // retry loop is preserved — only the commit phase is guarded. If a retry
-    // attempt produces an equal state (e.g. a concurrent writer landed the
-    // same value), this also returns `committed: false` instead of emitting
-    // a redundant downstream event for our late-but-no-op commit.
-    if (deepEqual(current, nextState)) {
-      return { state: current, committed: false };
+    // A verified no-op returns here. A stale cache and a lost persist share
+    // the refresh-and-retry tail below; see `reread` on `RunWithCASOptions`.
+    if (deepEqual(current, nextState) && reread !== undefined) {
+      const fresh = await reread();
+      if (fresh === undefined || fresh.version === expectedVersion) {
+        return { state: current, committed: false };
+      }
+      container.commit(fresh.state, fresh.version);
+    } else {
+      const result = await persist(nextState, expectedVersion, persistHint);
+      if (result.ok) {
+        return { state: container.commit(nextState, result.version), committed: true };
+      }
+      // Deleted between read and write: keep the cached state. The next
+      // persist still mismatches on its own expectedVersion check.
+      container.commit(
+        result.currentState ?? (container.read() as TState),
+        result.currentVersion
+      );
     }
-
-    const result = await persist(nextState, expectedVersion, persistHint);
-
-    if (result.ok) {
-      return { state: container.commit(nextState, result.version), committed: true };
-    }
-
-    // Conflict: refresh the container with the store's current state so the
-    // next attempt's mutator sees the real current state. When the store has
-    // no current value (deleted between read and write), fall back to the
-    // previously cached state — the next persist will still detect the
-    // mismatch via its own expectedVersion check.
-    const refreshedState =
-      result.currentState ?? (container.read() as TState);
-    container.commit(refreshedState, result.currentVersion);
 
     attempt += 1;
     if (attempt > maxRetries) {
       break;
     }
-
     await waitForCASRetry(attempt, options);
   }
 

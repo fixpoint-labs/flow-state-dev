@@ -42,7 +42,7 @@ import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
-import { createScopePersist } from "../stores/scope-persist";
+import { createScopePersist, createScopeReread } from "../stores/scope-persist";
 import { toBareState, toBareStates, toVersions } from "../stores/resource-state-views";
 import { runResourceCAS, type ResourceCASIntent } from "../stores/resource-cas";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
@@ -2152,7 +2152,8 @@ export async function createExecutionContext<
         version: expectedVersion + 1,
         updatedAt: Date.now()
       })
-    )
+    ),
+    reread: createScopeReread<TRequestState, RequestRecord>(requestRef, stores.request)
   });
 
   const userOps = createScopeStateOps(userContainer, {
@@ -2166,7 +2167,8 @@ export async function createExecutionContext<
         version: expectedVersion + 1,
         updatedAt: Date.now()
       })
-    )
+    ),
+    reread: createScopeReread<TUserState, UserRecord>(userRef, stores.user)
   });
 
   const sessionOps = createScopeStateOps(sessionContainer, {
@@ -2180,7 +2182,8 @@ export async function createExecutionContext<
         version: expectedVersion + 1,
         updatedAt: Date.now()
       })
-    )
+    ),
+    reread: createScopeReread<TSessionState, SessionRecord>(sessionRef, stores.session)
   });
 
   const orgOps = (():
@@ -2210,7 +2213,8 @@ export async function createExecutionContext<
           return { ok: true, version: expectedVersion + 1 };
         }
         return inner(state, expectedVersion, hint);
-      }
+      },
+      reread: createScopeReread<TOrgState, OrgRecord>(orgRef, stores.org)
     });
   })();
 
