@@ -12,3 +12,17 @@
 
 Nothing is superseded. FIX-1621 is a dependency, not a predecessor: it owns the fire path this
 issue calls.
+
+<a name="amendment-after-merge-cross-spec-alignment"></a>
+## Amendment after merge: cross-spec alignment
+
+The original review is [#2613](https://github.com/fixpoint-labs/flow-state-dev/pull/2613). This
+amendment is a new PR from `main`, shared with the epic, FIX-1621 and FIX-1718, on the EM's calls
+after a cross-spec review. The approach is unchanged.
+
+| What | Treatment | Why |
+|---|---|---|
+| S6, CoS's `tools:` | **Amended**: `[hire, fire, rehire, brokenSeats]`, with DECISIONS and the SPEC tree to match | The epic's leg c (an orphan listed with its reason) needs a path through CoS |
+| "Posts to a project's channel"; DECISIONS' "which project channel it joins" | **Clarified**: CoS posts to a project's room by being on FIX-1718's default template; it never joins | Seats never `join` ([FIX-1718 BR-11](../FIX-1718/BUSINESS-RULES.md#the-template-and-the-talk-session)) |
+| DOCS, the opt-in step | **Amended**: names `askBefore: ["fire"]` | The approval on fire holds only through that setting |
+| DOCS, the epic's CoS paragraph | **Amended**: published without the project clause | FIX-1718's PR 4 publishes it |

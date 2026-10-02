@@ -104,8 +104,10 @@ created and never edited. Lines are ordered by a per-project sequence whose coun
 row of its own, so editing the project never contends with a post. A line's `userId` is the
 poster's session owner as the engine recorded it, never a field the caller sends.
 
-Each person reaches the room through **their own talk session**, minted from one template: a
-`CHANNEL.md` that declares `mintFor: projects`, which is a shape and is not opened at boot.
+Each person reaches the room through **their own talk session**, minted from one template: the
+org-level default declared beside the collection in `org/resources/projects.ts`, or, for a team's
+projects, a `CHANNEL.md` that declares `mintFor: projects`. A template is a shape and is not
+opened at boot.
 Creating a row mints the creator's talk session in the same turn (a `reactTo.created` binding
 the binder installs, dispatching to the channel kind's internal `bind` entry). A member who
 has no talk session yet calls `join`, which mints theirs. A talk session is keyed by the
@@ -199,12 +201,14 @@ data is `resourceId` on sessions, `members` and `sessions` on rows, and the `roo
 so that migration is small.
 
 <a name="pending-3"></a>
-**3 · Where is "a new project gets a talk channel shaped like this" declared?** *Default, the
-Architect's lean on #2629: `mintFor:` on `CHANNEL.md` for templates a Lab authors or an install
-configures; app-default projects and workstreams call the same `bind` from product code.*
+**3 · Where is "a new project gets a talk channel shaped like this" declared?** *Default, as
+FIX-1718 shipped it: the default talk template is declared in `org/resources/projects.ts`, beside
+the collection; a team `CHANNEL.md` with `mintFor:` stays allowed for that team's projects;
+app-default projects and workstreams call the same `bind` from product code.*
 
-- *In plain terms.* A Lab author writes a `CHANNEL.md` with `mintFor: projects` and gets the
-  charter and members for free. A project shape the app ships by default needs no file in the
+- *In plain terms.* A Lab's default template sits beside the projects collection in
+  `org/resources/projects.ts` and gives every project's room its charter and members. A team
+  that wants its own writes a `CHANNEL.md` with `mintFor: projects`. A project shape the app ships by default needs no file in the
   Lab's tree: its code calls the same mint. Either way, the PROJECTS list reads rows, never the
   checkout.
 - *The trade-off.* One substrate, two declaration sites. The key makes a channel folder a

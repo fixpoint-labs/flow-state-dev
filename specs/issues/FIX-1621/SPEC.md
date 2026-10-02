@@ -8,7 +8,7 @@
 |---|---|---|
 | **shipped a release that cut a kind** (kitchen-sink's `desk-clerk`) | Every start names `support.joe` as a stored seat it could not bring back, and nothing clears it short of reaching the database | Asks which stored seats don't come back and gets each one with its reason. Retires it, or re-hires it onto a kind the app still carries, and the next start names nothing |
 | **fires a seat it hired** | The seat stops answering, but its row stays in the inventory, so Shift Manager's TEAMS keeps listing it | The seat leaves TEAMS when it is fired. A seat fired before this change leaves too |
-| **runs Ops** (FIX-1719, next in the epic) | Would have to write its own detector and its own delete | Calls this issue's read, and retires through the same path it fires through |
+| **runs the chief of staff** (FIX-1719, next in the epic) | Would have to write its own detector and its own delete | Calls this issue's read, and retires through the same path it fires through |
 | **changes a seat's kind on purpose** | Fires it and hires it again under the same id, losing nothing but a step | The same. Re-hire is for a seat that no longer starts, not a second way to edit a working one |
 
 The refusal at start is right and stays the default. What's missing is the way out.
@@ -23,7 +23,7 @@ the next start names no refused seat, and the team list shows only seats that ar
 |---|---|
 | **The real need** | "Detect hire rows whose kind is missing, inspect why they failed, and repair: retire, or explicitly re-hire onto a registered kind" ([FIX-1621](https://linear.app/fixpoint-labs/issue/FIX-1621)); the epic's leg c: named, retired on approval, and the next boot names no refused seat ([FIX-1650](../../epics/FIX-1650/SPEC.md#the-goal-and-how-well-know-its-met)) |
 | **Smaller, and rejected** | "Retire deletes the orphan's roster row." The next start goes quiet, and TEAMS still lists the seat, because fire never touched the inventory. That is half the epic's leg b failing on the same path |
-| **Bigger, and not this issue's** | Ops asking in Inbox, and where that approval sits (FIX-1719, [ER-20](../../epics/FIX-1650/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). The browser run over Shift Manager (the closure, FIX-1720) |
+| **Bigger, and not this issue's** | The chief of staff asking in Inbox, and where that approval sits (FIX-1719, [ER-20](../../epics/FIX-1650/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). The browser run over Shift Manager (the closure, FIX-1720) |
 | **Not done if** | The read and the boot disagree about which seats are broken · a seat fired before this change is still in TEAMS · a crash between the two deletes leaves a seat listed · a Deny changes a row · any kind is mapped onto another without a person naming it |
 
 ```mermaid
@@ -55,7 +55,7 @@ the control, today's fire, it must fail on the team list.
 Same store, before and after. The left is every start today; the right is the two ways out and
 the team list that agrees with the roster.
 
-**What Ops (FIX-1719) or an app's own action writes:**
+**What the chief of staff (FIX-1719) or an app's own action writes:**
 
 ```diff
 - const { hire, fire } = createSeatHireBlocks({ kinds, register, unregister, kindAt });
@@ -95,7 +95,7 @@ carries a gate of its own; where the ask sits is FIX-1719's first question.
 ## Sign off
 
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** found, cleared on approval,
-gone from the next start and from the team list. If wrong: Ops gets a delete that leaves the seat
+gone from the next start and from the team list. If wrong: the chief of staff gets a delete that leaves the seat
 on screen, and leg b of the epic fails on the same path.
 
 1. **[D1](DECISIONS.md#d1) · Retire is fire, and fire removes the seat's inventory row; an older
@@ -105,7 +105,7 @@ on screen, and leg b of the epic fails on the same path.
    names; nothing is suggested or mapped.** If wrong: a person has to retire and hire again, and
    loses the seat's address and channel places.
 3. **[D3](DECISIONS.md#d3) · The read reuses the start's own check and names every stored seat
-   that won't come back, with one of three reasons; no banner, no new tool here.** If wrong: Ops
+   that won't come back, with one of three reasons; no banner, no new tool here.** If wrong: the chief of staff
    reports a different list from the one the start refuses.
 
 **Open: none.** D1 is the one to weigh: it changes a shipped promise ("the inventory row stays").

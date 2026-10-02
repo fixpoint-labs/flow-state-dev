@@ -72,7 +72,7 @@ ran the project convention on `main` with no L1 change.
 | `labs/shift-manager/src/gaps.ts` | FIX-1718 and sibling FIX-1651 | Each replaces only its own entries ([ER-8](BUSINESS-RULES.md#what-no-child-may-do)) |
 | The approval card in Inbox | FIX-1719 and sibling FIX-1652 | CoS's ask on a fire is a `human_approval` suspension Inbox already renders ([ER-20](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)); what counts as attention stays FIX-1652's |
 | The Workforce loader | FIX-1719 and Workforce EM's tracks | FIX-1719's org-seat read is additive; the teams-only readers keep their behaviour |
-| The DevTeam profile's tree | FIX-1718 and FIX-1719 | Both add to it; whichever lands second adds, never rewrites |
+| The DevTeam tree, host and profile | FIX-1718 and FIX-1719 | Both add to each: the tree, the host's install on the agent kind, the profile. Whichever lands second adds, never rewrites |
 
 ## Not children, deliberately
 

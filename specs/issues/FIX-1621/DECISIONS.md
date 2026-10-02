@@ -57,7 +57,7 @@ schema change instead of a delete.
 
 It comes down to the seat's address: retire-only throws it away with the kind.
 
-**What would change my mind:** Ops (FIX-1719) never needing re-hire because every cut kind's seats
+**What would change my mind:** the chief of staff (FIX-1719) never needing re-hire because every cut kind's seats
 are simply let go. Then re-hire is dropped before it ships and retire stands alone.
 
 <a name="d3"></a>
@@ -66,8 +66,8 @@ are simply let go. Then re-hire is dropped before it ships and retire stands alo
 | | |
 |---|---|
 | **Instead of** | A check for a missing kind only · the inventory or Discover as the detector · a Shift Manager banner as the affordance |
-| **Because** | A seat can fail to start for three reasons the start already tells apart: its kind is gone, the kind now refuses its settings, or the row can't be read. A kind-only read would leave the other two listed by the start and absent from the read, and Ops would grow a second detector ([ER-5](../../epics/FIX-1650/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). The inventory says *was registered*, not *won't start*, and the Architect fenced it off as the detector. Q2 made Ops the person's way in, so a banner would be a second one |
-| **Locks in** | Three reason names Ops and the closure read, so renaming one later is a breaking change for them. Until FIX-1719 ships, a person has no screen for this: only an app's own action reaches it |
+| **Because** | A seat can fail to start for three reasons the start already tells apart: its kind is gone, the kind now refuses its settings, or the row can't be read. A kind-only read would leave the other two listed by the start and absent from the read, and the chief of staff would grow a second detector ([ER-5](../../epics/FIX-1650/BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)). The inventory says *was registered*, not *won't start*, and the Architect fenced it off as the detector. Q2 made the chief of staff the person's way in, so a banner would be a second one |
+| **Locks in** | Three reason names the chief of staff and the closure read, so renaming one later is a breaking change for them. Until FIX-1719 ships, a person has no screen for this: only an app's own action reaches it |
 
 ![D3, what the read reports: every stored seat the start would skip, by the start's own check, chosen, beside a kind-only check. Decides it: whether the read and the start can name different seats. Price: three reason names are public](figures/d3-one-check.svg)
 
@@ -78,8 +78,8 @@ minimal operator action ships here, not a banner.
 
 ## Decided, not asked
 
-- **ER-5's orphan is the `kind-gone` reason; the read also names the other two**, so Ops has one
-  list. A widening reported to the epic coordinator, not a conflict.
+- **ER-5's orphan is the `kind-gone` reason; the read also names the other two**, so the chief of staff
+  has one list. A widening reported to the epic coordinator, not a conflict.
 - **No gate in the blocks.** Model-free, like `hire` and `fire`. ER-20 places the ask; these run on
   Approve and are safe to run again after a crash.
 - **Re-hire carries the instructions, not the settings**, which belong to the old kind's schema.
@@ -95,7 +95,7 @@ minimal operator action ships here, not a banner.
 |---|---|
 | Retire every orphan automatically at start | Deletes evidence without a person; contradicts the locked boot default |
 | Mark fired inventory rows `firedAt` instead of deleting | A history nobody reads, and every reader must filter. The simpler delete won |
-| An Ops template in this issue | Q2 made the org seats FIX-1719's; this would be a second Ops |
+| A chief-of-staff template in this issue | Q2 made the org seats FIX-1719's; this would be a second chief of staff |
 
 ## How it got here
 
