@@ -29,7 +29,7 @@
 
 import { dispatcher, handler, resourceChangeSchema, type ResourceChange } from "@flow-state-dev/core";
 import { z } from "zod";
-import { validateSegment } from "../loader/segments";
+import { parseDeclaredSeatId } from "../seat-references";
 
 /** A project's talk template, as the org-level default declares it. */
 export type TalkTemplate = {
@@ -116,39 +116,21 @@ export function forgetOrgTalkTemplate(collection: object): void {
 }
 
 /**
- * Why a template's seat id is not one, or `undefined` when it is: a full seat
- * id (`team.seat`) or a dotless org seat id, each part by the tree's name rule.
- *
- * A local check, kept minimal: the org seat loader's own parser is being
- * reworked beside this (FIX-1719), and the two are to be consolidated once it
- * lands.
- */
-export function templateSeatIdProblem(id: unknown): string | undefined {
-  if (typeof id !== "string") return `seat ${JSON.stringify(id)} is not a seat id`;
-  const parts = id.split(".");
-  if (parts.length > 2) {
-    return `seat "${id}" is not a seat id: name a team's seat as \`team.seat\`, or an org seat by its own name`;
-  }
-  try {
-    if (parts.length === 2) validateSegment(parts[0]!, "Team");
-    validateSegment(parts[parts.length - 1]!, "Worker");
-  } catch (error) {
-    return `seat "${id}" is not a seat id: ${error instanceof Error ? error.message : String(error)}`;
-  }
-  return undefined;
-}
-
-/**
  * Why a template's seat list is not one, or `undefined` when it is: every id
- * a seat id ({@link templateSeatIdProblem}) and none listed twice, since a
- * seat listed twice would be woken twice by one post. Both declaration sites
- * check with this.
+ * a declared seat's id, by the one rule the loader mints them by
+ * (`parseDeclaredSeatId`: a team's `team.seat`, or a dotless org seat), and
+ * none listed twice, since a seat listed twice would be woken twice by one
+ * post. Both declaration sites check with this.
  */
 export function templateSeatsProblem(seats: readonly unknown[]): string | undefined {
   const seen = new Set<unknown>();
   for (const seat of seats) {
-    const problem = templateSeatIdProblem(seat);
-    if (problem !== undefined) return problem;
+    if (typeof seat !== "string" || parseDeclaredSeatId(seat) === undefined) {
+      return (
+        `seat ${typeof seat === "string" ? `"${seat}"` : JSON.stringify(seat)} is not a seat id: name a team's seat ` +
+        "as `team.seat`, or an org seat by its own name, each part a lowercase folder name"
+      );
+    }
     if (seen.has(seat)) return `seat "${String(seat)}" is listed twice: a post would wake it twice. List each seat once`;
     seen.add(seat);
   }
