@@ -189,6 +189,13 @@ describe("declaring a talk template", () => {
     expect((projects as { reactTo?: { created?: unknown } }).reactTo?.created).toBeDefined();
   });
 
+  it("reads one projects collection exposed under two refs as one template, not two rivals", () => {
+    defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Plan." } });
+    const instances = channelInstances([], { kinds: waking(), resources: { projects, workProjects: projects } });
+    expect(instances.map((instance) => instance.kind)).toEqual([CHANNEL_KIND]);
+    expect(registeredTalkTemplate(projects)?.facts).toEqual({ seats: ["eng.em"], charter: "Plan." });
+  });
+
   it("binds a roster with no template as today: no reaction, and a template file is never opened or registered", async () => {
     const plain = channelInstances([channel("eng.feature", { members: ["eng.em"] })], { resources: { projects } });
     expect((projects as { reactTo?: unknown }).reactTo).toBeUndefined();
@@ -216,13 +223,22 @@ describe("declaring a talk template", () => {
       {
         userId: "alice",
         orgId: ORG,
+        seatWriter: { flowKind: CHANNEL_KIND },
         run: async (request) => {
-          registered.push(request.sessionId);
+          registered.push(`${request.action} ${request.sessionId} ${JSON.stringify(request.input)}`);
         }
       }
     );
-    expect(registered).toEqual(["eng.feature"]);
+    // The template registers nothing; its id only goes to the writer, to retire any old channel row.
+    expect(registered).toEqual([
+      'retireChannelsInInventory inventory-binder {"ids":["eng.room"]}',
+      "registerChannelInInventory eng.feature {}"
+    ]);
     expect(binding).toMatchObject({ channels: 1, problems: [] });
+
+    // With no writer named, the retirement is named as a problem rather than skipped.
+    const unwritten = await openInventory({ seats: [], channels: records }, { userId: "alice", orgId: ORG, run: async () => undefined });
+    expect(unwritten.problems).toEqual([expect.stringMatching(/talk templates "eng\.room" could not be retired .*no `seatWriter`/)]);
   });
 });
 
@@ -299,7 +315,7 @@ type Heard = { seat: string; owner: string | undefined; conversation: string; po
  * way the built-in agent kind lands a routed reply: one dispatch into the
  * post's session's `answer`, as itself.
  */
-function listeningKind(heard: Heard[]) {
+function listeningKind(heard: Heard[], kept: { postId?: string; token?: string }) {
   const record = handler({
     name: "test-record-heard",
     inputSchema: channelNotifyInputSchema,
@@ -341,6 +357,31 @@ function listeningKind(heard: Heard[]) {
       token: post.answerToken
     })
   });
+  // A seat keeping one delivery's token, then answering that post with it from
+  // a later run woken under another member, through that member's session.
+  const keep = handler({
+    name: "test-keep-token",
+    inputSchema: channelNotifyInputSchema,
+    outputSchema: channelNotifyInputSchema,
+    execute: (post: ChannelNotifyInput) => {
+      kept.postId = post.postId;
+      kept.token = post.answerToken;
+      return post;
+    }
+  });
+  const replay = dispatcher({
+    name: "test-answer-with-a-kept-token",
+    flowKind: CHANNEL_KIND,
+    action: CHANNEL_ANSWER_ACTION,
+    inputSchema: channelNotifyInputSchema,
+    session: { id: (post: ChannelNotifyInput) => post.channelId },
+    payload: (post: ChannelNotifyInput) => ({
+      postId: kept.postId as string,
+      body: `replayed by ${post.member}`,
+      author: post.member,
+      token: kept.token
+    })
+  });
   // Holds the genuine answer back, so a forged one would land first.
   const later = handler({
     name: "test-answer-later",
@@ -352,6 +393,8 @@ function listeningKind(heard: Heard[]) {
     }
   });
   const impersonating = (post: ChannelNotifyInput) => post.body.startsWith("[impersonate]");
+  const holding = (post: ChannelNotifyInput) => post.body.startsWith("[hold]");
+  const replaying = (post: ChannelNotifyInput) => post.body.startsWith("[replay]");
   return defineFlow({
     kind: "listener",
     cardinality: "collection",
@@ -370,6 +413,11 @@ function listeningKind(heard: Heard[]) {
             .tapIf((post: ChannelNotifyInput) => impersonating(post) && post.member === "eng.em", impersonate)
             .stepIf((post: ChannelNotifyInput) => impersonating(post) && post.member === "ops.lead", later)
             .tapIf((post: ChannelNotifyInput) => impersonating(post) && post.member === "ops.lead", answer)
+            .stepIf(holding, keep)
+            .stepIf(holding, later)
+            .stepIf(holding, later)
+            .tapIf(holding, answer)
+            .tapIf(replaying, replay)
         }
       }
     }
@@ -430,8 +478,9 @@ async function boot(options: {
   laterCall?: boolean;
 }) {
   const heard: Heard[] = [];
+  const kept: { postId?: string; token?: string } = {};
   const seats = hireWorkforce((options.seats ?? ["eng.em", "ops.lead", "chief-of-staff"]).map(seatRecord), {
-    kinds: { listener: listeningKind(heard) as never }
+    kinds: { listener: listeningKind(heard, kept) as never }
   });
   // Each boot stands for a fresh process: nothing declared or registered before it.
   forgetOrgTalkTemplate(projects);
@@ -499,7 +548,7 @@ async function boot(options: {
   };
   const sessionOf = (id: string, user: string) =>
     until(async () => (await rowOf(id))?.sessions.find((link) => link.userId === user)?.sessionId, `${user}'s talk session on ${id}`);
-  return { heard, call, openSession, ok, app, rowOf, until, sessionOf, stores: runtimeStores };
+  return { heard, kept, call, openSession, ok, app, rowOf, until, sessionOf, stores: runtimeStores };
 }
 
 describe("a project's talk template at runtime", () => {
@@ -676,6 +725,32 @@ describe("a project's talk template at runtime", () => {
     expect(answers).toEqual([expect.objectContaining({ author: "ops.lead", body: "noted: [impersonate] who is on call?" })]);
     expect(page.lines.some((line: { body: string }) => line.body.startsWith("forged"))).toBe(false);
   });
+
+  it("refuses a delivery's token answered through another member's talk session, leaving the answer to land under the poster", async () => {
+    const h = await boot({ talk: { seats: ["eng.em"] } });
+    await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice", "bob"] });
+    const talk = await h.sessionOf("apollo", "alice");
+    const bobs = await h.openSession("bob", CHANNEL_KIND);
+    expect((await h.ok("bob", CHANNEL_KIND, bobs, "join", { projectId: "apollo" })).sessionId).toBe(bobs);
+
+    // eng.em keeps the token of alice's post and answers it a moment later. Meanwhile bob
+    // posts, and eng.em, woken under bob, answers alice's post with that token through bob's session.
+    await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "[hold] who is on call?" });
+    await h.until(async () => (h.kept.token === undefined ? undefined : true), "eng.em keeping alice's token");
+    await h.ok("bob", CHANNEL_KIND, bobs, "post", { body: "[replay] me too" });
+    await h.until(async () => {
+      const read = await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 });
+      return read.lines.some((line: { author: string | null }) => line.author !== null) ? true : undefined;
+    }, "eng.em's answer");
+    await new Promise((r) => setTimeout(r, 700));
+    const answers = (await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 })).lines.filter(
+      (line: { author: string | null }) => line.author !== null
+    );
+    // The replay claimed nothing: the one line is under alice, the poster, in the genuine words.
+    expect(answers).toEqual([
+      expect.objectContaining({ author: "eng.em", userId: "alice", body: "noted: [hold] who is on call?" })
+    ]);
+  }, 15_000);
 
   it("reaches an existing talk session with an edited template at the next boot", async () => {
     const stores = inMemoryStores();

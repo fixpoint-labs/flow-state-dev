@@ -904,6 +904,17 @@ export const INVENTORY_REGISTER_CHANNEL = "registerChannelInInventory";
  */
 export const INVENTORY_REGISTER_SEATS = "registerSeatsInInventory";
 
+/**
+ * The action the boot binder dispatches ONCE when the roster carries project
+ * talk templates (`mintFor:`), naming their ids, so a channel row an earlier
+ * boot wrote under one of those ids is retired: a template is never a channel,
+ * so a row advertising it as one is wrong rather than merely old.
+ *
+ * **Pinned**, and internal-only like {@link INVENTORY_REGISTER_SEATS}: its whole
+ * input is ids to delete, with nothing to check them against.
+ */
+export const INVENTORY_RETIRE_CHANNELS = "retireChannelsInInventory";
+
 /** Nothing a caller supplies reaches the channel's row. */
 const registerChannelInputSchema = z.object({}).strict();
 
@@ -921,6 +932,12 @@ const registerSeatsInputSchema = z
 
 /** What the seat write reports: how many rows landed. */
 export const inventorySeatsRegisteredSchema = z.object({ written: z.number() });
+
+/** The ids of the roster's talk templates, whose channel rows are retired. */
+const retireChannelsInputSchema = z.object({ ids: z.array(z.string().min(1)) }).strict();
+
+/** What the retirement reports: how many channel rows it removed. */
+export const inventoryChannelsRetiredSchema = z.object({ retired: z.number() });
 
 /**
  * The two blocks that write the live inventory, built for one channel kind.
@@ -957,7 +974,10 @@ export const inventorySeatsRegisteredSchema = z.object({ written: z.number() });
  *     session: { stateSchema: briefingState },
  *     actions: { ...myActions, registerChannelInInventory: writer.registerChannelInInventory },
  *     internal: {
- *       actions: { registerSeatsInInventory: writer.registerSeatsInInventory }
+ *       actions: {
+ *         registerSeatsInInventory: writer.registerSeatsInInventory,
+ *         retireChannelsInInventory: writer.retireChannelsInInventory
+ *       }
  *     }
  *   });
  */
@@ -1082,6 +1102,39 @@ export function inventoryWriterActions(kind: string) {
     }
   });
 
+  const retireChannels = handler({
+    name: "inventory-retire-channels",
+    inputSchema: retireChannelsInputSchema,
+    outputSchema: inventoryChannelsRetiredSchema,
+    resources: { channels, memberships },
+    execute: async (input, ctx) => {
+      if (ctx.org === undefined) {
+        throw new Error(
+          "the retired channel rows cannot be removed: this request carries no organization, and " +
+            "the inventory is org-scoped storage. Run it under the same `orgId` the channels were opened with."
+        );
+      }
+      let retired = 0;
+      for (const id of input.ids) {
+        const row = await ctx.resources.channels.getOptional(id);
+        if (row === undefined) continue;
+        const members = [...(row.state.members ?? [])];
+        // The channel row first, then the membership rows it names: a crash
+        // between them leaves a stale membership row, never a channel row
+        // claiming a member the index has lost.
+        await ctx.resources.channels.delete(id);
+        for (const seatId of members) {
+          const key = membershipKey(seatId, id);
+          if ((await ctx.resources.memberships.getOptional(key)) !== undefined) {
+            await ctx.resources.memberships.delete(key);
+          }
+        }
+        retired += 1;
+      }
+      return { retired };
+    }
+  });
+
   return {
     [INVENTORY_REGISTER_CHANNEL]: {
       block: registerChannel,
@@ -1095,6 +1148,12 @@ export function inventoryWriterActions(kind: string) {
       description:
         "Write the org's seat rows into the live inventory. Boot machinery, called once by " +
         "`openInventory` with the roster it was hired from."
+    },
+    [INVENTORY_RETIRE_CHANNELS]: {
+      block: retireChannels,
+      description:
+        "Remove the channel rows of ids the roster now declares as project talk templates. Boot " +
+        "machinery, called once by `openInventory`."
     }
   };
 }
@@ -1495,7 +1554,8 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
           answerToken: await recordTalkDelivery(ctx as unknown as BlockContext, {
             projectId: posted.projectId,
             postId,
-            seat: member
+            seat: member,
+            sessionId: ctx.session.identity.id
           })
         }))
       );
@@ -1674,7 +1734,11 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         // that function's own doc comment.
         ...(inventoryActions === undefined
           ? {}
-          : { [INVENTORY_REGISTER_SEATS]: inventoryActions[INVENTORY_REGISTER_SEATS] }),
+          : {
+              [INVENTORY_REGISTER_SEATS]: inventoryActions[INVENTORY_REGISTER_SEATS],
+              // Internal for the same reason: its input is ids to delete.
+              [INVENTORY_RETIRE_CHANNELS]: inventoryActions[INVENTORY_RETIRE_CHANNELS]
+            }),
         ...(fanOut === undefined
           ? {}
           : {
