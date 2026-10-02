@@ -25,7 +25,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { defineFlow, defineResourceCollection, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
@@ -571,7 +571,23 @@ async function boot(options: {
   };
   const sessionOf = (id: string, user: string) =>
     until(async () => (await rowOf(id))?.sessions.find((link) => link.userId === user)?.sessionId, `${user}'s talk session on ${id}`);
-  return { heard, kept, call, openSession, ok, app, rowOf, until, sessionOf, stores: runtimeStores };
+  /** Run the talk fan-out again for a post already made, as an at-least-once redelivery of its hand-off would. */
+  const replayFanOut = async (user: string, sessionId: string, input: unknown) => {
+    const runtime: any = await state.getRuntime();
+    const result: any = await runAction({
+      flow: talkKind,
+      actionName: "onTalkPosted",
+      input,
+      userId: user,
+      orgId: ORG,
+      sessionId,
+      source: "internal",
+      stores: runtime.stores,
+      runtimeConfig: { ...runtime.runtimeConfig }
+    } as never);
+    if (result?.error !== undefined) throw result.error;
+  };
+  return { heard, kept, call, openSession, ok, app, rowOf, until, sessionOf, replayFanOut, stores: runtimeStores };
 }
 
 describe("a project's talk template at runtime", () => {
@@ -774,6 +790,19 @@ describe("a project's talk template at runtime", () => {
       expect.objectContaining({ author: "eng.em", userId: "alice", body: "noted: [hold] who is on call?" })
     ]);
   }, 15_000);
+
+  it("wakes each seat once when the fan-out for one post runs twice", async () => {
+    const h = await boot({ talk: { seats: ["eng.em", "ops.lead"] } });
+    await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
+    const talk = await h.sessionOf("apollo", "alice");
+    const line = await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "who is on call?" });
+    await h.until(async () => (h.heard.length === 2 ? true : undefined), "the post's two wakes");
+
+    // The same post's fan-out, delivered again.
+    await h.replayFanOut("alice", talk, { projectId: "apollo", seq: line.seq, body: line.body, principal: "alice" });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(h.heard.map((run) => run.seat).sort()).toEqual(["eng.em", "ops.lead"]);
+  });
 
   it("reaches an existing talk session with an edited template at the next boot", async () => {
     const stores = inMemoryStores();

@@ -52,6 +52,7 @@ import {
   ROOM_DELIVERIES_RESOURCE,
   ROOM_LINES_RESOURCE,
   ROOM_SEQ_RESOURCE,
+  roomDeliveryKey,
   roomLineKey,
   roomLineSchema,
   type ProjectRow,
@@ -63,6 +64,7 @@ import {
 import { isMember } from "./membership-gate";
 import { ProjectRefusedError } from "./project-refusal";
 import { answerInRoom } from "./room-answer";
+import { isAlreadyExists } from "./store-errors";
 import { appendRoomLine, readRoom, type RoomCollections } from "./room-store";
 import type { TalkTemplateFacts } from "./talk-template";
 
@@ -292,25 +294,34 @@ const talkAnswerInputSchema = z
   .strict();
 
 /**
- * Record one post's delivery to one seat, and return the token to hand that
- * seat alone. Called by the talk fan-out before it wakes the seat.
+ * Record one post's delivery to one seat through one session, and return the
+ * token to hand that seat alone, or `undefined` when the delivery was already
+ * recorded: a replayed fan-out does not wake the seat again. Called by the
+ * talk fan-out before it wakes the seat.
  */
 export async function recordTalkDelivery(
   ctx: BlockContext,
-  delivery: RoomDelivery
-): Promise<string> {
+  delivery: Omit<RoomDelivery, "token">
+): Promise<string | undefined> {
   const deliveries = ctx.resources[ROOM_DELIVERIES_RESOURCE] as unknown as ResourceCollectionRef<RoomDelivery>;
+  const key = roomDeliveryKey(delivery);
+  if ((await deliveries.getOptional(key)) !== undefined) return undefined;
   const token = globalThis.crypto.randomUUID();
-  await deliveries.create(token, delivery);
+  try {
+    await deliveries.create(key, { ...delivery, token });
+  } catch (error) {
+    if (isAlreadyExists(error)) return undefined;
+    throw error;
+  }
   return token;
 }
 
 /**
  * The seat an answer speaks for: the one its delivery was made to. Refused,
  * with nothing claimed, when the answer names no delivery of this post in this
- * room (`answer-not-delivered`), or names an author other than that seat, or
- * comes back through a session other than the one the delivery came from
- * (`answer-not-yours`): a seat answers only for itself, to the post's poster.
+ * room to the named author through this session (`answer-not-delivered`), or
+ * does not carry that delivery's token (`answer-not-yours`): a seat answers
+ * only for itself, to the post's poster.
  */
 async function deliveredSeat(
   ctx: BlockContext,
@@ -318,26 +329,21 @@ async function deliveredSeat(
   input: { postId: string; author: string; token?: string }
 ): Promise<string> {
   const deliveries = ctx.resources[ROOM_DELIVERIES_RESOURCE] as unknown as ResourceCollectionRef<RoomDelivery>;
-  const delivery = input.token === undefined ? undefined : (await deliveries.getOptional(input.token))?.state;
-  if (delivery === undefined || delivery.projectId !== projectId || delivery.postId !== input.postId) {
+  const self = ctx.session.identity.id;
+  const delivery = (await deliveries.getOptional(roomDeliveryKey({ postId: input.postId, seat: input.author, sessionId: self })))
+    ?.state;
+  if (delivery === undefined || delivery.projectId !== projectId) {
     throw new ProjectRefusedError(
       "answer-not-delivered",
-      `an answer to "${input.postId}" names no delivery of that post in project "${projectId}". A seat answers ` +
-        "a post in a project's room with the token its delivery carried."
+      `"${input.postId}" was not delivered to "${input.author}" through session "${self}" in project ` +
+        `"${projectId}". A seat answers a post it was handed, through the poster's session.`
     );
   }
-  if (delivery.seat !== input.author) {
+  if (input.token === undefined || delivery.token !== input.token) {
     throw new ProjectRefusedError(
       "answer-not-yours",
-      `an answer as "${input.author}" carries the delivery made to "${delivery.seat}". A seat answers only for itself.`
-    );
-  }
-  const self = ctx.session.identity.id;
-  if (delivery.sessionId !== self) {
-    throw new ProjectRefusedError(
-      "answer-not-yours",
-      `an answer to "${input.postId}" came through session "${self}", but its delivery came from session ` +
-        `"${delivery.sessionId}". A seat answers a post through the poster's session.`
+      `an answer as "${input.author}" does not carry the token of the delivery made to "${input.author}". ` +
+        "A seat answers only for itself."
     );
   }
   return delivery.seat;

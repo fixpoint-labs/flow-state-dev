@@ -822,7 +822,7 @@ members: [engineering.lead, operations.lead]
 Plan the work, and say what is blocked.
 ```
 
-That file is a template, not a channel. It's never opened, and it never shows up in the [inventory](./inventory.md).
+That file is a template, not a channel. It's never opened, and it never shows up in the [inventory](./inventory.md). If the file used to be a channel, its old session is kept in the store, but `post` and `read` on it are refused with `channel-is-a-template`.
 
 What a template does:
 
