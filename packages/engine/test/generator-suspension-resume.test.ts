@@ -450,6 +450,54 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
     }
   });
 
+  it("a step with a gate and a mapper failure fails the run; no approval is raised that could only fail", async () => {
+    // The mapper failure is already recorded, so approving the gate would
+    // fail at the resume anyway. The run fails now, and nobody is asked.
+    const gate = handler({
+      name: "risky_op",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ran: z.boolean() }),
+      execute: async (_input, ctx) => {
+        await ctx.suspend!({ reason: "approval", message: "Run risky op?" });
+        return { ran: true };
+      },
+    });
+    const broken = handler({
+      name: "mapped_op",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async () => ({ ok: true }),
+    }).mapModelOutput(() => {
+      throw new Error("mapper broke");
+    });
+    const { model } = stepModel([
+      () => ({
+        toolCalls: [
+          { toolCallId: "c1", toolName: "risky_op", args: {} },
+          { toolCallId: "c2", toolName: "mapped_op", args: {} },
+        ],
+        finishReason: "tool-calls",
+      }),
+      () => ({ text: "never asked", finishReason: "stop" }),
+    ]);
+    const gen = generator({ name: "agent", model, prompt: "p", tools: [gate, broken] });
+    const flow = defineFlow({
+      kind: "gen-gate-and-mapper",
+      actions: { run: { block: sequencer({ name: "seq", durable: true }).step(gen), inputSchema: anyInput } },
+    })({ id: "gen-gate-and-mapper" });
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+      orgId: DEFAULT_ORG_ID,
+      flow, actionName: "run", input: {}, userId: "u1", stores,
+      runtimeConfig: { durabilityProvider: provider },
+    });
+
+    const record = await stores.request.get(initial.requestId!);
+    expect(record?.status).toBe("failed");
+    expect(JSON.stringify(record?.result)).toContain("mapper broke");
+    expect(await provider.listSuspended({ status: "pending" })).toEqual([]);
+  });
+
   // 2a. REJECTION visibility — denial inherits the generator's itemVisibility --
   it("rejection denial tool_output inherits a history:false generator's visibility (no leak)", async () => {
     const gate = handler({
