@@ -71,7 +71,7 @@ const chatFlow = defineFlow({ kind: "my-chat", ... });
 export default chatFlow();
 ```
 
-![A definition in your code, registered instances in the process, and sessions in the store, each owned by one instance](./flow-type-instance-session.svg)
+![Definition, instance and session, and where each lives. defineFlow returns a definition in your code: its kind, its cardinality, the configSchema a copy's settings must match, the webhooks, schedules and MCP entry points every copy serves, and the entries only the flow can call; it answers no request itself. Calling it makes an instance with its own id and settings, such as review-east and review-west of kind review, which you register; a singleton's id is its kind, and the settings stay in the process, never listed or stored. Requests name an instance id, and the kind is never a fallback. Sessions live in the store: session chat-1 records flowId review-east as its owner and flowKind review only as a label for listings. Named through review-west, it is refused with 409 wrong-instance-session before anything runs](./flow-type-instance-session.svg)
 
 A definition describes a flow. A registered instance names one configured copy of it. Most flows have exactly one copy, and that is the default: a flow is a **singleton** unless you say otherwise, and its instance id is its `kind`. Calling the factory with no argument gives you that instance; `chatFlow({ id: "my-chat" })` is the same thing spelled out, and registering a singleton under any other id is refused.
 
@@ -186,7 +186,7 @@ Route templates across these docs write the segment that carries the id as `:flo
 
 The `kind` still says what an instance *is*. Sessions and requests record it alongside the id, listings group by it, and the definition-level transports below apply to every instance of the definition.
 
-Saved work stays with the instance that created it. A session started through `review-east` records `review-east` as its owner, and a later call that names the same session through `review-west` is refused before anything runs. Every entry point enforces that, each in its own idiom:
+A session belongs to the instance that created it, as the [plate above](#flowtype-vs-flowinstance) shows, and every entry point refuses it through any other copy, each in its own idiom:
 
 | Surface | What a mismatched address gets you |
 |---|---|

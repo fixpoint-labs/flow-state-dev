@@ -26,14 +26,9 @@ See [Flows](/docs/fundamentals/flows) and [Actions](/docs/fundamentals/actions).
 
 ## State in four scopes
 
-State lives in four nested scopes with atomic operations:
+State lives in four scopes, each its own record:
 
-| Scope | Lifetime |
-|-------|----------|
-| Request | Single action run |
-| Session | Across requests in a conversation |
-| User | Across sessions for a user |
-| Org | Shared across sessions in an org |
+![Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation, keyed by the session id and by the tenant when one is sent. User state follows one person across conversations and flows, keyed by the user id, or one record per flow copy with isolateUserState. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session names its user and org but holds neither one's state. Blocks read and write all four; the browser sees only the fields a scope's client config exposes](./state-scopes.svg)
 
 Each scope supports `patchState`, `setState`, `incState`, `pushState`, `atomicState`. Concurrent writers don't corrupt state, but they don't all merge either: on the built-in stores increments and appends both land, and a plain field write is last-write-wins. [State Operations](/docs/fundamentals/state-operations#cas-semantics) has the rule per call. Blocks declare only the state fields they need.
 
