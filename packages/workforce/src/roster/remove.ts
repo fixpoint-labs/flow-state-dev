@@ -21,7 +21,7 @@
  */
 
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { hiredSeatManifestFromStored } from "./rows";
+import { hiredSeatManifestFromStored, keyMismatch } from "./rows";
 import { incarnationOfRow } from "./incarnation";
 
 /** How many times an inventory write or delete re-reads after losing a race. */
@@ -174,7 +174,13 @@ export async function removeHiredSeat(options: RemoveHiredSeatOptions): Promise<
     }
   };
 
-  const record = hiredSeatManifestFromStored(options.orgId, existing.state);
+  const read = hiredSeatManifestFromStored(options.orgId, existing.state);
+  // A row whose seat id is not its key's names an address it isn't stored
+  // under: unreadable, like a row that does not parse.
+  const keySeat = typeof options.key === "string" ? options.key : options.key.seat;
+  const mismatch =
+    "problem" in read || keySeat === undefined ? undefined : keyMismatch(keySeat, String(existing.state.seatId));
+  const record = mismatch === undefined ? read : { problem: mismatch };
   if ("problem" in record) {
     // No address can be trusted from a row that does not read, so there is
     // nothing to release and no inventory row that is provably its own.
