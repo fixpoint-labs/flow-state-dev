@@ -31,6 +31,11 @@ workforce/
   org/
     references/
       code-of-conduct.md
+    workers/
+      build/
+        WORKER.md
+        resources/
+          runbook.md
   teams/
     engineering/
       references/
@@ -47,11 +52,11 @@ workforce/
         escalation.md
 ```
 
-Five documents: a code of conduct everyone reads, a handbook for engineering, a runbook for one seat, an escalation procedure for support, and a scratchpad the engineering agents can write. Every example below reads this tree.
+Six documents: a code of conduct everyone reads, a handbook for engineering, a runbook for the seat `ada`, a runbook for the org seat `build`, an escalation procedure for support, and a scratchpad the engineering agents can write. Every example below reads this tree.
 
 Both folders name documents the same way, and they share one namespace. `references/handbook.md` and `resources/handbook.md` in one team are two spellings of the name `handbook`. Neither single-folder reader sees the other folder, so neither reports the pair on its own. `readDeclaredRoster`, which walks the whole tree in one call, puts it in its `problems` and names both files; `hireWorkforce` throws on a ref handed to it as both a document and a reference.
 
-A worker's own folder is what lets two seats each have a `runbook` without their authors agreeing on a name. An org seat's folder is read the same way: `org/workers/build/`, holding a `WORKER.md` and `resources/runbook.md`, is the `build` seat and its runbook.
+A worker's own folder is what lets two seats each have a `runbook` without their authors agreeing on a name. An org seat's folder is read the same way: `org/workers/build/` in the tree above is the `build` seat, and `resources/runbook.md` beside its `WORKER.md` is its runbook.
 
 A document is a **file**, not a folder. A worker and a skill are each a folder with a fixed file inside it; a document is `<name>.md` sitting directly in `references/` or `resources/`. A directory in one of those folders is reported rather than passed over, so `resources/handbook/RESOURCE.md` is an error and not a document that quietly went missing.
 

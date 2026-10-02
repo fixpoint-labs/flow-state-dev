@@ -23,8 +23,9 @@ const SPLIT = /\b(?:indexOf|lastIndexOf|split)\("\."\)/;
 /** file → why it is in or out of S2. Keyed by file, not line, so an edit nearby doesn't break it. */
 // After PR 1: `read-workforce.ts`'s `splitWorkerId` is gone (it calls
 // `parseDeclaredSeatId`), so it no longer splits and is not listed.
+// Neither is `seat-packages.ts`: `resolveHeldPackages` hands the seat id to
+// `parseDeclaredSeatId` whole, with no split of its own.
 const CLASSIFIED = {
-  "packages/workforce/src/seat-packages.ts": "IN · resolveHeldPackages: strips a hired seat's org, then parseDeclaredSeatId",
   "packages/workforce/src/seat-references.ts": "IN · parseDeclaredSeatId, the one rule; placeOfSeat calls it",
   "labs/shift-manager/src/lib/derive.ts": "SEAM · chiefOfStaffOf: the name after the first dot, a dotless id whole; the Shift Manager screens own it",
   "packages/workforce/src/roster/address.ts": "OUT · splitSeatAddress: a hired address <org>.<seatId>, not a declared id",
