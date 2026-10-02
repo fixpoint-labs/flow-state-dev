@@ -115,7 +115,7 @@ A listed tool checks everything that could refuse the change first. A seat id no
 {
   "reason": "human_approval",
   "message": "Fire seat \"coder-7\" (kind \"coder\")?",
-  "data": { "verb": "fire", "seatId": "coder-7", "kind": "coder", "owner": null, "incarnation": "inc_8f2c" },
+  "data": { "verb": "fire", "seatId": "coder-7", "kind": "coder", "owner": null, "incarnation": "3f9c2a6e-5b1d-4e8a-9c07-2d4e6b8a1f53" },
   "allow": ["approve", "reject"]
 }
 ```
@@ -130,7 +130,7 @@ curl -X POST localhost:3000/api/flows/chief-of-staff/requests/$REQUEST_ID/resume
 
 `owner` is the member whose own seat it is, or `null` for an organization's seat. `incarnation` names the hire that wrote the row.
 
-On approve, the tool checks again and makes the change, to that row only. If the seat was fired and hired again under the same id while the person was asked, the approved change is refused and the new seat is left alone:
+On approve, the tool checks again and makes the change, to that row only. If the seat was fired and hired again under the same id while the person was asked, the approved change is refused, the new seat is left alone, and the model gets this as the tool's error:
 
 ```text
 The seat "acme.coder-7" changed while you were asked: it is not the one you approved, so the fire was not made. Ask again if it should be.

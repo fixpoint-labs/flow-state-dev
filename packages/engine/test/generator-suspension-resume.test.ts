@@ -250,6 +250,68 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
     expect(JSON.stringify(step1[0]!.output)).toContain("denied");
   });
 
+  // 1c. APPROVAL, then the tool refuses ----------------------------------------
+  it("approval then a tool error past the gate: a failed tool call the model is told about, as in the live loop", async () => {
+    // A gated tool re-checks after Approve and refuses (what it was asked
+    // about changed meanwhile). The live loop turns a thrown tool error into
+    // a failed tool call; resume must too, rather than fail the whole run.
+    const gate = handler({
+      name: "risky_op",
+      inputSchema: z.object({}),
+      outputSchema: z.object({ ran: z.boolean() }),
+      execute: async (_input, ctx) => {
+        await ctx.suspend!({ reason: "approval", message: "Run risky op?" });
+        throw new Error("what you approved changed, so nothing was done");
+      },
+    });
+
+    const { model, seen } = stepModel([
+      () => ({
+        toolCalls: [{ toolCallId: "c1", toolName: "risky_op", args: {} }],
+        finishReason: "tool-calls",
+      }),
+      () => ({ text: "it changed; nothing done", finishReason: "stop" }),
+    ]);
+
+    const gen = generator({ name: "agent", model, prompt: "p", tools: [gate] });
+    const flow = defineFlow({
+      kind: "gen-approve-refuse",
+      actions: { run: { block: sequencer({ name: "seq", durable: true }).step(gen), inputSchema: anyInput } },
+    })({ id: "gen-approve-refuse" });
+
+    const { stores, provider } = createDurableStores();
+    const initial = await runAction({
+    orgId: DEFAULT_ORG_ID,
+      flow, actionName: "run", input: {}, userId: "u1", stores,
+      runtimeConfig: { durabilityProvider: provider },
+    });
+    const requestId = initial.requestId!;
+
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    const resumed = await resolve(flow, stores, provider, requestId, suspension, "approve");
+
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+    expect(resumed.output).toBe("it changed; nothing done");
+    expect(seen.length).toBe(2);
+    const step1 = toolResultParts(seen[1]!.messages);
+    expect(step1).toHaveLength(1);
+    expect(step1[0]!.output).toEqual({
+      type: "error-text",
+      value: 'Tool "risky_op" failed: what you approved changed, so nothing was done',
+    });
+    // Recorded as a failed tool_output (beside the gate's own SUSPENSION one),
+    // so a later resume replays the failure instead of re-entering the tool.
+    const record = await stores.request.get(requestId);
+    const failed = (record!.items ?? []).filter(
+      (i) =>
+        i.type === "tool_output" &&
+        (i as { status?: string }).status === "failed" &&
+        (i as { error?: { code?: string } }).error?.code !== "SUSPENSION"
+    ) as Array<{ error?: { message?: string } }>;
+    expect(failed).toHaveLength(1);
+    expect(failed[0]!.error?.message).toBe("what you approved changed, so nothing was done");
+  });
+
   // 2a. REJECTION visibility — denial inherits the generator's itemVisibility --
   it("rejection denial tool_output inherits a history:false generator's visibility (no leak)", async () => {
     const gate = handler({

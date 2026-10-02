@@ -288,7 +288,11 @@ describe("a fire, with fire asking first", () => {
 
     const [pending] = await pendingAsks(stores);
     expect(pending?.reason).toBe("human_approval");
-    expect(pending?.data).toEqual({ verb: "fire", seatId: HELPER, kind: "agent", owner: null, incarnation: null });
+    const stored = (await stores.resourceState.get("org", ORG, `${HIRED_ROSTER_PREFIX}${HELPER}`))?.state as
+      | { incarnation?: unknown }
+      | undefined;
+    expect(typeof stored?.incarnation).toBe("string");
+    expect(pending?.data).toEqual({ verb: "fire", seatId: HELPER, kind: "agent", owner: null, incarnation: stored?.incarnation });
     expect(await rosterRows(stores)).toEqual([HELPER]);
     expect(lab.registry.get(HELPER_ADDRESS)).toBeDefined();
     expect(lab.released).toEqual([]);
@@ -299,7 +303,7 @@ describe("a fire, with fire asking first", () => {
     await withHelperHired(stores);
     const lab = await boot(stores, [call("fire", { seatId: HELPER }), say("waiting")], { askBefore: ["fire"], streaming: true });
     expect((await lab.ask("let the helper go")).status).toBe("suspended");
-    expect((await pendingAsks(stores))[0]?.data).toEqual({ verb: "fire", seatId: HELPER, kind: "agent", owner: null, incarnation: null });
+    expect((await pendingAsks(stores))[0]?.data).toEqual({ verb: "fire", seatId: HELPER, kind: "agent", owner: null, incarnation: expect.any(String) });
     expect(await rosterRows(stores)).toEqual([HELPER]);
   });
 
@@ -339,6 +343,7 @@ describe("a fire, with fire asking first", () => {
 
     const { finished } = await asked.answer(requestId, "approve");
     await finished;
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
 
     expect(lastToolResults(asked.seen)).toContain("changed while you were asked");
     expect(await rosterRows(stores)).toEqual([HELPER]);
