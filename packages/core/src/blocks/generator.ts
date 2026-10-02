@@ -99,7 +99,7 @@ import {
   type PromptFileConfigMeta,
 } from "./internal/message-assembly";
 import { buildToolExecutor } from "./internal/tool-executor";
-import { emitToolOutputAround } from "./internal/emit-tool-output";
+import { emitToolOutputAround, ToolModelOutputMapError } from "./internal/emit-tool-output";
 
 const DEFAULT_MAX_ITERATIONS = 8;
 const DEFAULT_REPAIR_ATTEMPTS = 1;
@@ -1435,6 +1435,13 @@ async function executeOwnedStepToolCalls(
       throw s.error;
     }
   }
+  // A mapper that threw is the framework's failure, not the tool's: fail the
+  // run rather than tell the model the call failed.
+  for (const s of settled) {
+    if (!s.ok && s.error instanceof ToolModelOutputMapError) {
+      throw s.error;
+    }
+  }
   return settled;
 }
 
@@ -1614,8 +1621,8 @@ async function runResumeStep(
       if (entry === undefined) {
         output = { type: "error-text", value: `Model called unknown tool "${c.toolName}"` };
       } else {
-        // Only the tool's own run is caught: a mapper that throws is not the
-        // tool's failure, and propagates as it does in the live loop.
+        // A mapper that throws is not the tool's failure: the executor records
+        // it and rethrows, and it propagates below as it does in the live loop.
         const ran = await entry
           .execute(c.arguments, { toolCallId: c.toolCallId, stepNumber: resumeStep.stepNumber })
           .then((real) => ({ ok: true as const, real }), (err: unknown) => ({ ok: false as const, err }));
@@ -1656,7 +1663,11 @@ async function runResumeStep(
               async () => denial,
             );
             output = toolResultOutputForModel(denial);
-          } else if (err instanceof SuspensionError || err instanceof SuspensionTimeoutError) {
+          } else if (
+            err instanceof SuspensionError ||
+            err instanceof SuspensionTimeoutError ||
+            err instanceof ToolModelOutputMapError
+          ) {
             // Still pending (or timed out): control flow, so it propagates to
             // re-suspend / fail the run.
             throw err;

@@ -28,7 +28,7 @@ All of these come from `@flow-state-dev/workforce`:
 | `seatAddress(orgId, seatId, ownerUserId?)` | The address a hired seat answers on. Org-visible seats are `<orgId>.<seatId>`. A user-owned seat is `<orgId>.~<user>.<seatId>`, with the user escaped, so two people can hire the same seat id. Throws when the organization id is not a single address segment, or when the seat id starts with `~`. |
 | `hireWorkforce(records, { kinds })` | Turns records into configured flow copies, one per record. The same call the file-declared roster goes through. |
 | `reloadHiredSeats({ stores, orgIds, kinds })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems, byOrg }`. It registers nothing. |
-| `createSeatHireBlocks(options)` | Returns `{ hire, fire }`, two handlers that run the whole hire and fire sequence. Mount them as a flow's actions. See [the ready-made handlers](#the-ready-made-hire-and-fire-handlers). |
+| `createSeatHireBlocks(options)` | Returns `{ hire, fire, brokenSeats, rehire }`: two handlers that run the whole hire and fire sequence, and two that list and [repair a seat whose kind is gone](#repairing-a-seat-whose-kind-is-gone). Mount them as a flow's actions. See [the ready-made handlers](#the-ready-made-hire-and-fire-handlers). |
 
 `registerHiredSeat` calls your register function with the seat's pin, and refuses a pin that names no organization. `toHiredSeatRow` builds a stored row out of what a hire supplied, and `hiredSeatManifest` turns a row back into the record `hireWorkforce` takes.
 
@@ -178,6 +178,7 @@ export default workforceAdmin();
 | `unregister(address)` | Releases an address in this process and returns whether anything held it. |
 | `kindAt?(address)` | The kind serving an address right now, if any. Lets `hire` refuse an address that is already served, or a seat id a declared seat answers on, before writing anything, and lets `fire` leave an address registered when a different kind holds it. |
 | `instanceAt?(address)` | The seat serving an address right now, if any. With it, `fire` releases only the seat its roster row minted, and a hire or re-hire stopped part-way by another call releases only its own seat. Without it, `fire` goes by the kind, and a stopped call leaves its seat registered in this process until the next start. |
+| `refuseRosterAdmin?` | When `true`, `hire` and `rehire` refuse settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`. Default `false`. |
 | `allowKinds?` | The subset of `kinds` these handlers may mint. |
 | `channelBoards?` | Channel board ids. For each one the new seat doesn't declare, the hire's `warning` names it, since rows filed on that board sit pending until something works them. |
 
@@ -219,7 +220,7 @@ It returns the seat id and the address the seat answers on:
 
 A hire runs in this order:
 
-1. It refuses a kind that isn't in `kinds`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served, an address a seat declared in a worker file has an inventory row at, and a seat id `kindAt` reports a declared seat under: `"chief-of-staff" is the id of a seat this app declares (kind "agent"). Hire under another id.` It also refuses settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`.
+1. It refuses a kind that isn't in `kinds`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served, an address a seat declared in a worker file has an inventory row at, and a seat id `kindAt` reports a declared seat under: `"chief-of-staff" is the id of a seat this app declares (kind "agent"). Hire under another id.` With `refuseRosterAdmin: true`, it also refuses settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`.
 2. It mints the seat, which runs the kind's settings schema.
 3. It writes the roster row with `create()`. A second hire of the same seat id fails here with `Resource instance "workforce/roster/support.ada" already exists`, including two hires arriving at once.
 4. It calls your `register`. If that throws, the row from step 3 is deleted and the error is passed on.

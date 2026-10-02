@@ -342,9 +342,12 @@ await runGoal(async () => {
         suspensionId: ask.suspensionId,
         action,
       });
-      if (resumed.status >= 400) fail("seat gone", `the resume route refused ${action}: ${resumed.status} ${JSON.stringify(resumed.body)}`);
+      // The answer is its own leg, so the control can only go red on what the
+      // answer did to the seat, never on a refused resume or a stuck turn.
+      if (resumed.status >= 400) fail("answer", `the resume route refused ${action}: ${resumed.status} ${JSON.stringify(resumed.body)}`);
       const settled = await api.settle(COS, fire.requestId, true);
-      if (settled !== "completed") fail("seat gone", `after ${action} the turn ended ${settled}`);
+      if (settled !== "completed") fail("answer", `after ${action} the turn ended ${settled}`);
+      if (resumed.status < 400 && settled === "completed") evidence.push(`answer: the resume route took ${action} and the turn completed`);
     }
   } finally {
     await stop(served);
