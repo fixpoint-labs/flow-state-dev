@@ -16,7 +16,7 @@ const ORG = "acme";
 type Lab = {
   seats: Array<{ id: string; kind: string; hired?: boolean; incarnation?: string }>;
   roster?: Array<{ seatId: string; incarnation?: string | null }> | "fails";
-  /** The channel inventory's rows. Default one channel. */
+  /** The channel rows; one channel when omitted. */
   channels?: unknown[];
 };
 
@@ -129,8 +129,8 @@ describe("TEAMS and the roster", () => {
     expect(value.rosterUnread).toMatch(/1 hired seat isn't listed: the roster didn't load.*the roster read failed/);
   });
 
-  it("BR-24 · a Lab whose inventory holds only hired seats says the roster didn't load, not that the inventory is empty", async () => {
-    const value = await teams({ seats: [{ id: "acme.support.ada", kind: "agent" }], roster: "fails", channels: [] });
+  it("BR-24 · a Lab whose only seats are hired, with the roster unread, says why they aren't listed rather than that it registers nothing", async () => {
+    const value = await teams({ seats: [{ id: "acme.support.ada", kind: "agent", hired: true }], roster: "fails", channels: [] });
     expect(value.seats).toEqual([]);
     expect(value.rosterUnread).toMatch(/1 hired seat isn't listed: the roster didn't load.*the roster read failed/);
   });

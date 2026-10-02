@@ -525,8 +525,8 @@ export function createLabReader(clients: LabClients): LabReader {
         const workstreams = channelRows
           .map((r) => toWorkstream(r.clientData))
           .filter((w): w is Workstream => w !== undefined);
-        // Empty means nothing was registered, not that nothing is listed: hired
-        // seats hidden for an unread roster are reported through `rosterUnread`.
+        // Empty means nothing registered, not nothing listed: hired seats the
+        // roster can't vouch for are a listed inventory with `rosterUnread`.
         if (registered.length === 0 && workstreams.length === 0) {
           return {
             ok: false,
