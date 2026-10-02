@@ -163,13 +163,13 @@ export interface DeclaredSeatId {
  * - `"<name>"` — no dot: an org seat, declared at `org/workers/<name>/`;
  * - `"<teamId>.<name>"` — a team seat, at `teams/<teamId>/workers/<name>/`.
  *
- * The split is at the first dot, which is the minter's rule; a second dot stays
- * in `name`. Neither folder name may hold a `.`, so the two shapes never
- * overlap.
+ * The split is at the first dot. Neither folder name may hold a `.`, so the
+ * two shapes never overlap, and an id with a second dot is neither.
  *
- * Every dot-separated piece is held to the segment rule the loader mints by
+ * Both halves are held to the segment rule the loader mints by
  * (`validateSegment`), so an id the loader could not have minted — `Bad_Name`,
- * `eng.Lead`, an empty half, a `/` — names no seat rather than being placed.
+ * `eng.Lead`, an empty half, a `/`, a second dot — names no seat rather than
+ * being placed.
  *
  * @param seatId The seat's id, as the roster minted it.
  * @returns The folders, or `undefined` for an id the loader cannot mint.
@@ -183,9 +183,9 @@ export function parseDeclaredSeatId(seatId: string): DeclaredSeatId | undefined 
   const parsed: DeclaredSeatId =
     dot === -1 ? { name: seatId } : { team: seatId.slice(0, dot), name: seatId.slice(dot + 1) };
   if (parsed.team !== undefined && !isSegment(parsed.team, "Team")) return undefined;
-  // A second dot stays in `name` (the minter's first-dot rule), so each piece
-  // of it is checked rather than the whole.
-  if (!parsed.name.split(".").every((piece) => isSegment(piece, "Worker"))) return undefined;
+  // A worker folder name is one segment, so a second dot is an id the loader
+  // never mints: the segment rule refuses it.
+  if (!isSegment(parsed.name, "Worker")) return undefined;
   return parsed;
 }
 
