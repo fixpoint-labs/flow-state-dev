@@ -168,16 +168,16 @@ describe("V8", () => {
   });
 
   it("keeps every registry copy byte-equal to its source, and holds exactly what its install list ships", () => {
-    const shipped = installedFiles();
-    expect(shipped.size).toBeGreaterThan(8);
-    // Beside the copied files, the `tokens` item's own file, which the list reaches through a dependency.
-    expect(reachesTokens()).toBe(true);
-    expect(walk(copies).map((file) => relative(copies, file)).sort()).toEqual([...shipped.keys(), TOKENS].sort());
-    for (const [copy, source] of shipped) {
+    const shipped = installSet();
+    expect(shipped.files.size).toBeGreaterThan(8);
+    // `tokens` ships no copied file. The list still has to reach it; its values live in tokens.css.
+    expect(shipped.names.has("tokens")).toBe(true);
+    expect(walk(copies).map((file) => relative(copies, file)).sort()).toEqual([...shipped.files.keys(), TOKENS].sort());
+    for (const [copy, source] of shipped.files) {
       expect(readFileSync(join(copies, copy)), copy).toEqual(readFileSync(join(repo, "packages/ui", source)));
     }
     // The list reaches what it covers: an item it doesn't name ships nothing here.
-    expect(installedFiles(["approval"]).has("message.tsx")).toBe(false);
+    expect(installSet(["approval"]).files.has("message.tsx")).toBe(false);
   });
 
   it("keeps its tokens as the registry's tokens item, unedited, in the file the install writes it to", () => {
@@ -197,9 +197,10 @@ describe("V8", () => {
     const declared = [...css.matchAll(/(--[a-z-]+):/g)].map((m) => m[1]!);
     const named = new Set([...Object.keys(tokens.cssVars!.theme!).map((n) => `--${n}`), ...Object.values(base).flatMap((v) => Object.keys(v))]);
     expect(declared.filter((name) => !named.has(name))).toEqual([]);
-    // The stylesheet takes it by one import, and restates none of it.
-    expect(styles.match(new RegExp(`^@import "\\./${relative(src, join(copies, TOKENS)).replace(/[./]/g, "\\$&")}";$`, "gm"))).toHaveLength(1);
-    expect(styles).not.toMatch(/--attention\s*:/);
+    // The stylesheet takes it by one import, and restates none of the item's names.
+    const tokensImport = `@import "./${relative(src, join(copies, TOKENS))}";`;
+    expect(styles.split("\n").filter((line) => line === tokensImport)).toHaveLength(1);
+    expect([...named].filter((name) => new RegExp(`${name}\\s*:`).test(styles))).toEqual([]);
   });
 
   it("takes its look from the design-system package's one import (FIX-1688)", () => {
@@ -228,30 +229,21 @@ function installList(): string[] {
   return /^fsdev ui add ((?:[a-z-]+ ?)+)$/.exec(script ?? "")?.[1]!.trim().split(" ") ?? [];
 }
 
-/** Whether the listed items reach the `tokens` item through their registry dependencies. */
-function reachesTokens(items = installList()): boolean {
+/**
+ * The install list's closure: item names it reaches, and the files those items
+ * copy into `components/flow-state/`, as copy → source.
+ */
+function installSet(items = installList()): { files: Map<string, string>; names: Set<string> } {
   const byName = registryItems();
-  const seen = new Set<string>();
-  const visit = (name: string): boolean => {
-    if (seen.has(name)) return false;
-    seen.add(name);
-    return name === "tokens" || (byName.get(name)?.registryDependencies ?? []).some(visit);
-  };
-  return items.some(visit);
-}
-
-/** Every registry file the listed items ship into `components/flow-state/`, through their registry dependencies, as copy → source. */
-function installedFiles(items = installList()): Map<string, string> {
-  const byName = registryItems();
-  const out = new Map<string, string>();
-  const seen = new Set<string>();
+  const files = new Map<string, string>();
+  const names = new Set<string>();
   const visit = (name: string) => {
-    if (seen.has(name)) return;
-    seen.add(name);
+    if (names.has(name)) return;
+    names.add(name);
     const item = byName.get(name);
-    for (const file of item?.files ?? []) out.set(relative("components/flow-state", file.target), file.path);
+    for (const file of item?.files ?? []) files.set(relative("components/flow-state", file.target), file.path);
     for (const dep of item?.registryDependencies ?? []) visit(dep);
   };
   for (const item of items) visit(item);
-  return out;
+  return { files, names };
 }
