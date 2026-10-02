@@ -122,7 +122,7 @@ When several people post at once, every line lands, in one order everyone sees. 
 
 ### Members only
 
-Only a project's members can read or post in its room. A non-member's `join` binds nothing and never adds them to `members`, and their `read` or `post` is refused with `not-a-member`.
+Only a project's members can read or post in its room. A non-member's `join` is refused with `not-a-member`, binds nothing, and never adds them to `members`. Their `read` or `post` is refused too: with `talk-not-bound` when their session isn't bound to a project, and with `not-a-member` when its state names the project anyway.
 
 A talk session's own state names its project, and that grants nothing. Anyone can create a session and write whatever state they like into it, so the check never trusts the session's state. Every room call looks the project row up and checks the session's owner, as the server recorded it, against the row's `members`. Only trusted code writes `members`: the owner's own grant when the project is created.
 
