@@ -48,7 +48,7 @@ describe("declaring a board", () => {
     const resources = (instances[0]!.resources ?? {}) as Record<string, unknown>;
     // Only the project-room collections every kind carries for its talk
     // sessions; no board.
-    expect(Object.keys(resources).sort()).toEqual(["projects", "room-lines", "room-seq"]);
+    expect(Object.keys(resources).sort()).toEqual(["projects", "room-answers", "room-lines", "room-seq"]);
   });
 
   it("refuses a `boards:` that is not a list of plain names, naming the channel", () => {

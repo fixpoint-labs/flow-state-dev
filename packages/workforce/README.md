@@ -1945,17 +1945,21 @@ channelInstances(channels, { kinds, resources });
 Or declare it in a team's `CHANNEL.md` with `mintFor: projects`: its `members:` are the seats, and
 its body is the charter. A template is never opened and never registered in the inventory. Seats
 are full seat ids from any team (`engineering.lead`) or a dotless org seat id (`chief-of-staff`).
-`channelInstances` refuses, with its other refusals, a template that declares `boards:`, `routing:`
-or `boardActions:`, a `mintFor:` that names no collection in `resources` or names one other than
-`projects`, a bad or repeated seat id, seats on a kind built with no `notify` block (none of them
-would wake), and a second template for the collection at either site. A template's `kind` must be
-the `talkKind` every `defineProjectBlocks` uses (`"channel"` by default); a mismatch throws at boot,
-whichever is built second.
+Talk sessions run on the built-in `channel` kind, so pass it built with a `notify` block, as
+`kinds: { channel: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }`.
+`channelInstances` refuses, with its other refusals, a template that declares `flow:`, `boards:`,
+`routing:` or `boardActions:`, a `mintFor:` that names no collection in `resources` or names one
+other than `projects`, a bad or repeated seat id, seats on a `channel` kind built with no `notify`
+block (none of them would wake), and a second template for the collection at either site.
+The first call that finds the template registers it for the process. Every later call builds its
+`channel` kind holding it, with or without `resources`, and a later call that finds a different
+template throws.
 `createProject` always gets the creator's talk session ready. With a template, so does any other
 code that creates a project inside a flow turn. A `post` in a project's room wakes each seat once,
 under the poster, with the room's last 20 lines. A seat's reply lands in
-the room through `answer`, once per post and seat, so a repeated delivery adds no second line. The template is built onto the kind at every boot, so an edit reaches
-every project's room at the next restart.
+the room through `answer`, once per post and seat, so a repeated delivery adds no second line. The
+template is built onto the kind at every boot, so an edit reaches every project's room at the next
+restart.
 
 ## Importing from a browser component
 
@@ -2031,9 +2035,9 @@ the root exports, and reaches no Node built-in.
 | `channelRouteRecordSchema` / `ChannelRouteRecord` / `CHANNEL_ROUTE_COMPONENT` / `CHANNEL_ROUTE_EVALUATOR` | One route decision as it is kept on the channel's session (`{ postId, by, member?, reason? }`, where `by` is `held`, `evaluated`, `fallback` or `failed`), the component name it is kept under, and the route evaluator's block name. Both names are `"channel-route"`. |
 | `ChannelRoute` / `ChannelRouting` | What `routeByPurpose` returns, and a channel file's `routing:` as read (`{ fallback }`). |
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
-| `channelInstances(manifests, { kinds?, inventory?, resources? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in channel kind. Pass the org's resource map as `resources` to read project talk templates (see [Projects](#projects)); a template's kind is returned even when no channel runs on it. Register these. |
+| `channelInstances(manifests, { kinds?, inventory?, resources? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in channel kind. Pass the org's resource map as `resources` to read project talk templates (see [Projects](#projects)); with a template registered, the `channel` kind is returned holding it even when no channel runs on it. Register these. |
 | `defineProjectsCollection({ talk? })` | The organization's `projects` collection: org-scoped, shared across flows, browser-readable through `expose`. `talk` is the org-level talk template. You can call `defineProjectsCollection()` anywhere you need it. Every call returns the same declaration, so they never conflict. `defineRoomLinesCollection`, `defineRoomSeqCollection` and `defineWorkstreamClaimsCollection` declare the room and the claims; none has a browser read. |
-| `defineProjectBlocks({ talkKind? })` | Returns `{ createProject, setWorkstreams, actions }`. See [Projects](#projects). `talkKind` is the kind a created project's `bind` is dispatched to, `"channel"` by default. It must match a talk template's kind, or the second of the two to be built throws. |
+| `defineProjectBlocks()` | Returns `{ createProject, setWorkstreams, actions }`. See [Projects](#projects). A created project's `bind` is dispatched to the built-in `channel` kind. |
 | `openChannels(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. The server binds each session's organization. Idempotent. |
 | `readChannelsDirectory(root)` | Read a `teams/<id>/channels/<name>/` tree into one `ChannelManifest` per channel. Ships from the `./loader` subpath (Node only). |
 | `ChannelManifest` | One channel record: `{ id, declared, body }`. |

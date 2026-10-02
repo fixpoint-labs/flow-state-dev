@@ -43,19 +43,23 @@ import type { ChannelTranscriptLine } from "../channel/channel-post-line";
 import { retryOnConflict } from "./cas-retry";
 import {
   defineProjectsCollection,
+  defineRoomAnswersCollection,
   defineRoomLinesCollection,
   defineRoomSeqCollection,
   PROJECTS_RESOURCE,
+  ROOM_ANSWERS_RESOURCE,
   ROOM_LINES_RESOURCE,
   ROOM_SEQ_RESOURCE,
   roomLineKey,
   roomLineSchema,
   type ProjectRow,
+  type RoomAnswer,
   type RoomLine,
   type RoomSeq
 } from "./collections";
 import { isMember } from "./membership-gate";
 import { ProjectRefusedError } from "./project-refusal";
+import { isAlreadyExists } from "./store-errors";
 import { appendRoomLine, readRoom, type RoomCollections } from "./room-store";
 import type { TalkTemplateFacts } from "./talk-template";
 
@@ -114,7 +118,8 @@ export type TalkReadOutput = z.infer<typeof talkReadOutputSchema>;
 export const TALK_RESOURCES = {
   [PROJECTS_RESOURCE]: defineProjectsCollection(),
   [ROOM_LINES_RESOURCE]: defineRoomLinesCollection(),
-  [ROOM_SEQ_RESOURCE]: defineRoomSeqCollection()
+  [ROOM_SEQ_RESOURCE]: defineRoomSeqCollection(),
+  [ROOM_ANSWERS_RESOURCE]: defineRoomAnswersCollection()
 };
 
 function projectsOf(ctx: BlockContext): ResourceCollectionRef<ProjectRow> {
@@ -278,73 +283,47 @@ const talkAnswerInputSchema = z
   .strict();
 
 /**
- * The talk-session field recording the seat answers already in the room: one
- * key per answered post and seat ({@link answerKey}), each the line's seq once
- * it is written. Never trimmed, so a delivery replayed however late lands no
- * second line. It grows by one entry per seat answer.
- */
-const TALK_ANSWERED_STATE = "talkAnsweredPosts";
-
-const talkAnswerStateSchema = talkSessionStateSchema.extend({
-  [TALK_ANSWERED_STATE]: z.record(z.string(), z.number().int().nullable()).optional()
-});
-
-type TalkAnswerState = z.infer<typeof talkAnswerStateSchema>;
-
-/** One seat's answer to one post. A post wakes several seats, so the seat is part of it. */
-const answerKey = (postId: string, author: string): string => JSON.stringify([postId, author]);
-
-/**
  * `answer` on a talk session: a seat's line, delivered into the session of the
  * person whose post woke it. The line's `userId` is that session's owner; its
  * `author` is the seat. `postId` names what is being answered and is not
  * stored on the line: a room line has no post id.
  *
- * One line per post and seat, as on a routed channel: the answer is claimed in
- * this session's state before the line is written, so a replayed or retried
- * delivery lands nothing (`null`). A write that fails gives the claim back, so
+ * One line per post and seat. The answer is claimed first, in the room's
+ * answer claims (`room-answers/<projectId>/<postId>/<author>`, written with
+ * `create`), so a replayed or retried delivery lands nothing (`null`). The
+ * claim is server-written storage, never session state, which a caller can
+ * seed when it creates a session. A write that fails gives the claim back, so
  * the delivery can be answered again.
  */
 export const talkAnswer = handler({
   name: "talk-answer",
   inputSchema: talkAnswerInputSchema,
   outputSchema: roomLineSchema.nullable(),
-  sessionStateSchema: talkAnswerStateSchema,
+  sessionStateSchema: talkSessionStateSchema,
   resources: TALK_RESOURCES,
   execute: async (input, rawCtx): Promise<RoomLine | null> => {
     const ctx = rawCtx as unknown as BlockContext;
-    const session = (rawCtx as unknown as BlockContext<Record<string, unknown>, TalkAnswerState>).session;
     const projectId = boundProject(ctx);
     await memberRow(ctx, projectId);
-    const key = answerKey(input.postId, input.author);
-    const claimed = await withOutcome(
-      (mutator: (current: TalkAnswerState) => Partial<TalkAnswerState>) => session.atomicState(mutator),
-      (current: TalkAnswerState) => {
-        const answered = current[TALK_ANSWERED_STATE] ?? {};
-        if (Object.hasOwn(answered, key)) return { state: {}, result: false };
-        return { state: { [TALK_ANSWERED_STATE]: { ...answered, [key]: null } }, result: true };
-      }
-    );
-    if (claimed !== true) return null;
-    let line: RoomLine;
+    const claims = ctx.resources[ROOM_ANSWERS_RESOURCE] as unknown as ResourceCollectionRef<RoomAnswer>;
+    const key = `${projectId}/${input.postId}/${input.author}`;
     try {
-      line = await appendRoomLine(roomOf(ctx), {
+      await claims.create(key, { projectId, postId: input.postId, author: input.author });
+    } catch (error) {
+      if (isAlreadyExists(error)) return null;
+      throw error;
+    }
+    try {
+      return await appendRoomLine(roomOf(ctx), {
         projectId,
         userId: ownerOf(ctx) as string,
         author: input.author,
         body: input.body
       });
     } catch (error) {
-      await session.atomicState((current) => {
-        const { [key]: _released, ...rest } = current[TALK_ANSWERED_STATE] ?? {};
-        return { [TALK_ANSWERED_STATE]: rest };
-      });
+      await claims.delete(key);
       throw error;
     }
-    await session.atomicState((current) => ({
-      [TALK_ANSWERED_STATE]: { ...(current[TALK_ANSWERED_STATE] ?? {}), [key]: line.seq }
-    }));
-    return line;
   }
 });
 

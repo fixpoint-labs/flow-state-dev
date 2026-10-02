@@ -54,8 +54,9 @@ import {
 import type { ChannelRouting } from "./channel-route";
 import { PROJECTS_COLLECTION } from "../projects/collections";
 import {
-  installTalkReaction,
   orgTalkTemplateOf,
+  registeredTalkTemplate,
+  registerTalkTemplate,
   templateSeatsProblem,
   type TalkTemplateFacts
 } from "../projects/talk-template";
@@ -127,11 +128,12 @@ function templateFileProblem(declared: Record<string, unknown>): string | undefi
   if (typeof target !== "string" || target.trim().length === 0) {
     return `declares a \`${MINT_FOR_KEY}:\` that is not a collection name. Name the collection whose rows this template mints a room for, as \`${MINT_FOR_KEY}: projects\`.`;
   }
-  const notHeld = [CHANNEL_BOARDS_KEY, ROUTING_KEY, BOARD_ACTIONS_KEY].filter((key) => Object.hasOwn(declared, key));
+  const notHeld = ["flow", CHANNEL_BOARDS_KEY, ROUTING_KEY, BOARD_ACTIONS_KEY].filter((key) => Object.hasOwn(declared, key));
   if (notHeld.length > 0) {
     return (
       `declares \`${MINT_FOR_KEY}:\` and ${notHeld.map((key) => `\`${key}:\``).join(", ")}. A talk template is ` +
-      `not a channel: it holds no board and routes no post. Drop ${notHeld.length === 1 ? "that line" : "those lines"}.`
+      `not a channel: it holds no board, routes no post, and runs on the built-in channel kind. ` +
+      `Drop ${notHeld.length === 1 ? "that line" : "those lines"}.`
     );
   }
   if (Object.hasOwn(declared, "members") && isListOfNames(declared.members)) {
@@ -148,7 +150,6 @@ type DeclaredTemplate = {
   collection: object;
   /** The collection's ref in the org's resource map. */
   ref: string;
-  kind: string;
   facts: TalkTemplateFacts;
 };
 
@@ -203,12 +204,14 @@ export interface ChannelInstancesOptions {
    * Absent, no org-level template is read, and a `mintFor:` names no
    * collection, so it is refused.
    *
-   * **This call installs the mint on the projects collection.** When it finds
-   * a projects template, it sets `reactTo.created` on the one projects
-   * declaration, so creating a row in a flow turn mints the creator's talk
-   * session on the template's kind. That declaration is one per process, so
-   * one process runs its rooms on one kind: a later call naming another kind
-   * throws, and a later call with no template leaves the reaction in place.
+   * **The first call that finds a projects template registers it for the
+   * process** and sets `reactTo.created` on the one projects declaration, so
+   * creating a row in a flow turn mints the creator's talk session on the
+   * built-in channel kind. Every later call builds its channel kind from that
+   * registration, whether or not it passes `resources`, so its talk sessions
+   * hold the same seats and charter. A later call that finds a different
+   * template throws, and every call's channel kind must be able to wake the
+   * template's seats.
    */
   resources?: Readonly<Record<string, unknown>>;
 }
@@ -644,9 +647,8 @@ export function channelInstances(
     const site = `the talk template beside "${ref}" in the org's resources`;
     // Its seats were checked where it was declared (`defineProjectsCollection`).
     const declared = templateFrom(
-      { ref, kind: template.kind ?? CHANNEL_KIND, seats: template.seats, charter: template.charter ?? "" },
+      { ref, seats: template.seats, charter: template.charter ?? "" },
       site,
-      kinds,
       options.resources
     );
     if ("problem" in declared) problems.push(`${site} — ${declared.problem}`);
@@ -674,18 +676,16 @@ export function channelInstances(
     }
 
     // A template is the shape of a project's room, not a channel: it adds its
-    // kind and its template, and nothing a channel adds.
+    // template, and nothing a channel adds.
     if (isTalkTemplate(manifest)) {
       const ref = manifest.declared[MINT_FOR_KEY] as string;
       const declared = templateFrom(
         {
           ref,
-          kind: result.kind,
           seats: isListOfNames(manifest.declared.members) ? manifest.declared.members : [],
           charter: stateFor(manifest).instructions
         },
         `channel "${manifest.id}"`,
-        kinds,
         options.resources
       );
       if ("problem" in declared) refuse(declared.problem);
@@ -742,9 +742,25 @@ export function channelInstances(
     if (rivals.length < 2) continue;
     problems.push(
       `the "${rivals[0]!.ref}" collection has ${rivals.length} talk templates: ` +
-        `${rivals.map((other) => `${other.site} on kind "${other.kind}"`).join("; ")}. A project's ` +
+        `${rivals.map((other) => other.site).join("; ")}. A project's ` +
         `members each hold one talk session, so a collection's rows are minted from one template. Keep one.`
     );
+  }
+
+  // The template this call builds on: the one it found, or the one an earlier
+  // call registered for the process. Either way, this call's channel kind
+  // runs the talk sessions, so it must be able to hold and wake it.
+  const found = templates.find((template) => template.collection === PROJECTS_COLLECTION);
+  const standing = found ?? registeredTalkTemplate(PROJECTS_COLLECTION);
+  if (standing !== undefined) {
+    const problem = talkKindProblem(kinds, standing.facts);
+    if (problem !== undefined) {
+      problems.push(
+        found !== undefined
+          ? `${found.site} — ${problem}`
+          : `the talk template registered in this process (${standing.site}) — ${problem}`
+      );
+    }
   }
 
   if (problems.length > 0) {
@@ -757,16 +773,17 @@ export function channelInstances(
     );
   }
 
-  // A template's kind is registered even when no channel runs on it: its talk
-  // sessions do. With a projects template, the reaction that mints a
-  // creator's talk session is installed on the projects collection, which is
-  // one per process (`talk-template.ts`). A roster with no template leaves the
-  // collection alone, so a host that calls this once per flow keeps the
-  // reaction an earlier call's template installed.
-  const templateByKind = new Map(templates.map((template) => [template.kind, template]));
-  for (const kind of templateByKind.keys()) selected.add(kind);
-  const projectsTemplate = templates.find((template) => template.collection === PROJECTS_COLLECTION);
-  if (projectsTemplate !== undefined) installTalkReaction(PROJECTS_COLLECTION, projectsTemplate.kind);
+  // The template found here is registered for the process, with the reaction
+  // that mints a creator's talk session (`talk-template.ts`); a different one
+  // already registered throws. The channel kind is then built holding the
+  // registered template, and registered even when no channel runs on it: its
+  // talk sessions do. A call that finds no template still builds from the
+  // registration, so every channel kind in the process holds the same one.
+  if (found !== undefined) {
+    registerTalkTemplate(PROJECTS_COLLECTION, { site: found.site, facts: found.facts }, CHANNEL_KIND);
+  }
+  const template = registeredTalkTemplate(PROJECTS_COLLECTION);
+  if (template !== undefined) selected.add(CHANNEL_KIND);
 
   return [...selected].sort().map((kind) => {
     const factory = kinds[kind]!;
@@ -778,25 +795,22 @@ export function channelInstances(
     // this package built gets here holding any.
     if (!holdsBoards(factory)) return factory();
     const boardActions = boardActionsByKind.get(kind);
-    const template = templateByKind.get(kind);
+    const facts = kind === CHANNEL_KIND ? template?.facts : undefined;
     const withBoards = boards === undefined ? factory : factory.withBoards(boards);
     const withRouting = routing === undefined ? withBoards : withBoards.withRouting(routing);
     const withBoardActions = boardActions === undefined ? withRouting : withRouting.withBoardActions(boardActions);
-    return (template === undefined ? withBoardActions : withBoardActions.withTemplate(template.facts))();
+    return (facts === undefined ? withBoardActions : withBoardActions.withTemplate(facts))();
   });
 }
 
 /**
- * Check one talk template's collection and kind, from either site. The
- * collection must be the projects collection in the org's resource map: a
- * talk session is about a project, and its entries read that collection. The
- * kind must be one `defineChannelFlow` built, since the template is built onto
- * it as `boards:` is.
+ * Check one talk template's collection, from either site. It must be the
+ * projects collection in the org's resource map: a talk session is about a
+ * project, and its entries read that collection.
  */
 function templateFrom(
-  declared: { ref: string; kind: string; seats: readonly string[]; charter: string },
+  declared: { ref: string; seats: readonly string[]; charter: string },
   site: string,
-  kinds: Record<string, ChannelKind>,
   resources: Readonly<Record<string, unknown>> | undefined
 ): DeclaredTemplate | { problem: string } {
   const collection = resources !== undefined && Object.hasOwn(resources, declared.ref) ? resources[declared.ref] : undefined;
@@ -814,40 +828,44 @@ function templateFrom(
         `so a template mints rooms for the rows \`defineProjectsCollection()\` declares.`
     };
   }
-  const factory = Object.hasOwn(kinds, declared.kind) ? kinds[declared.kind] : undefined;
-  if (factory === undefined) {
-    return { problem: `runs talk sessions on kind "${declared.kind}", which was not passed to channelInstances.` };
-  }
-  if (factory.kind !== declared.kind) {
-    return {
-      problem:
-        `runs talk sessions on kind "${declared.kind}", but the flow passed under that key is kind ` +
-        `"${String(factory.kind)}" — talk sessions would run a different channel's graph. Pass the flow ` +
-        `under its own kind, or name that kind.`
-    };
-  }
-  if (!holdsBoards(factory)) {
-    return {
-      problem:
-        `runs talk sessions on kind "${declared.kind}", which is not a kind \`defineChannelFlow\` built. A custom ` +
-        `kind is zero-arg, so there is no way to hand it the template's seats and charter.`
-    };
-  }
-  if (declared.seats.length > 0 && !wakesSeats(factory)) {
-    return {
-      problem:
-        `names seats, but runs talk sessions on kind "${declared.kind}", which was built with no \`notify\` ` +
-        `block, so a post would wake none of them. Pass that kind built with one, as ` +
-        `\`kinds: { ${JSON.stringify(declared.kind)}: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }\`.`
-    };
-  }
   return {
     site,
     collection,
     ref: declared.ref,
-    kind: declared.kind,
     facts: { seats: [...declared.seats], charter: declared.charter }
   };
+}
+
+/**
+ * Why this call's channel kind cannot run talk sessions on `facts`, or
+ * `undefined`. Talk sessions run on the built-in kind (`"channel"`), so what
+ * sits under that key must be a kind {@link defineChannelFlow} built (the
+ * template is built onto it, as `boards:` is), of that kind, and able to wake
+ * the template's seats.
+ */
+function talkKindProblem(kinds: Record<string, ChannelKind>, facts: TalkTemplateFacts): string | undefined {
+  const factory = kinds[CHANNEL_KIND]!;
+  if (factory.kind !== CHANNEL_KIND) {
+    return (
+      `talk sessions run on kind "${CHANNEL_KIND}", but the flow passed under that key is kind ` +
+      `"${String(factory.kind)}" — they would run a different channel's graph.`
+    );
+  }
+  if (!holdsBoards(factory)) {
+    return (
+      `talk sessions run on kind "${CHANNEL_KIND}", and the flow passed under that key is not one ` +
+      `\`defineChannelFlow\` built. A custom kind is zero-arg, so there is no way to hand it the template's ` +
+      `seats and charter.`
+    );
+  }
+  if (facts.seats.length > 0 && !wakesSeats(factory)) {
+    return (
+      `names seats, but talk sessions run on kind "${CHANNEL_KIND}", which was built with no \`notify\` ` +
+      `block, so a post would wake none of them. Pass it built with one, as ` +
+      `\`kinds: { channel: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }\`.`
+    );
+  }
+  return undefined;
 }
 
 /**
