@@ -13,7 +13,7 @@ import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { createLabClients, type LabClients } from "../src/lib/connection";
 import { projectsOf, talkFor, type LoadedSnapshot } from "../src/lib/derive";
-import { toProject, type Project } from "../src/lib/reads";
+import { createLabReader, toProject, type Project } from "../src/lib/reads";
 import { postToRoom, readRoom, readRoomPages, startRoomRefresh, TalkRefused, type RoomLine, type RoomPage } from "../src/lib/talk";
 import { ClientHttpError } from "@flow-state-dev/client";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
@@ -171,6 +171,61 @@ describe("PROJECTS (BR-22, D3)", () => {
     down = false;
     act(() => fireEvent.click(within(failed).getByRole("button", { name: "Retry" })));
     await screen.findByTestId("nav-project-desk");
+  });
+});
+
+describe("a Lab that declares no projects is empty, not failed (D3)", () => {
+  /** Pass every request on, except a POST that opens a session on `kind`, which answers `status`. */
+  function refuseSessionsOn(kind: string, status: number) {
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+      if (method === "POST" && url.includes(`/api/flows/${kind}/sessions`)) {
+        return Promise.resolve(new Response(JSON.stringify({ error: `no ${kind} here` }), { status }));
+      }
+      return real(input, init);
+    });
+  }
+
+  it("a pre-project Lab, whose flows declare no projects collection, shows its workstreams under No project and no failure", async () => {
+    const { baseUrl } = await lab([]);
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (!/\/manifest(\?|$)/.test(url)) return real(input, init);
+      const body = (await (await real(input, init)).json()) as { resources: Array<{ pattern?: string }> };
+      const resources = body.resources.filter((r) => r.pattern !== "projects/*");
+      return new Response(JSON.stringify({ ...body, resources }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
+    const snapshot = await createLabReader(createLabClients({ userId: ASK_LAB_USER_ID, baseUrl })).read();
+    expect("projects" in snapshot && snapshot.projects).toEqual({ ok: true, value: { rows: [] } });
+
+    openApp(baseUrl, "/inbox");
+    await screen.findByTestId("nav-project-unassigned");
+    expect(screen.queryByTestId("projects-failure")).toBeNull();
+    expect(screen.getByTestId("nav-workstream-ops.desk")).toBeTruthy();
+  });
+
+  it("a Lab that doesn't serve the room kind has nothing that declares projects: zero projects, not a failure", async () => {
+    const { baseUrl } = await lab();
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
+    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: "ops.asker", userId: OTHER });
+    refuseSessionsOn("channel", 404);
+    const snapshot = await createLabReader(createLabClients({ userId: OTHER, baseUrl })).read();
+    expect("projects" in snapshot && snapshot.projects).toEqual({ ok: true, value: { rows: [] } });
+  });
+
+  it("a room kind that can't be opened for this person is a failed projects read, never an empty list", async () => {
+    const { baseUrl } = await lab();
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(baseUrl);
+    await createLabClients({ userId: OTHER, baseUrl }).sessions.createSession({ flowKind: "ops.asker", userId: OTHER });
+    refuseSessionsOn("channel", 503);
+    const snapshot = await createLabReader(createLabClients({ userId: OTHER, baseUrl })).read();
+    const projects = "projects" in snapshot ? snapshot.projects : undefined;
+    expect(projects?.ok).toBe(false);
+    expect(projects?.ok === false && projects.failure.message).toMatch(/no channel here/);
   });
 });
 

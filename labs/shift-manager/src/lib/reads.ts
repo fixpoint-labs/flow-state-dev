@@ -558,11 +558,12 @@ export function createLabReader(clients: LabClients): LabReader {
    * (`ROOM_KIND`).
    *
    * `read` opens one on the room kind for a person who holds none
-   * (`withRoomSession`). If there is still no session to read through, the
-   * read fails and says so; it is never drawn as an empty list. Rows are
-   * reported empty only when a carrier was read and held none (D3).
+   * (`withRoomSession`). No flow declaring the collection is a Lab with no
+   * projects: zero rows, not a failure (a pre-project Lab, or one that serves
+   * no room kind). A room session that should have been opened and couldn't
+   * is a failure, and says why; it is never drawn as an empty list (D3).
    */
-  const readProjects = async (sessions: SessionSummary[]): Promise<Section<Projects>> => {
+  const readProjects = async (sessions: SessionSummary[], roomFailure: Failure | null): Promise<Section<Projects>> => {
     const projectsRef = (manifest: ResourceManifest) =>
       manifest.resources.find(
         (r) => r.kind === "collection" && r.pattern === PROJECT_PATTERNS.projects && r.client.state?.read === true,
@@ -581,10 +582,12 @@ export function createLabReader(clients: LabClients): LabReader {
         }
       }
       if (found === undefined) {
+        if (roomFailure === null) return { ok: true, value: { rows: [] } };
         return {
           ok: false,
           failure: {
-            message: `None of your sessions is on a flow that can read this Lab's projects, so they can't be listed.`,
+            ...roomFailure,
+            message: `None of your sessions can read this Lab's projects, and one that can couldn't be opened: ${roomFailure.message}`,
           },
         };
       }
@@ -605,15 +608,19 @@ export function createLabReader(clients: LabClients): LabReader {
    * of theirs can read the organization's inventory or projects; a session on
    * the room kind can, since that kind declares both. It is opened once and
    * listed from then on. If it can't be opened, the sessions are returned as
-   * they were and the reads that need it say they failed.
+   * they were, with why: `null` when there is nothing to open (the Lab serves
+   * no room kind, a 404), so nothing declares what it would have read.
    */
-  const withRoomSession = async (sessions: SessionSummary[]): Promise<SessionSummary[]> => {
-    if (sessions.some((s) => s.parentSessionId == null && s.flowKind === ROOM_KIND)) return sessions;
+  const withRoomSession = async (
+    sessions: SessionSummary[],
+  ): Promise<{ sessions: SessionSummary[]; failure: Failure | null }> => {
+    if (sessions.some((s) => s.parentSessionId == null && s.flowKind === ROOM_KIND)) return { sessions, failure: null };
     try {
       await clients.sessions.createSession({ flowKind: ROOM_KIND, userId: clients.userId });
-      return await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" });
-    } catch {
-      return sessions;
+      return { sessions: await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" }), failure: null };
+    } catch (error) {
+      const failure = describeFailure(error);
+      return { sessions, failure: failure.httpStatus === 404 ? null : failure };
     }
   };
 
@@ -716,7 +723,8 @@ export function createLabReader(clients: LabClients): LabReader {
     }
     if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(clients.userId) } };
 
-    sessions = await withRoomSession(sessions);
+    const room = await withRoomSession(sessions);
+    sessions = room.sessions;
     const inventory = await readInventory(sessions, orgId);
 
     const [boardEntries, asks, resources, projects] = await Promise.all([
@@ -748,7 +756,7 @@ export function createLabReader(clients: LabClients): LabReader {
         }
       })(),
       readResources(sessions),
-      readProjects(sessions),
+      readProjects(sessions, room.failure),
     ]);
 
     return {
