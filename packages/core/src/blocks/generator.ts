@@ -1614,17 +1614,19 @@ async function runResumeStep(
       if (entry === undefined) {
         output = { type: "error-text", value: `Model called unknown tool "${c.toolName}"` };
       } else {
-        try {
-          const real = await entry.execute(c.arguments, {
-            toolCallId: c.toolCallId,
-            stepNumber: resumeStep.stepNumber,
-          });
+        // Only the tool's own run is caught: a mapper that throws is not the
+        // tool's failure, and propagates as it does in the live loop.
+        const ran = await entry
+          .execute(c.arguments, { toolCallId: c.toolCallId, stepNumber: resumeStep.stepNumber })
+          .then((real) => ({ ok: true as const, real }), (err: unknown) => ({ ok: false as const, err }));
+        if (ran.ok) {
           const mapped = entry.mapModelOutput !== undefined
-            ? await entry.mapModelOutput(real, ctx)
+            ? await entry.mapModelOutput(ran.real, ctx)
             : undefined;
-          output = toolResultOutputForModel(real, mapped);
-          toolResults.push({ toolCallId: c.toolCallId, toolName: c.toolName, result: real });
-        } catch (err) {
+          output = toolResultOutputForModel(ran.real, mapped);
+          toolResults.push({ toolCallId: c.toolCallId, toolName: c.toolName, result: ran.real });
+        } else {
+          const err = ran.err;
           if (err instanceof SuspensionRejectedError) {
             // Denial: emit a COMPLETED tool_output so later cycles treat it as
             // resolved (not a re-enterable failed gate), and surface the denial

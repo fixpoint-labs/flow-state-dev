@@ -312,6 +312,55 @@ describe("generator turn-boundary suspension + resume (FIX-814 PR3)", () => {
     expect(failed[0]!.error?.message).toBe("what you approved changed, so nothing was done");
   });
 
+  // 1d. APPROVAL, then the tool's mapper throws ------------------------------
+  it("a mapper that throws after an approved gate fails the run, as it does in the live loop, rather than reaching the model as a failed tool call", async () => {
+    // Only the tool's own error is a failed tool call. A mapper failure is the
+    // framework's, and the live loop lets it fail the run; resume must match.
+    const mapped = (name: string, suspend: boolean) =>
+      handler({
+        name,
+        inputSchema: z.object({}),
+        outputSchema: z.object({ ok: z.boolean() }),
+        execute: async (_input, ctx) => {
+          if (suspend) await ctx.suspend!({ reason: "approval", message: "go?" });
+          return { ok: true };
+        },
+      }).mapModelOutput(() => {
+        throw new Error("mapper broke");
+      });
+
+    const runFlow = async (kind: string, suspend: boolean) => {
+      const { model } = stepModel([
+        () => ({ toolCalls: [{ toolCallId: "c1", toolName: "op", args: {} }], finishReason: "tool-calls" }),
+        () => ({ text: "carried on", finishReason: "stop" }),
+      ]);
+      const gen = generator({ name: "agent", model, prompt: "p", tools: [mapped("op", suspend)] });
+      const flow = defineFlow({
+        kind,
+        actions: { run: { block: sequencer({ name: "seq", durable: true }).step(gen), inputSchema: anyInput } },
+      })({ id: kind });
+      const { stores, provider } = createDurableStores();
+      const initial = await runAction({
+        orgId: DEFAULT_ORG_ID,
+        flow, actionName: "run", input: {}, userId: "u1", stores,
+        runtimeConfig: { durabilityProvider: provider },
+      });
+      const requestId = initial.requestId!;
+      if (suspend) {
+        const [suspension] = await provider.listSuspended({ status: "pending" });
+        await resolve(flow, stores, provider, requestId, suspension, "approve");
+      }
+      return stores.request.get(requestId);
+    };
+
+    const live = await runFlow("gen-mapper-live", false);
+    const resumed = await runFlow("gen-mapper-resumed", true);
+    expect(live?.status).toBe("failed");
+    expect(JSON.stringify(live?.result)).toContain("mapper broke");
+    expect(resumed?.status).toBe(live?.status);
+    expect(JSON.stringify(resumed?.result)).toContain("mapper broke");
+  });
+
   // 2a. REJECTION visibility — denial inherits the generator's itemVisibility --
   it("rejection denial tool_output inherits a history:false generator's visibility (no leak)", async () => {
     const gate = handler({
