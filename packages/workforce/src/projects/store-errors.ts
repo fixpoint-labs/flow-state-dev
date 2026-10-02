@@ -15,3 +15,23 @@ export function isAlreadyExists(error: unknown): boolean {
       (error as { name?: unknown }).name === "ResourceAlreadyExistsError")
   );
 }
+
+/** Whether `error` is a write that found its row deleted under it. */
+export function isResourceDeleted(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    ((error as { code?: unknown }).code === "resource_deleted" ||
+      (error as { name?: unknown }).name === "ResourceDeletedError")
+  );
+}
+
+/** Whether `error` is a write or delete that lost a compare-and-swap race. */
+export function isConcurrentModification(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    ((error as { code?: unknown }).code === "concurrent_modification" ||
+      (error as { name?: unknown }).name === "ConcurrentModificationError")
+  );
+}
