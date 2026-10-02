@@ -175,6 +175,7 @@ describe("what the walk finds", () => {
       "teams/*/blocks",
       "teams/*/workers/*/blocks",
       "org/packages/*/blocks",
+      "org/workers/*/packages/*/blocks",
       "teams/*/packages/*/blocks",
       "teams/*/workers/*/packages/*/blocks",
     ]);

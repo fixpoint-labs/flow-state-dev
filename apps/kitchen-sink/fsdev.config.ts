@@ -40,7 +40,7 @@ import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 import workforceAdminFlow from "@/flows/workforce-admin/flow";
 import { hireKitchenSinkWorkforce, kitchenSinkKinds } from "@/workforce/hire";
-import { openChannels, reloadHiredSeats } from "@flow-state-dev/workforce";
+import { mergeSeatFlows, openChannels, reloadHiredSeats } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
@@ -97,12 +97,6 @@ for (const failedPath of workforce.errors) {
   console.error(`[workforce] could not read ${failedPath}`);
 }
 
-// Seats are addressed by their own ids (`support.devices`, `support.general`, …),
-// which is what a caller puts on the URL and what `fsdev run` takes.
-const seatFlows = Object.fromEntries(
-  workforce.seats.map((seat) => [seat.id, seat])
-);
-
 // The admin path is registered ONLY when a credential is configured, which is
 // what makes it fail closed: a default deployment has no `workforce-admin`
 // address at all, rather than one standing behind a check somebody could get
@@ -113,7 +107,7 @@ const adminFlows: Record<string, FlowInstance<any, any>> = adminCredentialConfig
 
 // One instance per channel KIND the tree selected, never one per channel — a
 // channel kind is a singleton, so its address is its kind and every channel is
-// a named session on it. `seatFlows` above goes the other way, one entry per
+// a named session on it. Seats go the other way, one entry per
 // seat, because a seat kind is a `collection` and every seat is its own
 // addressable copy. Both lines follow the kind's declared cardinality; neither
 // is this app choosing a convention.
@@ -125,15 +119,21 @@ const channelFlows = Object.fromEntries(
   workforce.channelFlows.map((instance) => [instance.id, instance])
 );
 
+// Seats are addressed by their own ids (`support.devices`, `support.general`, …),
+// which is what a caller puts on the URL and what `fsdev run` takes. An org
+// seat's id is its bare folder name, so `mergeSeatFlows` refuses one that is
+// already a flow's id rather than letting it replace that flow.
 const flowstate = createFlowState({
-  flows: {
-    ...channelFlows,
-    chatAgent: chatAgentFlow,
-    richTextComponent: richTextComponentFlow,
-    weeklyDigest: weeklyDigestFlow,
-    ...seatFlows,
-    ...adminFlows,
-  },
+  flows: mergeSeatFlows(
+    {
+      ...channelFlows,
+      chatAgent: chatAgentFlow,
+      richTextComponent: richTextComponentFlow,
+      weeklyDigest: weeklyDigestFlow,
+      ...adminFlows,
+    },
+    workforce.seats
+  ),
   models: {
     default: DEFAULT_KITCHEN_SINK_MODEL,
     intents: {

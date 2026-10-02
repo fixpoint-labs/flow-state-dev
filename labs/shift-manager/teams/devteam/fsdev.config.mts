@@ -1,7 +1,7 @@
 /**
  * The DevTeam team profile: a software team (an EM seat that files features, a
- * coder seat that runs them, a reviewer) as a server Shift Manager and
- * `fsdev dev` load.
+ * coder seat that runs them, a reviewer) and its chief of staff, as a server
+ * Shift Manager and `fsdev dev` load.
  *
  *     pnpm --filter @flow-state-dev/shift-manager start --team devteam
  *
@@ -25,15 +25,22 @@
  * The harness is picked by `DEVFORCE_LAB_HARNESS` (see `harness.mts`): the
  * lab's scripted run by default, no model, which says what it is doing in the
  * run's session and commits one file so the row settles; or `claude-code`, a
- * real coding agent. The stores are in memory, so every start is fresh.
+ * real coding agent.
+ *
+ * - **A store that survives a restart.** SQLite, at `DEVTEAM_STORE` or
+ *   `labs/shift-manager/.fsdev/devteam.sqlite` by default. Seats the chief of
+ *   staff hired are read back and serve again at the next start, a fire it
+ *   made stays made, and an ask still waiting is still in Inbox. Delete the
+ *   file for a fresh start.
  *
  * Which seat is the EM and which seat a row is handed to are read off the
  * tree, by the kind each `WORKER.md` names. No seat, channel or board is named
  * in this file.
  */
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { inMemoryStores } from "@flow-state-dev/engine";
+import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "../../../../goals/devforce-lab/lab/ask.mts";
 import { ASSIGNEE } from "../../../../goals/devforce-lab/lab/board.mts";
@@ -43,6 +50,7 @@ import { createNotifyLog } from "../../../../goals/devforce-lab/lab/notify.mts";
 import { BASE_REF, createScratchRepo } from "../../../../goals/devforce-lab/lab/scratch-repo.mts";
 import { CODER_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/coder.mts";
 import { EM_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/em.mts";
+import { setAsideLegacyOrgStore } from "./legacy-org-store.mts";
 
 /**
  * The feature the EM seat asks a person to approve when the server opens: the
@@ -65,11 +73,17 @@ if (coderSeatId === undefined) throw new Error("the DevTeam tree declares no cod
 const members = (roster.channels[0]?.declared.members as string[] | undefined) ?? [];
 const addresses = Object.fromEntries(members.filter((m) => kindOf(m) === EM_KIND).map((m) => [m, m]));
 
+/** Where this Lab keeps what it was told, across restarts. */
+const STORE = process.env.DEVTEAM_STORE ?? fileURLToPath(new URL("../../.fsdev/devteam.sqlite", import.meta.url));
+mkdirSync(dirname(STORE), { recursive: true });
+// A store from before the lab's org id changed is set aside, loudly, not reused.
+await setAsideLegacyOrgStore(STORE);
+
 const scratch = createScratchRepo("shift-manager");
 const harness = selectHarness();
 
 const lab = await openLab({
-  stores: inMemoryStores(),
+  stores: sqliteStores({ filename: STORE }),
   harness: harness.slot,
   runTimeoutMs: harness.runTimeoutMs,
   workspace: { root: scratch.root, sourceRepo: scratch.sourceRepo, baseRef: BASE_REF },

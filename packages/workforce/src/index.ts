@@ -46,13 +46,19 @@
  * `roster/reload.ts` owns reading a whole roster back at the next boot, and
  * the two are a different contract from the inventory's on purpose — a roster
  * row is deletable because firing a seat is half of what a roster is for,
- * while an inventory row means *was registered here* and is never removed.
+ * while an inventory row means *was registered here*. A declared seat's or
+ * channel's inventory row is never removed; a runtime-hired seat's is removed
+ * by its fire, and only while it carries the incarnation fired.
  */
 
 export { AGENT_KIND, defineAgentWorkerFlow, type AgentWorkerFlowOptions } from "./agent-worker-flow";
 export { definePersona, type PersonaResourceConfig, type PersonaCollectionConfig } from "./define-persona";
 export { createWorkforceCapability, type WorkforceCapabilityOptions } from "./workforce-capability";
-export { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "./seat-hire-keys";
+export {
+  HIRED_ROSTER_PRIVATE_RESOURCE,
+  HIRED_ROSTER_RESOURCE,
+  SEAT_INVENTORY_RESOURCE
+} from "./seat-hire-keys";
 export {
   createSeatHireCapability,
   createSeatHireBlocks,
@@ -60,8 +66,11 @@ export {
   registerHiredSeat,
   SEAT_HIRE_CAPABILITY,
   type HiredSeatOwnerPin,
+  type SeatHireAskData,
+  type SeatHireAskVerb,
   type SeatHireBlocks,
   type SeatHireCapabilityOptions,
+  type SeatHireToolOptions,
 } from "./seat-hire-capability";
 export {
   channelPostCapability,
@@ -71,6 +80,7 @@ export {
   type PostToChannelInput,
 } from "./channel-post-capability";
 export { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
+export { mergeSeatFlows } from "./merge-seat-flows";
 export { seatDoorOf, type SeatDoor } from "./seat-door";
 export { resourcesFromDocs } from "./resources-from-docs";
 export { referencesFromDocs, referenceBody } from "./references-from-docs";
@@ -85,9 +95,11 @@ export {
 } from "./clear-shadowed-references";
 export {
   SEAT_REFERENCES_KEY,
+  parseDeclaredSeatId,
   placeOfReference,
   placeOfSeat,
   referenceReachableBySeat,
+  type DeclaredSeatId,
   type TreePlace,
 } from "./seat-references";
 export { splitResourceModules, type ResourceModuleHalves } from "./split-resource-modules";

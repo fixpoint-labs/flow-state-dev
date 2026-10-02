@@ -47,7 +47,7 @@ import type {
 export type DeclaredProblemLayer =
   /** A worker slot, or a structural folder above one. */
   | "worker"
-  /** One seat's skills, at any of the three levels it reads. */
+  /** One seat's skills, at any of the levels it reads (three for a team seat, two for an org seat). */
   | "skill"
   /** A team's own `TEAM.md`. */
   | "team"

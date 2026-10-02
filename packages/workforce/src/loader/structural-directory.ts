@@ -2,7 +2,7 @@
  * The walk primitives every workforce-tree reader shares.
  *
  * A workforce tree is read by more than one loader — workers from
- * `teams/<id>/workers/`, a seat's skills from three `skills/` folders — and
+ * `org/workers/` and `teams/<id>/workers/`, a seat's skills from three `skills/` folders — and
  * each of them needs the same three answers about a path before it can walk it:
  * is it a symlink (never followed), is it simply absent (silent), or is it
  * there and unreadable (reported)? Those answers live here, once, so a second

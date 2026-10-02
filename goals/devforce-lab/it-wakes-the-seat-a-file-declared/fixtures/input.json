@@ -13,24 +13,41 @@
     "eng.em": {
       "kind": "em",
       "document": "engineering-handbook",
-      "skills": ["commit-style"],
+      "skills": [
+        "commit-style"
+      ],
       "instructionsToken": "EM-INSTRUCTIONS-A17C3"
     },
     "eng.coder": {
       "kind": "coder",
       "document": "teams/eng/feature-brief",
-      "skills": ["commit-style", "branch-naming"],
+      "skills": [
+        "commit-style",
+        "branch-naming"
+      ],
       "instructionsToken": "CODER-INSTRUCTIONS-B42D9"
     },
     "eng.reviewer": {
       "kind": "coder",
       "document": "teams/eng/feature-brief",
-      "skills": ["commit-style"],
+      "skills": [
+        "commit-style"
+      ],
       "instructionsToken": "REVIEWER-INSTRUCTIONS-C93E1"
     }
   },
-  "documents": ["engineering-handbook", "teams/eng/feature-brief"],
-  "channels": ["eng.feature"],
+  "orgSeats": {
+    "chief-of-staff": {
+      "kind": "agent"
+    }
+  },
+  "documents": [
+    "engineering-handbook",
+    "teams/eng/feature-brief"
+  ],
+  "channels": [
+    "eng.feature"
+  ],
   "promptTokens": [
     "CODER-INSTRUCTIONS-B42D9",
     "FEATURE-BRIEF-E61B8",
@@ -47,5 +64,8 @@
     "BRANCH-NAMING-1B9E7": "teams/eng/workers/coder/skills/branch-naming/SKILL.md",
     "FEATURE-CHARTER-0A8D6": "teams/eng/channels/feature/CHANNEL.md"
   },
-  "wait": { "timeoutMs": 60000, "pollMs": 100 }
+  "wait": {
+    "timeoutMs": 60000,
+    "pollMs": 100
+  }
 }

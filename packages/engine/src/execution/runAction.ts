@@ -502,6 +502,15 @@ async function settleFreshRequestSetupFailure(options: {
         updatedAt: now,
         items
       };
+      // Items before the status, as every terminal write does: on a store
+      // whose `set` drops `items`, a `failed` read must not come without its
+      // error item. Only onto a record this run already holds, though; one
+      // this write creates may be lost to another request taking the id
+      // ("absent"), so its items follow the write that wins it.
+      if (current !== undefined) {
+        options.stores.request.persistItems(options.requestId, items);
+        await options.stores.request.flushItems(options.requestId);
+      }
       const written = await options.stores.request.set(
         options.requestId,
         failed,
@@ -509,8 +518,10 @@ async function settleFreshRequestSetupFailure(options: {
       );
       if (written.ok) {
         writtenIncarnation = resolveRequestIncarnation(failed);
-        options.stores.request.persistItems(options.requestId, items);
-        await options.stores.request.flushItems(options.requestId);
+        if (current === undefined) {
+          options.stores.request.persistItems(options.requestId, items);
+          await options.stores.request.flushItems(options.requestId);
+        }
         settled = true;
       }
     }
@@ -1210,6 +1221,19 @@ async function runActionAttempt<
   // settled, so no stored cancel is delivered: one delivered for admission's
   // request would stay on this run's controller if another request took the id.
   let incarnationSettled = false;
+  /**
+   * Hand the store the items this run's record is about to settle with, and
+   * wait out every item write, before a terminal write. The SQL stores keep
+   * items out of the record row, so the terminal write's own `items` never
+   * reach them, and the emitter's `item.done` hook fires after the event's
+   * `onEvent`, which can put a block's last items in the store after the
+   * status. A run that never settled which record it holds persists nothing
+   * (FIX-1735).
+   */
+  const flushSettlingItems = async (): Promise<void> => {
+    if (incarnationSettled) options.stores.request.persistItems(requestId, persistableItems());
+    await options.stores.request.flushItems(requestId);
+  };
   /**
    * Whether a cancel is recorded on the request this run executes as. The flag
    * is read first, as the O(1) `isAbortRequested`, and only when it is set is
@@ -2209,6 +2233,7 @@ async function runActionAttempt<
         await flushCheckpoints();
         await flushTraces();
 
+        await flushSettlingItems();
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: itemsToPersist()
         });
@@ -2402,6 +2427,9 @@ async function runActionAttempt<
     await flushCheckpoints();
     await flushTraces();
 
+    // Then the items the record settles with, so the status below is never
+    // read without them on a store whose `set` drops `items`.
+    await flushSettlingItems();
     const completedAt = Date.now();
     const items = itemsToPersist();
     terminalRecordIncarnation = await settleRequestRecord(
@@ -2686,6 +2714,7 @@ async function runActionAttempt<
         await flushTraces();
 
         const abortedAt = Date.now();
+        await flushSettlingItems();
         terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "aborted" }, {
           abortedAt,
           items: itemsToPersist(),
@@ -2719,6 +2748,7 @@ async function runActionAttempt<
         await flushCheckpoints();
         await flushTraces();
 
+        await flushSettlingItems();
         terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "interrupted" }, {
           interruptedAt: Date.now(),
           items: itemsToPersist(),
@@ -2753,6 +2783,7 @@ async function runActionAttempt<
       await flushTraces();
 
       const failedAt = Date.now();
+      await flushSettlingItems();
       terminalRecordIncarnation = await settleRequestRecord(
         options.stores,
         requestId,

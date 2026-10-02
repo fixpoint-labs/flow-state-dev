@@ -158,6 +158,8 @@ Where the folder sits decides **who can resolve the name**:
 | `workforce/teams/<team>/workers/<worker>/blocks/` | that one worker |
 | a package's `blocks/` | the workers that hold that [package](./packages-on-disk.md) |
 
+An org seat (`workforce/org/workers/<worker>/`) has no `blocks/` folder of its own, and `fsdev gen` refuses one there. It gets tools from the catalog and from the packages it holds.
+
 A name is resolved nearest first: the worker's own folder, then its team's, then the catalog. The first match wins, so a worker can keep a private `summarize` without renaming the team's. A package's block is never hidden that way: one that shares a name with a block in the worker's own or team folder, or with a catalog tool the worker lists, is refused at the hire.
 
 The org-level half is one line in your app, on the option the built-in kind already takes:

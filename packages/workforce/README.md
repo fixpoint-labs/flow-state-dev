@@ -69,9 +69,11 @@ const personas = definePersona({
 ## Reading a workforce from files
 
 Describe each worker in a folder instead of in code. `readWorkforceDirectory` walks
-`<root>/teams/<teamId>/workers/<workerName>/`, reads each worker's `WORKER.md`, and returns
-one record per worker. `readWorkforce` wraps it, joining each seat's resolved skills, its
+`<root>/org/workers/<workerName>/` and `<root>/teams/<teamId>/workers/<workerName>/`, reads each
+worker's `WORKER.md`, and returns one record per worker. `readWorkforce` wraps it, joining each seat's resolved skills, its
 team's instructions and the [packages](#packages-from-files) in its reach onto the records it hands back.
+An org seat has no team, so its record carries no `teamInstructions`, and its skills come from two
+levels, the org's and its own.
 
 ```ts
 import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";
@@ -84,12 +86,17 @@ Each record is plain data:
 
 | Field | Description |
 |-------|-------------|
-| `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. |
+| `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. An org seat's id is its folder name alone, with no dot: `org/workers/chief-of-staff/` is `"chief-of-staff"`, a different seat from `"engineering.chief-of-staff"`. `parseDeclaredSeatId` reads either shape back. |
 | `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and six refused ones: `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` and `teamInstructions:`. |
 | `body` | The Markdown below the frontmatter, verbatim. Empty when the worker has no instructions. |
 
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
 lowercase letters, digits and single hyphens, at most 64 characters.
+
+An org seat, under `org/workers/<name>/`, is one seat the whole organization shares rather
+than a member of a team. Its folder is a worker slot like a team's, so one with no `WORKER.md` is
+reported in `errors`. An org seat reads the org's skills, packages and references, then its own folder's;
+no team level reaches it, and no `TEAM.md` instructions.
 
 A `WORKER.md` may also carry `resources:`, a list of the [file-declared
 documents](#reading-documents-from-files) that seat may touch. The loader carries it through onto `declared` untouched, the way it carries every key it does
@@ -144,8 +151,8 @@ it reaches Node built-ins through the packages it builds on. A browser component
 
 ## Reading one seat's skills
 
-A skill is a folder with a `SKILL.md` in it. In a workforce tree, one worker's skills are spread
-across three folders: the org's, its team's, and any sitting beside the worker itself.
+A skill is a folder with a `SKILL.md` in it. In a workforce tree, a team seat's skills are spread
+across three folders: the org's, its team's, and any sitting beside the worker itself. An org seat (`org/workers/<worker>/`) has no team, so it reads two: the org's `org/skills/` and its own `org/workers/<worker>/skills/`.
 
 ```
 workforce/org/skills/triage/SKILL.md
@@ -156,7 +163,8 @@ workforce/teams/pentest/workers/recon/WORKER.md
 workforce/teams/pentest/workers/recon/skills/sweep/SKILL.md
 ```
 
-`readSeatSkills` reads all three for one worker and returns the records `initialSkills` takes.
+`readSeatSkills` reads them for one worker and returns the records `initialSkills` takes. Pass `team`
+for a team seat; leave it out for an org seat.
 
 ```ts
 import { readSeatSkills } from "@flow-state-dev/workforce/loader";
@@ -170,10 +178,10 @@ if (errors.length) throw new Error(`skills: ${errors.length} entries failed to l
 skills.map((s) => s.name).sort(); // ["port-scan", "review", "sweep", "triage"]
 ```
 
-Every skill folder at those three levels is read. Nothing has to be listed anywhere for a skill
+Every skill folder at those levels is read. Nothing has to be listed anywhere for a skill
 to be included.
 
-The set comes back level by level: the org's first, then the team's, then the worker's own. Each
+The set comes back level by level: the org's first, then the team's (for a team seat), then the worker's own. Each
 entry is `{ name, skillMd, files }`, the same record `readSkillsDirectory` returns — `name` is the
 folder name, bare, with no team prefix.
 
@@ -186,8 +194,8 @@ const clerk = await readSeatSkills("./workforce", { team: "audit", worker: "cler
 // recon.skills has pentest's `review`; clerk.skills has audit's. Neither carries the other.
 ```
 
-One name reaching a single worker from more than one of its levels is refused. All three levels
-count, so a collision can span two of them or all three:
+One name reaching a single worker from more than one of its levels is refused. Every level
+counts, so on a team seat a collision can span two of them or all three:
 
 ```ts
 errors;
@@ -462,7 +470,7 @@ holds a package. A kind that reads
 string, which is what keeps "this team said nothing" and "this team said nothing *yet*" from being
 the same value in the bag.
 
-**One key is reserved across kinds: `tools`.** It is not part of the contract — your kind declares it or leaves it out — but if you declare it, it means the names of tools that seat may call, because the hire step reads it. (On the built-in `agent` kind, a seat with no `tools:` line can also call what its own file chose: the tools of the capability presets it selected under `capabilities:`, and the blocks of the packages it holds. A written line is the whole grant.) A name in a worker's `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, along with the blocks of the packages it holds, then your kind's catalog), and the ones that resolved to the seat's own folders or packages arrive on `seatTools` as live blocks instead. You decide what to check the remaining names against, and you may declare no `tools` at all. What the key is not available for is unrelated string configuration, which hiring would rewrite — give that its own name.
+**One key is reserved across kinds: `tools`.** It is not part of the contract — your kind declares it or leaves it out — but if you declare it, it means the names of tools that seat may call, because the hire step reads it. (On the built-in `agent` kind, a seat with no `tools:` line can also call what its own file chose: the tools of the capability presets it selected under `capabilities:`, and the blocks of the packages it holds. A written line is the whole grant.) A name in a worker's `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, along with the blocks of the packages it holds, then your kind's catalog; an org seat has neither folder, so only the last two apply), and the ones that resolved to the seat's own folders or packages arrive on `seatTools` as live blocks instead. You decide what to check the remaining names against, and you may declare no `tools` at all. What the key is not available for is unrelated string configuration, which hiring would rewrite — give that its own name.
 
 Add your kind's own settings on top, at the same level:
 
@@ -668,7 +676,8 @@ const seats = hireWorkforce(workers, { kinds: { ...kinds, agent }, seatBlocks, p
 ```
 
 A `blocks/` folder **registers** a name: `workforce/blocks/` for every worker, a team's for that
-team's workers, a worker's own for that worker. It does not grant use — a worker still names the
+team's workers, a team seat's own for that seat. An org seat (`org/workers/<name>/`) has no `blocks/`
+folder, and `fsdev gen` refuses one there: it gets tools from the catalog and the packages it holds. A folder does not grant use — a worker still names the
 block in its `tools:`, and a name resolves nearest first (its own folder, its team's, the catalog).
 Two rules are checked before any worker runs: the file's basename, the map key and the block's own
 `name` must agree, and a block in a worker's own folder may read a store the kind installed but may
@@ -795,7 +804,7 @@ package it holds. A written `tools:` line is the whole list, and a package block
 it; `tools: []` gets the text and no tools.
 
 `readWorkforce` puts the packages in each worker's reach on its record as `packages`
-(`PackageManifest[]`: the org's library, its team's, and its own folder) and reports refused package
+(`PackageManifest[]`: the org's library, its team's, and its own folder; an org seat has no team's) and reports refused package
 folders on `packageErrors`. `readDeclaredRoster` reports the same entries on its `package` layer.
 The blocks come from `fsdev gen`'s `packageBlocks` export, keyed by package path and then block
 name; pass it to `hireWorkforce`, which decides from each worker's folder and `packages:` line which
@@ -951,9 +960,9 @@ own drops whatever resources the flow kind declared. Spread it into your own map
 **A reference is walled by where its file sits.** A seat reaches the org's references, its own
 team's, and its own folder's. Another team's and a teammate's are not on its map at all, so
 `ctx.resources.get` on one throws `is not registered`. No install-side filter is involved and there
-is no setting that widens the wall: a reference reaches more people by moving up the tree. Seats are
-read from `teams/<teamId>/workers/<name>/`, so a reference under `org/workers/<name>/references/`
-sits beside the org level rather than above any seat, and no seat reaches it.
+is no setting that widens the wall: a reference reaches more people by moving up the tree. A
+reference under `org/workers/<name>/references/` belongs to the org seat at that folder: it reaches
+that seat and no other. An org seat has no team, so no team's references reach it.
 
 A `references:` list in a `WORKER.md` narrows within that wall. Each entry is a ref on its own —
 there is no mode, since nothing writes a reference. An entry naming a reference the seat could not
@@ -1483,21 +1492,24 @@ partial roster.
 
 The roster and the inventory are different collections. A roster row at
 `workforce/roster/<seatId>` is the durable hire: `hire` writes it, `fire` deletes it. An
-inventory row at `inventory/seats/<address>` means *was registered in this organization* and
-is never removed.
+inventory row at `inventory/seats/<address>` means *was registered in this organization*. A
+declared seat's row is never removed; a runtime-hired seat's row is removed by `fire`, and only
+while it carries the incarnation fired.
 
 `createSeatHireCapability`'s `hire` tool writes both. `discover` lists a seat when it is still
 hired or still declared in a worker file, and has been registered in this organization. Pass
 `hiredRoster` on `createWorkforceCapability` so a runtime hire is listed the same way a
-file-declared seat is. A file-declared description wins over a same-id hire. After `fire`,
-the inventory row remains and `discover` withholds the seat.
+file-declared seat is. A file-declared description wins over a same-id hire. After `fire`, a
+hired seat's roster row and its inventory row are both gone, so `discover` does not list it. A
+fire that stopped between the two leaves the inventory row; `discover` withholds the seat, since
+no roster row backs it.
 
 ### Hire and fire as catalog tools
 
-`createSeatHireCapability` puts `hire` and `fire` on a worker kind's catalog. Install it with
-`defineAgentWorkerFlow({ uses: [seatHire] })`. A seat with no `tools:` line calls them by
-selecting the preset (`capabilities: { seat-hire: [tools] }`); a seat that writes a `tools:` line
-names them there. An empty `tools:` list means the seat cannot call them.
+`createSeatHireCapability` puts `hire`, `fire`, `brokenSeats` and `rehire` on a worker kind's
+catalog. Install it with `defineAgentWorkerFlow({ uses: [seatHire] })`. A seat with no `tools:`
+line calls them by selecting the preset (`capabilities: { seat-hire: [tools] }`); a seat that
+writes a `tools:` line names them there. An empty `tools:` list means the seat cannot call them.
 
 The seat is hired in the caller's organization. A body `orgId` is ignored.
 Hire will not register a seat without an owner pin `{ orgId, userId? }` taken
@@ -1555,9 +1567,11 @@ the factory runs is hireable.
 | `kinds` | The same map `hireWorkforce` takes. Omit it and only built-in `agent` is hireable, unless `allowKinds` excludes it. |
 | `register(seat, pin)` | Admit the minted flow at its address. `pin` is `{ orgId, userId? }` from the hire row's roster owner. Hire refuses rather than omit it. |
 | `unregister(id)` | Release the address in this process. Returns whether it was held. |
-| `kindAt?(id)` | Kind serving an address right now. Hire uses it to refuse a second hire of a live seat. Fire uses it to refuse a file-declared seat. Omit it and a duplicate seat is still refused. |
+| `kindAt?(id)` | Kind serving an address right now. Hire uses it to refuse a second hire of a live seat, and a seat id a file-declared seat answers on. Fire uses it to refuse a file-declared seat. Omit it and a duplicate seat is still refused. |
 | `allowKinds?` | Subset of kinds this tool may mint. |
+| `refuseRosterAdmin?` | When `true`, `hire` and `rehire` refuse settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`. Default `false`. |
 | `channelBoards?` | Ledger ids forwarded so an unattended board warns. Hire does not attach boards. |
+| `askBefore?` | `"hire"` and/or `"fire"`: those tools wait for a person's approval before they change anything. `rehire` always waits. Omitted, `hire` and `fire` act at once. Any other entry throws when the capability is built. |
 
 **`hire`** takes `{ seatId, flow, settings?, instructions?, orgId? }` (extra keys are refused)
 and returns `{ seatId, address, warning? }`. `address` is `<orgId>.<seatId>`.
@@ -1567,16 +1581,34 @@ A duplicate seat is refused. It does not invent a kind. It does not attach board
 is present when a named channel board is unattended.
 
 It refuses an unknown kind or one outside `allowKinds` (and lists the hireable ones), an
-address already served, and a request with no organization.
+address already served, a seat id a file-declared seat answers on, an address a declared
+seat's inventory row sits at (`hired: false`), and a request with no organization.
 
-**`fire`** takes `{ seatId, orgId? }` (extra keys are refused) and returns
-`{ seatId, address, released }`. It deletes the roster row. The inventory row stays. It
-unregisters the address when the live kind matches the stored kind. When a different kind
-holds the address, the roster row is deleted and `released` is `false`. After `fire`,
-`discover` withholds the seat.
+**`fire`** takes `{ seatId, owner?, orgId? }` (extra keys are refused) and returns
+`{ seatId, address, released, alreadyGone? }`. It deletes the roster row, unregisters the
+address when the live kind matches the stored kind, and deletes the seat's inventory row. When
+a different kind holds the address, the roster row is deleted, the address and its inventory
+row are left alone, and `released` is `false`. Called for a seat whose roster row is already
+gone but whose inventory row is left (a crash between the two deletes), it removes that row
+when the row says `hired: true` and returns `released: false` with `alreadyGone: true`; a row
+that doesn't say so is left, and the call refused as for a seat never hired. A roster row that can't be read is deleted by its key and nothing else is
+touched (`address: null`). After `fire`, `discover` withholds the seat. `removeHiredSeat` is
+this removal on its own, for an app whose fire is its own handler, and `resolveHiredSeatLocation({ seatId, owner?, roster, privateRoster?, userId?, leftoverAt })` picks the row it removes, as `fire` does. `leftoverAt` is required: a fire passes `{ orgId, inventory }` so that a retry after a fire that stopped past the caller's own row stays on that seat; a caller acting only on a row that exists passes `null`.
 
 It refuses when this organization hired no seat, or when a live file-declared seat sits at that
 address (removed by editing its folder, not by firing it).
+
+**Asking first.** A tool `askBefore` lists runs every refusal above first, then suspends the
+request with `reason: "human_approval"`, `data: { verb, seatId, kind, owner, incarnation }` and
+`allow: ["approve", "reject"]`. `owner` is the member whose own seat it is (`null` for an
+org-visible seat or a hire); `incarnation` names the hire that wrote the row (`null` for a hire).
+Approve makes the change to that row only: if the seat id names another row by then (fired and
+hired again), the change is refused with "changed while you were asked". Reject changes nothing
+and the model gets `{ denied: true, reason }` as the tool result. A refusal raises no ask.
+`askBefore` covers `hire` and `fire`; `rehire` always asks. Asking needs durable
+execution (`durable: true` on `createFlowState`); without it a listed tool throws, naming
+itself, and changes nothing. The ask survives a restart, and a request recovered after the
+approval landed makes the change once on a store that keeps a run's items as it goes.
 
 **Pairing with `discover`.** Compose both capabilities on the kind and pass
 `inventory: { seats: SEAT_INVENTORY_RESOURCE }` plus `hiredRoster: HIRED_ROSTER_RESOURCE`.
@@ -1586,9 +1618,43 @@ Omit `hiredRoster` and it lists only file-declared seats.
 ### The same handlers, as actions
 
 `createSeatHireBlocks` takes the same options as `createSeatHireCapability` and returns
-`{ hire, fire }`, the handlers behind its catalog tools. Mount them as a flow's actions when a
-person or your own code does the hiring and no model should be in front of it. Inputs, outputs
-and refusals are the ones described above for the tools.
+`{ hire, fire, brokenSeats, rehire }`. `hire` and `fire` are the handlers behind its catalog
+tools. Mount them as a flow's actions when a person or your own code does the hiring and no
+model should be in front of it. Inputs, outputs and refusals are the ones described above for
+the tools.
+
+**`brokenSeats`** takes `{}` and returns the caller's organization's stored seats that would
+not start, each `{ seatId, key, owner, kind, reason, detail }`, with `reason` one of `kind-gone`,
+`refused`, `unreadable`. It reads through the start's own per-row check, so `detail` is the
+sentence `reloadHiredSeats` puts in `problems`, and it writes nothing. For an `unreadable` row,
+`seatId` is the row's key, which `fire` retires it by. `owner` is `"organization"` or `"me"`,
+whose row it is; pass it to `fire` or `rehire` to reach that row. It runs the full check on every row, a
+mint included, so it is an admin read made on demand, not something to poll.
+
+User-owned seats: mount `defineHiredRosterPrivateCollection()` under
+`HIRED_ROSTER_PRIVATE_RESOURCE` on the same flow, and `brokenSeats` lists the caller's own
+user-owned rows beside the org's. `fire` and `rehire` take `owner: "organization" | "me"` to
+name which row; without it they act on the only row under the seat id, and refuse, naming both,
+when the caller has an org row and a user-owned row under it. `resolveHiredSeatLocation` is that
+choice, exported for an app's own fire. That collection serves a row only to the member it belongs to, so a
+member lists and repairs only their own; the start still names every member's. Without it, the
+four reach org-visible seats only.
+
+**`rehire`** takes `{ seatId, flow, settings?, instructions?, owner?, orgId? }` and returns
+`{ seatId, address, warning? }`. It keeps the seat's id and address and runs it on `flow`, with
+`settings` for that kind; the stored instructions carry over unless replaced. It refuses a seat
+that would start, an `unreadable` row, a kind this app doesn't carry or `allowKinds` excludes,
+and settings the kind refuses, all before writing anything. The row is replaced in one
+version-checked write, so of two repairs of one seat arriving together one is refused. A failed
+registration writes the old row back. If the process dies after the row is written, or the
+inventory write fails after the seat is serving, the same call run again finishes it. The row
+write marks the row `pendingRepair` until the seat is registered and published, and only a marked
+row is finished. A seat the registry already holds at the address counts as registered only when
+`instanceAt` shows it was minted from that row; any other holder is a refusal. Any
+other re-hire of a working seat is refused. Each step re-reads the row first: if `fire` removed it
+meanwhile, the re-hire stops and takes back what it registered or published.
+
+None of the four asks for approval. Mount `brokenSeats` and `rehire` behind one.
 
 Declare the roster and seat-inventory collections on that flow, under `HIRED_ROSTER_RESOURCE`
 and `SEAT_INVENTORY_RESOURCE`. The handlers read them by those keys, and without them every
@@ -1686,12 +1752,14 @@ registered seat, one row per registered channel, and one row per seat-in-channel
 collections, so a block reads them the way it reads any other resource.
 
 **A row means registered, not open.** It records that a seat or channel was registered in this
-organization, not that the seat is working or the channel is open now. Nothing deletes a row, so a
-fired seat keeps its row. A channel's `members` are the ones it had when it registered.
+organization, not that the seat is working or the channel is open now. Declared seats' and
+channels' rows are never deleted. A runtime-hired seat's row is removed when it is fired, and
+only the row its own hire published (it carries that hire's `incarnation`). A channel's `members`
+are the ones it had when it registered.
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
-| `defineSeatInventoryCollection()` | registered seat, at `inventory/seats/<seatId>` | `id`, `kind` (the worker kind the seat was hired into), `door` (the action that takes a person's message, or `null`) |
+| `defineSeatInventoryCollection()` | registered seat, at `inventory/seats/<seatId>` | `id`, `kind` (the worker kind the seat was hired into), `door` (the action that takes a person's message, or `null`), `hired` (`true` for a seat hired at runtime, `false` for a declared one, `null` on a row written before the field), `incarnation` (the hire or repair that published it; `null` on a declared seat's row and an older row) |
 | `defineChannelInventoryCollection()` | registered channel, at `inventory/channels/<channelId>` | `id`, `kind` (the channel kind that opened it), `members` (seat ids, `[]` when absent), `openedAt` (ISO string, or `null` when absent) |
 | `defineMembershipIndexCollection()` | seat-in-channel, at `inventory/members/<seatId>/<channelId>` | `seatId`, `channelId` |
 
@@ -1771,9 +1839,16 @@ the channel's session state, not the inventory; the row is a copy for finding th
 
 **Running it twice.** Every write is an upsert keyed by the record's id. Nothing duplicates, and a
 channel registered on an earlier boot keeps its original `openedAt`. A row stays where it is when a
-later roster no longer names the seat or channel.
+later roster no longer names the seat or channel. Seat rows are the exception to the upsert: the
+roster a boot read can be older than the store, so the boot creates a seat's row only where there was
+none when it read the inventory, and otherwise replaces it only while the stored row is the same kind
+of seat — a declared row for a declared seat, and for a hired seat a hired row carrying the same
+incarnation. A runtime hire's row is never replaced by another hire's or a declared seat's, and a row
+a fire removed after the boot read it is not written back.
 
-**What lands in `problems`.** `openInventory` returns `{ seats, channels, problems }`. A channel
+**What lands in `problems`.** `openInventory` returns `{ seats, channels, problems }`. `seats` counts
+the seat rows that landed, as the seat action reports it when `run` returns the action's output (or a
+run result carrying it as `output`); a row the boot left for a newer hire isn't counted. A channel
 whose session is not open, or whose kind declares no registration action, is named in `problems` and
 the rest of the roster is still attempted.
 
@@ -1941,9 +2016,20 @@ import {
 } from "@flow-state-dev/workforce/browser";
 ```
 
-It exports `HIRED_ROSTER_RESOURCE`, `SEAT_INVENTORY_RESOURCE`, `splitSeatAddress`,
+It exports `HIRED_ROSTER_RESOURCE`, `SEAT_INVENTORY_RESOURCE`, `HIRED_ROSTER_BROWSER_PATTERN`, `splitSeatAddress`,
 `CHANNEL_POST_COMPONENT`, `channelTranscriptLineSchema` and `ChannelTranscriptLine`, the same values
-the root exports, and reaches no Node built-in.
+the root exports, and reaches no Node built-in. It also exports `listedSeatRows(orgId, rows, roster, owned?)`,
+the team-list rule: of the seat inventory rows, a hired seat's is kept only while a roster row
+names its address (pass `undefined` when the roster didn't load, and no hired seat is kept), and
+every other row is kept as it is. A row says which it is in `hired`; one written before that field
+is read by its id's shape, which `isHiredSeatRow(orgId, row)` also answers. A hired row is kept only when the roster
+row at its address carries the same `incarnation`; rows from before incarnations match only each
+other (`null` on both sides). The org roster publishes `incarnation` to browsers for this. A
+user-owned hire's row (`<org>.~<user>.<seatId>`) is kept only when `owned`, the reader's own
+user-owned roster rows read on the server, has a row at that address with the same `incarnation`. The roster that would back
+it is owner-private, so a browser reader has no `owned` and keeps no user-owned hire. An
+`incarnation` on the inventory row says which hire published it, not that the hire is still there. A hired seat fired
+before fire removed inventory rows is left out that way.
 
 ## Exports
 
@@ -1954,19 +2040,21 @@ the root exports, and reaches no Node built-in.
 | `definePersona(config)` | Declare a persona resource or collection. |
 | `createWorkforceCapability({ roster, inventory, hiredRoster?, sources? })` | The discovery door. Installs the seat and channel sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`. Pass `hiredRoster` so a runtime hire is listed the same way a file-declared seat is. Omit it and `discover` lists only file-declared seats. |
 | `workforceManifestSources({ roster, inventory, hiredRoster? })` | The seat and channel sources on their own, for an app assembling its own manifest registry. Same `hiredRoster?` meaning as `createWorkforceCapability`. |
-| `createSeatHireCapability({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Puts catalog tools `hire` and `fire` on a worker kind. Compose it into `defineAgentWorkerFlow({ uses })`. A seat calls them by selecting `seat-hire: [tools]` with no `tools:` line, or by naming them in `tools:`; `tools: []` withholds them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. The roster row carries that organization as `owningOrgId`, so a copy read under another organization is a reload problem rather than a seat. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
-| `createSeatHireBlocks({ kinds, register, unregister, kindAt?, allowKinds?, channelBoards? })` | Returns `{ hire, fire }`, the handlers behind `createSeatHireCapability`'s catalog tools, for mounting as a flow's actions. Same options, inputs, outputs and refusals. Declare `defineHiredRosterCollection()` under `HIRED_ROSTER_RESOURCE` and `defineSeatInventoryCollection()` under `SEAT_INVENTORY_RESOURCE` on that flow. The organization comes from the session's principal; a body `orgId` is ignored, and a session whose principal names no organization cannot hire. |
+| `createSeatHireCapability({ kinds, register, unregister, kindAt?, instanceAt?, allowKinds?, refuseRosterAdmin?, channelBoards?, askBefore? })` | Puts catalog tools `hire`, `fire`, `brokenSeats` and `rehire` on a worker kind; `askBefore` puts `hire` and/or `fire` behind a person's approval, and `rehire` is always behind one. Compose it into `defineAgentWorkerFlow({ uses })`. A seat calls them by selecting `seat-hire: [tools]` with no `tools:` line, or by naming them in `tools:`; `tools: []` withholds them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. The roster row carries that organization as `owningOrgId`, so a copy read under another organization is a reload problem rather than a seat. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
+| `createSeatHireBlocks({ kinds, register, unregister, kindAt?, instanceAt?, allowKinds?, refuseRosterAdmin?, channelBoards? })` | Returns `{ hire, fire, brokenSeats, rehire }`; `hire` and `fire` are the handlers behind `createSeatHireCapability`'s catalog tools, for mounting as a flow's actions, where they never ask for approval. Same options, inputs, outputs and refusals. Declare `defineHiredRosterCollection()` under `HIRED_ROSTER_RESOURCE` and `defineSeatInventoryCollection()` under `SEAT_INVENTORY_RESOURCE` on that flow. The organization comes from the session's principal; a body `orgId` is ignored, and a session whose principal names no organization cannot hire. Each hire and re-hire stamps a fresh `incarnation` on its roster row, its inventory row and the seat it mints; `fire` deletes only that incarnation's inventory row and, given `instanceAt` (the registry's instance at an address), releases only the seat minted from the row. Without `instanceAt` those checks fall back to the kind, and a `rehire` retry that finds the address already served is refused. `refuseRosterAdmin: true` refuses a hire or re-hire whose settings would give the seat the roster tools; off by default. |
 | `registerHiredSeat(register, seat, pin)` | The hire writer's register path. Refuses when `pin` has no `orgId`. The pin is the hire row's roster owner, not the address. |
 | `HiredSeatOwnerPin` | Another name for core's `InstanceOwnerPin`: `{ orgId, userId? }`, with `userId` present only for a user-owned hire row. Either name works wherever the other is expected. |
 | `SEAT_HIRE_CAPABILITY` | The capability name, `"seat-hire"`. |
 | `HIRED_ROSTER_RESOURCE` | Registry key the seat-hire capability installs the hired roster under, `"hiredRoster"`. Pass it as `hiredRoster` on `createWorkforceCapability` so `discover` reads the same collection. |
 | `SEAT_INVENTORY_RESOURCE` | Registry key the seat-hire capability installs the seat inventory under, `"seatInventory"`. Pass it as `inventory.seats` on `createWorkforceCapability`. |
+| `HIRED_ROSTER_PRIVATE_RESOURCE` | Registry key, `"hiredRosterPrivate"`, a flow mounts `defineHiredRosterPrivateCollection()` under so `createSeatHireBlocks`' `fire`, `brokenSeats` and `rehire` reach the caller's own user-owned seats. The capability does not install it. |
 | `SEAT_DISCOVER_KEY` | The pinned worker-file key, `"discover"` — the domains one seat sees, out of what its scope carries. Narrows only: a seat can never reach a domain the app did not install. |
 | `readDeclaredRoster(root)` | Read the whole tree in one call — workers with their skills and packages in reach, teams, documents and channels — plus one list of everything that failed to load, each entry tagged with the layer that reported it. Collects rather than throws, so the boot policy stays yours. Ships from the `./loader` subpath (Node only). |
 | `readWorkforce(root)` | Read the tree into worker records that already carry their own skills and the packages in their reach — `readWorkforceDirectory` joined with `readSeatSkills` per seat and `readPackagesDirectory`. Returns `{ workers, errors, skillErrors, teams, teamErrors, packageErrors }`. Reach for it when seats are all you need. Ships from the `./loader` subpath (Node only). |
-| `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker, without their skills. Ships from the `./loader` subpath (Node only). |
+| `readWorkforceDirectory(root)` | Read every `org/workers/<name>/` and `teams/<id>/workers/<name>/` folder into one `WorkerManifest` per worker, org seats first, without their skills. Ships from the `./loader` subpath (Node only). |
 | `readPackagesDirectory(root)` | Read every `packages/<name>/PACKAGE.md` at the org, team and worker levels into one `PackageManifest` each, returning `{ packages, errors }`. Ships from the `./loader` subpath (Node only). |
-| `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Ships from the `./loader` subpath (Node only). |
+| `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Leave `team` out for an org seat: it reads `org/skills` and `org/workers/<worker>/skills`. Ships from the `./loader` subpath (Node only). |
+| `parseDeclaredSeatId(id)` | Read a declared seat's id back into its folders: `"<name>"` is an org seat, `{ name }`; `"<teamId>.<name>"` a team seat, `{ team, name }`. `undefined` for an id that matches neither shape. For a runtime-hired seat, pass `seatId`, not `id`: its `id` is the `<orgId>.<seatId>` address, which would parse as a team seat. Ships from the package root. |
 | `openRoot(root)` / `walkTeams(root, report)` | The walk every reader above shares: open the configured root (throwing on a symlinked or unreadable one, with or without a trailing separator, and on one spelled with a `..` that steps back through an earlier segment — pass the path it resolves to; a `.` segment and anything above the root are not checked), then enumerate `teams/`, reporting a team folder that is refused or unreadable and yielding the rest. `report` may be `async` and is awaited before the walk moves on. What a reader does *inside* a team stays its own. Ships from the `./loader` subpath (Node only). |
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
@@ -1974,6 +2062,7 @@ the root exports, and reaches no Node built-in.
 | `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, every `resources/` folder the convention reads, every `blocks/` folder inside the team tree, and every package's `blocks/` folder, returning what they hold on `files`, `resourceModules`, `seatBlocks` and `packageBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
 | `renderWorkforceCode(files, modules, seatBlocks?, packageBlocks?)` | Render a discovery's `files`, `resourceModules`, `seatBlocks` and `packageBlocks` as a module of static imports exporting `kinds`, `channelKinds`, `blocks`, `resourceModules`, `seatBlocks` and `packageBlocks`. Pass all four: the last two default to `[]`, so omitting one renders an empty map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
 | `hireWorkforce(manifests, { kinds, seatBlocks, packageBlocks, channelBoards, documents, references })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, `workforce.gen.ts`'s `seatBlocks` and `packageBlocks` exports under the same names, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. Pass the map `referencesFromDocs` returns as `references` whenever a kind installs any: it is what marks those entries as references, which references each seat reaches is worked out against it, and a kind holding references it was not given refuses the whole roster. `channelBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
+| `mergeSeatFlows(flows, seats)` | Add the hired seats to your app's flows record under their ids, for `createFlowState({ flows })`. Throws, naming the id, when a seat's id is already one of `flows`' keys (an org seat's id is its bare folder name, so a folder named `channel` would otherwise replace the channel flow) or when two seats share an id. Returns a new record; `flows` is not changed. |
 | `unattendedBoardWarnings(boardIds, seats)` | The unattended-board warning strings `hireWorkforce` prints. The `hire` tool puts the same sentences on `warning` when a named board has no seat that declares it. |
 | `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `seatSkills`, `seatTools`, `seatPackages?` and `seatId`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `seatPackageSchema` | One held package as it rides into the bag — `{ name, path, instructions?, tools }`, closed. The shape `seatPackages` is an array of. |
@@ -2017,10 +2106,11 @@ the root exports, and reaches no Node built-in.
 | `CHANNEL_POST_COMPONENT` / `emitChannelPostLine(ctx, line)` / `readChannelPostLines(ctx, schema)` | The component name a post's line is kept under; keep a line as that item, resolving once it is stored and rejecting if the write fails; read the posted lines in the history window back, parsed by the kind's own line schema. For a channel kind of your own. |
 | `defineHiredRosterCollection()` | The hired roster's browser collection: one org-scoped row per org-visible seat, at `workforce/roster/<seatId>`. One segment, so a user-owned row is not listed. Takes no options. Write org-visible rows with `create()` — its already-exists throw is what refuses a duplicate hire, and `upsert()` loses that refusal silently. |
 | `defineHiredRosterPrivateCollection()` | The server-side writer for a user-owned row, at `workforce/roster/~<escaped user>/<seatId>`. No browser read. It is an owner-private collection (`ownerPrivate: { param: "owner" }`): a row is served only to the member it belongs to, and any other collection whose pattern can reach those rows is refused at startup. Declare `workforce/roster/*` for the org roster. |
-| `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions, owningOrgId, ownerUserId }`. `owningOrgId` and `ownerUserId` are nullable and default to `null`. The envelope is closed; `settings` is a passthrough bag belonging to the kind's own schema. |
+| `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions, owningOrgId, ownerUserId, pendingRepair, incarnation }`. `owningOrgId`, `ownerUserId`, `pendingRepair` (set only while a `rehire` is unfinished) and `incarnation` (the hire or re-hire that wrote it) are nullable and default to `null`. `pendingRepair` is server-only; `incarnation` is published to browsers by `defineHiredRosterCollection`, beside `seatId`, `flow` and `instructions`, so a browser can join a roster row to its inventory row. The envelope is closed when parsed; the roster collections store it with unknown keys kept, so a key a newer version wrote survives this version's rewrite of the row (a re-hire). `settings` is a passthrough bag belonging to the kind's own schema. |
 | `HIRED_ROSTER_PREFIX` | The roster's storage prefix, `"workforce/roster/"`. Moving it strands every roster already written. |
 | `HIRED_ROSTER_BROWSER_PATTERN` / `HIRED_ROSTER_PRIVATE_PATTERN` | The two roster collections' patterns, `"workforce/roster/*"` and `"workforce/roster/[owner]/[seat]"`. Like the prefix, they spell stored keys. |
 | `seatAddress(orgId, seatId, ownerUserId?)` / `splitSeatAddress(orgId, address)` | Join an organization and a seat id into the address a hired seat answers on, and take the seat id back out. Org-visible is `<org>.<seatId>`. User-owned is `<org>.~<user>.<seatId>`, with the user escaped. The pin is the hire row, not the address. Throws when the organization is not one legal address segment, or when the seat id starts with `~`. |
+| `newIncarnation()` / `tagIncarnation(seat, incarnation)` | For a host that writes roster rows itself rather than through `createSeatHireCapability`. Stamp each hire's row with `toHiredSeatRow({ ..., incarnation: newIncarnation() })` and tag the seat minted from it with the same id. A fire then removes only the inventory row carrying that id, so a replacement hired at the same address keeps its own. A row written with no incarnation can't be told from a replacement written the same way. |
 | `toHiredSeatRow(input)` / `parseHiredSeatRow(value)` | Build a row from what a hire supplied, and read a stored value back into one. `parseHiredSeatRow` returns `{ row }` or `{ problem }` — it never throws and never rewrites the stored value. |
 | `hiredRosterStorageKey(row)` | `seatId` for an org-visible row, `~<escaped user>/<seatId>` for a user-owned one. The user id is escaped, so a `/` in it stays one segment. |
 | `hiredSeatManifest(orgId, row)` / `hiredSeatRowFromManifest(orgId, manifest)` | Turn a row into the record `hireWorkforce` mints from, and back. Each returns `{ ... }` or `{ problem }`. A row whose `owningOrgId` disagrees with `orgId` is a problem and is not minted. A legacy row (`owningOrgId` null) binds `orgId`. The manifest's `ownerPin` is `{ orgId, userId? }`. |
@@ -2040,7 +2130,7 @@ the root exports, and reaches no Node built-in.
 | `inventoryWriterActions(kind)` | The two blocks a custom channel kind installs to get inventory rows, keyed by action name. Split them: `registerChannelInInventory` into `actions` (public, safe — empty input), `registerSeatsInInventory` into `internal.actions` (its input is the row data, with nothing to check it against). The string is the `kind` value those rows carry. |
 | `INVENTORY_REGISTER_CHANNEL` / `INVENTORY_REGISTER_SEATS` | The action names the writer runs: `"registerChannelInInventory"` and `"registerSeatsInInventory"`. |
 | `INVENTORY_SEAT_WRITER_SESSION` | The session id the seat-registration action runs under when `seatWriter` names none: `"inventory-binder"`. |
-| `InventoryRoster` / `InventorySeat` / `InventorySeatWriter` | What `openInventory` takes: the roster (`{ seats, channels }`), one seat (`{ id, kind, actions }`: a hired seat as is, its `door` action read from `actions`; `{}` for a seat with none), and which flow writes the seat rows (`{ flowKind }`). |
+| `InventoryRoster` / `InventorySeat` / `InventorySeatWriter` | What `openInventory` takes: the roster (`{ seats, channels }`), one seat (`{ id, kind, actions, config? }`: a hired seat as is, its `door` action read from `actions`, `{}` for a seat with none; its row's `hired` read from `config.seatId`, `null` without `config`), and which flow writes the seat rows (`{ flowKind }`). |
 | `InventoryActionRequest` / `InventoryBinding` | What the `run` callback receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the seat request and must reach `runAction`), and what one boot of `openInventory` returns (`{ seats, channels, problems }`). |
 | `OpenInventoryOptions` | The options `openInventory` takes: `run`, `seatWriter`, `userId`, `orgId`. |
 | `seatDoorOf(seat)` / `SeatDoor` | A hired seat's door: the one public action its kind declares with `userMessage` and a `{ message }` input. Returns `{ door, problem? }`. `door` is the action name, or `null` when the kind has none or more than one. `problem` is set when there are two or more, and names them. `openInventory` writes it on the seat's row. |
