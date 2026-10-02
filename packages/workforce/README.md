@@ -1125,9 +1125,10 @@ organization scope resolves against it inside the channel, including file-declar
 channel board's rows. A session's organization is fixed when the session is created, so open your
 channels as a caller whose verified identity already carries the organization you want them in.
 
-A record declares seven keys and no others: `flow` (which kind, optional), `description`, `members`,
+A record declares eight keys and no others: `flow` (which kind, optional), `description`, `members`,
 `boards`, `instructions` (or a body, which is the same setting), `routing` (see the channels
-guide, "Routing a channel"), and `boardActions`. `boardActions: true` exposes each of the channel's
+guide, "Routing a channel"), `boardActions`, and `mintFor` (see [Projects](#projects): it makes
+the file a project talk template, not a channel). `boardActions: true` exposes each of the channel's
 boards' task tools as channel actions (`cancelTask_<channel>_<board>` and its seven siblings), each
 working only in its own channel's session; it is off by default, because anyone who can reach the
 channel can then settle or reassign its rows. An opted-in board whose action names come out the
@@ -1920,10 +1921,36 @@ defineFlow({ kind: "lab", actions: { ...projects.actions } });
   session's owner against the row's `members` first, and refuses `not-a-member`.
   `join { projectId }` returns the member's one talk session (the listed one, or the calling session,
   now bound); `bind` is the same as an internal entry. `post { body }` and `answer` add a line to
-  `room-lines`, and `read { after }` returns committed lines after a cursor, 200 at most. On any
-  other session, `post`, `read` and `answer` behave as before.
+  `room-lines`, and `read { after }` returns committed lines after a cursor, 200 at most, with the
+  room's `charter` and `seats`. On any other session, `post`, `read` and `answer` behave as
+  before, and `read` ignores `after`.
 
 Refusals are `ProjectRefusedError`, with a `reason`.
+
+**The talk template** is a room's seats and charter, shared by every project. Declare the
+org-level default beside the collection, and pass the org's resource map to `channelInstances`:
+
+```ts
+// workforce/org/resources/projects.ts
+export default defineProjectsCollection({
+  talk: { seats: ["eng.em", "chief-of-staff"], charter: "Plan the work; say what is blocked." }
+});
+
+// at boot
+const { resources } = splitResourceModules(resourceModules);
+channelInstances(channels, { kinds, resources });
+```
+
+Or declare it in a team's `CHANNEL.md` with `mintFor: projects`: its `members:` are the seats, and
+its body is the charter. A template is never opened and never registered in the inventory. Seats
+are full seat ids from any team (`eng.em`) or a dotless org seat id (`chief-of-staff`).
+`channelInstances` refuses, with its other refusals, a template that declares `boards:`, `routing:`
+or `boardActions:`, a `mintFor:` that names no collection in `resources` or names one other than
+`projects`, a bad seat id, and a second template for the collection at either site. With a template, creating a row in a
+flow turn mints the creator's talk session through `reactTo.created`, and a `post` in a project's
+room wakes each seat once, under the poster, with the room's last 20 lines. A seat's reply lands in
+the room through `answer`. The template is built onto the kind at every boot, so an edit reaches
+every project's room at the next restart.
 
 ## Importing from a browser component
 

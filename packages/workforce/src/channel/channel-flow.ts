@@ -68,16 +68,19 @@ import {
   membershipKey,
   seatInventoryRowSchema
 } from "../inventory/collections";
-import { roomLineSchema } from "../projects/collections";
+import { roomLineKey, roomLineSchema, type RoomLine } from "../projects/collections";
 import {
+  recentTalkLines,
+  TALK_RESOURCES,
   talkAnswer,
   talkBind,
   talkJoin,
   talkPost,
   talkProjectOf,
-  talkRead,
+  talkReadFor,
   talkReadOutputSchema
 } from "../projects/talk";
+import type { TalkTemplateFacts } from "../projects/talk-template";
 
 /** The built-in kind's name, and so the built-in instance's address. */
 export const CHANNEL_KIND = "channel";
@@ -107,7 +110,14 @@ export const channelSessionStateSchema = z.object({
    * `channel-post` item. Read-only: `read` returns them ahead of the posted
    * lines, and nothing writes here any more.
    */
-  transcript: z.array(channelTranscriptLineSchema).default([])
+  transcript: z.array(channelTranscriptLineSchema).default([]),
+  /**
+   * The project a talk session is about (`../projects/talk.ts`), or `null`. A
+   * declared channel never sets it. It selects which project row a talk entry
+   * checks, and grants nothing on its own. Nullable with a `null` default
+   * (BP-023, BP-030), so a channel opened before it existed still parses.
+   */
+  resourceId: z.string().nullable().default(null)
 });
 
 export type ChannelSessionState = z.infer<typeof channelSessionStateSchema>;
@@ -765,19 +775,36 @@ export const channelNotifyInputSchema = z.object({
   author: z.string().optional(),
   /**
    * `true` when the channel's route picked this member, the one member the
-   * post is delivered to. Absent on every other delivery. A kind that hears
-   * posts decides what it does with the mark; the built-in agent kind posts
-   * its reply into the channel.
+   * post is delivered to; and on a project's talk session, for each of the
+   * template's seats, every one of which answers into the room. Absent on
+   * every other delivery. A kind that hears posts decides what it does with
+   * the mark; the built-in agent kind posts its reply into the channel, which
+   * on a talk session is the project's room.
    */
   routed: z.boolean().optional(),
   /**
    * On a routed delivery, the channel's last lines before the post (up to
-   * 20), oldest first: the ones the route read. Absent on every other delivery.
+   * 20), oldest first: the ones the route read. On a talk session's delivery,
+   * the room's last lines before the post, up to 20. Absent on every other
+   * delivery.
    */
   recent: z.array(channelTranscriptLineSchema).optional()
 });
 
 export type ChannelNotifyInput = z.infer<typeof channelNotifyInputSchema>;
+
+/** The internal entry a talk post hands its fan-out to, in the poster's own talk session. */
+const TALK_POSTED_ACTION = "onTalkPosted";
+
+/** What a talk post's fan-out is handed: the line as the room stored it. Internal-only entry. */
+const talkFanOutInputSchema = z.object({
+  projectId: z.string(),
+  seq: z.number().int(),
+  body: z.string(),
+  principal: z.string()
+});
+
+type TalkFanOutInput = z.infer<typeof talkFanOutInputSchema>;
 
 /** What a rescued delivery failure carries out: the reason, and nothing durable. */
 const channelRefusalNoteSchema = z.object({
@@ -1131,6 +1158,16 @@ export interface DefineChannelFlowOptions {
    * `routing:` reaches an open channel at the next boot.
    */
   routing?: Readonly<Record<string, ChannelRouting>>;
+
+  /**
+   * The talk template this kind's project talk sessions run under: the seats
+   * a post in a project's room wakes, and the room's charter. Supplied by
+   * `channelInstances` from the org-level default or a `CHANNEL.md` marked
+   * `mintFor:`, as `boards` is, never by an app. Built onto the kind at every
+   * boot and never written into a session, so an edited template reaches
+   * every project's room at the next boot. Absent, a talk post wakes nobody.
+   */
+  template?: TalkTemplateFacts;
 }
 
 /**
@@ -1150,6 +1187,8 @@ export type ChannelFlowFactory = ReturnType<typeof defineFlow> & {
   withRouting: (routing: Readonly<Record<string, ChannelRouting>>) => ChannelFlowFactory;
   /** The same kind, rebuilt exposing these channels' board task actions. */
   withBoardActions: (channelIds: readonly string[]) => ChannelFlowFactory;
+  /** The same kind, rebuilt holding a project talk template's seats and charter. */
+  withTemplate: (template: TalkTemplateFacts) => ChannelFlowFactory;
 };
 
 /** Is this channel kind one {@link defineChannelFlow} built? */
@@ -1396,13 +1435,67 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     talkProjectOf(ctx.session.state) !== undefined;
   const anyBlock = (block: unknown) => block as BlockDefinition<any, any>;
 
+  // A talk post wakes the template's seats, once each, under the poster: the
+  // fan-out runs in the poster's own talk session, so each seat's
+  // conversation is keyed per person per room. Handed off to a separate
+  // request, as a channel's fan-out is, so the post queue's hold covers the
+  // append only. Each delivery is routed: every seat's reply lands in the
+  // room through this session's `answer`. Declared only when there is a seat
+  // to wake and a notify block to wake it with.
+  const templateSeats = [...(options.template?.seats ?? [])];
+  const talkDeliveries = handler({
+    name: "channel-talk-deliveries",
+    inputSchema: talkFanOutInputSchema,
+    outputSchema: z.array(channelNotifyInputSchema),
+    resources: TALK_RESOURCES,
+    execute: async (posted: TalkFanOutInput, ctx): Promise<ChannelNotifyInput[]> => {
+      const recent = await recentTalkLines(ctx as unknown as BlockContext, posted.projectId, posted.seq);
+      return templateSeats.map((member) => ({
+        channelId: ctx.session.identity.id,
+        member,
+        postId: roomLineKey(posted.projectId, posted.seq),
+        body: posted.body,
+        principal: posted.principal,
+        routed: true,
+        recent
+      }));
+    }
+  });
+  const talkFanOut =
+    deliver === undefined || templateSeats.length === 0
+      ? undefined
+      : sequencer({ name: "channel-talk-fan-out", inputSchema: talkFanOutInputSchema })
+          .step(talkDeliveries)
+          .forEach((deliveries: ChannelNotifyInput[]) => deliveries, deliver);
+  const talkPostEntry =
+    talkFanOut === undefined
+      ? talkPost
+      : sequencer({ name: "channel-talk-post", inputSchema: channelPostInputSchema, outputSchema: roomLineSchema })
+          .step(talkPost)
+          .tap(
+            (line: RoomLine): TalkFanOutInput => ({
+              projectId: line.projectId,
+              seq: line.seq,
+              body: line.body,
+              principal: line.userId
+            }),
+            dispatcher({
+              name: "channel-talk-hand-off",
+              action: TALK_POSTED_ACTION,
+              inputSchema: talkFanOutInputSchema,
+              session: { id: (_input, ctx) => ctx.session.identity.id }
+            }).rescue([{ block: noteHandOffRefusal }])
+          );
+
   const postEntry = router({
     name: "channel-post-entry",
     inputSchema: channelPostInputSchema,
     outputSchema: z.union([channelTranscriptLineSchema, roomLineSchema]),
-    routes: [anyBlock(post), anyBlock(talkPost)],
-    execute: (_input, ctx) => (isTalk(ctx) ? anyBlock(talkPost) : anyBlock(post))
+    routes: [anyBlock(post), anyBlock(talkPostEntry)],
+    execute: (_input, ctx) => (isTalk(ctx) ? anyBlock(talkPostEntry) : anyBlock(post))
   });
+
+  const talkRead = talkReadFor(options.template);
 
   const readInputSchema = z.object({ after: z.number().int().min(0).optional() }).strict();
   const readEntry = router({
@@ -1457,10 +1550,10 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         // `boards` key at all.
         description:
           boardIds.length === 0
-            ? "Read this channel's recent transcript lines, members and description. On a project's " +
-              "talk session, read the room's lines after `after`, members only."
-            : "Read this channel's recent transcript lines, members, description and declared board names. " +
+            ? "Read this channel's recent transcript lines, members and description; `after` is ignored. " +
               "On a project's talk session, read the room's lines after `after`, members only."
+            : "Read this channel's recent transcript lines, members, description and declared board names; " +
+              "`after` is ignored. On a project's talk session, read the room's lines after `after`, members only."
       },
       join: {
         block: talkJoin,
@@ -1548,7 +1641,12 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
               // `allow`, deliberately: this is the work that must NOT sit
               // behind the post queue.
               onPosted: { block: fanOut, concurrency: "allow" as const }
-            })
+            }),
+        // A talk post's wake, for the same reason, and only on a kind holding
+        // a template with seats to wake.
+        ...(talkFanOut === undefined
+          ? {}
+          : { [TALK_POSTED_ACTION]: { block: talkFanOut, concurrency: "allow" as const } })
       }
     }
   });
@@ -1562,7 +1660,8 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     withRouting: (routing: Readonly<Record<string, ChannelRouting>>) =>
       defineChannelFlow({ ...options, routing }),
     withBoardActions: (boardActions: readonly string[]) =>
-      defineChannelFlow({ ...options, boardActions })
+      defineChannelFlow({ ...options, boardActions }),
+    withTemplate: (template: TalkTemplateFacts) => defineChannelFlow({ ...options, template })
   }) as ChannelFlowFactory;
   if (options.route !== undefined) Object.assign(factory, { [KIND_ROUTE]: options.route });
   return factory;

@@ -31,7 +31,7 @@
  * reach; there is no undoing a row that should not have been removed.
  */
 
-import { kindOf, orderedById } from "../channel/channel-binder";
+import { isTalkTemplate, kindOf, orderedById } from "../channel/channel-binder";
 import {
   INVENTORY_REGISTER_CHANNEL,
   INVENTORY_REGISTER_SEATS
@@ -220,7 +220,9 @@ export async function openInventory(
   options: OpenInventoryOptions
 ): Promise<InventoryBinding> {
   const seats = orderedById(roster.seats);
-  const channels = orderedById(roster.channels);
+  // A project talk template (`mintFor:`) is never opened, so it has no session
+  // to register from, and the Lab's channel list stays its declared channels.
+  const channels = orderedById(roster.channels.filter((manifest) => !isTalkTemplate(manifest)));
 
   // `openInventory` writes through trusted direct execution, below any
   // resolver, so it names the organization itself (BR-4) — an ABSENT one is

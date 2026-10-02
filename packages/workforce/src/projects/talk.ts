@@ -26,12 +26,20 @@
  *
  * Project talk is written to `room-lines` only. No entry here emits a
  * `channel-post` item, in any session.
+ *
+ * **The template.** A room's seats and charter come from the talk template
+ * built onto the kind at boot (`talk-template.ts`), never from session state:
+ * `read` reports them, and a person's `post` wakes each seat once, under the
+ * poster, with the room's recent lines (`channel-flow.ts` owns the fan-out).
+ * A seat's reply comes back through `answer`, so it lands in the room for
+ * every member and wakes nobody.
  */
 
 import { handler } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { BlockContext, ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import type { ChannelTranscriptLine } from "../channel/channel-post-line";
 import { retryOnConflict } from "./cas-retry";
 import {
   defineProjectsCollection,
@@ -40,6 +48,7 @@ import {
   PROJECTS_RESOURCE,
   ROOM_LINES_RESOURCE,
   ROOM_SEQ_RESOURCE,
+  roomLineKey,
   roomLineSchema,
   type ProjectRow,
   type RoomLine,
@@ -48,6 +57,7 @@ import {
 import { isMember } from "./membership-gate";
 import { ProjectRefusedError } from "./project-refusal";
 import { appendRoomLine, readRoom, type RoomCollections } from "./room-store";
+import type { TalkTemplateFacts } from "./talk-template";
 
 /**
  * The talk half of a channel session's state. Nullable with a `null` default
@@ -79,18 +89,29 @@ const talkSessionOutputSchema = z.object({ sessionId: z.string() });
 /** `read`'s input: the cursor, the last `seq` already seen. */
 const talkReadInputSchema = z.object({ after: z.number().int().min(0).default(0) });
 
-/** One page of the room, and the cursor for the next read. */
+/**
+ * One page of the room, and the cursor for the next read, with the room's
+ * charter and the seats a post wakes. Those two come from the template built
+ * onto the kind at boot, never from the session: empty on a kind built with
+ * no template.
+ */
 export const talkReadOutputSchema = z.object({
   projectId: z.string(),
   lines: z.array(roomLineSchema),
-  nextCursor: z.number().int()
+  nextCursor: z.number().int(),
+  charter: z.string(),
+  seats: z.array(z.string())
 });
 
 /** @see talkReadOutputSchema */
 export type TalkReadOutput = z.infer<typeof talkReadOutputSchema>;
 
-/** The resources every talk entry declares: one map, since a flow refuses two declarations under one ref. */
-const TALK_RESOURCES = {
+/**
+ * The resources every talk entry declares: one map, since a flow refuses two
+ * declarations under one ref. Exported for the channel kind's talk fan-out,
+ * which reads the room's recent lines.
+ */
+export const TALK_RESOURCES = {
   [PROJECTS_RESOURCE]: defineProjectsCollection(),
   [ROOM_LINES_RESOURCE]: defineRoomLinesCollection(),
   [ROOM_SEQ_RESOURCE]: defineRoomSeqCollection()
@@ -272,18 +293,58 @@ export const talkAnswer = handler({
   }
 });
 
-/** `read { after }` on a talk session: one page of committed lines after the cursor. */
-export const talkRead = handler({
-  name: "talk-read",
-  inputSchema: talkReadInputSchema,
-  outputSchema: talkReadOutputSchema,
-  sessionStateSchema: talkSessionStateSchema,
-  resources: TALK_RESOURCES,
-  execute: async (input, rawCtx): Promise<TalkReadOutput> => {
-    const ctx = rawCtx as unknown as BlockContext;
-    const projectId = boundProject(ctx);
-    await memberRow(ctx, projectId);
-    const page = await readRoom(roomOf(ctx), projectId, input.after);
-    return { projectId, ...page };
-  }
-});
+/**
+ * `read { after }` on a talk session: one page of committed lines after the
+ * cursor, with the charter and seats of the template this kind was built
+ * holding (`template`), or none.
+ */
+export function talkReadFor(template: TalkTemplateFacts | undefined) {
+  const charter = template?.charter ?? "";
+  const seats = [...(template?.seats ?? [])];
+  return handler({
+    name: "talk-read",
+    inputSchema: talkReadInputSchema,
+    outputSchema: talkReadOutputSchema,
+    sessionStateSchema: talkSessionStateSchema,
+    resources: TALK_RESOURCES,
+    execute: async (input, rawCtx): Promise<TalkReadOutput> => {
+      const ctx = rawCtx as unknown as BlockContext;
+      const projectId = boundProject(ctx);
+      await memberRow(ctx, projectId);
+      const page = await readRoom(roomOf(ctx), projectId, input.after);
+      return { projectId, ...page, charter, seats };
+    }
+  });
+}
+
+/** How many of the room's lines a woken seat is given. */
+const TALK_WAKE_LINES = 20;
+
+/**
+ * The room's lines before `seq`, oldest first, at most {@link TALK_WAKE_LINES},
+ * as a woken seat is handed them: a channel transcript line each, `principal`
+ * the poster, `author` the seat that answered. A room line carries no time, so
+ * `at` is `0`. Point reads by key, so a wake costs the same however long the
+ * room is. Lines not yet written and tombstones are left out.
+ */
+export async function recentTalkLines(
+  ctx: BlockContext,
+  projectId: string,
+  seq: number
+): Promise<ChannelTranscriptLine[]> {
+  const { lines } = roomOf(ctx);
+  const from = Math.max(1, seq - TALK_WAKE_LINES);
+  const seqs = Array.from({ length: Math.max(0, seq - from) }, (_, i) => from + i);
+  const refs = await Promise.all(seqs.map((at) => lines.getOptional(roomLineKey(projectId, at))));
+  return refs
+    .map((ref) => ref?.state)
+    .filter((line): line is RoomLine => line !== undefined && !line.tombstone)
+    .map((line) => ({
+      id: roomLineKey(projectId, line.seq),
+      at: 0,
+      principal: line.userId,
+      ...(line.author === null ? {} : { author: line.author }),
+      authorVerified: false as const,
+      body: line.body
+    }));
+}

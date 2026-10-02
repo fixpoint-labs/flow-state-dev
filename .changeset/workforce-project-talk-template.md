@@ -1,0 +1,5 @@
+---
+"@flow-state-dev/workforce": minor
+---
+
+Project talk templates: the seats and charter every project's room shares. Declare the org-level default beside the collection, `defineProjectsCollection({ talk: { seats, charter } })`, or in a team `CHANNEL.md` marked with the new `mintFor: projects` key, and pass the org's resource map to `channelInstances({ resources })`. A template is never opened or registered in the inventory, and `channelInstances` refuses, with its other refusals, a template that declares `boards:`, `routing:` or `boardActions:`, a `mintFor:` naming no collection or one other than `projects`, a bad seat id, or a second template for the collection. With a template in place, creating a row inside a flow turn mints the creator's talk session (`reactTo.created`), a post in a project's room wakes each seat once under the poster with the room's last 20 lines, and the seat's reply lands in the room. `read` on a talk session now also returns the room's `charter` and `seats`; on a plain channel `read` ignores `after`. `channelSessionStateSchema` gains a nullable `resourceId` (FIX-1718).

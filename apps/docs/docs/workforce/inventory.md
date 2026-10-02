@@ -192,6 +192,8 @@ const seatChannels = handler({
 }
 ```
 
+A project's talk session is never a channel row. The channel rows are the channels you declared, and nothing else.
+
 **Membership:**
 
 ```ts

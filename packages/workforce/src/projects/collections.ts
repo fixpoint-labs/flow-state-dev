@@ -28,6 +28,7 @@
 
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
+import { recordOrgTalkTemplate, type TalkTemplate } from "./talk-template";
 
 /** The resource-map ref of the projects collection. Pinned: Shift Manager reads it by this name. */
 export const PROJECTS_RESOURCE = "projects";
@@ -175,13 +176,32 @@ const SHARED_ACROSS_FLOWS = false;
  * that is held, and that refusal is what stops a second project taking an id.
  * The project blocks (`defineProjectBlocks`) are the writers; prefer them.
  *
+ * **The org-level talk template** rides here, beside the collection: `talk`
+ * names the seats a post in any project's room wakes, the room's charter, and
+ * the channel kind talk sessions run on. It is read by `channelInstances`
+ * (pass it the org's resource map as `resources`), which builds it onto the
+ * kind and mints each creator's talk session when a row is created. The
+ * declaration returned is the same one every call returns; see
+ * `talk-template.ts` for why the template is the process's.
+ *
+ * @param options `talk`: the org-level talk template. Omitted, any template
+ *   recorded earlier stands.
  * @example
  *   // workforce/org/resources/projects.ts
- *   export default defineProjectsCollection();
+ *   export default defineProjectsCollection({
+ *     talk: { seats: ["eng.em", "chief-of-staff"], charter: "Plan the work; say what is blocked." }
+ *   });
  */
-export function defineProjectsCollection() {
+export function defineProjectsCollection(options: ProjectsCollectionOptions = {}) {
+  if (options.talk !== undefined) recordOrgTalkTemplate(PROJECTS_COLLECTION, options.talk);
   return PROJECTS_COLLECTION;
 }
+
+/** Options for {@link defineProjectsCollection}. */
+export type ProjectsCollectionOptions = {
+  /** The org-level talk template: the seats, charter and kind of every project's room. */
+  talk?: TalkTemplate;
+};
 
 const PROJECTS_COLLECTION = defineResourceCollection({
   pattern: "projects/*",

@@ -38,7 +38,9 @@ import { defineProjectsCollection } from "@flow-state-dev/workforce";
 export default defineProjectsCollection();
 ```
 
-`defineProjectsCollection()` takes no options. It always returns the same declaration, so your module, the project blocks and the channel kind can all hold it in one flow without a conflict. The collection is org-scoped, shared across flows, and readable from the browser, which is how a UI lists an organization's projects.
+`defineProjectsCollection()` always returns the same declaration, so your module, the project blocks and the channel kind can all hold it in one flow without a conflict. The collection is org-scoped, shared across flows, and readable from the browser, which is how a UI lists an organization's projects.
+
+Its one option, `talk`, is the template every project's room is built from: the seats a post wakes and the charter they work under. [A room per project](./channels.md#a-room-per-project) covers it.
 
 ## Creating a project
 
@@ -94,7 +96,7 @@ A project's room is stored on the organization's side, one row per line. Nobody 
 |------|--------------|
 | `join { projectId }` | Returns your talk session on the project. If the project already lists one for you, you get that one back, so a second window ends up in the same session. Otherwise the session you called from becomes your talk session |
 | `post { body }` | Adds a line to the room, as you |
-| `read { after }` | Returns the lines after a cursor, up to 200 at a time, and the cursor for the next read |
+| `read { after }` | Returns the lines after a cursor, up to 200 at a time, and the cursor for the next read, with the room's charter and seats |
 
 Creating a project from inside a flow turn binds the creator's talk session for them. Every other member joins.
 

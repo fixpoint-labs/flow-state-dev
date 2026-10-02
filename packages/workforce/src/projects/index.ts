@@ -3,7 +3,8 @@
  * and each project's room, reached through a member's own talk session.
  *
  * `collections.ts` is canonical for the keys and row shapes; `talk.ts` for how
- * a session reaches a room; `room-store.ts` for how a room is written and read.
+ * a session reaches a room; `room-store.ts` for how a room is written and read;
+ * `talk-template.ts` for a room's seats and charter, and the mint on create.
  * The talk entries are built into every channel kind by `defineChannelFlow`.
  */
 
@@ -24,6 +25,7 @@ export {
   WORKSTREAM_CLAIMS_RESOURCE,
   workstreamClaimSchema,
   type ProjectRow,
+  type ProjectsCollectionOptions,
   type ProjectSessionLink,
   type RoomLine,
   type RoomSeq,
@@ -52,3 +54,5 @@ export {
   talkSessionStateSchema,
   type TalkReadOutput
 } from "./talk";
+
+export type { TalkTemplate } from "./talk-template";

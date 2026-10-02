@@ -44,9 +44,7 @@ import {
 import { isMember } from "./membership-gate";
 import { isAlreadyExists } from "./store-errors";
 import { ProjectRefusedError } from "./project-refusal";
-
-/** The talk kind's internal entry `createProject` dispatches to. */
-const BIND_ACTION = "bind";
+import { noteBindRefusal, TALK_BIND_ACTION, talkSessionKey } from "./talk-template";
 
 /**
  * The resource-map ref the channel inventory is read through here. Private to
@@ -237,26 +235,17 @@ const writeProject = handler({
   }
 });
 
-/** Absorbs a refused `bind` dispatch: the row stands, unbound, until a repair. */
-const noteBindRefusal = handler({
-  name: "project-bind-refused",
-  inputSchema: z.unknown(),
-  outputSchema: z.object({ bound: z.literal(false), reason: z.string() }),
-  execute: async (error: unknown) => ({
-    bound: false as const,
-    reason: `talk session not bound: ${error instanceof Error ? error.message : String(error)}`
-  })
-});
-
 function createProjectSequence(talkKind: string) {
   const bindOwner = dispatcher({
     name: "project-bind-owner",
     flowKind: talkKind,
-    action: BIND_ACTION,
+    action: TALK_BIND_ACTION,
     inputSchema: createProjectOutputSchema,
     // Keyed on the row, from the creating session: a re-sent create from the
-    // same session re-enters the same talk session rather than minting another.
-    session: { key: (out: CreateProjectOutput) => `talk:${out.project.id}` },
+    // same session re-enters the same talk session rather than minting another,
+    // and the template's reaction on create (`talk-template.ts`) derives the
+    // same key, so the two converge on one session.
+    session: { key: (out: CreateProjectOutput) => talkSessionKey(out.project.id) },
     payload: (out: CreateProjectOutput) => ({ resourceId: out.project.id })
   }).rescue([{ block: noteBindRefusal }]);
 
