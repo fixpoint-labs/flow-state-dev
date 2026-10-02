@@ -162,7 +162,7 @@ client:
 
 It's listed once a session whose flow serves it exists. A document without that line stays out of Jump to.
 
-**A chief of staff, if you want one.** Shift Manager talks to the seat named `chief-of-staff`, whether it's an org seat or a team's worker. Declare it like any other worker, on the built-in `agent` kind, with instructions that say what it should do for the person running the Lab:
+**A chief of staff, if you want one.** On the Shift Coordinator screen, Shift Manager talks to the seat named `chief-of-staff`, whether it's an org seat or a team's worker. Declare it like any other worker, on the built-in `agent` kind, with instructions that say what it should do for the person running the Lab:
 
 ```md title="workforce/teams/<team>/workers/chief-of-staff/WORKER.md"
 ---
