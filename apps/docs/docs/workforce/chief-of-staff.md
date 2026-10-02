@@ -107,7 +107,7 @@ It needs the two project tools, `createProject` and `setWorkstreams`, in its `to
 ```md title="workforce/org/workers/chief-of-staff/WORKER.md"
 ---
 flow: agent
-tools: [hire, fire, rehire, brokenSeats, createProject, setWorkstreams]
+tools: [hire, fire, rehire, brokenSeats, post-to-channel, createProject, setWorkstreams]
 ---
 ```
 
