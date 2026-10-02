@@ -97,6 +97,14 @@ export const seatInventoryRowSchema = z.object({
    * a seat that is still registered.
    */
   hired: z.boolean().nullable().default(null),
+  /**
+   * The incarnation of the hire or repair that published this row (see
+   * `roster/incarnation.ts`). Fire deletes the row only when it carries the
+   * incarnation fired, or none, so a seat hired again at the same address
+   * keeps its row. `null` on a declared seat's row and on a row written before
+   * the field (BP-023, BP-030).
+   */
+  incarnation: z.string().nullable().default(null),
 });
 
 /** One row of the seat inventory. @see seatInventoryRowSchema */
@@ -169,7 +177,7 @@ const SHARED_ACROSS_FLOWS = false;
  * schema declares today, named rather than defaulted (BP-015). A key a later
  * change adds to a row stays server-side until it is added here too.
  */
-const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "hired"] as const;
+const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "hired", "incarnation"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */
 const CHANNEL_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */

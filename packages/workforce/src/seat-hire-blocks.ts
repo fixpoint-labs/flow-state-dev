@@ -45,7 +45,8 @@ import { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire
 import { checkHiredSeatRow } from "./roster/check";
 import { HIRED_ROSTER_PREFIX, type HiredSeatRow } from "./roster/collections";
 import { hiredSeatOwnerPinFromRosterOwner, registerHiredSeat } from "./roster/register-hired-seat";
-import { removeHiredSeat } from "./roster/remove";
+import { deleteOwnInventoryRow, removeHiredSeat } from "./roster/remove";
+import { incarnationOf, incarnationOfRow, newIncarnation, tagIncarnation } from "./roster/incarnation";
 import { encodeUserSegment, hiredSeatManifest, seatAddress, toHiredSeatRow } from "./roster/rows";
 
 /** The registry keys live in a leaf module; re-exported here by name. */
@@ -91,6 +92,15 @@ export interface SeatHireCapabilityOptions {
    * refusal.
    */
   kindAt?: (id: string) => string | undefined;
+  /**
+   * The seat serving an address right now, if any — the registry's own
+   * instance. Lets `rehire`, run again to finish a repair, count a seat the
+   * registry already holds as its own when that seat was minted from the
+   * repaired row (a restart registered it). Omitted, a retry that finds the
+   * address taken is refused, since nothing else can tell that seat from an
+   * unrelated one of the same kind.
+   */
+  instanceAt?: (id: string) => FlowInstance | undefined;
   /**
    * Kinds this tool may mint, as a subset of {@link SeatHireCapabilityOptions.kinds}.
    * Omitted, every kind on the map (plus the built-in `agent`) is hireable.
@@ -249,15 +259,10 @@ function pendingRepairOf(state: JsonObject): string | null {
   return typeof state.pendingRepair === "string" ? state.pendingRepair : null;
 }
 
-/** A fresh marker for one re-hire's row write. */
-function newRepairToken(): string {
-  return globalThis.crypto.randomUUID();
-}
-
-/** The row no longer carries this re-hire's marker: another call finished or replaced it. */
-class RepairMoved extends Error {
+/** The row no longer carries this call's incarnation: another call replaced it. */
+class SeatMoved extends Error {
   constructor(address: string) {
-    super(`"${address}" changed while this re-hire was finishing, most likely by another repair of it. This call stopped.`);
+    super(`"${address}" changed while this call was finishing it, most likely by another hire or repair of it. This call stopped.`);
   }
 }
 
@@ -327,19 +332,117 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
     if (seat === undefined) {
       throw new Error(`"${address}" could not be hired, and no reason was given.`);
     }
+    tagIncarnation(seat, row.incarnation);
     return seat;
   };
 
   /** Publish the seat's inventory row, and say what a person should know. */
-  const publish = async (ctx: BlockContext, seat: FlowInstance, flow: string, address: string) => {
+  const publish = async (
+    ctx: BlockContext,
+    seat: FlowInstance,
+    flow: string,
+    address: string,
+    incarnation: string
+  ) => {
     const door = seatDoorOf(seat);
     const inventory = collectionOf(ctx, SEAT_INVENTORY_RESOURCE);
-    await inventory.upsert(address, { id: address, kind: flow, door: door.door, hired: true });
+    await inventory.upsert(address, { id: address, kind: flow, door: door.door, hired: true, incarnation });
     const warnings = [
       ...unattendedBoardWarnings(options.channelBoards ?? [], [seat]),
       ...(door.problem === undefined ? [] : [door.problem]),
     ];
     return warnings.length > 0 ? { warning: warnings.join("\n") } : {};
+  };
+
+  /**
+   * Register a seat. A `duplicate-id` refusal counts as registered only on a
+   * repair's retry (`own` set), and only when `instanceAt` shows the seat
+   * holding the address was minted from this incarnation's row — the one a
+   * restart registered. Any other holder, same kind or not, is a refusal.
+   *
+   * @returns whether this call registered it.
+   */
+  const registerOnce = (seat: FlowInstance, pin: InstanceOwnerPin, own?: string): boolean => {
+    try {
+      registerHiredSeat(options.register, seat, pin);
+      return true;
+    } catch (error) {
+      const refused = error as { reason?: unknown; id?: unknown };
+      if (own !== undefined && refused.reason === "duplicate-id" && refused.id === seat.id) {
+        const live = options.instanceAt?.(seat.id);
+        if (live !== undefined && live.kind === seat.kind && incarnationOf(live) === own) return false;
+      }
+      throw error;
+    }
+  };
+
+  /**
+   * The steps after a hire or re-hire wrote its roster row: register, publish
+   * the inventory row, and (for a re-hire) clear the row's pending-repair
+   * marker. Before each side effect the row is re-read from the store (a
+   * verified no-op write) and must still exist carrying `incarnation`. A row
+   * `fire` deleted stops the call, and what it registered or published is
+   * taken back, so a fire that lands part-way leaves no seat and no inventory
+   * row. A row carrying another incarnation stops it without undoing.
+   */
+  const settle = async (
+    ctx: BlockContext,
+    ref: ResourceRef<JsonObject>,
+    incarnation: string,
+    seat: FlowInstance,
+    pin: InstanceOwnerPin,
+    flow: string,
+    address: string,
+    step: {
+      /** A repair's retry: a registration of this incarnation's seat counts as done. */
+      retry?: boolean;
+      /** Clear `pendingRepair` as the last write (a re-hire). */
+      repair?: boolean;
+      /** Undo the row write when registration is refused. */
+      onRegisterFailed?: (error: unknown) => Promise<void>;
+    }
+  ) => {
+    const stillOurs = (current: JsonObject) => {
+      if (incarnationOfRow(current) !== incarnation) throw new SeatMoved(address);
+      return current;
+    };
+    let registered = false;
+    let published = false;
+    try {
+      await ref.updateState(stillOurs);
+      try {
+        registered = registerOnce(seat, pin, step.retry ? incarnation : undefined);
+      } catch (error) {
+        await step.onRegisterFailed?.(error);
+        throw error;
+      }
+      await ref.updateState(stillOurs);
+      let warnings: { warning?: string };
+      try {
+        warnings = await publish(ctx, seat, flow, address, incarnation);
+      } catch (error) {
+        // A fire that removed the inventory row under this write removed the
+        // roster row first; that is the fired case below, not a failed write.
+        await ref.updateState(stillOurs);
+        if (!step.repair) throw error;
+        throw new Error(
+          `"${address}" was re-hired onto "${flow}" and is serving, but its inventory row could not be ` +
+            `written: ${error instanceof Error ? error.message : String(error)}. Run the same re-hire again to finish it.`
+        );
+      }
+      published = true;
+      await ref.updateState((current) =>
+        step.repair && pendingRepairOf(current) === incarnation
+          ? { ...stillOurs(current), pendingRepair: null }
+          : stillOurs(current)
+      );
+      return warnings;
+    } catch (error) {
+      if ((error as { code?: unknown }).code !== "resource_deleted") throw error;
+      if (published) await deleteOwnInventoryRow(collectionOf(ctx, SEAT_INVENTORY_RESOURCE), address, incarnation);
+      if (registered) options.unregister(address);
+      throw new Error(`"${address}" was fired while this call was finishing it. Nothing of it was kept.`);
+    }
   };
 
   const hire = handler({
@@ -361,36 +464,36 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         );
       }
 
+      const incarnation = newIncarnation();
       const row = toHiredSeatRow({
         seatId: input.seatId,
         flow: input.flow,
         settings: input.settings,
         instructions: input.instructions ?? null,
         owningOrgId: orgId,
+        incarnation,
       });
       const seat = mint(orgId, row, address);
 
       const roster = collectionOf(ctx, HIRED_ROSTER_RESOURCE);
-      await roster.create(input.seatId, asStored(row));
+      const written = await roster.create(input.seatId, asStored(row));
 
-      try {
-        // Pin from the roster owner of the row just written — the org cell
-        // of this hire — not from `seat.id`. Address is a name the caller
-        // can type; it is not evidence of ownership (FIX-1529 / F2-PLAN).
-        registerHiredSeat(options.register, seat, { orgId });
-      } catch (error) {
-        try {
-          await roster.delete(input.seatId);
-        } catch (cleanupError) {
-          console.error(
-            `[seat-hire] "${address}" was written and could not be registered, and its row could ` +
-              `not be removed either — the next boot will skip and name it: ${String(cleanupError)}`
-          );
-        }
-        throw error;
-      }
-
-      return { seatId: input.seatId, address, ...(await publish(ctx, seat, input.flow, address)) };
+      // Pin from the roster owner of the row just written — the org cell of
+      // this hire — not from `seat.id`. Address is a name the caller can type;
+      // it is not evidence of ownership (FIX-1529 / F2-PLAN).
+      const warnings = await settle(ctx, written, incarnation, seat, { orgId }, input.flow, address, {
+        onRegisterFailed: async () => {
+          try {
+            await roster.delete(input.seatId);
+          } catch (cleanupError) {
+            console.error(
+              `[seat-hire] "${address}" was written and could not be registered, and its row could ` +
+                `not be removed either — the next boot will skip and name it: ${String(cleanupError)}`
+            );
+          }
+        },
+      });
+      return { seatId: input.seatId, address, ...warnings };
     },
   });
 
@@ -412,12 +515,24 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         inventory,
         address: seatAddress(orgId, input.seatId, located.ownerUserId),
         isHeld: (address) => options.kindAt?.(address) !== undefined,
-        release: (address, storedKind) => {
+        release: (address, storedKind, incarnation) => {
           const liveKind = options.kindAt?.(address);
           if (liveKind !== undefined && liveKind !== storedKind) {
             console.error(
               `[seat-hire] removed the roster row for "${address}" (kind "${storedKind}"), but the ` +
                 `address is held by a flow of kind "${liveKind}" — leaving it registered.`
+            );
+            return "held-by-another";
+          }
+          // Same kind is not enough when the row says which seat it minted:
+          // a seat at the address that doesn't carry its incarnation is
+          // another one. Without `instanceAt`, or for a row from before
+          // incarnations, the kind check above is all there is.
+          const live = incarnation === null ? undefined : options.instanceAt?.(address);
+          if (live !== undefined && incarnationOf(live) !== incarnation) {
+            console.error(
+              `[seat-hire] removed the roster row for "${address}", but the address is held by a seat ` +
+                `that row didn't mint — leaving it registered.`
             );
             return "held-by-another";
           }
@@ -481,84 +596,6 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
     },
   });
 
-  /**
-   * Register a seat, counting one the registry already holds at that address
-   * under the same kind as registered (a retry's, or the one a restart
-   * registered from the row). Reads the registry's own refusal rather than
-   * `kindAt`, so it holds with `kindAt` omitted.
-   *
-   * @returns whether this call registered it.
-   */
-  const registerOnce = (seat: FlowInstance, pin: InstanceOwnerPin): boolean => {
-    try {
-      registerHiredSeat(options.register, seat, pin);
-      return true;
-    } catch (error) {
-      const refused = error as { reason?: unknown; id?: unknown; existingKind?: unknown };
-      if (refused.reason === "duplicate-id" && refused.id === seat.id && refused.existingKind === seat.kind) {
-        return false;
-      }
-      throw error;
-    }
-  };
-
-  /**
-   * The steps of a re-hire after its row is written: register, publish the
-   * inventory row, clear the row's pending-repair marker. Before each side
-   * effect the row is re-read from the store (a verified no-op write) and must
-   * still exist carrying `token`. A row `fire` deleted stops the repair, and
-   * what this call registered or published is taken back, so a fire that
-   * lands mid-repair leaves no seat and no inventory row. A row whose marker
-   * moved (another call finished or replaced it) stops it without undoing.
-   */
-  const finishRehire = async (
-    ctx: BlockContext,
-    ref: ResourceRef<JsonObject>,
-    token: string,
-    seat: FlowInstance,
-    pin: InstanceOwnerPin,
-    flow: string,
-    address: string,
-    onRegisterFailed?: (error: unknown) => Promise<void>
-  ) => {
-    const stillPending = (current: JsonObject) => {
-      if (pendingRepairOf(current) !== token) throw new RepairMoved(address);
-      return current;
-    };
-    let registered = false;
-    let published = false;
-    try {
-      await ref.updateState(stillPending);
-      try {
-        registered = registerOnce(seat, pin);
-      } catch (error) {
-        await onRegisterFailed?.(error);
-        throw error;
-      }
-      await ref.updateState(stillPending);
-      let warnings: { warning?: string };
-      try {
-        warnings = await publish(ctx, seat, flow, address);
-      } catch (error) {
-        // A fire that removed the inventory row under this write removed the
-        // roster row first; that is the fired case below, not a failed write.
-        await ref.updateState(stillPending);
-        throw new Error(
-          `"${address}" was re-hired onto "${flow}" and is serving, but its inventory row could not be ` +
-            `written: ${error instanceof Error ? error.message : String(error)}. Run the same re-hire again to finish it.`
-        );
-      }
-      published = true;
-      await ref.updateState((current) => ({ ...stillPending(current), pendingRepair: null }));
-      return warnings;
-    } catch (error) {
-      if ((error as { code?: unknown }).code !== "resource_deleted") throw error;
-      if (published) await collectionOf(ctx, SEAT_INVENTORY_RESOURCE).delete(address);
-      if (registered) options.unregister(address);
-      throw new Error(`"${address}" was fired while this re-hire was finishing. Nothing of the re-hire was kept.`);
-    }
-  };
-
   const rehire = handler({
     name: "rehire",
     description:
@@ -599,12 +636,12 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         // Only the same re-hire finishes it; a row with no marker (an older
         // row included, BP-030) has no repair pending.
         const token = old.pendingRepair;
-        if (token === null) {
+        if (token === null || old.incarnation !== token) {
           throw new Error(
             `"${address}" still starts on kind "${old.flow}". To change a working seat's kind, fire it and hire it again.`
           );
         }
-        if (!deepEqual(row, { ...old, pendingRepair: null })) {
+        if (!deepEqual(row, { ...old, pendingRepair: null, incarnation: null })) {
           throw new Error(
             `"${address}" has an unfinished re-hire onto "${old.flow}". Run that same re-hire again to finish it.`
           );
@@ -614,7 +651,10 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         if (live !== undefined && live !== input.flow) {
           throw new Error(`"${address}" is already served by a flow of kind "${live}", so it can't be re-hired.`);
         }
-        const warnings = await finishRehire(ctx, existing, token, checked.seat, pin, input.flow, address);
+        const warnings = await settle(ctx, existing, token, checked.seat, pin, input.flow, address, {
+          retry: true,
+          repair: true,
+        });
         return { seatId: old.seatId, address, ...warnings };
       }
 
@@ -624,8 +664,8 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
       if (held !== undefined) {
         throw new Error(`"${address}" is already served by a flow of kind "${held}", so it can't be re-hired.`);
       }
-      const seat = mint(orgId, row, address);
-      const token = newRepairToken();
+      const token = newIncarnation();
+      const seat = mint(orgId, { ...row, incarnation: token }, address);
 
       // One version-checked write, marked as a repair in progress until the
       // seat is registered and published. If the row moved since it was read
@@ -637,23 +677,26 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
             `"${address}" changed while this re-hire was being made, most likely by another repair. Nothing was written.`
           );
         }
-        return asStored({ ...row, pendingRepair: token });
+        return asStored({ ...row, pendingRepair: token, incarnation: token });
       });
 
-      const warnings = await finishRehire(ctx, existing, token, seat, pin, input.flow, address, async () => {
-        // Registration refused: write the old row back, while it is still this repair's.
-        try {
-          await existing.updateState((current) => {
-            if (pendingRepairOf(current) !== token) throw new RepairMoved(address);
-            return before;
-          });
-        } catch (restoreError) {
-          console.error(
-            `[seat-hire] "${address}" was re-hired onto "${input.flow}" and could not be registered, and its ` +
-              `old row could not be written back either — the next boot serves it on "${input.flow}", and the ` +
-              `same re-hire run again finishes it: ${String(restoreError)}`
-          );
-        }
+      const warnings = await settle(ctx, existing, token, seat, pin, input.flow, address, {
+        repair: true,
+        onRegisterFailed: async () => {
+          // Registration refused: write the old row back, while it is still this repair's.
+          try {
+            await existing.updateState((current) => {
+              if (pendingRepairOf(current) !== token) throw new SeatMoved(address);
+              return before;
+            });
+          } catch (restoreError) {
+            console.error(
+              `[seat-hire] "${address}" was re-hired onto "${input.flow}" and could not be registered, and its ` +
+                `old row could not be written back either — the next boot serves it on "${input.flow}", and the ` +
+                `same re-hire run again finishes it: ${String(restoreError)}`
+            );
+          }
+        },
       });
       return { seatId: old.seatId, address, ...warnings };
     },
