@@ -16,7 +16,8 @@
  *
  *   boot        the chief of staff is listed from the tree, on the agent kind,
  *               with a door; no other declared seat names a hire or fire tool
- *   discover    asked who is on the feature channel, it names the declared seats
+ *   discover    asked who is on the feature channel, it names every declared
+ *               seat by its full id
  *   hire        asked for a seat, it hires one at once: no ask is raised, the
  *               seat is listed, its roster row is written, its address answers
  *   restart     after a restart the hired seat is still listed and answers
@@ -27,7 +28,8 @@
  *               the inventory and the roster, and its address no longer answers
  *   a seat asks a declared seat posts its own hire request into its channel,
  *               the channel hands it to the chief of staff from that seat, and
- *               the hire's roster row lands (its own small host: seat-asks.mts)
+ *               the hire lands: roster row, inventory row, and an address that
+ *               answers (its own small host: seat-asks.mts)
  *
  * Controls:
  *
@@ -258,14 +260,19 @@ await runGoal(async () => {
     } else if (toCos[0]!.author !== ASKER) {
       problems.push(`the post the chief of staff heard is from ${JSON.stringify(toCos[0]!.author)}, not "${ASKER}"`);
     }
+    // A hire's three outcomes (BR-8): the roster row, the inventory row, and an address that answers.
     if (!result.rostered) problems.push(`no roster row for "${asked}" after the seat's request`);
     else if (result.rosterKind !== "agent") problems.push(`"${asked}" was hired as ${String(result.rosterKind)}, not "agent"`);
+    if (result.address === undefined) problems.push(`no inventory row for "${asked}" after the seat's request`);
+    else if (result.listedKind !== "agent") problems.push(`"${asked}" is listed as kind ${String(result.listedKind)}, not "agent"`);
+    else if (result.answers !== 201) problems.push(`"${result.address}" does not answer: ${String(result.answers)}`);
     if (problems.length > 0) {
       for (const problem of problems) seatAskFailures.push(`a seat asks: ${problem}`);
     } else {
       evidence.push(
         `a seat asks: "${ASKER}" posted its own request as itself, the channel handed it to the chief of staff from "${ASKER}", ` +
-          `and "${asked}" has a roster row on kind agent; the check sent the seat id to no one`,
+          `and "${asked}" has a roster row and an inventory row on kind agent, and ${String(result.address)} answers ${String(result.answers)}; ` +
+          `the check sent the seat id to no one`,
       );
     }
   }
@@ -312,9 +319,12 @@ await runGoal(async () => {
     // discover
     const asked = await api.say(cosSession, `Who is on the ${channel.id} channel? Look it up and list the seat ids.`);
     const answer = await api.lastReply(cosSession);
-    const missing = members.filter((m) => !answer.includes(m) && !new RegExp(`\\b${m.split(".").at(-1)}\\b`).test(answer));
+    // Each member by its full seat id, standing alone: a bare "em" could be a guess
+    // from the channel's name, and "eng.em" inside a longer id is not that seat.
+    const named = (id: string) => new RegExp(`(?<![\\w.-])${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-]|\\.\\w)`).test(answer);
+    const missing = members.filter((m) => !named(m));
     if (asked.status !== "completed") fail("discover", `the turn ended ${asked.status}`);
-    else if (missing.length > 0) fail("discover", `the answer names none of ${missing.join(", ")}: ${answer.slice(0, 300)}`);
+    else if (missing.length > 0) fail("discover", `the answer does not name ${missing.join(", ")} by full seat id:${answer.slice(0, 300)}`);
     else evidence.push(`discover: asked who is on ${channel.id}, the answer named ${members.join(", ")}`);
 
     // hire

@@ -21,7 +21,8 @@ comes from opening a session on its address.
 
 1. **boot**: the chief of staff is listed from the tree, on the `agent` kind, with a door. No
    other declared seat names `hire`, `fire` or `rehire`.
-2. **discover**: asked who is on the feature channel, it names the declared members.
+2. **discover**: asked who is on the feature channel, it names every declared member by its full
+   seat id (`eng.em`, not `em`).
 3. **hire**: asked for a coder under the held-out id, it hires one at once. No approval is raised.
    The seat is listed, its roster row is written, and its address answers.
 4. **restart**: after a restart the hired seat is still listed, still rostered, and still answers.
@@ -39,8 +40,9 @@ comes from opening a session on its address.
    check starts the seat with an empty input. Nothing new carries the request: the post goes
    through the channel's own `post` with the seat's `seatId` as author, and the channel's notify
    hands it to the chief of staff's `onChannelPost`, where the agent kind hears a post. Graded on
-   what the channel handed the chief of staff (exactly one delivery, author `ops.lead`) and on the
-   roster row for the held-out id, on kind `agent`.
+   what the channel handed the chief of staff (exactly one delivery, author `ops.lead`) and on all
+   three of a hire's outcomes for the held-out id: its roster row and its inventory row, both on
+   kind `agent`, and its address answering a session opened through the session route.
 
 **Anti-game:** no hire or fire block is called by the check. Every change goes through the chief
 of staff's own turn on a real model, and every restart is a new process over the same file. The
@@ -51,7 +53,7 @@ grade is read off the stores through the HTTP routes, never off the model's word
 | Control | Perturbs | Goes red on |
 |---|---|---|
 | `deny-fire` | the person's answer: Deny instead of Approve | **seat gone** only: the seat is still listed, rostered and answering. **answer** stays green, since the route takes a Deny and the turn completes |
-| `no-seat-delivery` | the channel's notify hands the seat's post to nobody | **a seat asks** only: no delivery to the chief of staff, and no roster row for the held-out id |
+| `no-seat-delivery` | the channel's notify hands the seat's post to nobody | **a seat asks** only: no delivery to the chief of staff, and no roster row, no inventory row and no address for the held-out id |
 
 The tree with no chief of staff (today's `main`) goes red at **boot**: `Unknown flow
 "chief-of-staff"`.
@@ -74,3 +76,4 @@ with a precondition message and grades nothing.
 | 2026-10-02 | 29c794d58+round 5 (FIX-1719 PR 2, Codex review 5394601632) | openai/gpt-5.4-mini | PASS | All six legs green with the stricter checks: the hired row is kind `coder` in the roster and the inventory, before and after the restart, and the fire raised exactly one `human_approval` naming verb, seat, kind and message. `deny-fire` FAILS at seat gone (listed, rostered, answering). |
 | 2026-10-02 | a27de5337+round 6 (FIX-1719 PR 2, Codex reviews 5394840713 + 5394907534) | openai/gpt-5.4-mini | PASS | All seven legs green; the resume and the turn settling are now their own **answer** leg. `deny-fire` FAILS at seat gone only (listed, rostered, answering); answer stays green. |
 | 2026-10-02 | fb1b751cd+BR-21 (FIX-1719 PR 2, Codex 5395145040) | openai/gpt-5.4-mini | PASS | All eight legs green, including **a seat asks**: `ops.lead` posted its own request as itself, the channel handed the chief of staff one post from `ops.lead`, and the held-out seat has a roster row on kind `agent`. `deny-fire` FAILS at seat gone only. `no-seat-delivery` FAILS at a seat asks only (no delivery, no row); every DevTeam leg stays green. |
+| 2026-10-02 | 79440ac14+round 10 (FIX-1719 PR 2, Codex round 10) | openai/gpt-5.4-mini | PASS | All eight legs green with the stricter checks: **a seat asks** now needs the roster row, the inventory row (both kind `agent`) and the address answering 201 on the session route; **discover** needs every member's full seat id. `deny-fire` FAILS at seat gone only. `no-seat-delivery` FAILS at a seat asks only (no delivery, no roster row, no inventory row). |

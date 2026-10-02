@@ -949,6 +949,15 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       throw new Error(`"${input.seatId}" is a row that can't be read (${checked.detail}). Fire it to retire it.`);
     }
     const old = checked.row!;
+    // The key the row was found under says whose it is; a stored owner that
+    // says otherwise is refused, not re-derived, since either could be the wrong one.
+    if ((old.ownerUserId ?? null) !== (located.ownerUserId ?? null)) {
+      throw new Error(
+        `"${input.seatId}"'s roster row says it belongs to ${old.ownerUserId === null ? "the whole org" : `user "${old.ownerUserId}"`}, ` +
+          `but it is stored as ${located.ownerUserId === null ? "the org's" : `user "${located.ownerUserId}"'s`}, so it was not re-hired. ` +
+          `Fire it to retire it.`
+      );
+    }
     const row = toHiredSeatRow({
       seatId: old.seatId,
       flow: input.flow,

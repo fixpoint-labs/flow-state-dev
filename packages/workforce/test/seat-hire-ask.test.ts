@@ -777,3 +777,24 @@ describe("an approved re-hire that dies part-way", () => {
     expect(restarted.registry.get(HELPER_ADDRESS)?.kind).toBe("agent");
   });
 });
+
+describe("a re-hire of a row whose stored owner disagrees with where it is stored", () => {
+  it("is refused before anyone is asked, and the row is left as it was", async () => {
+    const stores = freshStores();
+    const key = `${HIRED_ROSTER_PREFIX}${HELPER}`;
+    // Stored under the org roster's key, but saying it belongs to one user.
+    const row = {
+      ...toHiredSeatRow({ seatId: HELPER, flow: "retired-kind", owningOrgId: ORG, ownerUserId: "u_someone" }),
+      incarnation: "old-incarnation",
+    };
+    await stores.resourceState.set("org", ORG, key, row as never, "any");
+    const asked = await boot(stores, [call("rehire", { seatId: HELPER, flow: "agent" }), say("done")], { reloadProblems: 1 });
+    const { status } = await asked.ask("put the helper back on the agent kind");
+
+    expect(status).toBe("completed");
+    expect(await pendingAsks(stores)).toEqual([]);
+    expect(lastToolResults(asked.seen)).toContain("u_someone");
+    expect((await stores.resourceState.get("org", ORG, key))?.state).toEqual(row);
+    expect(await inventoryRows(stores)).not.toContain(HELPER_ADDRESS);
+  });
+});
