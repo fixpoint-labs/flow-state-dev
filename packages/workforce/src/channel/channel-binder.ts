@@ -43,6 +43,7 @@ import {
   defineChannelFlow,
   holdsBoards,
   routeOf,
+  wakesSeats,
   type ChannelSessionState
 } from "./channel-flow";
 import {
@@ -830,6 +831,14 @@ function templateFrom(
       problem:
         `runs talk sessions on kind "${declared.kind}", which is not a kind \`defineChannelFlow\` built. A custom ` +
         `kind is zero-arg, so there is no way to hand it the template's seats and charter.`
+    };
+  }
+  if (declared.seats.length > 0 && !wakesSeats(factory)) {
+    return {
+      problem:
+        `names seats, but runs talk sessions on kind "${declared.kind}", which was built with no \`notify\` ` +
+        `block, so a post would wake none of them. Pass that kind built with one, as ` +
+        `\`kinds: { ${JSON.stringify(declared.kind)}: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }\`.`
     };
   }
   return {

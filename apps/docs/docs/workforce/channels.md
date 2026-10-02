@@ -806,6 +806,8 @@ const { resources } = splitResourceModules(resourceModules);
 const instances = channelInstances(channels, { kinds, resources });
 ```
 
+The kind the rooms run on has to be able to wake seats, so build it with a notify block, as in `kinds: { channel: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }`. Left to the built-in kind, a template that names seats is refused, because no post would wake them. To run rooms on a kind of your own, name it as the template's `kind` and as `defineProjectBlocks({ talkKind })`. The two have to match, and a mismatch is refused at boot.
+
 A team can declare the template in a `CHANNEL.md` instead, by marking it `mintFor: projects`. Its `members:` are the seats and its body is the charter:
 
 ```md
@@ -823,7 +825,7 @@ That file is a template, not a channel. It's never opened, and it never shows up
 What a template does:
 
 - **It applies to every project's room, and edits land at the next restart.** The seats and charter are built onto the channel kind each time the app boots and are never copied into a session. An edit reaches every room, including ones that already exist.
-- **A post wakes each seat once, as the person who posted.** Each seat keeps one conversation per person per room, and gets the room's last 20 lines along with the post. Its reply goes into the room, where every member reads it. A seat's reply wakes nobody.
+- **A post wakes each seat once, as the person who posted.** Each seat keeps one conversation per person per room, and gets the room's last 20 lines along with the post. Its reply goes into the room, where every member reads it. A seat answers a post once, even when the post reaches it twice. A seat's reply wakes nobody.
 - **Other members' lines arrive on the next read, not live.** Your own post shows up when you post it. Everyone else's appears the next time your view calls `read`.
 - **It holds no board and routes no post.** A template that declares `boards:`, `routing:` or `boardActions:` is refused.
 - **Rooms aren't in the inventory.** The inventory lists the channels you declared, and no talk session is ever one of its rows.
@@ -832,7 +834,7 @@ When a template is in place, any code that creates a project inside a flow turn 
 
 A room's lines aren't in any session's history. Read them with `read` on a member's talk session.
 
-`channelInstances` checks templates along with your channels and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or one that isn't `projects`, a seat that isn't a seat id or is listed twice, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `CHANNEL.md`.
+`channelInstances` checks templates along with your channels and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or one that isn't `projects`, a seat that isn't a seat id or is listed twice, seats on a kind that can't wake them, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `CHANNEL.md`.
 
 ## Registering a kind of your own
 

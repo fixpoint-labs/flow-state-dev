@@ -1947,11 +1947,14 @@ its body is the charter. A template is never opened and never registered in the 
 are full seat ids from any team (`engineering.lead`) or a dotless org seat id (`chief-of-staff`).
 `channelInstances` refuses, with its other refusals, a template that declares `boards:`, `routing:`
 or `boardActions:`, a `mintFor:` that names no collection in `resources` or names one other than
-`projects`, a bad or repeated seat id, and a second template for the collection at either site.
+`projects`, a bad or repeated seat id, seats on a kind built with no `notify` block (none of them
+would wake), and a second template for the collection at either site. A template's `kind` must be
+the `talkKind` every `defineProjectBlocks` uses (`"channel"` by default); a mismatch throws at boot,
+whichever is built second.
 `createProject` always gets the creator's talk session ready. With a template, so does any other
 code that creates a project inside a flow turn. A `post` in a project's room wakes each seat once,
 under the poster, with the room's last 20 lines. A seat's reply lands in
-the room through `answer`. The template is built onto the kind at every boot, so an edit reaches
+the room through `answer`, once per post and seat, so a repeated delivery adds no second line. The template is built onto the kind at every boot, so an edit reaches
 every project's room at the next restart.
 
 ## Importing from a browser component
@@ -2030,7 +2033,7 @@ the root exports, and reaches no Node built-in.
 | `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
 | `channelInstances(manifests, { kinds?, inventory?, resources? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in channel kind. Pass the org's resource map as `resources` to read project talk templates (see [Projects](#projects)); a template's kind is returned even when no channel runs on it. Register these. |
 | `defineProjectsCollection({ talk? })` | The organization's `projects` collection: org-scoped, shared across flows, browser-readable through `expose`. `talk` is the org-level talk template. You can call `defineProjectsCollection()` anywhere you need it. Every call returns the same declaration, so they never conflict. `defineRoomLinesCollection`, `defineRoomSeqCollection` and `defineWorkstreamClaimsCollection` declare the room and the claims; none has a browser read. |
-| `defineProjectBlocks({ talkKind? })` | Returns `{ createProject, setWorkstreams, actions }`. See [Projects](#projects). `talkKind` is the kind a created project's `bind` is dispatched to, `"channel"` by default. |
+| `defineProjectBlocks({ talkKind? })` | Returns `{ createProject, setWorkstreams, actions }`. See [Projects](#projects). `talkKind` is the kind a created project's `bind` is dispatched to, `"channel"` by default. It must match a talk template's kind, or the second of the two to be built throws. |
 | `openChannels(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. The server binds each session's organization. Idempotent. |
 | `readChannelsDirectory(root)` | Read a `teams/<id>/channels/<name>/` tree into one `ChannelManifest` per channel. Ships from the `./loader` subpath (Node only). |
 | `ChannelManifest` | One channel record: `{ id, declared, body }`. |
@@ -2112,7 +2115,7 @@ the root exports, and reaches no Node built-in.
 | Channel folder fails to load | Collected in `readChannelsDirectory`'s `errors` as `kind: "channel-load-failed"`, keyed by the folder's path — an unusable name, a symlink, or a missing, unreadable or malformed `CHANNEL.md` |
 | `system:` in a `CHANNEL.md` | Collected in `readChannelsDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the channel folder's path |
 | Workforce root unreadable or symlinked, read for channels | `readChannelsDirectory` throws — the root is never followed through a link |
-| Channel cannot be bound | `channelInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, a `boards:` that is not a list of plain names, a board name carrying a dot or declared twice, a minted board id two channels would share, or `boards:` on a custom kind that does not support them. Also `instructions:` given both in the frontmatter and as a body. For a talk template (`mintFor:`, or the org default): `boards:`, `routing:` or `boardActions:` on it, a `mintFor:` naming no collection in `resources` or one other than `projects`, a seat that is not a seat id or is listed twice, a kind filed under another kind's key or one `defineChannelFlow` did not build, or a second template for the collection. Collected: one error names every bad channel, and nothing is registered |
+| Channel cannot be bound | `channelInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, a `boards:` that is not a list of plain names, a board name carrying a dot or declared twice, a minted board id two channels would share, or `boards:` on a custom kind that does not support them. Also `instructions:` given both in the frontmatter and as a body. For a talk template (`mintFor:`, or the org default): `boards:`, `routing:` or `boardActions:` on it, a `mintFor:` naming no collection in `resources` or one other than `projects`, a seat that is not a seat id or is listed twice, a kind filed under another kind's key or one `defineChannelFlow` did not build, seats on a kind with no `notify` block, or a second template for the collection. Collected: one error names every bad channel, and nothing is registered |
 | Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the id is taken. An open channel there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable channel — is named and refused rather than released |
 | `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
 | `author-not-a-member` | A `post` claiming an `author` outside the channel's declared members. Per-request; nothing is written |

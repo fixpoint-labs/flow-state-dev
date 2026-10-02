@@ -64,7 +64,7 @@ import {
 import { isMember } from "./membership-gate";
 import { isAlreadyExists, isConcurrentModification, isResourceDeleted } from "./store-errors";
 import { ProjectRefusedError } from "./project-refusal";
-import { noteBindRefusal, TALK_BIND_ACTION, talkSessionKey } from "./talk-template";
+import { noteBindRefusal, noteTalkBindKind, TALK_BIND_ACTION, talkSessionKey } from "./talk-template";
 
 /**
  * The resource-map ref the channel inventory is read through here. Private to
@@ -473,7 +473,9 @@ async function settleFailedStamps(
  *   defineFlow({ kind: "lab", actions: { ...projects.actions } });
  */
 export function defineProjectBlocks(options: ProjectBlocksOptions = {}): ProjectBlocks {
-  const createProject = createProjectSequence(options.talkKind ?? CHANNEL_KIND);
+  const talkKind = options.talkKind ?? CHANNEL_KIND;
+  noteTalkBindKind(defineProjectsCollection(), talkKind);
+  const createProject = createProjectSequence(talkKind);
   return {
     createProject,
     setWorkstreams,

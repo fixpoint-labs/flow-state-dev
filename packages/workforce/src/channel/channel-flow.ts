@@ -1211,6 +1211,19 @@ export function routeOf(kind: unknown): ChannelRoute | undefined {
   return typeof kind === "function" ? (kind as { [KIND_ROUTE]?: ChannelRoute })[KIND_ROUTE] : undefined;
 }
 
+/** The key a kind {@link defineChannelFlow} built with a notify slot carries `true` under. */
+const KIND_WAKES = Symbol("channel-kind-wakes");
+
+/**
+ * Was this channel kind built with a notify slot, so a post can wake anyone?
+ * `false` for a kind built without one, or one {@link defineChannelFlow} did
+ * not build. The binder reads it to refuse a talk template whose seats would
+ * never be woken. Not re-exported from the package root.
+ */
+export function wakesSeats(kind: unknown): boolean {
+  return typeof kind === "function" && (kind as { [KIND_WAKES]?: boolean })[KIND_WAKES] === true;
+}
+
 /**
  * Build a channel kind.
  *
@@ -1518,7 +1531,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
       : router({
           name: "channel-answer-entry",
           inputSchema: channelAnswerInputSchema,
-          outputSchema: z.union([channelTranscriptLineSchema.nullable(), roomLineSchema]),
+          outputSchema: z.union([channelTranscriptLineSchema.nullable(), roomLineSchema.nullable()]),
           routes: [anyBlock(answer), anyBlock(talkAnswer)],
           execute: (_input, ctx) => (isTalk(ctx) ? anyBlock(talkAnswer) : anyBlock(answer))
         });
@@ -1664,6 +1677,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     withTemplate: (template: TalkTemplateFacts) => defineChannelFlow({ ...options, template })
   }) as ChannelFlowFactory;
   if (options.route !== undefined) Object.assign(factory, { [KIND_ROUTE]: options.route });
+  if (options.notify !== undefined) Object.assign(factory, { [KIND_WAKES]: true });
   return factory;
 }
 
