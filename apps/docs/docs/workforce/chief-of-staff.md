@@ -1,0 +1,144 @@
+---
+title: The chief of staff
+sidebar_position: 8.5
+sidebar_label: Chief of staff
+description: "One seat a person asks who works here, and asks to change it. Hires land at once; a fire waits for the person's approval."
+---
+
+# The chief of staff
+
+The chief of staff is a seat a person talks to about the organization itself. Ask it who works here or who is on a channel, and it looks it up. Ask it for another seat, and it hires one. Ask it for one fewer, and it puts the fire in front of you to approve. Nothing is removed until you do.
+
+It is the only seat that hires or fires. Another seat that needs help sends the chief of staff a message and lets it decide. A Lab that doesn't declare one doesn't have one.
+
+## Adding one
+
+You need two things: a `WORKER.md` for the seat, and the `seat-hire` tools on the kind it runs on.
+
+The file goes under `org/workers/`, beside `teams/`. Its folder name is its id, so `org/workers/chief-of-staff/` is the seat `chief-of-staff`. It runs on the built-in `agent` kind and names the tools it holds:
+
+```md title="workforce/org/workers/chief-of-staff/WORKER.md"
+---
+description: Who works here, and the one seat that changes it.
+flow: agent
+model: openai/gpt-5.4-mini
+tools: [hire, fire, rehire, brokenSeats]
+---
+
+You are the chief of staff for this organization.
+
+When someone asks who works here or who is on a channel, look it up with
+`discover` and answer from what it returns.
+
+To add a seat, call `hire`. It lands at once. To remove one, call `fire`.
+The person approves every fire before it happens; if they deny it, say so
+and don't try again unless they ask.
+
+You can't fire yourself or any seat declared in the organization's files.
+Those change when someone edits their folder.
+```
+
+Then give the `agent` kind the tools, with `askBefore: ["fire"]` so a fire waits for a person:
+
+```ts title="src/workforce.ts"
+import {
+  createSeatHireCapability,
+  createWorkforceCapability,
+  defineAgentWorkerFlow,
+  HIRED_ROSTER_RESOURCE,
+  SEAT_INVENTORY_RESOURCE,
+} from "@flow-state-dev/workforce";
+
+import { deskClerkFlow } from "./flows/desk-clerk";
+import { kindAt, registerSeat, releaseSeat } from "./registry-access";
+import { roster } from "./roster";
+
+export const kinds = { "desk-clerk": deskClerkFlow };
+
+const seatHire = createSeatHireCapability({
+  kinds,
+  register: registerSeat,
+  unregister: releaseSeat,
+  kindAt,
+  allowKinds: ["desk-clerk", "agent"],
+  askBefore: ["fire"],
+});
+
+kinds.agent = defineAgentWorkerFlow({
+  uses: [
+    createWorkforceCapability({
+      roster: { workers: roster.workers, channels: roster.channels },
+      inventory: { seats: SEAT_INVENTORY_RESOURCE },
+      hiredRoster: HIRED_ROSTER_RESOURCE,
+    }),
+    seatHire,
+  ],
+});
+```
+
+`registry-access.ts` is the module from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate), with one more export: `kindAt(address)` returns the kind of the flow registered at that address, read from `(await flowState.getRuntime()).registry` once the app is up. The hire tools use it to refuse a declared seat by name.
+
+`createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
+
+Installing the tools on a kind doesn't hand them to every seat of it. A seat holds `hire` or `fire` only when its own `tools:` names it, so keep those names in the chief of staff's file and no other.
+
+If your Lab has projects, add `chief-of-staff` to the project template's `seats` (or a team `CHANNEL.md` template's `members:`), so the chief of staff is in every project's room.
+
+Read the seats it hired back when the app starts, as in [Reading the roster back at the next start](./durable-hire.md#reading-the-roster-back-at-the-next-start), and serve the app over a store that survives a restart. Otherwise a hire lasts only as long as the process.
+
+## The tools
+
+| Tool | What it does | Asks first |
+| --- | --- | --- |
+| `hire` | Hires a seat on a kind in `allowKinds`, under the id it is given | Only when `askBefore` lists `"hire"` |
+| `fire` | Removes a seat this organization hired: its roster row, its address and its inventory row | Only when `askBefore` lists `"fire"` |
+| `brokenSeats` | Lists hired seats that would not start, each with its reason. Reads only | Never |
+| `rehire` | Keeps a seat that no longer starts at its address, on a kind this app carries | Always |
+
+The tools work on the organization's seats. A seat a member hired for only themselves stays with that member, and the chief of staff can't list, repair or fire it.
+
+## What asks first
+
+`askBefore` lists the changes that wait for a person. It takes `"hire"` and `"fire"`, and any other entry throws when the capability is built:
+
+```text
+askBefore names "promote"; it takes hire and fire.
+```
+
+Left out, nothing asks. `rehire` asks whatever the list says.
+
+A listed tool checks everything that could refuse the change first. A seat id nothing hired, a seat declared in a file, or a kind outside `allowKinds` is refused straight away, and nobody is asked. When the change could go ahead, the tool pauses the request with a `human_approval` suspension:
+
+```json
+{
+  "reason": "human_approval",
+  "message": "Fire seat \"coder-7\" (kind \"coder\")?",
+  "data": { "verb": "fire", "seatId": "coder-7", "kind": "coder" },
+  "allow": ["approve", "reject"]
+}
+```
+
+The person answers through the resume route, as for any other [durable suspension](../advanced/durable-execution.md):
+
+```bash
+curl -X POST localhost:3000/api/flows/chief-of-staff/requests/$REQUEST_ID/resume \
+  -H 'content-type: application/json' \
+  -d '{"suspensionId":"'$SUSPENSION_ID'","action":"approve"}'
+```
+
+On approve, the tool checks again and makes the change. On reject, nothing changes, and the model is told the request was denied. The ask outlives a restart: a person can approve tomorrow what the chief of staff asked today. On a store that keeps a run as it goes, such as SQLite, a process that dies after the approval and before the turn ends makes the change once when the request is recovered.
+
+Asking needs durable execution, so turn it on with `durable: true` on `createFlowState`. Without it, a listed tool refuses rather than acting unasked:
+
+```text
+"fire" waits for a person's approval here, and this app can't ask for one: it runs without durable execution. Nothing was changed.
+```
+
+`askBefore` applies to the tools a model calls. The handlers [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers) returns, mounted as actions, never ask.
+
+## What it can't do
+
+- **Fire itself, or any declared seat.** `fire` answers that a seat declared in a worker file is removed by editing its folder.
+- **Hire under a declared seat's id.** A hire that reuses one is refused, naming the kind already there.
+- **Hire a kind outside `allowKinds`.** The refusal lists the kinds it may hire.
+- **Open, close or rename a channel.** Channels are declared on disk.

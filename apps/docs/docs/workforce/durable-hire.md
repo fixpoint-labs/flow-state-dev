@@ -120,7 +120,9 @@ export function releaseSeat(id: string): boolean {
 
 ## The ready-made hire and fire handlers
 
-`createSeatHireBlocks` gives you the whole hire and fire sequence as two handlers you mount as actions. They are the same handlers the `seat-hire` capability, `createSeatHireCapability`, gives a worker kind as its `hire` and `fire` tools. It also returns `brokenSeats` and `rehire`, for [repairing a seat whose kind is gone](#repairing-a-seat-whose-kind-is-gone). Use them when a person or your own code does the hiring, from a screen or an admin route, with no model in front of the call.
+`createSeatHireBlocks` gives you the whole hire and fire sequence as two handlers you mount as actions. It also returns `brokenSeats` and `rehire`, for [repairing a seat whose kind is gone](#repairing-a-seat-whose-kind-is-gone). Use them when a person or your own code does the hiring, from a screen or an admin route, with no model in front of the call. Mounted as actions, they never ask anyone before they act.
+
+The `seat-hire` capability, `createSeatHireCapability`, gives a seat's kind the same four as tools a model can call. Those can wait for a person's approval first: its `askBefore` option lists the changes that do, and `rehire` always does. [The chief of staff](./chief-of-staff.md#what-asks-first) covers asking.
 
 With them, the admin flow needs no `hire.ts` or `fire.ts` of its own:
 
@@ -174,7 +176,7 @@ export default workforceAdmin();
 | `kinds` | The flow kinds a hire may name, the same map you pass to `hireWorkforce` and `reloadHiredSeats`. The built-in `agent` kind is always hireable too, unless `allowKinds` leaves it out. |
 | `register(seat, pin)` | Puts a minted seat on the air. `pin` is `{ orgId, userId? }` for the organization the hire ran under. |
 | `unregister(address)` | Releases an address in this process and returns whether anything held it. |
-| `kindAt?(address)` | The kind serving an address right now, if any. Lets `hire` refuse an address that is already served before writing anything, and lets `fire` leave an address registered when a different kind holds it. |
+| `kindAt?(address)` | The kind serving an address right now, if any. Lets `hire` refuse an address that is already served, or a seat id a declared seat answers on, before writing anything, and lets `fire` leave an address registered when a different kind holds it. |
 | `allowKinds?` | The subset of `kinds` these handlers may mint. |
 | `channelBoards?` | Channel board ids. For each one the new seat doesn't declare, the hire's `warning` names it, since rows filed on that board sit pending until something works them. |
 
@@ -216,7 +218,7 @@ It returns the seat id and the address the seat answers on:
 
 A hire runs in this order:
 
-1. It refuses a kind that isn't in `kinds`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served.
+1. It refuses a kind that isn't in `kinds`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served, and a seat id `kindAt` reports a declared seat under: `"chief-of-staff" is the id of a seat this app declares (kind "agent"). Hire under another id.`
 2. It mints the seat, which runs the kind's settings schema.
 3. It writes the roster row with `create()`. A second hire of the same seat id fails here with `Resource instance "workforce/roster/support.ada" already exists`, including two hires arriving at once.
 4. It calls your `register`. If that throws, the row from step 3 is deleted and the error is passed on.

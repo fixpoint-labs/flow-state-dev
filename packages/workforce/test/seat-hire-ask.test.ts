@@ -74,21 +74,39 @@ const COS_TOOLS = ["hire", "fire", "rehire", "brokenSeats"];
 
 type Step = (options: GeneratorModelCallOptions) => GeneratorModelResult;
 
-/** A step-capable model that plays `script` in order; `seen` counts the calls. */
-function stepModel(script: Step[]) {
+/**
+ * A step-capable model that plays `script` in order; `seen` counts the calls.
+ * `streaming` offers only `streamStep`, as a real provider's model is driven.
+ */
+function stepModel(script: Step[], streaming = false) {
   const seen: GeneratorModelCallOptions[] = [];
-  const model: GeneratorModel = {
-    modelId: "test/step",
-    async generate() {
-      throw new Error("the owned tool loop calls generateStep");
-    },
-    async generateStep(options) {
-      seen.push(options);
-      const entry = script[seen.length - 1];
-      if (entry === undefined) throw new Error(`no script entry for step ${seen.length - 1}`);
-      return entry(options);
-    },
+  const next = (options: GeneratorModelCallOptions): GeneratorModelResult => {
+    seen.push(options);
+    const entry = script[seen.length - 1];
+    if (entry === undefined) throw new Error(`no script entry for step ${seen.length - 1}`);
+    return entry(options);
   };
+  const model: GeneratorModel = streaming
+    ? {
+        modelId: "test/stream-step",
+        async generate() {
+          throw new Error("the owned tool loop calls streamStep");
+        },
+        async *streamStep(options) {
+          const result = next(options);
+          if (result.text) yield { type: "text_delta", textDelta: result.text };
+          yield { type: "finish", finishReason: result.finishReason ?? "stop", fullResult: result } as never;
+        },
+      }
+    : {
+        modelId: "test/step",
+        async generate() {
+          throw new Error("the owned tool loop calls generateStep");
+        },
+        async generateStep(options) {
+          return next(options);
+        },
+      };
   const resolver = Object.assign(() => model, { resolveId: (id: string) => id }) as unknown as ModelResolver;
   return { resolver, seen };
 }
@@ -112,6 +130,8 @@ interface BootOptions {
   view?: StoreRegistry;
   /** How many stored rows the boot is expected to skip. Default none. */
   reloadProblems?: number;
+  /** Drive the model through `streamStep`, as a real provider's is. */
+  streaming?: boolean;
 }
 
 /**
@@ -119,7 +139,7 @@ interface BootOptions {
  * chief of staff and every stored hire, and a model playing `script`.
  */
 async function boot(stores: StoreRegistry, script: Step[], options: BootOptions = {}) {
-  const seen = stepModel(script);
+  const seen = stepModel(script, options.streaming);
   const registry = createFlowRegistry();
   const released: string[] = [];
   const kinds: NonNullable<HireOptions["kinds"]> = {};
@@ -272,6 +292,15 @@ describe("a fire, with fire asking first", () => {
     expect(await rosterRows(stores)).toEqual([HELPER]);
     expect(lab.registry.get(HELPER_ADDRESS)).toBeDefined();
     expect(lab.released).toEqual([]);
+  });
+
+  it("raises the same ask when the model streams, as a real provider's does", async () => {
+    const stores = freshStores();
+    await withHelperHired(stores);
+    const lab = await boot(stores, [call("fire", { seatId: HELPER }), say("waiting")], { askBefore: ["fire"], streaming: true });
+    expect((await lab.ask("let the helper go")).status).toBe("suspended");
+    expect((await pendingAsks(stores))[0]?.data).toEqual({ verb: "fire", seatId: HELPER, kind: "agent" });
+    expect(await rosterRows(stores)).toEqual([HELPER]);
   });
 
   it("on Approve removes the roster row, the address and the inventory row (BR-11)", async () => {

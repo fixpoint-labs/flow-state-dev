@@ -95,6 +95,12 @@ Pass a flow under a key that is not its own `kind` and the hire is refused. [Wor
 
 `readWorkforce` is Node-only (`@flow-state-dev/workforce/loader`). Import `hireWorkforce` from `@flow-state-dev/workforce`.
 
+## Projects, workstreams, and the seats that run them
+
+One seat helps a person run an organization. The chief of staff is who you ask who works here and who is on a channel. It also changes who works there: ask it for another seat and it hires one; ask it for one fewer and it puts the request in front of you to approve, and nothing is removed until you do. The seats it hires belong to the organization, and other seats ask it rather than hiring for themselves. It is a seat on the built-in `agent` kind, declared under `org/workers/`, and a Lab that doesn't add it doesn't have one. See [The chief of staff](./chief-of-staff).
+
+Workstream channels are declared on disk. The chief of staff reads them; it never opens, closes, or renames a channel.
+
 ## What it will not do
 
 Workforce does not staff a task board. It does not replace flows, sessions, or resources. Sessions and resources live on the flow copy you hired.
@@ -109,6 +115,7 @@ Workforce does not staff a task board. It does not replace flows, sessions, or r
 - [Code on disk](./code-on-disk) — your own flow kinds, blocks and capabilities in the same tree, registered by `fsdev gen`.
 - [Capabilities on disk](./capabilities-on-disk) — what a capability in a `resources/` folder gives a worker, and how a worker's file picks its presets.
 - [Hiring while the app runs](./durable-hire) — a roster hired at runtime, written to your store, reloaded on the next boot.
+- [The chief of staff](./chief-of-staff) — the one seat a person asks to hire or fire, with a fire waiting for their approval.
 - [Workforce components](./ui) — browse your flow kinds, instances and sessions, and render a roster and boards, with React components.
 - [Orchestration](../orchestration/overview) — the task board and the workers that drain it.
 - [Agents](../orchestration/agents) — board workers, `definePersona`, and `createWorkforceCapability`.

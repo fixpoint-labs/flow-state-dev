@@ -268,7 +268,7 @@ await runGoal(async () => {
     if (hired.status !== "completed") fail("hire", `the turn ended ${hired.status} (a hire must not wait for anyone)`);
     if (asksAfterHire !== 0) fail("hire", `${asksAfterHire} approval(s) were raised for a hire`);
     if (!afterHire.listed) fail("hire", `no inventory row for "${seat}": ${JSON.stringify(afterHire.inventory.map((r) => r.id))}`);
-    if (!afterHire.rostered) fail("hire", `no roster row for "${seat}"`);
+    if (!afterHire.rostered) fail("hire", `no roster row for "${seat}"; the chief of staff said ${(await api.lastReply(cosSession)).slice(0, 400)}`);
     address = afterHire.address;
     if (address !== undefined) {
       const answers = await api.openSession(address);
@@ -298,7 +298,7 @@ await runGoal(async () => {
     const ask = asks[0] as (Item & { data?: { verb?: string; seatId?: string; kind?: string | null } }) | undefined;
     const beforeAnswer = await reads(api, cosSession);
     if (fire.status !== "suspended" || ask === undefined) {
-      fail("ask", `the fire did not wait for a person: the turn ended ${fire.status} with ${asks.length} ask(s)`);
+      fail("ask", `the fire did not wait for a person: the turn ended ${fire.status} with ${asks.length} ask(s); the chief of staff said ${(await api.lastReply(cosSession)).slice(0, 400)}`);
     } else {
       if (ask.data?.verb !== "fire" || ask.data?.seatId !== seat) fail("ask", `the ask names ${JSON.stringify(ask.data)}`);
       if (!beforeAnswer.listed || !beforeAnswer.rostered) fail("ask", `"${seat}" changed before anyone answered`);

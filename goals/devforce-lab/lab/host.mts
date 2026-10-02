@@ -109,9 +109,13 @@ import {
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 
-/** Who the lab runs as, and the org every document read is bound to. */
+/**
+ * Who the lab runs as, and the org every document read is bound to. The org id
+ * is a legal address segment (lowercase, hyphenated) because a seat the chief
+ * of staff hires is addressed `<org>.<seatId>`.
+ */
 export const LAB_USER_ID = "u_devforce_lab";
-export const LAB_ORG_ID = "org_devforce_lab";
+export const LAB_ORG_ID = "devforce-lab";
 
 /**
  * Host-owned verified identity for this lab's HTTP door (FIX-1515).
@@ -498,7 +502,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // seat holds post, hire, fire and the repairs only by naming them in its
   // `tools:`, and in this tree only the chief of staff does. A hire lands at
   // once; a fire, and a repair always, waits for a person's Approve in Inbox,
-  // which needs durable execution (`ask` turns it on). The register reaches
+  // which needs durable execution (`ask` turns it on). The kind mounts no
+  // members' private roster, so the chief of staff lists, fires and repairs
+  // the organization's seats only. The register reaches
   // the flow state built below, so it is bound once that exists.
   const kinds: NonNullable<HireOptions["kinds"]> = {
     [EM_KIND]: emKind as never,
