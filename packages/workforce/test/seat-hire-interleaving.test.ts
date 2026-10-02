@@ -8,6 +8,13 @@
  * agree with itself: the roster row, the seat registered at the address and
  * the seat's inventory row all carry the same incarnation, or are absent, and
  * a declared seat's row is never touched.
+ *
+ * One state is allowed by name, because no read the engine offers a block
+ * can rule it out: a fire whose two collection snapshots were taken on either
+ * side of a hire's publish deletes that hire's roster row and seat but can't
+ * see its inventory row. What is left is an inventory row whose roster row is
+ * gone and whose seat isn't registered. That is accepted only if the team list
+ * leaves it out and the next fire of the seat removes it; anything else fails.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -19,6 +26,7 @@ import type { SeatHireCapabilityOptions } from "../src/seat-hire-blocks";
 import { defineHiredRosterCollection } from "../src/roster/collections";
 import { defineSeatInventoryCollection } from "../src/inventory/collections";
 import { incarnationOf } from "../src/roster/incarnation";
+import { listedSeatRows } from "../src/inventory/listed-seats";
 import { toHiredSeatRow } from "../src/roster/rows";
 import { workerConfigSchema } from "../src/worker-config";
 
@@ -42,8 +50,12 @@ const desk = defineFlow({
 type Op = { action: "hire" | "fire" | "rehire"; input: Record<string, unknown>; label: string };
 type Outcome = { label: string; error?: string };
 
-/** One app, one store, a live registry, and a store wrapper that can stop the primary. */
-async function world() {
+/**
+ * One app, one store, a live registry, and a store wrapper that can stop the
+ * primary. `lazyInventory` loads the seat inventory on first read instead of
+ * at action start, so a read of it is a store call a competitor can precede.
+ */
+async function world(options: { lazyInventory?: boolean } = {}) {
   const held = new Map<string, FlowInstance>();
   const blocks = createSeatHireBlocks({
     kinds: { desk },
@@ -62,7 +74,9 @@ async function world() {
     kind: "ops",
     resources: {
       [HIRED_ROSTER_RESOURCE]: defineHiredRosterCollection(),
-      [SEAT_INVENTORY_RESOURCE]: defineSeatInventoryCollection(),
+      [SEAT_INVENTORY_RESOURCE]: options.lazyInventory
+        ? { ...defineSeatInventoryCollection(), prefetchMode: "lazy" }
+        : defineSeatInventoryCollection(),
     },
     actions: { hire: { block: blocks.hire }, fire: { block: blocks.fire }, rehire: { block: blocks.rehire } },
   } as never)();
@@ -149,7 +163,12 @@ type World = Awaited<ReturnType<typeof world>>;
  * row's incarnation, a roster row with an incarnation is served and listed,
  * and `untouched` rows are exactly as seeded.
  */
-async function expectConsistent(w: World, seatId: string, untouched: Record<string, Record<string, unknown>>, story: string) {
+async function expectConsistent(
+  w: World,
+  seatId: string,
+  untouched: Record<string, Record<string, unknown>>,
+  story: string
+): Promise<boolean> {
   const address = `acme.${seatId}`;
   const roster = (await w.rows(ROSTER))[seatId];
   const inventory = (await w.rows(SEATS))[address];
@@ -160,6 +179,13 @@ async function expectConsistent(w: World, seatId: string, untouched: Record<stri
   if (live !== undefined) {
     expect(roster, `${story}: a seat is registered with no roster row — ${facts}`).toBeDefined();
     expect(incarnationOf(live), `${story}: the registered seat is another incarnation's — ${facts}`).toBe(rowIncarnation);
+  }
+  if (inventory !== undefined && typeof inventory.incarnation === "string" && roster === undefined && live === undefined) {
+    // The named window: hidden from the team list, and the next fire removes it.
+    expect(listedSeatRows("acme", [inventory as { id: string; hired: boolean }], []), `${story}: a stale row is listed — ${facts}`).toEqual([]);
+    expect((await w.run({ action: "fire", input: { seatId }, label: "next fire" })).error, `${story}: the next fire failed — ${facts}`).toBeUndefined();
+    expect((await w.rows(SEATS))[address], `${story}: the next fire left the stale row — ${facts}`).toBeUndefined();
+    return true;
   }
   if (inventory !== undefined && typeof inventory.incarnation === "string") {
     expect(rowIncarnation, `${story}: the inventory row is another incarnation's — ${facts}`).toBe(inventory.incarnation);
@@ -172,6 +198,7 @@ async function expectConsistent(w: World, seatId: string, untouched: Record<stri
     const now = key.startsWith(SEATS) ? (await w.rows(SEATS))[key.slice(SEATS.length)] : (await w.rows(ROSTER))[key.slice(ROSTER.length)];
     if (now !== undefined) expect(now, `${story}: ${key} was written over — ${facts}`).toEqual(value);
   }
+  return false;
 }
 
 /** Every way to place `count` competitors, in order, before the primary's calls 0..calls. */
@@ -196,21 +223,23 @@ async function everyInterleaving(
   setup: (w: World) => Promise<Record<string, Record<string, unknown>>>,
   primary: Op,
   competitors: Op[],
-  seatId: string
+  seatId: string,
+  options: { lazyInventory?: boolean } = {}
 ) {
-  const dry = await world();
+  const dry = await world(options);
   await setup(dry);
   const { calls } = await dry.interleave(primary, [], []);
   expect(calls).toBeGreaterThan(0);
   const runs = placements(competitors.length, calls);
+  const windows: string[] = [];
   for (const stops of runs) {
-    const w = await world();
+    const w = await world(options);
     const untouched = await setup(w);
     const { outcomes } = await w.interleave(primary, competitors, stops);
     const story = `${scenario}, stops ${JSON.stringify(stops)}: ${outcomes.map((o) => `${o.label} ${o.error === undefined ? "ok" : `refused (${o.error.slice(0, 60)})`}`).join("; ")}`;
-    await expectConsistent(w, seatId, untouched, story);
+    if (await expectConsistent(w, seatId, untouched, story)) windows.push(story);
   }
-  return runs.length;
+  return { runs: runs.length, windows };
 }
 
 const hireAda = (queue: string, label: string): Op => ({ action: "hire", input: { seatId: "support.ada", flow: "desk", settings: { queue } }, label });
@@ -218,12 +247,12 @@ const fireAda: Op = { action: "fire", input: { seatId: "support.ada" }, label: "
 
 describe("hire, fire and rehire interleaved at every store call", () => {
   it("a hire, with a fire and then a replacement hire landing at any two of its store calls", async () => {
-    const runs = await everyInterleaving("hire | fire, replacement hire", async () => ({}), hireAda("first", "hire"), [fireAda, hireAda("second", "replacement")], "support.ada");
+    const { runs, windows } = await everyInterleaving("hire | fire, replacement hire", async () => ({}), hireAda("first", "hire"), [fireAda, hireAda("second", "replacement")], "support.ada");
     expect(runs).toBeGreaterThan(10);
   }, 120_000);
 
   it("a fire, with a replacement hire landing at any of its store calls", async () => {
-    const runs = await everyInterleaving(
+    const { runs, windows } = await everyInterleaving(
       "fire | replacement hire",
       async (w) => {
         expect((await w.run(hireAda("first", "setup"))).error).toBeUndefined();
@@ -237,7 +266,7 @@ describe("hire, fire and rehire interleaved at every store call", () => {
   }, 120_000);
 
   it("a re-hire of a seat whose kind was cut, with a fire and then a replacement hire landing at any two of its store calls", async () => {
-    const runs = await everyInterleaving(
+    const { runs, windows } = await everyInterleaving(
       "rehire | fire, replacement hire",
       async (w) => {
         await w.seed(`${ROSTER}support.joe`, toHiredSeatRow({ seatId: "support.joe", flow: "desk-clerk", owningOrgId: "acme" }) as never);
@@ -254,11 +283,48 @@ describe("hire, fire and rehire interleaved at every store call", () => {
     expect(runs).toBeGreaterThan(10);
   }, 120_000);
 
+  it("a fire's retry with no roster row left (only its leftover inventory row), with a replacement hire landing at any of its store calls", async () => {
+    // What a fire that stopped between its two deletes leaves: no roster row,
+    // nothing registered, and the old hire's inventory row.
+    const { runs, windows } = await everyInterleaving(
+      "fire retry | replacement hire",
+      async (w) => {
+        await w.seed(`${SEATS}acme.support.ada`, { id: "acme.support.ada", kind: "desk", door: "run", hired: true, incarnation: "i-fired" });
+        return {};
+      },
+      fireAda,
+      [hireAda("second", "replacement")],
+      "support.ada"
+    );
+    expect(runs).toBeGreaterThan(2);
+    // The leftover path itself never reaches the named window; only the
+    // placement where the replacement finishes before fire reads anything,
+    // so fire takes the roster path, can.
+    expect(windows.every((story) => story.includes("stops [0]"))).toBe(true);
+  }, 120_000);
+
+  it("the same, with the inventory read when fire first asks for it rather than at action start", async () => {
+    // The read is then a store call after fire saw no roster row, so a
+    // replacement hire can finish in between and its row be the one read.
+    const { runs } = await everyInterleaving(
+      "fire retry (lazy inventory) | replacement hire",
+      async (w) => {
+        await w.seed(`${SEATS}acme.support.ada`, { id: "acme.support.ada", kind: "desk", door: "run", hired: true, incarnation: "i-fired" });
+        return {};
+      },
+      fireAda,
+      [hireAda("second", "replacement")],
+      "support.ada",
+      { lazyInventory: true }
+    );
+    expect(runs).toBeGreaterThan(2);
+  }, 120_000);
+
   it("fire of a row from before incarnations, with a declared seat's row at the same address: the declared row is never touched", async () => {
     // A team named like the organization declares `acme.support.ada`; a
     // roster row from before incarnations names the same address.
     const declared = { id: "acme.support.ada", kind: "desk", door: "run", hired: false, incarnation: null };
-    const runs = await everyInterleaving(
+    const { runs, windows } = await everyInterleaving(
       "fire (legacy row) | replacement hire",
       async (w) => {
         await w.seed(`${ROSTER}support.ada`, toHiredSeatRow({ seatId: "support.ada", flow: "desk", settings: { queue: "q" }, owningOrgId: "acme" }) as never);

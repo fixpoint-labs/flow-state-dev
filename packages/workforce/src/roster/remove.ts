@@ -41,20 +41,16 @@ export function isWriteConflict(error: unknown): boolean {
  * the one legacy path: firing a roster row from before incarnations removes
  * the row its older hire published. The delete is version-checked against the
  * row checked; when another writer changed it in between, the store hands
- * back the row that replaced it, which is checked again (`recheck`) or left.
- * Nothing here writes to a row it doesn't delete.
+ * back the row that replaced it, which is checked again. Callers pass an
+ * incarnation whose roster row is gone, so a row carrying it is stale
+ * whenever it was written. Nothing here writes to a row it doesn't delete.
  *
- * @param recheck Check a replacing row again. Used when `incarnation` is
- *   known dead (its roster row is gone), so a row carrying it is stale
- *   whenever it was written. Off where the decision rests on the call's own
- *   earlier reads, which a newer row would not match.
  * @returns whether a row was deleted.
  */
 export async function deleteOwnInventoryRow(
   inventory: ResourceCollectionRef,
   address: string,
-  incarnation: string | null,
-  recheck = true
+  incarnation: string | null
 ): Promise<boolean> {
   for (let attempt = 0; attempt < INVENTORY_RACE_ATTEMPTS; attempt += 1) {
     const row = await inventory.getOptional(address);
@@ -65,7 +61,6 @@ export async function deleteOwnInventoryRow(
       return true;
     } catch (error) {
       if (!isWriteConflict(error)) throw error;
-      if (!recheck) return false;
     }
   }
   return false;
@@ -133,15 +128,20 @@ export async function removeHiredSeat(options: RemoveHiredSeatOptions): Promise<
     // row itself says `hired: true`. A declared seat's row can sit at the same
     // address (a team named like the org), and a row that predates the field
     // can't say; both are left, and a team list hides the second.
-    if (options.isHeld(options.address)) return { outcome: "nothing", address: options.address };
     const leftover = await options.inventory.getOptional(options.address);
-    if (leftover === undefined || leftover.state.hired !== true) {
+    // Checked after the read, with no await before the delete is issued: a
+    // hire in this process registers its seat before it publishes, so a row
+    // a replacement hire published while the read was in flight is under a
+    // held address and is left. The delete is version-checked against the
+    // row read, so a row published after the read conflicts and is left too.
+    if (leftover === undefined || leftover.state.hired !== true || options.isHeld(options.address)) {
       return { outcome: "nothing", address: options.address };
     }
-    // Checked against the rows this call read, not re-read: a row written
-    // since may be a new hire's whose roster row this call didn't see.
-    if (!(await deleteOwnInventoryRow(options.inventory, options.address, incarnationOfRow(leftover.state), false))) {
-      return { outcome: "nothing", address: options.address };
+    try {
+      await options.inventory.delete(options.address);
+    } catch (error) {
+      if (isWriteConflict(error)) return { outcome: "nothing", address: options.address };
+      throw error;
     }
     return { outcome: "already-gone", address: options.address };
   }

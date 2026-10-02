@@ -604,7 +604,7 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         key: located.key,
         inventory,
         address: seatAddress(orgId, input.seatId, located.ownerUserId),
-        isHeld: (address) => options.kindAt?.(address) !== undefined,
+        isHeld: (address) => options.instanceAt?.(address) !== undefined || options.kindAt?.(address) !== undefined,
         release: (address, storedKind, incarnation) => {
           // With `instanceAt`, only the seat minted from this row is released:
           // checked and removed with no await between. A `null` incarnation
