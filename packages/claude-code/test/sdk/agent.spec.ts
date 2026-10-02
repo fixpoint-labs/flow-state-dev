@@ -457,7 +457,15 @@ describe("claudeCodeAgent", () => {
   // stdout to close, and the Claude Code SDK path has the same shape — so the
   // block must stop WAITING on its own signal rather than on the SDK's
   // generator settling.
+  //
+  // The block does wait a bounded grace for the vendor's process to exit (see
+  // the nested describe below). The vendors in these tests never exit, so they
+  // run with a short grace: what they pin is that the bound, not the vendor,
+  // decides when the block settles.
   describe("stops on ctx.signal firing, not on the SDK stream settling", () => {
+    /** A grace far inside each test's 500ms race bound. */
+    const NEVER_EXITS_GRACE_MS = 50;
+
     /** A `query` whose generator never advances past its first message, abort
      * or no abort — the fake vendor stream that never closes. */
     function hangingQueryAfterFirstMessage(onFirstMessage: () => void): ResolveClaudeAgent {
@@ -497,6 +505,7 @@ describe("claudeCodeAgent", () => {
       });
       const block = claudeCodeAgent({
         resolveClaudeAgent: hangingQueryAfterFirstMessage(() => sawFirstMessage()),
+        abortExitGraceMs: NEVER_EXITS_GRACE_MS,
       });
       const runtime = await createTestContext({ declaredResources: block.declaredResources });
       const controller = new AbortController();
@@ -523,6 +532,7 @@ describe("claudeCodeAgent", () => {
       });
       const block = claudeCodeAgent({
         resolveClaudeAgent: hangingQueryAfterFirstMessage(() => sawFirstMessage()),
+        abortExitGraceMs: NEVER_EXITS_GRACE_MS,
       });
       const runtime = await createTestContext({ declaredResources: block.declaredResources });
       const controller = new AbortController();
@@ -538,6 +548,94 @@ describe("claudeCodeAgent", () => {
       ).toBe("sess_seen_before_abort");
     });
 
+    // A run stopped right after it starts is the run a host resumes next — and
+    // the vendor's process keeps writing that session's transcript for a while
+    // after it is told to stop. Settling before it has exited hands the host a
+    // session id the vendor cannot find yet ("No conversation found").
+    describe("waits, bounded, for the vendor's process to exit before settling", () => {
+      /** A `query` shaped like the real SDK on abort: it honors the forwarded
+       * `abortController`, but its stream only ends once the process has
+       * exited — `lateWriteMs` after the abort, the window in which the
+       * transcript is still being written. Never ends without an abort. */
+      function vendorStillWritingAfterAbort(lateWriteMs: number) {
+        const state = { transcriptComplete: false, sawFirstMessage: Promise.resolve() };
+        let sawFirst: () => void = () => {};
+        state.sawFirstMessage = new Promise<void>((resolve) => {
+          sawFirst = resolve;
+        });
+        const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+          query: async function* (args) {
+            const signal = args.options!.abortController!.signal;
+            yield { type: "system", subtype: "init", session_id: "sess_early" } as SdkMessageLike;
+            sawFirst();
+            await new Promise<void>((resolve) => {
+              const exitLater = () =>
+                setTimeout(() => {
+                  state.transcriptComplete = true;
+                  resolve();
+                }, lateWriteMs);
+              if (signal.aborted) exitLater();
+              else signal.addEventListener("abort", exitLater, { once: true });
+            });
+            throw new DOMException("Claude Code process aborted by user", "AbortError");
+          },
+        });
+        return { state, resolveClaudeAgent };
+      }
+
+      it("does not settle an aborted run until the vendor's transcript is complete", async () => {
+        const vendor = vendorStillWritingAfterAbort(100);
+        const block = claudeCodeAgent({ resolveClaudeAgent: vendor.resolveClaudeAgent });
+        const runtime = await createTestContext({ declaredResources: block.declaredResources });
+        const controller = new AbortController();
+        (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        await vendor.state.sawFirstMessage;
+        controller.abort();
+
+        const caught = await withRaceTimeout(
+          runPromise!.then(
+            () => null,
+            (err) => err,
+          ),
+          2_000,
+        );
+        expect(isAbortLike(caught)).toBe(true);
+        // The id the host will resume from is persisted, and by the time the
+        // block hands control back the vendor has finished writing it.
+        expect(
+          (runtime.ctx.session.state as Record<string, unknown>)[SDK_SESSION_ID_KEY],
+        ).toBe("sess_early");
+        expect(vendor.state.transcriptComplete).toBe(true);
+      });
+
+      it("with abortExitGraceMs: 0, settles on the signal without waiting for the exit", async () => {
+        const vendor = vendorStillWritingAfterAbort(200);
+        const block = claudeCodeAgent({
+          resolveClaudeAgent: vendor.resolveClaudeAgent,
+          abortExitGraceMs: 0,
+        });
+        const runtime = await createTestContext({ declaredResources: block.declaredResources });
+        const controller = new AbortController();
+        (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        await vendor.state.sawFirstMessage;
+        controller.abort();
+
+        const caught = await withRaceTimeout(
+          runPromise!.then(
+            () => null,
+            (err) => err,
+          ),
+          100,
+        );
+        expect(isAbortLike(caught)).toBe(true);
+        expect(vendor.state.transcriptComplete).toBe(false);
+      });
+    });
+
     it("rejects immediately when ctx.signal is already aborted before the first message", async () => {
       let neverCalled = true;
       const resolveClaudeAgent: ResolveClaudeAgent = () => ({
@@ -546,7 +644,10 @@ describe("claudeCodeAgent", () => {
           await new Promise(() => {}); // never resolves
         },
       });
-      const block = claudeCodeAgent({ resolveClaudeAgent });
+      const block = claudeCodeAgent({
+        resolveClaudeAgent,
+        abortExitGraceMs: NEVER_EXITS_GRACE_MS,
+      });
       const runtime = await createTestContext({ declaredResources: block.declaredResources });
       (runtime.ctx as unknown as { signal: AbortSignal }).signal = AbortSignal.abort();
 
@@ -621,6 +722,7 @@ describe("claudeCodeAgent", () => {
       const block = claudeCodeAgent({
         resolveClaudeAgent,
         includePartialMessages: false,
+        abortExitGraceMs: NEVER_EXITS_GRACE_MS,
       });
       const runtime = await createTestContext({ declaredResources: block.declaredResources });
       const controller = new AbortController();
