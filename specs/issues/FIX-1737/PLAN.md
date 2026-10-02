@@ -27,6 +27,9 @@ board boxes (P8), the "3 sessions · user" footer line (F22), the orange `rounde
 
 ## PR plan
 
+Slice membership has one source, [`poc/scope/scope.json`](poc/scope/scope.json): `check.mjs`
+reads it and asserts this table's rows match it.
+
 | id | deliverables (audit rows) | depends_on |
 |---|---|---|
 | A · foundation and the check | S1 with the global rows (fonts, radius, surfaces, highlighter, widths) and the frame; S2–S6. F2, F3, F4, F5, F7, F8, F9, W4, C9, W12 | FIX-1736 merged |
@@ -57,8 +60,8 @@ Done is the assembled run on `main`, after D.
 | C2 | A | Leg c (`it-takes-its-look-from-the-design-system`) still passes, `hardcoded-accent` still fails |
 | C3 | C | `columns.test.ts` asserts column order, not only mapping |
 | C4 | each slice | Every BR-22 check passes and fails under its control |
-| D1 | G | The look table's rows each cite a v2 line; a row with none fails setup |
-| D2 | each PR | The slice touches only its rows' surfaces plus S10, S11 |
+| SP-1 | G | The look table's rows each cite a v2 line; a row with none fails setup |
+| SP-2 | each PR | The slice touches only its rows' surfaces plus S10, S11 |
 | SP | each PR | BP-035 second paths: night, 1100px, a Lab with no CoS seat, Inbox empty, Tasks with queued hidden and none queued |
 
 ## Pinned names
@@ -79,6 +82,7 @@ Done is the assembled run on `main`, after D.
 | No colour literal in shell code; new surfaces go through tokens | Leg c and the static colour check |
 | The highlighter is set only from a needs-you condition | v2's rule; a decorative use breaks **marks** in both directions |
 | A behaviour check is updated, never loosened | It keeps proving what it proved; its control is the proof |
+| The probe stays cheap: one navigation spine per lab (reuse `it-opens-a-lab`'s), shift and width toggled in place, one `page.evaluate` sweep per stable screen state, one store read for **content**, and `GOAL_PAGES` for partial runs on slice PRs | Per-element Playwright loops over 7 screens, 2 shifts and 2 widths make slice feedback slow enough to skip |
 
 ## Docs
 
@@ -91,7 +95,7 @@ helpers into `goals/lib` rather than copying.
 
 **POC:** `poc/scope/check.mjs` re-derives the counts from the audit: 117 rows, 110 gaps, 56 with
 Needs "—", 53 in scope (29 look, 6 layout, 18 content), slices 10/15/10/18. `--plant` adds an
-unclassified row and fails. Run before publishing: PASS, and FAIL under `--plant`.
+unclassified row and fails. It reads slices from `scope.json` and fails if this PR plan stops matching it. Run before publishing: PASS, and FAIL under `--plant`.
 
 ## At implement time
 

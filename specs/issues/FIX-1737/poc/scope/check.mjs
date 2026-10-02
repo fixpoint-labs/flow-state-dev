@@ -2,7 +2,7 @@
 /**
  * FIX-1737 scope check: re-derives the spec's row counts from the audit.
  *
- * Reads `../../assets/GAPS.md` (the 2026-10-02 audit, copied unedited), takes
+ * Reads `../../assets/GAPS.md` and `scope.json` (the one slice list) (the 2026-10-02 audit, copied unedited), takes
  * every gap row (an ID like F3 or K8; ✓ rows are matches, X rows are the
  * structure kept from v1), and asserts three things:
  *
@@ -11,6 +11,8 @@
  * 2. Scope: the in-scope set is exactly the rows whose Needs is "—", minus the
  *    rows OUT names (fonts, which FIX-1736 owns; registry-only rows).
  * 3. No sibling-blocked row is in a slice.
+ *
+ * 4. PLAN.md's PR plan table lists exactly scope.json's rows per slice.
  *
  * `--plant` adds a synthetic "—" row nobody classified. The check must then
  * fail on totality: that is its negative control.
@@ -25,20 +27,10 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const text = readFileSync(join(here, "../../assets/GAPS.md"), "utf8");
 
-/** The spec's PR plan (PLAN.md → PR plan), by audit row. */
-const SLICE = {
-  A: ["F2", "F3", "F4", "F5", "F7", "F8", "F9", "W4", "C9", "W12"],
-  B: ["F12", "F13", "F14", "F15", "F16", "F18", "F20", "F22", "C1", "C2", "C3", "C5", "C7", "C8", "C10"],
-  C: ["W1", "W5", "W11", "T7", "T9", "T13", "P2", "P5", "P7", "P8"],
-  D: ["I1", "I2", "I3", "I5", "I8", "I11", "I17", "I18", "K1", "K2", "K3", "K4", "K5", "K8", "K9", "R1", "R6", "R8"],
-};
-
-/** "—" rows this issue does not draw, with the owner. */
-const OUT_DRAWABLE = {
-  F1: "FIX-1736 (fonts)",
-  T4: "registry part (message, reasoning and tool cards)",
-  T6: "registry part (user message)",
-};
+/** Slice membership: the one source, shared with PLAN.md's PR plan. */
+const scope = JSON.parse(readFileSync(join(here, "scope.json"), "utf8"));
+const SLICE = scope.slices;
+const OUT_DRAWABLE = scope.outDrawable;
 
 const rows = [];
 for (const line of text.split("\n")) {
@@ -70,6 +62,29 @@ const audit = new Set(gaps.map((r) => r.id));
 for (const id of where.keys()) if (!audit.has(id)) failures.push(`${id} is classified but not in the audit`);
 for (const r of drawable) if (!where.has(r.id)) failures.push(`${r.id} has Needs "—" and is in no slice and not out`);
 for (const r of blocked) if (where.has(r.id) && where.get(r.id) !== "out") failures.push(`${r.id} waits on "${r.needs}" but is in slice ${where.get(r.id)}`);
+
+// PLAN.md's PR plan must restate scope.json, row for row.
+const plan = readFileSync(join(here, "../../PLAN.md"), "utf8");
+const expand = (tok) => {
+  const m = tok.match(/^([A-Z])(\d+)–\1?(\d+)$/) ?? tok.match(/^([A-Z])(\d+)–[A-Z](\d+)$/);
+  if (!m) return [tok];
+  const out = [];
+  for (let n = Number(m[2]); n <= Number(m[3]); n++) out.push(`${m[1]}${n}`);
+  return out;
+};
+let planRows = 0;
+for (const line of plan.split("\n")) {
+  const m = line.match(/^\| ([A-D]) · [^|]+ \| ([^|]+) \| [^|]+ \|$/);
+  if (!m) continue;
+  planRows++;
+  const cell = m[2].trim();
+  const list = cell.slice(cell.lastIndexOf(". ") + 2).replace(/\([^)]*\)/g, "");
+  const ids = list.split(",").map((t) => t.trim()).filter(Boolean).flatMap(expand);
+  const want = [...(SLICE[m[1]] ?? [])].sort().join(",");
+  if ([...ids].sort().join(",") !== want) failures.push(`PLAN.md slice ${m[1]} lists ${ids.join(",")}, scope.json has ${want}`);
+}
+
+if (planRows !== Object.keys(SLICE).length) failures.push(`PLAN.md's PR plan has ${planRows} slice rows, scope.json has ${Object.keys(SLICE).length}`);
 
 const inScope = drawable.filter((r) => where.get(r.id) && where.get(r.id) !== "out");
 const by = (list, key) => list.reduce((acc, r) => ((acc[r[key]] = (acc[r[key]] ?? 0) + 1), acc), {});

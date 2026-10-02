@@ -51,6 +51,9 @@ each look-table row cites its line. *Probe* is the goal check, `it-draws-v2s-loo
 
 ## Checks that pin copy
 
+The boundary: the probe grades the visible DOM against the store; the behaviour goals grade reach
+and interaction. A row in both is asserted once by each, for its own reason.
+
 | # | When | Then | Proved by |
 |---|---|---|---|
 | BR-22 | A slice changes copy or a test id a behaviour check pins (F22, I3, I8, I18, K1, K4, K5, R6, W11, W12, T7) | That check is updated in the same PR, asserts the same intent, and still fails under its control | The check's control run, in the PR |

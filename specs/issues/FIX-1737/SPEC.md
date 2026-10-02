@@ -12,8 +12,10 @@
 | **reviews a screen against the design** | Holds a screenshot beside a template that can't be rendered | Reads one check that names the element and the v2 line it departs from |
 | **decides whether the epic is done** | No check notices any of the 51 look and layout gaps | The closure's leg d runs that check on the closure commit |
 
-The audit ([`assets/GAPS.md`](assets/GAPS.md), 2026-10-02) found 110 gaps from v2; 53 can be
-drawn now and are this issue's.
+**The counts, once.** The audit ([`assets/GAPS.md`](assets/GAPS.md), 2026-10-02) found 110 gaps
+from v2 → 56 with Needs "—" (no sibling's data) → minus F1 (FIX-1736) and T4, T6 (registry
+cards) → **53 in scope: 29 look + 6 layout + 18 content**. The 51 above is the audit's look and
+layout total across all 110 rows, drawable or not.
 
 ## The goal, and how we'll know it's met
 
