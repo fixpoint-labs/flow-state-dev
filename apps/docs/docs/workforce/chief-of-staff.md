@@ -51,7 +51,7 @@ import {
 } from "@flow-state-dev/workforce";
 
 import { deskClerkFlow } from "./flows/desk-clerk";
-import { kindAt, registerSeat, releaseSeat } from "./registry-access";
+import { instanceAt, kindAt, registerSeat, releaseSeat } from "./registry-access";
 import { roster } from "./roster";
 
 // Typed as the whole map, so the `agent` entry can be added below.
@@ -62,6 +62,7 @@ const seatHire = createSeatHireCapability({
   register: registerSeat,
   unregister: releaseSeat,
   kindAt,
+  instanceAt,
   allowKinds: ["desk-clerk", "agent"],
   askBefore: ["fire"],
 });
@@ -78,7 +79,7 @@ kinds.agent = defineAgentWorkerFlow({
 });
 ```
 
-`registry-access.ts` is the module from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate), with one more export: `kindAt(address)` returns the kind of the flow registered at that address, read from `(await flowState.getRuntime()).registry` once the app is up. The hire tools use it to refuse a declared seat by name.
+`registry-access.ts` is the module from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate), with two more exports, both read from `(await flowState.getRuntime()).registry` once the app is up. `kindAt(address)` returns the kind of the flow registered at that address; the hire tools use it to refuse a declared seat by name. `instanceAt(address)` returns the instance itself. A re-hire that a restart stopped part-way uses it to recognize the seat the restart registered from its row as its own and finish, instead of failing on a duplicate id. `fire` uses it to release only the seat its row minted.
 
 `createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
 
@@ -151,4 +152,5 @@ Asking needs durable execution, so turn it on with `durable: true` on `createFlo
 - **Fire itself, or any declared seat.** `fire` answers that a seat declared in a worker file is removed by editing its folder.
 - **Hire under a declared seat's id.** A hire that reuses one is refused, naming the kind already there.
 - **Hire a kind outside `allowKinds`.** The refusal lists the kinds it may hire.
+- **Hire another seat that can hire.** A hire or re-hire whose settings name `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or pick the `seat-hire` capability under `capabilities:`, is refused, whatever the kind. Roster admin stays with the seats your app declares.
 - **Open, close or rename a channel.** Channels are declared on disk.

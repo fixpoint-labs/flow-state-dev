@@ -278,6 +278,23 @@ describe("a hire, with only fire asking first (BR-8)", () => {
   });
 });
 
+describe("roster admin stays with the seats an app declares", () => {
+  it("refuses a hire whose settings grant the roster tools, by a tools line or by picking the seat-hire capability", async () => {
+    // Only the chief of staff hires and fires: a seat it hires can't be handed
+    // the same tools, whatever the kind.
+    const stores = freshStores();
+    const lab = await boot(stores, [
+      call("hire", { seatId: "deputy", flow: "agent", settings: { tools: ["hire", "fire"] } }, "h1"),
+      call("hire", { seatId: "deputy2", flow: "agent", settings: { capabilities: { "seat-hire": ["tools"] } } }, "h2"),
+      say("done"),
+    ]);
+    expect((await lab.ask("hire two deputies who can hire")).status).toBe("completed");
+    const results = lastToolResults(lab.seen);
+    expect(results.match(/roster tools are the chief of staff's/g)).toHaveLength(2);
+    expect(await rosterRows(stores)).toEqual([]);
+  });
+});
+
 describe("a fire, with fire asking first", () => {
   it("raises one human_approval naming the verb, the seat and its kind, and changes nothing yet (BR-10)", async () => {
     const stores = freshStores();
