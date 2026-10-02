@@ -30,7 +30,7 @@ import { projectsOf, talkFor, teamsOf, type ListedWorkstream, type LoadedSnapsho
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Failure, type Project, type Workstream } from "../lib/reads";
 import { navigate, NO_PROJECT, PROJECT_TABS, type ProjectTab } from "../lib/routes";
-import { asTranscriptLine, joinRoom, postToRoom, readRoom, TalkRefused, untilAnswered, type RoomLine } from "../lib/talk";
+import { asTranscriptLine, joinRoom, postToRoom, readRoom, readRoomPages, ROOM_KIND, TalkRefused, untilAnswered, type RoomLine } from "../lib/talk";
 import type { Gaps } from "../gaps";
 import { Composer, TranscriptLines } from "./Stream";
 
@@ -94,10 +94,9 @@ export function ProjectView({
       );
     } else {
       title = group.project.title;
-      const talkKind = snapshot.projects.ok ? snapshot.projects.value.talkKind : null;
       body =
         tab === "stream" ? (
-          <ProjectStream key={group.project.id} project={group.project} talkKind={talkKind} />
+          <ProjectStream key={group.project.id} project={group.project} />
         ) : tab === "brief" ? (
           group.project.brief === null ? (
             <EmptyState title="No brief" testId="project-brief-none">
@@ -210,23 +209,22 @@ function Lanes({ snapshot, listed, gaps }: { snapshot: LoadedSnapshot; listed: r
 }
 
 /** The project's room, as this person reaches it (BR-23, BR-24). */
-function ProjectStream({ project, talkKind }: { project: Project; talkKind: string | null }) {
+function ProjectStream({ project }: { project: Project }) {
   const { clients, refresh } = useLab();
   const talk = talkFor(project, clients.userId);
   const [joining, setJoining] = useState<{ failure: Failure } | "running" | undefined>(undefined);
 
   const join = useCallback(async () => {
-    if (talkKind === null) return;
     setJoining("running");
     try {
-      await joinRoom(clients, talkKind, project.id);
+      await joinRoom(clients, ROOM_KIND, project.id);
       // The row now lists this person's talk session; the next snapshot draws it.
       await refresh();
       setJoining(undefined);
     } catch (error) {
       setJoining({ failure: describeFailure(error) });
     }
-  }, [clients, project.id, refresh, talkKind]);
+  }, [clients, project.id, refresh]);
 
   // An owner the mint at create missed is bound on open (BR-8a).
   const repaired = useRef(false);
@@ -240,13 +238,6 @@ function ProjectStream({ project, talkKind }: { project: Project; talkKind: stri
     return (
       <EmptyState title="This room is for the project's members" testId="project-stream-members-only">
         You can see that this project exists and what it holds. Only its members read and post its conversation.
-      </EmptyState>
-    );
-  }
-  if (talkKind === null) {
-    return (
-      <EmptyState title="No room to read" testId="project-stream-no-kind">
-        None of this Lab's flows you hold a session on serves project rooms, so there is no way in from here.
       </EmptyState>
     );
   }
@@ -270,7 +261,7 @@ function ProjectStream({ project, talkKind }: { project: Project; talkKind: stri
       </EmptyState>
     );
   }
-  return <Room key={talk.sessionId} sessionId={talk.sessionId} talkKind={talkKind} />;
+  return <Room key={talk.sessionId} sessionId={talk.sessionId} />;
 }
 
 /**
@@ -278,7 +269,7 @@ function ProjectStream({ project, talkKind }: { project: Project; talkKind: stri
  * after this person's post has woken the room's seats. The cursor lives in the
  * view; nothing about it is stored.
  */
-function Room({ sessionId, talkKind }: { sessionId: string; talkKind: string }) {
+function Room({ sessionId }: { sessionId: string }) {
   const { clients } = useLab();
   const [lines, setLines] = useState<ChannelTranscriptLine[] | undefined>(undefined);
   const [failure, setFailure] = useState<{ failure: Failure; refused: boolean } | undefined>(undefined);
@@ -298,16 +289,17 @@ function Room({ sessionId, talkKind }: { sessionId: string; talkKind: string }) 
     const next = (async () => {
       await previous?.catch(() => undefined);
       try {
-        for (;;) {
-          const page = await readRoom(clients, talkKind, sessionId, cursor.current);
-          held.current = [...held.current, ...page.lines];
-          seats.current = page.seats;
-          const fresh = page.lines.map(asTranscriptLine);
-          setLines((shown) => mergeLines(shown ?? [], fresh));
-          if (page.nextCursor <= cursor.current) break;
-          cursor.current = page.nextCursor;
-          if (page.lines.length === 0) break;
-        }
+        await readRoomPages(
+          (after) => readRoom(clients, ROOM_KIND, sessionId, after),
+          cursor.current,
+          (page) => {
+            held.current = [...held.current, ...page.lines];
+            seats.current = page.seats;
+            const fresh = page.lines.map(asTranscriptLine);
+            setLines((shown) => mergeLines(shown ?? [], fresh));
+            cursor.current = Math.max(cursor.current, page.nextCursor);
+          },
+        );
         setFailure(undefined);
         return held.current;
       } catch (error) {
@@ -317,7 +309,7 @@ function Room({ sessionId, talkKind }: { sessionId: string; talkKind: string }) 
     })();
     reading.current = next;
     return next;
-  }, [clients, sessionId, talkKind]);
+  }, [clients, sessionId]);
   const retry = () => void readNew().catch(() => undefined);
 
   useEffect(() => {
@@ -362,7 +354,7 @@ function Room({ sessionId, talkKind }: { sessionId: string; talkKind: string }) 
         label="Post to this project's room"
         placeholder="Post a line to the project's room…"
         send={async (body) => {
-          lastPost.current = (await postToRoom(clients, talkKind, sessionId, body)).seq;
+          lastPost.current = (await postToRoom(clients, ROOM_KIND, sessionId, body)).seq;
         }}
         onKept={async () => {
           // Thrown when the read fails: the composer keeps the draft and says so.

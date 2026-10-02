@@ -22,6 +22,14 @@ import { ClientHttpError } from "@flow-state-dev/client";
 import type { LabClients } from "./connection";
 import { describeFailure } from "./reads";
 
+/**
+ * The flow kind every project's room is on: workforce's built-in channel kind
+ * (`CHANNEL_KIND`), whichever kind a workstream runs on or the projects were
+ * read through. Spelled here because the workforce browser entry doesn't
+ * export it; `static.test.ts` pins the two together.
+ */
+export const ROOM_KIND = "channel";
+
 /** One line of a room, as `read` returns it. */
 export type RoomLine = { projectId: string; seq: number; userId: string; author: string | null; body: string; tombstone?: boolean };
 
@@ -115,6 +123,24 @@ export async function readRoom(clients: LabClients, kind: string, sessionId: str
     charter: typeof page.charter === "string" ? page.charter : "",
     seats: Array.isArray(page.seats) ? page.seats : [],
   };
+}
+
+/**
+ * Read every page of a room after `after`, handing each page to `onPage` as
+ * it arrives, until the cursor stops advancing.
+ *
+ * @returns the cursor to read after next.
+ */
+export async function readRoomPages(page: (after: number) => Promise<RoomPage>, after: number, onPage: (page: RoomPage) => void): Promise<number> {
+  let cursor = after;
+  for (;;) {
+    const read = await page(cursor);
+    onPage(read);
+    // A page can be empty and still move the cursor: every line on it was a
+    // tombstone. Only a cursor that stops moving ends the read.
+    if (read.nextCursor <= cursor) return cursor;
+    cursor = read.nextCursor;
+  }
 }
 
 /** Post a line into the room as the person, through their talk session. */

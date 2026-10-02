@@ -105,6 +105,12 @@ describe("V8", () => {
     expect(namedIn(`const seat = "${planted}";`, names)).toEqual([planted]);
   });
 
+  it("reaches project rooms on workforce's built-in channel kind", async () => {
+    const { CHANNEL_KIND } = await import("@flow-state-dev/workforce");
+    const { ROOM_KIND } = await import("../src/lib/talk");
+    expect(ROOM_KIND).toBe(CHANNEL_KIND);
+  });
+
   it("draws no literal colour outside the token definitions", () => {
     expect(sources.length).toBeGreaterThan(10);
     expect(sources.flatMap((file) => literalColours(file, readFileSync(file, "utf8")))).toEqual([]);

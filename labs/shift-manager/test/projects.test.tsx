@@ -14,7 +14,7 @@ import { GAPS } from "../src/gaps";
 import { createLabClients, type LabClients } from "../src/lib/connection";
 import { projectsOf, talkFor, type LoadedSnapshot } from "../src/lib/derive";
 import type { Project } from "../src/lib/reads";
-import { postToRoom, readRoom, TalkRefused, untilAnswered, type RoomLine } from "../src/lib/talk";
+import { postToRoom, readRoom, readRoomPages, TalkRefused, untilAnswered, type RoomLine, type RoomPage } from "../src/lib/talk";
 import { ClientHttpError } from "@flow-state-dev/client";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -56,6 +56,38 @@ async function storedRow(baseUrl: string, id: string): Promise<Project> {
   const row = body.items.map((i) => i.clientData).find((p) => p.id === id);
   if (row === undefined) throw new Error(`no project ${id} stored`);
   return row;
+}
+
+/**
+ * Serve the inventory's channel rows rewritten by `rewrite`, as a Lab whose
+ * inventory says that would answer. Everything else goes to the Lab as is.
+ * Returns the path of every action request sent, in order.
+ */
+function rewriteChannelRows(
+  baseUrl: string,
+  rewrite: (rows: Array<{ clientData: Record<string, unknown> }>) => Array<{ clientData: Record<string, unknown> }>,
+): { actions: string[] } {
+  const real = globalThis.fetch;
+  const actions: string[] = [];
+  let channelsRef: Promise<string> | undefined;
+  const refOf = () =>
+    (channelsRef ??= real(`${baseUrl}/api/flows/sessions/ops.desk/manifest`)
+      .then((r) => r.json())
+      .then((m: { resources: Array<{ kind: string; pattern: string; ref: string }> }) => {
+        const found = m.resources.find((r) => r.kind === "collection" && r.pattern === "inventory/channels/*");
+        if (found === undefined) throw new Error("the ask-lab's channel kind declares no channel inventory");
+        return found.ref;
+      }));
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (/\/actions\//.test(url)) actions.push(url.replace(/^https?:\/\/[^/]+/, "").split("?")[0]!);
+    if (new RegExp(`/resources/${encodeURIComponent(await refOf())}(\\?|$)`).test(url)) {
+      const body = (await (await real(input, init)).json()) as { items: Array<{ clientData: Record<string, unknown> }> };
+      return new Response(JSON.stringify({ ...body, items: rewrite(body.items) }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return real(input, init);
+  });
+  return { actions };
 }
 
 function openApp(baseUrl: string, path: string, userId = ASK_LAB_USER_ID): LabClients {
@@ -100,6 +132,14 @@ describe("PROJECTS (BR-22, D3)", () => {
     expect(screen.getAllByTestId("project-group")).toHaveLength(1);
     expect(screen.getByTestId("nav-workstream-ops.desk")).toBeTruthy();
     expect(screen.getByTestId("nav-workstream-ops.side")).toBeTruthy();
+  });
+
+  it("a Lab whose inventory lists seats and projects but no workstreams still shows its projects", async () => {
+    const { baseUrl } = await lab();
+    rewriteChannelRows(baseUrl, () => []);
+    openApp(baseUrl, "/inbox");
+    await screen.findByTestId("nav-project-desk", undefined, { timeout: 10_000 });
+    expect(screen.getAllByTestId("project-group").map((g) => g.getAttribute("data-project-id"))).toEqual(["desk", "empty"]);
   });
 
   it("a failed projects read shows its failed-read state with Retry, and Retry reads it again (BR-30)", async () => {
@@ -233,6 +273,20 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
     await waitFor(() => expect(screen.queryByTestId("room-failure")).toBeNull());
   });
 
+  it("a room on a workstream of a custom kind is still opened, read and posted on the built-in channel kind", async () => {
+    const { baseUrl } = await lab();
+    // The inventory says every workstream runs on an app's own kind. Rooms are
+    // always the built-in channel kind's, whatever kind carried the projects read.
+    const { actions } = rewriteChannelRows(baseUrl, (rows) => rows.map((r) => ({ ...r, clientData: { ...r.clientData, kind: "desk-kind" } })));
+    openApp(baseUrl, "/p/desk/stream");
+    await screen.findByTestId("stream", undefined, { timeout: 10_000 });
+    fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "posted beside a custom kind" } });
+    act(() => fireEvent.click(screen.getByTestId("composer-send")));
+    await waitFor(() => expect(screen.getAllByTestId("transcript-line-body").map((b) => b.textContent)).toContain("posted beside a custom kind"), { timeout: 10_000 });
+    expect(actions.length).toBeGreaterThan(0);
+    expect(actions.filter((path) => !path.startsWith("/api/flows/channel/"))).toEqual([]);
+  });
+
   it("only the Lab's own answer is a refusal: a 4xx or a failed request is TalkRefused, a 5xx is thrown as it came", async () => {
     const fake = (send: () => Promise<unknown>, status = "completed", error?: string) =>
       ({
@@ -251,6 +305,20 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
     const unreachable = postToRoom(fake(() => Promise.reject(new ClientHttpError("upstream", { status: 503, body: null }))), "channel", "s", "x");
     await expect(unreachable).rejects.toBeInstanceOf(ClientHttpError);
     await expect(postToRoom(fake(() => Promise.reject(new TypeError("fetch failed"))), "channel", "s", "x")).rejects.not.toBeInstanceOf(TalkRefused);
+  });
+
+  it("a page holding only tombstones moves the cursor on, and the lines after it are read", async () => {
+    const line = (seq: number, body: string): RoomLine => ({ projectId: "p", seq, userId: ASK_LAB_USER_ID, author: null, body });
+    // What `readRoom` hands back: tombstones already dropped, so the first page is empty but its cursor moved.
+    const pages = new Map<number, RoomPage>([
+      [0, { lines: [], nextCursor: 50, charter: "", seats: [] }],
+      [50, { lines: [line(51, "after the gap"), line(52, "and one more")], nextCursor: 52, charter: "", seats: [] }],
+      [52, { lines: [], nextCursor: 52, charter: "", seats: [] }],
+    ]);
+    const seen: string[] = [];
+    const cursor = await readRoomPages(async (after) => pages.get(after)!, 0, (p) => seen.push(...p.lines.map((l) => l.body)));
+    expect(seen).toEqual(["after the gap", "and one more"]);
+    expect(cursor).toBe(52);
   });
 
   it("after a post, waits for each seat's answer however long it takes, not for a quiet spell", async () => {
@@ -336,7 +404,7 @@ describe("grouping is the snapshot's (V4)", () => {
           ],
         },
       },
-      projects: { ok: true, value: { rows, talkKind: "channel" } },
+      projects: { ok: true, value: { rows } },
       boards: {},
       asks: { ok: true, value: [] },
       resources: { ok: true, value: [] },
