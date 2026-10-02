@@ -27,7 +27,8 @@
  * that prefix; {@link membershipKey} spells the row.
  *
  * These keys are a public surface. Moving one is a breaking change for any app
- * whose rows are already persisted, because nothing here ever deletes a row.
+ * whose rows are already persisted. The boot binder never deletes a row; the
+ * one delete is `fire`'s, of a hired seat's own row in `inventory/seats/`.
  *
  * ## The browser read
  *
@@ -50,7 +51,9 @@
  * Each read names its fields with `expose` rather than the identity default
  * (BP-015), so a key added to a row later stays server-side until someone adds
  * it to the list. A row means *was registered in this organization*, not *is
- * open now*: nothing deletes one, so a reader must label it that way.
+ * open now*, so a reader must label it that way. Firing a hired seat removes
+ * its row; a row an earlier version's fire left behind has no roster row, and
+ * `listedSeatRows` is the join that hides it.
  */
 
 import { defineResourceCollection } from "@flow-state-dev/core";
@@ -85,6 +88,24 @@ export const seatInventoryRowSchema = z.object({
    * boot rewrites it.
    */
   door: z.string().nullable().default(null),
+  /**
+   * Where the seat came from: `true` for a seat hired at runtime (its id is
+   * its address, `<org>.<seatId>`), `false` for a declared one. A team list
+   * reads this rather than the id's shape, because a declared team can share
+   * the organization's name. `null` on a row written before the field existed
+   * (BP-023, BP-030), or by a caller that couldn't say; the next boot rewrites
+   * a seat that is still registered.
+   */
+  hired: z.boolean().nullable().default(null),
+  /**
+   * The incarnation of the hire or repair that published this row (see
+   * `roster/incarnation.ts`). Fire deletes a hired seat's row only when it
+   * carries the incarnation fired (`null` only for a roster row from before
+   * incarnations), so a seat hired again at the same address keeps its row,
+   * and never deletes a declared seat's. `null` on a declared seat's row and
+   * on a row written before the field (BP-023, BP-030).
+   */
+  incarnation: z.string().nullable().default(null),
 });
 
 /** One row of the seat inventory. @see seatInventoryRowSchema */
@@ -157,7 +178,7 @@ const SHARED_ACROSS_FLOWS = false;
  * schema declares today, named rather than defaulted (BP-015). A key a later
  * change adds to a row stays server-side until it is added here too.
  */
-const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door"] as const;
+const SEAT_INVENTORY_CLIENT_FIELDS = ["id", "kind", "door", "hired", "incarnation"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */
 const CHANNEL_INVENTORY_CLIENT_FIELDS = ["id", "kind", "members", "openedAt"] as const;
 /** @see SEAT_INVENTORY_CLIENT_FIELDS */

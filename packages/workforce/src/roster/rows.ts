@@ -61,6 +61,8 @@ export function toHiredSeatRow(input: {
    * org may see it. A user-owned row is stored under a nested key.
    */
   ownerUserId?: string | null;
+  /** The incarnation this write brings into being; `null` — the default — stamps none. */
+  incarnation?: string | null;
 }): HiredSeatRow {
   const instructions =
     typeof input.instructions === "string" && input.instructions.trim().length > 0
@@ -73,6 +75,8 @@ export function toHiredSeatRow(input: {
     instructions,
     owningOrgId: input.owningOrgId ?? null,
     ownerUserId: input.ownerUserId ?? null,
+    pendingRepair: null,
+    incarnation: input.incarnation ?? null,
   };
 }
 

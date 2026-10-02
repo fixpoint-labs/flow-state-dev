@@ -19,8 +19,14 @@ import type { InstanceOwnerPin } from "@flow-state-dev/core/types";
  */
 export interface WorkerManifest {
   /**
-   * Team-qualified identity, "<teamId>.<name>" — e.g. "engineering.lead". The whole
-   * identity and the flow address.
+   * The worker's identity and flow address. On a file-declared record it is one
+   * of two declared shapes:
+   * - a team seat (`teams/<teamId>/workers/<name>/`) is "<teamId>.<name>", e.g. "engineering.lead";
+   * - an org seat (`org/workers/<name>/`) has no team and is the bare "<name>", e.g. "chief-of-staff".
+   * On a runtime hire it is the org-qualified address instead, and the declared
+   * id is {@link WorkerManifest.seatId}. To read a seat's team, parse
+   * `manifest.seatId ?? manifest.id` with `parseDeclaredSeatId` rather than
+   * splitting on the dot; never parse a hire's `id`, whose org reads as a team.
    * Dot-joined, not slash-joined: a "/" here is unroutable (decision 2).
    * Minted once, by the loader, in one helper — and the record's only identity field.
    */
@@ -33,7 +39,7 @@ export interface WorkerManifest {
    */
   body: string;
   /**
-   * The skills this seat can see — the org ∪ team ∪ own-folder union, already
+   * The skills this seat can see — the org ∪ team (team seats only) ∪ own-folder union, already
    * resolved, in level order.
    *
    * Filled by the joined loader (`readWorkforce`) and **absent on a hand-built
@@ -59,7 +65,8 @@ export interface WorkerManifest {
    * Absent rather than empty when a team wrote nothing, all the way down: it
    * reaches a hired flow as `config.teamInstructions` ({@link
    * TEAM_INSTRUCTIONS_KEY}) only when it is here, so a team with no file
-   * changes nothing about the bag its seats receive.
+   * changes nothing about the bag its seats receive. Always absent on an org
+   * seat, which has no team.
    *
    * Never merged with {@link WorkerManifest.body}. Two layers that cannot be
    * told apart at the seam are one layer, and a kind that wants only the seat's
@@ -84,7 +91,8 @@ export interface WorkerManifest {
    */
   ownerPin?: InstanceOwnerPin;
   /**
-   * The seat's logical id, as a channel's `members:` lists it (`"<teamId>.<name>"`).
+   * The seat's logical id, as a channel's `members:` lists it: `"<teamId>.<name>"`
+   * for a team seat, the bare `"<name>"` for an org seat.
    * Set by a hire row, never by a `WORKER.md`. Absent, the hire uses
    * {@link WorkerManifest.id}, which on a file record is that id. A hired
    * record's `id` is its org-qualified address, so the row carries this.
@@ -275,9 +283,9 @@ export interface PackageManifest {
   path: string;
   /** Where the folder sits: the org's library, a team's library, or one worker's own folder. */
   level: "org" | "team" | "worker";
-  /** The team whose folder holds it. Set at the `team` and `worker` levels. */
+  /** The team whose folder holds it. Set at the `team` level, and at the `worker` level for a team seat. */
   team?: string;
-  /** The worker id (`<team>.<worker>`) whose folder holds it. Set at the `worker` level only. */
+  /** The worker id (`<team>.<worker>`, or `<worker>` for an org seat) whose folder holds it. Set at the `worker` level only. */
   worker?: string;
   /** The file's required `description` — a label for people, never handed to a model. */
   description: string;

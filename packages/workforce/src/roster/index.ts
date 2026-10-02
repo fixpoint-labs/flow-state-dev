@@ -4,7 +4,10 @@
  * `collections.ts` owns what is stored and why the write verb matters.
  * `rows.ts` owns what a row means and what a hired seat is called.
  * `reload.ts` owns reading the whole thing back at boot, and which failures
- * stop that boot. This file only re-exports.
+ * stop that boot. `check.ts` owns the per-row answer the reload and
+ * `brokenSeats` share. `remove.ts` owns the one removal of a hired seat, and `locate.ts`
+ * which roster row a seat id names for the caller.
+ * This file only re-exports.
  */
 
 export {
@@ -34,6 +37,20 @@ export {
   hiredSeatOwnerPinFromRosterOwner,
   registerHiredSeat,
 } from "./register-hired-seat";
+
+export {
+  resolveHiredSeatLocation,
+  type HiredSeatLocation,
+  type HiredSeatOwner,
+  type ResolveHiredSeatLocationOptions,
+} from "./locate";
+
+export {
+  removeHiredSeat,
+  type HiredSeatRelease,
+  type RemoveHiredSeatOptions,
+  type RemovedHiredSeat,
+} from "./remove";
 
 export {
   DEFAULT_MAX_RELOAD_ORGS,

@@ -118,7 +118,8 @@ ships, or to the sibling that will ship it; until then, the surface shows its na
   One sidebar replaces the rail and sidebar: the org switcher, Jump to (⌘K), Chief of Staff,
   Inbox and Tasks (which replaced v1's NEEDS YOU section: owner input, screens 04 and 05),
   Roster, the PROJECTS tree (a project, then its workstreams as `#channels` with progress),
-  TEAMS, the Day/Night switch, and a footer with the sessions live and the user.
+  TEAMS, the Day/Night switch, and a footer with the on-shift and on-call counts and the user's
+  initials, as v2 draws it (amended 2026-10-02; it read "the sessions live and the user").
   **TEAMS is one row per team of status squares, one per worker, opening Roster filtered to that
   team**: v2's answer to Jake's v1 correction (workers listed below each team), adopted
   2026-10-01 ([EVOLUTION.md](EVOLUTION.md#amendment--2026-10-01--design-v2s-structure)). Three
@@ -164,6 +165,10 @@ ships, or to the sibling that will ship it; until then, the surface shows its na
   exists. Its name and folder are FIX-1655's call.
 - **No second full theme.** Its only consumer was the proof. Neutral values are the token
   set's defaults, which any app loading no theme already sees, so leg c renders with none.
+- **The look is v2's, not only its values** (amended 2026-10-02, [ER-16](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt)).
+  Type with both fonts loaded, surfaces, square corners, marks and proportions follow v2 on
+  every screen, except where a sibling's data, the kept v1 structure or a registry part decides.
+  FIX-1736 and FIX-1737 own it; the closure's leg d checks it.
 - **Final visuals wait for the final hand-back; structure does not.** The token contract with
   its neutral defaults, the levels and the bindings start at the gate. v1 fixes structure and
   may seed draft values; theme values and final layout merge after the final hand-back
@@ -228,3 +233,8 @@ and reach), and the one code seam, tokens mapped onto `--fsd-nav-*`, already wor
 - **Amendment (Oct 1), ER-10, Jake's call "handle them here"**: design v2's Chief of Staff
   (FIX-1722), Roster with TEAMS as status squares (FIX-1723) and the Day/Night switch (FIX-1725)
   joined the set; v2's removed tabs did not. [EVOLUTION.md](EVOLUTION.md#amendment--2026-10-01--design-v2s-structure).
+- **Amendment (Oct 2), v2's look**: Jake asked whether the epic delivers v2's theme and base UI.
+  An audit found 110 gaps between the shipped shell and v2, 53 drawable now and none checked.
+  The epic now targets v2's look for everything not blocked on sibling data: FIX-1736 (fonts)
+  and FIX-1737 (the rest, with the screen-vs-v2 check) joined, and the closure gained leg d.
+  [EVOLUTION.md](EVOLUTION.md#amendment--2026-10-02--v2s-look).

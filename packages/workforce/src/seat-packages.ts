@@ -19,6 +19,7 @@ import {
   packageResourceMessage,
   type PackageManifest
 } from "./manifest";
+import { parseDeclaredSeatId } from "./seat-references";
 
 /** One package a seat holds, with the blocks its address carries on the generated map. */
 export interface HeldPackage {
@@ -37,9 +38,10 @@ export interface HeldPackages {
  * The packages one seat holds: its own folder's, then the ones its
  * `packages:` line names, nearest library first.
  *
- * @param seatId The seat's id, for the folders a refusal names. Its
- *   second-to-last segment is the team (`<team>.<worker>`, or
- *   `<org>.<team>.<worker>` for a hired seat).
+ * @param seatId The seat id it was hired as (`manifest.seatId ?? manifest.id`,
+ *   never a hired seat's org-qualified address, whose org would read as a
+ *   team). `<team>.<worker>` is a team seat; a dotless id is an org seat
+ *   (`<worker>`), which has no team library. Any other id is refused.
  * @param declared The seat's `packages:` value as written, or `undefined` when
  *   the file wrote no such line.
  * @param reach The packages in the seat's reach, as the loader joined them. A
@@ -54,9 +56,25 @@ export function resolveHeldPackages(
   packageBlocks: Record<string, Record<string, BlockDefinition<any, any>>>
 ): HeldPackages {
   const problems: string[] = [];
-  const segments = seatId.split(".");
-  const team = segments[segments.length - 2] ?? "";
-  const worker = segments.slice(-2).join(".");
+  // The seat id as given, never cut down: `a.b.c` matches neither shape, and
+  // its last two segments would read as a seat on team `b`.
+  const declaredId = parseDeclaredSeatId(seatId);
+  // With nothing in reach and no line, there is nothing to place: a hand-built
+  // record keyed some other way is not this step's to refuse.
+  if (declaredId === undefined && (reach ?? []).length === 0 && declared === undefined) {
+    return { held: [], problems };
+  }
+  if (declaredId === undefined) {
+    problems.push(
+      `has the id "${seatId}", which is neither an org seat ("<worker>") nor a team seat ` +
+        `("<team>.<worker>"), so no package can be placed as its own. A hired seat is resolved ` +
+        `by its \`seatId\`, not its org-qualified address.`
+    );
+    return { held: [], problems };
+  }
+  const team = declaredId.team;
+  const seatName = declaredId.name;
+  const worker = team === undefined ? seatName : `${team}.${seatName}`;
 
   // The level says what kind of package it is, not whose: the owner on the
   // record does. `WorkerManifest` is public, so a hand-built or widened record
@@ -68,7 +86,9 @@ export function resolveHeldPackages(
     const owner =
       candidate.level === "worker" && candidate.worker !== worker
         ? ["worker", candidate.worker]
-        : candidate.level === "team" && candidate.team !== team
+        : // An org seat has no team, so every team-level package is refused;
+          // a team seat's must name its team, and an ownerless one names none.
+          candidate.level === "team" && (team === undefined || candidate.team !== team)
           ? ["team", candidate.team]
           : undefined;
     if (owner === undefined) continue;
@@ -112,7 +132,9 @@ export function resolveHeldPackages(
       if (library === undefined) {
         problems.push(
           `names package "${name}" in \`${PACKAGES_KEY}:\`, and no library in its reach offers it. ` +
-            `Looked in "teams/${team}/${PACKAGES_KEY}/${name}" and "org/${PACKAGES_KEY}/${name}".`
+            (team === undefined
+              ? `Looked in "org/${PACKAGES_KEY}/${name}".`
+              : `Looked in "teams/${team}/${PACKAGES_KEY}/${name}" and "org/${PACKAGES_KEY}/${name}".`)
         );
         continue;
       }
@@ -132,7 +154,10 @@ export function resolveHeldPackages(
   // loader refused that package's PACKAGE.md (or a hand-built record left it
   // off). Hiring on would start this seat short a package its folder holds —
   // refused, as a bad block in its own `blocks/` folder is.
-  const ownFolder = `teams/${team}/workers/${segments[segments.length - 1] ?? ""}/${PACKAGES_KEY}/`;
+  const ownFolder =
+    team === undefined
+      ? `org/workers/${seatName}/${PACKAGES_KEY}/`
+      : `teams/${team}/workers/${seatName}/${PACKAGES_KEY}/`;
   const heldPaths = new Set(chosen.map((manifest) => manifest.path));
   for (const address of Object.keys(packageBlocks).sort()) {
     if (!address.startsWith(ownFolder) || address.slice(ownFolder.length).includes("/")) continue;

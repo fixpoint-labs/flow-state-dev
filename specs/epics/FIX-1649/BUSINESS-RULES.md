@@ -14,6 +14,7 @@ checks. Each says who owns it and where it's checked.
 | ER-3 | The token set's defaults are neutral values living beside the components that read them; the App Lab theme overrides them from outside FSD, and no FSD package holds an App Lab value | FIX-1655 | The closure's leg c, with its control, and its static check over `packages/` |
 | ER-4 | A second Lab tree opens in App Lab with no shell code of its own and no wrapper, and only under an org. Its load path (the runtime Workforce loader or a per-Lab `fsdev gen` step) is FIX-1662's spec's call | FIX-1662 ([D3](DECISIONS.md#d3)) | The closure's leg b |
 | ER-5 | A surface whose meaning isn't shipped (in Workforce, or by the sibling that owns it: [the table](DECISIONS.md#who-owns-what)) shows a named empty state that says what arrives, and an action with no shipped operation behind it is disabled and says the same; it never shows a model the shell invented | FIX-1662 | FIX-1662's and FIX-1664's spec reviews · the closure's gap sweep |
+| ER-16 | Every screen is drawn in design v2's look, day and night: its type with both fonts loaded, surfaces, square corners, marks, proportions, and the content v2 draws that the Lab already holds. Three things are exempt, each by name: a part that waits on a sibling's data (FIX-1650 to 1652, FIX-1675, FIX-1474), whose named empty state stands (ER-5); the v1 structure kept by the 2026-10-01 amendment; and registry parts whose look only their source can change (ER-6). Added 2026-10-02 | FIX-1737 (FIX-1736 for the fonts) | FIX-1737's goal check · the closure's leg d |
 
 ## What no child may do
 
@@ -37,5 +38,5 @@ checks. Each says who owns it and where it's checked.
 
 | # | The epic is done when | Proved by |
 |---|---|---|
-| ER-13 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) is met: legs a, b and c pass, and leg c fails under its control | FIX-1663's goal check, in a browser, real model |
+| ER-13 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) is met: legs a, b, c and d pass, leg c fails under its control, and leg d under each of FIX-1737's three controls (leg d added 2026-10-02) | FIX-1663's goal check, in a browser, real model |
 | ER-14 | The docs teach skinning FSD components from one token set, and App Lab's README says how to open a Lab in it, what each level and destination shows, and how to switch day and night | FIX-1655's, FIX-1662's, FIX-1664's, FIX-1722's, FIX-1723's and FIX-1725's docs, per [DOCS.md](DOCS.md) |

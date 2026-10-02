@@ -24,8 +24,9 @@ import { validateSegment } from "../loader/segments";
  *
  * The org is validated as one address segment, so it carries no `.` — which
  * is what makes the join injective and therefore reversible by
- * {@link splitSeatAddress}. The seat id stays dotted on purpose
- * (`"<teamId>.<name>"`). Only the leading segment has to be dot-free.
+ * {@link splitSeatAddress}. The seat id keeps its own shape: dotted
+ * for a team seat (`"<teamId>.<name>"`), bare for an org seat (`"<name>"`).
+ * Only the leading segment has to be dot-free.
  *
  * @throws when the org id is not a legal address segment, the seat id is
  * empty, or the seat id starts with `~` (that marker is the user-owned form).

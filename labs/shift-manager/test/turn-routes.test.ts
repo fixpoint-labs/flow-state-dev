@@ -11,6 +11,7 @@ const seat = (id: string, door: string | null = "message"): Seat => ({
   id,
   kind: "coder",
   door,
+  hired: false,
   seatId: id,
   team: id.split(".")[0]!,
   name: id.split(".")[1]!,

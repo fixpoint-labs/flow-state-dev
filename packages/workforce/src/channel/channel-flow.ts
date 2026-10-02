@@ -21,11 +21,17 @@
  * stored with `authorVerified: false`, and is the only thing distinguishing
  * participants. The members check on `author` is a validity check against the
  * declared roster, not authentication.
+ *
+ * The same kind also serves a project's talk sessions: a session whose state
+ * names a project (`resourceId`) is a person's way into that project's room,
+ * and `post`, `read` and `answer` on it go to the room instead
+ * (`../projects/talk.ts` is canonical). `join` and the internal `bind` exist
+ * for them alone.
  */
 
-import { defineFlow, dispatcher, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler, router, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { ActionConfig, BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration";
 import { taskSchema } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
@@ -36,6 +42,8 @@ import {
   resolveChannelBoard
 } from "./channel-board";
 import { emitChannelPostLine, readChannelPostLines } from "./channel-items";
+import { incarnationOfRow } from "../roster/incarnation";
+import { INVENTORY_RACE_ATTEMPTS, isWriteConflict } from "../roster/remove";
 import {
   CHANNEL_POST_COMPONENT,
   channelTranscriptLineSchema,
@@ -62,6 +70,17 @@ import {
   membershipKey,
   seatInventoryRowSchema
 } from "../inventory/collections";
+import type { SeatInventoryRow } from "../inventory/collections";
+import { roomLineSchema } from "../projects/collections";
+import {
+  talkAnswer,
+  talkBind,
+  talkJoin,
+  talkPost,
+  talkProjectOf,
+  talkRead,
+  talkReadOutputSchema
+} from "../projects/talk";
 
 /** The built-in kind's name, and so the built-in instance's address. */
 export const CHANNEL_KIND = "channel";
@@ -862,6 +881,60 @@ const registerSeatsInputSchema = z
 /** What the seat write reports: how many rows landed. */
 export const inventorySeatsRegisteredSchema = z.object({ written: z.number() });
 
+/** The stored row is not one this boot may replace. */
+class NotTheBootsRow extends Error {}
+
+/**
+ * Whether a boot's row may replace the row stored at its address.
+ *
+ * A runtime hire's row (`hired: true`) is replaced only by the same hire: a
+ * hired row carrying the same incarnation (`null` matching only `null`, a row
+ * from before incarnations). A declared seat's row is replaced only by a
+ * declared row, and a boot's hired row never replaces it. A row from before
+ * `hired` existed is replaced by a declared row, and by a hired one carrying
+ * its incarnation.
+ */
+function bootMayReplace(stored: Record<string, unknown>, row: SeatInventoryRow): boolean {
+  if (row.hired === true) return stored.hired !== false && incarnationOfRow(stored) === (row.incarnation ?? null);
+  return stored.hired !== true;
+}
+
+/**
+ * Write one seat row from a boot's roster, only where it is still the boot's
+ * to write.
+ *
+ * The roster the boot read can be older than the store: during a rolling
+ * deploy another process may have fired the seat and hired a replacement, or
+ * dropped a declaration and hired the same address. So the row is created
+ * only where none was there when this action read the inventory, and
+ * otherwise replaced only while {@link bootMayReplace} holds. The check runs
+ * inside the version-checked write, so a row another writer put there since is
+ * checked again. A row removed after it was read is not written back.
+ *
+ * @returns whether the row landed.
+ */
+async function publishBootSeatRow(seats: ResourceCollectionRef, row: SeatInventoryRow): Promise<boolean> {
+  for (let attempt = 0; attempt < INVENTORY_RACE_ATTEMPTS; attempt += 1) {
+    const stored = await seats.getOptional(row.id);
+    try {
+      if (stored === undefined) {
+        await seats.create(row.id, row);
+        return true;
+      }
+      await stored.updateState((current) => {
+        if (!bootMayReplace(current, row)) throw new NotTheBootsRow();
+        return row;
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof NotTheBootsRow) return false;
+      if ((error as { code?: unknown }).code === "resource_deleted") return false;
+      if (!isWriteConflict(error)) throw error;
+    }
+  }
+  throw new Error("the row kept changing under this boot.");
+}
+
 /**
  * The two blocks that write the live inventory, built for one channel kind.
  *
@@ -998,8 +1071,7 @@ export function inventoryWriterActions(kind: string) {
       let written = 0;
       for (const row of input.seats) {
         try {
-          await ctx.resources.seats.upsert(row.id, row);
-          written += 1;
+          if (await publishBootSeatRow(ctx.resources.seats, row)) written += 1;
         } catch (error) {
           problems.push(
             `seat "${row.id}" — ${error instanceof Error ? error.message : String(error)}`
@@ -1370,6 +1442,50 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
           .step(appendAnswer)
           .tapIf((line: ChannelTranscriptLine | null) => line !== null, fanOutOf, handOff);
 
+  // A project's talk session is a session on this kind whose state names a
+  // project (`resourceId`). `post`, `read` and `answer` keep one name each and
+  // pick their path by that field: a talk session's lines go to the project's
+  // room (`../projects/talk.ts`), every other session's take today's path,
+  // unchanged. The field only selects; the talk path checks membership on the
+  // project row before it touches the room.
+  const isTalk = (ctx: { session: { state: Readonly<Record<string, unknown>> } }): boolean =>
+    talkProjectOf(ctx.session.state) !== undefined;
+  const anyBlock = (block: unknown) => block as BlockDefinition<any, any>;
+
+  const postEntry = router({
+    name: "channel-post-entry",
+    inputSchema: channelPostInputSchema,
+    outputSchema: z.union([channelTranscriptLineSchema, roomLineSchema]),
+    routes: [anyBlock(post), anyBlock(talkPost)],
+    execute: (_input, ctx) => (isTalk(ctx) ? anyBlock(talkPost) : anyBlock(post))
+  });
+
+  const readInputSchema = z.object({ after: z.number().int().min(0).optional() }).strict();
+  const readEntry = router({
+    name: "channel-read-entry",
+    inputSchema: readInputSchema,
+    outputSchema: z.union([channelReadOutputSchema, talkReadOutputSchema]),
+    routes: [anyBlock(readChannel), anyBlock(talkRead)],
+    // A channel's read takes no cursor: it returns the recent transcript.
+    execute: (input, ctx) =>
+      isTalk(ctx)
+        ? anyBlock(talkRead).connectInput(() => ({ after: input.after ?? 0 }))
+        : anyBlock(readChannel).connectInput(() => ({}))
+  });
+
+  // On a kind without a route there is no channel answer, so a talk session's
+  // is the only path; anywhere else it refuses `talk-not-bound`.
+  const answerEntry =
+    answer === undefined
+      ? talkAnswer
+      : router({
+          name: "channel-answer-entry",
+          inputSchema: channelAnswerInputSchema,
+          outputSchema: z.union([channelTranscriptLineSchema.nullable(), roomLineSchema]),
+          routes: [anyBlock(answer), anyBlock(talkAnswer)],
+          execute: (_input, ctx) => (isTalk(ctx) ? anyBlock(talkAnswer) : anyBlock(answer))
+        });
+
   const flow = defineFlow({
     kind: CHANNEL_KIND,
     // Not a preference: it is the declared mechanism for "one kind means one
@@ -1382,22 +1498,31 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     resources: boardResources,
     actions: {
       post: {
-        block: post,
+        block: postEntry,
         description:
-          "Post a line to this channel. The channel is the session; `author` is an unverified claim.",
+          "Post a line to this channel. The channel is the session; `author` is an unverified claim. " +
+          "On a project's talk session, the line goes to the project's room, members only.",
         // Keyed on the session by default, so two posts on ONE channel
         // serialise and posts on two channels never contend.
         concurrency: "queue"
       },
       read: {
-        block: readChannel,
+        block: readEntry,
         // Names boards only on a kind that holds one: this string is what a
         // model is told the action does, and a boardless kind returns no
         // `boards` key at all.
         description:
           boardIds.length === 0
-            ? "Read this channel's recent transcript lines, members and description."
-            : "Read this channel's recent transcript lines, members, description and declared board names."
+            ? "Read this channel's recent transcript lines, members and description. On a project's " +
+              "talk session, read the room's lines after `after`, members only."
+            : "Read this channel's recent transcript lines, members, description and declared board names. " +
+              "On a project's talk session, read the room's lines after `after`, members only."
+      },
+      join: {
+        block: talkJoin,
+        description:
+          "Join a project's room. Members only. Returns your one talk session on the project: the one " +
+          "the project already lists for you, or this session, now bound."
       },
       ...(fileTask === undefined || readBoard === undefined
         ? {}
@@ -1438,13 +1563,17 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         // through to another, so a name in `actions` is unreachable by an
         // internal dispatch, and the arbiter reads `concurrency` off whichever
         // entry it resolved. Sharing the block ref is the whole dedupe there is.
-        post: { block: post, concurrency: "queue" },
+        post: { block: postEntry, concurrency: "queue" },
         // Here only, never in `actions`: the answer names the post it answers,
         // so a caller who could reach it could take that post's one answer.
         // On the post queue's key (the session), so answers and posts are one
         // line at a time.
-        ...(answer === undefined ? {} : { [CHANNEL_ANSWER_ACTION]: { block: answer, concurrency: "queue" as const } }),
-        read: { block: readChannel },
+        [CHANNEL_ANSWER_ACTION]: { block: answerEntry, concurrency: "queue" as const },
+        read: { block: readEntry },
+        // `bind` is here only: it names its project, and the trusted callers
+        // that reach it are a project's create and the app's own code.
+        bind: { block: talkBind },
+        join: { block: talkJoin },
         ...(fileTask === undefined || readBoard === undefined
           ? {}
           : { fileTask: { block: fileTask }, readBoard: { block: readBoard } }),

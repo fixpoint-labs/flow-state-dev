@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 524" role="img" aria-labelledby="title desc">
   <title id="title">Inventory rows, channel state and the hired roster</title>
-  <desc id="desc">The inventory is three org-scoped collections: one row per registered seat, one per registered channel, and one per seat in a channel. Rows record that something was registered and are never deleted. The author a post claims is checked against the channel's own session state, not by the inventory. Which seats are hired now is the hired roster, whose rows are deleted on fire.</desc>
+  <desc id="desc">The inventory is three org-scoped collections: one row per registered seat, one per registered channel, and one per seat in a channel. Rows record that something was registered. A declared seat's or channel's row is never deleted; firing a seat hired at runtime deletes its row. The author a post claims is checked against the channel's own session state, not by the inventory. Which seats are hired now is the hired roster, whose rows are deleted on fire.</desc>
   <defs>
     <style>
       .bg { fill: #ffffff; }
@@ -31,6 +31,7 @@
   <text x="58" y="166" class="h">Seat row</text>
   <text x="58" y="186" class="code">inventory/seats/&lt;seatId&gt;</text>
   <text x="58" y="210" class="code">id · kind · door</text>
+  <text x="58" y="228" class="code">hired · incarnation</text>
 
   <rect x="304" y="142" width="244" height="104" rx="10" class="card"/>
   <text x="318" y="166" class="h">Channel row</text>
@@ -43,7 +44,7 @@
   <text x="58" y="302" class="code">inventory/members/&lt;seatId&gt;/&lt;channelId&gt;</text>
 
   <text x="44" y="348" class="p">Means "was registered here". Not "is open now".</text>
-  <text x="44" y="368" class="muted">Nothing deletes a row, not a fire and not a later roster.</text>
+  <text x="44" y="368" class="muted">A declared row is never deleted. Firing a hired seat deletes its row.</text>
 
   <!-- Right side -->
   <rect x="584" y="84" width="308" height="140" rx="14" class="wall-sess"/>
@@ -64,6 +65,6 @@
   <rect x="28" y="404" width="864" height="104" rx="12" class="box"/>
   <text x="44" y="428" class="h">Not a copy</text>
   <text x="44" y="452" class="p">The channel row's members is a copy for finding things. The author check on a post reads the channel’s session.</text>
-  <text x="44" y="472" class="p">An inventory row outlives a fire. For the seats an organization has now, read the hired roster.</text>
+  <text x="44" y="472" class="p">A declared row outlives a roster that drops it. For the seats an organization has now, read the hired roster.</text>
   <text x="44" y="492" class="p">The tree says what the workforce is meant to be. The inventory says what was registered in this organization.</text>
 </svg>

@@ -17,7 +17,7 @@ The inventory keeps that record as data: three org-scoped resource collections t
 | Channels | registered channel | `inventory/channels/<channelId>` |
 | Memberships | seat-in-channel | `inventory/members/<seatId>/<channelId>` |
 
-**A row means registered, not open.** It records that a seat or channel was registered in this organization. It says nothing about whether that seat is working or that channel is open now. Nothing deletes a row, so a fired seat keeps its row, and a seat or channel a later roster no longer names keeps its row too. Label rows that way wherever you show them.
+**A row means registered, not open.** It records that a seat or channel was registered in this organization. It says nothing about whether that seat is working or that channel is open now. A declared seat's or channel's row is never deleted, so one a later roster no longer names keeps its row. A seat hired at runtime is the exception: firing it removes its row, and only the row its own hire published (see below). Label rows that way wherever you show them.
 
 ## When to use which source
 
@@ -27,7 +27,7 @@ The tree says where a seat or channel is declared. The inventory says which chan
 
 To find out whether a post that names a member will be accepted, ask the channel. The `post` and `fileTask` blocks read `members` from the channel's session, not from the inventory, whose `members` is a copy for finding things.
 
-For the seats hired at runtime and not yet fired, read the [hired roster](./durable-hire.md#the-roster) instead. A roster row goes away when the seat is fired; an inventory row stays.
+For the seats hired at runtime and not yet fired, read the [hired roster](./durable-hire.md#the-roster). Firing a seat removes both its roster row and its inventory row. A row an earlier version left behind after a fire has no roster row; a reader that wants only current seats joins the two, and `listedSeatRows` from `@flow-state-dev/workforce/browser` does that join. Fire removes a leftover row only when the row says `hired: true`, so it never touches a declared seat's row at the same address.
 
 ## Wiring the boot
 
@@ -129,6 +129,10 @@ The rest of the roster is still attempted. Which of these is fatal is yours to d
 
 Every write is an upsert keyed by the record's id. Running over the same roster writes the same rows. Nothing duplicates, and a channel registered on an earlier boot keeps its original `openedAt`.
 
+Seat rows have one exception. The roster a boot read can be older than the store, because during a rolling deploy another server may have fired a seat and hired it again, or dropped a declared seat and hired the same address. So a boot writes a seat's row only where there was no row when it read the inventory, or where the stored row is the same kind of seat: for a declared seat, a declared seat's row, and for a hired seat, a row carrying the same incarnation. A boot never writes over a runtime hire's row with another hire's or a declared seat's, and it doesn't bring back a row that a fire removed after the boot read it. A row it leaves isn't counted in `seats`, as long as your `run` returns the action's output or a result carrying it as `output`.
+
+A hire that finds a declared seat's row at its address, written by such a boot while the hire was running, doesn't write over it either. The hire takes back the seat it registered and its roster row, and refuses.
+
 ## Reading the inventory
 
 Declare the same collections on any block. They return the same rows, because a collection is addressed by its pattern and scope, never by object identity.
@@ -166,12 +170,14 @@ const seatChannels = handler({
 **Seat:**
 
 ```ts
-{ id: "engineering.lead", kind: "agent", door: "run" }
+{ id: "engineering.lead", kind: "agent", door: "run", hired: false, incarnation: null }
 ```
+
+`hired` says where the seat came from: `true` for a seat hired at runtime, whose id is its address, and `false` for one declared in a worker file. Read it rather than the id's shape, because a declared team can share the organization's name. A row written before the field existed has `hired: null` until the next boot rewrites it. `incarnation` names the hire or repair that published a hired seat's row. Fire removes a row only when it carries the incarnation being fired, so a seat hired again at the same address keeps its own row, and never removes a declared seat's row. A team list shows a hired seat's row only while the roster row at its address carries the same incarnation.
 
 `door` names an action on the seat's flow: the one that takes a person's message for this seat. It is the kind's one public action that declares `userMessage` and takes `{ message }`. The built-in worker's is named `run`, which is unrelated to the `run` callback above. A kind with no such action gets `door: null`, and an app should say that seat takes no message rather than guess. A kind with two gets `null` too, and the hire warns, naming both: `hireWorkforce` logs it as a `[workforce]` console warning, and a seat hired at runtime returns it in the hire's `warnings`.
 
-`openInventory` reads the door from each seat's `actions`, so pass it the seats `hireWorkforce` returned. A seat you build by hand needs `actions` too; pass `{}` for one that takes no message.
+`openInventory` reads the door from each seat's `actions`, and `hired` from its settings, so pass it the seats `hireWorkforce` returned. A seat you build by hand needs `actions` too; pass `{}` for one that takes no message.
 
 **Channel:**
 

@@ -35,3 +35,26 @@ review record.
 
 The closure, FIX-1663, now runs after FIX-1722, FIX-1723 and FIX-1725 as well: Linear has all
 three blocking it as whole issues. Within FIX-1722, only its ON CALL rail waits on FIX-1723. v2's look (ER-9's final values) lands on #2605, not here.
+
+<a name="amendment--2026-10-02--v2s-look"></a>
+## Amendment · 2026-10-02 · v2's look
+
+Jake asked whether this epic aims to deliver v2's theme and base UI in full. An audit of the
+shipped shell against v2 on `main` at `48c31cfa6`
+([`../../issues/FIX-1737/assets/GAPS.md`](../../issues/FIX-1737/assets/GAPS.md)) found 110 gaps:
+40 look, 11 layout, 59 content. 56 need no sibling's data, and no existing check would notice any
+look or layout gap. The answer adopted: yes, for everything not blocked on sibling data. This set
+was merged on [#2421](https://github.com/fixpoint-labs/flow-state-dev/pull/2421), which stays the
+review record, and amended once since.
+
+| Prior intent in this set | Treatment | Reason / evidence | Replacement | Compatibility |
+|---|---|---|---|---|
+| *"v2's look (ER-9's final values) lands on #2605, not here"* ([the 2026-10-01 amendment](#amendment--2026-10-01--design-v2s-structure)); ER-9 read as the theme's token values | **Amended** | Values alone left the fonts unloaded, no monospace meta, a sidebar lighter than the page, rounded corners and the highlighter on one screen (GAPS.md summary 1–5) | [ER-16](BUSINESS-RULES.md#what-a-team-gets-and-what-it-doesnt): v2's look on every screen, with three named exemptions. FIX-1736 (fonts, direct route) and FIX-1737 (the other 53 drawable rows, four PRs) join the set | The theme's values, leg c and the switch are unchanged; no route, tab or action moves |
+| The epic goal and ER-13: legs a, b and c ([SPEC](SPEC.md#the-goal-and-how-well-know-its-met)) | **Amended** | No leg read the look against v2; the look goal grades whose values paint, not where | Leg d: FIX-1737's `goals/shift-manager/it-draws-v2s-look/` on the closure commit over the DevForce tree, day and night, with its `drift`, `unclassified` and `missing` controls. FIX-1663's plan runs all three | Legs a to c and their controls unchanged |
+| The footer *"with the sessions live and the user"* ([decided in review](DECISIONS.md#decided-in-review-recorded-so-no-child-reopens-them)) | **Amended** | v2 draws the on-shift and on-call counts and the user's initials (v2:107-111); audit row F22 | FIX-1737's slice B draws v2's footer and updates the checks that pin the old one | Shift Manager's README already describes the footer as counts |
+| ER-6: a registry part that can't take the skin is fixed at its source by FIX-1655 | **Retained**, owner open | FIX-1655 is Done; the ask card's filled Reject and the cards' layout differ from v2 | FIX-1737's spec asks Jake: name them as exceptions in the leg d check, or file a child for the registry source | No registry copy is edited either way |
+
+Out of this amendment, and staying with their owners: rows waiting on FIX-1650, 1651 or 1652
+data (54 rows, some only in part), FIX-1675's watches and FIX-1474's also-post, and the v1
+structure the 2026-10-01 amendment kept (X1 to X7). FIX-1736 and FIX-1737 block FIX-1663 in
+Linear.

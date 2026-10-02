@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 560" role="img" aria-labelledby="title desc">
   <title id="title">Where a hired seat lives</title>
-  <desc id="desc">A hired seat is written to the organization's scope in your store as a roster row, and the ready-made hire also writes an inventory row. The running process holds the registered seat, loaded from the roster at start. The roster row lists who is hired now and is deleted on fire; the inventory row records that the seat was ever registered and is never deleted. The process copy is lost on restart and rebuilt from the roster.</desc>
+  <desc id="desc">A hired seat is written to the organization's scope in your store as a roster row, and the ready-made hire also writes an inventory row. The running process holds the registered seat, loaded from the roster at start. The roster row lists who is hired now; the inventory row is how the seat is found. Firing deletes both, and a matching incarnation id ties them together. The process copy is lost on restart and rebuilt from the roster.</desc>
   <defs>
     <style>
       .bg { fill: #ffffff; }
@@ -31,10 +31,9 @@
   <text x="58" y="166" class="h">Roster row</text>
   <text x="58" y="186" class="code">workforce/roster/support.ada</text>
   <text x="58" y="212" class="p">seatId · flow · instructions</text>
-  <text x="58" y="232" class="p">settings</text>
-  <text x="58" y="256" class="muted">The browser reads the first three.</text>
-  <text x="58" y="273" class="muted">Settings stay on the server.</text>
-  <text x="58" y="300" class="p">Who is hired now</text>
+  <text x="58" y="232" class="p">incarnation · settings</text>
+  <text x="58" y="256" class="muted">The browser reads all but settings.</text>
+    <text x="58" y="300" class="p">Who is hired now</text>
   <text x="58" y="320" class="muted">Deleted when the seat is fired</text>
   <text x="58" y="348" class="muted">User-owned seat:</text>
   <text x="58" y="366" class="code">workforce/roster/~&lt;user&gt;/&lt;seatId&gt;</text>
@@ -43,12 +42,13 @@
   <rect x="336" y="142" width="280" height="250" rx="10" class="card"/>
   <text x="350" y="166" class="h">Inventory row</text>
   <text x="350" y="186" class="code">inventory/seats/acme.support.ada</text>
-  <text x="350" y="212" class="p">id · kind</text>
+  <text x="350" y="212" class="p">id · kind · door</text>
+  <text x="350" y="232" class="p">hired: true · incarnation</text>
   <text x="350" y="256" class="muted">Written by the ready-made hire.</text>
   <text x="350" y="273" class="muted">A hire you write adds one only</text>
   <text x="350" y="290" class="muted">if your handler writes it.</text>
-  <text x="350" y="320" class="p">Was ever registered here</text>
-  <text x="350" y="340" class="muted">Never deleted, not even on fire</text>
+  <text x="350" y="320" class="p">How the seat is found</text>
+  <text x="350" y="340" class="muted">Deleted on fire, matched by incarnation</text>
 
   <!-- Process -->
   <rect x="648" y="84" width="244" height="320" rx="14" class="wall-proc"/>
@@ -72,8 +72,8 @@
   <!-- Not a copy -->
   <rect x="28" y="424" width="864" height="116" rx="12" class="box"/>
   <text x="44" y="448" class="h">Not a copy</text>
-  <text x="44" y="472" class="p">The roster row and the inventory row answer different questions: who is hired now, and who was ever registered.</text>
+  <text x="44" y="472" class="p">The roster row decides who is hired now. The inventory row is a copy for finding seats; firing deletes both.</text>
   <text x="44" y="492" class="p">The process serves what it loaded at start. A seat hired on another instance answers here after this one restarts.</text>
-  <text x="44" y="512" class="p">Firing deletes the roster row. Sessions, state and resources the seat wrote are left alone.</text>
+  <text x="44" y="512" class="p">Firing leaves the sessions, state and resources the seat wrote alone.</text>
   <text x="44" y="530" class="muted">Seats declared in WORKER.md files have no roster row. They are read from disk at every start.</text>
 </svg>

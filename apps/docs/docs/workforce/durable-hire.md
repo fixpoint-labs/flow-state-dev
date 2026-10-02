@@ -120,7 +120,7 @@ export function releaseSeat(id: string): boolean {
 
 ## The ready-made hire and fire handlers
 
-`createSeatHireBlocks` gives you the whole hire and fire sequence as two handlers you mount as actions. They are the same handlers the `seat-hire` capability, `createSeatHireCapability`, gives a worker kind as its `hire` and `fire` tools. Use them when a person or your own code does the hiring, from a screen or an admin route, with no model in front of the call.
+`createSeatHireBlocks` gives you the whole hire and fire sequence as two handlers you mount as actions. They are the same handlers the `seat-hire` capability, `createSeatHireCapability`, gives a worker kind as its `hire` and `fire` tools. It also returns `brokenSeats` and `rehire`, for [repairing a seat whose kind is gone](#repairing-a-seat-whose-kind-is-gone). Use them when a person or your own code does the hiring, from a screen or an admin route, with no model in front of the call.
 
 With them, the admin flow needs no `hire.ts` or `fire.ts` of its own:
 
@@ -175,6 +175,7 @@ export default workforceAdmin();
 | `register(seat, pin)` | Puts a minted seat on the air. `pin` is `{ orgId, userId? }` for the organization the hire ran under. |
 | `unregister(address)` | Releases an address in this process and returns whether anything held it. |
 | `kindAt?(address)` | The kind serving an address right now, if any. Lets `hire` refuse an address that is already served before writing anything, and lets `fire` leave an address registered when a different kind holds it. |
+| `instanceAt?(address)` | The seat serving an address right now, if any. With it, `fire` releases only the seat its roster row minted, and a hire or re-hire stopped part-way by another call releases only its own seat. Without it, `fire` goes by the kind, and a stopped call leaves its seat registered in this process until the next start. |
 | `allowKinds?` | The subset of `kinds` these handlers may mint. |
 | `channelBoards?` | Channel board ids. For each one the new seat doesn't declare, the hire's `warning` names it, since rows filed on that board sit pending until something works them. |
 
@@ -216,15 +217,15 @@ It returns the seat id and the address the seat answers on:
 
 A hire runs in this order:
 
-1. It refuses a kind that isn't in `kinds`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served.
+1. It refuses a kind that isn't in `kinds`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served, and an address a seat declared in a worker file has an inventory row at.
 2. It mints the seat, which runs the kind's settings schema.
 3. It writes the roster row with `create()`. A second hire of the same seat id fails here with `Resource instance "workforce/roster/support.ada" already exists`, including two hires arriving at once.
 4. It calls your `register`. If that throws, the row from step 3 is deleted and the error is passed on.
-5. It writes an inventory row at `inventory/seats/<address>`. If this write fails, the seat is hired and answering but has no inventory row.
+5. It writes an inventory row at `inventory/seats/<address>`, replacing only a row left by an earlier hire at that address, and only while its own roster row is still there. If this write fails, the seat is hired and answering but has no inventory row. If the seat is fired or hired again while this hire is finishing, the hire stops and takes back only what is still its own.
 
 ### Firing
 
-`fire` takes `{ seatId }` (again, `orgId` is accepted and ignored) and returns `{ seatId, address, released }`.
+`fire` takes `{ seatId }` (again, `orgId` is accepted and ignored) and returns `{ seatId, address, released }`, plus `alreadyGone: true` in the one case described at the end of this section.
 
 ```bash
 curl -X POST localhost:3000/api/flows/workforce-admin/actions/fire \
@@ -233,13 +234,15 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/fire \
   -d '{"userId":"you","input":{"seatId":"support.ada"}}'
 ```
 
-It refuses a seat id this organization never hired with `This organization hired no seat "support.ada".` Otherwise it deletes the roster row, then calls your `unregister` on the address, and `released` is what that returned. If `kindAt` reports a different kind at the address than the row names, the row is still deleted but the address stays registered and `released` is `false`. Without `kindAt`, `fire` releases whatever holds the address, the same as the [hand-written fire](#firing-a-seat).
+It refuses a seat id this organization never hired with `This organization hired no seat "support.ada".` Otherwise it deletes the roster row, then calls your `unregister` on the address (`released` is what that returned), then deletes the seat's row from the [inventory](./inventory.md). If `kindAt` reports a different kind at the address than the row names, the row is still deleted but the address stays registered, its inventory row is left alone, and `released` is `false`. With `instanceAt`, it releases the address only when the seat there was minted from the row it deleted, and removes only the inventory row that seat's hire published; a declared seat's row is never removed. Without `kindAt` or `instanceAt`, `fire` releases whatever holds the address, the same as the [hand-written fire](#firing-a-seat).
 
 The row is gone straight away. When `released` is `true`, the address also stops answering **on the process that handled the request**; when it is `false`, whatever holds the address keeps answering. Work already running finishes and is saved. Nothing is cancelled and nothing is truncated.
 
 Firing removes the seat, not its history. Sessions, state and resources it wrote are left alone. If you want those gone, delete them yourself.
 
-The inventory row stays after a fire. Read the roster when you want the seats an organization has now; [The roster](#the-roster) explains the difference.
+Because firing removes the seat's inventory row, a team list built from the inventory stops showing it. A seat fired by an earlier version left its inventory row behind. A reader that joins the inventory with the roster hides it, because no roster row backs it: `listedSeatRows` from `@flow-state-dev/workforce/browser` is that join, and Shift Manager's team list uses it. A user-owned seat's roster row is readable only by its owner, on the server, so a browser list can't back it and leaves it out.
+
+If the process dies between the two deletes, the inventory row is left too. Calling `fire` again for that seat removes it, a user-owned one included, and answers with `released: false` and `alreadyGone: true`. It only does that for a row marked `hired: true`. A declared seat can sit at the same address, so a row that doesn't say it was hired is never removed this way.
 
 ## Calling a hired seat
 
@@ -322,6 +325,65 @@ The call is bounded on both sides, and neither bound returns a partial roster:
 - **`timeoutMs`, default 10000.** One bound over the whole read, not per organization. The error names the organization the read was waiting on.
 
 A read the store will not complete throws the same way. Nothing is loaded in any of these cases, and instances already running are untouched, so a transient storage failure costs a restart rather than the roster.
+
+## Repairing a seat whose kind is gone
+
+Cut a kind from your app and every seat hired into it stops coming back. The start skips each one and names it in `problems`, and keeps doing so on every start, because nothing is deleted at start. That's deliberate: the row is the only record of who the seat was, and whether to keep it is your call.
+
+`createSeatHireBlocks` gives you two more handlers to make that call with, mounted as actions beside `hire` and `fire`:
+
+```ts title="src/flows/workforce-admin/flow.ts"
+  actions: {
+    hire: { block: seatHire.hire },
+    fire: { block: seatHire.fire },
+    brokenSeats: { block: seatHire.brokenSeats },
+    rehire: { block: seatHire.rehire },
+  },
+```
+
+`brokenSeats` lists the stored seats in the caller's organization that wouldn't start. It runs the same check the start runs, so the two lists always agree, and it writes nothing. The check mints each seat, healthy ones included, so treat it as an admin read you make when you need it, not something to poll:
+
+```bash
+curl -X POST localhost:3000/api/flows/workforce-admin/actions/brokenSeats \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"userId":"you","input":{}}'
+```
+
+It answers with one entry per seat, `{ seatId, key, owner, kind, reason, detail }`. `key` is the row's storage key, `owner` is whose row it is (`"organization"` or `"me"`), and `detail` is the sentence the start printed for it:
+
+```json
+[{ "seatId": "support.joe", "key": "workforce/roster/support.joe", "owner": "organization", "kind": "desk-clerk", "reason": "kind-gone",
+   "detail": "hireWorkforce refused 1 of 1 worker; nothing was hired:\n  - worker \"acme.support.joe\" — names flow kind \"desk-clerk\", which was not passed to hireWorkforce. Kinds passed: \"agent\"" }]
+```
+
+Each entry has one of three reasons:
+
+| `reason` | What happened | What you can do |
+| --- | --- | --- |
+| `kind-gone` | The seat's kind isn't in the map you passed | Retire it, or re-hire it onto a kind you carry |
+| `refused` | The kind is there but now refuses the seat's settings | Retire it, or re-hire it with settings the kind accepts |
+| `unreadable` | The row can't be read, or doesn't belong to this organization | Retire it. Its `seatId` is the row's key, which is what `fire` takes |
+
+**To retire a seat, fire it.** `fire` removes the roster row and the inventory row. Nothing was serving the seat, so there's no address to release and `released` is `false`. The next start names nothing for it. An `unreadable` row is deleted by its key and nothing else is touched, so that answer's `address` is `null`.
+
+**To keep the seat, re-hire it.** `rehire` takes the seat id, the kind to run it on, its settings for that kind, and optionally new instructions. The seat keeps its id and its address, so channels that list it and sessions it owns carry on:
+
+```bash
+curl -X POST localhost:3000/api/flows/workforce-admin/actions/rehire \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"userId":"you","input":{"seatId":"support.joe","flow":"agent",
+       "instructions":"Answer billing questions. Hand refunds to a person."}}'
+```
+
+The old kind's settings are not carried over, since they were written for a different kind. The instructions are, unless you pass new ones. `rehire` checks everything before it writes: it refuses a seat that would still start (to change a working seat's kind, fire it and hire it again), an `unreadable` row, a kind your app doesn't carry or `allowKinds` leaves out, and settings the kind refuses. If registering the seat fails after the row was written, the old row is written back and the error is named. If the process dies after the row was written, or the inventory row can't be written once the seat is serving, run the same `rehire` again. The row stays marked as an unfinished repair until the seat is registered and its inventory row written, and the same call finishes a marked row. A working seat with no unfinished repair is refused as above, even when you pass its current kind and settings. If the seat is fired while a re-hire is finishing, the re-hire stops and keeps nothing. If two repairs of one seat arrive at once, one lands and the other is refused.
+
+Neither handler asks anyone. They are what you run once a person has said yes, so in a flow a model drives, put them behind an approval: raise a `human_approval` suspension with `ctx.suspend`, and fire or re-hire only when it resumes with Approve. Both are safe to run again if the process dies part-way, so a restart between the ask and the answer leaves the seat as it was until someone answers.
+
+Nothing here picks a kind for you or loads a missing one. If you want the old kind's seats back as they were, ship the kind again.
+
+**User-owned seats.** The start names a [user-owned seat](#hiring-a-seat-only-one-member-can-reach) whose kind is gone like any other. For the handlers to reach it, declare `defineHiredRosterPrivateCollection()` on the same flow under `HIRED_ROSTER_PRIVATE_RESOURCE`. Then `brokenSeats` lists the caller's own user-owned seats beside the organization's, each with its `owner`. Pass that `owner` to `fire` or `rehire` to act on the same row. Without it, they act on the only row under the seat id, and refuse when the caller has both an organization seat and their own under one id. That collection only ever serves a row to the member it belongs to, so each member lists and repairs their own. Without it, the handlers reach organization-wide seats only.
 
 ## Writing the handlers yourself
 
@@ -518,7 +580,7 @@ Once registered, the seat answers its owner only. Any other member gets `404 Unk
 
 One row per seat in the organization's scope: at `workforce/roster/<seatId>`, or at `workforce/roster/~<user>/<seatId>` for a user-owned seat. It is read through the same storage adapter as everything else the app persists, so a Postgres-backed app keeps its roster in Postgres and an in-memory app keeps it for as long as the process lives.
 
-The roster is not the [inventory](./inventory.md). A roster row lists who is hired now and is deleted on fire; an inventory row records that the seat was registered and stays. [`createSeatHireBlocks`](#the-ready-made-hire-and-fire-handlers) and the `seat-hire` tools write both rows. A handler you wrote gets only the rows it writes: the `hire-seat` handler in [Hiring a seat](#hiring-a-seat) writes no inventory row. Anything that wants one list of every seat, declared and hired, joins the two itself.
+The roster is not the [inventory](./inventory.md). An inventory row means *was registered in this organization*, and the start never removes one. A roster row is removed when the seat is fired, and so is a hired seat's inventory row. A seat hired through [`createSeatHireBlocks`](#the-ready-made-hire-and-fire-handlers) or the `seat-hire` tools gets both rows. A seat hired by a handler you wrote gets only the rows it writes: the `hire-seat` handler in [Hiring a seat](#hiring-a-seat) writes a roster row and no inventory row. Anything that wants one list of every seat, declared and hired, joins the two itself.
 
 ### What a seat saves for a person
 

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 480" role="img" aria-labelledby="title desc">
+  <title id="title">Multiple talk sessions, one shared room</title>
+  <desc id="desc">Each project member has their own talk session. All sessions post into and read from the same project room.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#334155"/>
+    </marker>
+    <style>
+      .sess { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 1.5; }
+      .room { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
+      .title { font: 700 18px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .h { font: 700 13px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .p { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #334155; }
+      .muted { font: 11px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
+      .edge { stroke: #334155; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+      .edge-in { stroke: #15803d; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <text x="28" y="32" class="title">One room, many talk sessions</text>
+  <text x="28" y="52" class="muted">Project “Storefront” — Alice (owner), Bob, Cara are members</text>
+
+  <rect x="40" y="80" width="200" height="90" rx="10" class="sess"/>
+  <text x="56" y="108" class="h">Alice’s talk session</text>
+  <text x="56" y="128" class="p">User-bound live session</text>
+  <text x="56" y="148" class="p">post · read · join</text>
+
+  <rect x="40" y="190" width="200" height="90" rx="10" class="sess"/>
+  <text x="56" y="218" class="h">Bob’s talk session</text>
+  <text x="56" y="238" class="p">User-bound live session</text>
+  <text x="56" y="258" class="p">post · read · join</text>
+
+  <rect x="40" y="300" width="200" height="90" rx="10" class="sess"/>
+  <text x="56" y="328" class="h">Cara’s talk session</text>
+  <text x="56" y="348" class="p">User-bound live session</text>
+  <text x="56" y="368" class="p">post · read · join</text>
+
+  <rect x="420" y="140" width="420" height="200" rx="14" class="room"/>
+  <text x="440" y="178" class="h">Shared project room (one)</text>
+  <text x="440" y="204" class="p">Stored as org resources — not a session</text>
+  <text x="440" y="230" class="p">1. Alice: “Ship checkout Friday”</text>
+  <text x="440" y="252" class="p">2. Bob: “API ready for review”</text>
+  <text x="440" y="274" class="p">3. Cara: “Docs updated”</text>
+  <text x="440" y="304" class="muted">Everyone sees the same ordered lines</text>
+  <text x="440" y="322" class="muted">Non-members never reach this room</text>
+
+  <path class="edge" d="M240 125 H415"/>
+  <path class="edge" d="M240 235 H415"/>
+  <path class="edge" d="M240 345 H415"/>
+
+  <text x="40" y="430" class="p">Concert: posts from any session land in one shared log; each session reads that same log on open / focus / after post.</text>
+  <text x="40" y="452" class="muted">Not pushed live — catch up by reading. Same person, second window → reuses their one talk session.</text>
+</svg>

@@ -65,10 +65,10 @@ export const ASK_LAB_ORG_ID = "org_ask_lab";
  * A fail-closed resolver: the bearer's principal, or a 401 when none was
  * presented. The shape a Lab with verified identity has (the DevTeam profile's).
  */
-function bearerOnly(secret: string): PrincipalResolver {
+function bearerOnly(secret: string, orgId: string): PrincipalResolver {
   const verify = createBearerSecretPrincipalResolver({
     secret,
-    principal: { userId: ASK_LAB_USER_ID, orgId: ASK_LAB_ORG_ID },
+    principal: { userId: ASK_LAB_USER_ID, orgId },
   });
   return async (context) => {
     const principal = await verify(context);
@@ -108,13 +108,19 @@ export type AskLabOptions = {
    * {@link ASK_LAB_ORG_ID}. Absent: the development organization, no credential.
    */
   bearer?: string;
+  /**
+   * With `bearer`, the organization the person is bound to instead of
+   * {@link ASK_LAB_ORG_ID}. `"ops"` names the organization like the Lab's
+   * declared team, so a declared seat's id reads as an address in it.
+   */
+  orgId?: string;
   /** Add a seat named `chief-of-staff` to the ops team, on the asker kind. Default false. */
   chiefOfStaff?: boolean;
 };
 
 /** Build, open and hand back the Lab. */
 export async function openAskLab(options: AskLabOptions = {}) {
-  const orgId = options.bearer === undefined ? DEFAULT_ORG_ID : ASK_LAB_ORG_ID;
+  const orgId = options.bearer === undefined ? DEFAULT_ORG_ID : (options.orgId ?? ASK_LAB_ORG_ID);
   const tree = await readAskLabTree();
   if (options.chiefOfStaff === true) tree.workers.push(...(await readAskLabTree(CHIEF_OF_STAFF_TREE)).workers);
   const seats = hireWorkforce(tree.workers, {
@@ -134,7 +140,7 @@ export async function openAskLab(options: AskLabOptions = {}) {
     stores: { default: { primary: inMemoryStores() } },
     durable: true,
     devtool: { userId: ASK_LAB_USER_ID, ...(options.bearer === undefined ? {} : { bearerToken: options.bearer }) },
-    ...(options.bearer === undefined ? {} : { resolvePrincipal: bearerOnly(options.bearer) }),
+    ...(options.bearer === undefined ? {} : { resolvePrincipal: bearerOnly(options.bearer, orgId) }),
   } as never);
 
   const router = (await flowState.getRouter()) as Record<string, (r: Request, c: unknown) => Promise<Response>>;
