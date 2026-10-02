@@ -1746,10 +1746,12 @@ registered seat, one row per registered channel, and one row per seat-in-channel
 collections, so a block reads them the way it reads any other resource.
 
 **A row means registered, not open.** It records that a seat or channel was registered in this
-organization, not that the seat is working or the channel is open now. Declared seats' and
-channels' rows are never deleted. A runtime-hired seat's row is removed when it is fired, and
-only the row its own hire published (it carries that hire's `incarnation`). A channel's `members`
-are the ones it had when it registered.
+organization, not that the seat is working or the channel is open now. Nothing deletes a row for
+going missing. A runtime-hired seat's row is removed when it is fired, and only the row its own
+hire published (it carries that hire's `incarnation`). When a `CHANNEL.md` becomes a project talk
+template (`mintFor: projects`), the next `openInventory` removes its channel row and membership
+rows, and discovery never lists a template as a channel. A channel's `members` are the ones it had
+when it registered.
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
@@ -1841,10 +1843,11 @@ the rest of the roster is still attempted.
 
 ### Custom channel kinds
 
-A channel kind you wrote yourself gets rows when it carries the two blocks
-`inventoryWriterActions(kind)` returns. Put `registerChannelInInventory` in `actions` and
-`registerSeatsInInventory` in `internal.actions`; do not spread the whole return into `actions`. The
-string you pass is the value that appears as `kind` on that channel's rows.
+A channel kind you wrote yourself gets rows when it carries the blocks
+`inventoryWriterActions(kind)` returns. Put `registerChannelInInventory` in `actions`, and
+`registerSeatsInInventory` and `retireChannelsInInventory` in `internal.actions`; do not spread the
+whole return into `actions`. The string you pass is the value that appears as `kind` on that
+channel's rows.
 
 ```ts
 const writer = inventoryWriterActions("briefing");
@@ -1855,7 +1858,10 @@ defineFlow({
   session: { stateSchema: channelSessionStateSchema },
   actions: { ...myActions, registerChannelInInventory: writer.registerChannelInInventory },
   internal: {
-    actions: { registerSeatsInInventory: writer.registerSeatsInInventory },
+    actions: {
+      registerSeatsInInventory: writer.registerSeatsInInventory,
+      retireChannelsInInventory: writer.retireChannelsInInventory,
+    },
   },
 });
 ```
@@ -2028,7 +2034,7 @@ under the poster, with the room's last 20 lines. A seat's reply lands in
 the room through `answer`, once per post and seat, so a repeated delivery adds no second line. A
 seat answers only for itself: each delivery carries an `answerToken` issued to that seat, and the
 answer hands it back as `token` (the built-in agent kind does this for you; a kind of your own
-passes it through). An answer with no token, or one naming another seat, is refused. The
+passes it through). An answer with no token, naming another seat, or sent through a session other than the poster's is refused. The
 template is built onto the kind at every boot, so an edit reaches every project's room at the next
 restart.
 
@@ -2158,8 +2164,8 @@ before fire removed inventory rows is left out that way.
 | `SeatInventoryRow` / `ChannelInventoryRow` / `MembershipIndexRow` | One row of each of the three collections. |
 | `seatInventoryRowSchema` / `channelInventoryRowSchema` / `membershipIndexRowSchema` | The Zod schema behind each row type. Closed: an undeclared key is dropped on the way in. |
 | `openInventory(roster, options)` | Write the inventory at boot: one row per seat, one row per channel, one row per membership. Takes `InventoryRoster` (the seats and channels to register) and `OpenInventoryOptions` (the `run` callback, `seatWriter`, `userId`, `orgId`). Returns `{ seats, channels, problems }`. |
-| `inventoryWriterActions(kind)` | The two blocks a custom channel kind installs to get inventory rows, keyed by action name. Split them: `registerChannelInInventory` into `actions` (public, safe — empty input), `registerSeatsInInventory` into `internal.actions` (its input is the row data, with nothing to check it against). The string is the `kind` value those rows carry. |
-| `INVENTORY_REGISTER_CHANNEL` / `INVENTORY_REGISTER_SEATS` | The action names the writer runs: `"registerChannelInInventory"` and `"registerSeatsInInventory"`. |
+| `inventoryWriterActions(kind)` | The three blocks a custom channel kind installs to get inventory rows, keyed by action name. Split them: `registerChannelInInventory` into `actions` (public, safe — empty input); `registerSeatsInInventory` and `retireChannelsInInventory` into `internal.actions` (their input is row data or ids to remove, with nothing to check it against). The string is the `kind` value those rows carry. |
+| `INVENTORY_REGISTER_CHANNEL` / `INVENTORY_REGISTER_SEATS` / `INVENTORY_RETIRE_CHANNELS` | The action names the writer runs: `"registerChannelInInventory"`, `"registerSeatsInInventory"` and `"retireChannelsInInventory"`. |
 | `INVENTORY_SEAT_WRITER_SESSION` | The session id the seat-registration action runs under when `seatWriter` names none: `"inventory-binder"`. |
 | `InventoryRoster` / `InventorySeat` / `InventorySeatWriter` | What `openInventory` takes: the roster (`{ seats, channels }`), one seat (`{ id, kind, actions, config? }`: a hired seat as is, its `door` action read from `actions`, `{}` for a seat with none; its row's `hired` read from `config.seatId`, `null` without `config`), and which flow writes the seat rows (`{ flowKind }`). |
 | `InventoryActionRequest` / `InventoryBinding` | What the `run` callback receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the seat request and must reach `runAction`), and what one boot of `openInventory` returns (`{ seats, channels, problems }`). |

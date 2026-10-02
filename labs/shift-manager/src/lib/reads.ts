@@ -131,16 +131,10 @@ export type Project = {
   sessions: ProjectSession[];
 };
 
-/** The organization's projects, and the flow kind their rooms are reached through. */
+/** The organization's projects. */
 export type Projects = {
   /** Every row, in the collection's order. */
   rows: Project[];
-  /**
-   * The kind a person's talk session runs on, for joining a room: the kind of
-   * the session the rows were read through, whose flow serves the rooms.
-   * `null` when no listed flow serves them.
-   */
-  talkKind: string | null;
 };
 
 /**
@@ -293,9 +287,7 @@ export type LabSnapshot =
 const INVENTORY_PATTERNS = { seats: "inventory/seats/*", channels: "inventory/channels/*" } as const;
 
 /**
- * The organization's projects, by its published key pattern, and the room
- * collection a flow that serves project rooms also declares. A flow that only
- * writes projects declares the first and not the second.
+ * The organization's projects, by their published key pattern.
  */
 const PROJECT_PATTERNS = { projects: "projects/*" } as const;
 
@@ -633,36 +625,43 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /**
-   * The organization's projects, read once, through the first workstream
-   * whose channel kind declares the projects collection with a browser read.
-   * A room is reached through a channel kind's talk entries, so that kind is
-   * the one a person joins on. None: the Lab has no projects, and every
-   * workstream is under No project (D3). With no inventory there is no
-   * workstream to read through.
+   * The organization's projects, read once, through the first session whose
+   * flow declares the projects collection with a browser read: one of this
+   * person's own top-level sessions, then each inventoried workstream. A
+   * project needs no workstream, so neither does this read. That session only
+   * carries the read; rooms are on the built-in channel kind (`ROOM_KIND`).
+   * None: the Lab has no projects, and every workstream is under No project (D3).
    */
-  const readProjects = async (inventory: Section<{ workstreams: Workstream[] }>): Promise<Section<Projects>> => {
-    if (!inventory.ok) {
-      return { ok: false, failure: { message: `Projects are read through a workstream, and the inventory did not load. ${inventory.failure.message}` } };
+  const readProjects = async (
+    sessions: SessionSummary[],
+    inventory: Section<{ workstreams: Workstream[] }>,
+  ): Promise<Section<Projects>> => {
+    const carriers = new Map<string, string>();
+    for (const session of sessions) {
+      if (session.parentSessionId == null && !carriers.has(session.flowKind)) carriers.set(session.flowKind, session.id);
+    }
+    for (const workstream of inventory.ok ? inventory.value.workstreams : []) {
+      const kind = workstream.kind ?? workstream.id;
+      if (!carriers.has(kind)) carriers.set(kind, workstream.id);
     }
     try {
-      for (const workstream of inventory.value.workstreams) {
-        const kind = workstream.kind ?? workstream.id;
-        const manifest = await manifestFor(kind, workstream.id);
+      for (const [kind, sessionId] of carriers) {
+        const manifest = await manifestFor(kind, sessionId);
         const projects = manifest.resources.find(
           (r) => r.kind === "collection" && r.pattern === PROJECT_PATTERNS.projects && r.client.state?.read === true,
         );
         if (projects === undefined) continue;
         // Invariant: `projects/*` is one org-wide collection, so the first kind
         // that declares it reads every project, and the rest are not asked.
-        const rows = (await readCollection(workstream.id, projects.ref))
+        const rows = (await readCollection(sessionId, projects.ref))
           .map((row) => toProject(row.clientData))
           .filter((p): p is Project => p !== undefined);
-        return { ok: true, value: { rows, talkKind: kind } };
+        return { ok: true, value: { rows } };
       }
     } catch (error) {
       return { ok: false, failure: describeFailure(error) };
     }
-    return { ok: true, value: { rows: [], talkKind: null } };
+    return { ok: true, value: { rows: [] } };
   };
 
   /** A workstream's attached boards and their rows. */
@@ -795,7 +794,7 @@ export function createLabReader(clients: LabClients): LabReader {
         }
       })(),
       readResources(sessions),
-      readProjects(inventory),
+      readProjects(sessions, inventory),
     ]);
 
     return {

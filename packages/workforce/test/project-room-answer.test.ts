@@ -9,7 +9,9 @@
  *   · a run whose watermark step failed after the line landed is finished by a
  *     retry that writes no second line;
  *   · wake context stops at the watermark: a line written past a stalled gap
- *     is not shown.
+ *     is not shown;
+ *   · wake context is the last committed lines below the post, however far
+ *     past the watermark the post was allocated.
  */
 
 import { describe, expect, it } from "vitest";
@@ -30,7 +32,7 @@ import {
   type RoomSeq
 } from "../src/projects/collections";
 import { answerInRoom, claimAnswer, type AnswerDraft } from "../src/projects/room-answer";
-import { allocateSeq, readRoom, writeLineAt, type RoomCollections } from "../src/projects/room-store";
+import { advanceCommitted, allocateSeq, readRoom, writeLineAt, type RoomCollections } from "../src/projects/room-store";
 import { recentRoomLines } from "../src/projects/talk";
 
 const ORG = "lab";
@@ -116,6 +118,19 @@ const labFlow = defineFlow({
       block: step("write-at", (input, { rooms }) =>
         writeLineAt(rooms, { projectId: input.projectId, userId: "alice", author: null, body: input.body }, input.seq)
       )
+    },
+    // A room whose watermark sits at `committed`, with seqs through `next` allocated and the rest unwritten.
+    seedRoom: {
+      block: step("seed-room", async (input, { rooms }) => {
+        for (let seq = 1; seq <= input.next; seq += 1) {
+          await allocateSeq(rooms, input.projectId);
+          if (seq <= input.committed) {
+            await writeLineAt(rooms, { projectId: input.projectId, userId: "alice", author: null, body: `line ${seq}` }, seq);
+          }
+        }
+        await advanceCommitted(rooms, input.projectId);
+        return (await readRoom(rooms, input.projectId, input.committed - 1)).nextCursor;
+      })
     },
     readRoom: { block: step("read-room", (input, { rooms }) => readRoom(rooms, input.projectId, 0)) },
     wakeContext: { block: step("wake-context", (input, { rooms }) => recentRoomLines(rooms, input.projectId, input.seq)) }
@@ -212,5 +227,15 @@ describe("a woken seat's context", () => {
     await h.ok("answer", { body: "commits the room" });
     const context = await h.ok("wakeContext", { projectId: "apollo", seq: 3 });
     expect(context.map((line: { body: string }) => line.body)).toEqual(["the stalled one", "past the gap"]);
+  });
+
+  it("is the last committed lines below the post, however far past the watermark the post was allocated", async () => {
+    const h = await boot();
+    // Committed through 100; 101 to 120 allocated and unwritten; the post is at 121.
+    expect(await h.ok("seedRoom", { projectId: "apollo", committed: 100, next: 120 })).toBe(100);
+    const context = await h.ok("wakeContext", { projectId: "apollo", seq: 121 });
+    expect(context.map((line: { body: string }) => line.body)).toEqual(
+      Array.from({ length: 20 }, (_, i) => `line ${81 + i}`)
+    );
   });
 });

@@ -14,7 +14,7 @@ import { GAPS } from "../src/gaps";
 import { createLabClients, type LabClients } from "../src/lib/connection";
 import { projectsOf, talkFor, type LoadedSnapshot } from "../src/lib/derive";
 import type { Project } from "../src/lib/reads";
-import { postToRoom, readRoom, TalkRefused, untilAnswered, type RoomLine } from "../src/lib/talk";
+import { postToRoom, readRoom, readRoomPages, startRoomRefresh, TalkRefused, type RoomLine, type RoomPage } from "../src/lib/talk";
 import { ClientHttpError } from "@flow-state-dev/client";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
@@ -56,6 +56,38 @@ async function storedRow(baseUrl: string, id: string): Promise<Project> {
   const row = body.items.map((i) => i.clientData).find((p) => p.id === id);
   if (row === undefined) throw new Error(`no project ${id} stored`);
   return row;
+}
+
+/**
+ * Serve the inventory's channel rows rewritten by `rewrite`, as a Lab whose
+ * inventory says that would answer. Everything else goes to the Lab as is.
+ * Returns the path of every action request sent, in order.
+ */
+function rewriteChannelRows(
+  baseUrl: string,
+  rewrite: (rows: Array<{ clientData: Record<string, unknown> }>) => Array<{ clientData: Record<string, unknown> }>,
+): { actions: string[] } {
+  const real = globalThis.fetch;
+  const actions: string[] = [];
+  let channelsRef: Promise<string> | undefined;
+  const refOf = () =>
+    (channelsRef ??= real(`${baseUrl}/api/flows/sessions/ops.desk/manifest`)
+      .then((r) => r.json())
+      .then((m: { resources: Array<{ kind: string; pattern: string; ref: string }> }) => {
+        const found = m.resources.find((r) => r.kind === "collection" && r.pattern === "inventory/channels/*");
+        if (found === undefined) throw new Error("the ask-lab's channel kind declares no channel inventory");
+        return found.ref;
+      }));
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (/\/actions\//.test(url)) actions.push(url.replace(/^https?:\/\/[^/]+/, "").split("?")[0]!);
+    if (new RegExp(`/resources/${encodeURIComponent(await refOf())}(\\?|$)`).test(url)) {
+      const body = (await (await real(input, init)).json()) as { items: Array<{ clientData: Record<string, unknown> }> };
+      return new Response(JSON.stringify({ ...body, items: rewrite(body.items) }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return real(input, init);
+  });
+  return { actions };
 }
 
 function openApp(baseUrl: string, path: string, userId = ASK_LAB_USER_ID): LabClients {
@@ -100,6 +132,14 @@ describe("PROJECTS (BR-22, D3)", () => {
     expect(screen.getAllByTestId("project-group")).toHaveLength(1);
     expect(screen.getByTestId("nav-workstream-ops.desk")).toBeTruthy();
     expect(screen.getByTestId("nav-workstream-ops.side")).toBeTruthy();
+  });
+
+  it("a Lab whose inventory lists seats and projects but no workstreams still shows its projects", async () => {
+    const { baseUrl } = await lab();
+    rewriteChannelRows(baseUrl, () => []);
+    openApp(baseUrl, "/inbox");
+    await screen.findByTestId("nav-project-desk", undefined, { timeout: 10_000 });
+    expect(screen.getAllByTestId("project-group").map((g) => g.getAttribute("data-project-id"))).toEqual(["desk", "empty"]);
   });
 
   it("a failed projects read shows its failed-read state with Retry, and Retry reads it again (BR-30)", async () => {
@@ -191,12 +231,34 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
       [ASK_LAB_USER_ID, "first line in the room"],
     ]);
 
-    // The other member posts; it shows here on the next read (focus), not before.
+    // The other member posts; the open room's refresh loop reads it in, with nothing done on this side.
     await postToRoom(other, "channel", otherSession, "a reply from the other member");
-    expect(document.body.textContent).not.toContain("a reply from the other member");
-    act(() => void window.dispatchEvent(new Event("focus")));
-    await waitFor(() => expect(document.body.textContent).toContain("a reply from the other member"));
+    await waitFor(() => expect(document.body.textContent).toContain("a reply from the other member"), { timeout: 10_000 });
     void clients;
+  });
+
+  it("the room's refresh loop stops when the room unmounts: no read after", async () => {
+    const { baseUrl } = await lab();
+    const reads: number[] = [];
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (/\/actions\/read$/.test(url)) reads.push(Date.now());
+      return real(input, init);
+    });
+    openApp(baseUrl, "/p/desk/stream");
+    await screen.findByTestId("stream", undefined, { timeout: 10_000 });
+    fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "posted before leaving" } });
+    act(() => fireEvent.click(screen.getByTestId("composer-send")));
+    await waitFor(() => expect(screen.getAllByTestId("transcript-line-body").map((b) => b.textContent)).toContain("posted before leaving"));
+    // The loop is running: it reads again without being asked.
+    const before = reads.length;
+    await waitFor(() => expect(reads.length).toBeGreaterThan(before), { timeout: 5_000 });
+    cleanup();
+    const left = Date.now();
+    await new Promise((r) => setTimeout(r, 3_000));
+    // A read already sent when the view went may still land; none is sent after.
+    expect(reads.filter((at) => at > left + 50)).toEqual([]);
   });
 
   it("a read the Lab can't answer shows beside the lines with Retry, and a post whose read-back fails keeps its draft", async () => {
@@ -233,6 +295,20 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
     await waitFor(() => expect(screen.queryByTestId("room-failure")).toBeNull());
   });
 
+  it("a room on a workstream of a custom kind is still opened, read and posted on the built-in channel kind", async () => {
+    const { baseUrl } = await lab();
+    // The inventory says every workstream runs on an app's own kind. Rooms are
+    // always the built-in channel kind's, whatever kind carried the projects read.
+    const { actions } = rewriteChannelRows(baseUrl, (rows) => rows.map((r) => ({ ...r, clientData: { ...r.clientData, kind: "desk-kind" } })));
+    openApp(baseUrl, "/p/desk/stream");
+    await screen.findByTestId("stream", undefined, { timeout: 10_000 });
+    fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "posted beside a custom kind" } });
+    act(() => fireEvent.click(screen.getByTestId("composer-send")));
+    await waitFor(() => expect(screen.getAllByTestId("transcript-line-body").map((b) => b.textContent)).toContain("posted beside a custom kind"), { timeout: 10_000 });
+    expect(actions.length).toBeGreaterThan(0);
+    expect(actions.filter((path) => !path.startsWith("/api/flows/channel/"))).toEqual([]);
+  });
+
   it("only the Lab's own answer is a refusal: a 4xx or a failed request is TalkRefused, a 5xx is thrown as it came", async () => {
     const fake = (send: () => Promise<unknown>, status = "completed", error?: string) =>
       ({
@@ -253,21 +329,107 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
     await expect(postToRoom(fake(() => Promise.reject(new TypeError("fetch failed"))), "channel", "s", "x")).rejects.not.toBeInstanceOf(TalkRefused);
   });
 
-  it("after a post, waits for each seat's answer however long it takes, not for a quiet spell", async () => {
-    // A slow seat: nothing new for three reads after the post, then its answer.
-    let reads = 0;
-    const held: RoomLine[] = [{ projectId: "p", seq: 1, userId: ASK_LAB_USER_ID, author: null, body: "the post" }];
-    const read = async () => {
-      reads += 1;
-      if (reads === 4) held.push({ projectId: "p", seq: 2, userId: ASK_LAB_USER_ID, author: "ops.slow", body: "done, at last" });
-      return held;
+  it("a page holding only tombstones moves the cursor on, and the lines after it are read", async () => {
+    const line = (seq: number, body: string): RoomLine => ({ projectId: "p", seq, userId: ASK_LAB_USER_ID, author: null, body });
+    // What `readRoom` hands back: tombstones already dropped, so the first page is empty but its cursor moved.
+    const pages = new Map<number, RoomPage>([
+      [0, { lines: [], nextCursor: 50, charter: "", seats: [] }],
+      [50, { lines: [line(51, "after the gap"), line(52, "and one more")], nextCursor: 52, charter: "", seats: [] }],
+      [52, { lines: [], nextCursor: 52, charter: "", seats: [] }],
+    ]);
+    const seen: string[] = [];
+    const cursor = await readRoomPages(async (after) => pages.get(after)!, 0, (p) => seen.push(...p.lines.map((l) => l.body)));
+    expect(seen).toEqual(["after the gap", "and one more"]);
+    expect(cursor).toBe(52);
+  });
+
+  describe("the room's one refresh loop", () => {
+    /** A room the loop reads by cursor, with how many reads ran at once at most. */
+    function fakeRoom() {
+      const room: RoomLine[] = [];
+      const shown: RoomLine[] = [];
+      let inFlight = 0;
+      const stats = { reads: 0, maxInFlight: 0 };
+      const read = async () => {
+        stats.reads += 1;
+        inFlight += 1;
+        stats.maxInFlight = Math.max(stats.maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        const fresh = room.slice(shown.length);
+        shown.push(...fresh);
+        inFlight -= 1;
+        return fresh.length;
+      };
+      const add = (author: string | null, body: string) =>
+        room.push({ projectId: "p", seq: room.length + 1, userId: ASK_LAB_USER_ID, author, body });
+      return { room, shown, stats, read, add };
+    }
+    const until = async (check: () => boolean, ms = 3_000) => {
+      const end = Date.now() + ms;
+      while (!check()) {
+        if (Date.now() > end) throw new Error("timed out");
+        await new Promise((r) => setTimeout(r, 5));
+      }
     };
-    expect(await untilAnswered(read, 1, ["ops.slow"], { pollMs: 5, timeoutMs: 5_000 })).toBe(true);
-    expect(reads).toBe(4);
-    // A seat that never answers ends at the bound, not before.
-    const begun = Date.now();
-    expect(await untilAnswered(async () => held, 2, ["ops.never"], { pollMs: 5, timeoutMs: 200 })).toBe(false);
-    expect(Date.now() - begun).toBeGreaterThanOrEqual(200);
+
+    it("two posts at once both show their answers, whichever seat answers first", async () => {
+      const r = fakeRoom();
+      const loop = startRoomRefresh(r.read, { minMs: 10, maxMs: 80, visible: () => true });
+      // Two posts close together; each wakes the loop. The answers land later, out of order.
+      r.add(null, "first post");
+      loop.wake();
+      r.add(null, "second post");
+      loop.wake();
+      setTimeout(() => r.add("ops.slow", "answer to the first"), 150);
+      setTimeout(() => r.add("ops.quick", "answer to the second"), 60);
+      await until(() => r.shown.length === 4);
+      expect(r.shown.map((l) => l.body)).toEqual(["first post", "second post", "answer to the second", "answer to the first"]);
+      loop.stop();
+    });
+
+    it("runs one read at a time however many posts wake it, and backs off while quiet", async () => {
+      const r = fakeRoom();
+      const loop = startRoomRefresh(r.read, { minMs: 10, maxMs: 80, visible: () => true });
+      // Posts keep arriving, each waking the loop, many of them while a read is in flight.
+      let i = 0;
+      await new Promise<void>((resolve) => {
+        const posting = setInterval(() => {
+          r.add(null, `post ${i}`);
+          loop.wake();
+          i += 1;
+          if (i === 25) {
+            clearInterval(posting);
+            resolve();
+          }
+        }, 2);
+      });
+      await until(() => r.shown.length === 25);
+      expect(r.stats.maxInFlight).toBe(1);
+      // Quiet now: over 600 ms a loop that backs off to 80 ms reads at most ~10 times, not every 10 ms.
+      const quietFrom = r.stats.reads;
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      expect(r.stats.reads - quietFrom).toBeLessThanOrEqual(12);
+      expect(r.stats.reads - quietFrom).toBeGreaterThan(0);
+      loop.stop();
+    });
+
+    it("reads nothing once stopped, and nothing while the view is hidden", async () => {
+      const r = fakeRoom();
+      const loop = startRoomRefresh(r.read, { minMs: 10, maxMs: 40, visible: () => true });
+      await until(() => r.stats.reads > 0);
+      loop.stop();
+      const at = r.stats.reads;
+      loop.wake();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(r.stats.reads).toBe(at);
+
+      const hidden = fakeRoom();
+      const away = startRoomRefresh(hidden.read, { minMs: 10, maxMs: 40, visible: () => false });
+      away.wake();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(hidden.stats.reads).toBe(0);
+      away.stop();
+    });
   });
 
   it("a member with no talk session gets Join, and joining binds one that the row then lists", async () => {
@@ -336,7 +498,7 @@ describe("grouping is the snapshot's (V4)", () => {
           ],
         },
       },
-      projects: { ok: true, value: { rows, talkKind: "channel" } },
+      projects: { ok: true, value: { rows } },
       boards: {},
       asks: { ok: true, value: [] },
       resources: { ok: true, value: [] },

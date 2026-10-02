@@ -323,14 +323,16 @@ const ROOM_ANSWERS_COLLECTION = defineResourceCollection({
  * One post's delivery to one seat, at `room-deliveries/<token>`: written by the
  * talk fan-out before it wakes the seat, and the token handed to that seat
  * alone. An answer names its delivery by the token, and its author is the
- * seat the delivery was made to, never the answer's own claim. The token is
- * unguessable, so a seat cannot answer under a delivery it was not handed. No
- * browser read.
+ * seat the delivery was made to, never the answer's own claim. `sessionId` is
+ * the poster's talk session the delivery came from, the only session the
+ * answer may come back through. The token is unguessable, so a seat cannot
+ * answer under a delivery it was not handed. No browser read.
  */
 export const roomDeliverySchema = z.object({
   projectId: z.string().min(1),
   postId: z.string().min(1),
-  seat: z.string().min(1)
+  seat: z.string().min(1),
+  sessionId: z.string().min(1)
 });
 
 /** @see roomDeliverySchema */

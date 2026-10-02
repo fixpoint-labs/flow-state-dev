@@ -38,6 +38,7 @@ import {
   type InventoryBinding,
   type InventorySeat
 } from "../src/index";
+import { workforceManifestSources } from "../src/manifest-sources";
 import { channelSessionStateSchema } from "../src/index";
 
 const USER_ID = "u_boot";
@@ -93,9 +94,24 @@ const readInventory = handler({
   }
 });
 
+/** The channels the discovery door advertises for a roster, read from the org's channel rows. */
+const discoverChannels = handler({
+  name: "discover-channels",
+  inputSchema: z.object({ channels: z.array(z.unknown()) }),
+  outputSchema: z.object({ ids: z.array(z.string()) }),
+  resources: { channels: channelsCollection },
+  execute: async (input: any, ctx: any) => {
+    const [source] = workforceManifestSources({
+      roster: { workers: [], channels: input.channels },
+      inventory: { channels: "channels" }
+    });
+    return { ids: (await source!.entries(ctx)).map((entry) => entry.id) };
+  }
+});
+
 const readerFlow = defineFlow({
   kind: "inventory-reader",
-  actions: { read: { block: readInventory } }
+  actions: { read: { block: readInventory }, discover: { block: discoverChannels } }
 } as never);
 
 /** A hand-rolled channel kind, carrying the writer the way it carries the singleton contract. */
@@ -231,6 +247,20 @@ async function host(roster: ChannelManifest[], options: HostOptions = {}) {
         channels: any[];
         memberships: any[];
       };
+    },
+    /** The channel ids discovery advertises for a roster. */
+    discover: async (channels: ChannelManifest[]) => {
+      const result: any = await runAction({
+        flow: reader,
+        actionName: "discover",
+        input: { channels },
+        userId: USER_ID,
+        orgId: ORG_ID,
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig }
+      } as never);
+      if (result?.error !== undefined) throw result.error;
+      return ((result.output ?? result) as { ids: string[] }).ids;
     },
     /** Every inventory key physically present in an org's storage. */
     keys: async (orgId: string = ORG_ID) =>
@@ -559,6 +589,144 @@ describe("running it twice", () => {
       // The channel that was open before this boot keeps the moment it opened,
       // rather than being restamped by a binder that has no idea when that was.
       expect((await second.row("inventory/channels/eng.standup"))!.openedAt).toBe(openedAt);
+    } finally {
+      await second.dispose();
+    }
+  });
+});
+
+describe("a channel that becomes a project talk template", () => {
+  it("is retired from the channel inventory at the next boot over the same storage, and discovery stops advertising it", async () => {
+    const adapter = inMemoryStores();
+    const before = [record("eng.room"), record("eng.standup")];
+    const first = await host(before, { inventory: true, adapter });
+    try {
+      expect((await bind(first, { channels: before })).problems).toEqual([]);
+      expect(await first.keys()).toContain("inventory/channels/eng.room");
+      expect(await first.discover(before)).toEqual(["eng.room", "eng.standup"]);
+    } finally {
+      await first.dispose();
+    }
+
+    // Restarted over the same storage, with `eng.room` now a project talk template.
+    const after = [record("eng.room", { mintFor: "projects" }), record("eng.standup")];
+    const second = await host([record("eng.standup")], { inventory: true, adapter });
+    try {
+      // The reader alone: before this boot's binder runs, the stale row is still stored and not advertised.
+      expect(await second.discover(after)).toEqual(["eng.standup"]);
+
+      expect((await bind(second, { channels: after })).problems).toEqual([]);
+      // The store: the template's channel row and its membership rows are gone; the channel's stay.
+      const keys = await second.keys();
+      expect(keys.filter((key) => key.endsWith("/eng.room"))).toEqual([]);
+      expect(keys).toContain("inventory/channels/eng.standup");
+      expect(keys).toContain("inventory/members/eng.lead/eng.standup");
+      expect(await second.discover(after)).toEqual(["eng.standup"]);
+    } finally {
+      await second.dispose();
+    }
+  });
+});
+
+describe("retiring a template's old channel row", () => {
+  /** A first boot registers `eng.room` as a channel; returns the shared adapter. */
+  async function registeredRoom() {
+    const adapter = inMemoryStores();
+    const before = [record("eng.room"), record("eng.standup")];
+    const first = await host(before, { inventory: true, adapter });
+    try {
+      expect((await bind(first, { channels: before })).problems).toEqual([]);
+    } finally {
+      await first.dispose();
+    }
+    return adapter;
+  }
+  const after = [record("eng.room", { mintFor: "projects" }), record("eng.standup")];
+
+  it("removes a membership row the channel row does not list", async () => {
+    const adapter = await registeredRoom();
+    const second = await host([record("eng.standup")], { inventory: true, adapter });
+    try {
+      // A membership row an earlier registration left that the channel row no longer names.
+      await second.runtime.stores.resourceState.set(
+        "org",
+        ORG_ID,
+        "inventory/members/eng.ghost/eng.room",
+        { seatId: "eng.ghost", channelId: "eng.room" } as never,
+        "any"
+      );
+      expect(await second.keys()).toContain("inventory/members/eng.ghost/eng.room");
+      expect((await bind(second, { channels: after })).problems).toEqual([]);
+      const keys = await second.keys();
+      expect(keys.filter((key) => key.endsWith("/eng.room"))).toEqual([]);
+      expect(keys).toContain("inventory/members/eng.lead/eng.standup");
+    } finally {
+      await second.dispose();
+    }
+  });
+
+  it("removes the membership rows of an id whose channel row is already gone", async () => {
+    const adapter = await registeredRoom();
+    const second = await host([record("eng.standup")], { inventory: true, adapter });
+    try {
+      await second.runtime.stores.resourceState.delete("org", ORG_ID, "inventory/channels/eng.room", "any");
+      const left = (await second.keys()).filter((key) => key.endsWith("/eng.room"));
+      expect(left).toEqual(["inventory/members/eng.coder/eng.room", "inventory/members/eng.lead/eng.room"]);
+      expect((await bind(second, { channels: after })).problems).toEqual([]);
+      expect((await second.keys()).filter((key) => key.endsWith("/eng.room"))).toEqual([]);
+    } finally {
+      await second.dispose();
+    }
+  });
+
+  it("keeps the channel row until every membership row is gone, so a failed run is finished by the next", async () => {
+    const base = inMemoryStores() as any;
+    // One membership delete fails, once.
+    let failNext = true;
+    let wrapped: any;
+    const adapter = {
+      capabilities: base.capabilities,
+      resolve: async () => {
+        if (wrapped !== undefined) return wrapped;
+        const registry = await base.resolve();
+        const resourceState = new Proxy(registry.resourceState, {
+          get(target, key) {
+            const value = Reflect.get(target, key);
+            if (key !== "delete") return typeof value === "function" ? value.bind(target) : value;
+            return async (...args: any[]) => {
+              if (failNext && String(args[2]).endsWith("members/eng.coder/eng.room")) {
+                failNext = false;
+                throw new Error("the membership delete failed");
+              }
+              return value.apply(target, args);
+            };
+          }
+        });
+        wrapped = new Proxy(registry, {
+          get: (target, key) => (key === "resourceState" ? resourceState : Reflect.get(target, key))
+        });
+        return wrapped;
+      }
+    };
+    const before = [record("eng.room")];
+    const first = await host(before, { inventory: true, adapter });
+    try {
+      expect((await bind(first, { channels: before })).problems).toEqual([]);
+    } finally {
+      await first.dispose();
+    }
+
+    const after = [record("eng.room", { mintFor: "projects" })];
+    const second = await host([record("eng.other")], { inventory: true, adapter, open: [] });
+    try {
+      const failed = await bind(second, { channels: after, seats: [] });
+      expect(failed.problems).toEqual([expect.stringMatching(/could not be retired .*membership delete failed/)]);
+      // The channel row, which names the members, outlives the failure.
+      expect(await second.keys()).toContain("inventory/channels/eng.room");
+
+      // The next run finishes it: no channel row, no membership row.
+      expect((await bind(second, { channels: after, seats: [] })).problems).toEqual([]);
+      expect((await second.keys()).filter((key) => key.endsWith("/eng.room"))).toEqual([]);
     } finally {
       await second.dispose();
     }

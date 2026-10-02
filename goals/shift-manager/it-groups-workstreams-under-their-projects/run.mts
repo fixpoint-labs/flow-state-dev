@@ -568,12 +568,25 @@ async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; crowd: La
   const ownerStart = (await readAll(owner, kind, ownSession)).cursor;
   const posted = await owner.act(kind, ownSession, "post", { body: ownerLine });
   if (posted.status !== "completed") fail(crossLeg, `the owner's post ended ${posted.status}: ${posted.error ?? ""}`);
-  const memberRead = await readAll(member, kind, theirs);
-  if (!memberRead.lines.some((l) => l.body === ownerLine && l.userId === owner.user.userId)) fail(crossLeg, "the member's read holds no line the owner posted");
+  // A completed post can sit just past the room's watermark while a line
+  // allocated before it (a seat answering the last post) is still being
+  // written, so each read is retried, bounded, the way an open room view
+  // keeps reading. The wait is reported.
+  const readUntil = async (api: LabApi, session: string, after: number, has: (l: RoomLine) => boolean) => {
+    const begun = Date.now();
+    for (;;) {
+      if ((await readAll(api, kind, session, after)).lines.some(has)) return Date.now() - begun;
+      if (Date.now() - begun > 10_000) return undefined;
+      await sleep(100);
+    }
+  };
+  const memberWait = await readUntil(member, theirs, 0, (l) => l.body === ownerLine && l.userId === owner.user.userId);
+  if (memberWait === undefined) fail(crossLeg, "the member's reads for 10 s held no line the owner posted");
   const replied = await member.act(kind, theirs, "post", { body: memberLine });
   if (replied.status !== "completed") fail(crossLeg, `the member's post ended ${replied.status}: ${replied.error ?? ""}`);
-  const ownerRead = await readAll(owner, kind, ownSession, ownerStart);
-  if (!ownerRead.lines.some((l) => l.body === memberLine && l.userId === member.user.userId)) fail(crossLeg, "the owner's read by cursor holds no line the member posted");
+  const ownerWait = await readUntil(owner, ownSession, ownerStart, (l) => l.body === memberLine && l.userId === member.user.userId);
+  if (ownerWait === undefined) fail(crossLeg, "the owner's reads by cursor for 10 s held no line the member posted");
+  const crossWait = Math.max(memberWait ?? 0, ownerWait ?? 0);
 
   // ---- the seat's answer is in the room for both -----------------------------
   const answerLeg = "a seat's answer is in the room for both";
@@ -635,7 +648,7 @@ async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; crowd: La
   if (new Set(seqs).size !== seqs.length) fail(burstLeg, "two lines share a sequence number");
 
   evidence.push(
-    `room: ${channels.length} channels as declared; ${joinsSent} joins from ${joiners.length} members at once left one session per member on ${memberProjects.length} project(s); cross-member reads by cursor; ${SEAT_ANSWERS} answered in the room for both; outsider join ${outJoin.status}, forged read ${outRead.status}, post ${outPost.status}; ${burst.length - lost.length} of ${burst.length} burst posts completed, ${held.length} lines in ${project.id}'s room`,
+    `room: ${channels.length} channels as declared; ${joinsSent} joins from ${joiners.length} members at once left one session per member on ${memberProjects.length} project(s); cross-member reads by cursor (longest wait ${crossWait} ms); ${SEAT_ANSWERS} answered in the room for both; outsider join ${outJoin.status}, forged read ${outRead.status}, post ${outPost.status}; ${burst.length - lost.length} of ${burst.length} burst posts completed, ${held.length} lines in ${project.id}'s room`,
   );
 }
 

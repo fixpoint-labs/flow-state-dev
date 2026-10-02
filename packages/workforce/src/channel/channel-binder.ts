@@ -641,9 +641,13 @@ export function channelInstances(
   // The org-level defaults first: each rides on the collection it was
   // declared beside, in the org's resource map.
   let orgDeclarations = 0;
+  const readCollections = new Set<unknown>();
   for (const [ref, entry] of Object.entries(options.resources ?? {})) {
     const template = orgTalkTemplateOf(entry);
     if (template === undefined) continue;
+    // One collection under two refs is one declaration, not two rivals.
+    if (readCollections.has(entry)) continue;
+    readCollections.add(entry);
     orgDeclarations += 1;
     const site = `the talk template beside "${ref}" in the org's resources`;
     // Its seats were checked where it was declared (`defineProjectsCollection`).

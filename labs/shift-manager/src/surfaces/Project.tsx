@@ -3,9 +3,9 @@
  * project, in four tabs.
  *
  * - **Stream** is the project's room, reached through the viewer's own talk
- *   session (`talkFor`, then `talk.ts`): read on open, on focus, and after the
- *   viewer's own post has woken the room's seats. Another member's line shows
- *   on the next read, not live. A member with no talk session gets Join; the
+ *   session (`talkFor`, then `talk.ts`): read on open, then by one refresh loop while
+ *   the view is open, sooner while lines arrive and at once after a post. Another
+ *   member's line shows on a later read, not pushed. A member with no talk session gets Join; the
  *   owner of a project whose mint failed is joined on open; someone who is not
  *   a member is told the room is for its members.
  * - **Board** draws one lane per workstream of the project that holds a
@@ -30,7 +30,7 @@ import { projectsOf, talkFor, teamsOf, type ListedWorkstream, type LoadedSnapsho
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Failure, type Project, type Workstream } from "../lib/reads";
 import { navigate, NO_PROJECT, PROJECT_TABS, type ProjectTab } from "../lib/routes";
-import { asTranscriptLine, joinRoom, postToRoom, readRoom, TalkRefused, untilAnswered, type RoomLine } from "../lib/talk";
+import { asTranscriptLine, joinRoom, postToRoom, readRoom, readRoomPages, ROOM_KIND, startRoomRefresh, TalkRefused } from "../lib/talk";
 import type { Gaps } from "../gaps";
 import { Composer, TranscriptLines } from "./Stream";
 
@@ -94,10 +94,9 @@ export function ProjectView({
       );
     } else {
       title = group.project.title;
-      const talkKind = snapshot.projects.ok ? snapshot.projects.value.talkKind : null;
       body =
         tab === "stream" ? (
-          <ProjectStream key={group.project.id} project={group.project} talkKind={talkKind} />
+          <ProjectStream key={group.project.id} project={group.project} />
         ) : tab === "brief" ? (
           group.project.brief === null ? (
             <EmptyState title="No brief" testId="project-brief-none">
@@ -210,23 +209,22 @@ function Lanes({ snapshot, listed, gaps }: { snapshot: LoadedSnapshot; listed: r
 }
 
 /** The project's room, as this person reaches it (BR-23, BR-24). */
-function ProjectStream({ project, talkKind }: { project: Project; talkKind: string | null }) {
+function ProjectStream({ project }: { project: Project }) {
   const { clients, refresh } = useLab();
   const talk = talkFor(project, clients.userId);
   const [joining, setJoining] = useState<{ failure: Failure } | "running" | undefined>(undefined);
 
   const join = useCallback(async () => {
-    if (talkKind === null) return;
     setJoining("running");
     try {
-      await joinRoom(clients, talkKind, project.id);
+      await joinRoom(clients, ROOM_KIND, project.id);
       // The row now lists this person's talk session; the next snapshot draws it.
       await refresh();
       setJoining(undefined);
     } catch (error) {
       setJoining({ failure: describeFailure(error) });
     }
-  }, [clients, project.id, refresh, talkKind]);
+  }, [clients, project.id, refresh]);
 
   // An owner the mint at create missed is bound on open (BR-8a).
   const repaired = useRef(false);
@@ -240,13 +238,6 @@ function ProjectStream({ project, talkKind }: { project: Project; talkKind: stri
     return (
       <EmptyState title="This room is for the project's members" testId="project-stream-members-only">
         You can see that this project exists and what it holds. Only its members read and post its conversation.
-      </EmptyState>
-    );
-  }
-  if (talkKind === null) {
-    return (
-      <EmptyState title="No room to read" testId="project-stream-no-kind">
-        None of this Lab's flows you hold a session on serves project rooms, so there is no way in from here.
       </EmptyState>
     );
   }
@@ -270,46 +261,47 @@ function ProjectStream({ project, talkKind }: { project: Project; talkKind: stri
       </EmptyState>
     );
   }
-  return <Room key={talk.sessionId} sessionId={talk.sessionId} talkKind={talkKind} />;
+  return <Room key={talk.sessionId} sessionId={talk.sessionId} />;
 }
 
 /**
- * The room through one talk session: read by cursor on open, on focus, and
- * after this person's post has woken the room's seats. The cursor lives in the
- * view; nothing about it is stored.
+ * The room through one talk session: read by cursor on open, then by the
+ * view's one refresh loop (`startRoomRefresh`) until it unmounts. The cursor
+ * lives in the view; nothing about it is stored.
  */
-function Room({ sessionId, talkKind }: { sessionId: string; talkKind: string }) {
+function Room({ sessionId }: { sessionId: string }) {
   const { clients } = useLab();
   const [lines, setLines] = useState<ChannelTranscriptLine[] | undefined>(undefined);
   const [failure, setFailure] = useState<{ failure: Failure; refused: boolean } | undefined>(undefined);
   const cursor = useRef(0);
-  /** Every line read so far, and the room's seats, for waiting on their answers. */
-  const held = useRef<RoomLine[]>([]);
-  const seats = useRef<string[]>([]);
-  const lastPost = useRef<number | undefined>(undefined);
-  const reading = useRef<Promise<RoomLine[]> | undefined>(undefined);
+  const reading = useRef<Promise<number> | undefined>(undefined);
+  /** The view's one refresh loop, while it is mounted. */
+  const refresh = useRef<{ wake(): void; stop(): void } | undefined>(undefined);
 
   /**
    * Read every page after the cursor. One read at a time; a second call waits
    * for the first. A failure is shown, and thrown to the caller.
+   *
+   * @returns how many new lines it read.
    */
-  const readNew = useCallback(async (): Promise<RoomLine[]> => {
+  const readNew = useCallback(async (): Promise<number> => {
     const previous = reading.current;
     const next = (async () => {
       await previous?.catch(() => undefined);
+      let found = 0;
       try {
-        for (;;) {
-          const page = await readRoom(clients, talkKind, sessionId, cursor.current);
-          held.current = [...held.current, ...page.lines];
-          seats.current = page.seats;
-          const fresh = page.lines.map(asTranscriptLine);
-          setLines((shown) => mergeLines(shown ?? [], fresh));
-          if (page.nextCursor <= cursor.current) break;
-          cursor.current = page.nextCursor;
-          if (page.lines.length === 0) break;
-        }
+        await readRoomPages(
+          (after) => readRoom(clients, ROOM_KIND, sessionId, after),
+          cursor.current,
+          (page) => {
+            found += page.lines.length;
+            const fresh = page.lines.map(asTranscriptLine);
+            setLines((shown) => mergeLines(shown ?? [], fresh));
+            cursor.current = Math.max(cursor.current, page.nextCursor);
+          },
+        );
         setFailure(undefined);
-        return held.current;
+        return found;
       } catch (error) {
         setFailure({ failure: describeFailure(error), refused: error instanceof TalkRefused });
         throw error;
@@ -317,13 +309,28 @@ function Room({ sessionId, talkKind }: { sessionId: string; talkKind: string }) 
     })();
     reading.current = next;
     return next;
-  }, [clients, sessionId, talkKind]);
+  }, [clients, sessionId]);
   const retry = () => void readNew().catch(() => undefined);
 
+  // Read on open, then keep reading while the view is open: other members'
+  // lines and the seats' answers arrive through this one loop. Focus and
+  // coming back to the tab read at once. Unmounting stops it.
   useEffect(() => {
     retry();
-    window.addEventListener("focus", retry);
-    return () => window.removeEventListener("focus", retry);
+    const loop = startRoomRefresh(readNew);
+    refresh.current = loop;
+    const wake = () => loop.wake();
+    const onVisible = () => {
+      if (document.visibilityState !== "hidden") loop.wake();
+    };
+    window.addEventListener("focus", wake);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      loop.stop();
+      refresh.current = undefined;
+      window.removeEventListener("focus", wake);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readNew]);
 
@@ -352,7 +359,7 @@ function Room({ sessionId, talkKind }: { sessionId: string; talkKind: string }) 
             ) : null}
             {failureView === null ? null : <li>{failureView}</li>}
             <li className="text-xs text-muted-foreground" data-testid="room-note">
-              Other members' lines show when you come back to this tab or post.
+              New lines show here as they arrive while the room is open.
             </li>
           </ol>
         )}
@@ -362,14 +369,13 @@ function Room({ sessionId, talkKind }: { sessionId: string; talkKind: string }) 
         label="Post to this project's room"
         placeholder="Post a line to the project's room…"
         send={async (body) => {
-          lastPost.current = (await postToRoom(clients, talkKind, sessionId, body)).seq;
+          await postToRoom(clients, ROOM_KIND, sessionId, body);
         }}
         onKept={async () => {
           // Thrown when the read fails: the composer keeps the draft and says so.
           await readNew();
-          const posted = lastPost.current;
-          // The post woke the room's seats; their answers land after it, as each seat finishes.
-          if (posted !== undefined) void untilAnswered(readNew, posted, seats.current).catch(() => undefined);
+          // The post woke the room's seats; the loop reads their answers as they land.
+          refresh.current?.wake();
         }}
       />
     </div>
