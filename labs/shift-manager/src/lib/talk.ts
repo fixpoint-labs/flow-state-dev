@@ -228,15 +228,25 @@ export type RoomRefreshOptions = {
   maxMs?: number;
   /** Whether the view is on screen; a hidden view doesn't read. Default: the document is visible. */
   visible?: () => boolean;
+  /** Quiet reads in a row after which the loop rests until woken. Default 6 (about 45 s at the defaults). */
+  quietReads?: number;
+  /** The most reads one arming makes, however busy the room. Default 60. */
+  burstReads?: number;
 };
 
 /**
- * The one refresh loop of an open room view. It reads the room's new lines
- * (`read` returns how many it found) from the view's cursor, sooner while
- * lines are arriving and backing off to `maxMs` while the room is quiet.
- * `wake` reads at once and starts the wait over, which is what a post does:
- * the seats it woke answer into the room, and the next reads pick them up.
- * Nothing here waits on a particular seat or ties a line to the post before it.
+ * The one refresh loop of an open room view. Every read is a recorded request
+ * on the person's talk session, so the room is read on open, on a wake, and
+ * for a bounded burst after each, never on an open-ended timer (DECISIONS Q3).
+ * The view wakes it on focus, on coming back to the tab, and after a post.
+ *
+ * Within a burst it reads the room's new lines (`read` returns how many it
+ * found) from the view's cursor, sooner while lines are arriving and backing
+ * off to `maxMs` while the room is quiet. After `quietReads` quiet reads in a
+ * row, or `burstReads` reads in all, or once the view is hidden, it rests:
+ * no timer, no read, until `wake`. A post's wake is what picks up the seats'
+ * answers. Nothing here waits on a particular seat or ties a line to the post
+ * before it.
  *
  * There is only ever one read in flight and one timer pending, however often
  * it is woken. `stop` ends it, and nothing reads after that. A read that
@@ -245,8 +255,12 @@ export type RoomRefreshOptions = {
 export function startRoomRefresh(read: () => Promise<number>, options: RoomRefreshOptions = {}): { wake(): void; stop(): void } {
   const minMs = options.minMs ?? 1_000;
   const maxMs = options.maxMs ?? 15_000;
+  const quietReads = options.quietReads ?? 6;
+  const burstReads = options.burstReads ?? 60;
   const visible = options.visible ?? (() => typeof document === "undefined" || document.visibilityState !== "hidden");
   let delay = minMs;
+  let quiet = 0;
+  let reads = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
   let reading = false;
@@ -256,17 +270,25 @@ export function startRoomRefresh(read: () => Promise<number>, options: RoomRefre
     clearTimeout(timer);
     timer = setTimeout(() => void tick(), ms);
   };
+  const rest = () => {
+    clearTimeout(timer);
+    timer = undefined;
+  };
+  const arm = () => {
+    delay = minMs;
+    quiet = 0;
+    reads = 0;
+  };
   const tick = async () => {
     if (stopped) return;
     if (reading) {
       wokenWhileReading = true;
       return;
     }
-    if (!visible()) {
-      schedule(maxMs);
-      return;
-    }
+    // Hidden: rest. Coming back to the tab wakes it.
+    if (!visible()) return rest();
     reading = true;
+    reads += 1;
     let fresh = 0;
     try {
       fresh = await read();
@@ -275,16 +297,22 @@ export function startRoomRefresh(read: () => Promise<number>, options: RoomRefre
     }
     reading = false;
     if (stopped) return;
-    delay = wokenWhileReading || fresh > 0 ? minMs : Math.min(delay * 2, maxMs);
-    schedule(wokenWhileReading ? 0 : delay);
-    wokenWhileReading = false;
+    if (wokenWhileReading) {
+      wokenWhileReading = false;
+      arm();
+      return schedule(0);
+    }
+    quiet = fresh > 0 ? 0 : quiet + 1;
+    if (quiet >= quietReads || reads >= burstReads) return rest();
+    delay = fresh > 0 ? minMs : Math.min(delay * 2, maxMs);
+    schedule(delay);
   };
 
   schedule(delay);
   return {
     wake() {
       if (stopped) return;
-      delay = minMs;
+      arm();
       schedule(0);
     },
     stop() {
