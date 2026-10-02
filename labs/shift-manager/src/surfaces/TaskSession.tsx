@@ -74,17 +74,7 @@ export function TaskSession() {
   })();
 
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col outline-none"
-      data-testid="task-session"
-      tabIndex={0}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && task.status === "in_progress") {
-          event.preventDefault();
-          void task.requestInterrupt();
-        }
-      }}
-    >
+    <div className="flex min-h-0 flex-1 flex-col outline-none" data-testid="task-session" tabIndex={0}>
       {parked ? (
         <div className="mx-4 mt-3 border px-3 py-2 text-xs" data-testid="session-parked">
           <p className="font-medium">This task is waiting on you.</p>

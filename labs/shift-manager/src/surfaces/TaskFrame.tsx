@@ -46,7 +46,21 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   const worker = row?.assignee == null ? null : (seat?.id ?? row.assignee);
 
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="task-frame" data-board-ref={boardRef} data-task-id={taskId}>
+    // Esc interrupts from anywhere in the frame, on every tab and from the
+    // composer, the same as the activity line's hint says.
+    <div
+      className="flex h-full min-h-0 flex-col outline-none"
+      data-testid="task-frame"
+      data-board-ref={boardRef}
+      data-task-id={taskId}
+      tabIndex={-1}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && task.run.kind === "open" && task.status === "in_progress") {
+          event.preventDefault();
+          void task.requestInterrupt();
+        }
+      }}
+    >
       <header className="px-4 pt-3">
         <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">
           TASK ·{" "}

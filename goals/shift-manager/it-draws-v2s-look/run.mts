@@ -518,27 +518,34 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
 /** Suspension reasons that are a person being asked something. */
 const PERSON_REASONS = new Set(["human_approval", "human_input"]);
 
-async function readStore(api: LabApi, tree: string, userId: string): Promise<Store> {
+/** The seats the Lab's inventory holds, read from the first channel's manifest. */
+async function inventorySeats(api: LabApi, tree: string): Promise<Array<{ id: string; name: string }>> {
   const roster = await readDeclaredRoster(tree);
   const host = roster.channels[0]!.id;
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
-  const refOf = (pattern: string) =>
-    (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
-  const seatsRef = refOf("inventory/seats/*");
+  const seatsRef = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find(
+    (r) => r.kind === "collection" && r.pattern === "inventory/seats/*",
+  )?.ref;
   // A seat's name is its address after the team: `<team>.<name>` (the tree's convention).
-  const seats =
-    seatsRef === undefined
-      ? []
-      : (await api.collection(host, seatsRef)).map((r) => {
-          const id = String(r.id);
-          return { id, name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
-        });
+  return seatsRef === undefined
+    ? []
+    : (await api.collection(host, seatsRef)).map((r) => {
+        const id = String(r.id);
+        return { id, name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
+      });
+}
+
+async function readStore(api: LabApi, tree: string, userId: string): Promise<Store> {
+  const roster = await readDeclaredRoster(tree);
+  const seats = await inventorySeats(api, tree);
+  const seatIds = new Set(seats.map((s) => s.id));
   // The flow each listed session belongs to, dispatch runs included, and the
   // person-asks still pending in each: a member's ask is in its channel's feed.
+  // Only the inventory's seats' sessions, as the app reads them.
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
   const asksBySeat = new Map<string, number>();
   for (const session of (listing.sessions ?? []) as Array<Record<string, any>>) {
-    if (typeof session.flowId !== "string") continue;
+    if (typeof session.flowId !== "string" || !seatIds.has(session.flowId)) continue;
     const found = await api.items(String(session.id), ["suspension", "suspension_resume"]);
     const resumed = new Set(found.filter((i) => i.type === "suspension_resume").map((i) => String(i.suspensionId)));
     const pending = found.filter((i) => i.type === "suspension" && PERSON_REASONS.has(String(i.reason)) && !resumed.has(String(i.suspensionId))).length;
@@ -585,11 +592,13 @@ async function channelKind(api: LabApi, channel: string): Promise<string> {
   return String(kind);
 }
 
-/** The person's pending asks, across the seats' sessions. */
-async function pendingAsks(api: LabApi, userId: string): Promise<number> {
+/** The person's pending asks, across the inventory's seats' sessions, as the app reads them. */
+async function pendingAsks(api: LabApi, tree: string, userId: string): Promise<number> {
+  const seatIds = new Set((await inventorySeats(api, tree)).map((s) => s.id));
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&limit=500`);
   let pending = 0;
   for (const session of (listing.sessions ?? []) as Array<Record<string, any>>) {
+    if (typeof session.flowId !== "string" || !seatIds.has(session.flowId)) continue;
     const found = await api.items(String(session.id), ["suspension", "suspension_resume"]);
     const resumed = new Set(found.filter((i) => i.type === "suspension_resume").map((i) => String(i.suspensionId)));
     pending += found.filter((i) => i.type === "suspension" && PERSON_REASONS.has(String(i.reason)) && !resumed.has(String(i.suspensionId))).length;
@@ -706,7 +715,7 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
         const rows = (await api.collection(channel, board)).map((r) => `${r.id} ${r.status} run=${r.run == null ? "none" : "yes"}`);
         throw new Error(`devteam: the filed row never ran, so the sweep has no live run to read (board ${board}: ${rows.join("; ") || "no rows"})`);
       }
-      if ((await pendingAsks(api, injected.userId)) === 0) throw new Error("devteam: no ask is pending, so Inbox has nothing to select");
+      if ((await pendingAsks(api, LABS[lab].tree, injected.userId)) === 0) throw new Error("devteam: no ask is pending, so Inbox has nothing to select");
       screens = SCREENS;
     } else {
       // One exchange through the chief of staff's door, as a person sends it.

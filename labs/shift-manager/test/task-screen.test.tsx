@@ -117,6 +117,20 @@ describe("Interrupt (BR-11, BR-13, BR-14)", () => {
   }, 30_000);
 });
 
+describe("Esc interrupts wherever the activity line says so", () => {
+  it("stops the run from the composer and from a tab with no Session mounted", async () => {
+    const opened = await openLab();
+    const row = await heldRow(opened, true);
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/brief`);
+    await waitFor(() => expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("in_progress"), { timeout: 10_000 });
+    expect(screen.getByTestId("task-activity").textContent).toContain("esc to interrupt");
+    expect(screen.queryByTestId("task-session")).toBeNull();
+    const composer = screen.getByTestId("task-composer-input");
+    fireEvent.keyDown(composer, { key: "Escape" });
+    await waitFor(() => expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("aborted"), { timeout: 10_000 });
+  }, 30_000);
+});
+
 describe("a row with no run (BR-3)", () => {
   it("says no run has started, disables Interrupt, and does not re-read a row that isn't running", async () => {
     const opened = await openLab();
@@ -443,6 +457,25 @@ describe("a task whose run waits on a person (BR-17)", () => {
     expect(banner.textContent).toMatch(/^approval waiting \d+[smhd]inbox ↗$/);
     expect(banner.getAttribute("data-suspension-id")).toBe(ask.getAttribute("data-suspension-id"));
   });
+
+  it("draws the ask as soon as an open task's run stops to ask, with no reload", async () => {
+    const opened = await openLab({ asking: true, holdAsk: true });
+    const filed = opened.lab.filed.find((f) => f.kind === "asking")!;
+    const row = await eventually(async () => (await opened.rows()).find((r) => r.id === filed.taskId && r.run !== null), "the asking run's link");
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+    // Open, and the Lab read, while the run is still running and asks nothing.
+    await waitFor(() => expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("in_progress"), { timeout: 10_000 });
+    await screen.findByTestId("session");
+    expect(screen.queryByTestId("session-ask")).toBeNull();
+    expect(screen.queryByTestId("inspector-needs")).toBeNull();
+
+    opened.lab.releaseAsk();
+    const ask = await screen.findByTestId("session-ask", {}, { timeout: 10_000 });
+    expect(within(ask).getByTestId("ask-card").textContent).toContain(RUN_LAB_ASK);
+    expect(screen.queryByText("Answer it in Inbox")).toBeNull();
+    expect(within(screen.getByTestId("task-activity")).getByText("", { selector: "[data-state-square]" }).getAttribute("data-state-square")).toBe("needs");
+    expect(screen.getByTestId("inspector-needs").getAttribute("data-suspension-id")).toBe(ask.getAttribute("data-suspension-id"));
+  }, 30_000);
 
   it("marks nothing as waiting on a task whose run asks nothing", async () => {
     const opened = await openLab({ asking: true });

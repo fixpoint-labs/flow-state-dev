@@ -8,17 +8,19 @@
  * state square, its name and its count in mono; hairline cell borders and no
  * fill but RUNNING's blue tint; DONE as one line per task, its id and title.
  */
-import { COLUMNS, columnFor, isBlocked } from "../lib/columns";
+import { COLUMNS, isBlocked } from "../lib/columns";
+import { byColumn } from "../lib/derive";
 import { STATE_OF_COLUMN, StateSquare } from "./ui";
 import type { BoardRow } from "../lib/reads";
 import { navigate } from "../lib/routes";
 
 export function Board({ rows, inReviewGap }: { rows: readonly BoardRow[]; inReviewGap: string }) {
   const open = (row: BoardRow) => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" });
+  const grouped = byColumn(rows);
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[repeat(5,minmax(150px,1fr))] overflow-auto" data-testid="board">
       {COLUMNS.map((column) => {
-        const cards = rows.filter((row) => columnFor(row.status) === column);
+        const cards = grouped.get(column) ?? [];
         const tint = column === "RUNNING" ? "bg-info/[3.5%]" : "";
         return (
           <section key={column} className={`flex min-w-0 flex-col border-r border-foreground/[0.12] ${tint}`} data-testid="board-column" data-column={column}>
