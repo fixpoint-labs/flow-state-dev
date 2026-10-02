@@ -171,7 +171,8 @@ export interface DeclaredSeatId {
  * `eng.Lead`, an empty half, a `/`, a second dot — names no seat rather than
  * being placed.
  *
- * @param seatId The seat's id, as the roster minted it.
+ * @param seatId The seat's declared id: a record's `seatId ?? id`. Never a
+ *   runtime hire's `id`, which is its org-qualified address.
  * @returns The folders, or `undefined` for an id the loader cannot mint.
  *
  * @example
