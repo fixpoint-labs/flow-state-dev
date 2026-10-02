@@ -1616,7 +1616,10 @@ four reach org-visible seats only.
 that would start, an `unreadable` row, a kind this app doesn't carry or `allowKinds` excludes,
 and settings the kind refuses, all before writing anything. The row is replaced in one
 version-checked write, so of two repairs of one seat arriving together one is refused. A failed
-registration writes the old row back.
+registration writes the old row back. If the process dies after the row is written, or the
+inventory write fails after the seat is serving, the same call run again finishes the
+registration and the inventory row without writing the roster row again; a different re-hire of
+that now-working seat is refused.
 
 None of the four asks for approval. Mount `brokenSeats` and `rehire` behind one.
 

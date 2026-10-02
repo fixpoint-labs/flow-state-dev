@@ -5,9 +5,11 @@
  * A fake Lab behind the clients: one session, one manifest that declares the
  * inventory and (optionally) the roster, and the rows each collection holds.
  */
-import { describe, expect, it } from "vitest";
-import type { LabClients } from "../src/lib/connection";
+import { afterEach, describe, expect, it } from "vitest";
+import { createLabClients, type LabClients } from "../src/lib/connection";
 import { createLabReader, type LabSnapshot } from "../src/lib/reads";
+import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
+import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
 const ORG = "acme";
 
@@ -103,5 +105,34 @@ describe("TEAMS and the roster", () => {
     const value = await teams({ seats: [...declared, { id: "acme.support.ada", kind: "agent" }] });
     expect(value.seats.map((seat) => seat.id)).toEqual(["eng.lead", "chief-of-staff"]);
     expect(value.rosterUnread).toMatch(/declares the roster/);
+  });
+});
+
+describe("TEAMS and a real Lab", () => {
+  const served: ServedLab[] = [];
+  afterEach(async () => {
+    await Promise.all(served.splice(0).map((lab) => lab.handle.close()));
+  });
+
+  it("BR-23 · a declared team named like the organization is listed, by the origin its row publishes to the browser", async () => {
+    // Organization `ops`, declared team `ops`: every `ops.*` seat id is also
+    // an address in `ops`. The Lab declares no roster, so a row read as hired
+    // would be hidden with "the roster didn't load". Only `hired: false`,
+    // written by the boot and published through the collection's client
+    // projection, keeps them listed.
+    const opened = await openAskLab({ bearer: "ask-lab-secret", orgId: "ops" });
+    const lab = await serveLab(opened.flowState);
+    served.push(lab);
+    const snapshot = await createLabReader(
+      createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID, bearerToken: "ask-lab-secret" }),
+    ).read();
+    if (snapshot.refused !== undefined || snapshot.unreachable !== undefined) throw new Error("not loaded");
+    expect(snapshot.orgId).toBe("ops");
+    if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
+    const seats = snapshot.inventory.value.seats;
+    expect(seats.map((seat) => [seat.id, seat.hired, seat.team]).sort()).toEqual(
+      opened.tree.workers.map((worker) => [worker.id, false, "ops"]).sort(),
+    );
+    expect(snapshot.inventory.value.rosterUnread).toBeUndefined();
   });
 });

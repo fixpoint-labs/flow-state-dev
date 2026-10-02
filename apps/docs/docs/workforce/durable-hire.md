@@ -241,7 +241,7 @@ Firing removes the seat, not its history. Sessions, state and resources it wrote
 
 Because firing removes the seat's inventory row, a team list built from the inventory stops showing it. A seat fired by an earlier version left its inventory row behind. A reader that joins the inventory with the roster hides it, because no roster row backs it: `listedSeatRows` from `@flow-state-dev/workforce/browser` is that join, and Shift Manager's team list uses it.
 
-If the process dies between the two deletes, the inventory row is left too. Calling `fire` again for that seat removes it and answers with `released: false` and `alreadyGone: true`. It only does that for a row marked `hired: true`. A declared seat can sit at the same address, so a row that doesn't say it was hired is never removed this way.
+If the process dies between the two deletes, the inventory row is left too. Calling `fire` again for that seat removes it, a user-owned one included, and answers with `released: false` and `alreadyGone: true`. It only does that for a row marked `hired: true`. A declared seat can sit at the same address, so a row that doesn't say it was hired is never removed this way.
 
 ## Calling a hired seat
 
@@ -376,7 +376,7 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/rehire \
        "instructions":"Answer billing questions. Hand refunds to a person."}}'
 ```
 
-The old kind's settings are not carried over, since they were written for a different kind. The instructions are, unless you pass new ones. `rehire` checks everything before it writes: it refuses a seat that would still start (to change a working seat's kind, fire it and hire it again), an `unreadable` row, a kind your app doesn't carry or `allowKinds` leaves out, and settings the kind refuses. If registering the seat fails after the row was written, the old row is written back and the error is named. If two repairs of one seat arrive at once, one lands and the other is refused.
+The old kind's settings are not carried over, since they were written for a different kind. The instructions are, unless you pass new ones. `rehire` checks everything before it writes: it refuses a seat that would still start (to change a working seat's kind, fire it and hire it again), an `unreadable` row, a kind your app doesn't carry or `allowKinds` leaves out, and settings the kind refuses. If registering the seat fails after the row was written, the old row is written back and the error is named. If the process dies after the row was written, or the inventory row can't be written once the seat is serving, run the same `rehire` again: it sees its own row already stored and finishes the job. If two repairs of one seat arrive at once, one lands and the other is refused.
 
 Neither handler asks anyone. They are what you run once a person has said yes, so in a flow a model drives, put them behind an approval: raise a `human_approval` suspension with `ctx.suspend`, and fire or re-hire only when it resumes with Approve. Both are safe to run again if the process dies part-way, so a restart between the ask and the answer leaves the seat as it was until someone answers.
 

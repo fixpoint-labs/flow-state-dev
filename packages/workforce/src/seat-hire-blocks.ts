@@ -214,15 +214,30 @@ interface LocatedSeatRow {
 /**
  * Find a seat's roster row: the caller's own user-owned row when the flow
  * mounts that roster and it has one, otherwise the org's row (present or not).
+ *
+ * With `leftoverAt` (fire): when neither roster row is there, a hired
+ * inventory row the caller's own fire left at the caller's user-owned address
+ * (a crash after its roster row went) keeps the seat the caller's, so the
+ * retry removes that row rather than looking at the org address.
  */
-async function locateSeatRow(ctx: BlockContext, seatId: string): Promise<LocatedSeatRow> {
+async function locateSeatRow(
+  ctx: BlockContext,
+  seatId: string,
+  leftoverAt?: { orgId: string; inventory: ResourceCollectionRef }
+): Promise<LocatedSeatRow> {
   const owned = privateRosterOf(ctx);
   const userId = ctx.session.identity.userId;
-  if (owned !== undefined && typeof userId === "string" && userId.length > 0) {
-    const key = { owner: `~${encodeUserSegment(userId)}`, seat: seatId };
-    if ((await owned.getOptional(key)) !== undefined) return { roster: owned, key, ownerUserId: userId };
-  }
-  return { roster: collectionOf(ctx, HIRED_ROSTER_RESOURCE), key: seatId, ownerUserId: null };
+  const org: LocatedSeatRow = { roster: collectionOf(ctx, HIRED_ROSTER_RESOURCE), key: seatId, ownerUserId: null };
+  if (owned === undefined || typeof userId !== "string" || userId.length === 0) return org;
+  const own: LocatedSeatRow = {
+    roster: owned,
+    key: { owner: `~${encodeUserSegment(userId)}`, seat: seatId },
+    ownerUserId: userId,
+  };
+  if ((await owned.getOptional(own.key)) !== undefined) return own;
+  if (leftoverAt === undefined || (await org.roster.getOptional(org.key)) !== undefined) return org;
+  const leftover = await leftoverAt.inventory.getOptional(seatAddress(leftoverAt.orgId, seatId, userId));
+  return leftover?.state.hired === true ? own : org;
 }
 
 function asStored(row: HiredSeatRow): JsonObject {
@@ -367,12 +382,13 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
     outputSchema: fireOutput,
     execute: async (input, ctx) => {
       const orgId = orgOf(ctx);
-      const located = await locateSeatRow(ctx, input.seatId);
+      const inventory = collectionOf(ctx, SEAT_INVENTORY_RESOURCE);
+      const located = await locateSeatRow(ctx, input.seatId, { orgId, inventory });
       const removed = await removeHiredSeat({
         orgId,
         roster: located.roster,
         key: located.key,
-        inventory: collectionOf(ctx, SEAT_INVENTORY_RESOURCE),
+        inventory,
         address: seatAddress(orgId, input.seatId, located.ownerUserId),
         isHeld: (address) => options.kindAt?.(address) !== undefined,
         release: (address, storedKind) => {
@@ -460,26 +476,12 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         throw new Error(`This organization hired no seat "${input.seatId}".`);
       }
 
-      // Only a seat the start skips for its kind. A working seat changes kind
-      // by fire then hire; an unreadable row is only retired.
       const before = existing.state as JsonObject;
       const checked = checkHiredSeatRow(orgId, before, kinds);
-      if (checked.ok) {
-        throw new Error(
-          `"${address}" still starts on kind "${checked.row.flow}". To change a working seat's kind, fire it and hire it again.`
-        );
-      }
-      if (checked.reason === "unreadable" || checked.row === undefined) {
+      if (!checked.ok && (checked.reason === "unreadable" || checked.row === undefined)) {
         throw new Error(`"${input.seatId}" is a row that can't be read (${checked.detail}). Fire it to retire it.`);
       }
-      const old = checked.row;
-
-      // Everything that can refuse runs before the write.
-      refuseUnhireableKind(input.flow, "re-hire onto");
-      const held = options.kindAt?.(address);
-      if (held !== undefined) {
-        throw new Error(`"${address}" is already served by a flow of kind "${held}", so it can't be re-hired.`);
-      }
+      const old = checked.row!;
       const row = toHiredSeatRow({
         seatId: old.seatId,
         flow: input.flow,
@@ -488,6 +490,35 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         owningOrgId: orgId,
         ownerUserId: old.ownerUserId,
       });
+      const pin = hiredSeatOwnerPinFromRosterOwner({ orgId, userId: old.ownerUserId });
+
+      if (checked.ok) {
+        // Only a seat the start skips for its kind: a working seat changes
+        // kind by fire then hire. The one exception is this same re-hire run
+        // again after its row was written (a crash, or an inventory write that
+        // failed): the stored row is already the one it would write, so the
+        // retry finishes the registration and the inventory row, and writes no
+        // roster row.
+        if (!deepEqual(row, old)) {
+          throw new Error(
+            `"${address}" still starts on kind "${old.flow}". To change a working seat's kind, fire it and hire it again.`
+          );
+        }
+        refuseUnhireableKind(input.flow, "re-hire onto");
+        const live = options.kindAt?.(address);
+        if (live !== undefined && live !== input.flow) {
+          throw new Error(`"${address}" is already served by a flow of kind "${live}", so it can't be re-hired.`);
+        }
+        if (live === undefined) registerHiredSeat(options.register, checked.seat, pin);
+        return { seatId: old.seatId, address, ...(await publish(ctx, checked.seat, input.flow, address)) };
+      }
+
+      // Everything that can refuse runs before the write.
+      refuseUnhireableKind(input.flow, "re-hire onto");
+      const held = options.kindAt?.(address);
+      if (held !== undefined) {
+        throw new Error(`"${address}" is already served by a flow of kind "${held}", so it can't be re-hired.`);
+      }
       const seat = mint(orgId, row, address);
 
       // One version-checked write. If the row moved since it was read (another
@@ -503,7 +534,7 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
       });
 
       try {
-        registerHiredSeat(options.register, seat, hiredSeatOwnerPinFromRosterOwner({ orgId, userId: old.ownerUserId }));
+        registerHiredSeat(options.register, seat, pin);
       } catch (error) {
         try {
           await existing.updateState(() => before);
@@ -516,7 +547,18 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         throw error;
       }
 
-      return { seatId: old.seatId, address, ...(await publish(ctx, seat, input.flow, address)) };
+      // The seat is re-hired and serving from here on; only its inventory row
+      // is left. If that write fails, the same call run again finishes it
+      // (the retry branch above), so the error says so instead of undoing a
+      // repair that took.
+      try {
+        return { seatId: old.seatId, address, ...(await publish(ctx, seat, input.flow, address)) };
+      } catch (error) {
+        throw new Error(
+          `"${address}" was re-hired onto "${input.flow}" and is serving, but its inventory row could not be ` +
+            `written: ${error instanceof Error ? error.message : String(error)}. Run the same re-hire again to finish it.`
+        );
+      }
     },
   });
 
