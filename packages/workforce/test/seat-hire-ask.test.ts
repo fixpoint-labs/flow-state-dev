@@ -288,7 +288,7 @@ describe("a fire, with fire asking first", () => {
 
     const [pending] = await pendingAsks(stores);
     expect(pending?.reason).toBe("human_approval");
-    expect(pending?.data).toEqual({ verb: "fire", seatId: HELPER, kind: "agent" });
+    expect(pending?.data).toEqual({ verb: "fire", seatId: HELPER, kind: "agent", owner: null, incarnation: null });
     expect(await rosterRows(stores)).toEqual([HELPER]);
     expect(lab.registry.get(HELPER_ADDRESS)).toBeDefined();
     expect(lab.released).toEqual([]);
@@ -299,7 +299,7 @@ describe("a fire, with fire asking first", () => {
     await withHelperHired(stores);
     const lab = await boot(stores, [call("fire", { seatId: HELPER }), say("waiting")], { askBefore: ["fire"], streaming: true });
     expect((await lab.ask("let the helper go")).status).toBe("suspended");
-    expect((await pendingAsks(stores))[0]?.data).toEqual({ verb: "fire", seatId: HELPER, kind: "agent" });
+    expect((await pendingAsks(stores))[0]?.data).toEqual({ verb: "fire", seatId: HELPER, kind: "agent", owner: null, incarnation: null });
     expect(await rosterRows(stores)).toEqual([HELPER]);
   });
 
@@ -319,6 +319,31 @@ describe("a fire, with fire asking first", () => {
     // And a restart brings nothing back.
     const after = await boot(stores, []);
     expect(after.registry.get(HELPER_ADDRESS)).toBeUndefined();
+  });
+
+  it("on Approve leaves alone a seat hired under the same id while the person was asked", async () => {
+    const stores = freshStores();
+    await withHelperHired(stores);
+    const asked = await boot(stores, [call("fire", { seatId: HELPER }), say("done")], { askBefore: ["fire"] });
+    const { requestId } = await asked.ask("let the helper go");
+
+    // Meanwhile, through a door that doesn't ask: the helper is fired and a
+    // new one hired under the same id.
+    const meanwhile = await boot(stores, [
+      call("fire", { seatId: HELPER }, "f1"),
+      call("hire", { seatId: HELPER, flow: "agent", instructions: "The new helper." }, "h1"),
+      say("replaced"),
+    ]);
+    expect((await meanwhile.ask("replace the helper")).status).toBe("completed");
+    const replacement = await stores.resourceState.get("org", ORG, `${HIRED_ROSTER_PREFIX}${HELPER}`);
+
+    const { finished } = await asked.answer(requestId, "approve");
+    await finished;
+
+    expect(lastToolResults(asked.seen)).toContain("changed while you were asked");
+    expect(await rosterRows(stores)).toEqual([HELPER]);
+    expect(await stores.resourceState.get("org", ORG, `${HIRED_ROSTER_PREFIX}${HELPER}`)).toEqual(replacement);
+    expect(await inventoryRows(stores)).toContain(HELPER_ADDRESS);
   });
 
   it("on Deny changes nothing, and the model is told (BR-12)", async () => {
@@ -382,7 +407,7 @@ describe("a fire, with fire asking first", () => {
     await leftover(marked, true);
     const asked = await boot(marked, [call("fire", { seatId: HELPER })], { askBefore: ["fire"] });
     expect((await asked.ask("clear the helper")).status).toBe("suspended");
-    expect((await pendingAsks(marked))[0]?.data).toEqual({ verb: "fire", seatId: HELPER, kind: null });
+    expect((await pendingAsks(marked))[0]?.data).toEqual({ verb: "fire", seatId: HELPER, kind: null, owner: null, incarnation: null });
 
     const unmarked = freshStores();
     await leftover(unmarked, false);
@@ -485,7 +510,7 @@ describe("what asks, and where it can't", () => {
     const lab = await boot(stores, [call("hire", { seatId: HELPER, flow: "agent" }), say("hired")], { askBefore: ["hire", "fire"] });
     const { requestId, status } = await lab.ask("we need a helper");
     expect(status).toBe("suspended");
-    expect((await pendingAsks(stores))[0]?.data).toEqual({ verb: "hire", seatId: HELPER, kind: "agent" });
+    expect((await pendingAsks(stores))[0]?.data).toEqual({ verb: "hire", seatId: HELPER, kind: "agent", owner: null, incarnation: null });
     expect(await rosterRows(stores)).toEqual([]);
 
     await (await lab.answer(requestId, "approve")).finished;
@@ -515,7 +540,7 @@ describe("what asks, and where it can't", () => {
     );
     const lab = await boot(stores, [call("rehire", { seatId: HELPER, flow: "agent" })], { askBefore: [], reloadProblems: 1 });
     expect((await lab.ask("put the helper back on the agent kind")).status).toBe("suspended");
-    expect((await pendingAsks(stores))[0]?.data).toEqual({ verb: "rehire", seatId: HELPER, kind: "agent" });
+    expect((await pendingAsks(stores))[0]?.data).toEqual({ verb: "rehire", seatId: HELPER, kind: "agent", owner: null, incarnation: null });
   });
 
   it("asks nothing with askBefore omitted: a fire lands at once, as before the option", async () => {

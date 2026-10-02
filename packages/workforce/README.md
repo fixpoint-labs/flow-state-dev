@@ -1591,9 +1591,13 @@ It refuses when this organization hired no seat, or when a live file-declared se
 address (removed by editing its folder, not by firing it).
 
 **Asking first.** A tool `askBefore` lists runs every refusal above first, then suspends the
-request with `reason: "human_approval"`, `data: { verb, seatId, kind }` and
-`allow: ["approve", "reject"]`. Approve makes the change; reject changes nothing and the model
-gets `{ denied: true, reason }` as the tool result. A refusal raises no ask. Asking needs durable
+request with `reason: "human_approval"`, `data: { verb, seatId, kind, owner, incarnation }` and
+`allow: ["approve", "reject"]`. `owner` is the member whose own seat it is (`null` for an
+org-visible seat or a hire); `incarnation` names the hire that wrote the row (`null` for a hire).
+Approve makes the change to that row only: if the seat id names another row by then (fired and
+hired again), the change is refused with "changed while you were asked". Reject changes nothing
+and the model gets `{ denied: true, reason }` as the tool result. A refusal raises no ask.
+`askBefore` covers `hire` and `fire`; `rehire` always asks. Asking needs durable
 execution (`durable: true` on `createFlowState`); without it a listed tool throws, naming
 itself, and changes nothing. The ask survives a restart, and a request recovered after the
 approval landed makes the change once on a store that keeps a run's items as it goes.
@@ -1612,7 +1616,8 @@ model should be in front of it. Inputs, outputs and refusals are the ones descri
 the tools.
 
 **`brokenSeats`** takes `{}` and returns the caller's organization's stored seats that would
-not start, each `{ seatId, key, kind, reason, detail }`, with `reason` one of `kind-gone`,
+not start, each `{ seatId, key, owner, kind, reason, detail }`, with `owner` either
+`organization` or `me` (one of the caller's own user-owned seats) and `reason` one of `kind-gone`,
 `refused`, `unreadable`. It reads through the start's own per-row check, so `detail` is the
 sentence `reloadHiredSeats` puts in `problems`, and it writes nothing. For an `unreadable` row,
 `seatId` is the row's key, which `fire` retires it by. It runs the full check on every row, a
@@ -1625,8 +1630,10 @@ first, then the org's. That collection serves a row only to the member it belong
 member lists and repairs only their own; the start still names every member's. Without it, the
 four reach org-visible seats only.
 
-**`rehire`** takes `{ seatId, flow, settings?, instructions?, orgId? }` and returns
-`{ seatId, address, warning? }`. It keeps the seat's id and address and runs it on `flow`, with
+**`rehire`** takes `{ seatId, flow, settings?, instructions?, owner?, orgId? }` and returns
+`{ seatId, address, warning? }`. `owner` is the one `brokenSeats` reported, and picks the roster:
+with it, an org seat and one of the caller's own under the same id are told apart; omitted, the
+caller's own row is used when there is one. It keeps the seat's id and address and runs it on `flow`, with
 `settings` for that kind; the stored instructions carry over unless replaced. It refuses a seat
 that would start, an `unreadable` row, a kind this app doesn't carry or `allowKinds` excludes,
 and settings the kind refuses, all before writing anything. The row is replaced in one

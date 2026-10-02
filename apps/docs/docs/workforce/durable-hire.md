@@ -351,10 +351,10 @@ curl -X POST localhost:3000/api/flows/workforce-admin/actions/brokenSeats \
   -d '{"userId":"you","input":{}}'
 ```
 
-It answers with one entry per seat, `{ seatId, key, kind, reason, detail }`. `key` is the row's storage key and `detail` is the sentence the start printed for it:
+It answers with one entry per seat, `{ seatId, key, owner, kind, reason, detail }`. `key` is the row's storage key, `owner` is `organization` or `me` (a seat of the caller's own), and `detail` is the sentence the start printed for it:
 
 ```json
-[{ "seatId": "support.joe", "key": "workforce/roster/support.joe", "kind": "desk-clerk", "reason": "kind-gone",
+[{ "seatId": "support.joe", "key": "workforce/roster/support.joe", "owner": "organization", "kind": "desk-clerk", "reason": "kind-gone",
    "detail": "hireWorkforce refused 1 of 1 worker; nothing was hired:\n  - worker \"acme.support.joe\" — names flow kind \"desk-clerk\", which was not passed to hireWorkforce. Kinds passed: \"agent\"" }]
 ```
 
@@ -368,7 +368,7 @@ Each entry has one of three reasons:
 
 **To retire a seat, fire it.** `fire` removes the roster row and the inventory row. Nothing was serving the seat, so there's no address to release and `released` is `false`. The next start names nothing for it. An `unreadable` row is deleted by its key and nothing else is touched, so that answer's `address` is `null`.
 
-**To keep the seat, re-hire it.** `rehire` takes the seat id, the kind to run it on, its settings for that kind, and optionally new instructions. The seat keeps its id and its address, so channels that list it and sessions it owns carry on:
+**To keep the seat, re-hire it.** `rehire` takes the seat id, the kind to run it on, its settings for that kind, and optionally new instructions and the `owner` `brokenSeats` reported. Pass `owner` when the caller has a seat of their own under the same id as an organization's; without it, the caller's own is the one re-hired. The seat keeps its id and its address, so channels that list it and sessions it owns carry on:
 
 ```bash
 curl -X POST localhost:3000/api/flows/workforce-admin/actions/rehire \

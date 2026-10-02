@@ -47,13 +47,15 @@ import {
   defineAgentWorkerFlow,
   HIRED_ROSTER_RESOURCE,
   SEAT_INVENTORY_RESOURCE,
+  type HireOptions,
 } from "@flow-state-dev/workforce";
 
 import { deskClerkFlow } from "./flows/desk-clerk";
 import { kindAt, registerSeat, releaseSeat } from "./registry-access";
 import { roster } from "./roster";
 
-export const kinds = { "desk-clerk": deskClerkFlow };
+// Typed as the whole map, so the `agent` entry can be added below.
+export const kinds: NonNullable<HireOptions["kinds"]> = { "desk-clerk": deskClerkFlow };
 
 const seatHire = createSeatHireCapability({
   kinds,
@@ -105,7 +107,7 @@ The tools work on the organization's seats. A seat a member hired for only thems
 askBefore names "promote"; it takes hire and fire.
 ```
 
-Left out, nothing asks. `rehire` asks whatever the list says.
+`askBefore` covers `hire` and `fire` only. Left out, those two act at once. `rehire` is not on the list because it always asks, whatever `askBefore` says, so a repair needs durable execution even in an app that asks for nothing else.
 
 A listed tool checks everything that could refuse the change first. A seat id nothing hired, a seat declared in a file, or a kind outside `allowKinds` is refused straight away, and nobody is asked. When the change could go ahead, the tool pauses the request with a `human_approval` suspension:
 
@@ -113,7 +115,7 @@ A listed tool checks everything that could refuse the change first. A seat id no
 {
   "reason": "human_approval",
   "message": "Fire seat \"coder-7\" (kind \"coder\")?",
-  "data": { "verb": "fire", "seatId": "coder-7", "kind": "coder" },
+  "data": { "verb": "fire", "seatId": "coder-7", "kind": "coder", "owner": null, "incarnation": "inc_8f2c" },
   "allow": ["approve", "reject"]
 }
 ```
@@ -126,7 +128,15 @@ curl -X POST localhost:3000/api/flows/chief-of-staff/requests/$REQUEST_ID/resume
   -d '{"suspensionId":"'$SUSPENSION_ID'","action":"approve"}'
 ```
 
-On approve, the tool checks again and makes the change. On reject, nothing changes, and the model is told the request was denied. The ask outlives a restart: a person can approve tomorrow what the chief of staff asked today. On a store that keeps a run as it goes, such as SQLite, a process that dies after the approval and before the turn ends makes the change once when the request is recovered.
+`owner` is the member whose own seat it is, or `null` for an organization's seat. `incarnation` names the hire that wrote the row.
+
+On approve, the tool checks again and makes the change, to that row only. If the seat was fired and hired again under the same id while the person was asked, the approved change is refused and the new seat is left alone:
+
+```text
+The seat "acme.coder-7" changed while you were asked: it is not the one you approved, so the fire was not made. Ask again if it should be.
+```
+
+On reject, nothing changes, and the model is told the request was denied. The ask outlives a restart: a person can approve tomorrow what the chief of staff asked today. On a store that keeps a run as it goes, such as SQLite, a process that dies after the approval and before the turn ends makes the change once when the request is recovered.
 
 Asking needs durable execution, so turn it on with `durable: true` on `createFlowState`. Without it, a listed tool refuses rather than acting unasked:
 

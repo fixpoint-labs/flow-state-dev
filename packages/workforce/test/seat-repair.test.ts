@@ -712,3 +712,37 @@ describe("rehire", () => {
     }
   });
 });
+
+describe("a broken org seat and the caller's own seat under one id", () => {
+  const OWNED = `~${encodeUserSegment("u1")}/research`;
+
+  it("brokenSeats names whose row it is, and rehire with that owner repairs the org row, leaving the caller's alone", async () => {
+    const h = await harness({}, { userOwned: true });
+    await h.seed("research", row({ seatId: "research", flow: "desk-clerk" }));
+    await h.seed(OWNED, row({ seatId: "research", flow: "desk", settings: { queue: "mine" }, ownerUserId: "u1" }));
+    const mine = (await h.rows(ROSTER))[OWNED];
+
+    const listed = (await h.run("brokenSeats", {})).output as Array<{ seatId: string; owner: string }>;
+    expect(listed).toEqual([expect.objectContaining({ seatId: "research", owner: "organization" })]);
+
+    // Without the owner, the caller's own healthy row is the one found.
+    expect((await h.run("rehire", { seatId: "research", flow: "desk", settings: { queue: "q" } })).error?.message).toMatch(
+      /still starts/
+    );
+
+    const rehired = await h.run("rehire", { seatId: "research", flow: "desk", settings: { queue: "q" }, owner: "organization" });
+    expect(rehired.error).toBeUndefined();
+    expect(rehired.output).toEqual({ seatId: "research", address: "acme.research" });
+    expect((await h.rows(ROSTER))["research"]).toMatchObject({ flow: "desk", ownerUserId: null });
+    expect((await h.rows(ROSTER))[OWNED]).toEqual(mine);
+  });
+
+  it("brokenSeats calls the caller's own broken row theirs, and rehire with owner \"me\" reaches it", async () => {
+    const h = await harness({}, { userOwned: true });
+    await h.seed(OWNED, row({ seatId: "research", flow: "desk-clerk", ownerUserId: "u1" }));
+    const listed = (await h.run("brokenSeats", {})).output as Array<{ seatId: string; owner: string }>;
+    expect(listed).toEqual([expect.objectContaining({ seatId: "research", owner: "me" })]);
+    const rehired = await h.run("rehire", { seatId: "research", flow: "desk", settings: { queue: "q" }, owner: "me" });
+    expect(rehired.output).toEqual({ seatId: "research", address: "acme.~u1.research" });
+  });
+});
