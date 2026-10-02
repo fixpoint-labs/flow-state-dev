@@ -52,6 +52,7 @@ const COS = "chief-of-staff";
 export const ASKER = "ops.lead";
 const CHANNEL = "ops.room";
 const ROSTER_PREFIX = "workforce/roster/";
+const INVENTORY_PREFIX = "inventory/seats/";
 
 const files = (requested: string): Record<string, string> => ({
   "org/workers/chief-of-staff/WORKER.md": `---
@@ -159,6 +160,12 @@ export interface SeatAsksResult {
   deliveries: Delivery[];
   rostered: boolean;
   rosterKind: string | undefined;
+  /** The hired seat's address: the id of the inventory row ending in the seat id, or `undefined` when none is listed. */
+  address: string | undefined;
+  /** The inventory row's kind. */
+  listedKind: string | undefined;
+  /** The status a session opened on the address through the session route got; `undefined` when there was no address. */
+  answers: number | undefined;
   hireError?: string;
 }
 
@@ -202,6 +209,8 @@ export async function runSeatAsks(requested: string, dropDelivery: boolean, scra
       ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
     },
     stores: { default: { primary: stores } },
+    // The session route's verified caller: the host's person, in the host's org.
+    resolvePrincipal: () => ({ userId: USER, orgId: ORG }),
   } as never);
   const runtime = await state.getRuntime();
   registrar = state as never;
@@ -265,13 +274,35 @@ export async function runSeatAsks(requested: string, dropDelivery: boolean, scra
     startStatus = `threw: ${error instanceof Error ? error.message : String(error)}`;
   }
 
-  // The hand-offs are detached: wait for the row, up to two minutes.
+  // The hand-offs are detached: wait for a hire's two rows, the roster row and
+  // the inventory row, up to two minutes.
   let row: { state?: unknown } | undefined;
+  let listed: { id: string; kind?: string } | undefined;
   for (let waited = 0; waited < 120_000; waited += 500) {
     row = (await runtime.stores.resourceState.get("org", ORG, `${ROSTER_PREFIX}${requested}`)) as typeof row;
-    if (row?.state != null) break;
+    const inventory = await runtime.stores.resourceState.getByPrefix("org", ORG, INVENTORY_PREFIX);
+    listed = Object.values(inventory)
+      .map((entry) => (entry as { state?: { id?: unknown; kind?: string } }).state)
+      .find((seat): seat is { id: string; kind?: string } => typeof seat?.id === "string" && seat.id.endsWith(`.${requested}`));
+    if (row?.state != null && listed !== undefined) break;
     if (dropDelivery && waited >= 10_000) break;
     await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  // The third outcome: the address answers on the session route a browser opens it through.
+  let answers: number | undefined;
+  if (listed !== undefined) {
+    const router = (await state.getRouter()) as unknown as Record<string, (request: Request, context: unknown) => Promise<Response>>;
+    const path = [listed.id, "sessions"];
+    const response = await router.POST!(
+      new Request(`http://goal/api/flows/${path.map(encodeURIComponent).join("/")}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: USER }),
+      }),
+      { params: { path } },
+    );
+    answers = response.status;
   }
   return {
     requested,
@@ -279,5 +310,8 @@ export async function runSeatAsks(requested: string, dropDelivery: boolean, scra
     deliveries: log,
     rostered: row?.state != null,
     rosterKind: (row?.state as { flow?: string } | null | undefined)?.flow,
+    address: listed?.id,
+    listedKind: listed?.kind,
+    answers,
   };
 }
