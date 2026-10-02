@@ -15,20 +15,27 @@
  *            No project; the cross-team project groups both teams'
  *            workstreams; every project's four tabs show its row, a line
  *            posted from its Stream is in the room, and no gap copy is reached.
- *   room     HTTP, as three verified users. The inventory equals the tree's
- *            channels; a burst of joins leaves one talk session per member;
- *            two members read each other's lines by cursor and both see the
- *            seat's answer; an outsider is refused, even from a session it
- *            made naming the project; and a burst of posts from both members
- *            lands whole.
+ *   room     HTTP, as the owner, the profile's members and an outsider. The
+ *            inventory equals the tree's channels; a burst of first joins from
+ *            every member at once leaves one talk session per member; two
+ *            members read each other's lines by cursor and both see the seat's
+ *            answer; an outsider is refused, even from a session it made naming
+ *            the project; and a burst of posts from both members lands whole.
+ *   restart  the Lab stopped and started on the same store: every project row,
+ *            with its talk links, is as it was, and each room reads back
+ *            through the same talk session with every line once.
  *   cos      HTTP, as the member, on a real model. Asked for two projects, the
  *            chief of staff creates two rows, each owned by the person who
  *            asked, with them (and whoever they named) as members and their
- *            talk session bound. Runs last: its rows are the member's, and the
- *            other legs grade every row as the owner's.
+ *            talk session bound. Runs last, after the restart: its rows are the
+ *            member's, and the other legs grade every row as the owner's.
  *
- * Legs: `GOAL_LEG=model-free` runs screens and room, `GOAL_LEG=cos` runs cos;
- * unset runs all three.
+ * Every run, the plain one and each control, serves the Lab with its checked
+ * store writes held up to WRITE_LATENCY_MS (`devforce-lab/lab/write-latency.mts`)
+ * and releases each burst from a barrier, so the bursts really race.
+ *
+ * Legs: `GOAL_LEG=model-free` runs screens, room and restart, `GOAL_LEG=cos`
+ * runs cos; unset runs all four.
  *
  * Controls (each must fail; the run fails if a swap never fired):
  *
@@ -39,10 +46,12 @@
  *   no-gate   the room's membership check removed (Node swap of
  *             membership-gate.ts in the served Lab). Must fail at "the
  *             outsider is refused".
- *   no-retry  the room's own retry removed (Node swap of cas-retry.ts). Meant to
- *             fail at both "a burst of posts lands whole" and "a burst of
- *             joins leaves one session per member"; on the served in-memory
- *             Lab it does not go red yet (goal.md says why).
+ *   no-retry  the room's own retry removed (Node swap of cas-retry.ts). Must
+ *             fail at "a burst of posts lands whole" and "a burst of joins
+ *             leaves one session per member".
+ *   in-memory the profile's store kept in memory (Node swap of store-sqlite's
+ *             index.ts). Must fail at "a restart keeps the projects and their
+ *             rooms".
  *   no-tool   the chief of staff without its project tools, as before it had
  *             them (Node swap of the lab's host.mts). Must fail at "cos".
  *
@@ -58,10 +67,10 @@ import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
-import { LAB_USERS } from "../../devforce-lab/lab/host.mts";
+import { LAB_CROWD, LAB_USERS } from "../../devforce-lab/lab/host.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["unread", "gap-tabs", "no-gate", "no-retry", "no-tool"] as const;
+const CONTROLS = ["unread", "gap-tabs", "no-gate", "no-retry", "in-memory", "no-tool"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
@@ -95,12 +104,15 @@ const fixture = loadFixture<{
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
 const PROJECTS_SRC = join(REPO_ROOT, "packages", "workforce", "src", "projects");
+const SQLITE_SRC = join(REPO_ROOT, "packages", "store-sqlite", "src", "index.ts");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-projects");
 const CONFIG = join(SHIFT_MANAGER, "teams", "devteam", "fsdev.config.mts");
 const TREE = join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce");
 const LAB_HOST = join(REPO_ROOT, "goals", "devforce-lab", "lab", "host.mts");
 const SEAT_ANSWERS = "eng.em";
+/** The most a checked store write is held before it lands. */
+const WRITE_LATENCY_MS = 30;
 /** The seat Shift Manager finds the chief of staff by. */
 const COS = "chief-of-staff";
 /** How long one turn of the chief of staff may take: a real model answers it. */
@@ -133,6 +145,7 @@ function serverSwapFor(control: string): { target: string; with: string } | unde
   if (control === "no-gate") return { target: join(PROJECTS_SRC, "membership-gate.ts"), with: join(HERE, "controls", "no-gate.ts") };
   if (control === "no-retry") return { target: join(PROJECTS_SRC, "cas-retry.ts"), with: join(HERE, "controls", "no-retry.ts") };
   if (control === "no-tool") return { target: LAB_HOST, with: join(HERE, "controls", "no-tool.mts") };
+  if (control === "in-memory") return { target: SQLITE_SRC, with: join(HERE, "controls", "in-memory.ts") };
   return undefined;
 }
 
@@ -177,8 +190,11 @@ async function buildShiftManager(control: string): Promise<string> {
 
 type Running = { origin: string; child: ChildProcess; log: () => string; exited: Promise<void> };
 
-/** Shift Manager's start script over the DevTeam profile, with the server control's swap if one is set. */
-async function startLab(pages: string, fired: string | undefined): Promise<Running> {
+/**
+ * Shift Manager's start script over the DevTeam profile, on the store file at
+ * `store`, with the server control's swap if one is set.
+ */
+async function startLab(pages: string, fired: string | undefined, store: string): Promise<Running> {
   mkdirSync(join(SCRATCH, "labs"), { recursive: true });
   const workDir = mkdtempSync(join(SCRATCH, "labs", "devteam-"));
   const swap = serverSwapFor(CONTROL);
@@ -194,8 +210,16 @@ async function startLab(pages: string, fired: string | undefined): Promise<Runni
   let log = "";
   const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", CONFIG, "--port", "0", "--assets", pages], {
     cwd: workDir,
-    // A fresh store per run, for a profile whose store outlives the process.
-    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", DEVTEAM_STORE: join(workDir, "devteam.sqlite"), ...swapEnv }),
+    // A fresh store per run, for a profile whose store outlives the process;
+    // the restart opens the same one. Every run, the plain one and each control, holds the store's checked writes
+    // (`write-latency.mts`), so the bursts really race and a PASS means the room absorbed it.
+    env: intentFreeEnv(process.env, {
+      INIT_CWD: workDir,
+      GOAL_CONTROL: "",
+      DEVTEAM_STORE: store,
+      DEVFORCE_LAB_WRITE_LATENCY_MS: String(WRITE_LATENCY_MS),
+      ...swapEnv,
+    }),
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout!.on("data", (d) => (log += String(d)));
@@ -209,7 +233,13 @@ async function startLab(pages: string, fired: string | undefined): Promise<Runni
   );
   for (let waited = 0; waited < 90_000; waited += 250) {
     const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) return { origin: match[1]!, child, log: () => log, exited };
+    if (match !== null) {
+      if (!log.includes(`holding checked store writes up to ${WRITE_LATENCY_MS}ms`)) {
+        child.kill("SIGTERM");
+        throw new Error("the Lab did not hold its store writes, so the bursts would not race");
+      }
+      return { origin: match[1]!, child, log: () => log, exited };
+    }
     if (gone) break;
     await sleep(250);
   }
@@ -260,7 +290,7 @@ function labApi(origin: string, user: { userId: string; bearer: string }) {
     return String(body.session.id);
   };
   /** Run one action and wait for it to end: its status, and its output or error. */
-  const act = async (kind: string, sessionId: string, action: string, input: unknown, waitMs = 60_000): Promise<Settled> => {
+  const act = async (kind: string, sessionId: string, action: string, input: unknown): Promise<Settled> => {
     const posted = await call("POST", `/${encodeURIComponent(kind)}/${encodeURIComponent(sessionId)}/actions/${encodeURIComponent(action)}`, {
       userId: user.userId,
       input,
@@ -268,7 +298,7 @@ function labApi(origin: string, user: { userId: string; bearer: string }) {
     if (posted.status !== 202) return { status: `http ${posted.status}`, output: undefined, error: JSON.stringify(posted.body) };
     const requestId = String(posted.body?.request?.id);
     let status = "in_progress";
-    for (let waited = 0; waited < waitMs && status === "in_progress"; waited += 50) {
+    for (let waited = 0; waited < 60_000 && status === "in_progress"; waited += 50) {
       status = String((await call("GET", `/${encodeURIComponent(kind)}/requests/${encodeURIComponent(requestId)}/status`)).body?.status);
       if (status === "in_progress") await sleep(50);
     }
@@ -479,7 +509,7 @@ async function screens(served: Running, tree: Tree, owner: LabApi, host: string,
   }
 }
 
-async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; outsider: LabApi }, host: string, fail: (leg: string, why: string) => void, evidence: string[]) {
+async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; crowd: LabApi[]; outsider: LabApi }, host: string, fail: (leg: string, why: string) => void, evidence: string[]) {
   const { owner, member, outsider } = apis;
   const { channels, rows } = await readStore(owner, host);
 
@@ -494,29 +524,38 @@ async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; outsider:
   const kind = String((await owner.get(`/sessions/${encodeURIComponent(ownSession)}`)).session?.flowKind ?? "");
 
   // ---- a burst of joins leaves one talk session per member ------------------
+  // Every member who holds no talk session yet joins every project they are in,
+  // each from many fresh sessions at once: their first joins race to append to
+  // the same row's `sessions`.
   const joinLeg = "a burst of joins leaves one session per member";
-  const memberProjects = rows.filter((r) => r.members.includes(member.user.userId));
-  const memberSession: Record<string, string> = {};
-  await Promise.all(
-    memberProjects.map(async (row) => {
-      const windows = await Promise.all(Array.from({ length: fixture.joins }, () => member.createSession(kind)));
-      const joins = await Promise.all(windows.map((w) => member.act(kind, w, "join", { projectId: row.id })));
-      const refused = joins.filter((j) => j.status !== "completed");
-      if (refused.length > 0) fail(joinLeg, `${row.id}: ${refused.length} of ${joins.length} joins did not complete (${refused[0]!.error ?? refused[0]!.status})`);
-      const answered = new Set(joins.filter((j) => j.status === "completed").map((j) => String(j.output?.sessionId)));
-      if (answered.size !== 1) fail(joinLeg, `${row.id}: the joins answered ${answered.size} different sessions`);
-      memberSession[row.id] = [...answered][0] ?? "";
-    }),
-  );
+  const joiners = [member, ...apis.crowd];
+  const memberProjects = rows.filter((r) => joiners.every((j) => r.members.includes(j.user.userId)));
+  if (memberProjects.length === 0) fail("store", "no project lists every joining member, so the join burst races nothing");
+  const plan = memberProjects.flatMap((row) => joiners.map((joiner) => ({ row, joiner })));
+  // The barrier: every fresh session exists before any join is sent, and all are sent in one go.
+  const windows = await Promise.all(plan.map(({ joiner }) => Promise.all(Array.from({ length: fixture.joins }, () => joiner.createSession(kind)))));
+  const sent = plan.map(({ row, joiner }, p) => Promise.all(windows[p]!.map((w) => joiner.act(kind, w, "join", { projectId: row.id }))));
+  const handed = new Map<string, string>();
+  let joinsSent = 0;
+  for (const [p, { row, joiner }] of plan.entries()) {
+    const joins = await sent[p]!;
+    joinsSent += joins.length;
+    const who = `${joiner.user.userId} on ${row.id}`;
+    const refused = joins.filter((j) => j.status !== "completed");
+    if (refused.length > 0) fail(joinLeg, `${who}: ${refused.length} of ${joins.length} joins did not complete (${refused[0]!.error ?? refused[0]!.status})`);
+    const answered = new Set(joins.filter((j) => j.status === "completed").map((j) => String(j.output?.sessionId)));
+    if (answered.size !== 1) fail(joinLeg, `${who}: the joins answered ${answered.size} different sessions`);
+    handed.set(`${row.id}/${joiner.user.userId}`, [...answered][0] ?? "");
+  }
   const after = (await readStore(owner, host)).rows;
-  for (const row of after.filter((r) => r.members.includes(member.user.userId))) {
-    for (const user of [owner.user.userId, member.user.userId]) {
+  for (const row of after.filter((r) => memberProjects.some((m) => m.id === r.id))) {
+    for (const user of [owner.user.userId, ...joiners.map((j) => j.user.userId)]) {
       const listed = row.sessions.filter((s) => s.userId === user);
       if (listed.length !== 1) fail(joinLeg, `${row.id}'s row lists ${listed.length} sessions for ${user}`);
-    }
-    const listedMember = row.sessions.find((s) => s.userId === member.user.userId)?.sessionId;
-    if (listedMember !== undefined && memberSession[row.id] !== listedMember) {
-      fail(joinLeg, `${row.id}: the joins answered ${memberSession[row.id]}, the row lists ${listedMember}`);
+      const given = handed.get(`${row.id}/${user}`);
+      if (given !== undefined && listed.length === 1 && given !== listed[0]!.sessionId) {
+        fail(joinLeg, `${row.id}: ${user}'s joins answered ${given}, the row lists ${listed[0]!.sessionId}`);
+      }
     }
   }
   const theirs = after.find((r) => r.id === project.id)?.sessions.find((s) => s.userId === member.user.userId)?.sessionId;
@@ -574,23 +613,29 @@ async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; outsider:
   // member (the outsider's identical session was refused above).
   const per = fixture.burst.windows * fixture.burst.perWindow;
   const bodies = (who: string) => Array.from({ length: per }, (_, i) => `${fixture.burst.body} ${who} ${i} (${RUN_STAMP})`);
-  const postFrom = async (api: LabApi, who: string) => {
-    const windows = await Promise.all(Array.from({ length: fixture.burst.windows }, () => api.createSession(kind, { resourceId: project.id })));
-    return bodies(who).map((body, i) => api.act(kind, windows[i % windows.length]!, "post", { body }));
-  };
-  const burst = await Promise.all([...(await postFrom(owner, "owner")), ...(await postFrom(member, "member"))]);
+  const windowsOf = (api: LabApi) =>
+    Promise.all(Array.from({ length: fixture.burst.windows }, () => api.createSession(kind, { resourceId: project.id })));
+  const [ownerWindows, memberWindows] = await Promise.all([windowsOf(owner), windowsOf(member)]);
+  // The barrier: every session exists before any post is sent, and every post is sent in one go.
+  const burst = await Promise.all([
+    ...bodies("owner").map((body, i) => owner.act(kind, ownerWindows[i % ownerWindows.length]!, "post", { body })),
+    ...bodies("member").map((body, i) => member.act(kind, memberWindows[i % memberWindows.length]!, "post", { body })),
+  ]);
   const lost = burst.filter((p) => p.status !== "completed");
   if (lost.length > 0) fail(burstLeg, `${lost.length} of ${burst.length} posts did not complete (${lost[0]!.error ?? lost[0]!.status})`);
   const held = (await readAll(owner, kind, ownSession)).lines;
   const counts = new Map<string, number>();
   for (const l of held) counts.set(l.body, (counts.get(l.body) ?? 0) + 1);
   const missing = [...bodies("owner"), ...bodies("member")].filter((b) => counts.get(b) !== 1);
-  if (missing.length > 0) fail(burstLeg, `${missing.length} of ${burst.length} burst lines are not in the room exactly once`);
+  if (missing.length > 0) {
+    const where = missing.slice(0, 3).map((b) => `"${b}" ${counts.get(b) ?? 0}x at seq [${held.filter((l) => l.body === b).map((l) => l.seq).join(",")}]`);
+    fail(burstLeg, `${missing.length} of ${burst.length} burst lines are not in the room exactly once: ${where.join("; ")}; room seqs ${Math.min(...held.map((l) => l.seq))}..${Math.max(...held.map((l) => l.seq))} (${held.length} lines)`);
+  }
   const seqs = held.map((l) => l.seq);
   if (new Set(seqs).size !== seqs.length) fail(burstLeg, "two lines share a sequence number");
 
   evidence.push(
-    `room: ${channels.length} channels as declared; ${fixture.joins} joins per project left one session per member on ${memberProjects.length} project(s); cross-member reads by cursor; ${SEAT_ANSWERS} answered in the room for both; outsider join ${outJoin.status}, forged read ${outRead.status}, post ${outPost.status}; ${burst.length - lost.length} of ${burst.length} burst posts completed, ${held.length} lines in ${project.id}'s room`,
+    `room: ${channels.length} channels as declared; ${joinsSent} joins from ${joiners.length} members at once left one session per member on ${memberProjects.length} project(s); cross-member reads by cursor; ${SEAT_ANSWERS} answered in the room for both; outsider join ${outJoin.status}, forged read ${outRead.status}, post ${outPost.status}; ${burst.length - lost.length} of ${burst.length} burst posts completed, ${held.length} lines in ${project.id}'s room`,
   );
 }
 
@@ -668,6 +713,79 @@ async function cos(apis: { owner: LabApi; member: LabApi }, host: string, fail: 
   );
 }
 
+// ---- a restart ---------------------------------------------------------------
+
+/** One project as a restart must keep it: its row, and its room read through the owner's talk session. */
+type Kept = { row: Row; kind: string; own: string; lines: RoomLine[] };
+
+const rowKey = (r: Row) =>
+  JSON.stringify({
+    title: r.title,
+    brief: r.brief ?? null,
+    owner: r.ownerUserId,
+    members: sorted(r.members),
+    workstreams: r.workstreams,
+    sessions: sorted(r.sessions.map((s) => `${s.userId}=${s.sessionId}`)),
+  });
+
+/** Every project and its room, as the owner reads them now. */
+async function whatIsHeld(owner: LabApi, host: string): Promise<Kept[]> {
+  const kept: Kept[] = [];
+  for (const row of (await readStore(owner, host)).rows) {
+    const own = row.sessions.find((s) => s.userId === owner.user.userId)?.sessionId;
+    if (own === undefined) throw new Error(`${row.id}'s row lists no talk session for its owner`);
+    const kind = String((await owner.get(`/sessions/${encodeURIComponent(own)}`)).session?.flowKind ?? "");
+    kept.push({ row, kind, own, lines: (await readAll(owner, kind, own)).lines });
+  }
+  return kept;
+}
+
+/**
+ * After the Lab restarts on the same store: every project row is as it was,
+ * with the same talk links and none added, and each room reads back through
+ * the same talk session with every line it held, once, at the same place.
+ */
+async function restarted(before: Kept[], owner: LabApi, host: string, fail: (leg: string, why: string) => void, evidence: string[]) {
+  const leg = "a restart keeps the projects and their rooms";
+  let rows: Row[];
+  try {
+    rows = (await readStore(owner, host)).rows;
+  } catch (error) {
+    fail(leg, `the projects could not be read after the restart: ${(error as Error).message}`);
+    return;
+  }
+  if (rows.length !== before.length) fail(leg, `${before.length} project row(s) before the restart, ${rows.length} after`);
+  const ownerLine = `${fixture.ownerLine} (${RUN_STAMP})`;
+  let ownerLineKept = false;
+  let linesKept = 0;
+  for (const { row, kind, own, lines } of before) {
+    const now = rows.find((r) => r.id === row.id);
+    if (now === undefined) {
+      fail(leg, `${row.id} is gone after the restart`);
+      continue;
+    }
+    if (rowKey(now) !== rowKey(row)) fail(leg, `${row.id}'s row changed across the restart: ${rowKey(row)} became ${rowKey(now)}`);
+    let read: RoomLine[];
+    try {
+      read = (await readAll(owner, kind, own)).lines;
+    } catch (error) {
+      fail(leg, `${row.id}'s room could not be read through the owner's talk session ${own} after the restart: ${(error as Error).message}`);
+      continue;
+    }
+    const at = (l: RoomLine) => `${l.seq}|${l.userId}|${l.author ?? ""}|${l.body}`;
+    const after = new Map<string, number>();
+    for (const l of read) after.set(at(l), (after.get(at(l)) ?? 0) + 1);
+    const lost = lines.filter((l) => after.get(at(l)) !== 1);
+    if (lost.length > 0) fail(leg, `${row.id}: ${lost.length} of ${lines.length} lines are not in the room once, at their place, after the restart`);
+    const seqs = read.map((l) => l.seq);
+    if (new Set(seqs).size !== seqs.length) fail(leg, `${row.id}: two lines share a sequence number after the restart`);
+    if (read.some((l) => l.body === ownerLine && l.userId === owner.user.userId)) ownerLineKept = true;
+    linesKept += lines.length - lost.length;
+  }
+  if (!ownerLineKept) fail(leg, "the owner's line is not in its room after the restart");
+  evidence.push(`restart: ${rows.length} of ${before.length} project rows unchanged with their talk links; ${linesKept} lines read back through the same talk sessions`);
+}
+
 await runGoal(async () => {
   if (COS_LEG && !MODEL_KEYS.some((key) => (process.env[key] ?? "") !== "")) {
     return {
@@ -683,11 +801,14 @@ await runGoal(async () => {
   const fail = (leg: string, why: string) => failures.push(`${leg}: ${why}`);
   const tree = await readTree();
   const host = tree.channels[0]!.id;
-  const served = await startLab(pages, fired);
+  mkdirSync(join(SCRATCH, "stores"), { recursive: true });
+  const store = join(mkdtempSync(join(SCRATCH, "stores", "devteam-")), "devteam.sqlite");
+  let served = await startLab(pages, fired, store);
   try {
     const apis = {
       owner: labApi(served.origin, LAB_USERS.owner),
       member: labApi(served.origin, LAB_USERS.member),
+      crowd: LAB_CROWD.map((user) => labApi(served.origin, user)),
       outsider: labApi(served.origin, LAB_USERS.outsider),
     };
     const { rows } = await readStore(apis.owner, host);
@@ -698,8 +819,17 @@ await runGoal(async () => {
     if (MODEL_FREE) {
       await screens(served, tree, apis.owner, host, fail, evidence);
       await room(tree, apis, host, fail, evidence);
+      // Stop the Lab and start it again on the same store.
+      const before = await whatIsHeld(apis.owner, host);
+      served.child.kill("SIGTERM");
+      await served.exited;
+      served = await startLab(pages, fired, store);
+      await restarted(before, labApi(served.origin, LAB_USERS.owner), host, fail, evidence);
     }
-    if (COS_LEG) await cos(apis, host, fail, evidence);
+    // Last, on the Lab as it now runs: its rows are the member's.
+    if (COS_LEG) {
+      await cos({ owner: labApi(served.origin, LAB_USERS.owner), member: labApi(served.origin, LAB_USERS.member) }, host, fail, evidence);
+    }
   } finally {
     served.child.kill("SIGTERM");
     await served.exited;
@@ -711,8 +841,10 @@ await runGoal(async () => {
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
     evidence: `Shift Manager built with Vite and served by its start script over the DevTeam profile; ${[
-      ...(MODEL_FREE ? ["the screens walked in Chromium as the owner and the room driven over HTTP as three verified users"] : []),
+      ...(MODEL_FREE
+        ? [`the screens walked in Chromium as the owner and the room driven over HTTP as the owner, ${1 + LAB_CROWD.length} verified members and an outsider, then the Lab restarted on its store`]
+        : []),
       ...(COS_LEG ? ["the chief of staff asked over HTTP as the member, on its own model"] : []),
-    ].join("; ")}, all graded against the tree and the store. ${evidence.join("; ")}.${swapNote}`,
+    ].join("; ")}; all graded against the tree and the store. ${evidence.join("; ")}.${swapNote}`,
   };
 });

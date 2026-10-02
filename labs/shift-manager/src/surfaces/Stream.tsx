@@ -281,13 +281,19 @@ export function Composer({
     setPosting(true);
     setPostError(null);
     turn.clear();
+    let sent = false;
     try {
       await send(draft.trim());
-      if (!mounted.current) return;
-      setDraft("");
+      sent = true;
+      // The draft goes only once the line is read back: a read that fails
+      // leaves it here, with the reason.
       await onKept();
+      if (mounted.current) setDraft("");
     } catch (err) {
-      if (mounted.current) setPostError(err instanceof Error ? err.message : String(err));
+      const reason = err instanceof Error ? err.message : String(err);
+      if (mounted.current) {
+        setPostError(sent ? `Your line was posted, but reading it back failed: ${reason} Your draft is kept; check the conversation before sending it again.` : reason);
+      }
     } finally {
       if (mounted.current) setPosting(false);
     }

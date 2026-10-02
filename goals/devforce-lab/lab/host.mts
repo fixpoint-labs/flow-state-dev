@@ -110,6 +110,7 @@ import {
 } from "./workforce/flows/workers/em.mts";
 import type { HarnessStub } from "./harness-stub.mts";
 import { labNotify, type NotifyLog } from "./notify.mts";
+import { withWriteLatency } from "./write-latency.mts";
 import {
   RAISE_ASK_STEP,
   raiseAsk,
@@ -154,12 +155,12 @@ export const LAB_ORG_ID = "devforce-lab";
 const LAB_PRINCIPAL_SECRET = "devforce-lab-verified-principal";
 
 /**
- * The three people this lab's door knows, each by a secret of their own, all
- * in the lab's organization: the owner (who the lab runs as, and who the page
- * is handed), a second member of the default projects, and an outsider who is
- * in the organization and on no project. The two others exist so a check can
- * read a project's room as a member who did not create it, and be refused it
- * as someone who is not a member.
+ * The three named people this lab's door knows, each by a secret of their
+ * own, all in the lab's organization: the owner (who the lab runs as, and who
+ * the page is handed), a second member of the default projects, and an
+ * outsider who is in the organization and on no project. The two others exist
+ * so a check can read a project's room as a member who did not create it, and
+ * be refused it as someone who is not a member.
  */
 export const LAB_USERS = {
   owner: { userId: LAB_USER_ID, bearer: LAB_PRINCIPAL_SECRET },
@@ -167,7 +168,19 @@ export const LAB_USERS = {
   outsider: { userId: "u_devforce_outsider", bearer: "devforce-lab-verified-outsider" },
 } as const;
 
-const labBearers = Object.values(LAB_USERS).map((user) =>
+/**
+ * More members of the default projects, each with a secret of their own. With
+ * the member above they are eight people whose first joins of one project can
+ * race: the engine's own retries absorb a race between two or three people
+ * appending to a row's `sessions`, so a check that the room's own retry is
+ * load-bearing needs more of them.
+ */
+export const LAB_CROWD = Array.from({ length: 7 }, (_, i) => ({
+  userId: `u_devforce_crowd_${i + 1}`,
+  bearer: `devforce-lab-verified-crowd-${i + 1}`,
+}));
+
+const labBearers = [...Object.values(LAB_USERS), ...LAB_CROWD].map((user) =>
   createBearerSecretPrincipalResolver({
     secret: user.bearer,
     principal: { userId: user.userId, orgId: LAB_ORG_ID },
@@ -737,13 +750,21 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       ? undefined
       : defineFlow({ kind: PROJECTS_KIND, actions: projectBlocks.actions } as never)();
 
+  const latencyEnv = process.env.DEVFORCE_LAB_WRITE_LATENCY_MS;
+  const writeLatency = latencyEnv === undefined || latencyEnv === "" ? undefined : Number(latencyEnv);
+  if (writeLatency !== undefined && !(writeLatency > 0)) {
+    throw new Error(`DEVFORCE_LAB_WRITE_LATENCY_MS must be a positive number of milliseconds, not "${latencyEnv}"`);
+  }
+  if (writeLatency !== undefined) console.error(`[devforce-lab] holding checked store writes up to ${writeLatency}ms`);
   const state = createFlowState({
     flows: {
       ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
       ...Object.fromEntries(hired.map((seat) => [seat.id, seat])),
       ...(projectsFlow === undefined ? {} : { [PROJECTS_KIND]: projectsFlow }),
     },
-    stores: { default: { primary: options.stores } },
+    // A goal that grades a burst sets DEVFORCE_LAB_WRITE_LATENCY_MS, so the
+    // burst's writes really race (`write-latency.mts`). Unset, the store is as given.
+    stores: { default: { primary: writeLatency === undefined ? options.stores : withWriteLatency(options.stores, writeLatency) } },
     // A configured resolver, so the development-organization fallback does
     // not answer an unauthenticated HTTP read (FIX-1515 / BR-17).
     resolvePrincipal: resolveLabPrincipal,

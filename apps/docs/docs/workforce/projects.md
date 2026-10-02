@@ -40,7 +40,7 @@ export default defineProjectsCollection();
 
 You can call `defineProjectsCollection()` anywhere you need it. Every call returns the same declaration, so they never conflict. The collection is org-scoped, shared across flows, and readable from the browser, which is how a UI lists an organization's projects.
 
-Its one option, `talk`, is the template every project's room is built from: the seats a post wakes and the charter they work under. [A room per project](./channels.md#a-room-per-project) covers it.
+Its one option, `talk`, is the template every project's room is built from: the seats a post wakes and the charter they work under. Declare it once, usually in `org/resources/projects.ts`. Passing the same template again changes nothing, and passing a different one throws. [A room per project](./channels.md#a-room-per-project) covers it.
 
 ## Creating a project
 

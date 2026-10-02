@@ -64,7 +64,7 @@ import {
 import { isMember } from "./membership-gate";
 import { isAlreadyExists, isConcurrentModification, isResourceDeleted } from "./store-errors";
 import { ProjectRefusedError } from "./project-refusal";
-import { noteBindRefusal, noteTalkBindKind, TALK_BIND_ACTION, talkSessionKey } from "./talk-template";
+import { noteBindRefusal, TALK_BIND_ACTION, talkSessionKey } from "./talk-template";
 
 /**
  * The resource-map ref the channel inventory is read through here. Private to
@@ -123,15 +123,6 @@ export type SetWorkstreamsInput = z.infer<typeof setWorkstreamsInputSchema>;
 
 /** What setting a project's workstreams returns: the row as written. */
 export const setWorkstreamsOutputSchema = z.object({ project: projectRowSchema });
-
-/** Options for {@link defineProjectBlocks}. */
-export type ProjectBlocksOptions = {
-  /**
-   * The flow kind a project's talk sessions run on — the one `bind` is
-   * dispatched to. Defaults to the built-in `channel` kind.
-   */
-  talkKind?: string;
-};
 
 /** The two project writes, and the same two as an `actions` map. */
 export type ProjectBlocks = {
@@ -336,10 +327,12 @@ const writeProject = handler({
   }
 });
 
-function createProjectSequence(talkKind: string) {
+function createProjectSequence() {
+  // Talk sessions run on the built-in channel kind, the one the talk
+  // template's reaction mints on too (`talk-template.ts`).
   const bindOwner = dispatcher({
     name: "project-bind-owner",
-    flowKind: talkKind,
+    flowKind: CHANNEL_KIND,
     action: TALK_BIND_ACTION,
     inputSchema: createProjectOutputSchema,
     // Keyed on the row, from the creating session: a re-sent create from the
@@ -485,10 +478,8 @@ async function settleFailedStamps(
  *   const projects = defineProjectBlocks();
  *   defineFlow({ kind: "lab", actions: { ...projects.actions } });
  */
-export function defineProjectBlocks(options: ProjectBlocksOptions = {}): ProjectBlocks {
-  const talkKind = options.talkKind ?? CHANNEL_KIND;
-  noteTalkBindKind(defineProjectsCollection(), talkKind);
-  const createProject = createProjectSequence(talkKind);
+export function defineProjectBlocks(): ProjectBlocks {
+  const createProject = createProjectSequence();
   return {
     createProject,
     setWorkstreams,

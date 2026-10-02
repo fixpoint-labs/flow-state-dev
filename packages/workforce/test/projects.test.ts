@@ -158,20 +158,23 @@ const labFlow = defineFlow({
  */
 const seederFlow = defineFlow({ kind: "seeder", actions: { seedChannels: { block: seedChannels } } });
 
-/** The same writes with a talk kind that is not registered: every bind dispatch is refused. */
-const brokenLabFlow = defineFlow({
-  kind: "lab-broken",
-  actions: { ...defineProjectBlocks({ talkKind: "no-such-kind" }).actions }
-});
-
 // --- Harness ---
 
 type Answer = { status: number; json: any };
 
-async function boot() {
+/**
+ * Boot a host. `channel: false` leaves the talk kind unregistered, so every
+ * bind dispatch is refused; boot a second host on its `primary` to repair.
+ */
+async function boot(options: { primary?: ReturnType<typeof inMemoryStores>; channel?: boolean } = {}) {
+  const primary = options.primary ?? inMemoryStores();
   const state = createFlowState({
-    flows: { lab: labFlow, "lab-broken": brokenLabFlow, seeder: seederFlow, [CHANNEL_KIND]: channelFlow() },
-    stores: { default: { primary: inMemoryStores() } },
+    flows: {
+      lab: labFlow,
+      seeder: seederFlow,
+      ...(options.channel === false ? {} : { [CHANNEL_KIND]: channelFlow() })
+    },
+    stores: { default: { primary } },
     modelResolver: createMockModelResolver({}),
     resolvePrincipal: (context: any) => {
       const user = context.request?.headers.get("x-verified-user");
@@ -243,7 +246,7 @@ async function boot() {
     throw new Error(`no talk session for ${user} on "${projectId}"`);
   };
 
-  return { stores, call, openSession, act, ok, inspectRow, sessionFor };
+  return { primary, stores, call, openSession, act, ok, inspectRow, sessionFor };
 }
 
 type Harness = Awaited<ReturnType<typeof boot>>;
@@ -401,9 +404,10 @@ describe("project rows", () => {
 
   it("hands a re-sent create of a project that holds workstreams its row back, rather than refusing it on its own claims", async () => {
     const h = await boot();
-    const brokenLab = await h.openSession("alice", "lab-broken");
+    const broken = await boot({ primary: h.primary, channel: false });
+    const brokenLab = await broken.openSession("alice", "lab");
     // Committed with its claims, and left unbound: its bind was refused.
-    await h.ok("alice", "lab-broken", brokenLab, "createProject", {
+    await broken.ok("alice", "lab", brokenLab, "createProject", {
       id: "atlas",
       title: "Atlas",
       workstreams: ["eng.feature", "ops.release"]
@@ -429,18 +433,19 @@ describe("project rows", () => {
 
   it("re-binds a row whose mint failed after commit, by each repair path, and binds once", async () => {
     const h = await boot();
-    const brokenLab = await h.openSession("alice", "lab-broken");
-    await h.ok("alice", "lab-broken", brokenLab, "createProject", { id: "zeus", title: "Zeus" });
-    await h.ok("alice", "lab-broken", brokenLab, "createProject", { id: "hera", title: "Hera" });
+    const broken = await boot({ primary: h.primary, channel: false });
+    const brokenLab = await broken.openSession("alice", "lab");
+    await broken.ok("alice", "lab", brokenLab, "createProject", { id: "zeus", title: "Zeus" });
+    await broken.ok("alice", "lab", brokenLab, "createProject", { id: "hera", title: "Hera" });
     await new Promise((r) => setTimeout(r, 50));
-    // The rows committed; their bind was refused (no such talk kind), so both are unbound.
+    // The rows committed; their bind was refused (no talk kind in that host), so both are unbound.
     expect((await h.inspectRow("zeus")).row.sessions).toEqual([]);
     expect((await h.inspectRow("hera")).row.sessions).toEqual([]);
 
     // Repair 1: the owner joins.
     const talk = await h.openSession("alice", CHANNEL_KIND);
     expect(await h.ok("alice", CHANNEL_KIND, talk, "join", { projectId: "zeus" })).toEqual({ sessionId: talk });
-    // Repair 2: the owner re-sends the create, through a lab whose talk kind is registered.
+    // Repair 2: the owner re-sends the create, through a host whose talk kind is registered.
     const lab = await h.openSession("alice", "lab");
     const resent = await h.ok("alice", "lab", lab, "createProject", { id: "hera", title: "Hera, again" });
     expect(resent.created).toBe(false);

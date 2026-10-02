@@ -2,8 +2,8 @@
  * The talk template: the shape of a project's room, and the reaction that
  * mints a creator's talk session when a row is created.
  *
- * A template names the seats a post in a project's room wakes, the room's
- * charter, and the channel kind talk sessions run on. It is declared at one of
+ * A template names the seats a post in a project's room wakes and the room's
+ * charter. Talk sessions run on the built-in channel kind. It is declared at one of
  * two sites, and the channel binder (`channelInstances`) reads both:
  *
  * - **The org-level default**, beside the collection in
@@ -21,9 +21,10 @@
  * declaration (a flow refuses two declarations under one ref), so the org
  * template recorded on it and the reaction installed on it are the process's
  * too: the last `defineProjectsCollection({ talk })` call names the org
- * template, and a `channelInstances` call that finds a template installs the
- * reaction, which no later call removes. One process serves one
- * organization's tree, with its rooms on one kind.
+ * template, and the first `channelInstances` call that finds a template
+ * registers it and installs the reaction. Every later call builds the channel
+ * kind from that registration, and nothing removes it. One process serves one
+ * organization's tree, with its rooms on the built-in channel kind.
  */
 
 import { dispatcher, handler, resourceChangeSchema, type ResourceChange } from "@flow-state-dev/core";
@@ -41,8 +42,6 @@ export type TalkTemplate = {
   seats: readonly string[];
   /** The room's charter. Every project's room shares it. Empty when omitted. */
   charter?: string;
-  /** The channel kind talk sessions run on. Defaults to the built-in `channel`. */
-  kind?: string;
 };
 
 /** What a channel kind is built holding: the template's seats and charter. */
@@ -75,22 +74,34 @@ export const noteBindRefusal = handler({
 const orgTemplates = new WeakMap<object, TalkTemplate>();
 
 /**
- * Record the org-level template declared beside `collection`. Replaces an
- * earlier one.
+ * Record the org-level template declared beside `collection`. The first
+ * declaration stands: the same template declared again (any module may call
+ * `defineProjectsCollection({ talk })`) is a no-op, and a different one throws
+ * where it is declared, rather than silently replacing the first.
  *
  * @throws When `seats` is not a list of seat ids, naming the first bad one:
  *   the same check a template file's `members:` gets at bind, made here so a
- *   bad org template fails where it is declared.
+ *   bad org template fails where it is declared. And when another template is
+ *   already declared beside `collection`.
  */
 export function recordOrgTalkTemplate(collection: object, template: TalkTemplate): void {
   const problem = Array.isArray(template.seats)
     ? templateSeatsProblem(template.seats)
     : "`seats` is not a list of seat ids";
   if (problem !== undefined) throw new Error(`defineProjectsCollection: the talk template's ${problem}`);
+  const current = orgTemplates.get(collection);
+  if (current !== undefined) {
+    const facts = (t: TalkTemplate): TalkTemplateFacts => ({ seats: t.seats, charter: t.charter ?? "" });
+    if (sameFacts(facts(current), facts(template))) return;
+    throw new Error(
+      `defineProjectsCollection: a talk template is already declared beside this collection ` +
+        `(seats ${JSON.stringify(current.seats)}), and this call declares a different one ` +
+        `(seats ${JSON.stringify(template.seats)}). Every project's room shares one template: declare it once.`
+    );
+  }
   orgTemplates.set(collection, {
     seats: [...template.seats],
-    ...(template.charter === undefined ? {} : { charter: template.charter }),
-    ...(template.kind === undefined ? {} : { kind: template.kind })
+    ...(template.charter === undefined ? {} : { charter: template.charter })
   });
 }
 
@@ -99,7 +110,7 @@ export function orgTalkTemplateOf(collection: unknown): TalkTemplate | undefined
   return typeof collection === "object" && collection !== null ? orgTemplates.get(collection) : undefined;
 }
 
-/** Forget the org-level template declared beside `collection`. For tests that declare several in one process. */
+/** Forget the org-level template declared beside `collection`. For tests that stand for several processes in one. */
 export function forgetOrgTalkTemplate(collection: object): void {
   orgTemplates.delete(collection);
 }
@@ -144,41 +155,38 @@ export function templateSeatsProblem(seats: readonly unknown[]): string | undefi
   return undefined;
 }
 
-/** The reactions this module installed, by the kind each mints on. */
-const installed = new WeakMap<object, string>();
+/** One registered template: where it was declared, what it holds, and the reaction it installed. */
+type Registration = { site: string; facts: TalkTemplateFacts; reactTo: object };
+
+/** The process's one talk template per collection, set by the first `channelInstances` call that finds one. */
+const registrations = new WeakMap<object, Registration>();
 
 /**
- * Install the reaction that mints a creator's talk session: `reactTo.created`
- * on `collection` dispatches `kind`'s `bind` into a child of the creating
- * session, keyed {@link talkSessionKey}. It runs inside the turn that created
- * the row, so a row written outside any turn mints nothing. Rescued: the mint
- * is not atomic with the row, and a refused bind leaves the row unbound until
- * its owner's `join` or a re-sent create.
+ * Register the talk template for `collection`, once per process, and install
+ * the reaction that mints a creator's talk session: `reactTo.created` on the
+ * collection dispatches `kind`'s `bind` into a child of the creating session,
+ * keyed {@link talkSessionKey}. It runs inside the turn that created the row,
+ * so a row written outside any turn mints nothing. Rescued: the mint is not
+ * atomic with the row, and a refused bind leaves the row unbound until its
+ * owner's `join` or a re-sent create.
  *
- * **One talk kind per process.** The collection is process-wide, so its
- * reaction is too. Installing again on the same kind replaces it (a restart
- * in one process); a second, different kind is refused, since rows would mint
- * on whichever was installed last. Nothing here ever removes a reaction, so a
- * host that builds several flows and calls `channelInstances` more than once
- * keeps the one a template installed.
+ * **Set once, read by every call.** The collection is process-wide, so its
+ * reaction is too, and the template lives beside it: every `channelInstances`
+ * call builds its channel kind from {@link registeredTalkTemplate}, whether or
+ * not that call was handed the template's site. Registering the same template
+ * again (the same site and facts, as a host that binds one roster per flow
+ * does) is a no-op. Nothing here ever removes a registration.
  *
- * The kind must also be the one every `createProject` binds on
- * ({@link noteTalkBindKind}), or a create would ready two sessions.
- *
- * @throws When a reaction this module installed mints on another kind, or a
- *   `createProject` binds on another kind.
+ * @throws When another template is already registered for `collection`.
  */
-export function installTalkReaction(collection: object, kind: string): void {
-  const target = collection as { reactTo?: { created?: unknown } };
-  const current = target.reactTo === undefined ? undefined : installed.get(target.reactTo);
-  if (current !== undefined && current !== kind) {
-    throw new Error(
-      `channelInstances: project talk sessions already mint on kind "${current}" in this process, and a ` +
-        `template now names kind "${kind}". The projects collection is one per process, so its rooms run on one kind.`
-    );
-  }
-  const other = [...(bindKinds.get(collection) ?? [])].find((bound) => bound !== kind);
-  if (other !== undefined) throw new Error(talkKindMismatch(other, kind));
+export function registerTalkTemplate(
+  collection: object,
+  template: { site: string; facts: TalkTemplateFacts },
+  kind: string
+): void {
+  const conflict = talkTemplateConflict(collection, template);
+  if (conflict !== undefined) throw new Error(`channelInstances: ${conflict}`);
+  if (registrations.has(collection)) return;
   const mint = dispatcher({
     name: "project-mint-talk",
     flowKind: kind,
@@ -190,48 +198,52 @@ export function installTalkReaction(collection: object, kind: string): void {
     payload: (change: ResourceChange) => ({ resourceId: change.key })
   }).rescue([{ block: noteBindRefusal }]);
   const reactTo = { created: mint };
-  installed.set(reactTo, kind);
-  target.reactTo = reactTo;
+  registrations.set(collection, {
+    site: template.site,
+    facts: { seats: [...template.facts.seats], charter: template.facts.charter },
+    reactTo
+  });
+  (collection as { reactTo?: object }).reactTo = reactTo;
 }
 
 /**
- * The kinds `defineProjectBlocks` built a `createProject` binding on, per
- * collection. `createProject` binds its creator on its kind and the template's
- * reaction binds on the template's, under one key: on two kinds they are two
- * sessions, so the two must agree.
+ * Why `template` cannot be registered for `collection`, or `undefined` when it
+ * can: another template is registered already. The same one (site and facts)
+ * is no conflict. The binder reports this with its other refusals, before it
+ * registers anything.
  */
-const bindKinds = new WeakMap<object, Set<string>>();
-
-function talkKindMismatch(bindKind: string, templateKind: string): string {
+export function talkTemplateConflict(
+  collection: object,
+  template: { site: string; facts: TalkTemplateFacts }
+): string | undefined {
+  const current = registrations.get(collection);
+  if (current === undefined) return undefined;
+  if (current.site === template.site && sameFacts(current.facts, template.facts)) return undefined;
   return (
-    `createProject binds talk sessions on kind "${bindKind}" (\`defineProjectBlocks({ talkKind })\`, ` +
-    `"channel" by default), and the talk template mints them on kind "${templateKind}". Each create would ` +
-    `ready two talk sessions on two kinds. Name the same kind in both.`
+    `project rooms already have a talk template in this process (${current.site}), and ` +
+    `${template.site} would be a second${current.site === template.site ? " with other seats or charter" : ""}. ` +
+    `Every project's room shares one template. Keep one.`
   );
 }
 
-/**
- * Note the kind a `createProject` dispatches `bind` to. Refuses one that
- * differs from the kind an installed template reaction mints on; whichever of
- * the two is built second throws, so the mismatch fails at boot either way.
- *
- * @throws When a template reaction on `collection` mints on another kind.
- */
-export function noteTalkBindKind(collection: object, kind: string): void {
-  const reactTo = (collection as { reactTo?: object }).reactTo;
-  const templateKind = reactTo === undefined ? undefined : installed.get(reactTo);
-  if (templateKind !== undefined && templateKind !== kind) throw new Error(talkKindMismatch(kind, templateKind));
-  const kinds = bindKinds.get(collection) ?? new Set<string>();
-  kinds.add(kind);
-  bindKinds.set(collection, kinds);
+/** The talk template registered for `collection` in this process, or `undefined`. */
+export function registeredTalkTemplate(collection: object): { site: string; facts: TalkTemplateFacts } | undefined {
+  const current = registrations.get(collection);
+  return current === undefined ? undefined : { site: current.site, facts: current.facts };
+}
+
+function sameFacts(a: TalkTemplateFacts, b: TalkTemplateFacts): boolean {
+  return a.charter === b.charter && a.seats.length === b.seats.length && a.seats.every((seat, i) => seat === b.seats[i]);
 }
 
 /**
- * Remove the reaction this module installed on `collection`, and the bind
- * kinds noted on it. For tests that boot several hosts in one process.
+ * Forget the template registered for `collection`, and remove the reaction it
+ * installed. For tests that stand for several processes in one.
  */
-export function forgetTalkReaction(collection: object): void {
+export function forgetTalkTemplate(collection: object): void {
+  const current = registrations.get(collection);
+  if (current === undefined) return;
   const target = collection as { reactTo?: object };
-  if (target.reactTo !== undefined && installed.has(target.reactTo)) delete target.reactTo;
-  bindKinds.delete(collection);
+  if (target.reactTo === current.reactTo) delete target.reactTo;
+  registrations.delete(collection);
 }

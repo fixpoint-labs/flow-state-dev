@@ -30,7 +30,7 @@ import { projectsOf, talkFor, teamsOf, type ListedWorkstream, type LoadedSnapsho
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Failure, type Project, type Workstream } from "../lib/reads";
 import { navigate, NO_PROJECT, PROJECT_TABS, type ProjectTab } from "../lib/routes";
-import { asTranscriptLine, joinRoom, postToRoom, readRoom, settled } from "../lib/talk";
+import { asTranscriptLine, joinRoom, postToRoom, readRoom, TalkRefused, untilAnswered, type RoomLine } from "../lib/talk";
 import type { Gaps } from "../gaps";
 import { Composer, TranscriptLines } from "./Stream";
 
@@ -281,55 +281,76 @@ function ProjectStream({ project, talkKind }: { project: Project; talkKind: stri
 function Room({ sessionId, talkKind }: { sessionId: string; talkKind: string }) {
   const { clients } = useLab();
   const [lines, setLines] = useState<ChannelTranscriptLine[] | undefined>(undefined);
-  const [failure, setFailure] = useState<Failure | undefined>(undefined);
+  const [failure, setFailure] = useState<{ failure: Failure; refused: boolean } | undefined>(undefined);
   const cursor = useRef(0);
-  const reading = useRef<Promise<void> | undefined>(undefined);
+  /** Every line read so far, and the room's seats, for waiting on their answers. */
+  const held = useRef<RoomLine[]>([]);
+  const seats = useRef<string[]>([]);
+  const lastPost = useRef<number | undefined>(undefined);
+  const reading = useRef<Promise<RoomLine[]> | undefined>(undefined);
 
-  /** Read every page after the cursor. One read at a time; a second call waits for the first. */
-  const readNew = useCallback(async () => {
+  /**
+   * Read every page after the cursor. One read at a time; a second call waits
+   * for the first. A failure is shown, and thrown to the caller.
+   */
+  const readNew = useCallback(async (): Promise<RoomLine[]> => {
     const previous = reading.current;
     const next = (async () => {
-      await previous;
+      await previous?.catch(() => undefined);
       try {
         for (;;) {
           const page = await readRoom(clients, talkKind, sessionId, cursor.current);
+          held.current = [...held.current, ...page.lines];
+          seats.current = page.seats;
           const fresh = page.lines.map(asTranscriptLine);
-          setLines((held) => mergeLines(held ?? [], fresh));
+          setLines((shown) => mergeLines(shown ?? [], fresh));
           if (page.nextCursor <= cursor.current) break;
           cursor.current = page.nextCursor;
           if (page.lines.length === 0) break;
         }
         setFailure(undefined);
+        return held.current;
       } catch (error) {
-        setFailure(describeFailure(error));
+        setFailure({ failure: describeFailure(error), refused: error instanceof TalkRefused });
+        throw error;
       }
     })();
     reading.current = next;
-    await next;
+    return next;
   }, [clients, sessionId, talkKind]);
+  const retry = () => void readNew().catch(() => undefined);
 
   useEffect(() => {
-    void readNew();
-    const onFocus = () => void readNew();
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    retry();
+    window.addEventListener("focus", retry);
+    return () => window.removeEventListener("focus", retry);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readNew]);
+
+  // A refusal is the Lab's answer, with its reason; anything else (the Lab out
+  // of reach, a 5xx) is something to try again. Either sits beside the lines
+  // already drawn, never in place of them.
+  const failureView =
+    failure === undefined ? null : failure.refused ? (
+      <EmptyState title="The room refused this read" testId="room-refused">
+        {failure.failure.message}
+      </EmptyState>
+    ) : (
+      <SectionFailure what="The room" failure={failure.failure} onRetry={retry} testId="room-failure" />
+    );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="stream" data-talk-session={sessionId}>
       <div className="min-h-0 flex-1 overflow-y-auto" data-testid="transcript">
-        {failure !== undefined && lines === undefined ? (
-          <div className="p-4">
-            <SectionFailure what="The room" failure={failure} onRetry={() => void readNew()} testId="room-failure" />
-          </div>
-        ) : lines === undefined ? (
-          <p className="p-4 text-sm text-muted-foreground">Reading the room…</p>
+        {lines === undefined ? (
+          failureView === null ? <p className="p-4 text-sm text-muted-foreground">Reading the room…</p> : <div className="p-4">{failureView}</div>
         ) : (
           <ol className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 py-4">
             <TranscriptLines lines={lines} />
             {lines.length === 0 ? (
               <li className="py-6 text-center text-sm text-muted-foreground">Nothing has been posted in this room yet.</li>
             ) : null}
+            {failureView === null ? null : <li>{failureView}</li>}
             <li className="text-xs text-muted-foreground" data-testid="room-note">
               Other members' lines show when you come back to this tab or post.
             </li>
@@ -340,12 +361,15 @@ function Room({ sessionId, talkKind }: { sessionId: string; talkKind: string }) 
         key={sessionId}
         label="Post to this project's room"
         placeholder="Post a line to the project's room…"
-        send={(body) => postToRoom(clients, talkKind, sessionId, body)}
+        send={async (body) => {
+          lastPost.current = (await postToRoom(clients, talkKind, sessionId, body)).seq;
+        }}
         onKept={async () => {
+          // Thrown when the read fails: the composer keeps the draft and says so.
           await readNew();
-          // The post woke the room's seats; their answers land in the room.
-          await settled(clients, sessionId);
-          await readNew();
+          const posted = lastPost.current;
+          // The post woke the room's seats; their answers land after it, as each seat finishes.
+          if (posted !== undefined) void untilAnswered(readNew, posted, seats.current).catch(() => undefined);
         }}
       />
     </div>

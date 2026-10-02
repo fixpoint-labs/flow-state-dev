@@ -140,6 +140,8 @@ export const roomPostInputSchema = z
     member: z.string().min(1),
     /** The line somebody wrote. */
     body: z.string().min(1),
+    /** The delivery's answer token, issued to this seat; the room takes an answer only with it. */
+    token: z.string().min(1),
   })
   .strict();
 
@@ -161,6 +163,7 @@ const answerRoomPost = dispatcher({
     postId: input.postId,
     author: input.member,
     body: `${input.member} read: ${input.body}`,
+    token: input.token,
   }),
 });
 

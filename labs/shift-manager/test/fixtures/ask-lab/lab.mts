@@ -121,15 +121,15 @@ export type AskLabOptions = {
   /**
    * Projects to create once the inventory is open, each as `owner` (default
    * the Lab's person) through the project writes' own `createProject`.
-   * `unbound` creates it with a talk kind no flow serves, so its owner's talk
-   * session is never minted: the row a failed mint leaves behind.
+   * `unbound` creates it through a second host on the same store that serves
+   * no channel kind, so its owner's talk session is never minted: the row a
+   * failed mint leaves behind.
    */
   projects?: Array<CreateProjectInput & { owner?: string; unbound?: boolean }>;
 };
 
-/** The flow kinds the ask-lab creates projects through: one that binds the owner, one whose bind can't land. */
+/** The flow kind the ask-lab creates projects through. */
 const PROJECTS_KIND = "projects";
-const UNBOUND_PROJECTS_KIND = "projects-unbound";
 
 /** Build, open and hand back the Lab. */
 export async function openAskLab(options: AskLabOptions = {}) {
@@ -151,15 +151,12 @@ export async function openAskLab(options: AskLabOptions = {}) {
       ? {}
       : {
           [PROJECTS_KIND]: defineFlow({ kind: PROJECTS_KIND, actions: defineProjectBlocks().actions } as never)(),
-          [UNBOUND_PROJECTS_KIND]: defineFlow({
-            kind: UNBOUND_PROJECTS_KIND,
-            actions: defineProjectBlocks({ talkKind: "no-such-talk-kind" }).actions,
-          } as never)(),
         }),
   };
+  const primary = inMemoryStores();
   const flowState = createFlowState({
     flows,
-    stores: { default: { primary: inMemoryStores() } },
+    stores: { default: { primary } },
     durable: true,
     devtool: { userId: ASK_LAB_USER_ID, ...(options.bearer === undefined ? {} : { bearerToken: options.bearer }) },
     ...(options.bearer === undefined ? {} : { resolvePrincipal: bearerOnly(options.bearer, orgId) }),
@@ -227,17 +224,23 @@ export async function openAskLab(options: AskLabOptions = {}) {
     );
     if (binding.problems.length > 0) throw new Error(binding.problems.join("; "));
 
+    // A host on the same store that serves no channel kind: a create there
+    // commits its row, and its bind of the owner is refused.
+    const unboundFlow = defineFlow({ kind: PROJECTS_KIND, actions: defineProjectBlocks().actions } as never)();
+    const unboundRuntime = (options.projects ?? []).some((p) => p.unbound === true)
+      ? await createFlowState({ flows: { [PROJECTS_KIND]: unboundFlow }, stores: { default: { primary } } } as never).getRuntime()
+      : undefined;
     for (const { owner = ASK_LAB_USER_ID, unbound, ...input } of options.projects ?? []) {
-      const kind = unbound === true ? UNBOUND_PROJECTS_KIND : PROJECTS_KIND;
+      const host = unbound === true ? unboundRuntime! : runtime;
       const result = (await runAction({
-        flow: flows[kind],
+        flow: unbound === true ? unboundFlow : flows[PROJECTS_KIND],
         actionName: "createProject",
         input,
         userId: owner,
         orgId,
         sessionId: `projects-${owner}`,
-        stores: runtime.stores,
-        runtimeConfig: runtime.runtimeConfig,
+        stores: host.stores,
+        runtimeConfig: host.runtimeConfig,
       } as never)) as { error?: unknown };
       if (result.error !== undefined) throw new Error(`project ${input.id}: ${String((result.error as Error).message ?? result.error)}`);
     }

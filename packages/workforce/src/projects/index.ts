@@ -42,7 +42,6 @@ export {
   type CreateProjectInput,
   type CreateProjectOutput,
   type ProjectBlocks,
-  type ProjectBlocksOptions,
   type SetWorkstreamsInput
 } from "./project-writes";
 

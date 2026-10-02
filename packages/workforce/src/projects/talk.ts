@@ -43,19 +43,26 @@ import type { ChannelTranscriptLine } from "../channel/channel-post-line";
 import { retryOnConflict } from "./cas-retry";
 import {
   defineProjectsCollection,
+  defineRoomAnswersCollection,
+  defineRoomDeliveriesCollection,
   defineRoomLinesCollection,
   defineRoomSeqCollection,
   PROJECTS_RESOURCE,
+  ROOM_ANSWERS_RESOURCE,
+  ROOM_DELIVERIES_RESOURCE,
   ROOM_LINES_RESOURCE,
   ROOM_SEQ_RESOURCE,
   roomLineKey,
   roomLineSchema,
   type ProjectRow,
+  type RoomAnswer,
+  type RoomDelivery,
   type RoomLine,
   type RoomSeq
 } from "./collections";
 import { isMember } from "./membership-gate";
 import { ProjectRefusedError } from "./project-refusal";
+import { answerInRoom } from "./room-answer";
 import { appendRoomLine, readRoom, type RoomCollections } from "./room-store";
 import type { TalkTemplateFacts } from "./talk-template";
 
@@ -114,7 +121,9 @@ export type TalkReadOutput = z.infer<typeof talkReadOutputSchema>;
 export const TALK_RESOURCES = {
   [PROJECTS_RESOURCE]: defineProjectsCollection(),
   [ROOM_LINES_RESOURCE]: defineRoomLinesCollection(),
-  [ROOM_SEQ_RESOURCE]: defineRoomSeqCollection()
+  [ROOM_SEQ_RESOURCE]: defineRoomSeqCollection(),
+  [ROOM_ANSWERS_RESOURCE]: defineRoomAnswersCollection(),
+  [ROOM_DELIVERIES_RESOURCE]: defineRoomDeliveriesCollection()
 };
 
 function projectsOf(ctx: BlockContext): ResourceCollectionRef<ProjectRow> {
@@ -272,79 +281,93 @@ export const talkPost = handler({
   }
 });
 
-/** A seat's answer: the same closed input a channel answer takes. */
+/** A seat's answer: the same closed input a channel answer takes, with the delivery's token, which a talk answer requires. */
 const talkAnswerInputSchema = z
-  .object({ postId: z.string().min(1), body: z.string().min(1), author: z.string().min(1) })
+  .object({
+    postId: z.string().min(1),
+    body: z.string().min(1),
+    author: z.string().min(1),
+    token: z.string().min(1).optional()
+  })
   .strict();
 
 /**
- * The talk-session field recording the seat answers already in the room: one
- * key per answered post and seat ({@link answerKey}), each the line's seq once
- * it is written. Never trimmed, so a delivery replayed however late lands no
- * second line. It grows by one entry per seat answer.
+ * Record one post's delivery to one seat, and return the token to hand that
+ * seat alone. Called by the talk fan-out before it wakes the seat.
  */
-const TALK_ANSWERED_STATE = "talkAnsweredPosts";
+export async function recordTalkDelivery(
+  ctx: BlockContext,
+  delivery: RoomDelivery
+): Promise<string> {
+  const deliveries = ctx.resources[ROOM_DELIVERIES_RESOURCE] as unknown as ResourceCollectionRef<RoomDelivery>;
+  const token = globalThis.crypto.randomUUID();
+  await deliveries.create(token, delivery);
+  return token;
+}
 
-const talkAnswerStateSchema = talkSessionStateSchema.extend({
-  [TALK_ANSWERED_STATE]: z.record(z.string(), z.number().int().nullable()).optional()
-});
-
-type TalkAnswerState = z.infer<typeof talkAnswerStateSchema>;
-
-/** One seat's answer to one post. A post wakes several seats, so the seat is part of it. */
-const answerKey = (postId: string, author: string): string => JSON.stringify([postId, author]);
+/**
+ * The seat an answer speaks for: the one its delivery was made to. Refused,
+ * with nothing claimed, when the answer names no delivery of this post in this
+ * room (`answer-not-delivered`), or names an author other than that seat
+ * (`answer-not-yours`): a seat answers only for itself.
+ */
+async function deliveredSeat(
+  ctx: BlockContext,
+  projectId: string,
+  input: { postId: string; author: string; token?: string }
+): Promise<string> {
+  const deliveries = ctx.resources[ROOM_DELIVERIES_RESOURCE] as unknown as ResourceCollectionRef<RoomDelivery>;
+  const delivery = input.token === undefined ? undefined : (await deliveries.getOptional(input.token))?.state;
+  if (delivery === undefined || delivery.projectId !== projectId || delivery.postId !== input.postId) {
+    throw new ProjectRefusedError(
+      "answer-not-delivered",
+      `an answer to "${input.postId}" names no delivery of that post in project "${projectId}". A seat answers ` +
+        "a post in a project's room with the token its delivery carried."
+    );
+  }
+  if (delivery.seat !== input.author) {
+    throw new ProjectRefusedError(
+      "answer-not-yours",
+      `an answer as "${input.author}" carries the delivery made to "${delivery.seat}". A seat answers only for itself.`
+    );
+  }
+  return delivery.seat;
+}
 
 /**
  * `answer` on a talk session: a seat's line, delivered into the session of the
  * person whose post woke it. The line's `userId` is that session's owner; its
- * `author` is the seat. `postId` names what is being answered and is not
+ * `author` is the seat the post was delivered to, read off the delivery the
+ * answer's token names (`recordTalkDelivery`), never taken from the answer. `postId` names what is being answered and is not
  * stored on the line: a room line has no post id.
  *
- * One line per post and seat, as on a routed channel: the answer is claimed in
- * this session's state before the line is written, so a replayed or retried
- * delivery lands nothing (`null`). A write that fails gives the claim back, so
- * the delivery can be answered again.
+ * One line per post and seat, crash-safe (`room-answer.ts`): the answer's
+ * claim, created first in server-written storage (never session state, which a
+ * caller can seed at create), records the seq and the line. A replayed or
+ * retried delivery finishes what an earlier run claimed and writes nothing
+ * twice; it returns `null` when the line had already landed.
  */
 export const talkAnswer = handler({
   name: "talk-answer",
   inputSchema: talkAnswerInputSchema,
   outputSchema: roomLineSchema.nullable(),
-  sessionStateSchema: talkAnswerStateSchema,
+  sessionStateSchema: talkSessionStateSchema,
   resources: TALK_RESOURCES,
   execute: async (input, rawCtx): Promise<RoomLine | null> => {
     const ctx = rawCtx as unknown as BlockContext;
-    const session = (rawCtx as unknown as BlockContext<Record<string, unknown>, TalkAnswerState>).session;
     const projectId = boundProject(ctx);
     await memberRow(ctx, projectId);
-    const key = answerKey(input.postId, input.author);
-    const claimed = await withOutcome(
-      (mutator: (current: TalkAnswerState) => Partial<TalkAnswerState>) => session.atomicState(mutator),
-      (current: TalkAnswerState) => {
-        const answered = current[TALK_ANSWERED_STATE] ?? {};
-        if (Object.hasOwn(answered, key)) return { state: {}, result: false };
-        return { state: { [TALK_ANSWERED_STATE]: { ...answered, [key]: null } }, result: true };
-      }
-    );
-    if (claimed !== true) return null;
-    let line: RoomLine;
-    try {
-      line = await appendRoomLine(roomOf(ctx), {
-        projectId,
-        userId: ownerOf(ctx) as string,
-        author: input.author,
-        body: input.body
-      });
-    } catch (error) {
-      await session.atomicState((current) => {
-        const { [key]: _released, ...rest } = current[TALK_ANSWERED_STATE] ?? {};
-        return { [TALK_ANSWERED_STATE]: rest };
-      });
-      throw error;
-    }
-    await session.atomicState((current) => ({
-      [TALK_ANSWERED_STATE]: { ...(current[TALK_ANSWERED_STATE] ?? {}), [key]: line.seq }
-    }));
-    return line;
+    // The author is the seat the post was delivered to, checked before
+    // anything is claimed; the answer's own `author` only has to agree.
+    const author = await deliveredSeat(ctx, projectId, input);
+    const claims = ctx.resources[ROOM_ANSWERS_RESOURCE] as unknown as ResourceCollectionRef<RoomAnswer>;
+    return answerInRoom(roomOf(ctx), claims, {
+      projectId,
+      postId: input.postId,
+      author,
+      userId: ownerOf(ctx) as string,
+      body: input.body
+    });
   }
 });
 
@@ -376,24 +399,33 @@ export function talkReadFor(template: TalkTemplateFacts | undefined) {
 const TALK_WAKE_LINES = 20;
 
 /**
- * The room's lines before `seq`, oldest first, at most {@link TALK_WAKE_LINES},
- * as a woken seat is handed them: a channel transcript line each, `principal`
- * the poster, `author` the seat that answered. A room line carries no time, so
- * `at` is `0`. Point reads by key, so a wake costs the same however long the
- * room is. Lines not yet written and tombstones are left out.
+ * The room's committed lines before `seq`, oldest first, at most
+ * {@link TALK_WAKE_LINES}, as a woken seat is handed them: a channel transcript
+ * line each, `principal` the poster, `author` the seat that answered. A room
+ * line carries no time, so `at` is `0`.
+ *
+ * Read as a member reads (`readRoom`), so only lines through the room's
+ * watermark: a line written past a stalled gap is not committed yet, and a
+ * seat is never shown what a member could not read. Tombstones are left out.
  */
 export async function recentTalkLines(
   ctx: BlockContext,
   projectId: string,
   seq: number
 ): Promise<ChannelTranscriptLine[]> {
-  const { lines } = roomOf(ctx);
-  const from = Math.max(1, seq - TALK_WAKE_LINES);
-  const seqs = Array.from({ length: Math.max(0, seq - from) }, (_, i) => from + i);
-  const refs = await Promise.all(seqs.map((at) => lines.getOptional(roomLineKey(projectId, at))));
-  return refs
-    .map((ref) => ref?.state)
-    .filter((line): line is RoomLine => line !== undefined && !line.tombstone)
+  return recentRoomLines(roomOf(ctx), projectId, seq);
+}
+
+/** {@link recentTalkLines} over the room's collections. Exported for tests. */
+export async function recentRoomLines(
+  rooms: RoomCollections,
+  projectId: string,
+  seq: number
+): Promise<ChannelTranscriptLine[]> {
+  const after = Math.max(0, seq - 1 - TALK_WAKE_LINES);
+  const { lines } = await readRoom(rooms, projectId, after);
+  return lines
+    .filter((line) => line.seq < seq)
     .map((line) => ({
       id: roomLineKey(projectId, line.seq),
       at: 0,
