@@ -38,7 +38,7 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "../../../../goals/devforce-lab/lab/ask.mts";
 import { ASSIGNEE } from "../../../../goals/devforce-lab/lab/board.mts";
 import { selectHarness } from "../../../../goals/devforce-lab/lab/harness.mts";
-import { boardChannelOf, LAB_TREE, LAB_USERS, openLab } from "../../../../goals/devforce-lab/lab/host.mts";
+import { boardChannelOf, LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "../../../../goals/devforce-lab/lab/host.mts";
 import { createNotifyLog } from "../../../../goals/devforce-lab/lab/notify.mts";
 import { BASE_REF, createScratchRepo } from "../../../../goals/devforce-lab/lab/scratch-repo.mts";
 import { CODER_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/coder.mts";
@@ -72,14 +72,14 @@ const DEFAULT_PROJECTS = [
     id: "storefront",
     title: "Storefront",
     brief: "Get the storefront feature built and released: engineering builds it, operations ships it.",
-    members: [LAB_USERS.member.userId],
+    members: [LAB_USERS.member.userId, ...LAB_CROWD.map((u) => u.userId)],
     workstreams: ["eng.feature", "ops.release"],
   },
   {
     id: "platform",
     title: "Platform",
     brief: "Shared groundwork no single feature owns. It holds no workstream yet.",
-    members: [LAB_USERS.member.userId],
+    members: [LAB_USERS.member.userId, ...LAB_CROWD.map((u) => u.userId)],
   },
 ];
 

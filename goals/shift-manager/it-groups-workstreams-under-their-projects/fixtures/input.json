@@ -4,5 +4,5 @@
   "memberLine": "The release window is Thursday afternoon.",
   "outsiderLine": "An outsider should never get a line into this room.",
   "burst": { "windows": 8, "perWindow": 2, "body": "burst line" },
-  "joins": 16
+  "joins": 4
 }
