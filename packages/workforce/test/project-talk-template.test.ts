@@ -46,15 +46,16 @@ import {
   type WorkerManifest
 } from "../src/index";
 import { CHANNEL_ANSWER_ACTION } from "../src/channel/channel-flow";
-import { forgetOrgTalkTemplate } from "../src/projects/talk-template";
+import { forgetOrgTalkTemplate, forgetTalkReaction } from "../src/projects/talk-template";
 
 const ORG = "lab";
 const projects = defineProjectsCollection();
 
-// Each test declares the org template it needs; none leaks into the next.
+// Each test declares the org template it needs, as a fresh process would;
+// neither the template nor the reaction leaks into the next.
 afterEach(() => {
   forgetOrgTalkTemplate(projects);
-  channelInstances([], {});
+  forgetTalkReaction(projects);
 });
 
 /** A team's channel record. */
@@ -93,15 +94,16 @@ describe("declaring a talk template", () => {
       )
     );
     // Every refusal of the boot, named, in one message.
-    expect(message).toContain("refused 7 of 8 declarations");
+    expect(message).toContain("refused 6 of 8 declarations");
     expect(message).toMatch(/channel "ops\.boarded" — .*`mintFor:` and `boards:`/);
     expect(message).toMatch(/channel "ops\.nowhere" — names collection "tickets", which is not in the org's resources/);
     expect(message).toMatch(/channel "ops\.notes" — names "notes", which is not the projects collection/);
     expect(message).toMatch(/channel "ops\.badseat" — .*seat "a\.b\.c" is not a seat id/);
     expect(message).toMatch(/channel "eng\.typo" — declares `member`/);
-    // The org default and the team template for one collection are refused together, each naming the other.
-    expect(message).toMatch(/the talk template beside "projects" in the org's resources — is one of 2 talk templates/);
-    expect(message).toMatch(/channel "eng\.room" — is one of 2 talk templates for the "projects" collection/);
+    // The org default and the team template for one collection are refused together, in one line naming both.
+    expect(message).toMatch(
+      /the "projects" collection has 2 talk templates: the talk template beside "projects" in the org's resources on kind "channel"; channel "eng\.room" on kind "channel"/
+    );
     expect(message).not.toContain('channel "eng.feature"');
   });
 
@@ -109,10 +111,11 @@ describe("declaring a talk template", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em", "ops.lead", "chief-of-staff"] } });
     expect(() => channelInstances([], { resources: { projects } })).not.toThrow();
 
-    defineProjectsCollection({ talk: { seats: ["Chief Of Staff"] } });
-    expect(refusalOf(() => channelInstances([], { resources: { projects } }))).toMatch(
-      /the talk template beside "projects" in the org's resources — seat "Chief Of Staff" is not a seat id/
+    // A bad org seat fails where the template is declared, before any bind.
+    expect(() => defineProjectsCollection({ talk: { seats: ["Chief Of Staff"] } })).toThrow(
+      /the talk template's seat "Chief Of Staff" is not a seat id/
     );
+    expect(() => defineProjectsCollection({ talk: { seats: ["a.b.c"] } })).toThrow(/seat "a\.b\.c" is not a seat id/);
   });
 
   it("refuses a template on a kind defineChannelFlow did not build", () => {
@@ -125,6 +128,27 @@ describe("declaring a talk template", () => {
     );
   });
 
+  it("refuses a template on a kind passed under a key that is not its own kind", () => {
+    // The flow under `custom` is the built-in channel kind: talk sessions would run a different graph.
+    defineProjectsCollection({ talk: { seats: ["eng.em"], kind: "custom" } });
+    expect(
+      refusalOf(() => channelInstances([], { kinds: { custom: defineChannelFlow() } as never, resources: { projects } }))
+    ).toMatch(/runs talk sessions on kind "custom", but the flow passed under that key is kind "channel"/);
+  });
+
+  it("refuses a seat listed twice at both declaration sites, so one post never wakes a seat twice", () => {
+    expect(() => defineProjectsCollection({ talk: { seats: ["eng.em", "ops.lead", "eng.em"] } })).toThrow(
+      /seat "eng\.em" is listed twice/
+    );
+    expect(
+      refusalOf(() =>
+        channelInstances([channel("eng.room", { mintFor: "projects", members: ["eng.em", "eng.em"] })], {
+          resources: { projects }
+        })
+      )
+    ).toMatch(/channel "eng\.room" — .*seat "eng\.em" is listed twice/);
+  });
+
   it("registers the template's kind with no channel on it, holding the template, and installs the mint on create", () => {
     defineProjectsCollection({ talk: { seats: ["eng.em"], charter: "Org charter." } });
     const instances = channelInstances([], { resources: { projects } });
@@ -133,13 +157,7 @@ describe("declaring a talk template", () => {
   });
 
   it("binds a roster with no template as today: no reaction, and a template file is never opened or registered", async () => {
-    defineProjectsCollection({ talk: { seats: ["eng.em"] } });
-    channelInstances([], { resources: { projects } });
-    expect((projects as { reactTo?: unknown }).reactTo).toBeDefined();
-
-    // The next bind with no template clears the reaction it installed.
-    forgetOrgTalkTemplate(projects);
-    const plain = channelInstances([channel("eng.feature", { members: ["eng.em"] })]);
+    const plain = channelInstances([channel("eng.feature", { members: ["eng.em"] })], { resources: { projects } });
     expect((projects as { reactTo?: unknown }).reactTo).toBeUndefined();
     expect(Object.keys((plain[0] as unknown as { actions: object }).actions)).toEqual(["post", "read", "join"]);
 
@@ -172,6 +190,30 @@ describe("declaring a talk template", () => {
     );
     expect(registered).toEqual(["eng.feature"]);
     expect(binding).toMatchObject({ channels: 1, problems: [] });
+  });
+});
+
+describe("a host that builds several flows", () => {
+  it("keeps the mint a template installed when a later channelInstances call carries no template", () => {
+    defineProjectsCollection({ talk: { seats: ["eng.em"] } });
+    channelInstances([channel("eng.feature", { members: ["eng.em"] })], { resources: { projects } });
+    const installed = (projects as { reactTo?: unknown }).reactTo;
+    expect(installed).toBeDefined();
+
+    // A second flow's channels, bound with no resources and no template.
+    channelInstances([channel("ops.release", { members: ["ops.lead"] })]);
+    expect((projects as { reactTo?: unknown }).reactTo).toBe(installed);
+  });
+
+  it("refuses a second call that would mint project talk sessions on another kind", () => {
+    defineProjectsCollection({ talk: { seats: ["eng.em"] } });
+    channelInstances([], { resources: { projects } });
+    defineProjectsCollection({ talk: { seats: ["eng.em"], kind: "talk" } });
+    const talk = defineChannelFlow();
+    Object.assign(talk, { kind: "talk" });
+    expect(() => channelInstances([], { kinds: { talk } as never, resources: { projects } })).toThrow(
+      /already mint on kind "channel" in this process, and a template now names kind "talk"/
+    );
   });
 });
 
@@ -274,8 +316,11 @@ async function boot(options: { talk?: { seats: string[]; charter?: string }; sto
   const seats = hireWorkforce((options.seats ?? ["eng.em", "ops.lead", "chief-of-staff"]).map(seatRecord), {
     kinds: { listener: listeningKind(heard) as never }
   });
-  if (options.talk === undefined) forgetOrgTalkTemplate(projects);
-  else defineProjectsCollection({ talk: options.talk });
+  // No template stands for a fresh process: nothing declared, nothing installed.
+  if (options.talk === undefined) {
+    forgetOrgTalkTemplate(projects);
+    forgetTalkReaction(projects);
+  } else defineProjectsCollection({ talk: options.talk });
   const [kind] = channelInstances([], {
     kinds: { [CHANNEL_KIND]: defineChannelFlow({ notify: wakeMemberSeats(seats) }) as never },
     resources: { projects }

@@ -21,8 +21,9 @@
  * declaration (a flow refuses two declarations under one ref), so the org
  * template recorded on it and the reaction installed on it are the process's
  * too: the last `defineProjectsCollection({ talk })` call names the org
- * template, and the last `channelInstances` call decides the reaction. One
- * process serves one organization's tree.
+ * template, and a `channelInstances` call that finds a template installs the
+ * reaction, which no later call removes. One process serves one
+ * organization's tree, with its rooms on one kind.
  */
 
 import { dispatcher, handler, resourceChangeSchema, type ResourceChange } from "@flow-state-dev/core";
@@ -73,8 +74,19 @@ export const noteBindRefusal = handler({
 /** Org templates by the collection declaration they were declared beside. */
 const orgTemplates = new WeakMap<object, TalkTemplate>();
 
-/** Record the org-level template declared beside `collection`. Replaces an earlier one. */
+/**
+ * Record the org-level template declared beside `collection`. Replaces an
+ * earlier one.
+ *
+ * @throws When `seats` is not a list of seat ids, naming the first bad one:
+ *   the same check a template file's `members:` gets at bind, made here so a
+ *   bad org template fails where it is declared.
+ */
 export function recordOrgTalkTemplate(collection: object, template: TalkTemplate): void {
+  const problem = Array.isArray(template.seats)
+    ? templateSeatsProblem(template.seats)
+    : "`seats` is not a list of seat ids";
+  if (problem !== undefined) throw new Error(`defineProjectsCollection: the talk template's ${problem}`);
   orgTemplates.set(collection, {
     seats: [...template.seats],
     ...(template.charter === undefined ? {} : { charter: template.charter }),
@@ -115,26 +127,51 @@ export function templateSeatIdProblem(id: unknown): string | undefined {
   return undefined;
 }
 
-/** The reactions this module installed, so a later bind only ever replaces its own. */
-const installed = new WeakSet<object>();
+/**
+ * Why a template's seat list is not one, or `undefined` when it is: every id
+ * a seat id ({@link templateSeatIdProblem}) and none listed twice, since a
+ * seat listed twice would be woken twice by one post. Both declaration sites
+ * check with this.
+ */
+export function templateSeatsProblem(seats: readonly unknown[]): string | undefined {
+  const seen = new Set<unknown>();
+  for (const seat of seats) {
+    const problem = templateSeatIdProblem(seat);
+    if (problem !== undefined) return problem;
+    if (seen.has(seat)) return `seat "${String(seat)}" is listed twice: a post would wake it twice. List each seat once`;
+    seen.add(seat);
+  }
+  return undefined;
+}
+
+/** The reactions this module installed, by the kind each mints on. */
+const installed = new WeakMap<object, string>();
 
 /**
- * Install, replace or clear the reaction that mints a creator's talk session.
+ * Install the reaction that mints a creator's talk session: `reactTo.created`
+ * on `collection` dispatches `kind`'s `bind` into a child of the creating
+ * session, keyed {@link talkSessionKey}. It runs inside the turn that created
+ * the row, so a row written outside any turn mints nothing. Rescued: the mint
+ * is not atomic with the row, and a refused bind leaves the row unbound until
+ * its owner's `join` or a re-sent create.
  *
- * With a kind: `reactTo.created` on `collection` dispatches that kind's `bind`
- * into a child of the creating session, keyed {@link talkSessionKey}. It runs
- * inside the turn that created the row, so a row written outside any turn
- * mints nothing. Rescued: the mint is not atomic with the row, and a refused
- * bind leaves the row unbound until its owner's `join` or a re-sent create.
+ * **One talk kind per process.** The collection is process-wide, so its
+ * reaction is too. Installing again on the same kind replaces it (a restart
+ * in one process); a second, different kind is refused, since rows would mint
+ * on whichever was installed last. Nothing here ever removes a reaction, so a
+ * host that builds several flows and calls `channelInstances` more than once
+ * keeps the one a template installed.
  *
- * With `undefined`: removes a reaction this module installed, so a roster with
- * no template binds as before.
+ * @throws When a reaction this module installed mints on another kind.
  */
-export function installTalkReaction(collection: object, kind: string | undefined): void {
+export function installTalkReaction(collection: object, kind: string): void {
   const target = collection as { reactTo?: { created?: unknown } };
-  if (kind === undefined) {
-    if (target.reactTo !== undefined && installed.has(target.reactTo)) delete target.reactTo;
-    return;
+  const current = target.reactTo === undefined ? undefined : installed.get(target.reactTo);
+  if (current !== undefined && current !== kind) {
+    throw new Error(
+      `channelInstances: project talk sessions already mint on kind "${current}" in this process, and a ` +
+        `template now names kind "${kind}". The projects collection is one per process, so its rooms run on one kind.`
+    );
   }
   const mint = dispatcher({
     name: "project-mint-talk",
@@ -147,6 +184,12 @@ export function installTalkReaction(collection: object, kind: string | undefined
     payload: (change: ResourceChange) => ({ resourceId: change.key })
   }).rescue([{ block: noteBindRefusal }]);
   const reactTo = { created: mint };
-  installed.add(reactTo);
+  installed.set(reactTo, kind);
   target.reactTo = reactTo;
+}
+
+/** Remove the reaction this module installed on `collection`. For tests that boot several hosts in one process. */
+export function forgetTalkReaction(collection: object): void {
+  const target = collection as { reactTo?: object };
+  if (target.reactTo !== undefined && installed.has(target.reactTo)) delete target.reactTo;
 }

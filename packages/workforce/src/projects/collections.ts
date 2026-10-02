@@ -84,6 +84,13 @@ export const projectRowSchema = z.object({
   members: z.array(z.string()).default([]),
   /** Full channel ids of the declared channels this project holds, from any team. */
   workstreams: z.array(z.string()).default([]),
+  /**
+   * The token each listed workstream's claim carried when this row was written.
+   * A write that drops a workstream deletes its claim only while the claim
+   * still carries this token, so a claim a later write has re-stamped survives.
+   * Server-side: not in the browser read.
+   */
+  claimTokens: z.record(z.string()).default({}),
   /** Each member's talk session, at most one per user. */
   sessions: z.array(projectSessionLinkSchema).default([])
 });
@@ -149,8 +156,12 @@ export const roomSeqSchema = z.object({
 /** One room's counter. @see roomSeqSchema */
 export type RoomSeq = z.infer<typeof roomSeqSchema>;
 
-/** Which project holds one workstream. */
-export const workstreamClaimSchema = z.object({ projectId: z.string().min(1) });
+/**
+ * Which project holds one workstream, and the token of the write that last
+ * stamped the claim. The token is what a later release checks before it
+ * deletes: a claim re-stamped since is someone else's to keep.
+ */
+export const workstreamClaimSchema = z.object({ projectId: z.string().min(1), token: z.string().default("") });
 
 /** @see workstreamClaimSchema */
 export type WorkstreamClaim = z.infer<typeof workstreamClaimSchema>;
@@ -203,7 +214,12 @@ export type ProjectsCollectionOptions = {
   talk?: TalkTemplate;
 };
 
-const PROJECTS_COLLECTION = defineResourceCollection({
+/**
+ * The one projects declaration, for an identity check (`channelInstances`
+ * asks whether a `mintFor:` names it). Not re-exported from the package root:
+ * apps declare it with {@link defineProjectsCollection}.
+ */
+export const PROJECTS_COLLECTION = defineResourceCollection({
   pattern: "projects/*",
   scope: "org",
   flowIsolation: SHARED_ACROSS_FLOWS,

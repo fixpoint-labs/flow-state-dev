@@ -398,6 +398,106 @@ describe("project rows", () => {
   });
 });
 
+describe("project rows under racing writes", () => {
+  /** A gate one write waits on, opened by another; never waits longer than `ms`. */
+  const gate = () => {
+    let open = () => {};
+    const opened = new Promise<void>((resolve) => (open = resolve));
+    return { open: () => open(), wait: (ms: number) => Promise.race([opened, new Promise((r) => setTimeout(r, ms))]) };
+  };
+  const isKey = (key: string, collection: string, id: string) => key === `${collection}/${id}` || key.endsWith(`/${collection}/${id}`);
+
+  it("keeps the claim the winning duplicate create relies on when the losing duplicate releases its own", async () => {
+    const h = await boot();
+    const lab = await h.openSession("alice", "lab");
+    const states = h.stores.resourceState;
+    const set = states.set.bind(states);
+    let injected = false;
+    // Between this create's claim on eng.feature and its row write, a duplicate
+    // create of the same id lands its row: it found the claim held by "dup",
+    // kept it, and won the row.
+    states.set = async (scopeType, scopeId, key, state, expected) => {
+      const result = await set(scopeType, scopeId, key, state, expected);
+      if (!injected && result.ok && isKey(key, "workstream-claims", "eng.feature")) {
+        injected = true;
+        const token = (state as { token?: string }).token;
+        await set(
+          scopeType,
+          scopeId,
+          key.replace(/workstream-claims\/eng\.feature$/, "projects/dup"),
+          {
+            id: "dup",
+            title: "Dup",
+            brief: null,
+            status: "active",
+            ownerUserId: "alice",
+            members: ["alice"],
+            workstreams: ["eng.feature"],
+            sessions: [],
+            ...(token === undefined ? {} : { claimTokens: { "eng.feature": token } })
+          },
+          "absent"
+        );
+      }
+      return result;
+    };
+    const resent = await h.ok("alice", "lab", lab, "createProject", { id: "dup", title: "Dup", workstreams: ["eng.feature"] });
+    states.set = set;
+    expect(injected).toBe(true);
+    expect(resent.created).toBe(false);
+    expect(resent.project.workstreams).toEqual(["eng.feature"]);
+    // The winning row lists eng.feature, so its claim must still be there:
+    // without it another project could take a workstream "dup" holds.
+    expect((await h.inspectRow("dup", ["eng.feature"])).claims["eng.feature"]).toBe("dup");
+    const bobLab = await h.openSession("bob", "lab");
+    const steal = await h.act("bob", "lab", bobLab, "createProject", { id: "other", title: "Other", workstreams: ["eng.feature"] });
+    expect(refusal(steal)).toContain("workstream-claimed");
+  });
+
+  it("leaves the claims matching the committed list when two workstream edits race: [a] to [] against [a] to [a, b]", async () => {
+    const h = await boot();
+    const lab = await h.openSession("alice", "lab");
+    await h.ok("alice", "lab", lab, "createProject", { id: "p", title: "P", workstreams: ["eng.feature"] });
+    const [one, two] = [await h.openSession("alice", "lab"), await h.openSession("alice", "lab")];
+
+    const states = h.stores.resourceState;
+    const [set, del] = [states.set.bind(states), states.delete.bind(states)];
+    const twoClaimedB = gate();
+    const twoWroteRow = gate();
+    // The interleaving: edit one commits [] only after edit two has claimed b,
+    // and edit one's cleanup of a's claim runs only after edit two committed
+    // [a, b]. Each wait is bounded, so a fixed writer that never makes the
+    // gated write does not hang the test.
+    states.set = async (scopeType, scopeId, key, state, expected) => {
+      const row = state as { workstreams?: string[] };
+      if (isKey(key, "projects", "p") && row.workstreams?.length === 0) await twoClaimedB.wait(1_000);
+      const result = await set(scopeType, scopeId, key, state, expected);
+      if (result.ok && isKey(key, "workstream-claims", "eng.platform")) twoClaimedB.open();
+      if (result.ok && isKey(key, "projects", "p") && row.workstreams?.length === 2) twoWroteRow.open();
+      return result;
+    };
+    states.delete = async (scopeType, scopeId, key, expected) => {
+      if (isKey(key, "workstream-claims", "eng.feature")) await twoWroteRow.wait(1_000);
+      return del(scopeType, scopeId, key, expected);
+    };
+    const results = await Promise.all([
+      h.act("alice", "lab", one, "setWorkstreams", { projectId: "p", workstreams: [] }),
+      h.act("alice", "lab", two, "setWorkstreams", { projectId: "p", workstreams: ["eng.feature", "eng.platform"] })
+    ]);
+    states.set = set;
+    states.delete = del;
+    expect(results.map((r) => r.settled)).toEqual(["completed", "completed"]);
+
+    // Whatever list committed last, every workstream it lists is claimed by p,
+    // and nothing it does not list is.
+    const after = await h.inspectRow("p", ["eng.feature", "eng.platform"]);
+    expect(after.row.workstreams).toEqual(["eng.feature", "eng.platform"]);
+    for (const id of ["eng.feature", "eng.platform"]) {
+      expect(after.claims[id]).toBe(after.row.workstreams.includes(id) ? "p" : null);
+    }
+  });
+});
+
 describe("a project's room", () => {
   it("two members read each other's lines by cursor, each through their own session", async () => {
     const h = await boot();
@@ -549,5 +649,21 @@ describe("the committed watermark", () => {
 
     // The late writer finds its key taken by the tombstone, so it would allocate again.
     expect(await run("writeAt", { seq: 2, body: "two, late" })).toBe(false);
+  });
+
+  it("lets the first poster after the grace period fill a dead writer's line, so no second poster is needed", async () => {
+    const h = await boot();
+    const lab = await h.openSession("alice", "lab");
+    const run = (action: string, input: Record<string, unknown>) => h.ok("alice", "lab", lab, action, { projectId: "d", ...input });
+
+    await run("append", { body: "one", graceMs: 50 });
+    expect(await run("allocate", {})).toBe(2); // this writer dies
+    await new Promise((r) => setTimeout(r, 150)); // the gap is now older than the grace period
+    await run("append", { body: "three", graceMs: 50 });
+
+    // One later post is enough: the gap's clock started when it was allocated.
+    const page = (await run("readRoom", { after: 0 })) as { lines: RoomLine[]; nextCursor: number };
+    expect(page.lines.map((l) => l.body)).toEqual(["one", "three"]);
+    expect(page.nextCursor).toBe(3);
   });
 });

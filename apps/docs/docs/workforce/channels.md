@@ -799,7 +799,7 @@ export default defineProjectsCollection({
 
 A seat is named by its full id from any team, like `engineering.lead`, or by an organization-level seat's own name, like `chief-of-staff`. These seats are not the project's members. Members are the people who can read and post; seats are who a post wakes.
 
-Pass the organization's resource map to `channelInstances`, so the binder can find the template:
+Pass the organization's resource map to `channelInstances`, so `channelInstances` can find the template:
 
 ```ts
 const { resources } = splitResourceModules(resourceModules);
@@ -822,17 +822,17 @@ That file is a template, not a channel. It's never opened, and it never shows up
 
 What a template does:
 
-- **It applies to every project's room, and edits land at the next restart.** The seats and charter are built onto the channel kind each time the app boots and are never copied into a session, so an edit reaches rooms that already exist.
+- **It applies to every project's room, and edits land at the next restart.** The seats and charter are built onto the channel kind each time the app boots and are never copied into a session. An edit reaches every room, including ones that already exist.
 - **A post wakes each seat once, as the person who posted.** Each seat keeps one conversation per person per room, and gets the room's last 20 lines along with the post. Its reply goes into the room, where every member reads it. A seat's reply wakes nobody.
 - **Other members' lines arrive on the next read, not live.** Your own post shows up when you post it. Everyone else's appears the next time your view calls `read`.
 - **It holds no board and routes no post.** A template that declares `boards:`, `routing:` or `boardActions:` is refused.
 - **Rooms aren't in the inventory.** The inventory lists the channels you declared, and no talk session is ever one of its rows.
 
-When a template is in place, creating a project inside a flow turn also gets the creator's talk session ready, in the same turn. A row your code writes outside a turn gets none, and its members reach the room through `join`.
+When a template is in place, any code that creates a project inside a flow turn also gets the creator's talk session ready, in the same turn. `createProject` does that with or without a template. A row your code writes outside a turn gets none, and its members reach the room through `join`.
 
-A channel's transcript and a room's lines live in different places. A channel's transcript is its session's `channel-post` items. A room's lines are rows in the organization's `room-lines` collection, read through a member's own talk session, and no session holds a copy.
+A room's lines aren't in any session's history. Read them with `read` on a member's talk session.
 
-`channelInstances` checks templates along with your channels and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or one that isn't `projects`, a seat that isn't a seat id, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `CHANNEL.md`.
+`channelInstances` checks templates along with your channels and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or one that isn't `projects`, a seat that isn't a seat id or is listed twice, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `CHANNEL.md`.
 
 ## Registering a kind of your own
 
