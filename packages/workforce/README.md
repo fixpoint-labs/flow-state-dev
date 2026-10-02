@@ -72,6 +72,8 @@ Describe each worker in a folder instead of in code. `readWorkforceDirectory` wa
 `<root>/org/workers/<workerName>/` and `<root>/teams/<teamId>/workers/<workerName>/`, reads each
 worker's `WORKER.md`, and returns one record per worker. `readWorkforce` wraps it, joining each seat's resolved skills, its
 team's instructions and the [packages](#packages-from-files) in its reach onto the records it hands back.
+An org seat has no team, so its record carries no `teamInstructions`, and its skills come from two
+levels, the org's and its own.
 
 ```ts
 import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";

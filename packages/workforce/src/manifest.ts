@@ -65,7 +65,8 @@ export interface WorkerManifest {
    * Absent rather than empty when a team wrote nothing, all the way down: it
    * reaches a hired flow as `config.teamInstructions` ({@link
    * TEAM_INSTRUCTIONS_KEY}) only when it is here, so a team with no file
-   * changes nothing about the bag its seats receive.
+   * changes nothing about the bag its seats receive. Always absent on an org
+   * seat, which has no team.
    *
    * Never merged with {@link WorkerManifest.body}. Two layers that cannot be
    * told apart at the seam are one layer, and a kind that wants only the seat's
