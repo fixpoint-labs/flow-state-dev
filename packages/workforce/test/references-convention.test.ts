@@ -70,8 +70,9 @@ const BOB_NOTES = "teams/engineering/workers/bob/notes";
  * A VALID engineering placement. A worker id is team-qualified,
  * `"<teamId>.<name>"` — a `/` there is unroutable — so this seat's folder is
  * `teams/engineering/workers/ada/`, and that is the place the wall is derived
- * from. A bare `"ada"` is not a seat the loader can mint, so it would give the
- * own-team / sibling-team distinction nothing to be distinguished FROM.
+ * from. A bare `"ada"` would be an org seat (`org/workers/ada/`), which has no
+ * team, so it would give the own-team / sibling-team distinction nothing to be
+ * distinguished FROM.
  */
 const ENG_SEAT = "engineering.ada";
 
@@ -971,7 +972,7 @@ describe("the wall cannot be turned off by omission", () => {
   });
 });
 
-describe("a reference above no seat reaches nobody", () => {
+describe("an org seat's own references/ reach that seat alone", () => {
   it("an org WORKER's references/ sits beside the org level, not above a team seat", async () => {
     const root = await tree();
     await writeInto(root, {
@@ -979,10 +980,31 @@ describe("a reference above no seat reaches nobody", () => {
     });
     const { seat: ada } = await seatOn(root);
     const { ctx } = await ctxFor(ada);
-    // Seats are minted only from `teams/<team>/workers/<name>/`, so nothing in
-    // this tree sits below an org worker's folder. The document loads, installs
-    // and is reachable by no seat at all — the same gap that retired BR-8, kept
-    // visible here rather than left for someone to rediscover.
     expect(handleFor(ctx, "workers/build/runbook")).toBeUndefined();
+  });
+
+  it("the org seat at that folder reads it, with the org's, and no team's", async () => {
+    const root = await tree();
+    await writeInto(root, {
+      "org/workers/build/references/runbook.md": doc("Build runbook", "BUILD RUNBOOK v1"),
+    });
+    const { seat: build } = await seatOn(root, seat("build"));
+    const { ctx } = await ctxFor(build);
+    expect(await handleFor(ctx, "workers/build/runbook")!.readContent()).toBe("BUILD RUNBOOK v1");
+    expect(await handleFor(ctx, ORG_HANDBOOK)!.readContent()).toBe("ORG HANDBOOK v1");
+    // An org seat has no team: no team's folder is above it.
+    expect(handleFor(ctx, ENG_HANDBOOK)).toBeUndefined();
+    expect(handleFor(ctx, ADA_NOTES)).toBeUndefined();
+  });
+
+  it("another org seat does not read it", async () => {
+    const root = await tree();
+    await writeInto(root, {
+      "org/workers/build/references/runbook.md": doc("Build runbook", "BUILD RUNBOOK v1"),
+    });
+    const { seat: deploy } = await seatOn(root, seat("deploy"));
+    const { ctx } = await ctxFor(deploy);
+    expect(handleFor(ctx, "workers/build/runbook")).toBeUndefined();
+    expect(await handleFor(ctx, ORG_HANDBOOK)!.readContent()).toBe("ORG HANDBOOK v1");
   });
 });
