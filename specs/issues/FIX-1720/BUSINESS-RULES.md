@@ -10,7 +10,7 @@ names the plan step or report line that shows the rule held.
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| QR-1 | FIX-1621, FIX-1718 (every PR, the CoS wiring included) or FIX-1719 (both PRs) is not merged, or [D1](DECISIONS.md#d1)'s child is open, or CI is red on `main` | No run. Each blocks this issue | Linear · the report lists each merge commit |
+| QR-1 | FIX-1621, FIX-1718 (every PR: PR 3 with [D1](DECISIONS.md#d1)'s workstreams, and the CoS wiring) or FIX-1719 (both PRs) is not merged, or CI is red on `main` | No run. Each blocks this issue | Linear · the report lists each merge commit |
 | QR-2 | A child joins FIX-1650 mid-run, a finding included | It blocks this issue; the run in flight opens no closure PR | The epic wake |
 | QR-3 | The last blocker merges | One `main` commit is picked, and every check in parts 1 to 4 runs against it | Every verdict row carries that SHA |
 | QR-4 | No model key is set, or no Chromium starts | The run is *blocked*, not failed. With no browser, the check goes to `fsd-qa` over the mailbox | Report |

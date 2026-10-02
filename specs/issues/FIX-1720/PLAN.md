@@ -89,7 +89,7 @@ The epic's other three teams are legs a, b and c.
 | ID | Passes when |
 |---|---|
 | P3.1 | FIX-1621's `goals/hire-plane/repairs-a-seat-whose-kind-was-cut/`, with `fire-keeps-inventory` failing |
-| P3.2 | FIX-1719's `goals/org-seats/cos-changes-the-roster/`, with `deny-fire` failing · FIX-1718's `goals/shift-manager/it-groups-workstreams-under-their-projects/`, its `cos` leg included, with `unread`, `gap-tabs`, `no-gate`, `no-retry` and `no-tool` each failing · D1's child's check |
+| P3.2 | FIX-1719's `goals/org-seats/cos-changes-the-roster/`, with `deny-fire` failing · FIX-1718's `goals/shift-manager/it-groups-workstreams-under-their-projects/`, its `cos` leg included, with `unread`, `gap-tabs`, `no-gate`, `no-retry` and `no-tool` each failing · D1's workstreams, present and unclaimed at boot |
 | P3.3 | Every check that boots the DevTeam tree stays green: `goals/devforce-lab/*` and the `goals/shift-manager/*` checks that start `--team devteam`; `goals/hire-plane/*`; CI green on the SHA |
 
 ## Part 4 · gap sweep
@@ -152,4 +152,4 @@ No reader-facing change. [DOCS.md](DOCS.md) says what the run follows.
 
 ## Follow-ups
 
-None raised. D1's child is filed on approval by the epic coordinator.
+None raised. D1's workstreams ship in FIX-1718's PR 3 (S11).

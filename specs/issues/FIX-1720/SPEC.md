@@ -70,7 +70,7 @@ on the DevTeam Lab, and a finding sends the whole stack round again.
 
 - **No product work.** A gap becomes a child of FIX-1650 that blocks this issue, fixed on its own
   route; the closure PR carries the goal check and the report only.
-- **No committed input but D1's.** Every other variant (an extra kind for leg c, the controls,
+- **No committed input of its own.** D1's workstreams ship in FIX-1718's PR 3. Every variant (an extra kind for leg c, the controls,
   the next-Lab copy) is a patch on a scratch copy of the commit, printed in the report.
 - **Every child's acceptance** stands as its spec wrote it; a child's check that fails is a
   finding, never a rewrite.
@@ -82,8 +82,8 @@ DevTeam Lab in a browser, a real model, the next Lab from the docs, one commit. 
 epic wraps on checks that never met each other, or waits on a bar nobody asked for.
 
 1. **[D1](DECISIONS.md#d1) · Leg a's cross-team project needs workstreams on two teams that no
-   default project already holds; that is filed now as a child of FIX-1650 blocking this
-   issue.** If wrong: one small child the epic didn't plan, or a first run that fails on a gap
+   default project already holds; FIX-1718's PR 3 adds them, and the closure depends on that
+   PR.** If wrong: two tree files only the closure reads, or a first run that fails on a gap
    we can already see.
 2. **[D2](DECISIONS.md#d2) · A CoS turn that doesn't do what the person asked is a finding, never
    retried as flake.** If wrong: a model's off day costs a whole re-run, or a CoS a person can't

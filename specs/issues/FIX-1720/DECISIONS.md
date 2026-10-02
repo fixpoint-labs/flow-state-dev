@@ -12,7 +12,7 @@ open. D1 to D3 are the sign-off; the rest are decided so nobody decides them on 
 
 ```mermaid
 flowchart TD
-  I["FIX-1720"] --> D1["D1 · cross-team workstreams no default holds · filed now"]
+  I["FIX-1720"] --> D1["D1 · cross-team workstreams no default holds · FIX-1718 PR 3 adds them"]
   D1 -.->|"rejected · a smaller goal"| X1a["grade grouping on the default project"]
   D1 -.->|"rejected · two model calls, defaults rewritten"| X1b["ask CoS to move workstreams first"]
   I --> D2["D2 · a CoS miss is a finding · no retry"]
@@ -26,20 +26,20 @@ flowchart TD
 Solid edges are what was chosen. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · Leg a's cross-team project needs workstreams on two teams that no default project holds; filed now as a child of FIX-1650 blocking this issue
+## D1 · Leg a's cross-team project needs workstreams on two teams that no default project holds; FIX-1718's PR 3 adds them, and the closure depends on that PR
 
 | | |
 |---|---|
 | **Instead of** | (a) Grading grouping on the profile's default project `storefront`, and CoS's two projects with no workstreams. (b) Asking CoS first to take workstreams off `storefront`, then create the new project with them |
 | **Because** | A workstream belongs to at most one project, claimed at create ([FIX-1718 BR-4](../FIX-1718/BUSINESS-RULES.md#what-a-workstream-and-a-project-are)). As FIX-1718 plans the DevTeam tree, its only two workstreams, `eng.feature` and `ops.release`, are both claimed by the default `storefront` at boot ([FIX-1718 S11, S12](../FIX-1718/PLAN.md#surfaces)), so any project CoS creates is refused every workstream, or holds none. The epic's goal is workstreams found *under the projects CoS created*, and Jake's call is that projects are usually cross-team. (a) is the smaller goal: grouping proved only on a row app code wrote. (b) rewrites the defaults FIX-1718's own check grades and doubles the model calls the leg rests on |
-| **Locks in** | On approval, one child of FIX-1650 filed by the epic coordinator, blocking this issue: **the DevTeam tree carries at least one board-less workstream on each of two teams that no default project lists.** Tree only, no product code; FIX-1718's and the devforce-lab checks stay green. If FIX-1718's build already ships such workstreams, the child is closed with a pointer |
+| **Locks in** | **FIX-1718's PR 3 (its S11, the DevTeam tree) adds one board-less workstream on each of its two teams that no default project lists** (the epic coordinator's call). Tree only, no product code; FIX-1718's and the devforce-lab checks stay green. The closure depends on that PR: no run starts until it has merged, and a run that finds either workstream missing or claimed files a finding against FIX-1718 |
 
 **What would change my mind:** the owner ruling that the profile's default projects are what the
 epic means by "the projects CoS created". Then (a), and the epic's anti-game line is amended.
 
-**What being wrong costs:** one small child, which FIX-1718's build may make unnecessary.
+**What being wrong costs:** two small tree files in FIX-1718's PR 3 that only the closure reads.
 
-![D1: workstreams on two teams no default project holds, filed now, chosen, beside grading grouping on the default project; decided by whose project the grouping is proved on](figures/d1-unclaimed-workstreams.svg)
+![D1: workstreams on two teams no default project holds, added by FIX-1718's PR 3, chosen, beside grading grouping on the default project; decided by whose project the grouping is proved on](figures/d1-unclaimed-workstreams.svg)
 
 It comes down to whose project is graded: grouping on the default row proves app code, not CoS.
 
@@ -120,5 +120,7 @@ leaves no unclaimed workstream, is read off FIX-1718's merged plan (S11, S12) an
 
 - **Draft** — the epic's three legs in a browser on the DevTeam Lab, CoS driven through the
   Chief of Staff view with a real model and no retry; only CoS-created rows graded; the missing
-  unclaimed cross-team workstreams filed now rather than found late; the next Lab set up from the
+  unclaimed cross-team workstreams added up front rather than found late; the next Lab set up from the
   docs alone.
+- **D1's vehicle (Oct 2)** — the epic coordinator kept the recommendation and moved the vehicle
+  from a new child of FIX-1650 to FIX-1718's PR 3, which already owns the DevTeam tree (S11).
