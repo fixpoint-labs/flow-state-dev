@@ -697,6 +697,16 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * writer builds `{ ...heldRecord, ...patch }` from a snapshot that predates
    * the flag, so honouring it means erasing a cancellation nobody intended to
    * touch. Write it with {@link RequestStore.setFieldsIfStatus}.
+   *
+   * **A `set` whose record leaves `items` off keeps the stored items**
+   * (FIX-1735). The request-state write is a full-record write built from the
+   * snapshot the run took when it started, so it leaves `items` off rather
+   * than hand back that snapshot's. An adapter that keeps items on the record
+   * and replaces the whole record on `set` would drop every item persisted
+   * since: carry the stored `items` through when `value.items` is absent
+   * (the in-memory and filesystem adapters use `withHeldItems`). An adapter
+   * that keeps items out of `set` entirely, as the SQL pair does, holds this
+   * already. A record that carries `items` may still replace them.
    */
   set(
     id: string,

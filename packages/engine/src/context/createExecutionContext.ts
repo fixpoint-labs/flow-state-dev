@@ -42,7 +42,7 @@ import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ProjectedResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
-import { createScopePersist } from "../stores/scope-persist";
+import { createScopePersist, type ScopeStoreLike } from "../stores/scope-persist";
 import { toBareState, toBareStates, toVersions } from "../stores/resource-state-views";
 import { runResourceCAS, type ResourceCASIntent } from "../stores/resource-cas";
 import { casMaxRetries, waitForCASRetry } from "../stores/cas";
@@ -2141,23 +2141,35 @@ export async function createExecutionContext<
       ? options.response.getItemCount()
       : 0;
 
+  // The request store as the request-state write sees it: a full-record
+  // write leaves `items` off, because the record's are the snapshot from when
+  // the run started and the store keeps the ones persisted since only when
+  // the write leaves them off (FIX-1735). Off in the write only: the record
+  // this context keeps after it still carries them, since with no response
+  // emitter `readLiveItems` reads them from there.
+  const request = stores.request;
+  const requestStateStore: ScopeStoreLike<RequestRecord> = {
+    patchField: request.patchField?.bind(request),
+    incField: request.incField?.bind(request),
+    pushToArray: request.pushToArray?.bind(request),
+    deleteField: request.deleteField?.bind(request),
+    set: (id, value, expectedVersion) => {
+      const { items: _snapshotItems, ...record } = value;
+      return request.set(id, record, expectedVersion);
+    }
+  };
+
   const requestOps = createScopeStateOps(requestContainer, {
     serialize: true,
     persist: createScopePersist<TRequestState, RequestRecord>(
       requestRef,
-      stores.request,
-      // Items off: the snapshot's are from when the run started, and the
-      // store keeps the ones persisted since only when the write leaves them
-      // off (FIX-1735). The emitter holds the live log.
-      (expectedVersion, state) => {
-        const { items: _snapshotItems, ...record } = requestRef.current;
-        return {
-          ...record,
-          state: state as TRequestState,
-          version: expectedVersion + 1,
-          updatedAt: Date.now()
-        };
-      }
+      requestStateStore,
+      (expectedVersion, state) => ({
+        ...requestRef.current,
+        state: state as TRequestState,
+        version: expectedVersion + 1,
+        updatedAt: Date.now()
+      })
     )
   });
 
