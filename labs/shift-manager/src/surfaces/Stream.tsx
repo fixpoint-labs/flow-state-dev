@@ -269,11 +269,14 @@ export function Composer({
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSend) return;
+    // What was sent. A send that finishes clears only this; a line typed since stays.
+    const submitted = draft;
+    const clearSent = () => setDraft((current) => (current === submitted ? "" : current));
     if (address !== undefined) {
       const to = target as Extract<Addressing, { blocked: null }>;
       setPostError(null);
       if (await turn.run(() => to.send(row!, address.message))) {
-        setDraft("");
+        clearSent();
         setChosen("");
       }
       return;
@@ -283,12 +286,12 @@ export function Composer({
     turn.clear();
     let sent = false;
     try {
-      await send(draft.trim());
+      await send(submitted.trim());
       sent = true;
       // The draft goes only once the line is read back: a read that fails
       // leaves it here, with the reason.
       await onKept();
-      if (mounted.current) setDraft("");
+      if (mounted.current) clearSent();
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       if (mounted.current) {

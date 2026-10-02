@@ -20,7 +20,7 @@
  *            every member at once leaves one talk session per member; two
  *            members read each other's lines by cursor and both see the seat's
  *            answer; an outsider is refused, even from a session it made naming
- *            the project; and a burst of posts from both members lands whole.
+ *            the project; and a burst of posts from every member lands whole.
  *   restart  the Lab stopped and started on the same store: every project row,
  *            with its talk links, is as it was, and each room reads back
  *            through the same talk session with every line once.
@@ -96,7 +96,7 @@ const fixture = loadFixture<{
   ownerLine: string;
   memberLine: string;
   outsiderLine: string;
-  burst: { windows: number; perWindow: number; body: string };
+  burst: { perMember: number; body: string };
   joins: number;
   cos: { ask: string; titles: [string, string] };
 }>(import.meta.url);
@@ -572,11 +572,13 @@ async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; crowd: La
   // allocated before it (a seat answering the last post) is still being
   // written, so each read is retried, bounded, the way an open room view
   // keeps reading. The wait is reported.
+  let rereads = 0;
   const readUntil = async (api: LabApi, session: string, after: number, has: (l: RoomLine) => boolean) => {
     const begun = Date.now();
     for (;;) {
       if ((await readAll(api, kind, session, after)).lines.some(has)) return Date.now() - begun;
       if (Date.now() - begun > 10_000) return undefined;
+      rereads += 1;
       await sleep(100);
     }
   };
@@ -617,29 +619,26 @@ async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; crowd: La
   const rowAfter = (await readStore(owner, host)).rows.find((r) => r.id === project.id);
   if (rowAfter?.sessions.some((s) => s.userId === outsider.user.userId) === true) fail(outLeg, `${project.id}'s row lists a session for the outsider`);
 
-  // ---- a burst of posts from both members lands whole ------------------------
+  // ---- a burst of posts from every member lands whole ------------------------
   const burstLeg = "a burst of posts lands whole";
-  // The engine runs one action at a time per session, so a burst through one
-  // session per member races only two writers. Each member posts from several
-  // sessions at once, the way several open windows would: each a session of
-  // theirs naming the project, which lets them in only because they are a
-  // member (the outsider's identical session was refused above).
-  const per = fixture.burst.windows * fixture.burst.perWindow;
-  const bodies = (who: string) => Array.from({ length: per }, (_, i) => `${fixture.burst.body} ${who} ${i} (${RUN_STAMP})`);
-  const windowsOf = (api: LabApi) =>
-    Promise.all(Array.from({ length: fixture.burst.windows }, () => api.createSession(kind, { resourceId: project.id })));
-  const [ownerWindows, memberWindows] = await Promise.all([windowsOf(owner), windowsOf(member)]);
-  // The barrier: every session exists before any post is sent, and every post is sent in one go.
-  const burst = await Promise.all([
-    ...bodies("owner").map((body, i) => owner.act(kind, ownerWindows[i % ownerWindows.length]!, "post", { body })),
-    ...bodies("member").map((body, i) => member.act(kind, memberWindows[i % memberWindows.length]!, "post", { body })),
-  ]);
+  // A member posts only through the talk session the row lists for them, and
+  // the engine runs one action at a time per session, so the burst races one
+  // writer per member: the owner, the member and the crowd, all at once.
+  const posters = [owner, member, ...apis.crowd];
+  const listedNow = (await readStore(owner, host)).rows.find((r) => r.id === project.id)?.sessions ?? [];
+  const sessionOf = (api: LabApi) => listedNow.find((s) => s.userId === api.user.userId)?.sessionId;
+  const unlisted = posters.filter((p) => sessionOf(p) === undefined).map((p) => p.user.userId);
+  if (unlisted.length > 0) fail(burstLeg, `${project.id}'s row lists no talk session for ${unlisted.join(", ")}`);
+  const bodies = (who: string) => Array.from({ length: fixture.burst.perMember }, (_, i) => `${fixture.burst.body} ${who} ${i} (${RUN_STAMP})`);
+  const planned = posters.filter((p) => sessionOf(p) !== undefined).flatMap((p) => bodies(p.user.userId).map((body) => ({ p, body })));
+  // The barrier: every session is known before any post is sent, and every post is sent in one go.
+  const burst = await Promise.all(planned.map(({ p, body }) => p.act(kind, sessionOf(p)!, "post", { body })));
   const lost = burst.filter((p) => p.status !== "completed");
   if (lost.length > 0) fail(burstLeg, `${lost.length} of ${burst.length} posts did not complete (${lost[0]!.error ?? lost[0]!.status})`);
   const held = (await readAll(owner, kind, ownSession)).lines;
   const counts = new Map<string, number>();
   for (const l of held) counts.set(l.body, (counts.get(l.body) ?? 0) + 1);
-  const missing = [...bodies("owner"), ...bodies("member")].filter((b) => counts.get(b) !== 1);
+  const missing = planned.map(({ body }) => body).filter((b) => counts.get(b) !== 1);
   if (missing.length > 0) {
     const where = missing.slice(0, 3).map((b) => `"${b}" ${counts.get(b) ?? 0}x at seq [${held.filter((l) => l.body === b).map((l) => l.seq).join(",")}]`);
     fail(burstLeg, `${missing.length} of ${burst.length} burst lines are not in the room exactly once: ${where.join("; ")}; room seqs ${Math.min(...held.map((l) => l.seq))}..${Math.max(...held.map((l) => l.seq))} (${held.length} lines)`);
@@ -648,7 +647,7 @@ async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; crowd: La
   if (new Set(seqs).size !== seqs.length) fail(burstLeg, "two lines share a sequence number");
 
   evidence.push(
-    `room: ${channels.length} channels as declared; ${joinsSent} joins from ${joiners.length} members at once left one session per member on ${memberProjects.length} project(s); cross-member reads by cursor (longest wait ${crossWait} ms); ${SEAT_ANSWERS} answered in the room for both; outsider join ${outJoin.status}, forged read ${outRead.status}, post ${outPost.status}; ${burst.length - lost.length} of ${burst.length} burst posts completed, ${held.length} lines in ${project.id}'s room`,
+    `room: ${channels.length} channels as declared; ${joinsSent} joins from ${joiners.length} members at once left one session per member on ${memberProjects.length} project(s); cross-member reads by cursor (longest wait ${crossWait} ms, ${rereads} re-read(s)); ${SEAT_ANSWERS} answered in the room for both; outsider join ${outJoin.status}, forged read ${outRead.status}, post ${outPost.status}; ${burst.length - lost.length} of ${burst.length} burst posts from ${posters.length} members completed, ${held.length} lines in ${project.id}'s room`,
   );
 }
 

@@ -23,9 +23,9 @@
  *     together, with every other refusal of the boot
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { defineFlow, defineResourceCollection, dispatcher, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, defineResourceCollection, dispatcher, handler, router as routerBlock, sequencer } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
@@ -499,6 +499,8 @@ async function boot(options: {
   seats?: string[];
   /** Build the host's channel kind from a second `channelInstances` call made without `resources`. */
   laterCall?: boolean;
+  /** Refuse the first wake of this seat, as a notify slot whose dispatch is refused would. */
+  refuseOnce?: string;
 }) {
   const heard: Heard[] = [];
   const kept: { postId?: string; token?: string } = {};
@@ -509,11 +511,34 @@ async function boot(options: {
   forgetOrgTalkTemplate(projects);
   forgetTalkTemplate(projects);
   if (options.talk !== undefined) defineProjectsCollection({ talk: options.talk });
-  const kinds = { [CHANNEL_KIND]: defineChannelFlow({ notify: wakeMemberSeats(seats) }) as never };
+  const notify = (() => {
+    const wake = wakeMemberSeats(seats);
+    if (options.refuseOnce === undefined) return wake;
+    let refused = false;
+    const refuse = handler({
+      name: "test-refuse-wake",
+      inputSchema: channelNotifyInputSchema,
+      outputSchema: z.unknown(),
+      execute: () => {
+        throw new Error("the wake was refused");
+      }
+    });
+    return routerBlock({
+      name: "test-refuse-once",
+      inputSchema: channelNotifyInputSchema,
+      routes: [wake, refuse],
+      execute: (post: ChannelNotifyInput) => {
+        if (refused || post.member !== options.refuseOnce) return wake;
+        refused = true;
+        return refuse;
+      }
+    } as never) as typeof wake;
+  })();
+  const kinds = { [CHANNEL_KIND]: defineChannelFlow({ notify }) as never };
   const [first] = channelInstances([], { kinds, resources: { projects } });
   const [kind] = options.laterCall === true ? channelInstances([], { kinds }) : [first];
   // A roster with no template registers no channel kind at all; projects still talk on the built-in.
-  const talkKind = kind ?? defineChannelFlow({ notify: wakeMemberSeats(seats) })();
+  const talkKind = kind ?? defineChannelFlow({ notify })();
   const stores = options.stores ?? inMemoryStores();
   const state = createFlowState({
     flows: { app: appFlow(), [CHANNEL_KIND]: talkKind, ...Object.fromEntries(seats.map((seat) => [seat.id, seat])) },
@@ -571,7 +596,23 @@ async function boot(options: {
   };
   const sessionOf = (id: string, user: string) =>
     until(async () => (await rowOf(id))?.sessions.find((link) => link.userId === user)?.sessionId, `${user}'s talk session on ${id}`);
-  return { heard, kept, call, openSession, ok, app, rowOf, until, sessionOf, stores: runtimeStores };
+  /** Run the talk fan-out again for a post already made, as an at-least-once redelivery of its hand-off would. */
+  const replayFanOut = async (user: string, sessionId: string, input: unknown) => {
+    const runtime: any = await state.getRuntime();
+    const result: any = await runAction({
+      flow: talkKind,
+      actionName: "onTalkPosted",
+      input,
+      userId: user,
+      orgId: ORG,
+      sessionId,
+      source: "internal",
+      stores: runtime.stores,
+      runtimeConfig: { ...runtime.runtimeConfig }
+    } as never);
+    if (result?.error !== undefined) throw result.error;
+  };
+  return { heard, kept, call, openSession, ok, app, rowOf, until, sessionOf, replayFanOut, stores: runtimeStores };
 }
 
 describe("a project's talk template at runtime", () => {
@@ -774,6 +815,82 @@ describe("a project's talk template at runtime", () => {
       expect.objectContaining({ author: "eng.em", userId: "alice", body: "noted: [hold] who is on call?" })
     ]);
   }, 15_000);
+
+  it("wakes a seat whose delivery an earlier run recorded but never dispatched, once, with that delivery's token", async () => {
+    const h = await boot({ talk: { seats: ["eng.em"] } });
+    await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
+    const talk = await h.sessionOf("apollo", "alice");
+    // An earlier run of this post's fan-out recorded eng.em's delivery and died before waking it.
+    const postId = roomLineKey("apollo", 1);
+    await h.stores.resourceState.set(
+      "org",
+      ORG,
+      `room-deliveries/${postId}/eng.em/${talk}`,
+      { projectId: "apollo", postId, seat: "eng.em", sessionId: talk, token: "t-crashed", status: "pending" } as never,
+      "any"
+    );
+
+    await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "[answer] who is on call?" });
+    await h.until(async () => (h.heard.length === 1 ? true : undefined), "eng.em's wake");
+    await h.until(async () => {
+      const read = await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 });
+      return read.lines.some((line: { author: string | null }) => line.author === "eng.em") ? true : undefined;
+    }, "eng.em's answer under the recorded token");
+    await new Promise((r) => setTimeout(r, 200));
+    expect(h.heard.map((run) => [run.seat, run.post.answerToken])).toEqual([["eng.em", "t-crashed"]]);
+  });
+
+  it("refuses a post through a talk session the project does not list for its owner", async () => {
+    const h = await boot({ talk: { seats: ["eng.em"] } });
+    await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
+    await h.sessionOf("apollo", "alice");
+    // A second session of alice's, seeded as bound to the project but never listed on the row.
+    const created = await h.call("POST", "alice", [CHANNEL_KIND, "sessions"], { userId: "alice", state: { resourceId: "apollo" } });
+    const stray = created.json.session.id as string;
+    await expect(h.ok("alice", CHANNEL_KIND, stray, "post", { body: "from a side window" })).rejects.toThrow(
+      /talk-session-not-listed/
+    );
+    await expect(h.ok("alice", CHANNEL_KIND, stray, "read", { after: 0 })).rejects.toThrow(/talk-session-not-listed/);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(h.heard).toEqual([]);
+  });
+
+  it("leaves a delivery whose wake was refused pending, so the replay wakes that seat once", async () => {
+    const h = await boot({ talk: { seats: ["eng.em", "ops.lead"] }, refuseOnce: "eng.em" });
+    await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
+    const talk = await h.sessionOf("apollo", "alice");
+    const line = await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "who is on call?" });
+    // ops.lead is woken; eng.em's wake was refused, and that refusal does not hold up ops.lead's.
+    await h.until(async () => (h.heard.length === 1 ? true : undefined), "ops.lead's wake");
+    await new Promise((r) => setTimeout(r, 200));
+    expect(h.heard.map((run) => run.seat)).toEqual(["ops.lead"]);
+    const statusOf = async (seat: string) =>
+      ((await h.stores.resourceState.get("org", ORG, `room-deliveries/${roomLineKey("apollo", line.seq)}/${seat}/${talk}`))
+        ?.state as { status?: string; token?: string } | undefined);
+    expect((await statusOf("eng.em"))?.status).toBe("pending");
+    expect((await statusOf("ops.lead"))?.status).toBe("delivered");
+
+    // The replay wakes eng.em, with its recorded token, and not ops.lead again.
+    await h.replayFanOut("alice", talk, { projectId: "apollo", seq: line.seq, body: line.body, principal: "alice" }).catch(() => undefined);
+    await h.until(async () => (h.heard.length === 2 ? true : undefined), "eng.em's wake on the replay");
+    await new Promise((r) => setTimeout(r, 200));
+    expect(h.heard.map((run) => run.seat)).toEqual(["ops.lead", "eng.em"]);
+    expect(h.heard[1]!.post.answerToken).toBe((await statusOf("eng.em"))?.token);
+    expect((await statusOf("eng.em"))?.status).toBe("delivered");
+  });
+
+  it("wakes each seat once when the fan-out for one post runs twice", async () => {
+    const h = await boot({ talk: { seats: ["eng.em", "ops.lead"] } });
+    await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
+    const talk = await h.sessionOf("apollo", "alice");
+    const line = await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "who is on call?" });
+    await h.until(async () => (h.heard.length === 2 ? true : undefined), "the post's two wakes");
+
+    // The same post's fan-out, delivered again.
+    await h.replayFanOut("alice", talk, { projectId: "apollo", seq: line.seq, body: line.body, principal: "alice" });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(h.heard.map((run) => run.seat).sort()).toEqual(["eng.em", "ops.lead"]);
+  });
 
   it("reaches an existing talk session with an edited template at the next boot", async () => {
     const stores = inMemoryStores();

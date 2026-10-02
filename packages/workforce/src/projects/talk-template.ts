@@ -137,8 +137,12 @@ export function templateSeatsProblem(seats: readonly unknown[]): string | undefi
   return undefined;
 }
 
-/** One registered template: where it was declared, what it holds, and the reaction it installed. */
-type Registration = { site: string; facts: TalkTemplateFacts; reactTo: object };
+/**
+ * One registered template: where it was declared, what it holds, the reaction
+ * it installed, and the ids of the `CHANNEL.md` files that declared it, which
+ * are never channels in this process ({@link isTemplateChannel}).
+ */
+type Registration = { site: string; facts: TalkTemplateFacts; reactTo: object; channelIds: Set<string> };
 
 /** The process's one talk template per collection, set by the first `channelInstances` call that finds one. */
 const registrations = new WeakMap<object, Registration>();
@@ -164,11 +168,16 @@ const registrations = new WeakMap<object, Registration>();
 export function registerTalkTemplate(
   collection: object,
   template: { site: string; facts: TalkTemplateFacts },
-  kind: string
+  kind: string,
+  channelIds: readonly string[] = []
 ): void {
   const conflict = talkTemplateConflict(collection, template);
   if (conflict !== undefined) throw new Error(`channelInstances: ${conflict}`);
-  if (registrations.has(collection)) return;
+  const existing = registrations.get(collection);
+  if (existing !== undefined) {
+    for (const id of channelIds) existing.channelIds.add(id);
+    return;
+  }
   const mint = dispatcher({
     name: "project-mint-talk",
     flowKind: kind,
@@ -183,7 +192,8 @@ export function registerTalkTemplate(
   registrations.set(collection, {
     site: template.site,
     facts: { seats: [...template.facts.seats], charter: template.facts.charter },
-    reactTo
+    reactTo,
+    channelIds: new Set(channelIds)
   });
   (collection as { reactTo?: object }).reactTo = reactTo;
 }
@@ -208,6 +218,15 @@ export function talkTemplateConflict(
     `${template.site} would be a second with other seats or charter. ` +
     `Every project's room shares one template. Keep one.`
   );
+}
+
+/**
+ * Is `id` a `CHANNEL.md` that declares `collection`'s talk template in this
+ * process? Such an id is never a channel, even when a session it had as one
+ * survives in the store: the channel kind refuses its channel actions.
+ */
+export function isTemplateChannel(collection: object, id: string): boolean {
+  return registrations.get(collection)?.channelIds.has(id) ?? false;
 }
 
 /** The talk template registered for `collection` in this process, or `undefined`. */

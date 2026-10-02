@@ -39,6 +39,8 @@ import {
   type InventorySeat
 } from "../src/index";
 import { workforceManifestSources } from "../src/manifest-sources";
+import { defineProjectsCollection } from "../src/projects/collections";
+import { forgetOrgTalkTemplate, forgetTalkTemplate } from "../src/projects/talk-template";
 import { channelSessionStateSchema } from "../src/index";
 
 const USER_ID = "u_boot";
@@ -158,6 +160,8 @@ type HostOptions = {
   open?: ChannelManifest[];
   /** Shared storage, so a second boot reads what the first wrote. */
   adapter?: unknown;
+  /** The org's resource map, for a roster carrying a project talk template. */
+  resources?: Record<string, unknown>;
 };
 
 /**
@@ -171,7 +175,8 @@ type HostOptions = {
 async function host(roster: ChannelManifest[], options: HostOptions = {}) {
   const instances = channelInstances(roster, {
     ...(options.kinds === undefined ? {} : { kinds: options.kinds }),
-    ...(options.inventory === undefined ? {} : { inventory: options.inventory })
+    ...(options.inventory === undefined ? {} : { inventory: options.inventory }),
+    ...(options.resources === undefined ? {} : { resources: options.resources })
   });
   const byKind: Record<string, any> = Object.fromEntries(
     instances.map((instance) => [instance.kind, instance])
@@ -640,6 +645,41 @@ describe("a channel that becomes a project talk template", () => {
       expect(await second.discover(after)).toEqual(["eng.standup"]);
     } finally {
       await second.dispose();
+    }
+  });
+});
+
+describe("a channel's session after its CHANNEL.md becomes a template", () => {
+  it("refuses post and read at the next boot, though the session survives in the store", async () => {
+    const adapter = inMemoryStores();
+    const before = [record("eng.room")];
+    const first = await host(before, { inventory: true, adapter });
+    try {
+      expect((await first.act("eng.room", "post", { body: "still a channel" })).error).toBeUndefined();
+    } finally {
+      await first.dispose();
+    }
+
+    const projects = defineProjectsCollection();
+    try {
+      const after = [record("eng.room", { mintFor: "projects", members: [] })];
+      const second = await host(after, { inventory: true, adapter, resources: { projects }, open: [] });
+      expect((await bind(second, { channels: after, seats: [] })).problems).toEqual([]);
+      try {
+        const posted = await second.act("eng.room", "post", { body: "no longer a channel" });
+        expect(String(posted.error)).toMatch(/channel-is-a-template/);
+        const read = await second.act("eng.room", "read", {});
+        expect(String(read.error)).toMatch(/channel-is-a-template/);
+        // Nor can the surviving session put its channel row back.
+        const registered = await second.act("eng.room", "registerChannelInInventory", {});
+        expect(String(registered.error)).toMatch(/channel-is-a-template/);
+        expect((await second.keys()).filter((key) => key.endsWith("/eng.room"))).toEqual([]);
+      } finally {
+        await second.dispose();
+      }
+    } finally {
+      forgetOrgTalkTemplate(projects);
+      forgetTalkTemplate(projects);
     }
   });
 });

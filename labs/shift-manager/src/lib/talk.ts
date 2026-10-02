@@ -22,13 +22,7 @@ import { ClientHttpError } from "@flow-state-dev/client";
 import type { LabClients } from "./connection";
 import { describeFailure } from "./reads";
 
-/**
- * The flow kind every project's room is on: workforce's built-in channel kind
- * (`CHANNEL_KIND`), whichever kind a workstream runs on or the projects were
- * read through. Spelled here because the workforce browser entry doesn't
- * export it; `static.test.ts` pins the two together.
- */
-export const ROOM_KIND = "channel";
+export { ROOM_KIND } from "./reads";
 
 /** One line of a room, as `read` returns it. */
 export type RoomLine = { projectId: string; seq: number; userId: string; author: string | null; body: string; tombstone?: boolean };
@@ -90,7 +84,8 @@ async function runTalkAction(
     if (Date.now() > until) throw new Error(`The Lab did not finish ${action} in time.`);
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   }
-  if (status !== "completed" && status !== "failed") throw new TalkRefused(`${action} ended ${status}.`);
+  // Ended without the Lab's answer (aborted, interrupted, incomplete): not a refusal, so the view offers Retry.
+  if (status !== "completed" && status !== "failed") throw new Error(`The Lab's ${action} ended ${status} before it answered.`);
 
   for (let page = 0; page < REQUEST_PAGES; page += 1) {
     const listed = await clients.sessions.listSessionRequests(session, {
@@ -141,6 +136,68 @@ export async function readRoomPages(page: (after: number) => Promise<RoomPage>, 
     if (read.nextCursor <= cursor) return cursor;
     cursor = read.nextCursor;
   }
+}
+
+/** The most lines one `read` returns: workforce's `ROOM_PAGE_SIZE` (pinned in `static.test.ts`). */
+export const ROOM_PAGE = 200;
+/** The most pages a read for earlier lines steps back over when every line on them was removed. */
+const MAX_PAGES_BACK = 5;
+/** A guard on finding the end: 64 reads covers any room a sequence number can count. */
+const MAX_END_READS = 64;
+
+/**
+ * The room's last committed sequence number, in reads that grow with the log
+ * of its length. `read { after }` can't start from the end, but its cursor
+ * says where the room stops: the next cursor is `min(end, after + ROOM_PAGE)`
+ * when the room goes past `after`, and `after` when it doesn't. So probes
+ * double ahead until one lands past the end, then halve the gap.
+ */
+export async function findRoomEnd(page: (after: number) => Promise<RoomPage>): Promise<number> {
+  let lo = 0; // the end is at least this
+  let hi: number | undefined; // and at most this, once a probe has passed it
+  let ahead = 0;
+  for (let reads = 0; reads < MAX_END_READS; reads += 1) {
+    if (hi !== undefined && lo >= hi) return lo;
+    const at = hi === undefined ? lo + ahead : hi - lo <= ROOM_PAGE ? lo : lo + Math.floor((hi - lo) / 2);
+    const { nextCursor } = await page(at);
+    if (nextCursor <= at) hi = at;
+    else if (nextCursor < at + ROOM_PAGE) return nextCursor;
+    else {
+      lo = nextCursor;
+      ahead = Math.max(ROOM_PAGE, ahead * 2);
+    }
+  }
+  throw new Error("The room's end was not found: its cursor kept moving.");
+}
+
+/**
+ * The lines just before `floor`, oldest first, and the new floor. Pages that
+ * hold only removed lines are stepped over, at most {@link MAX_PAGES_BACK} of
+ * them; a floor of 0 is the room's start.
+ */
+export async function readRoomEarlier(
+  page: (after: number) => Promise<RoomPage>,
+  floor: number,
+): Promise<{ lines: RoomLine[]; floor: number }> {
+  let at = floor;
+  for (let pages = 0; pages < MAX_PAGES_BACK && at > 0; pages += 1) {
+    const before = at;
+    at = Math.max(0, before - ROOM_PAGE);
+    const lines = (await page(at)).lines.filter((line) => line.seq <= before);
+    if (lines.length > 0) return { lines, floor: at };
+  }
+  return { lines: [], floor: at };
+}
+
+/**
+ * Open a room at its end: the newest page of lines, the floor below them (0
+ * once the room's start is shown), and the cursor to read new lines after.
+ */
+export async function readRoomTail(
+  page: (after: number) => Promise<RoomPage>,
+): Promise<{ lines: RoomLine[]; floor: number; cursor: number }> {
+  const cursor = await findRoomEnd(page);
+  return { ...(await readRoomEarlier(page, cursor)), cursor };
 }
 
 /** Post a line into the room as the person, through their talk session. */

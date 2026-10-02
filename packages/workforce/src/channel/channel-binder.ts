@@ -789,7 +789,8 @@ export function channelInstances(
   // talk sessions do. A call that finds no template still builds from the
   // registration, so every channel kind in the process holds the same one.
   if (found !== undefined) {
-    registerTalkTemplate(PROJECTS_COLLECTION, { site: found.site, facts: found.facts }, CHANNEL_KIND);
+    const templateIds = ordered.filter(isTalkTemplate).map((manifest) => manifest.id);
+    registerTalkTemplate(PROJECTS_COLLECTION, { site: found.site, facts: found.facts }, CHANNEL_KIND, templateIds);
   }
   const template = registeredTalkTemplate(PROJECTS_COLLECTION);
   if (template !== undefined) selected.add(CHANNEL_KIND);

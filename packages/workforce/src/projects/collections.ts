@@ -320,20 +320,28 @@ const ROOM_ANSWERS_COLLECTION = defineResourceCollection({
 });
 
 /**
- * One post's delivery to one seat, at `room-deliveries/<token>`: written by the
- * talk fan-out before it wakes the seat, and the token handed to that seat
- * alone. An answer names its delivery by the token, and its author is the
- * seat the delivery was made to, never the answer's own claim. `sessionId` is
- * the poster's talk session the delivery came from, the only session the
- * answer may come back through. The token is unguessable, so a seat cannot
- * answer under a delivery it was not handed. No browser read.
+ * One post's delivery to one seat through one talk session, at
+ * `room-deliveries/<postId>/<seat>/<sessionId>` ({@link roomDeliveryKey}):
+ * created once by the talk fan-out before it wakes the seat. It is
+ * `pending` until the seat's wake has been dispatched, then `delivered`: a
+ * replayed fan-out wakes a `pending` delivery again, with the same token, and
+ * skips a `delivered` one. `token` is handed to that seat alone; an answer is looked up by its post, its author and the session it
+ * comes through, and must carry the token. The token is unguessable, so a
+ * seat cannot answer under a delivery it was not handed. No browser read.
  */
 export const roomDeliverySchema = z.object({
   projectId: z.string().min(1),
   postId: z.string().min(1),
   seat: z.string().min(1),
-  sessionId: z.string().min(1)
+  sessionId: z.string().min(1),
+  token: z.string().min(1),
+  status: z.enum(["pending", "delivered"])
 });
+
+/** The key of one post's delivery to one seat through one session. */
+export function roomDeliveryKey(delivery: Pick<RoomDelivery, "postId" | "seat" | "sessionId">): string {
+  return `${delivery.postId}/${delivery.seat}/${delivery.sessionId}`;
+}
 
 /** @see roomDeliverySchema */
 export type RoomDelivery = z.infer<typeof roomDeliverySchema>;
@@ -344,7 +352,7 @@ export function defineRoomDeliveriesCollection() {
 }
 
 const ROOM_DELIVERIES_COLLECTION = defineResourceCollection({
-  pattern: "room-deliveries/*",
+  pattern: "room-deliveries/**",
   scope: "org",
   flowIsolation: SHARED_ACROSS_FLOWS,
   prefetchMode: "lazy",

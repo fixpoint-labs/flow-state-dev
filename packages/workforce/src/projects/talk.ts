@@ -52,6 +52,7 @@ import {
   ROOM_DELIVERIES_RESOURCE,
   ROOM_LINES_RESOURCE,
   ROOM_SEQ_RESOURCE,
+  roomDeliveryKey,
   roomLineKey,
   roomLineSchema,
   type ProjectRow,
@@ -63,7 +64,8 @@ import {
 import { isMember } from "./membership-gate";
 import { ProjectRefusedError } from "./project-refusal";
 import { answerInRoom } from "./room-answer";
-import { appendRoomLine, readRoom, type RoomCollections } from "./room-store";
+import { isAlreadyExists } from "./store-errors";
+import { appendRoomLine, readRoom, readRoomForMember, type RoomCollections } from "./room-store";
 import type { TalkTemplateFacts } from "./talk-template";
 
 /**
@@ -164,6 +166,29 @@ function boundProject(ctx: BlockContext): string {
     throw new ProjectRefusedError(
       "talk-not-bound",
       `session "${ctx.session.identity.id}" is bound to no project. Call \`join\` with the project's id first.`
+    );
+  }
+  return projectId;
+}
+
+/**
+ * The project this session is the owner's talk session on, or the refusal:
+ * bound, its owner a member, and the session the row lists for that owner.
+ * `resourceId` grants nothing, so a second session seeded with it is refused
+ * here rather than given a seat conversation of its own (a seat keeps one per
+ * person per room, keyed by the listed session). Every room entry but `bind`
+ * and `join`, which make a session the listed one, runs this.
+ */
+async function listedTalkProject(ctx: BlockContext): Promise<string> {
+  const projectId = boundProject(ctx);
+  const row = await memberRow(ctx, projectId);
+  const self = ctx.session.identity.id;
+  const listed = row.state.sessions.find((link) => link.userId === ownerOf(ctx))?.sessionId;
+  if (listed !== self) {
+    throw new ProjectRefusedError(
+      "talk-session-not-listed",
+      `session "${self}" is not the talk session project "${projectId}" lists for its owner. Call \`join\` ` +
+        "and use the session it returns."
     );
   }
   return projectId;
@@ -275,8 +300,7 @@ export const talkPost = handler({
         "a line posted to a project's room is the session owner's own; a seat's line goes through `answer`."
       );
     }
-    const projectId = boundProject(ctx);
-    await memberRow(ctx, projectId);
+    const projectId = await listedTalkProject(ctx);
     return appendRoomLine(roomOf(ctx), { projectId, userId: ownerOf(ctx) as string, author: null, body: input.body });
   }
 });
@@ -292,25 +316,51 @@ const talkAnswerInputSchema = z
   .strict();
 
 /**
- * Record one post's delivery to one seat, and return the token to hand that
- * seat alone. Called by the talk fan-out before it wakes the seat.
+ * Record one post's delivery to one seat through one session as `pending`,
+ * and return the token to hand that seat alone. A delivery already recorded
+ * hands back its own token while it is still `pending` (an earlier run
+ * recorded it and never dispatched the wake), and `undefined` once it is
+ * `delivered`: a replayed fan-out wakes a seat at least once, and does not
+ * wake it again after its wake went out. Called by the talk fan-out before it
+ * wakes the seat; {@link markTalkDelivered} after.
  */
 export async function recordTalkDelivery(
   ctx: BlockContext,
-  delivery: RoomDelivery
-): Promise<string> {
+  delivery: Omit<RoomDelivery, "token" | "status">
+): Promise<string | undefined> {
   const deliveries = ctx.resources[ROOM_DELIVERIES_RESOURCE] as unknown as ResourceCollectionRef<RoomDelivery>;
+  const key = roomDeliveryKey(delivery);
+  const adopt = (existing: RoomDelivery): string | undefined =>
+    existing.status === "pending" ? existing.token : undefined;
+  const existing = await deliveries.getOptional(key);
+  if (existing !== undefined) return adopt(existing.state);
   const token = globalThis.crypto.randomUUID();
-  await deliveries.create(token, delivery);
+  try {
+    await deliveries.create(key, { ...delivery, token, status: "pending" });
+  } catch (error) {
+    if (!isAlreadyExists(error)) throw error;
+    return adopt((await deliveries.get(key)).state);
+  }
   return token;
+}
+
+/** Mark one delivery `delivered`, once the seat's wake has been dispatched. See {@link recordTalkDelivery}. */
+export async function markTalkDelivered(
+  ctx: BlockContext,
+  delivery: Pick<RoomDelivery, "postId" | "seat" | "sessionId">
+): Promise<void> {
+  const deliveries = ctx.resources[ROOM_DELIVERIES_RESOURCE] as unknown as ResourceCollectionRef<RoomDelivery>;
+  const ref = await deliveries.getOptional(roomDeliveryKey(delivery));
+  if (ref === undefined || ref.state.status === "delivered") return;
+  await ref.patchState({ status: "delivered" });
 }
 
 /**
  * The seat an answer speaks for: the one its delivery was made to. Refused,
  * with nothing claimed, when the answer names no delivery of this post in this
- * room (`answer-not-delivered`), or names an author other than that seat, or
- * comes back through a session other than the one the delivery came from
- * (`answer-not-yours`): a seat answers only for itself, to the post's poster.
+ * room to the named author through this session (`answer-not-delivered`), or
+ * does not carry that delivery's token (`answer-not-yours`): a seat answers
+ * only for itself, to the post's poster.
  */
 async function deliveredSeat(
   ctx: BlockContext,
@@ -318,26 +368,21 @@ async function deliveredSeat(
   input: { postId: string; author: string; token?: string }
 ): Promise<string> {
   const deliveries = ctx.resources[ROOM_DELIVERIES_RESOURCE] as unknown as ResourceCollectionRef<RoomDelivery>;
-  const delivery = input.token === undefined ? undefined : (await deliveries.getOptional(input.token))?.state;
-  if (delivery === undefined || delivery.projectId !== projectId || delivery.postId !== input.postId) {
+  const self = ctx.session.identity.id;
+  const delivery = (await deliveries.getOptional(roomDeliveryKey({ postId: input.postId, seat: input.author, sessionId: self })))
+    ?.state;
+  if (delivery === undefined || delivery.projectId !== projectId) {
     throw new ProjectRefusedError(
       "answer-not-delivered",
-      `an answer to "${input.postId}" names no delivery of that post in project "${projectId}". A seat answers ` +
-        "a post in a project's room with the token its delivery carried."
+      `"${input.postId}" was not delivered to "${input.author}" through session "${self}" in project ` +
+        `"${projectId}". A seat answers a post it was handed, through the poster's session.`
     );
   }
-  if (delivery.seat !== input.author) {
+  if (input.token === undefined || delivery.token !== input.token) {
     throw new ProjectRefusedError(
       "answer-not-yours",
-      `an answer as "${input.author}" carries the delivery made to "${delivery.seat}". A seat answers only for itself.`
-    );
-  }
-  const self = ctx.session.identity.id;
-  if (delivery.sessionId !== self) {
-    throw new ProjectRefusedError(
-      "answer-not-yours",
-      `an answer to "${input.postId}" came through session "${self}", but its delivery came from session ` +
-        `"${delivery.sessionId}". A seat answers a post through the poster's session.`
+      `an answer as "${input.author}" does not carry the token of the delivery made to "${input.author}". ` +
+        "A seat answers only for itself."
     );
   }
   return delivery.seat;
@@ -364,8 +409,7 @@ export const talkAnswer = handler({
   resources: TALK_RESOURCES,
   execute: async (input, rawCtx): Promise<RoomLine | null> => {
     const ctx = rawCtx as unknown as BlockContext;
-    const projectId = boundProject(ctx);
-    await memberRow(ctx, projectId);
+    const projectId = await listedTalkProject(ctx);
     // The author is the seat the post was delivered to, checked before
     // anything is claimed; the answer's own `author` only has to agree.
     const author = await deliveredSeat(ctx, projectId, input);
@@ -396,9 +440,8 @@ export function talkReadFor(template: TalkTemplateFacts | undefined) {
     resources: TALK_RESOURCES,
     execute: async (input, rawCtx): Promise<TalkReadOutput> => {
       const ctx = rawCtx as unknown as BlockContext;
-      const projectId = boundProject(ctx);
-      await memberRow(ctx, projectId);
-      const page = await readRoom(roomOf(ctx), projectId, input.after);
+      const projectId = await listedTalkProject(ctx);
+      const page = await readRoomForMember(roomOf(ctx), projectId, input.after);
       return { projectId, ...page, charter, seats };
     }
   });

@@ -30,7 +30,19 @@ import { projectsOf, talkFor, teamsOf, type ListedWorkstream, type LoadedSnapsho
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Failure, type Project, type Workstream } from "../lib/reads";
 import { navigate, NO_PROJECT, PROJECT_TABS, type ProjectTab } from "../lib/routes";
-import { asTranscriptLine, joinRoom, postToRoom, readRoom, readRoomPages, ROOM_KIND, startRoomRefresh, TalkRefused } from "../lib/talk";
+import {
+  asTranscriptLine,
+  joinRoom,
+  postToRoom,
+  readRoom,
+  readRoomEarlier,
+  readRoomPages,
+  readRoomTail,
+  ROOM_KIND,
+  startRoomRefresh,
+  TalkRefused,
+  type RoomPage,
+} from "../lib/talk";
 import type { Gaps } from "../gaps";
 import { Composer, TranscriptLines } from "./Stream";
 
@@ -264,23 +276,49 @@ function ProjectStream({ project }: { project: Project }) {
   return <Room key={talk.sessionId} sessionId={talk.sessionId} />;
 }
 
-/**
- * The room through one talk session: read by cursor on open, then by the
- * view's one refresh loop (`startRoomRefresh`) until it unmounts. The cursor
- * lives in the view; nothing about it is stored.
- */
+/** The room through one talk session, as the Lab answers it. */
 function Room({ sessionId }: { sessionId: string }) {
   const { clients } = useLab();
+  const page = useCallback((after: number) => readRoom(clients, ROOM_KIND, sessionId, after), [clients, sessionId]);
+  const post = useCallback(
+    async (body: string) => {
+      await postToRoom(clients, ROOM_KIND, sessionId, body);
+    },
+    [clients, sessionId],
+  );
+  return <RoomView sessionId={sessionId} page={page} post={post} />;
+}
+
+/**
+ * A room view: opened at the room's newest page (`readRoomTail`), then read
+ * by cursor by the view's one refresh loop (`startRoomRefresh`) until it
+ * unmounts. Older lines are read only when asked, a page at a time. The
+ * cursor and the floor live in the view; nothing about them is stored.
+ */
+export function RoomView({
+  sessionId,
+  page,
+  post,
+}: {
+  sessionId: string;
+  /** `read { after }` on the person's talk session. */
+  page: (after: number) => Promise<RoomPage>;
+  post: (body: string) => Promise<void>;
+}) {
   const [lines, setLines] = useState<ChannelTranscriptLine[] | undefined>(undefined);
   const [failure, setFailure] = useState<{ failure: Failure; refused: boolean } | undefined>(undefined);
-  const cursor = useRef(0);
+  /** The seq below the lines shown: 0 once the room's start is shown, unknown until it opens. */
+  const [floor, setFloor] = useState<number | undefined>(undefined);
+  const [earlier, setEarlier] = useState<{ reading: boolean; failure?: string }>({ reading: false });
+  const cursor = useRef<number | undefined>(undefined);
   const reading = useRef<Promise<number> | undefined>(undefined);
   /** The view's one refresh loop, while it is mounted. */
   const refresh = useRef<{ wake(): void; stop(): void } | undefined>(undefined);
 
   /**
-   * Read every page after the cursor. One read at a time; a second call waits
-   * for the first. A failure is shown, and thrown to the caller.
+   * Open the room at its end, or once it is open read every page after the
+   * cursor. One read at a time; a second call waits for the first. A failure
+   * is shown, and thrown to the caller.
    *
    * @returns how many new lines it read.
    */
@@ -290,16 +328,20 @@ function Room({ sessionId }: { sessionId: string }) {
       await previous?.catch(() => undefined);
       let found = 0;
       try {
-        await readRoomPages(
-          (after) => readRoom(clients, ROOM_KIND, sessionId, after),
-          cursor.current,
-          (page) => {
-            found += page.lines.length;
-            const fresh = page.lines.map(asTranscriptLine);
+        if (cursor.current === undefined) {
+          const tail = await readRoomTail(page);
+          found = tail.lines.length;
+          setLines((shown) => mergeLines(shown ?? [], tail.lines.map(asTranscriptLine)));
+          setFloor(tail.floor);
+          cursor.current = tail.cursor;
+        } else {
+          await readRoomPages(page, cursor.current, (read) => {
+            found += read.lines.length;
+            const fresh = read.lines.map(asTranscriptLine);
             setLines((shown) => mergeLines(shown ?? [], fresh));
-            cursor.current = Math.max(cursor.current, page.nextCursor);
-          },
-        );
+            cursor.current = Math.max(cursor.current ?? 0, read.nextCursor);
+          });
+        }
         setFailure(undefined);
         return found;
       } catch (error) {
@@ -309,7 +351,21 @@ function Room({ sessionId }: { sessionId: string }) {
     })();
     reading.current = next;
     return next;
-  }, [clients, sessionId]);
+  }, [page]);
+
+  /** Read the page before the lines shown. */
+  const loadEarlier = async () => {
+    if (floor === undefined || floor === 0 || earlier.reading) return;
+    setEarlier({ reading: true });
+    try {
+      const read = await readRoomEarlier(page, floor);
+      setLines((shown) => mergeLines(read.lines.map(asTranscriptLine), shown ?? []));
+      setFloor(read.floor);
+      setEarlier({ reading: false });
+    } catch (error) {
+      setEarlier({ reading: false, failure: describeFailure(error).message });
+    }
+  };
   const retry = () => void readNew().catch(() => undefined);
 
   // Read on open, then keep reading while the view is open: other members'
@@ -353,6 +409,24 @@ function Room({ sessionId }: { sessionId: string }) {
           failureView === null ? <p className="p-4 text-sm text-muted-foreground">Reading the room…</p> : <div className="p-4">{failureView}</div>
         ) : (
           <ol className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 py-4">
+            {floor !== undefined && floor > 0 ? (
+              <li className="text-center text-xs text-muted-foreground">
+                <button
+                  type="button"
+                  className="underline disabled:opacity-50"
+                  disabled={earlier.reading}
+                  onClick={() => void loadEarlier()}
+                  data-testid="room-earlier"
+                >
+                  {earlier.reading ? "Loading earlier lines…" : "Load earlier"}
+                </button>
+                {earlier.failure === undefined ? null : (
+                  <span role="alert" className="ml-2 text-destructive" data-testid="room-earlier-failure">
+                    Earlier lines did not load: {earlier.failure}
+                  </span>
+                )}
+              </li>
+            ) : null}
             <TranscriptLines lines={lines} />
             {lines.length === 0 ? (
               <li className="py-6 text-center text-sm text-muted-foreground">Nothing has been posted in this room yet.</li>
@@ -368,9 +442,7 @@ function Room({ sessionId }: { sessionId: string }) {
         key={sessionId}
         label="Post to this project's room"
         placeholder="Post a line to the project's room…"
-        send={async (body) => {
-          await postToRoom(clients, ROOM_KIND, sessionId, body);
-        }}
+        send={post}
         onKept={async () => {
           // Thrown when the read fails: the composer keeps the draft and says so.
           await readNew();

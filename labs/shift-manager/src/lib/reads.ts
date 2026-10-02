@@ -287,6 +287,14 @@ export type LabSnapshot =
 const INVENTORY_PATTERNS = { seats: "inventory/seats/*", channels: "inventory/channels/*" } as const;
 
 /**
+ * The flow kind every project's room is on: workforce's built-in channel kind
+ * (`CHANNEL_KIND`), whichever kind a workstream runs on or the projects were
+ * read through. Spelled here because the workforce browser entry doesn't
+ * export it; `static.test.ts` pins the two together.
+ */
+export const ROOM_KIND = "channel";
+
+/**
  * The organization's projects, by their published key pattern.
  */
 const PROJECT_PATTERNS = { projects: "projects/*" } as const;
@@ -390,7 +398,8 @@ export function toProject(row: unknown): Project | undefined {
   return {
     id,
     title,
-    brief: text(field(row, "brief")),
+    // An empty brief is still the brief the row was given; only a missing or non-string one is none.
+    brief: typeof field(row, "brief") === "string" ? (field(row, "brief") as string) : null,
     status: text(field(row, "status")) ?? "active",
     ownerUserId,
     members: strings(field(row, "members")),
@@ -639,43 +648,77 @@ export function createLabReader(clients: LabClients): LabReader {
   };
 
   /**
-   * The organization's projects, read once, through the first session whose
-   * flow declares the projects collection with a browser read: one of this
-   * person's own top-level sessions, then each inventoried workstream. A
-   * project needs no workstream, so neither does this read. That session only
-   * carries the read; rooms are on the built-in channel kind (`ROOM_KIND`).
-   * None: the Lab has no projects, and every workstream is under No project (D3).
+   * The organization's projects, read once, through a session of this
+   * person's own whose flow declares the projects collection with a browser
+   * read. A project needs no workstream, so neither does this read. That
+   * session only carries the read; rooms are on the built-in channel kind
+   * (`ROOM_KIND`).
+   *
+   * `read` opens one on the room kind for a person who holds none
+   * (`withRoomSession`). No flow declaring the collection is a Lab with no
+   * projects: zero rows, not a failure (a pre-project Lab, or one that serves
+   * no room kind). A room session that should have been opened and couldn't
+   * is a failure, and says why; it is never drawn as an empty list (D3).
    */
-  const readProjects = async (
-    sessions: SessionSummary[],
-    inventory: Section<{ workstreams: Workstream[] }>,
-  ): Promise<Section<Projects>> => {
+  const readProjects = async (sessions: SessionSummary[], roomFailure: Failure | null): Promise<Section<Projects>> => {
+    const projectsRef = (manifest: ResourceManifest) =>
+      manifest.resources.find(
+        (r) => r.kind === "collection" && r.pattern === PROJECT_PATTERNS.projects && r.client.state?.read === true,
+      )?.ref;
     const carriers = new Map<string, string>();
     for (const session of sessions) {
       if (session.parentSessionId == null && !carriers.has(session.flowKind)) carriers.set(session.flowKind, session.id);
     }
-    for (const workstream of inventory.ok ? inventory.value.workstreams : []) {
-      const kind = workstream.kind ?? workstream.id;
-      if (!carriers.has(kind)) carriers.set(kind, workstream.id);
-    }
     try {
+      let found: { sessionId: string; ref: string } | undefined;
       for (const [kind, sessionId] of carriers) {
-        const manifest = await manifestFor(kind, sessionId);
-        const projects = manifest.resources.find(
-          (r) => r.kind === "collection" && r.pattern === PROJECT_PATTERNS.projects && r.client.state?.read === true,
-        );
-        if (projects === undefined) continue;
-        // Invariant: `projects/*` is one org-wide collection, so the first kind
-        // that declares it reads every project, and the rest are not asked.
-        const rows = (await readCollection(sessionId, projects.ref))
-          .map((row) => toProject(row.clientData))
-          .filter((p): p is Project => p !== undefined);
-        return { ok: true, value: { rows } };
+        const ref = projectsRef(await manifestFor(kind, sessionId));
+        if (ref !== undefined) {
+          found = { sessionId, ref };
+          break;
+        }
       }
+      if (found === undefined) {
+        if (roomFailure === null) return { ok: true, value: { rows: [] } };
+        return {
+          ok: false,
+          failure: {
+            ...roomFailure,
+            message: `None of your sessions can read this Lab's projects, and one that can couldn't be opened: ${roomFailure.message}`,
+          },
+        };
+      }
+      // Invariant: `projects/*` is one org-wide collection, so the first kind
+      // that declares it reads every project, and the rest are not asked.
+      const rows = (await readCollection(found.sessionId, found.ref))
+        .map((row) => toProject(row.clientData))
+        .filter((p): p is Project => p !== undefined);
+      return { ok: true, value: { rows } };
     } catch (error) {
       return { ok: false, failure: describeFailure(error) };
     }
-    return { ok: true, value: { rows: [] } };
+  };
+
+  /**
+   * This person's sessions, with one of their own on the room kind. A member
+   * who hasn't joined a room yet may hold only a seat's session, and nothing
+   * of theirs can read the organization's inventory or projects; a session on
+   * the room kind can, since that kind declares both. It is opened once and
+   * listed from then on. If it can't be opened, the sessions are returned as
+   * they were, with why: `null` when there is nothing to open (the Lab serves
+   * no room kind, a 404), so nothing declares what it would have read.
+   */
+  const withRoomSession = async (
+    sessions: SessionSummary[],
+  ): Promise<{ sessions: SessionSummary[]; failure: Failure | null }> => {
+    if (sessions.some((s) => s.parentSessionId == null && s.flowKind === ROOM_KIND)) return { sessions, failure: null };
+    try {
+      await clients.sessions.createSession({ flowKind: ROOM_KIND, userId: clients.userId });
+      return { sessions: await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" }), failure: null };
+    } catch (error) {
+      const failure = describeFailure(error);
+      return { sessions, failure: failure.httpStatus === 404 ? null : failure };
+    }
   };
 
   /** A workstream's attached boards and their rows. */
@@ -777,6 +820,8 @@ export function createLabReader(clients: LabClients): LabReader {
     }
     if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(clients.userId) } };
 
+    const room = await withRoomSession(sessions);
+    sessions = room.sessions;
     const inventory = await readInventory(sessions, orgId);
 
     const [boardEntries, asks, resources, projects] = await Promise.all([
@@ -808,7 +853,7 @@ export function createLabReader(clients: LabClients): LabReader {
         }
       })(),
       readResources(sessions),
-      readProjects(sessions, inventory),
+      readProjects(sessions, room.failure),
     ]);
 
     return {
