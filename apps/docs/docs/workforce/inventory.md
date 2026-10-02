@@ -139,6 +139,10 @@ The rest of the roster is still attempted. Which of these is fatal is yours to d
 
 Every write is an upsert keyed by the record's id. Running over the same roster writes the same rows. Nothing duplicates, and a channel registered on an earlier boot keeps its original `openedAt`.
 
+Seat rows have one exception. The roster a boot read can be older than the store, because during a rolling deploy another server may have fired a seat and hired it again, or dropped a declared seat and hired the same address. So a boot writes a seat's row only where there was no row when it read the inventory, or where the stored row is the same kind of seat: for a declared seat, a declared seat's row, and for a hired seat, a row carrying the same incarnation. A boot never writes over a runtime hire's row with another hire's or a declared seat's, and it doesn't bring back a row that a fire removed after the boot read it. A row it leaves isn't counted in `seats`, as long as your `run` returns the action's output or a result carrying it as `output`.
+
+A hire that finds a declared seat's row at its address, written by such a boot while the hire was running, doesn't write over it either. The hire takes back the seat it registered and its roster row, and refuses.
+
 ## Reading the inventory
 
 Declare the same collections on any block. They return the same rows, because a collection is addressed by its pattern and scope, never by object identity.

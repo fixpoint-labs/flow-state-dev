@@ -29,7 +29,7 @@ import { createSQLiteStores, sqliteStores } from "@flow-state-dev/store-sqlite";
 import { HIRED_ROSTER_PREFIX, seatAddress, toHiredSeatRow } from "@flow-state-dev/workforce";
 import type { AskFeature } from "../../../goals/devforce-lab/lab/ask.mts";
 import { selectHarness } from "../../../goals/devforce-lab/lab/harness.mts";
-import { LAB_ORG_ID, LAB_TREE, openLab, type Lab } from "../../../goals/devforce-lab/lab/host.mts";
+import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../../../goals/devforce-lab/lab/host.mts";
 import { createNotifyLog } from "../../../goals/devforce-lab/lab/notify.mts";
 import { BASE_REF, createScratchRepo } from "../../../goals/devforce-lab/lab/scratch-repo.mts";
 
@@ -191,5 +191,57 @@ describe("a re-hire the process died in after its roster write", () => {
     const stored = await lab.stored("org", "");
     expect(stored[`${HIRED_ROSTER_PREFIX}helper`]).toMatchObject({ pendingRepair: null, incarnation: token });
     expect(stored[`inventory/seats/${address}`]).toMatchObject({ hired: true, incarnation: token });
+  }, 120_000);
+});
+
+describe("the chief of staff's post to the team channel", () => {
+  it("lands as a line: the channel's members include the chief of staff", async () => {
+    const file = await seededStore({});
+    let channel = "";
+    const seen: GeneratorModelCallOptions[] = [];
+    const script: Array<(o: GeneratorModelCallOptions) => GeneratorModelResult> = [
+      () => ({
+        toolCalls: [{ toolCallId: "p1", toolName: "post-to-channel", args: { channel, body: "The helper is hired." } }],
+        finishReason: "tool-calls",
+      }),
+      () => ({ text: "posted", finishReason: "stop" }),
+    ];
+    const model: GeneratorModel = {
+      modelId: "test/step",
+      async generate() {
+        throw new Error("the owned tool loop calls generateStep");
+      },
+      async generateStep(options) {
+        seen.push(options);
+        const step = script[seen.length - 1];
+        if (step === undefined) throw new Error(`no script entry for step ${seen.length - 1}`);
+        return step(options);
+      },
+    };
+    const resolver = Object.assign(() => model, { resolveId: (id: string) => id }) as unknown as ModelResolver;
+    const lab = await open(file, undefined, resolver);
+    channel = lab.channelId!;
+    const runtime = await lab.state.getRuntime();
+
+    const started = await runAction({
+      orgId: LAB_ORG_ID,
+      flow: runtime.registry.get(COS) as FlowInstance,
+      actionName: "run",
+      input: { message: "tell the team the helper is hired" },
+      // The Lab's person, whose channel session it is.
+      userId: LAB_USER_ID,
+      sessionId: "s-cos-post",
+      stores: runtime.stores,
+      runtimeConfig: runtime.runtimeConfig,
+    } as never);
+    expect((await runtime.stores.request.get(started.requestId!))?.status).toBe("completed");
+
+    // The dispatch hands the post over and returns; the channel lands it on its own request.
+    let lines = await lab.transcript!();
+    for (let tries = 0; tries < 50 && !lines.some((line) => line.author === COS); tries++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      lines = await lab.transcript!();
+    }
+    expect(lines.filter((line) => line.author === COS).map((line) => line.body)).toEqual(["The helper is hired."]);
   }, 120_000);
 });

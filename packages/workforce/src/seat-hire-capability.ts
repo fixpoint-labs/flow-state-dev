@@ -82,15 +82,17 @@ export interface SeatHireAskData {
   /**
    * Which hire wrote the row the person is asked about; `null` when there is
    * no row (a hire) or the row carries none. Approve changes that row only: a
-   * seat id that names another row by then is refused.
+   * seat id that names another row by then is refused, and so is a row that
+   * carries none, since a replacement written the same way can't be told apart.
    */
   incarnation: string | null;
 }
 
 export interface SeatHireToolOptions extends SeatHireCapabilityOptions {
   /**
-   * The changes whose tool asks a person before it writes. Default `[]`:
-   * nothing asks. `rehire` asks whatever this says.
+   * Which of `hire` and `fire` ask a person before they write. Default `[]`:
+   * neither asks. `rehire` is not controlled by this option: it always asks,
+   * so it needs durable execution whatever this says.
    */
   askBefore?: readonly SeatHireAskVerb[];
 }

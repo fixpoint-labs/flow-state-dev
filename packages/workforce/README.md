@@ -149,8 +149,8 @@ it reaches Node built-ins through the packages it builds on. A browser component
 
 ## Reading one seat's skills
 
-A skill is a folder with a `SKILL.md` in it. In a workforce tree, one worker's skills are spread
-across three folders: the org's, its team's, and any sitting beside the worker itself.
+A skill is a folder with a `SKILL.md` in it. In a workforce tree, a team seat's skills are spread
+across three folders: the org's, its team's, and any sitting beside the worker itself. An org seat (`org/workers/<worker>/`) has no team, so it reads two: the org's `org/skills/` and its own `org/workers/<worker>/skills/`.
 
 ```
 workforce/org/skills/triage/SKILL.md
@@ -161,7 +161,8 @@ workforce/teams/pentest/workers/recon/WORKER.md
 workforce/teams/pentest/workers/recon/skills/sweep/SKILL.md
 ```
 
-`readSeatSkills` reads all three for one worker and returns the records `initialSkills` takes.
+`readSeatSkills` reads them for one worker and returns the records `initialSkills` takes. Pass `team`
+for a team seat; leave it out for an org seat.
 
 ```ts
 import { readSeatSkills } from "@flow-state-dev/workforce/loader";
@@ -175,10 +176,10 @@ if (errors.length) throw new Error(`skills: ${errors.length} entries failed to l
 skills.map((s) => s.name).sort(); // ["port-scan", "review", "sweep", "triage"]
 ```
 
-Every skill folder at those three levels is read. Nothing has to be listed anywhere for a skill
+Every skill folder at those levels is read. Nothing has to be listed anywhere for a skill
 to be included.
 
-The set comes back level by level: the org's first, then the team's, then the worker's own. Each
+The set comes back level by level: the org's first, then the team's (for a team seat), then the worker's own. Each
 entry is `{ name, skillMd, files }`, the same record `readSkillsDirectory` returns — `name` is the
 folder name, bare, with no team prefix.
 
@@ -191,8 +192,8 @@ const clerk = await readSeatSkills("./workforce", { team: "audit", worker: "cler
 // recon.skills has pentest's `review`; clerk.skills has audit's. Neither carries the other.
 ```
 
-One name reaching a single worker from more than one of its levels is refused. All three levels
-count, so a collision can span two of them or all three:
+One name reaching a single worker from more than one of its levels is refused. Every level
+counts, so on a team seat a collision can span two of them or all three:
 
 ```ts
 errors;
@@ -467,7 +468,7 @@ holds a package. A kind that reads
 string, which is what keeps "this team said nothing" and "this team said nothing *yet*" from being
 the same value in the bag.
 
-**One key is reserved across kinds: `tools`.** It is not part of the contract — your kind declares it or leaves it out — but if you declare it, it means the names of tools that seat may call, because the hire step reads it. (On the built-in `agent` kind, a seat with no `tools:` line can also call what its own file chose: the tools of the capability presets it selected under `capabilities:`, and the blocks of the packages it holds. A written line is the whole grant.) A name in a worker's `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, along with the blocks of the packages it holds, then your kind's catalog), and the ones that resolved to the seat's own folders or packages arrive on `seatTools` as live blocks instead. You decide what to check the remaining names against, and you may declare no `tools` at all. What the key is not available for is unrelated string configuration, which hiring would rewrite — give that its own name.
+**One key is reserved across kinds: `tools`.** It is not part of the contract — your kind declares it or leaves it out — but if you declare it, it means the names of tools that seat may call, because the hire step reads it. (On the built-in `agent` kind, a seat with no `tools:` line can also call what its own file chose: the tools of the capability presets it selected under `capabilities:`, and the blocks of the packages it holds. A written line is the whole grant.) A name in a worker's `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, along with the blocks of the packages it holds, then your kind's catalog; an org seat has neither folder, so only the last two apply), and the ones that resolved to the seat's own folders or packages arrive on `seatTools` as live blocks instead. You decide what to check the remaining names against, and you may declare no `tools` at all. What the key is not available for is unrelated string configuration, which hiring would rewrite — give that its own name.
 
 Add your kind's own settings on top, at the same level:
 
@@ -673,7 +674,8 @@ const seats = hireWorkforce(workers, { kinds: { ...kinds, agent }, seatBlocks, p
 ```
 
 A `blocks/` folder **registers** a name: `workforce/blocks/` for every worker, a team's for that
-team's workers, a worker's own for that worker. It does not grant use — a worker still names the
+team's workers, a team seat's own for that seat. An org seat (`org/workers/<name>/`) has no `blocks/`
+folder, and `fsdev gen` refuses one there: it gets tools from the catalog and the packages it holds. A folder does not grant use — a worker still names the
 block in its `tools:`, and a name resolves nearest first (its own folder, its team's, the catalog).
 Two rules are checked before any worker runs: the file's basename, the map key and the block's own
 `name` must agree, and a block in a worker's own folder may read a store the kind installed but may
@@ -800,7 +802,7 @@ package it holds. A written `tools:` line is the whole list, and a package block
 it; `tools: []` gets the text and no tools.
 
 `readWorkforce` puts the packages in each worker's reach on its record as `packages`
-(`PackageManifest[]`: the org's library, its team's, and its own folder) and reports refused package
+(`PackageManifest[]`: the org's library, its team's, and its own folder; an org seat has no team's) and reports refused package
 folders on `packageErrors`. `readDeclaredRoster` reports the same entries on its `package` layer.
 The blocks come from `fsdev gen`'s `packageBlocks` export, keyed by package path and then block
 name; pass it to `hireWorkforce`, which decides from each worker's folder and `packages:` line which
@@ -1587,7 +1589,7 @@ gone but whose inventory row is left (a crash between the two deletes), it remov
 when the row says `hired: true` and returns `released: false` with `alreadyGone: true`; a row
 that doesn't say so is left, and the call refused as for a seat never hired. A roster row that can't be read is deleted by its key and nothing else is
 touched (`address: null`). After `fire`, `discover` withholds the seat. `removeHiredSeat` is
-this removal on its own, for an app whose fire is its own handler, and `resolveHiredSeatLocation({ seatId, owner?, roster, privateRoster?, userId?, leftoverAt? })` picks the row it removes, as `fire` does.
+this removal on its own, for an app whose fire is its own handler, and `resolveHiredSeatLocation({ seatId, owner?, roster, privateRoster?, userId?, leftoverAt })` picks the row it removes, as `fire` does. `leftoverAt` is required: a fire passes `{ orgId, inventory }` so that a retry after a fire that stopped past the caller's own row stays on that seat; a caller acting only on a row that exists passes `null`.
 
 It refuses when this organization hired no seat, or when a live file-declared seat sits at that
 address (removed by editing its folder, not by firing it).
@@ -1835,9 +1837,16 @@ the channel's session state, not the inventory; the row is a copy for finding th
 
 **Running it twice.** Every write is an upsert keyed by the record's id. Nothing duplicates, and a
 channel registered on an earlier boot keeps its original `openedAt`. A row stays where it is when a
-later roster no longer names the seat or channel.
+later roster no longer names the seat or channel. Seat rows are the exception to the upsert: the
+roster a boot read can be older than the store, so the boot creates a seat's row only where there was
+none when it read the inventory, and otherwise replaces it only while the stored row is the same kind
+of seat — a declared row for a declared seat, and for a hired seat a hired row carrying the same
+incarnation. A runtime hire's row is never replaced by another hire's or a declared seat's, and a row
+a fire removed after the boot read it is not written back.
 
-**What lands in `problems`.** `openInventory` returns `{ seats, channels, problems }`. A channel
+**What lands in `problems`.** `openInventory` returns `{ seats, channels, problems }`. `seats` counts
+the seat rows that landed, as the seat action reports it when `run` returns the action's output (or a
+run result carrying it as `output`); a row the boot left for a newer hire isn't counted. A channel
 whose session is not open, or whose kind declares no registration action, is named in `problems` and
 the rest of the roster is still attempted.
 
@@ -2092,7 +2101,7 @@ before fire removed inventory rows is left out that way.
 | `readWorkforceDirectory(root)` | Read every `org/workers/<name>/` and `teams/<id>/workers/<name>/` folder into one `WorkerManifest` per worker, org seats first, without their skills. Ships from the `./loader` subpath (Node only). |
 | `readPackagesDirectory(root)` | Read every `packages/<name>/PACKAGE.md` at the org, team and worker levels into one `PackageManifest` each, returning `{ packages, errors }`. Ships from the `./loader` subpath (Node only). |
 | `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Leave `team` out for an org seat: it reads `org/skills` and `org/workers/<worker>/skills`. Ships from the `./loader` subpath (Node only). |
-| `parseDeclaredSeatId(id)` | Read a declared seat's id back into its folders: `"<name>"` is an org seat, `{ name }`; `"<teamId>.<name>"` a team seat, `{ team, name }`. `undefined` for an id the loader cannot mint. The one rule every reader that needs a seat's team uses. Ships from the package root. |
+| `parseDeclaredSeatId(id)` | Read a declared seat's id back into its folders: `"<name>"` is an org seat, `{ name }`; `"<teamId>.<name>"` a team seat, `{ team, name }`. `undefined` for an id the loader cannot mint. The one rule every reader that needs a seat's team uses. Pass a record's `seatId ?? id`: a runtime hire's `id` is its org-qualified address, whose org would read as a team. Ships from the package root. |
 | `openRoot(root)` / `walkTeams(root, report)` | The walk every reader above shares: open the configured root (throwing on a symlinked or unreadable one, with or without a trailing separator, and on one spelled with a `..` that steps back through an earlier segment — pass the path it resolves to; a `.` segment and anything above the root are not checked), then enumerate `teams/`, reporting a team folder that is refused or unreadable and yielding the rest. `report` may be `async` and is awaited before the walk moves on. What a reader does *inside* a team stays its own. Ships from the `./loader` subpath (Node only). |
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
@@ -2144,7 +2153,7 @@ before fire removed inventory rows is left out that way.
 | `CHANNEL_POST_COMPONENT` / `emitChannelPostLine(ctx, line)` / `readChannelPostLines(ctx, schema)` | The component name a post's line is kept under; keep a line as that item, resolving once it is stored and rejecting if the write fails; read the posted lines in the history window back, parsed by the kind's own line schema. For a channel kind of your own. |
 | `defineHiredRosterCollection()` | The hired roster's browser collection: one org-scoped row per org-visible seat, at `workforce/roster/<seatId>`. One segment, so a user-owned row is not listed. Takes no options. Write org-visible rows with `create()` — its already-exists throw is what refuses a duplicate hire, and `upsert()` loses that refusal silently. |
 | `defineHiredRosterPrivateCollection()` | The server-side writer for a user-owned row, at `workforce/roster/~<escaped user>/<seatId>`. No browser read. It is an owner-private collection (`ownerPrivate: { param: "owner" }`): a row is served only to the member it belongs to, and any other collection whose pattern can reach those rows is refused at startup. Declare `workforce/roster/*` for the org roster. |
-| `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions, owningOrgId, ownerUserId, pendingRepair, incarnation }`. `owningOrgId`, `ownerUserId`, `pendingRepair` (set only while a `rehire` is unfinished) and `incarnation` (the hire or re-hire that wrote it) are nullable and default to `null`; the last two are not published to browsers. The envelope is closed; `settings` is a passthrough bag belonging to the kind's own schema. |
+| `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions, owningOrgId, ownerUserId, pendingRepair, incarnation }`. `owningOrgId`, `ownerUserId`, `pendingRepair` (set only while a `rehire` is unfinished) and `incarnation` (the hire or re-hire that wrote it) are nullable and default to `null`; the last two are not published to browsers. The envelope is closed when parsed; the roster collections store it with unknown keys kept, so a key a newer version wrote survives this version's rewrite of the row (a re-hire). `settings` is a passthrough bag belonging to the kind's own schema. |
 | `HIRED_ROSTER_PREFIX` | The roster's storage prefix, `"workforce/roster/"`. Moving it strands every roster already written. |
 | `HIRED_ROSTER_BROWSER_PATTERN` / `HIRED_ROSTER_PRIVATE_PATTERN` | The two roster collections' patterns, `"workforce/roster/*"` and `"workforce/roster/[owner]/[seat]"`. Like the prefix, they spell stored keys. |
 | `seatAddress(orgId, seatId, ownerUserId?)` / `splitSeatAddress(orgId, address)` | Join an organization and a seat id into the address a hired seat answers on, and take the seat id back out. Org-visible is `<org>.<seatId>`. User-owned is `<org>.~<user>.<seatId>`, with the user escaped. The pin is the hire row, not the address. Throws when the organization is not one legal address segment, or when the seat id starts with `~`. |

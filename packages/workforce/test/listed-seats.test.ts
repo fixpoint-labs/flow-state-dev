@@ -88,4 +88,15 @@ describe("listedSeatRows", () => {
     expect(listedSeatRows("globex", rows, [{ seatId: "support.ada", incarnation: null }])).toEqual([]);
     expect(listedSeatRows("acme", rows, [{ seatId: "support.ada", incarnation: null }]).map((row) => row.id)).toEqual(["acme.support.ada"]);
   });
+
+  it("a malformed org roster row backs nothing: a seat id shaped like a user-owned address doesn't back that user's row", () => {
+    // An unreadable org roster row whose seat id starts with `~` would, joined
+    // raw, spell a user-owned address and stand in for its owner's roster.
+    const rows = [{ id: "acme.~u1.old", kind: "agent", hired: true }];
+    expect(listedSeatRows("acme", rows, [{ seatId: "~u1.old", incarnation: null }])).toEqual([]);
+    // And one malformed row doesn't take the rest of the list with it.
+    const ada = { id: "acme.support.ada", kind: "agent", hired: true };
+    expect(listedSeatRows("acme", [ada], [{ seatId: "", incarnation: null }, { seatId: "support.ada", incarnation: null }])).toEqual([ada]);
+    expect(listedSeatRows("acme", [ada], [{ seatId: "support.ada", incarnation: null }], [{ seatId: "~x", ownerUserId: "u1", incarnation: null }])).toEqual([ada]);
+  });
 });

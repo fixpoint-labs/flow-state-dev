@@ -552,6 +552,20 @@ export function createLabReader(clients: LabClients): LabReader {
     return { ok: false, failure: { message: "None of this person's sessions is on a flow that declares the roster." } };
   };
 
+  /**
+   * The sessions the roster may be read through: the top-level ones by kind
+   * first, then a kind seen only on a dispatch child. The roster is org-scoped,
+   * so any session of the org reads the same rows, and a viewer whose only
+   * session on a roster-declaring flow is a child still has one.
+   */
+  const rosterCarriers = (sessions: SessionSummary[], topLevel: ReadonlyMap<string, string>) => {
+    const byKind = new Map(topLevel);
+    for (const session of sessions) {
+      if (!byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
+    }
+    return byKind;
+  };
+
   /** Find the inventory through the first listed session whose flow declares it. */
   const readInventory = async (sessions: SessionSummary[], orgId: string): Promise<Section<Inventory>> => {
     const byKind = new Map<string, string>();
@@ -589,7 +603,7 @@ export function createLabReader(clients: LabClients): LabReader {
         // team-list rule, applied once here so every screen draws the same list.
         // The roster is read only when a hired seat's row is there to check.
         const anyHired = registered.some((seat) => isHiredSeatRow(orgId, seat));
-        const roster = anyHired ? await readRoster(byKind) : ({ ok: true, value: [] } as const);
+        const roster = anyHired ? await readRoster(rosterCarriers(sessions, byKind)) : ({ ok: true, value: [] } as const);
         const seats = listedSeatRows(orgId, rows, roster.ok ? roster.value : undefined).map((row) => row.seat);
         const hiddenForNoRoster = registered.length - seats.length;
         const rosterUnread =

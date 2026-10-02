@@ -31,7 +31,7 @@
 
 import { defineFlow, dispatcher, handler, router, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { ActionConfig, BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { ActionConfig, BlockContext, BlockDefinition, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration";
 import { taskSchema } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
@@ -42,6 +42,8 @@ import {
   resolveChannelBoard
 } from "./channel-board";
 import { emitChannelPostLine, readChannelPostLines } from "./channel-items";
+import { incarnationOfRow } from "../roster/incarnation";
+import { INVENTORY_RACE_ATTEMPTS, isWriteConflict } from "../roster/remove";
 import {
   CHANNEL_POST_COMPONENT,
   channelTranscriptLineSchema,
@@ -82,6 +84,7 @@ import {
   talkReadOutputSchema
 } from "../projects/talk";
 import type { TalkTemplateFacts } from "../projects/talk-template";
+import type { SeatInventoryRow } from "../inventory/collections";
 
 /** The built-in kind's name, and so the built-in instance's address. */
 export const CHANNEL_KIND = "channel";
@@ -939,6 +942,60 @@ const retireChannelsInputSchema = z.object({ ids: z.array(z.string().min(1)) }).
 /** What the retirement reports: how many channel rows it removed. */
 export const inventoryChannelsRetiredSchema = z.object({ retired: z.number() });
 
+/** The stored row is not one this boot may replace. */
+class NotTheBootsRow extends Error {}
+
+/**
+ * Whether a boot's row may replace the row stored at its address.
+ *
+ * A runtime hire's row (`hired: true`) is replaced only by the same hire: a
+ * hired row carrying the same incarnation (`null` matching only `null`, a row
+ * from before incarnations). A declared seat's row is replaced only by a
+ * declared row, and a boot's hired row never replaces it. A row from before
+ * `hired` existed is replaced by a declared row, and by a hired one carrying
+ * its incarnation.
+ */
+function bootMayReplace(stored: Record<string, unknown>, row: SeatInventoryRow): boolean {
+  if (row.hired === true) return stored.hired !== false && incarnationOfRow(stored) === (row.incarnation ?? null);
+  return stored.hired !== true;
+}
+
+/**
+ * Write one seat row from a boot's roster, only where it is still the boot's
+ * to write.
+ *
+ * The roster the boot read can be older than the store: during a rolling
+ * deploy another process may have fired the seat and hired a replacement, or
+ * dropped a declaration and hired the same address. So the row is created
+ * only where none was there when this action read the inventory, and
+ * otherwise replaced only while {@link bootMayReplace} holds. The check runs
+ * inside the version-checked write, so a row another writer put there since is
+ * checked again. A row removed after it was read is not written back.
+ *
+ * @returns whether the row landed.
+ */
+async function publishBootSeatRow(seats: ResourceCollectionRef, row: SeatInventoryRow): Promise<boolean> {
+  for (let attempt = 0; attempt < INVENTORY_RACE_ATTEMPTS; attempt += 1) {
+    const stored = await seats.getOptional(row.id);
+    try {
+      if (stored === undefined) {
+        await seats.create(row.id, row);
+        return true;
+      }
+      await stored.updateState((current) => {
+        if (!bootMayReplace(current, row)) throw new NotTheBootsRow();
+        return row;
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof NotTheBootsRow) return false;
+      if ((error as { code?: unknown }).code === "resource_deleted") return false;
+      if (!isWriteConflict(error)) throw error;
+    }
+  }
+  throw new Error("the row kept changing under this boot.");
+}
+
 /**
  * The two blocks that write the live inventory, built for one channel kind.
  *
@@ -1078,8 +1135,7 @@ export function inventoryWriterActions(kind: string) {
       let written = 0;
       for (const row of input.seats) {
         try {
-          await ctx.resources.seats.upsert(row.id, row);
-          written += 1;
+          if (await publishBootSeatRow(ctx.resources.seats, row)) written += 1;
         } catch (error) {
           problems.push(
             `seat "${row.id}" — ${error instanceof Error ? error.message : String(error)}`

@@ -19,8 +19,14 @@ import type { InstanceOwnerPin } from "@flow-state-dev/core/types";
  */
 export interface WorkerManifest {
   /**
-   * Team-qualified identity, "<teamId>.<name>" — e.g. "engineering.lead". The whole
-   * identity and the flow address.
+   * The worker's identity and flow address. On a file-declared record it is one
+   * of two declared shapes:
+   * - a team seat (`teams/<teamId>/workers/<name>/`) is "<teamId>.<name>", e.g. "engineering.lead";
+   * - an org seat (`org/workers/<name>/`) has no team and is the bare "<name>", e.g. "chief-of-staff".
+   * On a runtime hire it is the org-qualified address instead, and the declared
+   * id is {@link WorkerManifest.seatId}. To read a seat's team, parse
+   * `manifest.seatId ?? manifest.id` with `parseDeclaredSeatId` rather than
+   * splitting on the dot; never parse a hire's `id`, whose org reads as a team.
    * Dot-joined, not slash-joined: a "/" here is unroutable (decision 2).
    * Minted once, by the loader, in one helper — and the record's only identity field.
    */
@@ -33,7 +39,7 @@ export interface WorkerManifest {
    */
   body: string;
   /**
-   * The skills this seat can see — the org ∪ team ∪ own-folder union, already
+   * The skills this seat can see — the org ∪ team (team seats only) ∪ own-folder union, already
    * resolved, in level order.
    *
    * Filled by the joined loader (`readWorkforce`) and **absent on a hand-built
@@ -84,7 +90,8 @@ export interface WorkerManifest {
    */
   ownerPin?: InstanceOwnerPin;
   /**
-   * The seat's logical id, as a channel's `members:` lists it (`"<teamId>.<name>"`).
+   * The seat's logical id, as a channel's `members:` lists it: `"<teamId>.<name>"`
+   * for a team seat, the bare `"<name>"` for an org seat.
    * Set by a hire row, never by a `WORKER.md`. Absent, the hire uses
    * {@link WorkerManifest.id}, which on a file record is that id. A hired
    * record's `id` is its org-qualified address, so the row carries this.

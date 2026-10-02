@@ -448,7 +448,7 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "teams/<team>/workers/<worker>/WORKER.md",
     publishedIn: {
       file: "apps/docs/docs/workforce/overview.md",
-      quote: "Each worker lives at `teams/<team>/workers/<name>/WORKER.md`.",
+      quote: "A worker on a team lives at `teams/<team>/workers/<name>/WORKER.md`",
     },
     write: (root) => writeFile(root, "teams/alpha/workers/lead/WORKER.md", doc("A lead.")),
     accountedFor: (out) =>
