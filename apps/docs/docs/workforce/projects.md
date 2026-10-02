@@ -96,6 +96,10 @@ A workstream no project lists isn't lost. A UI shows it under **No project**.
 
 A project's room is stored on the organization's side, one row per line. Nobody reaches it directly. Each member gets their own **talk session**: a session on the channel kind that knows which project it's about. Every room call goes through one.
 
+The room is one shared org resource. Each member talks through their own live session. Posts from any of those sessions land in the same ordered room. A session reads to catch up — lines are not pushed live — and a second window for the same person reuses their talk session.
+
+![Multiple talk sessions, one shared room](./project-room-sessions.svg)
+
 | Call | What it does |
 |------|--------------|
 | `join { projectId }` | Returns your talk session on the project. If the project already lists one for you, you get that one back, so a second window ends up in the same session. Otherwise the session you called from becomes your talk session. A declared channel's own session can't become one: `join` from it is refused with `talk-on-a-channel` |
