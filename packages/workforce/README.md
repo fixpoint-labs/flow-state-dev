@@ -1957,7 +1957,10 @@ template throws.
 `createProject` always gets the creator's talk session ready. With a template, so does any other
 code that creates a project inside a flow turn. A `post` in a project's room wakes each seat once,
 under the poster, with the room's last 20 lines. A seat's reply lands in
-the room through `answer`, once per post and seat, so a repeated delivery adds no second line. The
+the room through `answer`, once per post and seat, so a repeated delivery adds no second line. A
+seat answers only for itself: each delivery carries an `answerToken` issued to that seat, and the
+answer hands it back as `token` (the built-in agent kind does this for you; a kind of your own
+passes it through). An answer with no token, or one naming another seat, is refused. The
 template is built onto the kind at every boot, so an edit reaches every project's room at the next
 restart.
 
