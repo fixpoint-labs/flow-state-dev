@@ -40,6 +40,7 @@ import {
 } from "../channel/channel-flow";
 import type { ChannelManifest } from "../manifest";
 import { seatDoorOf } from "../seat-door";
+import { incarnationOf } from "../roster/incarnation";
 
 /**
  * One registered seat, as the binder needs it.
@@ -280,7 +281,7 @@ export async function openInventory(
     try {
       await options.run({
         action: INVENTORY_REGISTER_SEATS,
-        // Id, kind, door and origin only. A seat's row is the whole of what the
+        // Id, kind, door, origin and incarnation only. A seat's row is the whole of what the
         // inventory knows about it, and everything else on a record is the
         // declared layer's to answer.
         input: {
@@ -289,6 +290,7 @@ export async function openInventory(
             kind: seat.kind,
             door: seatDoorOf(seat).door,
             hired: hiredOf(seat),
+            incarnation: incarnationOf(seat) ?? null,
           })),
         },
         userId: options.userId,

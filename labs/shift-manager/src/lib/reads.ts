@@ -500,13 +500,19 @@ export function createLabReader(clients: LabClients): LabReader {
           readCollection(sessionId, seatsRef),
           readCollection(sessionId, channelsRef),
         ]);
-        const registered = seatRows.map((r) => toSeat(r.clientData, orgId)).filter((s): s is Seat => s !== undefined);
+        // Each seat beside the incarnation its row carries, which the
+        // team-list rule reads for a user-owned hire.
+        const rows = seatRows.flatMap((r) => {
+          const seat = toSeat(r.clientData, orgId);
+          return seat === undefined ? [] : [{ id: seat.id, hired: seat.hired, incarnation: text(field(r.clientData, "incarnation")), seat }];
+        });
+        const registered = rows.map((row) => row.seat);
         // A hired seat is listed only while the roster backs it: Workforce's
         // team-list rule, applied once here so every screen draws the same list.
         // The roster is read only when a hired seat's row is there to check.
         const anyHired = registered.some((seat) => isHiredSeatRow(orgId, seat));
         const roster = anyHired ? await readRoster(byKind) : ({ ok: true, value: [] } as const);
-        const seats = listedSeatRows(orgId, registered, roster.ok ? roster.value : undefined);
+        const seats = listedSeatRows(orgId, rows, roster.ok ? roster.value : undefined).map((row) => row.seat);
         const hiddenForNoRoster = registered.length - seats.length;
         const rosterUnread =
           roster.ok || hiddenForNoRoster === 0

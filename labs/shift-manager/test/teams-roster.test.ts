@@ -14,7 +14,7 @@ import { serveLab, type ServedLab } from "./helpers/serve-lab";
 const ORG = "acme";
 
 type Lab = {
-  seats: Array<{ id: string; kind: string; hired?: boolean }>;
+  seats: Array<{ id: string; kind: string; hired?: boolean; incarnation?: string }>;
   roster?: Array<{ seatId: string }> | "fails";
   /** The channel inventory's rows. Default one channel. */
   channels?: unknown[];
@@ -94,6 +94,15 @@ describe("TEAMS and the roster", () => {
       ["chief-of-staff", "Staff", "chief-of-staff", "chief-of-staff"],
       ["acme.support", "acme", "support", "acme.support"],
     ]);
+    expect(value.rosterUnread).toBeUndefined();
+  });
+
+  it("a healthy user-owned hire is listed: its roster row is owner-private, and its row carries the incarnation its hire stamped", async () => {
+    const value = await teams({
+      seats: [...declared, { id: "acme.~u1.research", kind: "agent", hired: true, incarnation: "i-1" }],
+      roster: [],
+    });
+    expect(value.seats.map((seat) => [seat.id, seat.seatId])).toContainEqual(["acme.~u1.research", "research"]);
     expect(value.rosterUnread).toBeUndefined();
   });
 

@@ -25,6 +25,10 @@ import { splitSeatAddress } from "../roster/address";
  * (`hired` null or absent) is read by its id's shape: an address in `orgId`
  * (`<org>.<seatId>`, or `<org>.~<user>.<seatId>`) counts as hired.
  *
+ * A user-owned hire's row (`<org>.~<user>.<seatId>`) that carries an
+ * incarnation is listed too: its roster row is owner-private, so the org
+ * roster passed here never backs it.
+ *
  * @param orgId The organization the rows were read in.
  * @param rows Seat inventory rows, as read, with their `hired` field when they carry one.
  * @param roster The organization's roster rows a browser can read (their
@@ -32,13 +36,26 @@ import { splitSeatAddress } from "../roster/address";
  *   no hired seat is listed: a seat the reader can't show is hired isn't shown as hired.
  * @returns the rows to list, in the order given.
  */
-export function listedSeatRows<T extends { id: string; hired?: boolean | null }>(
+export function listedSeatRows<T extends { id: string; hired?: boolean | null; incarnation?: string | null }>(
   orgId: string,
   rows: readonly T[],
   roster: readonly { seatId: string }[] | undefined
 ): T[] {
   const backed = new Set((roster ?? []).map((row) => `${orgId}.${row.seatId}`));
-  return rows.filter((row) => !isHiredSeatRow(orgId, row) || backed.has(row.id));
+  return rows.filter(
+    (row) => !isHiredSeatRow(orgId, row) || backed.has(row.id) || isCurrentUserOwnedRow(orgId, row)
+  );
+}
+
+/**
+ * A user-owned hire's row that a hire or repair of this version published
+ * (it carries an incarnation). Its roster row is owner-private, so no reader
+ * of the org roster can back it; fire removes such a row with the seat. A
+ * user-owned row with no incarnation predates that, and is read like any
+ * other hired row: listed only when backed.
+ */
+function isCurrentUserOwnedRow(orgId: string, row: { id: string; incarnation?: string | null }): boolean {
+  return typeof row.incarnation === "string" && row.id.startsWith(`${orgId}.~`);
 }
 
 /**

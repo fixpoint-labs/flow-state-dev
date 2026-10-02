@@ -28,6 +28,7 @@ import { AGENT_KIND } from "../agent-worker-flow";
 import { hireWorkforce, missingKindRefusal, resolvableKinds, type HireOptions } from "../hire";
 import type { HiredSeatRow } from "./collections";
 import { hiredSeatManifestFromStored, parseHiredSeatRow } from "./rows";
+import { tagIncarnation } from "./incarnation";
 
 /** Why a stored row does not become a seat. Pinned names; see the file header. */
 type BrokenSeatReason = "kind-gone" | "refused" | "unreadable";
@@ -86,6 +87,9 @@ export function checkHiredSeatRow(
   try {
     // One record in, and a hire that did not throw returns one seat per record.
     const seat = hireWorkforce([record.manifest], { kinds })[0]!;
+    // The seat carries the row's incarnation, so whoever registers it (the
+    // boot, a repair) can later tell it from another seat at the address.
+    tagIncarnation(seat, row.incarnation);
     return { ok: true, row, seat };
   } catch (error) {
     return {

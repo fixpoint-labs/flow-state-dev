@@ -44,6 +44,13 @@ describe("listedSeatRows", () => {
     expect(listedSeatRows("acme", rows, undefined).map((row) => row.id)).toEqual(["eng.lead", "chief-of-staff"]);
   });
 
+  it("a healthy user-owned hire is listed: its row carries the incarnation its hire stamped, and no reader of the org roster can see its roster row", async () => {
+    const rows = [...declared, { id: "acme.~u1.research", kind: "agent", hired: true, incarnation: "i-1" }];
+    expect(listedSeatRows("acme", rows, []).map((row) => row.id)).toEqual(["eng.lead", "chief-of-staff", "acme.~u1.research"]);
+    // A user-owned row from before incarnations is an older fire's leftover: still hidden.
+    expect(listedSeatRows("acme", [{ id: "acme.~u1.old", kind: "agent", hired: true }], [])).toEqual([]);
+  });
+
   it("another organization's roster row backs nothing here, and a user-owned address is never backed by the org roster", () => {
     const rows = [
       { id: "acme.support.ada", kind: "agent", hired: true },

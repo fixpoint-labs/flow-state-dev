@@ -216,8 +216,8 @@ describe("a flow that did not write the rows", () => {
 
     expect(rows.seats).toHaveLength(2);
     expect(byId(rows.seats)).toEqual({
-      "eng.lead": { id: "eng.lead", kind: "agent", door: null, hired: null },
-      "eng.analyst": { id: "eng.analyst", kind: "agent", door: null, hired: null }
+      "eng.lead": { id: "eng.lead", kind: "agent", door: null, hired: null, incarnation: null },
+      "eng.analyst": { id: "eng.analyst", kind: "agent", door: null, hired: null, incarnation: null }
     });
     expect(rows.channels).toEqual([
       {
@@ -290,8 +290,8 @@ describe("a flow that did not write the rows", () => {
     // is the point: that change should be deliberate, not discovered.
     expect(other.seats).toHaveLength(2);
     expect(byId(other.seats)).toEqual({
-      "eng.lead": { id: "eng.lead", kind: "agent", door: null, hired: null },
-      "eng.analyst": { id: "eng.analyst", kind: "agent", door: null, hired: null }
+      "eng.lead": { id: "eng.lead", kind: "agent", door: null, hired: null, incarnation: null },
+      "eng.analyst": { id: "eng.analyst", kind: "agent", door: null, hired: null, incarnation: null }
     });
   });
 });
@@ -350,7 +350,8 @@ describe("the row schemas", () => {
       id: "eng.lead",
       kind: "agent",
       door: null,
-      hired: null
+      hired: null,
+      incarnation: null
     });
     expect(channelInventoryRowSchema.parse({ id: "eng.standup", kind: "channel" })).toEqual({
       id: "eng.standup",

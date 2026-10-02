@@ -69,8 +69,9 @@ async function harness(over: Partial<SeatHireCapabilityOptions> = {}, mount: { u
     register: live.register,
     unregister: live.unregister,
     kindAt: live.kindAt,
+    instanceAt: (id: string) => live.held.get(id),
     ...over,
-  });
+  } as SeatHireCapabilityOptions);
   const ops = defineFlow({
     kind: "ops",
     resources: {
@@ -246,6 +247,97 @@ describe("brokenSeats", () => {
     const before = { roster: await h.versions(ROSTER), seats: await h.versions(SEATS) };
     await h.run("brokenSeats", {});
     expect({ roster: await h.versions(ROSTER), seats: await h.versions(SEATS) }).toEqual(before);
+  });
+});
+
+describe("one hire's side effects never touch another's", () => {
+  it("a hire that lands while an older fire is finishing keeps its inventory row; the fire still succeeds", async () => {
+    const h = await harness();
+    expect((await h.run("hire", { seatId: "support.ada", flow: "desk", settings: { queue: "old" } })).error).toBeUndefined();
+
+    // When the fire is about to delete the inventory row (its roster row and
+    // address already gone), a replacement hire of the same seat lands.
+    const realDelete = h.stores.resourceState.delete.bind(h.stores.resourceState);
+    let replaced: Promise<{ error?: unknown }> | undefined;
+    vi.spyOn(h.stores.resourceState, "delete").mockImplementation(async (...args) => {
+      if (replaced === undefined && String(args[2]) === `${SEATS}acme.support.ada`) {
+        replaced = Promise.resolve({});
+        replaced = h.run("hire", { seatId: "support.ada", flow: "desk", settings: { queue: "new" } }) as Promise<{ error?: unknown }>;
+        expect((await replaced).error).toBeUndefined();
+      }
+      return realDelete(...args);
+    });
+    const fired = await h.run("fire", { seatId: "support.ada" });
+    vi.restoreAllMocks();
+    expect(replaced).toBeDefined();
+    expect((await h.rows(ROSTER))["support.ada"]).toMatchObject({ settings: { queue: "new" } });
+    expect((await h.rows(SEATS))["acme.support.ada"]).toMatchObject({ kind: "desk", hired: true });
+    expect(h.live.held.has("acme.support.ada")).toBe(true);
+    expect(fired.error).toBeUndefined();
+  });
+
+  it("a fire that lands while a hire is publishing leaves no inventory row behind", async () => {
+    const h = await harness();
+    const realSet = h.stores.resourceState.set.bind(h.stores.resourceState);
+    let fired: Promise<{ error?: unknown }> | undefined;
+    vi.spyOn(h.stores.resourceState, "set").mockImplementation(async (...args) => {
+      if (fired === undefined && String(args[2]) === `${SEATS}acme.support.ada`) {
+        fired = Promise.resolve({});
+        fired = h.run("fire", { seatId: "support.ada" }) as Promise<{ error?: unknown }>;
+        expect((await fired).error).toBeUndefined();
+      }
+      return realSet(...args);
+    });
+    const hired = await h.run("hire", { seatId: "support.ada", flow: "desk", settings: { queue: "q" } });
+    vi.restoreAllMocks();
+    expect(fired).toBeDefined();
+    expect(h.live.held.has("acme.support.ada")).toBe(false);
+    expect(await h.rows(ROSTER)).toEqual({});
+    expect(await h.rows(SEATS)).toEqual({});
+    expect(hired.error?.message).toMatch(/fired/);
+  });
+
+  it("fire leaves registered a same-kind seat at the address that this row didn't mint", async () => {
+    const h = await harness();
+    expect((await h.run("hire", { seatId: "support.ada", flow: "desk", settings: { queue: "q" } })).error).toBeUndefined();
+    // Since then the address came to be served by a seat the row didn't mint
+    // (a declared one, here put there by hand).
+    const stranger = { id: "acme.support.ada", kind: "desk" } as FlowInstance;
+    h.live.held.set("acme.support.ada", stranger);
+    const fired = await h.run("fire", { seatId: "support.ada" });
+    expect(fired.error).toBeUndefined();
+    expect(fired.output).toMatchObject({ released: false });
+    expect(h.live.held.get("acme.support.ada")).toBe(stranger);
+    expect(await h.rows(ROSTER)).toEqual({});
+  });
+
+  it("rehire with no `kindAt`: a same-kind seat already at the address that isn't this seat is refused, and the old row comes back", async () => {
+    const h = await harness({ kindAt: undefined });
+    await cutKindStore(h);
+    const stranger = { id: "acme.support.joe", kind: "desk" } as FlowInstance;
+    h.live.held.set("acme.support.joe", stranger); // a declared seat, not from the roster
+    const before = (await h.rows(ROSTER))["support.joe"];
+    const result = await h.run("rehire", { seatId: "support.joe", flow: "desk", settings: { queue: "q" } });
+    expect(h.live.held.get("acme.support.joe")).toBe(stranger);
+    expect((await h.rows(SEATS))["acme.support.joe"]).toMatchObject({ kind: "desk-clerk" });
+    expect((await h.rows(ROSTER))["support.joe"]).toEqual(before);
+    expect(result.error?.message).toMatch(/already registered/);
+  });
+
+  it("an unfinished repair's retry: a same-kind seat at the address that this row didn't register is refused", async () => {
+    const input = { seatId: "support.joe", flow: "desk", settings: { queue: "q" } };
+    const dead = await diedAfterRehireWrite(input);
+    const h = await harness({ kindAt: undefined });
+    for (const [key, state] of Object.entries(dead)) {
+      await h.stores.resourceState.set("org", "acme", key, state as never, "any" as never);
+    }
+    const stranger = { id: "acme.support.joe", kind: "desk" } as FlowInstance;
+    h.live.held.set("acme.support.joe", stranger); // not the seat the marked row would start
+    const result = await h.run("rehire", input);
+    expect(h.live.held.get("acme.support.joe")).toBe(stranger);
+    expect((await h.rows(SEATS))["acme.support.joe"]).toMatchObject({ kind: "desk-clerk" });
+    expect((await h.rows(ROSTER))["support.joe"]).toMatchObject({ pendingRepair: expect.any(String) });
+    expect(result.error?.message).toMatch(/already registered/);
   });
 });
 

@@ -174,10 +174,10 @@ const seatChannels = handler({
 **Seat:**
 
 ```ts
-{ id: "engineering.lead", kind: "agent", door: "run", hired: false }
+{ id: "engineering.lead", kind: "agent", door: "run", hired: false, incarnation: null }
 ```
 
-`hired` says where the seat came from: `true` for a seat hired at runtime, whose id is its address, and `false` for one declared in a worker file. Read it rather than the id's shape, because a declared team can share the organization's name. A row written before the field existed has `hired: null` until the next boot rewrites it.
+`hired` says where the seat came from: `true` for a seat hired at runtime, whose id is its address, and `false` for one declared in a worker file. Read it rather than the id's shape, because a declared team can share the organization's name. A row written before the field existed has `hired: null` until the next boot rewrites it. `incarnation` names the hire or repair that published a hired seat's row. Fire removes a row only when it carries the incarnation being fired, so a seat hired again at the same address keeps its own row.
 
 `door` names an action on the seat's flow: the one that takes a person's message for this seat. It is the kind's one public action that declares `userMessage` and takes `{ message }`. The built-in worker's is named `run`, which is unrelated to the `run` callback above. A kind with no such action gets `door: null`, and an app should say that seat takes no message rather than guess. A kind with two gets `null` too, and the hire warns, naming both: `hireWorkforce` logs it as a `[workforce]` console warning, and a seat hired at runtime returns it in the hire's `warnings`.
 
