@@ -1,6 +1,6 @@
 # Shift Manager
 
-Shift Manager is the browser app you run a Workforce team through. A team is served as a Lab: a set of Workforce seats and channels from one `fsdev.config.mts`. You point Shift Manager at a Lab's config, or open one of the [team profiles](#team-profiles) this package ships, and it shows what that Lab holds. That covers the teams and their seats, the workstreams, each channel's board, the asks waiting on you, and each channel's transcript, which you can post to.
+Shift Manager is the browser app you run a Workforce team through. A team is served as a Lab: a set of Workforce seats and channels from one `fsdev.config.mts`. You point Shift Manager at a Lab's config, or open one of the [team profiles](#team-profiles) this package ships, and it shows what that Lab holds. It opens on Chief of Staff: a summary of what's waiting on you and what's running, and a conversation with the Lab's chief-of-staff seat. From there it shows the teams and their seats, the workstreams, each channel's board, the asks waiting on you, and each channel's transcript, which you can post to.
 
 A task shows one worker's run as it happens, and lets you stop it. The panel on the right follows along, with the team and its tasks at a workstream and the task's details at a task.
 
@@ -54,7 +54,7 @@ Set `VITE_LAB_URL` to proxy to a Lab on another address.
 
 ## What a Lab's config provides
 
-Shift Manager reads a Lab only through the routes its `FlowState` serves. It doesn't build anything for the Lab, so the config has to export a server that is already set up. The first five items below happen in the config, or in a module it imports, before the default export. The last is frontmatter in the Lab's documents.
+Shift Manager reads a Lab only through the routes its `FlowState` serves. It doesn't build anything for the Lab, so the config has to export a server that is already set up. The first five items below happen in the config, or in a module it imports, before the default export. The last two are files in the Lab's tree.
 
 **A `FlowState`, as the default export.** Build it and finish the boot steps below first. An `.mts` config can use top-level `await`. If the Lab keeps its assembly in a host module, have that module return the `FlowState` so the config can export it:
 
@@ -139,12 +139,28 @@ client:
 
 It's listed once a session whose flow serves it exists. A document without that line stays out of Jump to.
 
+**A chief of staff, if you want one.** Shift Manager talks to the seat named `chief-of-staff`, whether it's an org seat or a team's worker. Declare it like any other worker, on the built-in `agent` kind, with instructions that say what it should do for the person running the Lab:
+
+```md title="workforce/teams/<team>/workers/chief-of-staff/WORKER.md"
+---
+description: The person's one point of contact.
+flow: agent
+model: openai/gpt-5.4-mini
+---
+You are the chief of staff for this team. Answer questions about who is working on what.
+```
+
+What it can do is up to its instructions and the tools you give it. Shift Manager only carries your lines to it and shows what it answers. A Lab with two seats of that name gets a line naming both, and Shift Manager talks to neither.
+
 `test/fixtures/ask-lab/lab.mts` is a small Lab that does all of the above in one file.
 
 ## What you see
 
-- **Sidebar.** The organization, Jump to (⌘K), Inbox and Tasks with their counts, Roster with how many workers are on shift and on call, PROJECTS (the workstreams, until projects exist), and TEAMS: one row per team in the Lab's seat inventory, with how many of its workers are on shift and a square for each worker. Organization-level workers, such as a chief of staff, sit in one Staff row at the top. Hover a square for the worker and its status. Click a team to open Roster for that team. The footer repeats the on-shift and on-call counts.
-- **Jump to (⌘K).** Finds workstreams, seats, tasks and the Lab's [readable documents](#what-a-labs-config-provides). A seat opens Roster. A document opens read-only.
+- **Chief of Staff.** Where Shift Manager opens, at `/` or `/cos`. The top of the screen is Shift Manager's own summary of the shift: how many asks wait on you, each one with the same Approve and Reject you'd get in Inbox, and how many runs are going across how many workstreams. The numbers are the ones Inbox and Tasks show. Below it is your conversation with the Lab's chief-of-staff seat. A line goes through the seat's door, like any other line you send to a worker, and shows *delivered* once the seat's session holds it. The reply is what the seat wrote in that session. Come back later and the same conversation is there. The panel on the right lists each workstream with its running tasks and the asks its members have raised, and the workers on call, as Roster counts them.
+
+  A Lab with no chief-of-staff seat still opens here. You get the summary, and in place of the conversation a line saying how to add one.
+- **Sidebar.** The organization, Jump to (⌘K), Chief of Staff, Inbox and Tasks with their counts, Roster with how many workers are on shift and on call, PROJECTS (the workstreams, until projects exist), and TEAMS: one row per team in the Lab's seat inventory, with how many of its workers are on shift and a square for each worker. Organization-level workers, such as a chief of staff, sit in one Staff row at the top. Hover a square for the worker and its status. Click a team to open Roster for that team. The footer repeats the on-shift and on-call counts.
+- **Jump to (⌘K).** Finds Chief of Staff, workstreams, seats, tasks and the Lab's [readable documents](#what-a-labs-config-provides). A seat opens Roster. A document opens read-only.
 - **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card, and can reply to the worker under it. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
 - **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream.
 - **Roster.** Every worker in the Lab, grouped by whether it's on shift, on call or off shift. Pick a team at the top to see only its workers. See [Roster](#roster).
@@ -272,4 +288,10 @@ A fourth serves a Lab of two teams whose workers are put into each status on pur
 
 ```bash
 PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/shift-manager/it-shows-who-is-on-shift/run.mts
+```
+
+A fifth sends a line to a Lab's chief-of-staff seat, which runs a real model, and answers an ask from the summary. It compares the summary, the conversation and the reply with what the store holds. It needs a model key, such as `AI_GATEWAY_API_KEY`, in the environment:
+
+```bash
+PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/shift-manager/it-briefs-and-talks-with-the-chief-of-staff/run.mts
 ```

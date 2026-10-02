@@ -10,7 +10,7 @@ import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { bootColorScheme } from "../src/lib/color-scheme";
 import { createLabClients } from "../src/lib/connection";
-import { ASKER_REFUSED_LINE } from "./fixtures/ask-lab/asker.mts";
+import { ASKER_REFUSED_LINE, heardLine } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -337,6 +337,272 @@ describe("Jump to a declared document (BR-10)", () => {
   });
 });
 
+describe("Chief of Staff (FIX-1722)", () => {
+  const setURL = (url: string) => (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(url);
+
+  /** A Lab with `asks` asks pending, opened at `path`. */
+  async function openCos(path: string, options: Parameters<typeof openAskLab>[0] = {}, asks = 0) {
+    const lab = await serveLab((await openAskLab(options)).flowState);
+    served.push(lab);
+    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    for (let i = 0; i < asks; i += 1) {
+      await clients.actions("ops.asker").sendAction("ask", { what: `ship part ${i}` }, { sessionId: `s_ops_asker_${i}` });
+    }
+    setURL(`${lab.baseUrl}${path}`);
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    await screen.findByTestId("cos");
+    return { lab, clients };
+  }
+
+  /** The asks the store still holds pending, read through the Lab's routes. */
+  async function pendingInStore(clients: ReturnType<typeof createLabClients>, count: number): Promise<number> {
+    let pending = 0;
+    for (let i = 0; i < count; i += 1) {
+      const state = await clients.sessions.getSessionState(`s_ops_asker_${i}`, { includeItems: true, itemTypes: ["suspension", "suspension_resume"] });
+      const items = (state.items ?? []) as Array<{ type: string; suspensionId?: string }>;
+      const resumed = new Set(items.filter((it) => it.type === "suspension_resume").map((it) => it.suspensionId));
+      pending += items.filter((it) => it.type === "suspension" && !resumed.has(it.suspensionId)).length;
+    }
+    return pending;
+  }
+
+  it("is where Shift Manager lands, at / and at a path it doesn't know, first in the sidebar and current (BR-1, BR-2)", async () => {
+    await openCos("/");
+    const nav = within(screen.getByTestId("sidebar"));
+    const entries = nav.getAllByRole("button").map((b) => b.getAttribute("data-testid")).filter((id) => id?.startsWith("nav-"));
+    expect(entries.slice(0, 3)).toEqual(["nav-cos", "nav-inbox", "nav-tasks"]);
+    expect(screen.getByTestId("nav-cos").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("nav-inbox").getAttribute("aria-current")).toBeNull();
+    expect(screen.queryByTestId("nav-cos-count")).toBeNull();
+    expect(screen.getByTestId("centre").getAttribute("data-level")).toBe("cos");
+    cleanup();
+    setURL(`${served[0]!.baseUrl}/no/such/place`);
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    await screen.findByTestId("cos");
+  });
+
+  it("Jump to finds it and opens it (BR-2)", async () => {
+    await openCos("/");
+    act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
+    act(() => fireEvent.click(screen.getByTestId("jump-to")));
+    act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "chief" } }));
+    const [result, ...rest] = await screen.findAllByTestId("jump-result");
+    expect(rest).toEqual([]);
+    act(() => fireEvent.click(result!));
+    await screen.findByTestId("cos");
+    expect(window.location.pathname).toBe("/cos");
+  });
+
+  it("summarises what Inbox lists, and an ask answered there leaves the summary and Inbox together (BR-4 to BR-6)", async () => {
+    const { clients } = await openCos("/cos", {}, 2);
+    await waitFor(() => expect(screen.getByTestId("cos-needs-you").textContent).toBe("2"));
+    expect(screen.getByTestId("nav-inbox-count").textContent).toBe("2");
+    expect(screen.getAllByTestId("cos-ask")).toHaveLength(2);
+    expect(screen.getByTestId("cos-summary").textContent).toMatch(/FROM SHIFT MANAGER/);
+    expect(screen.getByTestId("cos-summary-running").textContent).toBe("0 runs going across 0 workstreams.");
+
+    const first = screen.getAllByTestId("cos-ask")[0]!;
+    act(() => fireEvent.click(within(first).getByRole("button", { name: "Approve" })));
+    await waitFor(() => expect(screen.getAllByTestId("cos-ask")).toHaveLength(1), { timeout: 5_000 });
+    expect(screen.getByTestId("cos-needs-you").textContent).toBe("1");
+    expect(await pendingInStore(clients, 2)).toBe(1);
+    act(() => fireEvent.click(screen.getByTestId("nav-inbox")));
+    expect(await screen.findAllByTestId("inbox-item")).toHaveLength(1);
+  });
+
+  it("says nothing needs the person when nothing does, with the running counts still there (BR-7)", async () => {
+    await openCos("/cos");
+    expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
+    expect(screen.getByTestId("cos-summary-running")).toBeTruthy();
+  });
+
+  it("draws each workstream's running rows and its members' asks in the rail, and the workers on call (BR-19)", async () => {
+    await openCos("/cos", {}, 1);
+    await waitFor(() => expect(screen.getByTestId("cos-needs-you").textContent).toBe("1"));
+    const streams = screen.getAllByTestId("cos-stream").map((el) => [
+      el.getAttribute("data-channel-id"),
+      within(el).getByTestId("cos-stream-running").textContent,
+      within(el).getByTestId("cos-stream-needs-you").textContent,
+    ]);
+    // ops.asker sits in both channels; ops.helper only in the desk.
+    expect(streams).toEqual([
+      ["ops.desk", "0", "1"],
+      ["ops.side", "0", "1"],
+    ]);
+    // ops.asker's pending ask puts it on call, by the rule Roster uses.
+    expect(screen.getAllByTestId("cos-on-call").map((el) => el.getAttribute("data-seat-id"))).toEqual(["ops.asker"]);
+  });
+
+  it("names the missing seat in place of the conversation, with the summary still drawn (BR-11)", async () => {
+    await openCos("/");
+    expect((await screen.findByTestId("cos-none")).textContent).toContain(GAPS.chiefOfStaff.none.title);
+    expect(screen.getByTestId("cos-summary")).toBeTruthy();
+    expect(screen.queryByTestId("cos-composer")).toBeNull();
+  });
+
+  it("opens the conversation with the first line, shows delivered once the session holds it, and draws the seat's stored reply (BR-14 to BR-17)", async () => {
+    const { clients } = await openCos("/", { chiefOfStaff: true });
+    const conversation = await screen.findByTestId("cos-conversation");
+    expect(conversation.getAttribute("data-seat-id")).toBe("ops.chief-of-staff");
+    expect(screen.getByTestId("cos-conversation-empty")).toBeTruthy();
+
+    // Hold the door's request open: nothing may read delivered, or draw a reply, while it is.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+      if (String(i instanceof Request ? i.url : i).includes("/status")) await held;
+      return real(i, init);
+    });
+    const input = screen.getByTestId("cos-composer-input") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "what is running" } });
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    await screen.findByTestId("cos-working");
+    expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("sending");
+    expect((screen.getByTestId("cos-composer-send") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryAllByTestId("cos-item")).toEqual([]);
+    release();
+    await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    vi.restoreAllMocks();
+
+    // The session the door opened is the seat's, and holds the line and the reply drawn.
+    const sessionId = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
+    expect((await clients.sessions.getSession(sessionId)).flowId).toBe("ops.chief-of-staff");
+    const state = await clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["message"] });
+    const stored = (state.items ?? []) as Array<{ id: string; role?: string; content?: unknown }>;
+    const reply = stored.find((item) => item.role === "assistant");
+    expect(JSON.stringify(stored.find((item) => item.role === "user"))).toContain("what is running");
+    expect(JSON.stringify(reply)).toContain(heardLine("what is running"));
+    await waitFor(() => expect(screen.getAllByTestId("cos-item").some((el) => el.getAttribute("data-item-id") === reply!.id)).toBe(true));
+
+    // Back later: the same conversation.
+    cleanup();
+    setURL(`${served[0]!.baseUrl}/cos`);
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    await waitFor(() => expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe(sessionId));
+    await waitFor(() => expect(screen.getAllByTestId("cos-item").map((el) => el.getAttribute("data-item-id"))).toContain(reply!.id));
+  });
+
+  it("keeps the draft and shows the seat's reason when its door refuses (BR-15)", async () => {
+    await openCos("/", { chiefOfStaff: true });
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: ASKER_REFUSED_LINE } });
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    expect((await screen.findByTestId("cos-composer-error", {}, { timeout: 5_000 })).textContent).toBe("This seat won't take that line.");
+    expect(input.value).toBe(ASKER_REFUSED_LINE);
+  });
+
+  it("keeps a refused first line's conversation, so the next line goes into the same session (BR-15)", async () => {
+    const { clients } = await openCos("/", { chiefOfStaff: true });
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: ASKER_REFUSED_LINE } });
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    await screen.findByTestId("cos-composer-error", {}, { timeout: 5_000 });
+    // The door took the line before it refused it: the session exists and holds it.
+    await waitFor(() => expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).not.toBe(""));
+    const first = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
+    await waitFor(() => expect(screen.getAllByTestId("cos-item").some((el) => el.getAttribute("data-role") === "user")).toBe(true));
+    fireEvent.change(input, { target: { value: "second line" } });
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    await waitFor(() => expect(screen.getByTestId("cos-composer-status").getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe(first);
+    const direct = (await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).filter((s) => s.flowId === "ops.chief-of-staff" && s.parentSessionId == null);
+    expect(direct.map((s) => s.id)).toEqual([first]);
+  });
+
+  it("takes no line until the conversation has been read, and Retry keeps it shut until a read succeeds", async () => {
+    const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
+    served.push(lab);
+    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    await clients.actions("ops.chief-of-staff").sendAction("message", { message: "earlier" }, { sessionId: "s_cos_earlier" });
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let failing = false;
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+      const url = String(i instanceof Request ? i.url : i);
+      // The conversation's read, not the snapshot's ask read of the same session.
+      if (url.includes("/sessions/s_cos_earlier/state") && !url.includes("item_types=suspension")) {
+        await held;
+        if (failing) return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
+      }
+      return real(i, init);
+    });
+    setURL(`${lab.baseUrl}/cos`);
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    expect(screen.getByTestId("cos-conversation").getAttribute("data-session-id")).toBe("s_cos_earlier");
+    expect(input.disabled).toBe(true);
+    failing = true;
+    release();
+    await screen.findByTestId("cos-conversation-failure");
+    expect(input.disabled).toBe(true);
+    act(() => fireEvent.click(within(screen.getByTestId("cos-conversation-failure")).getByRole("button", { name: "Retry" })));
+    expect(input.disabled).toBe(true);
+    failing = false;
+    await waitFor(() => expect(input.disabled).toBe(false));
+    expect(screen.queryByTestId("cos-conversation-failure")).toBeNull();
+  });
+
+  it("draws an answered ask in the conversation as answered, not as waiting on the person", async () => {
+    const lab = await serveLab((await openAskLab({ chiefOfStaff: true })).flowState);
+    served.push(lab);
+    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    await clients.actions("ops.chief-of-staff").sendAction("ask", { what: "ship it" }, { sessionId: "s_cos_asked" });
+    let suspension: { requestId: string; suspensionId: string } | undefined;
+    await waitFor(async () => {
+      const state = await clients.sessions.getSessionState("s_cos_asked", { includeItems: true, itemTypes: ["suspension"] });
+      suspension = (state.items ?? [])[0] as typeof suspension;
+      expect(suspension).toBeDefined();
+    });
+    await clients.recovery.resumeSuspension("ops.chief-of-staff", suspension!.requestId, {
+      suspensionId: suspension!.suspensionId,
+      action: "approve",
+      resumedBy: ASK_LAB_USER_ID,
+    });
+    await waitFor(async () => {
+      const state = await clients.sessions.getSessionState("s_cos_asked", { includeItems: true, itemTypes: ["suspension_resume"] });
+      expect(state.items ?? []).toHaveLength(1);
+    });
+    setURL(`${lab.baseUrl}/cos`);
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    const conversation = await screen.findByTestId("cos-conversation");
+    await waitFor(() => expect(within(conversation).getAllByTestId("cos-item").some((el) => el.getAttribute("data-item-type") === "suspension")).toBe(true));
+    expect(conversation.textContent).not.toMatch(/Waiting on you/);
+  });
+
+  it("says what the Lab answered, with Retry, for a workstream whose boards or asks didn't load (BR-8)", async () => {
+    const lab = await serveLab((await openAskLab()).flowState);
+    served.push(lab);
+    // A seat session, so there are asks to read.
+    await createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID }).actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+      const url = String(i instanceof Request ? i.url : i);
+      if (url.includes("/sessions/ops.desk/resources/ops.desk.") || url.includes("item_types=suspension")) {
+        return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
+      }
+      return real(i, init);
+    });
+    setURL(`${lab.baseUrl}/cos`);
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+    const desk = await screen.findByTestId("cos-stream-failure");
+    expect(desk.textContent).toMatch(/ops\.desk/);
+    expect(desk.textContent).toMatch(/store offline.*503/);
+    expect(within(desk).getByRole("button", { name: "Retry" })).toBeTruthy();
+    const asks = screen.getByTestId("cos-streams-asks-failure");
+    expect(asks.textContent).toMatch(/store offline/);
+    expect(within(asks).getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("disables the composer for a seat that takes no message (BR-13)", async () => {
+    await openCos("/", { chiefOfStaff: true, doors: false });
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    expect(input.disabled).toBe(true);
+    expect(screen.getByTestId("cos-composer-blocked").textContent).toBe(`ops.chief-of-staff ${GAPS.turn.noDoor}`);
+  });
+});
+
 describe("Jump to from the keyboard", () => {
   it("arrow keys move the highlight through the results, and Enter goes to the highlighted one", async () => {
     await openApp("/inbox");
@@ -366,9 +632,11 @@ describe("Jump to from the keyboard", () => {
     act(() => fireEvent.change(input, { target: { value: "" } }));
 
     // Enter opens the highlighted result, not the first one: the ask Lab's
-    // first two results are its workstreams, ops.desk then ops.side.
+    // first three results are Chief of Staff, then its workstreams, ops.desk
+    // then ops.side.
     act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
-    expect(screen.getAllByTestId("jump-result")[1]!.textContent).toMatch(/^ops\.side/);
+    act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
+    expect(screen.getAllByTestId("jump-result")[2]!.textContent).toMatch(/^ops\.side/);
     act(() => fireEvent.keyDown(input, { key: "Enter" }));
     expect(screen.queryByTestId("jump-dialog")).toBeNull();
     expect(window.location.pathname).toBe("/w/ops.side/stream");

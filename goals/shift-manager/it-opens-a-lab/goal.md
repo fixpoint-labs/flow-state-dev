@@ -14,7 +14,7 @@
 - **Board equals the store's rows** (BR-13): each workstream's Board tab draws exactly its declared boards' stored rows, each card with the stored status word. The task frame opened from a card titles the stored row.
 - **Tasks equals the store's open rows**: grouped by state, by worker and by stream, the rows are exactly the stored rows that are neither completed nor cancelled.
 - **Inbox equals the store's pending asks**: the count equals the stored suspensions with no resume, on seat-owned sessions, asking a person. With none pending, the empty state is named.
-- **reach**: every level, tab and panel opens (Inbox, Tasks, the project level's four tabs, each workstream's four tabs and panel, and the task frame's four tabs and panel slot). Every empty one names what will be there. The page throws nothing.
+- **reach**: every level, tab and panel opens (Chief of Staff with its summary and panel, Inbox by its route, Tasks, the project level's four tabs, each workstream's four tabs and panel, and the task frame's four tabs and panel slot). Every empty one names what will be there. The page throws nothing.
 - **the post appears on screen**: a composer post on the first workstream is drawn.
 - **the post is in the stored transcript**: the channel's session holds exactly one `channel-post` with that body, and a reload draws it once.
 - **an answer from Inbox lands in the store**: when an ask is pending (DevTeam's EM seat raises one at boot), Shift Manager offers Approve on at least one pending ask, and Approve on Inbox leaves one fewer pending suspension in the store. Asks pending with an answer offered on none is a failure.

@@ -13,7 +13,7 @@ import { SESSION_ADDRESS_PARAM } from "@flow-state-dev/devtool/react";
 import { SectionFailure } from "../components/ui";
 import { rosterOf, seatFor, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, type Failure } from "../lib/reads";
+import { describeFailure, STAFF_TEAM, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { readRecordedWork, RunReadError, type OpenRun, type RecordedWork } from "../lib/run";
 import { useTask } from "../lib/task";
@@ -53,7 +53,7 @@ export function TaskInspector({ snapshot, gaps }: { snapshot: LoadedSnapshot; ga
             {seat?.id ?? row?.assignee ?? "No worker named"}
           </p>
           <p className="text-xs text-muted-foreground" data-testid="inspector-team">
-            {seat === undefined ? "" : `team ${seat.team}`}
+            {seat === undefined ? "" : seat.team === STAFF_TEAM ? STAFF_TEAM : `team ${seat.team}`}
           </p>
         </Section>
         <Section title="STARTED" testId="inspector-started">

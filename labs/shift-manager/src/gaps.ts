@@ -82,6 +82,16 @@ export const GAPS = {
       "Which worker holds a task is a best match on the task's assignee: its id, then a unique name, then who is in the task's workstream. A task whose assignee matches no single worker counts for no one. A declared map arrives with FIX-1672.",
     partial: "Asks did not load, so on call may be missing workers waiting on you.",
   },
+  /** The Chief of Staff view's named states (BR-11, BR-12). */
+  chiefOfStaff: {
+    /** BR-11: the Lab's inventory holds no chief-of-staff seat. */
+    none: {
+      title: "This Lab declares no chief of staff",
+      body: "Shift Manager talks to the seat named chief-of-staff. Declare one on the built-in agent kind: in a team's workers/ folder today, or under org/workers/ once org seats ship (FIX-1719).",
+    },
+    /** BR-12: drawn before the seats' ids. */
+    several: "More than one seat is named chief-of-staff, so Shift Manager talks to neither:",
+  },
   resources: "This Lab serves no documents to the browser, so there is nothing to open here yet.",
   inboxScope:
     "Inbox lists the asks in sessions you started, and in the runs those started. Asks in another member's sessions are not listed; an organization-wide view is FIX-1652's call.",

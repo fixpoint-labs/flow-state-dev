@@ -1,7 +1,8 @@
 /**
- * The sidebar (S5): in order, the organization, Jump to, Inbox, Tasks and
- * Roster with their counts, PROJECTS, TEAMS, and a footer (BR-6) with the
- * on-shift and on-call counts that ends in the Day shift / Night shift switch.
+ * The sidebar (S5): in order, the organization, Jump to, Chief of Staff,
+ * Inbox, Tasks and Roster with their counts, PROJECTS, TEAMS, and a footer
+ * (BR-6) with the on-shift and on-call counts that ends in the Day shift /
+ * Night shift switch.
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
  * opens always agree; every status and status count from its one
@@ -161,6 +162,12 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
         </button>
 
         <div className="mt-3 space-y-0.5">
+          <NavItem
+            label="Chief of Staff"
+            active={route.level === "cos"}
+            onClick={() => navigate({ level: "cos" })}
+            testId="nav-cos"
+          />
           <NavItem
             label="Inbox"
             count={inboxCount}

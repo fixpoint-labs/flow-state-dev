@@ -472,6 +472,12 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       if (!same(shown, open_)) fail("Tasks equals the store's open rows", `grouped by ${grouping}: ${diff(open_, shown)}`);
     }
 
+    // ---- Chief of Staff, where the Lab lands -----------------------------------
+    await page.getByTestId("nav-cos").click();
+    if (!(await visible(page, "cos"))) fail("reach", "Chief of Staff does not open");
+    if (!(await visible(page, "cos-summary"))) fail("reach", "Chief of Staff draws no shift summary");
+    if (!(await visible(page, "cos-panel"))) fail("reach", "Chief of Staff has no right panel");
+
     // ---- Project level -------------------------------------------------------
     await page.getByTestId("projects-heading").click();
     for (const tab of ["stream", "board", "workstreams", "brief"]) {

@@ -5,6 +5,7 @@
  * Pinned (FIX-1662 PLAN, "Pinned names"): the task route, the workstream route
  * and the project route. The rest are Shift Manager's own.
  *
+ *     /cos                           Chief of Staff: where `/` and any unknown path land
  *     /inbox[/<suspensionId>]
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
@@ -33,6 +34,7 @@ export const NO_PROJECT = "unassigned";
 
 /** Where the person is. */
 export type Route =
+  | { level: "cos" }
   | { level: "inbox"; suspensionId: string | null }
   | { level: "tasks"; by: TaskGrouping }
   | { level: "task"; boardRef: string; taskId: string; tab: TaskTab }
@@ -46,7 +48,7 @@ function oneOf<T extends string>(values: readonly T[], value: string | undefined
   return values.includes(value as T) ? (value as T) : fallback;
 }
 
-/** Read a route from a path and query string. Anything unknown is Inbox. */
+/** Read a route from a path and query string. `/`, `/cos` and anything unknown are Chief of Staff (BR-1). */
 export function parseRoute(pathname: string, search = ""): Route {
   const parts = pathname.split("/").filter(Boolean).map(decodeURIComponent);
   const [head, a, b, c] = parts;
@@ -60,13 +62,16 @@ export function parseRoute(pathname: string, search = ""): Route {
   if (head === "p" && a !== undefined) return { level: "project", projectId: a, tab: oneOf(PROJECT_TABS, b, "stream") };
   if (head === "r" && a !== undefined && b !== undefined) return { level: "resource", sessionId: a, ref: b };
   if (head === "roster") return { level: "roster", team: new URLSearchParams(search).get("team") || null };
-  return { level: "inbox", suspensionId: head === "inbox" && a !== undefined ? a : null };
+  if (head === "inbox") return { level: "inbox", suspensionId: a ?? null };
+  return { level: "cos" };
 }
 
 /** The path for a route. */
 export function pathFor(route: Route): string {
   const e = encodeURIComponent;
   switch (route.level) {
+    case "cos":
+      return "/cos";
     case "inbox":
       return route.suspensionId === null ? "/inbox" : `/inbox/${e(route.suspensionId)}`;
     case "tasks":

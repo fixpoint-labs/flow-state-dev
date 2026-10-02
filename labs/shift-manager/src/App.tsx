@@ -17,6 +17,7 @@ import type { Failure } from "./lib/reads";
 import { ResourceView } from "./surfaces/Resource";
 import { useRoute, type Route } from "./lib/routes";
 import { EmptyState } from "./components/ui";
+import { ChiefOfStaffPanel, ChiefOfStaffView } from "./surfaces/ChiefOfStaff";
 import { Inbox } from "./surfaces/Inbox";
 import { JumpTo } from "./surfaces/JumpTo";
 import { ProjectView } from "./surfaces/Project";
@@ -139,6 +140,8 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
 
 function Centre({ snapshot, route, gaps, look }: { snapshot: LoadedSnapshot; route: Route; gaps: Gaps; look: ShiftLook | undefined }) {
   switch (route.level) {
+    case "cos":
+      return <ChiefOfStaffView snapshot={snapshot} gaps={gaps} />;
     case "roster":
       return <RosterView snapshot={snapshot} team={route.team} gaps={gaps} look={look} />;
     case "inbox":
@@ -164,10 +167,12 @@ function Centre({ snapshot, route, gaps, look }: { snapshot: LoadedSnapshot; rou
   }
 }
 
-/** The right panel's slot, per level: the workstream's panel, the task's slot, or nothing. */
+/** The right panel's slot, per level: Chief of Staff's rail, the workstream's panel, the task's slot, or nothing. */
 function Panel({ snapshot, route, gaps }: { snapshot: LoadedSnapshot; route: Route; gaps: Gaps }) {
   let content = null;
-  if (route.level === "workstream") {
+  if (route.level === "cos") {
+    content = <ChiefOfStaffPanel snapshot={snapshot} gaps={gaps} />;
+  } else if (route.level === "workstream") {
     const workstream = findWorkstream(snapshot, route.channelId);
     if (workstream !== undefined) content = <WorkstreamPanel snapshot={snapshot} workstream={workstream} gaps={gaps} />;
   } else if (route.level === "task") {
