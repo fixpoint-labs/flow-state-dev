@@ -1488,8 +1488,9 @@ partial roster.
 
 The roster and the inventory are different collections. A roster row at
 `workforce/roster/<seatId>` is the durable hire: `hire` writes it, `fire` deletes it. An
-inventory row at `inventory/seats/<address>` means *was registered in this organization* and
-is never removed.
+inventory row at `inventory/seats/<address>` means *was registered in this organization*. A
+declared seat's row is never removed; a runtime-hired seat's row is removed by `fire`, and only
+while it carries the incarnation fired.
 
 `createSeatHireCapability`'s `hire` tool writes both. `discover` lists a seat when it is still
 hired or still declared in a worker file, and has been registered in this organization. Pass
@@ -1573,8 +1574,8 @@ A duplicate seat is refused. It does not invent a kind. It does not attach board
 is present when a named channel board is unattended.
 
 It refuses an unknown kind or one outside `allowKinds` (and lists the hireable ones), an
-address already served, a seat id a file-declared seat answers on, and a request with no
-organization.
+address already served, a seat id a file-declared seat answers on, an address a declared
+seat's inventory row sits at (`hired: false`), and a request with no organization.
 
 **`fire`** takes `{ seatId, owner?, orgId? }` (extra keys are refused) and returns
 `{ seatId, address, released, alreadyGone? }`. It deletes the roster row, unregisters the
@@ -1744,8 +1745,10 @@ registered seat, one row per registered channel, and one row per seat-in-channel
 collections, so a block reads them the way it reads any other resource.
 
 **A row means registered, not open.** It records that a seat or channel was registered in this
-organization, not that the seat is working or the channel is open now. Nothing deletes a row, so a
-fired seat keeps its row. A channel's `members` are the ones it had when it registered.
+organization, not that the seat is working or the channel is open now. Declared seats' and
+channels' rows are never deleted. A runtime-hired seat's row is removed when it is fired, and
+only the row its own hire published (it carries that hire's `incarnation`). A channel's `members`
+are the ones it had when it registered.
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
@@ -1975,9 +1978,11 @@ the root exports, and reaches no Node built-in. It also exports `listedSeatRows(
 the team-list rule: of the seat inventory rows, a hired seat's is kept only while a roster row
 names its address (pass `undefined` when the roster didn't load, and no hired seat is kept), and
 every other row is kept as it is. A row says which it is in `hired`; one written before that field
-is read by its id's shape, which `isHiredSeatRow(orgId, row)` also answers. A user-owned hire's row
-(`<org>.~<user>.<seatId>`) is kept only when `owned`, the reader's own user-owned roster rows read
-on the server, has a row at that address with the same `incarnation`. The roster that would back
+is read by its id's shape, which `isHiredSeatRow(orgId, row)` also answers. A hired row is kept only when the roster
+row at its address carries the same `incarnation`; rows from before incarnations match only each
+other (`null` on both sides). The org roster publishes `incarnation` to browsers for this. A
+user-owned hire's row (`<org>.~<user>.<seatId>`) is kept only when `owned`, the reader's own
+user-owned roster rows read on the server, has a row at that address with the same `incarnation`. The roster that would back
 it is owner-private, so a browser reader has no `owned` and keeps no user-owned hire. An
 `incarnation` on the inventory row says which hire published it, not that the hire is still there. A hired seat fired
 before fire removed inventory rows is left out that way.

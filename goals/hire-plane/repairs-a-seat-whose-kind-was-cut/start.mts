@@ -132,7 +132,10 @@ if (step === "verify") {
   const teamList = listedSeatRows(
     fixture.orgId,
     Object.values(inventory) as Array<{ id: string; kind: string }>,
-    Object.values(roster).map((row) => ({ seatId: String(row.seatId) })),
+    Object.values(roster).map((row) => ({
+      seatId: String(row.seatId),
+      incarnation: typeof row.incarnation === "string" ? row.incarnation : null,
+    })),
   );
   const answers: Record<string, { status: string; kind: string | undefined }> = {};
   for (const seatId of [fixture.healthySeat, fixture.rehireSeat, fixture.refusedSeat]) {
