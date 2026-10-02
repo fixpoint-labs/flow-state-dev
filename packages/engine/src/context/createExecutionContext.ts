@@ -2146,12 +2146,18 @@ export async function createExecutionContext<
     persist: createScopePersist<TRequestState, RequestRecord>(
       requestRef,
       stores.request,
-      (expectedVersion, state) => ({
-        ...requestRef.current,
-        state: state as TRequestState,
-        version: expectedVersion + 1,
-        updatedAt: Date.now()
-      })
+      // Items off: the snapshot's are from when the run started, and the
+      // store keeps the ones persisted since only when the write leaves them
+      // off (FIX-1735). The emitter holds the live log.
+      (expectedVersion, state) => {
+        const { items: _snapshotItems, ...record } = requestRef.current;
+        return {
+          ...record,
+          state: state as TRequestState,
+          version: expectedVersion + 1,
+          updatedAt: Date.now()
+        };
+      }
     )
   });
 

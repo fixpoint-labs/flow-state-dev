@@ -127,6 +127,23 @@ export function assertMaxDepthTwo(path: string[], verb: string): void {
  * items on the record (in-memory, filesystem); the SQL adapters do the same
  * with an UPSERT.
  */
+/**
+ * A full-record `set` whose record carries no `items` keeps the items the
+ * store holds (FIX-1735), on the stores that keep items on the record
+ * (in-memory, filesystem). A state write in the middle of a run is built from
+ * a snapshot that predates the items persisted since, so it leaves `items`
+ * off rather than replace them; the SQL adapters keep items out of `set`
+ * entirely, so the same write leaves theirs alone too. A record that does
+ * carry `items` still replaces them.
+ */
+export function withHeldItems<T extends RequestRecord>(
+  value: T,
+  held: OutputItem[] | undefined
+): T {
+  if (value.items !== undefined || held === undefined) return value;
+  return { ...value, items: held };
+}
+
 export function mergeItemsById(
   prior: readonly OutputItem[],
   next: readonly OutputItem[]

@@ -19,6 +19,7 @@ import { atomicWrite, ensureDirectory, toRecordPath } from "./shared";
 import {
   matchesRequestStatusFilter,
   mergeItemsById,
+  withHeldItems,
   withRequestSourceDefault,
   withStoredAbortRequested
 } from "../shared";
@@ -430,16 +431,19 @@ export class FilesystemRequestStore implements RequestStore {
     // whatever snapshot the caller built its record from. The `beforeWrite`
     // hook moves a legacy record's inline copy to the marker first — under
     // this same write's lock — so stripping never discards stored intent.
-    return this.store.set(
-      id,
-      withStoredAbortRequested(value, undefined),
-      expectedVersion,
-      // Omitted once this request is known migrated, which is what spares the
-      // store the O(items) read the hook would otherwise need on every write.
-      this.abortIntentMigrated.has(id)
-        ? undefined
-        : (current) => this.migrateLegacyAbortIntent(id, current)
-    );
+    const record = withStoredAbortRequested(value, undefined);
+    // A record that leaves `items` off keeps the stored ones (FIX-1735), read
+    // under the write's lock. Only then does the write need the stored record
+    // for items; otherwise the hook is omitted once this request is known
+    // migrated, which spares the store the O(items) read on every write.
+    const keepsItems = record.items === undefined;
+    if (!keepsItems && this.abortIntentMigrated.has(id)) {
+      return this.store.set(id, record, expectedVersion);
+    }
+    return this.store.set(id, record, expectedVersion, async (current) => {
+      if (!this.abortIntentMigrated.has(id)) await this.migrateLegacyAbortIntent(id, current);
+      return keepsItems ? withHeldItems(record, current?.items) : undefined;
+    });
   }
 
   async isAbortRequested(requestId: string): Promise<boolean> {

@@ -21,6 +21,7 @@ import {
 import {
   matchesRequestStatusFilter,
   mergeItemsById,
+  withHeldItems,
   withRequestSourceDefault,
   withStoredAbortRequested
 } from "../shared";
@@ -59,10 +60,13 @@ export class InMemoryRequestStore implements RequestStore {
     // stored value through whatever the caller's record says. The map read and
     // the write below are not separated by an await, so no other task can slip
     // a conditional write between them.
+    //
+    // Items likewise, when the record leaves them off (FIX-1735).
+    const current = this.records.get(id);
     return casWriteToMap(
       this.records,
       id,
-      withStoredAbortRequested(value, this.records.get(id)?.abortRequested),
+      withHeldItems(withStoredAbortRequested(value, current?.abortRequested), current?.items),
       expectedVersion
     );
   }
