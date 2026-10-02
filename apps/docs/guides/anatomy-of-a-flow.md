@@ -58,7 +58,9 @@ defineFlow({
 });
 ```
 
-`defineFlow` returns a flow type. Call it, with no arguments, to produce the instance you register with the server. For that instance the `kind` is both what the flow is and the address it answers to. Instances take merge-based overrides if you need to swap actions or config at creation time, and a definition that needs several configured copies declares that on itself — see [Flows](/docs/fundamentals/flows#flowtype-vs-flowinstance).
+![Definition, instance and session, and where each lives. defineFlow returns a definition in your code: its kind, its cardinality, the configSchema a copy's settings must match, the webhooks, schedules and MCP entry points every copy serves, and the entries only the flow can call; it answers no request itself. Calling it makes an instance with its own id and settings, such as review-east and review-west of kind review, which you register; a singleton's id is its kind, and the settings stay in the process, never listed or stored. Requests name an instance id, and the kind is never a fallback. Sessions live in the store: session chat-1 records flowId review-east as its owner and flowKind review only as a label for listings. Named through review-west, it is refused with 409 wrong-instance-session before anything runs](../docs/fundamentals/flow-type-instance-session.svg)
+
+`defineFlow` returns a flow type. Call it, with no arguments, to produce the instance you register with the server. Instances take merge-based overrides if you need to swap actions or config at creation time, and a definition that needs several configured copies declares that on itself — see [Flows](/docs/fundamentals/flows#flowtype-vs-flowinstance).
 
 ## 4. Actions are the public API
 
@@ -74,16 +76,11 @@ The HTTP flow: `POST /api/flows/:flowId/actions/:action` (or with `:sessionId` f
 
 ## 5. State lives in scopes
 
-Four nested levels, each with typed atomic operations:
+Four scopes, each its own record with typed atomic operations:
 
-| Scope   | Lifetime                 |
-|---------|--------------------------|
-| Request | Single action run        |
-| Session | Across requests (a conversation) |
-| User    | Across sessions for a user |
-| Org     | Shared across users in an org |
+![Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation, keyed by the session id and by the tenant when one is sent. User state follows one person across conversations and flows, keyed by the user id, or one record per flow copy with isolateUserState. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session names its user and org but holds neither one's state. Blocks read and write all four; the browser sees only the fields a scope's client config exposes](../docs/fundamentals/state-scopes.svg)
 
-Request scope exists only for the duration of one action. Session scope is where most state lives for chat-style apps: conversation mode, message counts, in-progress drafts. User scope spans sessions: preferences, feature flags, usage quotas. Org scope is shared across users: team config, shared resources.
+Session scope is where most state lives for chat-style apps: conversation mode, message counts, in-progress drafts. User scope spans sessions: preferences, feature flags, usage quotas. Org scope is shared across users: team config, shared resources.
 
 Blocks declare partial schemas: they only specify the fields they read or write. A counter block doesn't need to know about preferences. The framework merges these declarations at the flow level. This keeps blocks portable and self-documenting.
 
