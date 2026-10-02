@@ -40,7 +40,7 @@ export const diff = (want: Iterable<string>, got: Iterable<string>) => {
 /** One edit to a scratch copy of Shift Manager. A patch that matches nothing fails the setup. */
 export type Patch = { file: string; from: string | RegExp; to: string; why: string };
 /** A source module swapped for a control module at build time (a child check's control). */
-export type Swap = { target: string; with: string };
+export type Swap = { target: string | string[]; with: string };
 /** A build: where its pages are, and the full diff of every patch applied to it. */
 export type Built = { pages: string; diff: string };
 
@@ -72,6 +72,7 @@ export async function buildPages(
   const patches = options.patches ?? [];
   if (patches.length === 0) {
     let swapped = 0;
+    const hit = new Set<string>();
     const swap = options.swap;
     await (await vite()).build({
       root: SHIFT_MANAGER,
@@ -89,14 +90,16 @@ export async function buildPages(
                 async resolveId(this: any, source: string, importer: string | undefined, opts: Record<string, unknown>) {
                   if (importer === undefined || importer === swap.with) return null;
                   const resolved = await this.resolve(source, importer, { ...opts, skipSelf: true });
-                  if (resolved?.id !== swap.target) return null;
+                  if (resolved?.id === undefined || ![swap.target].flat().includes(resolved.id)) return null;
+                  hit.add(resolved.id);
                   swapped += 1;
                   return swap.with;
                 },
               },
             ],
     });
-    if (swap !== undefined && swapped === 0) throw new Error(`setup [${name}]: the build never imported ${swap.target}, so nothing was swapped`);
+    const missed = swap === undefined ? [] : [swap.target].flat().filter((t) => !hit.has(t));
+    if (swapped === 0 && swap !== undefined || missed.length > 0) throw new Error(`setup [${name}]: the build never imported ${missed.join(", ")}, so nothing was swapped`);
     return { pages, diff: "" };
   }
 

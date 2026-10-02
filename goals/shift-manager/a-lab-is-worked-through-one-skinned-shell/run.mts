@@ -97,7 +97,7 @@ const NO_ORG: Patch = {
   why: "control no-org: Shift Manager renders with no org, the org switcher empty",
 };
 const CHILD = (goal: string, file: string) => join(REPO_ROOT, "goals", "shift-manager", goal, "controls", file);
-const swapOf = (target: string, goal: string, file: string): Swap => ({ target: join(SHIFT_MANAGER, "src", "lib", target), with: CHILD(goal, file) });
+const swapOf = (target: string | string[], goal: string, file: string): Swap => ({ target: [target].flat().map((t) => join(SHIFT_MANAGER, "src", "lib", t)), with: CHILD(goal, file) });
 
 /**
  * A build with a module swapped in and the theme import removed in the
@@ -122,6 +122,7 @@ const [root, outDir, target, withFile, seats] = ${JSON.stringify([SHIFT_MANAGER,
 const THEME_IMPORT = ${THEME_IMPORT.toString()};
 const vite = await import(pathToFileURL(createRequire(root + "/package.json").resolve("vite")).href);
 let swapped = 0;
+const hit = new Set();
 let stripped = 0;
 await vite.build({
   root,
@@ -136,7 +137,8 @@ await vite.build({
       async resolveId(source, importer, opts) {
         if (importer === undefined || importer === withFile) return null;
         const resolved = await this.resolve(source, importer, { ...opts, skipSelf: true });
-        if (resolved?.id !== target) return null;
+        if (resolved?.id === undefined || ![target].flat().includes(resolved.id)) return null;
+        hit.add(resolved.id);
         swapped += 1;
         return withFile;
       },
@@ -154,7 +156,7 @@ await vite.build({
     },
   ],
 });
-if (swapped === 0) throw new Error("the build never imported " + target);
+if (swapped === 0 || [target].flat().some((t) => !hit.has(t))) throw new Error("the build never imported " + [target].flat().filter((t) => !hit.has(t)).join(", "));
 if (stripped === 0) throw new Error("the theme import was never removed");
 `,
   );
@@ -165,7 +167,7 @@ if (stripped === 0) throw new Error("the theme import was never removed");
   }
   const css = readdirSync(join(pages, "assets")).filter((f) => f.endsWith(".css")).map((f) => readFileSync(join(pages, "assets", f), "utf8")).join("\n");
   if (/Space Grotesk/i.test(css)) throw new Error(`setup [${name}]: the no-theme build still ships the Shift Manager theme`);
-  return { pages, diff: `# the design-system import line removed in the bundler (src/styles.css), plus ${relative(REPO_ROOT, swap.with)} in place of ${relative(REPO_ROOT, swap.target)}` };
+  return { pages, diff: `# the design-system import line removed in the bundler (src/styles.css), plus ${relative(REPO_ROOT, swap.with)} in place of ${[swap.target].flat().map((t) => relative(REPO_ROOT, t)).join(" and ")}` };
 }
 
 // ---- b0: the pentest config, from the README alone -------------------------------
@@ -315,7 +317,7 @@ async function controls(only: string[] | null): Promise<void> {
     {
       name: "optimistic-post",
       build: async () => {
-        const swap = swapOf("transcript.ts", "it-opens-a-lab", "optimistic-post.ts");
+        const swap = swapOf(["transcript.ts", "send.ts"], "it-opens-a-lab", "optimistic-post.ts");
         return { themed: await swapBuild("ctl-optimistic-post", swap, false), noTheme: await swapBuild("ctl-optimistic-post-no-theme", swap, true) };
       },
       must: ["a4", "b:post"],
