@@ -194,7 +194,8 @@ describe("the composer (V6)", () => {
     fireEvent.change(input, { target: { value: "@asker please look" } });
     await waitFor(() => expect(screen.getByTestId("composer-status").textContent).toBe(`ops.asker ${GAPS.turn.noTask}`));
     expect((screen.getByTestId("composer-send") as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId("composer-send").textContent).toBe("Send");
+    // The button draws v2's ⏎; its name says the line goes to a worker, not the channel.
+    expect(screen.getByTestId("composer-send").getAttribute("aria-label")).toBe("Send");
 
     fireEvent.change(input, { target: { value: "@nobody please" } });
     expect(screen.getByTestId("composer-status").textContent).toBe(`@nobody ${GAPS.turn.noWorker}`);

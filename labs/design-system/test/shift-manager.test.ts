@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { registryTokenDefaults } from "../../../packages/ui/scripts/token-defaults";
-import { SHIFT_MANAGER_CSS, PACKAGE_ROOT, REPO_ROOT, findThemeValues, rule, themeValues } from "./theme";
+import { SHIFT_MANAGER_CSS, PACKAGE_ROOT, REPO_ROOT, findThemeValues, luminance, rule, themeValues, toRgb } from "./theme";
 
 const css = readFileSync(SHIFT_MANAGER_CSS, "utf8");
 const light = rule(css, ":root");
@@ -77,6 +77,40 @@ describe("both variants", () => {
     expect(both["--fsd-nav-fg"]).toBe("var(--foreground)");
     expect(both["--fsd-panel-fg"]).toBe("var(--foreground)");
     for (const value of Object.values(both)) expect(value).toMatch(/^var\(--[a-z-]+\)$/);
+  });
+});
+
+describe("the two shell surfaces", () => {
+  // Shift Manager's own names for v2's sidebar and inspector surfaces (v2:15-16): not registry
+  // tokens, so the registry list above never covers them.
+  const SURFACES = ["--sidebar", "--inspector"];
+  const all = (variant: "light" | "dark") => Object.values(registryTokenDefaults()[variant]).map(toRgb);
+
+  it("sets both in light and in dark, each darker than that variant's page", () => {
+    for (const [name, variant] of [["light", light], ["dark", dark]] as const) {
+      const page = luminance(toRgb(variant["--background"]!));
+      for (const token of SURFACES) {
+        expect(variant[token], `${token} (${name})`).toMatch(/^#[0-9a-f]{6}$/);
+        expect(luminance(toRgb(variant[token]!)), `${token} (${name}) against --background`).toBeLessThan(page);
+      }
+    }
+  });
+
+  it("keeps each clear of every registry default, so the closure's leg c can tell skin from default", () => {
+    // Leg c reads painted colours to within 3 per channel; a surface that close to a
+    // neutral default would read as the default.
+    for (const [name, variant] of [["light", light], ["dark", dark]] as const) {
+      const defaults = [...all("light"), ...all("dark")];
+      expect(defaults.length).toBeGreaterThan(40);
+      for (const token of SURFACES) {
+        const rgb = toRgb(variant[token]!);
+        const close = defaults.filter((d) => d.every((v, i) => Math.abs(v - rgb[i]!) <= 3));
+        expect(close, `${token} (${name}) ${variant[token]}`).toEqual([]);
+      }
+    }
+    // Planted: a value one step off a registry default is caught by the same comparison.
+    const planted = all("light")[0]!.map((v) => Math.min(255, v + 1));
+    expect(all("light").some((d) => d.every((v, i) => Math.abs(v - planted[i]!) <= 3))).toBe(true);
   });
 });
 

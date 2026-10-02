@@ -1,6 +1,7 @@
 /**
  * Shift Manager's frame (S4): three columns, the sidebar, the centre at the level
- * and tab the URL names, and the right panel's slot for that level.
+ * and tab the URL names, and the right panel's slot for that level. The frame
+ * holds v2's 900px minimum width; below that the page scrolls.
  *
  * A Lab that refuses the first read for want of a verified organization, or
  * that names no organization for the person, gets the refusal screen and
@@ -58,7 +59,7 @@ function Refusal({ failure }: { failure: Failure }) {
             ? "Shift Manager opens a Lab only under an organization, and this Lab doesn't say which one you're in. Shift Manager shows nothing from the Lab until it does."
             : "The Lab's server refused the first read because the request carried no verified organization. Shift Manager shows nothing from the Lab until it does. Check that the Lab's config hands Shift Manager a credential (its devtool block) and that Shift Manager is opened on the address its start script printed."}
         </p>
-        <p className="mt-3 rounded-md bg-muted px-3 py-2 font-mono text-xs" data-testid="refusal-message">
+        <p className="mt-3 bg-muted px-3 py-2 font-mono text-xs" data-testid="refusal-message">
           {failure.httpStatus === undefined ? failure.message : `${failure.httpStatus} · ${failure.message}`}
         </p>
       </div>
@@ -75,10 +76,10 @@ function Unreachable({ failure, onRetry }: { failure: Failure; onRetry: () => vo
         <p className="mt-2 text-sm text-muted-foreground">
           The first read failed before the Lab said who you are. Check that the Lab's server is running, then retry.
         </p>
-        <p className="mt-3 rounded-md bg-muted px-3 py-2 font-mono text-xs" data-testid="unreachable-message">
+        <p className="mt-3 bg-muted px-3 py-2 font-mono text-xs" data-testid="unreachable-message">
           {failure.httpStatus === undefined ? failure.message : `${failure.httpStatus} · ${failure.message}`}
         </p>
-        <button type="button" onClick={onRetry} className="mt-3 rounded-md border px-3 py-1.5 text-sm" data-testid="unreachable-retry">
+        <button type="button" onClick={onRetry} className="mt-3 border px-3 py-1.5 text-sm" data-testid="unreachable-retry">
           Retry
         </button>
       </div>
@@ -117,7 +118,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
     </>
   );
   return (
-    <div className="flex h-screen min-h-0" data-testid="shell">
+    <div className="flex h-screen min-h-0 min-w-[900px]" data-testid="shell">
       <Sidebar route={route} gaps={gaps} onJump={() => setJumping(true)} look={look} />
       {route.level === "task" ? (
         // The task screen and its inspector read one row and one run.
@@ -167,7 +168,11 @@ function Centre({ snapshot, route, gaps, look }: { snapshot: LoadedSnapshot; rou
   }
 }
 
-/** The right panel's slot, per level: Chief of Staff's rail, the workstream's panel, the task's slot, or nothing. */
+/**
+ * The right panel's slot, per level: Chief of Staff's rail, the workstream's
+ * panel, the task's slot, or nothing. v2's rail: 340px on the inspector
+ * surface, and not drawn on a window narrower than 1180px (v2:26, 1121, 1219).
+ */
 function Panel({ snapshot, route, gaps }: { snapshot: LoadedSnapshot; route: Route; gaps: Gaps }) {
   let content = null;
   if (route.level === "cos") {
@@ -180,7 +185,7 @@ function Panel({ snapshot, route, gaps }: { snapshot: LoadedSnapshot; route: Rou
   }
   if (content === null) return null;
   return (
-    <aside className="w-72 shrink-0 overflow-y-auto border-l bg-card" data-testid="right-panel" data-panel={route.level}>
+    <aside className="hidden w-[340px] shrink-0 overflow-y-auto border-l bg-inspector min-[1180px]:block" data-testid="right-panel" data-panel={route.level}>
       {content}
     </aside>
   );

@@ -13,6 +13,10 @@ applies by default. Put `class="dark"` on an ancestor for the dark one. The same
 the navigator's and panels' `--fsd-nav-*` and `--fsd-panel-*` properties at the tokens, so they
 match the cards.
 
+It also sets two values no FSD token covers: `--sidebar`, the app's navigation column, and
+`--inspector`, its right-hand panel. Both are a step darker than the page. An app that doesn't
+use them can ignore them.
+
 Two rules the values keep. Yellow (`attention`) means only that a person must act. Corners are
 square.
 

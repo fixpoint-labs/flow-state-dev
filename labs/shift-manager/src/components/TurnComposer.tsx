@@ -11,6 +11,11 @@
  * (BR-5). A line that never got there keeps the draft and offers Retry. A line
  * that may have arrived keeps the draft and offers no Retry, so it isn't sent
  * twice.
+ *
+ * Drawn as v2's composer: one line, sent with ⏎ (Enter). Most composers are a
+ * 14px input over a mono footer that holds the send state and ⏎ (v2:305-309,
+ * 430-433, 639-644); Chief of Staff's is the larger one, a 16px input in a
+ * 1.5px ink box with ⏎ beside it and the send state under it (v2:175-178).
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { TurnNotDelivered } from "../lib/send";
@@ -83,6 +88,7 @@ export function TurnComposer({
   send,
   onDelivered,
   extra,
+  scale = "default",
 }: {
   testId: string;
   label: string;
@@ -94,6 +100,8 @@ export function TurnComposer({
   onDelivered?: (message: string) => void;
   /** Controls drawn beside Send. */
   extra?: ReactNode;
+  /** `cos`: Chief of Staff's larger composer (v2:175-178). */
+  scale?: "default" | "cos";
 }) {
   const [draft, setDraft] = useState("");
   const { state, run, reset } = useTurnSend();
@@ -111,42 +119,76 @@ export function TurnComposer({
     }
   };
 
+  const input = (
+    <input
+      type="text"
+      value={draft}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        reset();
+      }}
+      disabled={blocked !== null}
+      placeholder={placeholder}
+      aria-label={label}
+      className={`block w-full min-w-0 bg-transparent outline-none placeholder:text-muted-foreground disabled:opacity-60 ${
+        scale === "cos" ? "p-4 text-base" : "px-3 py-[11px] text-sm"
+      }`}
+      data-testid={`${testId}-input`}
+      data-look="composer-input"
+    />
+  );
+  const status = (
+    <p className="min-w-0" data-testid={`${testId}-status`} data-state={blocked !== null ? "blocked" : state.kind}>
+      {blocked !== null ? (
+        <span data-testid={`${testId}-blocked`}>{blocked}</span>
+      ) : (
+        <TurnSendStatus state={state} testId={testId} onRetry={() => void submit()} />
+      )}
+    </p>
+  );
+  const sendButton = (
+    <button
+      type="submit"
+      disabled={!canSend}
+      aria-label="Send"
+      data-testid={`${testId}-send`}
+      data-look="composer-send"
+      className={`shrink-0 bg-primary font-mono font-medium text-primary-foreground hover:bg-info disabled:opacity-50 ${
+        scale === "cos" ? "m-2 px-3 py-2 text-xs" : "px-[9px] py-1"
+      }`}
+    >
+      ⏎
+    </button>
+  );
+
   return (
-    <form onSubmit={(e) => void submit(e)} className="border-t p-3" data-testid={testId}>
-      <textarea
-        value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          reset();
-        }}
-        disabled={blocked !== null}
-        rows={2}
-        placeholder={placeholder}
-        aria-label={label}
-        className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm disabled:opacity-60"
-        data-testid={`${testId}-input`}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void submit();
-        }}
-      />
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground" data-testid={`${testId}-status`} data-state={blocked !== null ? "blocked" : state.kind}>
-          {blocked !== null ? (
-            <span data-testid={`${testId}-blocked`}>{blocked}</span>
-          ) : (
-            <TurnSendStatus state={state} testId={testId} onRetry={() => void submit()} />
-          )}
-        </p>
-        {extra}
-        <button
-          type="submit"
-          disabled={!canSend}
-          data-testid={`${testId}-send`}
-          className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
-        >
-          Send
-        </button>
-      </div>
+    <form onSubmit={(e) => void submit(e)} className="px-[22px] pt-2.5 pb-4" data-testid={testId}>
+      {scale === "cos" ? (
+        <>
+          <div className="flex items-center border-[1.5px] border-foreground bg-card" data-look="composer">
+            {input}
+            {extra}
+            {sendButton}
+          </div>
+          <div className="mt-1.5 font-mono text-[11px] font-medium text-muted-foreground" data-look="composer-footer">
+            {status}
+          </div>
+        </>
+      ) : (
+        <div className="border border-foreground bg-card" data-look="composer">
+          {input}
+          <div
+            className="flex items-center justify-between gap-3 border-t border-foreground/10 py-1.5 pr-2 pl-3 font-mono text-[11px] font-medium text-muted-foreground"
+            data-look="composer-footer"
+          >
+            {status}
+            <span className="flex shrink-0 items-center gap-2.5">
+              {extra}
+              {sendButton}
+            </span>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

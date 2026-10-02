@@ -2,7 +2,7 @@
  * The project level (S6): reachable, four tabs, each its named empty state
  * until projects ship (BR-9), and the team strip from the seat inventory.
  */
-import { EmptyState, Tabs } from "../components/ui";
+import { EmptyState, ScreenTitle, Tabs } from "../components/ui";
 import { teamsOf, type LoadedSnapshot } from "../lib/derive";
 import { navigate, PROJECT_TABS, type ProjectTab } from "../lib/routes";
 import type { Gaps } from "../gaps";
@@ -30,11 +30,11 @@ export function ProjectView({
       <header className="flex items-end justify-between px-4 pt-3">
         <div>
           <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">PROJECT</p>
-          <h1 className="text-base font-semibold">All workstreams</h1>
+          <ScreenTitle>All workstreams</ScreenTitle>
         </div>
         <ul className="flex gap-2 pb-1" data-testid="team-strip" aria-label="Teams">
           {teams.map(({ team, seats }) => (
-            <li key={team} className="rounded-full border px-2 py-0.5 text-xs">
+            <li key={team} className="border px-2 py-0.5 text-xs">
               {team} <span className="text-muted-foreground">{seats.length}</span>
             </li>
           ))}

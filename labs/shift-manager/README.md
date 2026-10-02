@@ -320,3 +320,9 @@ A fifth sends a line to a Lab's chief-of-staff seat, which runs a real model, an
 ```bash
 PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/shift-manager/it-briefs-and-talks-with-the-chief-of-staff/run.mts
 ```
+
+A sixth reads every screen against design v2, day and night, at a wide and a narrow window. For each element it checks the font that actually loaded, the surface, square corners, the highlighter (only on what waits on you) and the widths, and names the element and the line of the design it departs from. It needs no model key:
+
+```bash
+PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/shift-manager/it-draws-v2s-look/run.mts
+```

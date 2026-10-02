@@ -12,7 +12,7 @@
 import { useState } from "react";
 import { AskCard } from "../components/AskCard";
 import { TurnComposer } from "../components/TurnComposer";
-import { EmptyState, SectionFailure } from "../components/ui";
+import { EmptyState, ScreenTitle, SectionFailure } from "../components/ui";
 import { doorOf, rosterOf, workstreamsOf, waited, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { Ask } from "../lib/reads";
@@ -47,7 +47,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
     <div className="flex h-full min-h-0" data-testid="inbox">
       <section className="flex w-96 shrink-0 flex-col border-r">
         <header className="border-b px-4 py-3">
-          <h1 className="text-base font-semibold">Inbox</h1>
+          <ScreenTitle>Inbox</ScreenTitle>
           <div role="tablist" aria-label="Inbox filter" className="mt-2 flex gap-1">
             {FILTERS.map((f) => (
               <button
@@ -57,7 +57,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
                 aria-selected={f === filter}
                 data-filter={f}
                 onClick={() => setFilter(f)}
-                className={`rounded-md px-2 py-1 text-xs ${f === filter ? "bg-accent font-medium" : "text-muted-foreground"}`}
+                className={`px-2 py-1 text-xs ${f === filter ? "bg-accent font-medium" : "text-muted-foreground"}`}
               >
                 {f} <span data-testid={`inbox-filter-count-${f}`}>{asks.filter((a) => matches(f, a)).length}</span>
               </button>
@@ -105,7 +105,7 @@ export function Inbox({ snapshot, suspensionId, gaps }: { snapshot: LoadedSnapsh
           </ol>
         )}
       </section>
-      <section className="min-w-0 flex-1 overflow-y-auto p-6" data-testid="inbox-detail">
+      <section className="min-w-0 flex-1 overflow-y-auto bg-inspector p-6" data-testid="inbox-detail">
         {selected === null ? (
           <EmptyState title="Pick an ask">Choose an ask on the left to answer it.</EmptyState>
         ) : (
@@ -148,7 +148,7 @@ function Reply({
 }) {
   const route = replyRoute(ask, snapshot, gaps);
   return (
-    <div className="mt-4 rounded-md border">
+    <div className="mt-4">
       <TurnComposer
         testId="inbox-reply"
         label={`Reply to ${ask.seatId ?? "this worker"}`}
