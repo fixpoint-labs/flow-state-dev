@@ -20,7 +20,9 @@
  *               seat by its full id
  *   hire        asked for a seat, it hires one at once: no ask is raised, the
  *               seat is listed, its roster row is written, its address answers
- *   restart     after a restart the hired seat is still listed and answers
+ *   discover hired  in a fresh session, asked which seats were hired, it names
+ *               the new seat by its full id with its kind, coder
+ *   restart    after a restart the hired seat is still listed and answers
  *   ask         asked to fire it, it raises one human_approval naming the seat,
  *               and nothing changes yet
  *   answer      the resume route takes the answer and the turn completes
@@ -36,22 +38,34 @@
  *   deny-fire         Deny instead of Approve. Must fail at "seat gone" only.
  *   no-seat-delivery  The channel hands the seat's post to nobody. Must fail at
  *                     "a seat asks" only.
+ *   hide-hired-from-discover  The hired seat's roster row, which discover reads
+ *                     a hire from, is moved aside for the discover-hired turn
+ *                     and put back after. Must fail at "discover hired" only.
  *
  * Run:      pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts
  * Control:  GOAL_CONTROL=deny-fire pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts
  * Control:  GOAL_CONTROL=no-seat-delivery pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts
+ * Control:  GOAL_CONTROL=hide-hired-from-discover pnpm tsx goals/org-seats/cos-changes-the-roster/run.mts
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { HIRED_ROSTER_PREFIX } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
+import { LAB_ORG_ID } from "../../devforce-lab/lab/host.mts";
 import { CODER_KIND } from "../../devforce-lab/lab/workforce/flows/workers/coder.mts";
 import { REPO_ROOT, goalTmpDir, intentFreeEnv, runGoal } from "../../lib/index.mts";
 import { ASKER, runSeatAsks } from "./seat-asks.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["deny-fire", "no-seat-delivery"] as const;
+const CONTROLS = ["deny-fire", "no-seat-delivery", "hide-hired-from-discover"] as const;
+
+/** Whether `text` names `id` exactly: not inside a longer id, not as a bare suffix of it. */
+function standsAlone(text: string, id: string): boolean {
+  return new RegExp(`(?<![\\w.-])${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-]|\\.\\w)`).test(text);
+}
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
@@ -321,8 +335,7 @@ await runGoal(async () => {
     const answer = await api.lastReply(cosSession);
     // Each member by its full seat id, standing alone: a bare "em" could be a guess
     // from the channel's name, and "eng.em" inside a longer id is not that seat.
-    const named = (id: string) => new RegExp(`(?<![\\w.-])${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-]|\\.\\w)`).test(answer);
-    const missing = members.filter((m) => !named(m));
+    const missing = members.filter((m) => !standsAlone(answer, m));
     if (asked.status !== "completed") fail("discover", `the turn ended ${asked.status}`);
     else if (missing.length > 0) fail("discover", `the answer does not name ${missing.join(", ")} by full seat id:${answer.slice(0, 300)}`);
     else evidence.push(`discover: asked who is on ${channel.id}, the answer named ${members.join(", ")}`);
@@ -344,11 +357,45 @@ await runGoal(async () => {
       if (answers.status !== 201) fail("hire", `"${address}" does not answer: ${answers.status}`);
       else evidence.push(`hire: "${seat}" hired at once as ${address} (kind ${String(afterHire.inventory.find((r) => r.id === address)?.kind)}), no ask raised, its address answers`);
     }
+
+    // discover hired (BR-23): a fresh turn finds the seat it just hired. The
+    // question names neither the seat nor its kind; the line of the answer
+    // that names the seat must carry both. Under the control, the hired
+    // seat's roster row (what discover reads a hire from) is moved aside for
+    // this turn only and put back after, so every later leg is unchanged.
+    if (address !== undefined) {
+      const rosterKey = `${HIRED_ROSTER_PREFIX}${seat}`;
+      const side = createSQLiteStores({ filename: store });
+      const hidden = CONTROL === "hide-hired-from-discover" ? await side.resourceState.get("org", LAB_ORG_ID, rosterKey) : undefined;
+      if (hidden !== undefined) await side.resourceState.delete("org", LAB_ORG_ID, rosterKey, "any" as never);
+      try {
+        // A session of its own, so the hire turn's own words can't answer it.
+        const fresh = (await api.openSession(COS)).body.session.id as string;
+        const turn = await api.say(fresh, "Which seats has this organization hired? Look it up and give each one's full seat id and the worker kind it was hired into.");
+        const reply = await api.lastReply(fresh);
+        // The reply's own text, so its lines are real lines and not one JSON string.
+        const parsed = JSON.parse(reply) as unknown;
+        const text = Array.isArray(parsed)
+          ? parsed.map((part) => String((part as { text?: unknown }).text ?? "")).join("\n")
+          : String(parsed);
+        const line = text.split("\n").find((l) => standsAlone(l, seat) || standsAlone(l, address!));
+        if (turn.status !== "completed") fail("discover hired", `the turn ended ${turn.status}`);
+        else if (line === undefined) fail("discover hired", `the answer does not name "${seat}" by its full seat id: ${reply.slice(0, 400)}`);
+        else if (!standsAlone(line, CODER_KIND)) fail("discover hired", `the answer names "${seat}" without its kind "${CODER_KIND}": ${line.slice(0, 300)}`);
+        else evidence.push(`discover hired: asked which seats were hired, the answer named ${seat} with kind ${CODER_KIND}`);
+      } finally {
+        if (hidden !== undefined) await side.resourceState.set("org", LAB_ORG_ID, rosterKey, hidden.state as never, "any" as never);
+        side.close();
+      }
+    }
   } finally {
     await stop(served);
   }
-  if (failures.length > 0 || address === undefined) {
-    if (failures.length === 0) fail("hire", "no address to carry on with");
+  // A failed discover-hired turn changed nothing (its row is back), so the
+  // legs after it still run; any earlier failure leaves nothing to carry on with.
+  const blocking = failures.filter((f) => !f.startsWith("discover hired:"));
+  if (blocking.length > 0 || address === undefined) {
+    if (blocking.length === 0) fail("hire", "no address to carry on with");
     return { failures: graded(), evidence: evidence.join("; ") };
   }
 

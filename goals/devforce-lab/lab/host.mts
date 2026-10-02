@@ -576,11 +576,22 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           kinds: { [CHANNEL_KIND]: channelKind as never },
         });
 
+  // One record for the Lab's own flows and its seats. An org seat's id is its
+  // bare folder name, so a folder named like one of the Lab's flows (`channel`)
+  // would take that flow's key; it is refused here, by name, not overwritten.
+  const flows: Record<string, unknown> = Object.fromEntries(instances.map((instance) => [instance.kind, instance]));
+  for (const seat of hired) {
+    if (Object.hasOwn(flows, seat.id)) {
+      throw new Error(
+        `openLab: the worker "${seat.id}" can't be declared: "${seat.id}" is already the id of the Lab's "${seat.id}" flow. ` +
+          `Rename its folder.`,
+      );
+    }
+    flows[seat.id] = seat;
+  }
+
   const state = createFlowState({
-    flows: {
-      ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
-      ...Object.fromEntries(hired.map((seat) => [seat.id, seat])),
-    },
+    flows,
     stores: { default: { primary: options.stores } },
     // A configured resolver, so the development-organization fallback does
     // not answer an unauthenticated HTTP read (FIX-1515 / BR-17).
@@ -702,10 +713,6 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // The inventory, in-process, under the lab's organization, once the channel
   // sessions it registers from exist. A problem fails the open, naming it.
   if (options.inventory === true) {
-    const flows: Record<string, unknown> = {
-      ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
-      ...seats,
-    };
     const run = async (request: InventoryActionRequest): Promise<unknown> => {
       const result = (await runAction({
         flow: flows[request.flowKind],
