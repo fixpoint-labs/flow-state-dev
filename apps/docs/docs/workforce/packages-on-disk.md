@@ -88,7 +88,7 @@ const seats = hireWorkforce(workers, { kinds, seatBlocks, packageBlocks });
 
 Leave `packageBlocks` out and a held package brings its instructions and no tools.
 
-`readWorkforce` puts the packages in each worker's reach on that worker's record as `packages`: the org's library, its team's library, and its own folder. Which of them the worker holds is decided when it is hired, from its `packages:` line.
+`readWorkforce` puts the packages in each worker's reach on that worker's record as `packages`: the org's library, its team's library, and its own folder. An org seat has no team, so its reach is the org's library and its own folder. Which of them the worker holds is decided when it is hired, from its `packages:` line.
 
 ## When a file is wrong
 

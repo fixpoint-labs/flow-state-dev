@@ -801,7 +801,7 @@ package it holds. A written `tools:` line is the whole list, and a package block
 it; `tools: []` gets the text and no tools.
 
 `readWorkforce` puts the packages in each worker's reach on its record as `packages`
-(`PackageManifest[]`: the org's library, its team's, and its own folder) and reports refused package
+(`PackageManifest[]`: the org's library, its team's, and its own folder; an org seat has no team's) and reports refused package
 folders on `packageErrors`. `readDeclaredRoster` reports the same entries on its `package` layer.
 The blocks come from `fsdev gen`'s `packageBlocks` export, keyed by package path and then block
 name; pass it to `hireWorkforce`, which decides from each worker's folder and `packages:` line which
