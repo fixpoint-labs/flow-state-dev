@@ -243,7 +243,7 @@ The row is gone straight away. When `released` is `true`, the address also stops
 
 Firing removes the seat, not its history. Sessions, state and resources it wrote are left alone. If you want those gone, delete them yourself.
 
-Because firing removes the seat's inventory row, a team list built from the inventory stops showing it. A seat fired by an earlier version left its inventory row behind. A reader that joins the inventory with the roster hides it, because no roster row backs it: `listedSeatRows` from `@flow-state-dev/workforce/browser` is that join, and Shift Manager's team list uses it. A user-owned seat's roster row is readable only by its owner, on the server, so a browser list can't back it and leaves it out.
+Because firing removes the seat's inventory row, a team list built from the inventory stops showing it. An inventory row can still outlive its roster row, so a list that joins the inventory with the roster hides any row no roster row backs. `listedSeatRows` from `@flow-state-dev/workforce/browser` is that join. A user-owned seat's roster row is readable only by its owner, on the server, so a browser list can't back it and leaves it out.
 
 If the process dies between the two deletes, the inventory row is left too. Calling `fire` again for that seat removes it, a user-owned one included, and answers with `released: false` and `alreadyGone: true`. It only does that for a row marked `hired: true`. A declared seat can sit at the same address, so a row that doesn't say it was hired is never removed this way.
 
@@ -331,7 +331,7 @@ A read the store will not complete throws the same way. Nothing is loaded in any
 
 ## Repairing a seat whose kind is gone
 
-Cut a kind from your app and every seat hired into it stops coming back. The start skips each one and names it in `problems`, and keeps doing so on every start, because nothing is deleted at start. That's deliberate: the row is the only record of who the seat was, and whether to keep it is your call.
+Cut a kind from your app and every seat hired into it stops coming back. The start skips each one and names it in `problems`, and keeps doing so on every start, because nothing is deleted at start. The row is the only record of who the seat was, so keeping or removing it is your call.
 
 `createSeatHireBlocks` gives you two more handlers to make that call with, mounted as actions beside `hire` and `fire`:
 
