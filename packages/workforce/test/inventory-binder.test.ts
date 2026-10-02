@@ -644,11 +644,16 @@ describe("a channel's session after its CHANNEL.md becomes a template", () => {
     try {
       const after = [record("eng.room", { mintFor: "projects", members: [] })];
       const second = await host(after, { inventory: true, adapter, resources: { projects }, open: [] });
+      expect((await bind(second, { channels: after, seats: [] })).problems).toEqual([]);
       try {
         const posted = await second.act("eng.room", "post", { body: "no longer a channel" });
         expect(String(posted.error)).toMatch(/channel-is-a-template/);
         const read = await second.act("eng.room", "read", {});
         expect(String(read.error)).toMatch(/channel-is-a-template/);
+        // Nor can the surviving session put its channel row back.
+        const registered = await second.act("eng.room", "registerChannelInInventory", {});
+        expect(String(registered.error)).toMatch(/channel-is-a-template/);
+        expect((await second.keys()).filter((key) => key.endsWith("/eng.room"))).toEqual([]);
       } finally {
         await second.dispose();
       }
