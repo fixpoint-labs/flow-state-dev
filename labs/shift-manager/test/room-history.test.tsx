@@ -153,6 +153,28 @@ describe("the room view (BR-23)", () => {
         await vi.advanceTimersByTimeAsync(ms);
       });
 
+    it("a room that rested while thousands of lines landed catches up a few pages per read, carrying on from its cursor", async () => {
+      vi.useFakeTimers();
+      try {
+        const room = liveRoom();
+        render(<RoomView sessionId="talk-1" page={room.page} post={async () => undefined} />);
+        await tick(60 * 60_000); // opened, and resting
+        room.state.end = 5_001;
+        const before = room.state.reads;
+        await act(async () => window.dispatchEvent(new Event("focus")));
+        await tick(10);
+        // One refresh reads at most a few pages, not the 25 between the cursor and the end.
+        expect(room.state.reads - before).toBeLessThanOrEqual(5);
+        expect(screen.queryByText("line 5001")).toBeNull();
+        // The burst carries on from where that refresh stopped.
+        await tick(30_000);
+        expect(screen.getByText("line 5001")).toBeTruthy();
+        expect(screen.getByText("line 2")).toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("Retry after a failed read arms a burst, not one read", async () => {
       vi.useFakeTimers();
       try {

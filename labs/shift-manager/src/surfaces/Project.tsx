@@ -276,6 +276,9 @@ function ProjectStream({ project }: { project: Project }) {
   return <Room key={talk.sessionId} sessionId={talk.sessionId} />;
 }
 
+/** The most pages one refresh of an open room reads; the burst reads the rest. */
+const CATCH_UP_PAGES = 5;
+
 /** The room through one talk session, as the Lab answers it. */
 function Room({ sessionId }: { sessionId: string }) {
   const { clients } = useLab();
@@ -316,11 +319,12 @@ export function RoomView({
   const refresh = useRef<{ wake(): void; stop(): void } | undefined>(undefined);
 
   /**
-   * Open the room at its end, or once it is open read every page after the
-   * cursor. One read at a time; a second call waits for the first. A failure
-   * is shown, and thrown to the caller.
+   * Open the room at its end, or once it is open read up to
+   * {@link CATCH_UP_PAGES} pages after the cursor. One read at a time; a
+   * second call waits for the first. A failure is shown, and thrown to the
+   * caller.
    *
-   * @returns how many new lines it read.
+   * @returns how many new lines it read; at least 1 if the cursor moved.
    */
   const readNew = useCallback(async (): Promise<number> => {
     const previous = reading.current;
@@ -335,12 +339,22 @@ export function RoomView({
           setFloor(tail.floor);
           cursor.current = tail.cursor;
         } else {
-          await readRoomPages(page, cursor.current, (read) => {
-            found += read.lines.length;
-            const fresh = read.lines.map(asTranscriptLine);
-            setLines((shown) => mergeLines(shown ?? [], fresh));
-            cursor.current = Math.max(cursor.current ?? 0, read.nextCursor);
-          });
+          const from = cursor.current;
+          // A few pages per refresh: a room far behind is caught up by the
+          // burst's next reads, from the cursor this one leaves.
+          await readRoomPages(
+            page,
+            from,
+            (read) => {
+              found += read.lines.length;
+              const fresh = read.lines.map(asTranscriptLine);
+              setLines((shown) => mergeLines(shown ?? [], fresh));
+              cursor.current = Math.max(cursor.current ?? 0, read.nextCursor);
+            },
+            CATCH_UP_PAGES,
+          );
+          // Pages of removed lines alone still moved the room on: not a quiet read.
+          if (found === 0 && cursor.current > from) found = 1;
         }
         setFailure(undefined);
         return found;

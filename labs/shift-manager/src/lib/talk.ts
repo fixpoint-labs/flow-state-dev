@@ -121,14 +121,21 @@ export async function readRoom(clients: LabClients, kind: string, sessionId: str
 }
 
 /**
- * Read every page of a room after `after`, handing each page to `onPage` as
- * it arrives, until the cursor stops advancing.
+ * Read the pages of a room after `after`, handing each page to `onPage` as it
+ * arrives, until the cursor stops advancing or `maxPages` pages are read. A
+ * room further behind than that is caught up by the next call, from the
+ * cursor this one returns.
  *
  * @returns the cursor to read after next.
  */
-export async function readRoomPages(page: (after: number) => Promise<RoomPage>, after: number, onPage: (page: RoomPage) => void): Promise<number> {
+export async function readRoomPages(
+  page: (after: number) => Promise<RoomPage>,
+  after: number,
+  onPage: (page: RoomPage) => void,
+  maxPages = Number.POSITIVE_INFINITY,
+): Promise<number> {
   let cursor = after;
-  for (;;) {
+  for (let pages = 0; pages < maxPages; pages += 1) {
     const read = await page(cursor);
     onPage(read);
     // A page can be empty and still move the cursor: every line on it was a
@@ -136,6 +143,7 @@ export async function readRoomPages(page: (after: number) => Promise<RoomPage>, 
     if (read.nextCursor <= cursor) return cursor;
     cursor = read.nextCursor;
   }
+  return cursor;
 }
 
 /** The most lines one `read` returns: workforce's `ROOM_PAGE_SIZE` (pinned in `static.test.ts`). */
