@@ -20,3 +20,6 @@ On today's `main` the run fails at start 2: `createSeatHireBlocks` has no `broke
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-10-02 | `9427a4da4` with `packages/workforce/src` checked out from `origin/main` (`f3ce816b1`), then restored | n/a | FAIL (expected) | Exit 1 at start 1: `@flow-state-dev/workforce/browser` does not provide `listedSeatRows`, and `createSeatHireBlocks` has no `brokenSeats` or `rehire`. Today's `main` has no read to grade. |
+| 2026-10-02 | `9427a4da4`, `GOAL_CONTROL=fire-keeps-inventory` | n/a | FAIL (expected) | Exit 1, **`team-list:retired-row-gone` only**: `the inventory still holds support-desk.support.joe`. Every other assertion held, `team-list:no-cut-seat` included, because the join hides the row. |
+| 2026-10-02 | `9427a4da4` | n/a | PASS | Exit 0. Start 2 named 3 rows; the read listed `support.joe` and `support.kim` as `kind-gone` and `support.lin` as `refused` with the start's own detail; Deny left `support.joe`'s row unchanged and listed; after a restart the person approved one retire and two re-hires; start 4 reported 0 problems, the read listed none, the team list was `support.kim`, `support.lin`, `support.ada` (no `support.joe`, no `support.old`), and all three answered on `concierge`. |
