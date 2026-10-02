@@ -36,9 +36,9 @@
   <text x="58" y="234" class="p">webhooks · schedules · mcp</text>
   <text x="58" y="254" class="p">entries only the flow can call</text>
   <text x="58" y="286" class="muted">Shared by every instance.</text>
-  <text x="58" y="304" class="muted">Answers no request itself:</text>
-  <text x="58" y="324" class="code">/api/flows/review/…</text>
-  <text x="58" y="342" class="muted">is a miss for a collection.</text>
+  <text x="58" y="304" class="muted">Answers no request itself.</text>
+  <text x="58" y="324" class="muted">Requests name an instance id;</text>
+  <text x="58" y="342" class="muted">the kind is never a fallback.</text>
 
   <!-- Process -->
   <rect x="312" y="84" width="280" height="300" rx="14" class="wall-sess"/>
@@ -61,7 +61,7 @@
   <!-- Store -->
   <rect x="612" y="84" width="280" height="300" rx="14" class="wall-org"/>
   <text x="628" y="108" class="h">Your store</text>
-  <text x="628" y="126" class="muted">Survives restarts and deploys</text>
+  <text x="628" y="126" class="muted">Kept across restarts when persistent</text>
 
   <rect x="628" y="142" width="248" height="152" rx="10" class="card-line"/>
   <text x="642" y="166" class="h">Session chat-1</text>

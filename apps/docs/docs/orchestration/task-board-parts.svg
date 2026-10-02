@@ -51,7 +51,7 @@
   <text x="314" y="186" class="code">id · goal · assignee · deps</text>
   <text x="314" y="204" class="code">status · priority · run</text>
   <text x="314" y="228" class="code">claimedBy</text>
-  <text x="314" y="246" class="muted">Server only. The browser never sees it.</text>
+  <text x="314" y="246" class="muted">Server only. The rest streams to pages.</text>
 
   <text x="300" y="294" class="p">request</text>
   <text x="380" y="294" class="muted">default; lasts one request</text>

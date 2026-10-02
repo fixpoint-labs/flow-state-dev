@@ -49,7 +49,7 @@
   <text x="378" y="212" class="p">content: the body</text>
   <text x="378" y="232" class="p">state: its own typed fields</text>
   <text x="378" y="262" class="code">ctx.resources.draft</text>
-  <text x="378" y="280" class="muted">Self-contained, versioned</text>
+  <text x="378" y="280" class="muted">State versioned; content is not</text>
 
   <rect x="628" y="142" width="248" height="154" rx="10" class="card-line"/>
   <text x="642" y="166" class="h">One item of a collection</text>

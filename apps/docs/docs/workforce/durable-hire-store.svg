@@ -25,7 +25,7 @@
   <!-- Store -->
   <rect x="28" y="84" width="604" height="320" rx="14" class="wall-store"/>
   <text x="44" y="108" class="h">Your store, organization scope</text>
-  <text x="44" y="126" class="muted">Survives restarts and redeploys. One copy per organization.</text>
+  <text x="44" y="126" class="muted">One copy per organization. Kept across restarts when persistent.</text>
 
   <rect x="44" y="142" width="280" height="250" rx="10" class="card"/>
   <text x="58" y="166" class="h">Roster row</text>

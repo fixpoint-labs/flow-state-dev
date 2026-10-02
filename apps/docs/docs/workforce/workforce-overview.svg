@@ -70,7 +70,7 @@
   <!-- Store -->
   <rect x="636" y="84" width="256" height="300" rx="14" class="wall-org"/>
   <text x="652" y="108" class="h">Your store</text>
-  <text x="652" y="126" class="muted">Survives restarts</text>
+  <text x="652" y="126" class="muted">Kept across restarts when persistent</text>
 
   <rect x="652" y="142" width="224" height="104" rx="10" class="card"/>
   <text x="666" y="166" class="h">Sessions on the seat</text>
