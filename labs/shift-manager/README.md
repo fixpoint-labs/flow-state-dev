@@ -175,7 +175,7 @@ You are the chief of staff for this team. Answer questions about who is working 
 
 What it can do is up to its instructions and the tools you give it. Shift Manager only carries your lines to it and shows what it answers. A Lab with two seats of that name gets a line naming both, and Shift Manager talks to neither.
 
-A Lab with no chief of staff needs nothing in its config. Every screen works, and Shift Coordinator shows the summary of asks and runs. Where the conversation would be, it says "This Lab declares no shift coordinator" and how to declare one. That message needs an open inventory (above). With no inventory, the conversation area shows an error about the inventory instead.
+A Lab with no chief of staff needs nothing in its config. Every screen works, and Shift Coordinator shows the summary of asks and runs. Where the conversation would be, it says "This Lab declares no shift coordinator" and how to declare a `chief-of-staff` seat. That message needs an open inventory (above). With no inventory, the conversation area shows an error about the inventory instead.
 
 `test/fixtures/ask-lab/lab.mts` is a small Lab that does all of the above in one file.
 
@@ -222,7 +222,7 @@ pnpm --filter @flow-state-dev/shift-manager start --config <your config> --devto
 
 ### What a coding run is handed
 
-When you approve a feature in Inbox, or post `slug: what to build` on a workstream, the team's coordinator files it as a task and a coder seat picks it up as a coding run. In the `devteam` profile, the run's prompt holds, in this order:
+When you approve a feature in Inbox, or post `slug: what to build` on a workstream, the team's own coordinator seat, not the `chief-of-staff` seat behind Shift Coordinator, files it as a task and a coder seat picks it up as a coding run. In the `devteam` profile, the run's prompt holds, in this order:
 
 - **The task.** The feature you approved, or what you posted after `slug:`, word for word.
 - **The seat's own files.** Its instructions, the document it names (the team's standing brief), and its skills.
