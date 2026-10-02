@@ -597,7 +597,10 @@ async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; crowd: La
   const counts = new Map<string, number>();
   for (const l of held) counts.set(l.body, (counts.get(l.body) ?? 0) + 1);
   const missing = [...bodies("owner"), ...bodies("member")].filter((b) => counts.get(b) !== 1);
-  if (missing.length > 0) fail(burstLeg, `${missing.length} of ${burst.length} burst lines are not in the room exactly once`);
+  if (missing.length > 0) {
+    const where = missing.slice(0, 3).map((b) => `"${b}" ${counts.get(b) ?? 0}x at seq [${held.filter((l) => l.body === b).map((l) => l.seq).join(",")}]`);
+    fail(burstLeg, `${missing.length} of ${burst.length} burst lines are not in the room exactly once: ${where.join("; ")}; room seqs ${Math.min(...held.map((l) => l.seq))}..${Math.max(...held.map((l) => l.seq))} (${held.length} lines)`);
+  }
   const seqs = held.map((l) => l.seq);
   if (new Set(seqs).size !== seqs.length) fail(burstLeg, "two lines share a sequence number");
 
