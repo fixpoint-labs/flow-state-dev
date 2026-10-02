@@ -186,7 +186,7 @@ Route templates across these docs write the segment that carries the id as `:flo
 
 The `kind` still says what an instance *is*. Sessions and requests record it alongside the id, listings group by it, and the definition-level transports below apply to every instance of the definition.
 
-A session belongs to the instance that created it, as the [plate above](#flowtype-vs-flowinstance) shows, and every entry point refuses it through any other copy, each in its own idiom:
+A session belongs to the instance that created it, as the [figure above](#flowtype-vs-flowinstance) shows. One started through `review-east` is refused when a later call names it through `review-west`, and each entry point refuses it in its own way:
 
 | Surface | What a mismatched address gets you |
 |---|---|

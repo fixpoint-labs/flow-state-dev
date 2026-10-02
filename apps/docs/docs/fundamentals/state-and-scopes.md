@@ -252,7 +252,7 @@ userStateSchema: z.object({
 })
 ```
 
-Every flow's user state schema is compared at startup, and incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. [Flow Isolation](/docs/advanced/flow-isolation) keeps one record per flow copy instead.
+Every flow on the server shares one user record, so each flow's user state schema is compared at startup. Incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. [Flow Isolation](/docs/advanced/flow-isolation) gives each flow copy its own record instead.
 
 **Org** is shared by the whole team: configuration, knowledge bases, settings an admin controls for everyone.
 
@@ -264,7 +264,7 @@ orgStateSchema: z.object({
 })
 ```
 
-Org state gets the same startup schema check. Read it with `ctx.org?.state.config`: `ctx.org` is optional in the types, but every request runs in an organization, so it is there on every execution ([where that organization comes from](/docs/server/authentication#every-request-runs-in-an-organization)). A later request against a session that resolves to a different organization throws `OrgBindingMismatchError`.
+Org state is shared across flows the same way and gets the same startup check. Read it with `ctx.org?.state.config`: `ctx.org` is optional in the types, but every request runs in an organization, so it is there on every execution ([where that organization comes from](/docs/server/authentication#every-request-runs-in-an-organization)). A session is tied to the organization it was created in, and a request against it that resolves to a different organization throws `OrgBindingMismatchError`.
 
 For the full operation reference and CAS semantics that apply to all four scopes, see [State Operations](/docs/fundamentals/state-operations). For how `userId` and `orgId` flow into a request — including who's responsible for verifying them — see [Authentication](/docs/server/authentication).
 

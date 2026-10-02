@@ -74,8 +74,8 @@
     <text class="muted" x="682" y="246">your messages and replies;</text>
     <text class="muted" x="682" y="262">history reads them next turn</text>
     <text class="p" x="672" y="326">A page reload reads it back.</text>
-    <text class="muted" x="672" y="352">In memory, a server restart</text>
-    <text class="muted" x="672" y="368">loses it. SQLite or Postgres</text>
+    <text class="muted" x="672" y="352">Held in memory, it is lost on</text>
+    <text class="muted" x="672" y="368">restart. SQLite or Postgres</text>
     <text class="muted" x="672" y="384">keeps it.</text>
   </g>
 
