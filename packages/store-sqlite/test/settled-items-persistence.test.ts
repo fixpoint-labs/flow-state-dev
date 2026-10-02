@@ -61,20 +61,35 @@ describe("a settled request's items on SQLite", () => {
 
     // A live stream whose `onEvent` yields on a block_trace's `item.done` (the
     // emitter's contract allows a Promise). The run does not wait on it.
+    const yielded: Promise<void>[] = [];
     const response = createResponseEmitter({
       requestId,
-      onEvent: async (event) => {
-        if (event.type === "item.done" && event.item.type === "block_trace") {
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        }
+      onEvent: (event) => {
+        if (event.type !== "item.done" || event.item.type !== "block_trace") return;
+        const pending = new Promise<void>((resolve) => setTimeout(resolve, 0));
+        yielded.push(pending);
+        return pending;
       }
     });
 
     // What a poller sees the moment the terminal status lands: read the record
     // straight after the write that settles it, before anything else runs.
+    // The order the store is written in: the root trace's completed output
+    // must be handed to `persistItems` before the write that settles the status.
+    const writes: string[] = [];
+    const persistItems = stores.request.persistItems.bind(stores.request);
+    stores.request.persistItems = (id, items) => {
+      const root = items.find(
+        (item) => item.type === "block_trace" && (item as BlockTraceItem).blockInstanceId === `${requestId}:root:0`
+      ) as BlockTraceItem | undefined;
+      if (id === requestId && root?.output !== undefined) writes.push("root output");
+      persistItems(id, items);
+    };
+
     let atSettle: RequestRecord | undefined;
     const set = stores.request.set.bind(stores.request);
     stores.request.set = async (id, value, expectedVersion) => {
+      if (id === requestId && value.status === "completed") writes.push("completed");
       const result = await set(id, value, expectedVersion);
       if (id === requestId && value.status === "completed" && atSettle === undefined) {
         atSettle = await stores.request.get(id);
@@ -95,6 +110,8 @@ describe("a settled request's items on SQLite", () => {
       responseEmitter: response
     });
 
+    expect(writes.indexOf("root output")).toBeGreaterThanOrEqual(0);
+    expect(writes.indexOf("root output")).toBeLessThan(writes.indexOf("completed"));
     expect(atSettle?.status).toBe("completed");
     const root = (atSettle?.items ?? []).find(
       (item): item is BlockTraceItem =>
@@ -103,8 +120,9 @@ describe("a settled request's items on SQLite", () => {
     expect(root?.status).toBe("completed");
     expect(root?.output).toEqual({ kind: "inline", value: { outcome: "declined" } });
 
-    // Let the slow stream drain before the database closes.
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Let the stream's pending events finish before the database closes.
+    await Promise.all(yielded);
+    await new Promise((resolve) => setImmediate(resolve));
     stores.close();
   });
 });

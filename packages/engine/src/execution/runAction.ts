@@ -2217,11 +2217,12 @@ async function runActionAttempt<
         await response.emitItemDone(suspItem);
 
         if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
-        await flushSettlingItems();
+        await options.stores.request.flushItems(requestId);
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
         await flushTraces();
 
+        await flushSettlingItems();
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: itemsToPersist()
         });
@@ -2410,11 +2411,14 @@ async function runActionAttempt<
     // Checkpoints are fire-and-forget at emit time but must complete before
     // the action returns so terminal deletes win their race against any
     // straggling step writes (FIX-401).
-    await flushSettlingItems();
+    await options.stores.request.flushItems(requestId);
     await options.stores.request.flushEvents(requestId);
     await flushCheckpoints();
     await flushTraces();
 
+    // Then the items the record settles with, so the status below is never
+    // read without them on a store whose `set` drops `items`.
+    await flushSettlingItems();
     const completedAt = Date.now();
     const items = itemsToPersist();
     terminalRecordIncarnation = await settleRequestRecord(
@@ -2693,12 +2697,13 @@ async function runActionAttempt<
     if (signalAborted || wasIntentionalAbort) {
       if (wasIntentionalAbort) {
         // --- Abort path: user explicitly stopped the request ---
-        await flushSettlingItems();
+        await options.stores.request.flushItems(requestId);
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
         await flushTraces();
 
         const abortedAt = Date.now();
+        await flushSettlingItems();
         terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "aborted" }, {
           abortedAt,
           items: itemsToPersist(),
@@ -2727,11 +2732,12 @@ async function runActionAttempt<
         });
       } else {
         // --- Disconnect path: client went away without explicit abort ---
-        await flushSettlingItems();
+        await options.stores.request.flushItems(requestId);
         await options.stores.request.flushEvents(requestId);
         await flushCheckpoints();
         await flushTraces();
 
+        await flushSettlingItems();
         terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "interrupted" }, {
           interruptedAt: Date.now(),
           items: itemsToPersist(),
@@ -2760,12 +2766,13 @@ async function runActionAttempt<
       // emitted before the drain; it is non-undefined on exactly this branch.
       const normalized = normalizedError!;
 
-      await flushSettlingItems();
+      await options.stores.request.flushItems(requestId);
       await options.stores.request.flushEvents(requestId);
       await flushCheckpoints();
       await flushTraces();
 
       const failedAt = Date.now();
+      await flushSettlingItems();
       terminalRecordIncarnation = await settleRequestRecord(
         options.stores,
         requestId,
