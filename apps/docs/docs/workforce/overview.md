@@ -95,6 +95,12 @@ Pass a flow under a key that is not its own `kind` and the hire is refused. [Wor
 
 `readWorkforce` is Node-only (`@flow-state-dev/workforce/loader`). Import `hireWorkforce` from `@flow-state-dev/workforce`.
 
+## Projects, workstreams, and the seats that run them
+
+A workstream is a channel with the boards it holds: one place for the conversation about a piece of work, and the rows people claim to do it. You declare it the way you declare any channel, in a `CHANNEL.md`.
+
+A project groups workstreams. It is a record your organization keeps: a title, a status, an owner, its members, and links, stored once and visible to everyone in the organization. You don't write a file for each project. Each project has a room, one conversation its members share with the project's seats. You reach it through your own talk channel, which your Lab shapes once for every project, in an org-level default template declared beside the collection in `org/resources/projects.ts`. A team that wants its own can still declare one in a `CHANNEL.md` with `mintFor: projects`. Only members read or post in a project's room. Other members' lines show up when your view next reads the room, not the instant they're posted. [Projects](./projects) covers the record and how to create one.
+
 ## What it will not do
 
 Workforce does not staff a task board. It does not replace flows, sessions, or resources. Sessions and resources live on the flow copy you hired.

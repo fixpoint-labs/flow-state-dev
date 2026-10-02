@@ -39,7 +39,7 @@ A config that doesn't load, or doesn't default-export a `FlowState`, stops the c
 
 A team profile is a Lab's config kept in this package, under `teams/<name>/fsdev.config.mts`, so you can open it by name. This package ships one:
 
-- **`devteam`** is a software team. An EM seat files features as rows on the team's board, a coder seat runs each row as a supervised coding run, and a reviewer seat is declared but never woken. On start the EM asks you to approve one feature, so Inbox has something in it. Rows run on a scripted harness with no model unless `DEVFORCE_LAB_HARNESS=claude-code` is set. Its tree and the checks behind it are in [`goals/devforce-lab/lab/`](../../goals/devforce-lab/lab/README.md).
+- **`devteam`** is a software team. An EM seat files features as rows on the team's board, a coder seat runs each row as a supervised coding run, and a reviewer seat is declared but never woken. On start the EM asks you to approve one feature, so Inbox has something in it. It also opens with two projects you own: Storefront, which holds a workstream from each of the two teams, and Platform, which holds none yet. The EM answers every line posted in a project's room. Rows run on a scripted harness with no model unless `DEVFORCE_LAB_HARNESS=claude-code` is set. Its tree and the checks behind it are in [`goals/devforce-lab/lab/`](../../goals/devforce-lab/lab/README.md).
 
 One process opens one team. Passing `--team` or `--config` twice stops the command.
 
@@ -159,11 +159,13 @@ What it can do is up to its instructions and the tools you give it. Shift Manage
 - **Chief of Staff.** Where Shift Manager opens, at `/` or `/cos`. The top of the screen is Shift Manager's own summary of the shift: how many asks wait on you, each one with the same Approve and Reject you'd get in Inbox, and how many runs are going across how many workstreams. The numbers are the ones Inbox and Tasks show. Below it is your conversation with the Lab's chief-of-staff seat. A line goes through the seat's door, like any other line you send to a worker, and shows *delivered* once the seat's session holds it. The reply is what the seat wrote in that session. Come back later and the same conversation is there. The panel on the right lists each workstream with its running tasks and the asks its members have raised, and the workers on call, as Roster counts them.
 
   A Lab with no chief-of-staff seat still opens here. You get the summary, and in place of the conversation a line saying how to add one.
-- **Sidebar.** The organization, Jump to (⌘K), Chief of Staff, Inbox and Tasks with their counts, Roster with how many workers are on shift and on call, PROJECTS (the workstreams, until projects exist), and TEAMS: one row per team in the Lab's seat inventory, with how many of its workers are on shift and a square for each worker. Organization-level workers, such as a chief of staff, sit in one Staff row at the top. Hover a square for the worker and its status. Click a team to open Roster for that team. The footer repeats the on-shift and on-call counts.
+- **Sidebar.** The organization, Jump to (⌘K), Chief of Staff, Inbox and Tasks with their counts, Roster with how many workers are on shift and on call, PROJECTS (each project with its workstreams, then No project), and TEAMS: one row per team in the Lab's seat inventory, with how many of its workers are on shift and a square for each worker. Organization-level workers, such as a chief of staff, sit in one Staff row at the top. Hover a square for the worker and its status. Click a team to open Roster for that team. The footer repeats the on-shift and on-call counts.
 - **Jump to (⌘K).** Finds Chief of Staff, workstreams, seats, tasks and the Lab's [readable documents](#what-a-labs-config-provides). A seat opens Roster. A document opens read-only.
 - **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card, and can reply to the worker under it. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
 - **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream.
 - **Roster.** Every worker in the Lab, grouped by whether it's on shift, on call or off shift. Pick a team at the top to see only its workers. See [Roster](#roster).
+- **PROJECTS.** Each of the Lab's projects by title, with the workstreams its record lists beneath it. A project with no workstreams is still listed. Workstreams no project lists sit under **No project**, which shows only when there is one. Clicking the PROJECTS heading opens No project.
+- **A project.** Four tabs. **Stream** is the project's room: one conversation its members share with the project's seats. You read and post through your own talk session on the project. A member who has none gets Join, and someone who isn't a member is told the room is for its members and sees none of it. Other members' lines show when you come back to the tab and after you post, not the instant they're posted. **Board** draws a lane for each of its workstreams that holds a board. **Workstreams** lists the workstreams the project holds, and **Brief** is the project's brief. No project has no room and no brief, and says so.
 - **A workstream.** One channel and the boards attached to it. It has four tabs: Stream (the transcript, the composer, and its members' asks), Board (five columns: QUEUED, RUNNING, NEEDS YOU, IN REVIEW, DONE), Brief (the channel's charter) and Results. The right panel lists the channel's members with their status, and its rows by column.
 - **A task.** One task's run, live, with Interrupt. See [A task](#a-task).
 
@@ -241,7 +243,6 @@ Slots count what a worker holds now. Nothing in a Lab limits how many tasks a wo
 
 Each of these is drawn as a named empty state or a disabled control:
 
-- **Projects.** The project level's tabs, and a project's own workstreams.
 - **Parts of the task screen.** Listed under [A task](#not-there-yet).
 - **Posting a task's message to its workstream too.** Sending to the worker and posting to the channel are two separate things for now.
 - **Worker detail.** A seat's harness, and the NOW, TIME and COST columns on Tasks.
