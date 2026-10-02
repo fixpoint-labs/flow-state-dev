@@ -1498,9 +1498,9 @@ while it carries the incarnation fired.
 hired or still declared in a worker file, and has been registered in this organization. Pass
 `hiredRoster` on `createWorkforceCapability` so a runtime hire is listed the same way a
 file-declared seat is. A file-declared description wins over a same-id hire. After `fire`, a
-hired seat's roster row and its inventory row are both gone, so `discover` no longer lists it. A
-fire that stopped between the two leaves the inventory row, and `discover` still withholds the
-seat, because no roster row backs it.
+hired seat's roster row and its inventory row are both gone, so `discover` does not list it. A
+fire that stopped between the two leaves the inventory row; `discover` withholds the seat, since
+no roster row backs it.
 
 ### Hire and fire as catalog tools
 

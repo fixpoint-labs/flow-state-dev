@@ -79,7 +79,7 @@ kinds.agent = defineAgentWorkerFlow({
 });
 ```
 
-`registry-access.ts` is the module from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate), with two more exports, both read from `(await flowState.getRuntime()).registry` once the app is up. `kindAt(address)` returns the kind of the flow registered at that address; the hire tools use it to refuse a declared seat by name. `instanceAt(address)` returns the instance itself. A re-hire that a restart stopped part-way uses it to recognize the seat the restart registered from its row as its own and finish, instead of failing on a duplicate id. `fire` uses it to release only the seat its row minted.
+`registry-access.ts` is the module from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate), with two more exports, both read from `(await flowState.getRuntime()).registry` once the app is up. `kindAt(address)` returns the kind of the flow registered at that address; the hire tools use it to refuse a declared seat by name. `instanceAt(address)` returns the flow instance registered at that address, or `undefined`. The hire tools use it to tell a seat they minted apart from another seat at the same address, so a re-hire interrupted by a restart completes, and `fire` releases only its own seat.
 
 `createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
 
