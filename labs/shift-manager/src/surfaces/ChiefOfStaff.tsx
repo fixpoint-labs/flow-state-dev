@@ -37,7 +37,7 @@ import { describeFailure, type Failure, type Seat } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { RunReadError, type SessionItems } from "../lib/run";
 import { chiefOfStaffSuggestions, clockTime } from "../lib/shell";
-import { setChiefOfStaffWorking, useChiefOfStaffWorking } from "../lib/working";
+import { startChiefOfStaffWork, useChiefOfStaffWorking } from "../lib/working";
 import type { Gaps } from "../gaps";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -80,14 +80,13 @@ function Frame({ children, composer }: { children: ReactNode; composer?: ReactNo
  */
 function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
   const working = useChiefOfStaffWorking();
-  let sub: string | null = null;
-  if (working) sub = "working…";
-  else if (snapshot.inventory.ok) {
+  let status: string | undefined;
+  let watching: string | null = null;
+  if (snapshot.inventory.ok) {
     const { seats, workstreams } = snapshot.inventory.value;
     const cos = chiefOfStaffOf(seats, snapshot.orgId);
-    const status = cos.kind === "one" ? seatStates(snapshot).seats.get(cos.seat.id)?.status : undefined;
-    const watching = `watching ${plural(workstreams.length, "stream", "streams")} and ${plural(seats.length, "worker", "workers")}`;
-    sub = status === undefined ? watching : `${status} · ${watching}`;
+    status = cos.kind === "one" ? seatStates(snapshot).seats.get(cos.seat.id)?.status : undefined;
+    watching = `watching ${plural(workstreams.length, "stream", "streams")} and ${plural(seats.length, "worker", "workers")}`;
   }
   return (
     <header className="flex items-center gap-3" data-testid="cos-header">
@@ -100,9 +99,14 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
       </span>
       <div className="min-w-0">
         <ScreenTitle scale="cos">Chief of Staff</ScreenTitle>
-        {sub === null ? null : (
+        {working ? (
           <Meta className="block text-[11.5px] text-muted-foreground" testId="cos-sub">
-            {sub}
+            working…
+          </Meta>
+        ) : watching === null ? null : (
+          <Meta className="block text-[11.5px] text-muted-foreground" testId="cos-sub">
+            {status === undefined ? null : `${status} · `}
+            <span data-testid="cos-watching">{watching}</span>
           </Meta>
         )}
       </div>
@@ -301,7 +305,7 @@ function Talk({
       suggestions={suggestions}
       send={async (message) => {
         const target = sessionId ?? (fresh.current ??= newConversationId());
-        setChiefOfStaffWorking(true);
+        const settled = startChiefOfStaffWork();
         try {
           await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId: target }, message);
           setOpened(target);
@@ -311,7 +315,7 @@ function Talk({
           void refresh();
           throw error;
         } finally {
-          setChiefOfStaffWorking(false);
+          settled();
           setReads((n) => n + 1);
         }
       }}

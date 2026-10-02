@@ -130,7 +130,7 @@ export type Store = {
    */
   channels: Record<string, { rows: number; live: string[]; running: number; needs: boolean }>;
 };
-export type Where = { screen: Screen; width: Width; store: Store };
+export type Where = { screen: Screen; width: Width; store: Store; /** A line to the chief of staff is held in flight. */ working?: boolean };
 
 /** The computed values a row's elements must have. Each is graded in its own leg. */
 type Want = {
@@ -369,6 +369,7 @@ function sweep(args: { rows: Array<{ id: string; select: string }>; exceptions: 
         dot: el.getAttribute("data-dot"),
       })),
       sub: document.querySelector("[data-testid=cos-sub]")?.textContent ?? null,
+      watching: document.querySelector("[data-testid=cos-watching]")?.textContent ?? null,
       suggestions: document.querySelector("[data-testid=cos]") === null ? null : Array.from(document.querySelectorAll("[data-look=suggestion]")).map((el) => el.textContent ?? ""),
     },
   };
@@ -525,7 +526,7 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
   }
 
   // content: what the sidebar and Chief of Staff draw from the store.
-  for (const failure of sidebarAndCosContent(read.sidebarAndCos, where.store, where.screen)) failures.add("content", failure, tag);
+  for (const failure of sidebarAndCosContent(read.sidebarAndCos, where.store, where.screen, where.working)) failures.add("content", failure, tag);
 
   // content: what the shared parts draw from the store.
   if (where.screen === "workstream" && lab === "devteam") {
@@ -557,9 +558,9 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
       ? []
       : (await api.collection(host, seatsRef)).map((r) => {
           const id = String(r.id);
-          return { id, name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
+          return { id, kind: r.kind == null ? null : String(r.kind), name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
         });
-  const asks = await pendingAsksBySeat(api, userId);
+  const asks = await pendingAsksBySeat(api, userId, seats);
   const channels: Store["channels"] = {};
   let running = 0;
   for (const channel of roster.channels) {
@@ -575,7 +576,7 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
       needs: members.some((m) => (asks.get(m) ?? 0) > 0),
       live: members
         .map((m) => seats.find((s) => s.id === m))
-        .filter((s): s is { id: string; name: string } => s !== undefined && holds(s))
+        .filter((s): s is (typeof seats)[number] => s !== undefined && holds(s))
         .slice(0, 3)
         // A name two members share reaches neither, so that member is offered by its id.
         .map((s) => (members.filter((m) => seats.find((x) => x.id === m)?.name === s.name).length > 1 ? s.id : s.name)),
@@ -607,11 +608,18 @@ async function pendingAsks(api: LabApi, userId: string): Promise<number> {
   return [...(await pendingAsksBySeat(api, userId)).values()].reduce((a, b) => a + b, 0);
 }
 
-/** The person's pending asks, by the flow (the seat) whose session each waits in. */
-async function pendingAsksBySeat(api: LabApi, userId: string): Promise<Map<string, number>> {
+/**
+ * The person's pending asks, by the flow (the seat) whose session each waits in. Given the
+ * inventory's seats, only their sessions count, as Shift Manager reads asks: a session owned
+ * by a seat, or one with no owner on a seat's kind (`labs/shift-manager/src/lib/reads.ts`).
+ */
+async function pendingAsksBySeat(api: LabApi, userId: string, seats?: ReadonlyArray<{ id: string; kind: string | null }>): Promise<Map<string, number>> {
   const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&limit=500`);
+  const ids = new Set(seats?.map((s) => s.id));
+  const kinds = new Set(seats?.flatMap((s) => (s.kind === null ? [] : [s.kind])));
   const bySeat = new Map<string, number>();
   for (const session of (listing.sessions ?? []) as Array<Record<string, any>>) {
+    if (seats !== undefined && !(session.flowId != null ? ids.has(String(session.flowId)) : kinds.has(String(session.flowKind)))) continue;
     const found = await api.items(String(session.id), ["suspension", "suspension_resume"]);
     const resumed = new Set(found.filter((i) => i.type === "suspension_resume").map((i) => String(i.suspensionId)));
     const pending = found.filter((i) => i.type === "suspension" && PERSON_REASONS.has(String(i.reason)) && !resumed.has(String(i.suspensionId))).length;
@@ -766,6 +774,36 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
           }
         }
       }
+    }
+    if (lab === "desk") {
+      // Chief of Staff while it works: a line held in flight (its delivery check waits), so the
+      // working dot, the sub line and the thinking line are graded drawn, not only absent.
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      await page.route("**/requests/*/status", async (route) => {
+        await held;
+        await route.continue();
+      });
+      await page.setViewportSize({ width: WIDTHS[0], height: 1000 });
+      await page.getByTestId("cos-composer-input").fill(fixture.desk.line);
+      await page.getByTestId("cos-composer-send").click();
+      await page.getByTestId("cos-working").waitFor({ timeout: 20_000 });
+      for (const shift of SHIFTS) {
+        await page.getByTestId(shift === "day" ? "shift-day" : "shift-night").click();
+        await settle(page, shift);
+        const read = await page.evaluate(sweep, {
+          rows: LOOK.map((r) => ({ id: r.id, select: r.select })),
+          exceptions: EXCEPTIONS.map((x) => ({ id: x.id, select: x.select })),
+          whole: WHOLE,
+          tokens: [...TOKENS],
+        });
+        grade(read, { screen: "cos", width: WIDTHS[0], store, working: true }, `${lab} cos working ${shift} ${WIDTHS[0]}`, failures, lab);
+        counts.push(`cos working ${shift} ${WIDTHS[0]}: ${read.els.length}`);
+        if (process.env.GOAL_SHOTS !== undefined) await page.screenshot({ path: join(process.env.GOAL_SHOTS, `${lab}-cos-working-${shift}-${WIDTHS[0]}.png`) });
+      }
+      release();
+      await page.getByTestId("cos-working").waitFor({ state: "detached", timeout: 30_000 });
+      await page.unroute("**/requests/*/status");
     }
     if (errors.length > 0) failures.add("totality", `the page threw: ${errors.join(" | ")}`, lab);
     evidence.push(`${lab} painting elements read: ${counts.join("; ")}`);

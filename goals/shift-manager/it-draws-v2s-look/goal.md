@@ -10,7 +10,7 @@
 
 The look table is read against v2 itself (`specs/epics/FIX-1649/assets/design/v2/shift-manager-v2.dc.html`).
 
-**Signal:** Chromium walks every screen by clicking: workstream, task, Tasks, Chief of Staff, Inbox, Roster and project on DevTeam, and Chief of Staff on the desk. It toggles the sidebar's shift switch and the window width (1600 and 1100) in place. It reads the computed style of every visible element in one `page.evaluate` per screen state. Each failure is tagged `<leg> [<screen> <shift> <width>]` and cites the v2 line.
+**Signal:** Chromium walks every screen by clicking: workstream, task, Tasks, Chief of Staff, Inbox, Roster and project on DevTeam, and Chief of Staff on the desk. It toggles the sidebar's shift switch and the window width (1600 and 1100) in place. On the desk it then sends a second line and holds its delivery check, so Chief of Staff is graded working too (the sidebar's dot, the sub line and the thinking line, each required), in both shifts at 1600. It reads the computed style of every visible element in one `page.evaluate` per screen state. Each failure is tagged `<leg> [<screen> <shift> <width>]` and cites the v2 line.
 
 - **type**: for every family and weight the page's text is set in, `document.fonts` holds a loaded face. Each row's family, size, weight, tracking and line height match.
 - **surface**: each row's surface token and border. Radius 0 on every element, except the registry parts the theme's radius can't reach.
@@ -54,3 +54,4 @@ The SPEC names Tasks' ID column for `drift` and `missing`. That column arrives w
 | 2026-10-02 | feat/FIX-1737-b-sidebar-cos (pre-PR), `GOAL_CONTROL=drift` | n/a | FAIL (expected) | Only **surface** (`button[team]` 4px radius) and **type** (the Roster count in Space Grotesk), both shifts, both widths, both Labs. |
 | 2026-10-02 | feat/FIX-1737-b-sidebar-cos (pre-PR), `GOAL_CONTROL=unclassified` | n/a | FAIL (expected) | Only **totality**: `p "A line no row covers"`. |
 | 2026-10-02 | feat/FIX-1737-b-sidebar-cos (pre-PR), `GOAL_CONTROL=missing` | n/a | FAIL (expected) | Only **totality**: the team on-shift count matches 0, 1 expected. |
+| 2026-10-02 | feat/FIX-1737-b-sidebar-cos (review round 1) | n/a | PASS | Adds the held-send sweep (`desk cos working day/night 1600`). Pages with the working dot's fill and the thinking square removed FAIL only there: **totality** (thinking square, 0 of 1) and **surface** (the dot paints nothing). The ask oracle now counts only inventory seats' sessions. Controls `drift`, `unclassified`, `missing` FAIL only where named. |

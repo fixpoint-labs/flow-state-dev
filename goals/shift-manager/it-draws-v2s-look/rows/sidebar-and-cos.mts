@@ -8,16 +8,22 @@
  * Also here: what these rows draw from the Lab, graded in the **content**
  * leg against the store `run.mts` reads.
  */
-import type { Exception, Row, Screen, Store } from "../run.mts";
+import type { Exception, Row, Screen, Store, Where } from "../run.mts";
 
 const NAV = "[data-testid=sidebar] [data-testid^=nav-]";
 /** Screens whose sidebar has a current row other than Chief of Staff's: every one but Chief of Staff and the project. */
 const WITH_CURRENT: readonly Screen[] = ["workstream", "task", "tasks", "inbox", "roster"];
 
-/** Per workstream, the dot v2 gives it (v2:1183-1184): needs-you first, then running, else none. */
+/**
+ * Per workstream, the dot v2 gives it (v2:1183-1184): needs-you first, then running, else none.
+ * Must match Shift Manager's `streamMark` (`labs/shift-manager/src/lib/shell.ts`); kept as this
+ * check's own copy, since an oracle that imported the app's rule would grade the app against itself.
+ */
 export function dotOf(channel: Store["channels"][string]): "needs" | "run" | "none" {
   return channel.needs ? "needs" : channel.running > 0 ? "run" : "none";
 }
+/** One element while the sweep holds a line to the chief of staff in flight, none otherwise. */
+const whileWorking = ({ working }: Where) => (working === true ? 1 : 0);
 const channelsWith = (store: Store, dot: "needs" | "run") => Object.values(store.channels).filter((c) => dotOf(c) === dot).length;
 
 export const SIDEBAR_AND_COS_ROWS: Row[] = [
@@ -26,7 +32,7 @@ export const SIDEBAR_AND_COS_ROWS: Row[] = [
   { id: "Chief of Staff entry, current", audit: "F12", v2: { line: 1176, has: "cosBg: v.v === 'cos' ? INK" }, select: "[data-testid=nav-cos][aria-current=page]", on: ["cos"], min: 1, want: { surface: "foreground", border: { width: 1, colour: "foreground" } } },
   { id: "Chief of Staff entry name", audit: "F12", v2: { line: 52, has: "font-size:13.5px;font-weight:600" }, select: "[data-testid=nav-cos] > [data-look=nav-label]", min: 1, want: { family: "sans", size: 13.5, weight: 600 } },
   { id: "Chief of Staff entry square", audit: "F12", v2: { line: 53, has: "width:18px;height:18px;box-sizing:border-box;border:1px solid {{ nav.cosAvBd }}" }, select: "[data-testid=nav-cos] > [data-look=avatar]", min: 1, want: { family: "mono", size: 7.5, weight: 600, width: 18 } },
-  { id: "Chief of Staff working dot", audit: "F12", v2: { line: 55, has: "width:7px;height:7px;background:{{ nav.cosDot }}" }, select: "[data-testid=nav-cos] > [data-look=working][data-working=true]", min: 0, want: { surface: "info", width: 7 } },
+  { id: "Chief of Staff working dot", audit: "F12", v2: { line: 55, has: "width:7px;height:7px;background:{{ nav.cosDot }}" }, select: "[data-testid=nav-cos] > [data-look=working][data-working=true]", min: whileWorking, want: { surface: "info", width: 7 } },
   { id: "nav icon", audit: "F13", v2: { line: 58, has: "width:14px;height:14px" }, select: `${NAV} > [data-look=nav-icon]`, min: 3, want: { width: 14 } },
   { id: "Inbox count, something waits", audit: "F14", v2: { line: 1174, has: "inboxBadgeBg: openIds.length ? Y" }, select: "[data-testid=nav-inbox-count][data-waiting=true]", min: ({ store }) => (store.asks > 0 ? 1 : 0), want: { highlight: true, weight: 600 } },
   { id: "Tasks count", audit: "F15", v2: { line: 65, has: "font:500 10.5px 'IBM Plex Mono',monospace;color:var(--blue)" }, select: "[data-testid=nav-tasks-count]", min: 1, want: { colour: "info" } },
@@ -45,7 +51,7 @@ export const SIDEBAR_AND_COS_ROWS: Row[] = [
   { id: "Chief of Staff feed", audit: "C10", v2: { line: 123, has: "padding:36px 32px 12px" }, select: "[data-look=cos-feed]", on: ["cos"], min: 1, want: { padding: [36, 32, 12, 32] } },
   { id: "Chief of Staff column", audit: "C10", v2: { line: 124, has: "max-width:720px" }, select: "[data-look=cos-column]", on: ["cos"], min: 1, want: { width: 720 } },
   { id: "Chief of Staff square", audit: "C1", v2: { line: 126, has: "width:40px;height:40px;background:var(--ink);color:var(--paper);font:600 13px 'IBM Plex Mono'" }, select: "[data-testid=cos-header] > [data-look=avatar]", on: ["cos"], min: 1, want: { width: 40, surface: "foreground", family: "mono", size: 13, weight: 600 } },
-  { id: "Chief of Staff sub line", audit: "C1", v2: { line: 127, has: "font:500 11.5px 'IBM Plex Mono'" }, select: "[data-testid=cos-sub]", on: ["cos"], min: 1, want: { family: "mono", size: 11.5 } },
+  { id: "Chief of Staff sub line", audit: "C1", v2: { line: 127, has: "font:500 11.5px 'IBM Plex Mono'" }, select: "[data-testid=cos-sub], [data-testid=cos-watching]", on: ["cos"], min: 1, want: { family: "mono", size: 11.5 } },
   { id: "message label", audit: "C2", v2: { line: 135, has: "font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.12em" }, select: "[data-testid=cos] [data-look=message-label]", on: ["cos"], min: 1, want: { family: "mono", size: 10.5, tracking: 0.12 } },
   { id: "message time", audit: "C5", v2: { line: 135, has: "<span style=\"letter-spacing:0;color:var(--ink4)\">{{ m.time }}</span>" }, select: "[data-testid=cos] [data-look=message-time]", on: ["cos"], min: ({ store }) => (store.chiefOfStaff ? 1 : 0), want: { family: "mono", size: 10.5, tracking: 0 } },
   { id: "summary prose", audit: "C2", v2: { line: 136, has: "font-size:16px;line-height:1.55" }, select: "[data-look=summary-prose] > p, [data-look=summary-prose] > p > span", on: ["cos"], min: 2, want: { family: "sans", size: 16, lineHeight: 1.55 } },
@@ -53,8 +59,8 @@ export const SIDEBAR_AND_COS_ROWS: Row[] = [
   { id: "ask item", audit: "C3", v2: { line: 140, has: "padding:12px 14px;border-top:{{ it.bt }}" }, select: "[data-testid=cos-ask]", on: ["cos"], min: ({ store }) => store.asks, want: { padding: [12, 14, 12, 14] } },
   { id: "needs-you tag", audit: "C3", v2: { line: 142, has: "border:1px solid var(--ink);font:600 9.5px 'IBM Plex Mono',monospace;letter-spacing:.12em" }, select: "[data-look=needs-tag]", on: ["cos"], min: ({ store }) => store.asks, want: { highlight: true, family: "mono", size: 9.5, weight: 600, tracking: 0.12, border: { width: 1, colour: "foreground" } } },
   { id: "ask meta", audit: "C3", v2: { line: 143, has: "font:500 11px 'IBM Plex Mono',monospace;color:var(--ink3)" }, select: "[data-look=ask-meta], [data-look=ask-meta] > button", on: ["cos"], min: ({ store }) => store.asks, want: { family: "mono", size: 11 } },
-  { id: "thinking line", audit: "C7", v2: { line: 168, has: "font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink3)" }, select: "[data-testid=cos-working]", on: ["cos"], min: 0, want: { family: "mono", size: 11.5 } },
-  { id: "thinking square", audit: "C7", v2: { line: 168, has: "width:7px;height:7px;background:var(--blue)" }, select: "[data-testid=cos-working] > [data-look=working]", on: ["cos"], min: 0, want: { surface: "info", width: 7 } },
+  { id: "thinking line", audit: "C7", v2: { line: 168, has: "font:500 11.5px 'IBM Plex Mono',monospace;color:var(--ink3)" }, select: "[data-testid=cos-working]", on: ["cos"], min: whileWorking, want: { family: "mono", size: 11.5 } },
+  { id: "thinking square", audit: "C7", v2: { line: 168, has: "width:7px;height:7px;background:var(--blue)" }, select: "[data-testid=cos-working] > [data-look=working]", on: ["cos"], min: whileWorking, want: { surface: "info", width: 7 } },
   { id: "suggestion", audit: "C8", v2: { line: 174, has: "border:1px dashed rgba(var(--inkrgb),.45)" }, select: "[data-look=suggestion]", on: ["cos"], min: ({ store }) => (store.chiefOfStaff ? 1 : 0), want: { family: "mono", size: 11.5, border: { width: 1, colour: "foreground", style: "dashed" } } },
 ];
 
@@ -73,6 +79,8 @@ export type SidebarAndCosRead = {
   inbox: { text: string; waiting: string | null } | null;
   dots: Array<{ channel: string; dot: string | null }>;
   sub: string | null;
+  /** The sub line's store-backed tail, "watching N streams and M workers". */
+  watching: string | null;
   suggestions: string[] | null;
 };
 
@@ -82,7 +90,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * The **content** leg for these rows: each value drawn equals what the store
  * holds. Returns one failure line per mismatch, each citing its v2 line.
  */
-export function sidebarAndCosContent(read: SidebarAndCosRead, store: Store, screen: Screen): string[] {
+export function sidebarAndCosContent(read: SidebarAndCosRead, store: Store, screen: Screen, working = false): string[] {
   const failures: string[] = [];
   if (read.inbox === null) failures.push("the sidebar draws no Inbox count (v2:60)");
   else {
@@ -96,7 +104,11 @@ export function sidebarAndCosContent(read: SidebarAndCosRead, store: Store, scre
   }
   if (screen === "cos") {
     const watching = `watching ${plural(Object.keys(store.channels).length, "stream", "streams")} and ${plural(store.seats, "worker", "workers")}`;
-    if (read.sub === null || !read.sub.endsWith(watching)) failures.push(`Chief of Staff's sub line says "${read.sub ?? ""}", the store gives "${watching}" (v2:1424)`);
+    if (working) {
+      if (read.sub !== "working…") failures.push(`Chief of Staff's sub line says "${read.sub ?? ""}" while a line is in flight, v2 says "working…" (v2:1424)`);
+    } else if (read.watching !== watching) {
+      failures.push(`Chief of Staff's sub line says "${read.watching ?? ""}", the store gives "${watching}" (v2:1424)`);
+    }
     if (store.chiefOfStaff) {
       const channels = Object.entries(store.channels);
       const stream = channels.find(([, c]) => c.needs) ?? channels.find(([, c]) => c.running > 0);

@@ -6,7 +6,8 @@
 import { describe, expect, it } from "vitest";
 import type { LoadedSnapshot } from "../src/lib/derive";
 import { toBoardRow, toSeat, toWorkstream, type Ask, type BoardRow } from "../src/lib/reads";
-import { chiefOfStaffSuggestions, clockTime, initialsOf } from "../src/lib/shell";
+import { chiefOfStaffSuggestions, clockTime, initialsOf, streamMark } from "../src/lib/shell";
+import { isChiefOfStaffWorking, startChiefOfStaffWork } from "../src/lib/working";
 
 const ORG = "acme";
 
@@ -75,5 +76,29 @@ describe("Chief of Staff's suggestions (v2:174, 1421-1422)", () => {
 
   it("names no stream when none needs the person or runs", () => {
     expect(chiefOfStaffSuggestions(snapshotOf([row("eng.desk", "a", "done")], []))).toEqual(["Who's on call?"]);
+  });
+});
+
+describe("the chief of staff's working state (v2:55, 168, 1424)", () => {
+  it("stays lit until every line in flight has settled, so an early line can't clear a later one", () => {
+    expect(isChiefOfStaffWorking()).toBe(false);
+    const first = startChiefOfStaffWork();
+    const second = startChiefOfStaffWork();
+    first();
+    expect(isChiefOfStaffWorking()).toBe(true);
+    first();
+    expect(isChiefOfStaffWorking()).toBe(true);
+    second();
+    expect(isChiefOfStaffWorking()).toBe(false);
+  });
+});
+
+describe("a workstream's mark (v2:1183-1184)", () => {
+  const ok = (value: number) => ({ ok: true as const, value });
+  it("is needs-you over running, running over nothing", () => {
+    expect(streamMark({ needsYou: 1, running: ok(2) })).toBe("needs");
+    expect(streamMark({ needsYou: 0, running: ok(2) })).toBe("run");
+    expect(streamMark({ needsYou: null, running: ok(0) })).toBeNull();
+    expect(streamMark({ needsYou: 0, running: { ok: false, failure: { message: "boards offline" } } })).toBeNull();
   });
 });

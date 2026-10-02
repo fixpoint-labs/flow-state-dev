@@ -24,7 +24,7 @@ import type { ColorScheme, ShiftLook } from "../lib/color-scheme";
 import { navigate, NO_PROJECT, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
 import { openRows, seatStates, shiftCounts, streamCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
-import { initialsOf } from "../lib/shell";
+import { initialsOf, streamMark } from "../lib/shell";
 import { useChiefOfStaffWorking } from "../lib/working";
 import { Meta, PartialMark, SectionFailure, ShiftMark, StateSquare } from "../components/ui";
 import type { Gaps } from "../gaps";
@@ -242,14 +242,7 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
   const waiting = loaded !== undefined && loaded.asks.ok && loaded.asks.value.length > 0;
   // Each workstream's dot (v2:1183-1184): needs-you first, then running.
   const streams = loaded === undefined ? undefined : streamCounts(loaded);
-  const dots = new Map(
-    streams?.ok === true
-      ? streams.value.map(({ workstream, needsYou, running }) => [
-          workstream.id,
-          (needsYou ?? 0) > 0 ? ("needs" as const) : running.ok && running.value > 0 ? ("run" as const) : null,
-        ])
-      : [],
-  );
+  const dots = new Map(streams?.ok === true ? streams.value.map((stream) => [stream.workstream.id, streamMark(stream)]) : []);
   const states = loaded === undefined || !loaded.inventory.ok ? undefined : seatStates(loaded);
   const counts = states === undefined ? undefined : shiftCounts(states);
   const partial = states?.partial === true ? <PartialMark title={gaps.roster.partial} /> : null;
