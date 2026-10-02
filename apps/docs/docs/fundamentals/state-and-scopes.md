@@ -19,7 +19,7 @@ State is organized into four scopes, each its own record with its own key:
 | **User** | What does this person need across all their conversations? | Across sessions for a user |
 | **Org** | What does the team need to share? | Across sessions in an org |
 
-![Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation, keyed by the session id and by the tenant when one is sent. User state follows one person across conversations and flows, keyed by the user id, or one record per flow copy with isolateUserState. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session names its user and org but holds neither one's state. Blocks read and write all four; the browser sees only the fields a scope's client config exposes](./state-scopes.svg)
+![Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation: its state, items, metadata and journal, and the resources an action declares, keyed by the session id and by the tenant when one is sent. User state follows one person across conversations and flows, keyed by the user id; with isolateUserState it is one record per flow copy instead, and an instance with an owner pin keeps one record per person in the pinned organization instead. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session is bound to one organization when it is created; it names its user and org but holds neither one's state. A tenant id splits sessions only. Blocks read and write all four; the browser sees only the fields a scope's client config exposes](./state-scopes.svg)
 
 A session names the user and organization it belongs to. It doesn't contain their state: each scope is read and written on its own record.
 
@@ -252,7 +252,7 @@ userStateSchema: z.object({
 })
 ```
 
-Every flow on the server shares one user record, so each flow's user state schema is compared at startup. Incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. [Flow Isolation](/docs/advanced/flow-isolation) gives each flow copy its own record instead.
+By default every flow on the server shares one user record per person, so each flow's user state schema is compared at startup. Incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. [Flow Isolation](/docs/advanced/flow-isolation) gives each flow copy its own record instead, and an instance registered with an owner pin, such as a [hired seat](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person), keeps one record per person in its pinned organization.
 
 **Org** is shared by the whole team: configuration, knowledge bases, settings an admin controls for everyone.
 
