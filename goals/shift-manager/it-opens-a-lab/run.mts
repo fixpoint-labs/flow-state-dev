@@ -171,7 +171,8 @@ async function startLab(name: LabName, pages: string, env: Record<string, string
   const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", LABS[name].config, "--port", "0", "--assets", pages], {
     cwd: workDir,
     // GOAL_CONTROL is this script's, not the Lab's: multi-seat-collab's config reads it too.
-    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", ...env }),
+    // DEVTEAM_STORE: DevTeam keeps a store across restarts; each run gets its own.
+    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", DEVTEAM_STORE: join(workDir, "devteam.sqlite"), ...env }),
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout!.on("data", (d) => (log += String(d)));

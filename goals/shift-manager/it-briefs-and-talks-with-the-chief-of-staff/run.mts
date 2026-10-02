@@ -8,7 +8,8 @@
  * Real path, real model. Shift Manager is built with Vite and served by its
  * own start script over two Labs: this goal's desk (`lab/fsdev.config.mts`),
  * whose `desk.chief-of-staff` seat runs the built-in `agent` kind on
- * `openai/gpt-5.4-mini`, and DevTeam, which declares no chief of staff.
+ * `openai/gpt-5.4-mini`, and the same desk with no chief of staff
+ * (`lab-no-cos/`).
  * Chromium drives the page. What happened is read from the store, through each
  * Lab's routes with this script's own requests. Never from Shift Manager's state.
  *
@@ -24,7 +25,7 @@
  *            seat's session the moment *delivered* is drawn, and the reply on
  *            screen is that session's next assistant item, by id
  *   again    a reload shows the same conversation
- *   no CoS   DevTeam lands on the view with its summary and the named state in
+ *   no CoS   the Lab with no chief of staff lands on the view with its summary and the named state in
  *            place of the composer
  *   reach    the pages throw nothing
  *
@@ -74,7 +75,7 @@ const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-cos");
 const LABS = {
   desk: { config: join(HERE, "lab", "fsdev.config.mts"), tree: join(HERE, "lab", "workforce") },
-  devteam: { config: join(SHIFT_MANAGER, "teams", "devteam", "fsdev.config.mts"), tree: join(REPO_ROOT, "goals", "devforce-lab", "lab", "workforce") },
+  "no-cos": { config: join(HERE, "lab-no-cos", "fsdev.config.mts"), tree: join(HERE, "lab-no-cos", "workforce") },
 } as const;
 type LabName = keyof typeof LABS;
 /** The seat Shift Manager talks to (D2's rule, read off the fixture tree below, never assumed). */
@@ -261,7 +262,7 @@ await runGoal(async () => {
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL));
   const failures: string[] = [];
   const evidence: string[] = [];
-  const served = { desk: await startLab("desk", pages), devteam: await startLab("devteam", pages) };
+  const served = { desk: await startLab("desk", pages), "no-cos": await startLab("no-cos", pages) };
   const browser = await launchChromium();
   try {
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
@@ -392,14 +393,14 @@ await runGoal(async () => {
       }
     });
 
-    // ---- DevTeam: no chief of staff ---------------------------------------------
-    await leg("devteam", async (fail) => {
-      await open(page, served.devteam.origin, "/");
+    // ---- A Lab with no chief of staff --------------------------------------------
+    await leg("no-cos", async (fail) => {
+      await open(page, served["no-cos"].origin, "/");
       if ((await page.getByTestId("centre").getAttribute("data-level")) !== "cos") fail("no CoS", "/ does not draw Chief of Staff");
       if (!(await visible(page, "cos-summary"))) fail("no CoS", "the summary is not drawn");
       if (!(await visible(page, "cos-none"))) fail("no CoS", "no named state says the Lab declares no chief of staff");
       if ((await page.getByTestId("cos-composer").count()) !== 0) fail("no CoS", "a composer is drawn with no chief of staff to talk to");
-      evidence.push(`DevTeam: lands on Chief of Staff, summary and "${(await page.getByTestId("cos-none").textContent().catch(() => ""))?.slice(0, 40)}…"`);
+      evidence.push(`no chief of staff: lands on Chief of Staff, summary and "${(await page.getByTestId("cos-none").textContent().catch(() => ""))?.slice(0, 40)}…"`);
     });
 
     if (pageErrors.length > 0) failures.push(`[page] reach: the page threw: ${pageErrors.join(" | ")}`);
@@ -410,6 +411,6 @@ await runGoal(async () => {
   }
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-    evidence: `Shift Manager built with Vite and served by its start script over the desk (${cosSeat.id} on the agent kind, a real model) and DevTeam; driven in Chromium and graded against the store through each Lab's routes. ${evidence.join("; ")}`,
+    evidence: `Shift Manager built with Vite and served by its start script over the desk (${cosSeat.id} on the agent kind, a real model) and the desk with no chief of staff; driven in Chromium and graded against the store through each Lab's routes. ${evidence.join("; ")}`,
   };
 });
