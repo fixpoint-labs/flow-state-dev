@@ -26,7 +26,8 @@
  * honour "a refused hire changes nothing" without atomic admission nobody here
  * needs.
  *
- * **What a fire does not do.** It removes the row and the address. It cancels
+ * **What a fire does not do.** It removes the row, the address and any
+ * inventory row, through Workforce's one removal of a hired seat. It cancels
  * nothing — a run already going finishes and its items are persisted — and it
  * deletes no sessions, state or resources. Those are a separate, irreversible
  * operation. And it is durable immediately but process-wide only at the next
@@ -42,11 +43,14 @@ import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
   defineHiredRosterCollection,
   defineHiredRosterPrivateCollection,
+  defineSeatInventoryCollection,
   encodeUserSegment,
   hiredSeatManifest,
   hireWorkforce,
+  removeHiredSeat,
   seatAddress,
   toHiredSeatRow,
+  type HiredSeatRelease,
   type HiredSeatRow,
 } from "@flow-state-dev/workforce";
 import { z } from "zod";
@@ -58,6 +62,8 @@ import { kitchenSinkKinds } from "@/workforce/hire";
 const roster = defineHiredRosterCollection();
 /** User-owned rows. No browser read; the single-segment roster does not list them. */
 const rosterPrivate = defineHiredRosterPrivateCollection();
+/** The org's seat inventory, so `fire` removes a fired seat's row through the shared removal. */
+const seatInventory = defineSeatInventoryCollection();
 
 /** The kinds a hire may name, and the sentence that lists them in a refusal. */
 const KIND_NAMES = Object.keys(kitchenSinkKinds).sort();
@@ -124,6 +130,10 @@ function rosterOf(ctx: { resources: Record<string, unknown> }): ResourceCollecti
 
 function privateRosterOf(ctx: { resources: Record<string, unknown> }): ResourceCollectionRef {
   return ctx.resources.rosterPrivate as unknown as ResourceCollectionRef;
+}
+
+function inventoryOf(ctx: { resources: Record<string, unknown> }): ResourceCollectionRef {
+  return ctx.resources.seatInventory as unknown as ResourceCollectionRef;
 }
 
 function userOf(ctx: { session: { identity: { userId?: string } } }): string {
@@ -246,69 +256,90 @@ const fire = handler({
     // same refusal reached from the other side — its folder is where it is
     // removed. User-owned rows live on the private collection; a legacy
     // org-visible row is still the flat key.
-    const ownedRow = await owned.getOptional({ owner: `~${encodeUserSegment(userId)}`, seat: input.seatId });
-    const existing = ownedRow ?? (await rows.getOptional(input.seatId));
+    const ownedKey = { owner: `~${encodeUserSegment(userId)}`, seat: input.seatId };
+    const ownedRow = await owned.getOptional(ownedKey);
     // A user-owned row answers on `<org>.~<user>.<seat>`. A legacy flat row,
     // and a file-declared seat, stay on `<org>.<seat>`.
     const address = seatAddress(orgId, input.seatId, ownedRow !== undefined ? userId : null);
-    if (existing === undefined) {
-      const held = workforceRegistrar.kindAt(address);
-      throw new Error(
-        held === undefined
-          ? `This organization hired no seat "${input.seatId}".`
-          : `"${address}" was not hired through this action — a seat declared in \`workforce/teams/\` is ` +
-            `removed by editing its folder, not by firing it.`
-      );
-    }
 
-    const storedKind = String(existing.state.flow);
-    if (ownedRow !== undefined) {
-      await owned.delete({ owner: `~${encodeUserSegment(userId)}`, seat: input.seatId });
-    } else {
-      await rows.delete(input.seatId);
-    }
+    // Workforce's one removal of a hired seat: roster row, then the address,
+    // then the seat's inventory row. This app's hire writes no inventory row,
+    // so there is usually none to remove; going through the shared path keeps
+    // that true if it starts to.
+    const removed = await removeHiredSeat({
+      orgId,
+      roster: ownedRow !== undefined ? owned : rows,
+      key: ownedRow !== undefined ? ownedKey : input.seatId,
+      inventory: inventoryOf(ctx),
+      address,
+      isHeld: (at) => workforceRegistrar.kindAt(at) !== undefined,
+      release: (at, storedKind) => releaseIfMintedHere(at, storedKind),
+    });
 
-    // Released ONLY when the address is held by the instance this row minted
-    // (BR-28). **Two clauses, because neither subsumes the other**, and each
-    // fails a case the other admits:
-    //
-    //   - PROVENANCE (`isFromRoster`) is what BR-28 is actually written in
-    //     terms of. Kind equality alone is a weaker proxy: a seat declared in
-    //     `workforce/teams/` at this address carrying the row's OWN kind
-    //     passes it, and firing would unregister a file-declared seat —
-    //     contradicting the refusal a few lines above, which promises such a
-    //     seat is removed by editing its folder. Reachable: hire a seat, later
-    //     add a folder declaring one at the same address with the same kind,
-    //     restart. The file seat registers first, the reload's duplicate is
-    //     skipped and named (BR-21), and the row survives.
-    //   - KIND still matters because a mark can go STALE. Provenance records
-    //     that this app registered the address; it cannot see the address
-    //     being re-taken by a different instance afterwards. When the kinds
-    //     disagree, whatever is there now is not what the mark refers to.
-    //
-    // `kindAt` gates both, and only when something is actually there: an
-    // address nothing holds is the ordinary stranded-row cleanup (a sibling
-    // process's registration, or a compensating delete that failed), which
-    // falls through to `released: false` with nothing to report.
-    const liveKind = workforceRegistrar.kindAt(address);
-    const mintedHere = workforceRegistrar.isFromRoster(address);
-    if (liveKind !== undefined && (!mintedHere || liveKind !== storedKind)) {
-      console.error(
-        `[workforce-admin] removed the roster row for "${address}" (kind "${storedKind}"), but the ` +
-          `address is held by a flow of kind "${liveKind}" that ` +
-          (mintedHere
-            ? "no longer matches the stored kind"
-            : "this app did not register from that row") +
-          " — leaving it registered."
-      );
-      return { address, orgId, released: false };
+    switch (removed.outcome) {
+      case "nothing":
+        throw new Error(
+          workforceRegistrar.kindAt(address) === undefined
+            ? `This organization hired no seat "${input.seatId}".`
+            : `"${address}" was not hired through this action — a seat declared in \`workforce/teams/\` is ` +
+              `removed by editing its folder, not by firing it.`
+        );
+      case "unreadable":
+        ctx.emit.message(`Removed the unreadable roster row "${input.seatId}".`);
+        return { address, orgId, released: false };
+      case "already-gone":
+        ctx.emit.message(`${address} was already fired; removed its leftover inventory row.`);
+        return { address, orgId, released: false };
+      case "removed":
+        ctx.emit.message(`Fired ${removed.address}.`);
+        return { address: removed.address, orgId, released: removed.released };
     }
-
-    const released = workforceRegistrar.unregister(address);
-    ctx.emit.message(`Fired ${address}.`);
-    return { address, orgId, released };
   },
 });
+
+/**
+ * Release `address` only when it is held by the instance this app minted from
+ * the row being removed. Called by the shared removal between its two deletes.
+ */
+function releaseIfMintedHere(address: string, storedKind: string): HiredSeatRelease {
+  // Released ONLY when the address is held by the instance this row minted
+  // (BR-28). **Two clauses, because neither subsumes the other**, and each
+  // fails a case the other admits:
+  //
+  //   - PROVENANCE (`isFromRoster`) is what BR-28 is actually written in
+  //     terms of. Kind equality alone is a weaker proxy: a seat declared in
+  //     `workforce/teams/` at this address carrying the row's OWN kind
+  //     passes it, and firing would unregister a file-declared seat —
+  //     contradicting the refusal in `fire`, which promises such a
+  //     seat is removed by editing its folder. Reachable: hire a seat, later
+  //     add a folder declaring one at the same address with the same kind,
+  //     restart. The file seat registers first, the reload's duplicate is
+  //     skipped and named (BR-21), and the row survives.
+  //   - KIND still matters because a mark can go STALE. Provenance records
+  //     that this app registered the address; it cannot see the address
+  //     being re-taken by a different instance afterwards. When the kinds
+  //     disagree, whatever is there now is not what the mark refers to.
+  //
+  // `kindAt` gates both, and only when something is actually there: an
+  // address nothing holds is the ordinary stranded-row cleanup (a sibling
+  // process's registration, or a compensating delete that failed), which
+  // falls through to `released: false` with nothing to report.
+  const liveKind = workforceRegistrar.kindAt(address);
+  const mintedHere = workforceRegistrar.isFromRoster(address);
+  if (liveKind !== undefined && (!mintedHere || liveKind !== storedKind)) {
+    console.error(
+      `[workforce-admin] removed the roster row for "${address}" (kind "${storedKind}"), but the ` +
+        `address is held by a flow of kind "${liveKind}" that ` +
+        (mintedHere
+          ? "no longer matches the stored kind"
+          : "this app did not register from that row") +
+        " — leaving it registered."
+    );
+    return "held-by-another";
+  }
+
+  return workforceRegistrar.unregister(address) ? "released" : "not-held";
+}
 
 /**
  * The admin flow. Its resolver is its own, and `fsdev.config.ts` registers this
@@ -321,7 +352,7 @@ const workforceAdminFlow = defineFlow({
     resolvePrincipal: adminPrincipalResolver(),
     requireUser: true,
   },
-  resources: { roster, rosterPrivate },
+  resources: { roster, rosterPrivate, seatInventory },
   actions: {
     hire: { inputSchema: hireInput, block: hire },
     fire: { inputSchema: fireInput, block: fire },

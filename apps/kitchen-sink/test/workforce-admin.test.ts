@@ -510,6 +510,25 @@ describe("fire", () => {
     expect(await storedRow(stores, "support.ada")).toBeUndefined();
   });
 
+  it("FIX-1621 BR-13 · a user-owned fire goes through Workforce's one removal: an inventory row at its address goes too", async () => {
+    const registrar = stubRegistrar();
+    const flow = adminFlow();
+    const stores = createInMemoryStores();
+    const address = `${ORG}.~admin.support.ada`;
+
+    await callAdmin(flow, stores, "hire", { seatId: "support.ada", flow: "agent", settings: { model: "front-model" } });
+    // This app's hire writes no inventory row; one is seeded so the shared
+    // removal has something to prove it reached.
+    await stores.resourceState.set("org", ORG, `inventory/seats/${address}`, { id: address, kind: "agent", door: "run" }, "any");
+    await stores.resourceState.set("org", ORG, `inventory/seats/${ORG}.support.bob`, { id: `${ORG}.support.bob`, kind: "agent", door: "run" }, "any");
+
+    const fired = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
+    expectAccepted(fired);
+    expect(registrar.held.has(address)).toBe(false);
+    const seats = Object.keys(await stores.resourceState.getByPrefix("org", ORG, "inventory/seats/"));
+    expect(seats).toEqual([`inventory/seats/${ORG}.support.bob`]);
+  });
+
   it("refuses a seat this organization does not hold", async () => {
     stubRegistrar();
     const flow = adminFlow();

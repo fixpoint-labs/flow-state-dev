@@ -48,7 +48,7 @@ import { ClientHttpError, type ResourceManifest, type SessionSummary } from "@fl
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
-import { splitSeatAddress } from "@flow-state-dev/workforce/browser";
+import { listedSeatRows, splitSeatAddress } from "@flow-state-dev/workforce/browser";
 import type { LabClients } from "./connection";
 
 /** Why a read did not load. */
@@ -194,6 +194,21 @@ export const UNOWNED_SESSION_UNANSWERABLE =
  */
 export type DeclaredResource = { ref: string; sessionId: string };
 
+/** The organization's seats and workstreams, as the inventory registers them. */
+export type Inventory = {
+  /**
+   * The seats a team list shows: a hired seat only while the organization's
+   * roster backs it (Workforce's `listedSeatRows`), every declared seat as registered.
+   */
+  seats: Seat[];
+  workstreams: Workstream[];
+  /**
+   * Set when hired seats were left out because the roster couldn't be read:
+   * says how many and why. Absent when the roster loaded, or nothing was left out.
+   */
+  rosterUnread?: string;
+};
+
 /** Everything one refresh read. */
 export type LabSnapshot =
   /** No organization to open the Lab under: the Lab said no, or named none. */
@@ -209,7 +224,7 @@ export type LabSnapshot =
       sessions: SessionSummary[];
       /** The organization the Lab bound this person's sessions to. */
       orgId: string;
-      inventory: Section<{ seats: Seat[]; workstreams: Workstream[] }>;
+      inventory: Section<Inventory>;
       /** Per workstream id. Absent for a workstream when the inventory did not load. */
       boards: Record<string, Section<WorkstreamBoards>>;
       asks: Section<Ask[]>;
@@ -219,6 +234,9 @@ export type LabSnapshot =
 
 /** The organization's inventory collections, by their published key patterns. */
 const INVENTORY_PATTERNS = { seats: "inventory/seats/*", channels: "inventory/channels/*" } as const;
+
+/** The organization's hired roster, by its published key pattern. */
+const ROSTER_PATTERN = "workforce/roster/*";
 
 /** Rows per collection page: the collection route's maximum. */
 const PAGE_SIZE = 200;
@@ -416,8 +434,36 @@ export function createLabReader(clients: LabClients): LabReader {
   const readBoard = async (channelId: string, boardRef: string): Promise<BoardRow[]> =>
     (await readCollection(channelId, boardRef)).map((row) => toBoardRow(boardRef, channelId, row.topic, row.clientData));
 
+  /**
+   * The organization's hired roster (its seat ids), through the first listed
+   * flow that declares it. A failure, or no listed flow declaring it, is the
+   * section's failure: the caller then lists no hired seat.
+   */
+  const readRoster = async (byKind: ReadonlyMap<string, string>): Promise<Section<Array<{ seatId: string }>>> => {
+    try {
+      for (const [kind, sessionId] of byKind) {
+        const manifest = await manifestFor(kind, sessionId);
+        const ref = manifest.resources.find(
+          (r) => r.kind === "collection" && r.pattern === ROSTER_PATTERN && r.client.state?.read === true,
+        )?.ref;
+        if (ref === undefined) continue;
+        const rows = await readCollection(sessionId, ref);
+        return {
+          ok: true,
+          value: rows.flatMap((row) => {
+            const seatId = text(field(row.clientData, "seatId"));
+            return seatId === null ? [] : [{ seatId }];
+          }),
+        };
+      }
+    } catch (error) {
+      return { ok: false, failure: describeFailure(error) };
+    }
+    return { ok: false, failure: { message: "None of this person's sessions is on a flow that declares the roster." } };
+  };
+
   /** Find the inventory through the first listed session whose flow declares it. */
-  const readInventory = async (sessions: SessionSummary[], orgId: string): Promise<Section<{ seats: Seat[]; workstreams: Workstream[] }>> => {
+  const readInventory = async (sessions: SessionSummary[], orgId: string): Promise<Section<Inventory>> => {
     const byKind = new Map<string, string>();
     for (const session of sessions) {
       if (session.parentSessionId == null && !byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
@@ -440,7 +486,18 @@ export function createLabReader(clients: LabClients): LabReader {
           readCollection(sessionId, seatsRef),
           readCollection(sessionId, channelsRef),
         ]);
-        const seats = seatRows.map((r) => toSeat(r.clientData, orgId)).filter((s): s is Seat => s !== undefined);
+        const registered = seatRows.map((r) => toSeat(r.clientData, orgId)).filter((s): s is Seat => s !== undefined);
+        // A hired seat is listed only while the roster backs it: Workforce's
+        // team-list rule, applied once here so every screen draws the same list.
+        // The roster is read only when a hired seat's row is there to check.
+        const anyHired = registered.some((seat) => seat.id !== seat.seatId);
+        const roster = anyHired ? await readRoster(byKind) : ({ ok: true, value: [] } as const);
+        const seats = listedSeatRows(orgId, registered, roster.ok ? roster.value : undefined);
+        const hiddenForNoRoster = registered.length - seats.length;
+        const rosterUnread =
+          roster.ok || hiddenForNoRoster === 0
+            ? null
+            : `${hiddenForNoRoster} hired seat${hiddenForNoRoster === 1 ? " isn't" : "s aren't"} listed: the roster didn't load, so Shift Manager can't show ${hiddenForNoRoster === 1 ? "it's" : "they're"} still hired. ${roster.failure.message}`;
         const workstreams = channelRows
           .map((r) => toWorkstream(r.clientData))
           .filter((w): w is Workstream => w !== undefined);
@@ -453,7 +510,7 @@ export function createLabReader(clients: LabClients): LabReader {
             },
           };
         }
-        return { ok: true, value: { seats, workstreams } };
+        return { ok: true, value: { seats, workstreams, ...(rosterUnread === null ? {} : { rosterUnread }) } };
       } catch (error) {
         return { ok: false, failure: describeFailure(error) };
       }

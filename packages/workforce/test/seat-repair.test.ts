@@ -1,0 +1,377 @@
+/**
+ * Repairing a stored seat that no longer starts: `brokenSeats`, retire through
+ * `fire`, and `rehire`, run as actions over a real runtime and graded on what
+ * the store holds afterwards, not on what a block returned.
+ *
+ * The app under test carried `desk-clerk` when its seats were hired and has
+ * since cut it; `desk` is still carried, and its settings now require a
+ * `queue`.
+ */
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import type { FlowInstance } from "@flow-state-dev/core/types";
+import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
+import { createSeatHireBlocks, HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "../src/seat-hire-blocks";
+import type { SeatHireCapabilityOptions } from "../src/seat-hire-blocks";
+import { defineHiredRosterCollection } from "../src/roster/collections";
+import { defineSeatInventoryCollection } from "../src/inventory/collections";
+import { reloadHiredSeats } from "../src/roster/reload";
+import { toHiredSeatRow } from "../src/roster/rows";
+import { workerConfigSchema } from "../src/worker-config";
+
+const ROSTER = "workforce/roster/";
+const SEATS = "inventory/seats/";
+
+const noop = handler({
+  name: "noop",
+  inputSchema: z.object({}),
+  outputSchema: z.object({}),
+  execute: () => ({}),
+});
+
+const desk = defineFlow({
+  kind: "desk",
+  cardinality: "collection",
+  configSchema: workerConfigSchema().extend({ queue: z.string() }),
+  actions: { run: { inputSchema: z.object({}), block: noop } },
+});
+
+/** The kinds the app carries now. `desk-clerk` is gone. */
+const kinds = { desk };
+
+function liveRegistry() {
+  const held = new Map<string, FlowInstance>();
+  return {
+    held,
+    register: (seat: FlowInstance) => {
+      if (held.has(seat.id)) throw new Error(`"${seat.id}" is already registered`);
+      held.set(seat.id, seat);
+    },
+    unregister: (id: string) => held.delete(id),
+    kindAt: (id: string) => held.get(id)?.kind,
+  };
+}
+
+async function harness(over: Partial<SeatHireCapabilityOptions> = {}) {
+  const live = liveRegistry();
+  const blocks = createSeatHireBlocks({
+    kinds,
+    register: live.register,
+    unregister: live.unregister,
+    kindAt: live.kindAt,
+    ...over,
+  });
+  const ops = defineFlow({
+    kind: "ops",
+    resources: {
+      [HIRED_ROSTER_RESOURCE]: defineHiredRosterCollection(),
+      [SEAT_INVENTORY_RESOURCE]: defineSeatInventoryCollection(),
+    },
+    actions: {
+      hire: { block: blocks.hire },
+      fire: { block: blocks.fire },
+      brokenSeats: { block: blocks.brokenSeats },
+      rehire: { block: blocks.rehire },
+    },
+  } as never)();
+  const state = createFlowState({ flows: { ops: ops as never }, stores: { default: { primary: inMemoryStores() } } });
+  const runtime = await state.getRuntime();
+  const stores = runtime.stores;
+  let n = 0;
+
+  const run = async (action: string, input: unknown, orgId = "acme") => {
+    n += 1;
+    const result = (await runAction({
+      flow: ops,
+      actionName: action,
+      input,
+      userId: "u1",
+      orgId,
+      sessionId: `s-${n}`,
+      stores,
+      runtimeConfig: { ...runtime.runtimeConfig },
+    } as never)) as { output?: any; error?: { message: string } };
+    return result;
+  };
+
+  const seed = async (key: string, state: Record<string, unknown>, orgId = "acme") => {
+    await stores.resourceState.set("org", orgId, `${ROSTER}${key}`, state as never, "any" as never);
+  };
+  const seedInventory = async (address: string, kind: string, orgId = "acme") => {
+    await stores.resourceState.set("org", orgId, `${SEATS}${address}`, { id: address, kind, door: "run" } as never, "any" as never);
+  };
+  const rows = async (prefix: string, orgId = "acme") =>
+    Object.fromEntries(
+      Object.entries(await stores.resourceState.getByPrefix("org", orgId, prefix)).map(([key, value]) => [
+        key.slice(prefix.length),
+        (value as { state: Record<string, unknown> }).state,
+      ]),
+    );
+  const versions = async (prefix: string, orgId = "acme") =>
+    Object.fromEntries(
+      Object.entries(await stores.resourceState.getByPrefix("org", orgId, prefix)).map(([key, value]) => [
+        key,
+        (value as { version: number }).version,
+      ]),
+    );
+  const reload = (orgIds = ["acme"]) => reloadHiredSeats({ stores, orgIds, kinds });
+
+  return { live, run, seed, seedInventory, rows, versions, reload, stores };
+}
+
+const row = (over: Parameters<typeof toHiredSeatRow>[0]) =>
+  toHiredSeatRow({ owningOrgId: "acme", ...over }) as unknown as Record<string, unknown>;
+
+/** Three stored seats after `desk-clerk` was cut, one healthy, and their inventory rows. */
+async function cutKindStore(h: Awaited<ReturnType<typeof harness>>) {
+  await h.seed("support.joe", row({ seatId: "support.joe", flow: "desk-clerk", instructions: "Answer the desk." }));
+  await h.seed("support.lin", row({ seatId: "support.lin", flow: "desk" }));
+  await h.seed("support.ada", row({ seatId: "support.ada", flow: "desk", settings: { queue: "billing" } }));
+  await h.seed("support.bad", { seatId: "support.bad" });
+  for (const [seatId, kind] of [["support.joe", "desk-clerk"], ["support.lin", "desk"], ["support.ada", "desk"]] as const) {
+    await h.seedInventory(`acme.${seatId}`, kind);
+  }
+}
+
+describe("brokenSeats", () => {
+  it("BR-1 to BR-4 · lists each stored seat the start skips, with its reason; not the one that starts", async () => {
+    const h = await harness();
+    await cutKindStore(h);
+    const listed = await h.run("brokenSeats", {});
+    expect(listed.error).toBeUndefined();
+    const out = listed.output as Array<Record<string, unknown>>;
+    expect(out.map((entry) => [entry.seatId, entry.reason, entry.kind])).toEqual([
+      ["support.bad", "unreadable", null],
+      ["support.joe", "kind-gone", "desk-clerk"],
+      ["support.lin", "refused", "desk"],
+    ]);
+    expect(out[0]!.key).toBe("workforce/roster/support.bad");
+    expect(String(out[1]!.detail)).toContain('Kinds passed: "agent", "desk"');
+    expect(String(out[2]!.detail)).toMatch(/queue/);
+  });
+
+  it("BR-5 · names the same rows with the same detail as the start, over the same rows", async () => {
+    const h = await harness();
+    await cutKindStore(h);
+    const listed = (await h.run("brokenSeats", {})).output as Array<{ key: string; detail: string }>;
+    const started = await h.reload();
+    expect(new Set(listed.map((entry) => `organization "acme", row "${entry.key}" — ${entry.detail}`))).toEqual(
+      new Set(started.problems),
+    );
+    expect(started.seats.map((seat) => seat.id)).toEqual(["acme.support.ada"]);
+  });
+
+  it("BR-6 · reads the principal's organization only; an org in the body changes nothing", async () => {
+    const h = await harness();
+    await cutKindStore(h);
+    await h.seed("ops.kim", toHiredSeatRow({ seatId: "ops.kim", flow: "desk-clerk", owningOrgId: "globex" }) as never, "globex");
+    const asAcme = (await h.run("brokenSeats", { orgId: "globex" })).output as Array<{ seatId: string }>;
+    expect(asAcme.map((entry) => entry.seatId)).not.toContain("ops.kim");
+    const asGlobex = (await h.run("brokenSeats", {}, "globex")).output as Array<{ seatId: string }>;
+    expect(asGlobex.map((entry) => entry.seatId)).toEqual(["ops.kim"]);
+  });
+
+  it("BR-7 · writes nothing", async () => {
+    const h = await harness();
+    await cutKindStore(h);
+    const before = { roster: await h.versions(ROSTER), seats: await h.versions(SEATS) };
+    await h.run("brokenSeats", {});
+    expect({ roster: await h.versions(ROSTER), seats: await h.versions(SEATS) }).toEqual(before);
+  });
+});
+
+describe("retire is fire", () => {
+  it("BR-8 · a listed seat is retired: roster row then inventory row, nothing released, the next start names nothing for it", async () => {
+    const h = await harness();
+    await cutKindStore(h);
+    const fired = await h.run("fire", { seatId: "support.joe" });
+    expect(fired.error).toBeUndefined();
+    expect(fired.output).toEqual({ seatId: "support.joe", address: "acme.support.joe", released: false });
+    expect(Object.keys(await h.rows(ROSTER))).not.toContain("support.joe");
+    expect(Object.keys(await h.rows(SEATS))).not.toContain("acme.support.joe");
+    expect((await h.reload()).problems.join("\n")).not.toContain("support.joe");
+  });
+
+  it("BR-9 · a working hired seat: roster row, address released, inventory row", async () => {
+    const h = await harness();
+    const hired = await h.run("hire", { seatId: "support.ada", flow: "desk", settings: { queue: "q" } });
+    expect(hired.error).toBeUndefined();
+    expect(Object.keys(await h.rows(SEATS))).toEqual(["acme.support.ada"]);
+    const fired = await h.run("fire", { seatId: "support.ada" });
+    expect(fired.output).toEqual({ seatId: "support.ada", address: "acme.support.ada", released: true });
+    expect(h.live.held.has("acme.support.ada")).toBe(false);
+    expect(await h.rows(ROSTER)).toEqual({});
+    expect(await h.rows(SEATS)).toEqual({});
+  });
+
+  it("BR-10 · a crash between the two deletes: the next fire removes the leftover row and says it was already gone", async () => {
+    let crash = true;
+    const h = await harness({
+      unregister: () => {
+        if (crash) throw new Error("process died between the deletes");
+        return false;
+      },
+    });
+    await h.run("hire", { seatId: "support.ada", flow: "desk", settings: { queue: "q" } });
+    const first = await h.run("fire", { seatId: "support.ada" });
+    expect(first.error?.message).toMatch(/process died/);
+    expect(await h.rows(ROSTER)).toEqual({});
+    expect(Object.keys(await h.rows(SEATS))).toEqual(["acme.support.ada"]);
+
+    crash = false;
+    h.live.held.clear(); // the restart: nothing holds the address
+    const second = await h.run("fire", { seatId: "support.ada" });
+    expect(second.error).toBeUndefined();
+    expect(second.output).toEqual({ seatId: "support.ada", address: "acme.support.ada", released: false, alreadyGone: true });
+    expect(await h.rows(SEATS)).toEqual({});
+  });
+
+  it("BR-10 · a leftover row at an address something holds is not removed; the declared-seat refusal stands", async () => {
+    const h = await harness();
+    await h.seedInventory("acme.lead", "desk");
+    h.live.held.set("acme.lead", { id: "acme.lead", kind: "desk" } as FlowInstance);
+    const fired = await h.run("fire", { seatId: "lead" });
+    expect(fired.error?.message).toMatch(/worker file|folder/);
+    expect(Object.keys(await h.rows(SEATS))).toEqual(["acme.lead"]);
+  });
+
+  it("BR-11 · a seat this org never hired is refused, as today", async () => {
+    const h = await harness();
+    const fired = await h.run("fire", { seatId: "support.nobody" });
+    expect(fired.error?.message).toMatch(/hired no seat "support.nobody"/);
+  });
+
+  it("BR-12 · an unreadable row is deleted by its key, and nothing else is touched", async () => {
+    const h = await harness();
+    await cutKindStore(h);
+    const seatsBefore = await h.rows(SEATS);
+    const fired = await h.run("fire", { seatId: "support.bad" });
+    expect(fired.output).toEqual({ seatId: "support.bad", address: null, released: false });
+    expect(Object.keys(await h.rows(ROSTER)).sort()).toEqual(["support.ada", "support.joe", "support.lin"]);
+    expect(await h.rows(SEATS)).toEqual(seatsBefore);
+  });
+});
+
+describe("rehire", () => {
+  it("BR-14 · a kind-gone seat keeps its id and address on the named kind; instructions carry, settings are the new kind's", async () => {
+    const h = await harness();
+    await cutKindStore(h);
+    const rehired = await h.run("rehire", { seatId: "support.joe", flow: "desk", settings: { queue: "front" } });
+    expect(rehired.error).toBeUndefined();
+    expect(rehired.output).toEqual({ seatId: "support.joe", address: "acme.support.joe" });
+    expect(h.live.kindAt("acme.support.joe")).toBe("desk");
+    expect((await h.rows(ROSTER))["support.joe"]).toMatchObject({
+      seatId: "support.joe",
+      flow: "desk",
+      settings: { queue: "front" },
+      instructions: "Answer the desk.",
+    });
+    expect((await h.rows(SEATS))["acme.support.joe"]).toMatchObject({ kind: "desk" });
+    const started = await h.reload();
+    expect(started.seats.map((seat) => [seat.id, seat.kind])).toContainEqual(["acme.support.joe", "desk"]);
+  });
+
+  it("BR-14 · a refused seat is re-hired with settings the kind accepts, and new instructions replace the old", async () => {
+    const h = await harness();
+    await cutKindStore(h);
+    const rehired = await h.run("rehire", { seatId: "support.lin", flow: "desk", settings: { queue: "q" }, instructions: "New." });
+    expect(rehired.error).toBeUndefined();
+    expect((await h.rows(ROSTER))["support.lin"]).toMatchObject({ flow: "desk", instructions: "New." });
+  });
+
+  it("BR-15 · a kind not carried, outside allowKinds, or refusing the settings is refused before anything is written", async () => {
+    const h = await harness({ allowKinds: ["desk"] });
+    await cutKindStore(h);
+    const before = await h.versions(ROSTER);
+    const cases = [
+      [{ seatId: "support.joe", flow: "desk-clerk" }, /may not re-hire onto kind "desk-clerk"/],
+      [{ seatId: "support.joe", flow: "agent" }, /may not re-hire onto kind "agent"/],
+      [{ seatId: "support.joe", flow: "desk" }, /queue/],
+    ] as const;
+    for (const [input, refusal] of cases) {
+      const result = await h.run("rehire", input);
+      expect(result.error?.message).toMatch(refusal);
+    }
+    const unallowed = await harness();
+    await cutKindStore(unallowed);
+    expect((await unallowed.run("rehire", { seatId: "support.joe", flow: "desk-clerk" })).error?.message).toMatch(
+      /carries no flow kind "desk-clerk"/,
+    );
+    expect(await h.versions(ROSTER)).toEqual(before);
+    expect(((await h.run("brokenSeats", {})).output as Array<{ seatId: string }>).map((e) => e.seatId)).toContain("support.joe");
+  });
+
+  it("BR-16 · registration fails after the write: the old row is written back, the seat stays listed, the error is named", async () => {
+    const h = await harness({
+      register: () => {
+        throw new Error("the registry refused the address");
+      },
+    });
+    await cutKindStore(h);
+    const before = (await h.rows(ROSTER))["support.joe"];
+    const result = await h.run("rehire", { seatId: "support.joe", flow: "desk", settings: { queue: "q" } });
+    expect(result.error?.message).toMatch(/registry refused/);
+    expect((await h.rows(ROSTER))["support.joe"]).toEqual(before);
+    expect((await h.rows(SEATS))["acme.support.joe"]).toMatchObject({ kind: "desk-clerk" });
+    const listed = (await h.run("brokenSeats", {})).output as Array<{ seatId: string; reason: string }>;
+    expect(listed).toContainEqual(expect.objectContaining({ seatId: "support.joe", reason: "kind-gone" }));
+  });
+
+  it("BR-17 · the process dies after the write and before registration: the next start serves the seat on its new kind", async () => {
+    let atDeath: ReturnType<typeof reloadHiredSeats> | undefined;
+    const h = await harness({
+      register: () => {
+        // What a fresh process would read had this one died here.
+        atDeath = h.reload();
+        throw new Error("process died");
+      },
+    });
+    await cutKindStore(h);
+    await h.run("rehire", { seatId: "support.joe", flow: "desk", settings: { queue: "q" } });
+    const started = await atDeath!;
+    expect(started.seats.map((seat) => [seat.id, seat.kind])).toContainEqual(["acme.support.joe", "desk"]);
+    expect(started.problems.join("\n")).not.toContain("support.joe");
+  });
+
+  it("BR-18 · a seat that would start, and an unreadable row, are refused", async () => {
+    const h = await harness();
+    await cutKindStore(h);
+    const working = await h.run("rehire", { seatId: "support.ada", flow: "desk", settings: { queue: "x" } });
+    expect(working.error?.message).toMatch(/still starts.*fire it and hire it again/);
+    const unreadable = await h.run("rehire", { seatId: "support.bad", flow: "desk", settings: { queue: "x" } });
+    expect(unreadable.error?.message).toMatch(/can't be read.*Fire it to retire it/);
+  });
+
+  it("BR-19 · two repairs of one seat at once: one lands, the other is refused naming the seat", async () => {
+    const h = await harness();
+    await cutKindStore(h);
+    const [a, b] = await Promise.all([
+      h.run("rehire", { seatId: "support.joe", flow: "desk", settings: { queue: "a" } }),
+      h.run("rehire", { seatId: "support.joe", flow: "desk", settings: { queue: "b" } }),
+    ]);
+    const errors = [a, b].filter((result) => result.error !== undefined);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.error!.message).toMatch(/acme\.support\.joe/);
+    const landed = a.error === undefined ? "a" : "b";
+    expect((await h.rows(ROSTER))["support.joe"]).toMatchObject({ settings: { queue: landed } });
+  });
+
+  it("BR-19 · a re-hire racing a retire never resurrects the row", async () => {
+    const h = await harness();
+    await cutKindStore(h);
+    await Promise.all([
+      h.run("rehire", { seatId: "support.joe", flow: "desk", settings: { queue: "a" } }),
+      h.run("fire", { seatId: "support.joe" }),
+    ]);
+    const roster = await h.rows(ROSTER);
+    const seats = await h.rows(SEATS);
+    // Whichever landed second, the seat is either retired or re-hired, never half of each.
+    if (roster["support.joe"] === undefined) {
+      expect(h.live.held.has("acme.support.joe")).toBe(false);
+    } else {
+      expect(roster["support.joe"]).toMatchObject({ flow: "desk" });
+      expect(seats["acme.support.joe"]).toMatchObject({ kind: "desk" });
+    }
+  });
+});

@@ -1570,10 +1570,14 @@ It refuses an unknown kind or one outside `allowKinds` (and lists the hireable o
 address already served, and a request with no organization.
 
 **`fire`** takes `{ seatId, orgId? }` (extra keys are refused) and returns
-`{ seatId, address, released }`. It deletes the roster row. The inventory row stays. It
-unregisters the address when the live kind matches the stored kind. When a different kind
-holds the address, the roster row is deleted and `released` is `false`. After `fire`,
-`discover` withholds the seat.
+`{ seatId, address, released, alreadyGone? }`. It deletes the roster row, unregisters the
+address when the live kind matches the stored kind, and deletes the seat's inventory row. When
+a different kind holds the address, the roster row is deleted, the address and its inventory
+row are left alone, and `released` is `false`. Called for a seat whose roster row is already
+gone but whose inventory row is left, it removes that row and returns `released: false` with
+`alreadyGone: true`. A roster row that can't be read is deleted by its key and nothing else is
+touched (`address: null`). After `fire`, `discover` withholds the seat. `removeHiredSeat` is
+this removal on its own, for an app whose fire is its own handler.
 
 It refuses when this organization hired no seat, or when a live file-declared seat sits at that
 address (removed by editing its folder, not by firing it).
@@ -1586,9 +1590,26 @@ Omit `hiredRoster` and it lists only file-declared seats.
 ### The same handlers, as actions
 
 `createSeatHireBlocks` takes the same options as `createSeatHireCapability` and returns
-`{ hire, fire }`, the handlers behind its catalog tools. Mount them as a flow's actions when a
-person or your own code does the hiring and no model should be in front of it. Inputs, outputs
-and refusals are the ones described above for the tools.
+`{ hire, fire, brokenSeats, rehire }`. `hire` and `fire` are the handlers behind its catalog
+tools. Mount them as a flow's actions when a person or your own code does the hiring and no
+model should be in front of it. Inputs, outputs and refusals are the ones described above for
+the tools.
+
+**`brokenSeats`** takes `{}` and returns the caller's organization's stored seats that would
+not start, each `{ seatId, key, kind, reason, detail }`, with `reason` one of `kind-gone`,
+`refused`, `unreadable`. It reads through the start's own per-row check, so `detail` is the
+sentence `reloadHiredSeats` puts in `problems`, and it writes nothing. For an `unreadable` row,
+`seatId` is the row's key, which `fire` retires it by.
+
+**`rehire`** takes `{ seatId, flow, settings?, instructions?, orgId? }` and returns
+`{ seatId, address, warning? }`. It keeps the seat's id and address and runs it on `flow`, with
+`settings` for that kind; the stored instructions carry over unless replaced. It refuses a seat
+that would start, an `unreadable` row, a kind this app doesn't carry or `allowKinds` excludes,
+and settings the kind refuses, all before writing anything. The row is replaced in one
+version-checked write, so of two repairs of one seat arriving together one is refused. A failed
+registration writes the old row back.
+
+None of the four asks for approval. Mount `brokenSeats` and `rehire` behind one.
 
 Declare the roster and seat-inventory collections on that flow, under `HIRED_ROSTER_RESOURCE`
 and `SEAT_INVENTORY_RESOURCE`. The handlers read them by those keys, and without them every
@@ -1913,7 +1934,11 @@ import {
 
 It exports `HIRED_ROSTER_RESOURCE`, `SEAT_INVENTORY_RESOURCE`, `splitSeatAddress`,
 `CHANNEL_POST_COMPONENT`, `channelTranscriptLineSchema` and `ChannelTranscriptLine`, the same values
-the root exports, and reaches no Node built-in.
+the root exports, and reaches no Node built-in. It also exports `listedSeatRows(orgId, rows, roster)`,
+the team-list rule: of the seat inventory rows, a hired seat's is kept only while a roster row
+names its address (pass `undefined` when the roster didn't load, and no hired seat is kept), and
+every other row is kept as it is. A hired seat fired before fire removed inventory rows is left
+out that way.
 
 ## Exports
 

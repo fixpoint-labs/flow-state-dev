@@ -47,8 +47,9 @@ describe("@flow-state-dev/workforce/browser", () => {
     expect(entry.HIRED_ROSTER_RESOURCE).toBe("hiredRoster");
     expect(entry.SEAT_INVENTORY_RESOURCE).toBe("seatInventory");
     expect(typeof entry.splitSeatAddress).toBe("function");
+    expect(typeof entry.listedSeatRows).toBe("function");
     expect(typeof entry.channelTranscriptLineSchema.parse).toBe("function");
-    // The sixth, the `ChannelTranscriptLine` type, is pinned in `browser-exports.test-d.ts`.
+    // The seventh, the `ChannelTranscriptLine` type, is pinned in `browser-exports.test-d.ts`.
   });
 
   it("finds the Node built-in the package root reaches through the channel floor", () => {

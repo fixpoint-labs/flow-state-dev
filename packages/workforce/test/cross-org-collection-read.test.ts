@@ -787,14 +787,14 @@ describe("FIX-1502 · the inventory collections' client read", () => {
   });
 });
 
-describe("FIX-1502 · V5 · a fired seat is still listed (BR-15)", () => {
+describe("a fired seat leaves the browser's inventory read (FIX-1621 BR-9)", () => {
   /**
-   * TODAY'S behaviour, asserted as today's: `fire` deletes the roster row and
-   * leaves the inventory row, so the browser read still lists the seat. When
-   * FIX-1540 makes fire remove the row, this case goes red on purpose — flip
-   * it then, do not relax it.
+   * `fire` deletes the roster row, releases the address, then deletes the
+   * seat's inventory row, so the browser read lists the seat after the hire
+   * and not after the fire. This case used to assert the row stayed; it was
+   * flipped when fire started removing it, not relaxed.
    */
-  it("hire then fire through the seat-hire tools; the route still lists the fired seat", async () => {
+  it("hire then fire through the seat-hire tools; the route lists the seat, then doesn't", async () => {
     const registered = new Map<string, unknown>();
     const { hire, fire } = createSeatHireBlocks({
       register: (seat) => {
@@ -853,6 +853,12 @@ describe("FIX-1502 · V5 · a fired seat is still listed (BR-15)", () => {
       Object.keys(await runtime.stores.resourceState.getByPrefix("org", "org-a", "workforce/roster/")),
       "roster rows after the hire"
     ).toEqual(["workforce/roster/eng.ada"]);
+    const hired = await readCollection(h, sessionId, SEAT_INVENTORY_RESOURCE, "", org);
+    expect(hired.status).toBe(200);
+    // The row a hire through the tools wrote carries the agent kind's door.
+    expect(hired.json.items.map((item: any) => item.clientData)).toEqual([
+      { id: address, kind: "agent", door: "run" }
+    ]);
     await act("fire", { seatId: "eng.ada" });
     // The fire happened: the address is released and the roster row is gone.
     expect(registered.has(address), "the fire released the seat").toBe(false);
@@ -863,9 +869,6 @@ describe("FIX-1502 · V5 · a fired seat is still listed (BR-15)", () => {
 
     const listed = await readCollection(h, sessionId, SEAT_INVENTORY_RESOURCE, "", org);
     expect(listed.status).toBe(200);
-    // The row a hire through the tools wrote carries the agent kind's door.
-    expect(listed.json.items.map((item: any) => item.clientData)).toEqual([
-      { id: address, kind: "agent", door: "run" }
-    ]);
+    expect(listed.json.items, "the fired seat's inventory row").toEqual([]);
   });
 });

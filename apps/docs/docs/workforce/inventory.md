@@ -35,7 +35,7 @@ The two layers join on one thing: the `id`.
 
 **Who may post to a channel:** the channel itself, checking its own session state. The `post` and `fileTask` blocks read `members` from the channel's session, not from the inventory. To find out whether a seat's post will be accepted, ask the channel. The inventory's `members` is a copy for finding things, not the check.
 
-For the seats hired at runtime and not yet fired, read the [hired roster](./durable-hire.md#the-roster) instead. A roster row goes away when the seat is fired; an inventory row stays.
+For the seats hired at runtime and not yet fired, read the [hired roster](./durable-hire.md#the-roster). Firing a seat removes both its roster row and its inventory row. A row an earlier version left behind after a fire has no roster row; a reader that wants only current seats joins the two, and `listedSeatRows` from `@flow-state-dev/workforce/browser` does that join.
 
 ## Wiring the boot
 

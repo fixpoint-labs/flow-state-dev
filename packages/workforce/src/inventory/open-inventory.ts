@@ -24,11 +24,13 @@
  * file-time answer under a live name. What the row buys is that the two
  * disagreeing becomes *visible* instead of silent.
  *
- * **Nothing is ever deleted.** A row means *was registered in this org*, not
+ * **The binder deletes nothing.** A row means *was registered in this org*, not
  * *still declared*. A roster handed to one boot may be a partial one, and a
  * binder that reconciled against it would drop the row of a live channel
  * another process opened. A reader tolerates a row naming something it cannot
- * reach; there is no undoing a row that should not have been removed.
+ * reach; there is no undoing a row that should not have been removed. The one
+ * delete is `fire`'s (`removeHiredSeat`), which knows exactly which hired seat
+ * it removes.
  */
 
 import { kindOf, orderedById } from "../channel/channel-binder";
