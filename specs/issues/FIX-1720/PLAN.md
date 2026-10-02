@@ -94,7 +94,7 @@ again ([closure rule](../../../docs/contributing/orchestration.md#the-closure-is
 | P3.1 | FIX-1621 · `goals/hire-plane/repairs-a-seat-whose-kind-was-cut/` | `fire-keeps-inventory` | — |
 | P3.2 | FIX-1719 · `goals/org-seats/cos-changes-the-roster/` | — | `deny-fire` (b3) |
 | P3.3 | FIX-1718 · `goals/shift-manager/it-groups-workstreams-under-their-projects/`, its `cos` leg included | `unread`, `gap-tabs`, `no-gate`, `no-retry` | `no-tool` (a1) |
-| P3.4 | Every check that boots the DevTeam tree: `goals/devforce-lab/*`, the `goals/shift-manager/*` checks started with `--team devteam`, `goals/hire-plane/*`; CI green on the SHA | Their own, as each goal names | — |
+| P3.4 | Every other check that boots the DevTeam tree: `goals/devforce-lab/*`, the `goals/shift-manager/*` checks started with `--team devteam` except this closure's own S1, `goals/hire-plane/*`; CI green on the SHA | Their own, as each goal names | — |
 
 ## Part 4 · gap sweep
 
@@ -113,16 +113,17 @@ never a reading: a grep, a parse or a `git diff` from today's-`main` control to 
 | **Vocabulary (ER-13)** | A grep over the pages the set published finds "worker" only in paths (`org/workers/`, `WORKER.md`) |
 | **Docs published (ER-18)** | Every page in the epic's [ownership table](../../epics/FIX-1650/DOCS.md#ownership) exists on the commit with its section heading |
 
-**Observations · filed off epic** (QR-13): anything the run notices on a sibling's screen (how
-TEAMS draws a dotless seat id, the CoS view's copy) or outside the epic's goal. Reported, never
-gating.
+**Observations · filed off epic** (QR-13): only what the run notices outside the epic's goal.
+Reported, never gating. A step that fails on a sibling's screen is a finding, not an
+observation, and blocks this issue.
 
 ## The report
 
 The closure PR's body, and the comment a run that files findings leaves on FIX-1720:
 
 1. **Head.** The run's number, the `main` SHA, each blocker's merge commit, the model and its
-   key's provider (never the key), the store file, Chromium's version.
+   key's provider (never the key), each store file with the steps it served (QR-7), Chromium's
+   version.
 2. **Part 1.** Per step: PASS or FAIL, what the page showed, the store read it was compared with
    by id, and the boot's problems for each boot. Per CoS turn: the words sent, the session id,
    each tool call and result by item id. A screenshot of each leg's last step.
@@ -169,9 +170,12 @@ No reader-facing change. [DOCS.md](DOCS.md) says what the run follows.
   P3.4 fails there: a finding against FIX-1719. Raised to the coordinator at spec time.
 - **The crash promise** (a kill between Approve and the change landing leaves it whole, the fire
   still asked) is not in `run.mts`: a kill racing the resume can't fail on demand. Run it once by
-  hand as a probe and report it under observations. Its deterministic test, with a fault
-  injected at the resume, belongs at FIX-1719's resume path; if FIX-1719 ships none, that is a
-  finding against it.
+  hand as a probe and report it under observations. FIX-1621's fire contract allows one residue:
+  the roster row gone and the inventory row left ([BR-10, BR-22](../FIX-1621/BUSINESS-RULES.md)).
+  The probe accepts it when TEAMS doesn't list the seat and a second fire removes the row; it
+  fails only on a roster row with the fire applied, or the ask lost with the seat still hired.
+  Its deterministic test, with a fault injected at the resume, belongs at FIX-1719's resume path
+  under the same contract; if FIX-1719 ships none, that is a finding against it.
 - Chromium is at `/opt/pw-browsers`; the model is `openai/gpt-5.4-mini` unless D2's flip names
   a stronger one.
 

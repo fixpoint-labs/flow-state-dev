@@ -132,3 +132,6 @@ leaves no unclaimed workstream, is read off FIX-1718's merged plan (S11, S12) an
   and skips the controls part 1 already failed; part 4's required rows are scripted, the rest
   observations; steps and rules trimmed (a6, b2, b5, `deny-retire` cut, since retire rides the
   fire path); J4's writer pinned to the docs and the pentest README, a guess being a failed step.
+- **Codex's review (Oct 2)**, consistency only: a finding on a sibling's surface blocks this
+  issue; the run owns one store per leg and control; the crash probe allows FIX-1621's
+  inventory residue; part 3 excludes the closure's own check.

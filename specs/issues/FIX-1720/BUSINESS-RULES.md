@@ -22,7 +22,7 @@ names the plan step or report line that shows the rule held.
 | # | When | Then | Proved by |
 |---|---|---|---|
 | QR-6 | A leg runs | Against a production build of Shift Manager from that commit, started with `--team devteam`, in real Chromium, as the profile's owner; the outsider and second member in their own browser contexts | The build step; each context's user |
-| QR-7 | A run starts | On a store file created for it, kept across every restart in the run, deleted after. A restart is the server stopped and started again | Report |
+| QR-7 | A run starts | It owns a set of store files, each created fresh: one shared by legs a and b across their restarts, one for leg c's three boots, one per control, one for J4. No step reads another's file. All are deleted when the run ends, pass or fail. A restart is the server stopped and started again on the same file | The report names each file and the steps on it |
 | QR-8 | A CoS turn or the room's answer is graded | Once ([D2](DECISIONS.md#d2)). A miss is a finding, quoting the turn's tool calls and results by item id. A provider error re-runs that one turn and is reported | Report |
 | QR-9 | Leg c boots with its cut kind | Boot 1 on the `extra-kind` patch; every later boot is the commit as shipped | The patch, in the report |
 | QR-10 | A control runs | On its own build or patch, over a fresh store. Today's `main` is the commit before FIX-1650's first child merged | Each build's SHA and patch |
@@ -33,7 +33,7 @@ names the plan step or report line that shows the rule held.
 |---|---|---|---|
 | QR-11 | A step, a control or a *required* part-4 row fails | Filed through `issue-manager` as a Bug (a Feature for a missing capability), under FIX-1650, blocking this issue | Linear |
 | QR-12 | A finding matches an open issue | The closure worker wires it: under FIX-1650 (or `relates-to` if it has another parent), blocking this issue | Linear |
-| QR-13 | A finding is a sibling's surface (the CoS or Roster screen, a board's content, attention), or a part-4 *observation* | Filed on its own epic, or normally, not blocking this one, unless this epic's change broke it | Report |
+| QR-13 | A step fails on a surface another epic owns (the CoS or Roster screen, a board, attention) | Still a finding within the goal: it blocks this issue, filed under its owner's epic or related to it, as QR-11 and QR-12 wire it. Only a part-4 *observation*, outside the epic's goal, is filed normally and blocks nothing | Linear |
 | QR-14 | J4 hits a step the docs don't cover | A failed step, reason *doc silent*: QR-11 | J4 |
 | QR-15 | The run files anything | No PR. The row stays at `NEEDS_IMPLEMENTATION`. When the last fix merges, **the whole plan** runs again on a fresh commit. With D2, one model miss costs one full run | The epic wake |
 | QR-16 | The owner closes a finding with a reason | The report quotes it; whoever records the drop removes the blocks relation | Report |
