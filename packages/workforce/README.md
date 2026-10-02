@@ -1821,7 +1821,9 @@ of seat — a declared row for a declared seat, and for a hired seat a hired row
 incarnation. A runtime hire's row is never replaced by another hire's or a declared seat's, and a row
 a fire removed after the boot read it is not written back.
 
-**What lands in `problems`.** `openInventory` returns `{ seats, channels, problems }`. A channel
+**What lands in `problems`.** `openInventory` returns `{ seats, channels, problems }`. `seats` counts
+the seat rows that landed, as the seat action reports it when `run` returns the action's output (or a
+run result carrying it as `output`); a row the boot left for a newer hire isn't counted. A channel
 whose session is not open, or whose kind declares no registration action, is named in `problems` and
 the rest of the roster is still attempted.
 

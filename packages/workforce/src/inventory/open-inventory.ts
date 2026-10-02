@@ -159,6 +159,10 @@ export interface OpenInventoryOptions {
    * nothing, and the binder has no other way to tell: an action's return value
    * arrives in whatever shape that door gives it, so the rejection is the only
    * signal this package can read.
+   *
+   * Return the action's output, or a run result carrying it as `output`
+   * (`runAction`'s shape), and `InventoryBinding.seats` counts the seat rows
+   * that actually landed; any other return counts the rows sent.
    */
   run: (request: InventoryActionRequest) => Promise<unknown>;
 
@@ -194,7 +198,14 @@ export interface OpenInventoryOptions {
 
 /** What one boot wrote, and what it could not. */
 export interface InventoryBinding {
-  /** How many seat rows were written. */
+  /**
+   * How many seat rows were written. A row the boot may no longer write — the
+   * store already holds a newer hire's row at that address — is left and not
+   * counted. The count is the seat action's own, read from what `run`
+   * returns: the action's output, or a run result carrying it as `output`.
+   * A door whose return carries neither (an HTTP action client returns no
+   * output) gets the number of rows sent instead.
+   */
   seats: number;
   /** How many channels registered themselves. */
   channels: number;
@@ -204,6 +215,19 @@ export interface InventoryBinding {
    * which of these is fatal.
    */
   problems: string[];
+}
+
+/**
+ * The seat action's `written` count from what the door returned: the action's
+ * output itself, or a run result carrying it as `output` (what `runAction`
+ * returns). `undefined` when the return carries neither.
+ */
+function writtenOf(ran: unknown): number | undefined {
+  const read = (value: unknown) => {
+    const written = (value as { written?: unknown } | null | undefined)?.written;
+    return typeof written === "number" ? written : undefined;
+  };
+  return read(ran) ?? read((ran as { output?: unknown } | null | undefined)?.output);
 }
 
 function messageOf(error: unknown): string {
@@ -281,7 +305,7 @@ export async function openInventory(
   if (seats.length > 0) {
     const writer = options.seatWriter!;
     try {
-      await options.run({
+      const ran = await options.run({
         action: INVENTORY_REGISTER_SEATS,
         // Id, kind, door, origin and incarnation only. A seat's row is the whole of what the
         // inventory knows about it, and everything else on a record is the
@@ -303,7 +327,9 @@ export async function openInventory(
         // `InventoryActionRequest.source`.
         source: "internal"
       });
-      seatsWritten = seats.length;
+      // The action skips a row the boot may no longer write (a newer hire's),
+      // so its own count is the one reported, when the door hands it back.
+      seatsWritten = writtenOf(ran) ?? seats.length;
     } catch (error) {
       // Collected, not thrown: an app whose channels all registered is not an
       // app with no inventory, and the caller is the one that knows whether a
