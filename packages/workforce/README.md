@@ -69,9 +69,11 @@ const personas = definePersona({
 ## Reading a workforce from files
 
 Describe each worker in a folder instead of in code. `readWorkforceDirectory` walks
-`<root>/teams/<teamId>/workers/<workerName>/`, reads each worker's `WORKER.md`, and returns
-one record per worker. `readWorkforce` wraps it, joining each seat's resolved skills, its
+`<root>/org/workers/<workerName>/` and `<root>/teams/<teamId>/workers/<workerName>/`, reads each
+worker's `WORKER.md`, and returns one record per worker. `readWorkforce` wraps it, joining each seat's resolved skills, its
 team's instructions and the [packages](#packages-from-files) in its reach onto the records it hands back.
+An org seat has no team, so its record carries no `teamInstructions`, and its skills come from two
+levels, the org's and its own.
 
 ```ts
 import { readWorkforceDirectory } from "@flow-state-dev/workforce/loader";
@@ -84,12 +86,17 @@ Each record is plain data:
 
 | Field | Description |
 |-------|-------------|
-| `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. |
+| `id` | The worker's whole identity, `"<teamId>.<workerName>"` — e.g. `"engineering.lead"`. An org seat's id is its folder name alone, with no dot: `org/workers/chief-of-staff/` is `"chief-of-staff"`, a different seat from `"engineering.chief-of-staff"`. `parseDeclaredSeatId` reads either shape back. |
 | `declared` | The frontmatter exactly as written. Keys are not checked against a list, beyond a required `description` and six refused ones: `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` and `teamInstructions:`. |
 | `body` | The Markdown below the frontmatter, verbatim. Empty when the worker has no instructions. |
 
 `description` is the only required setting in a `WORKER.md`. Team and worker folder names must be
 lowercase letters, digits and single hyphens, at most 64 characters.
+
+An org seat, under `org/workers/<name>/`, is one seat the whole organization shares rather
+than a member of a team. Its folder is a worker slot like a team's, so one with no `WORKER.md` is
+reported in `errors`. An org seat reads the org's skills, packages and references, then its own folder's;
+no team level reaches it, and no `TEAM.md` instructions.
 
 A `WORKER.md` may also carry `resources:`, a list of the [file-declared
 documents](#reading-documents-from-files) that seat may touch. The loader carries it through onto `declared` untouched, the way it carries every key it does
@@ -144,8 +151,8 @@ it reaches Node built-ins through the packages it builds on. A browser component
 
 ## Reading one seat's skills
 
-A skill is a folder with a `SKILL.md` in it. In a workforce tree, one worker's skills are spread
-across three folders: the org's, its team's, and any sitting beside the worker itself.
+A skill is a folder with a `SKILL.md` in it. In a workforce tree, a team seat's skills are spread
+across three folders: the org's, its team's, and any sitting beside the worker itself. An org seat (`org/workers/<worker>/`) has no team, so it reads two: the org's `org/skills/` and its own `org/workers/<worker>/skills/`.
 
 ```
 workforce/org/skills/triage/SKILL.md
@@ -156,7 +163,8 @@ workforce/teams/pentest/workers/recon/WORKER.md
 workforce/teams/pentest/workers/recon/skills/sweep/SKILL.md
 ```
 
-`readSeatSkills` reads all three for one worker and returns the records `initialSkills` takes.
+`readSeatSkills` reads them for one worker and returns the records `initialSkills` takes. Pass `team`
+for a team seat; leave it out for an org seat.
 
 ```ts
 import { readSeatSkills } from "@flow-state-dev/workforce/loader";
@@ -170,10 +178,10 @@ if (errors.length) throw new Error(`skills: ${errors.length} entries failed to l
 skills.map((s) => s.name).sort(); // ["port-scan", "review", "sweep", "triage"]
 ```
 
-Every skill folder at those three levels is read. Nothing has to be listed anywhere for a skill
+Every skill folder at those levels is read. Nothing has to be listed anywhere for a skill
 to be included.
 
-The set comes back level by level: the org's first, then the team's, then the worker's own. Each
+The set comes back level by level: the org's first, then the team's (for a team seat), then the worker's own. Each
 entry is `{ name, skillMd, files }`, the same record `readSkillsDirectory` returns — `name` is the
 folder name, bare, with no team prefix.
 
@@ -186,8 +194,8 @@ const clerk = await readSeatSkills("./workforce", { team: "audit", worker: "cler
 // recon.skills has pentest's `review`; clerk.skills has audit's. Neither carries the other.
 ```
 
-One name reaching a single worker from more than one of its levels is refused. All three levels
-count, so a collision can span two of them or all three:
+One name reaching a single worker from more than one of its levels is refused. Every level
+counts, so on a team seat a collision can span two of them or all three:
 
 ```ts
 errors;
@@ -462,7 +470,7 @@ holds a package. A kind that reads
 string, which is what keeps "this team said nothing" and "this team said nothing *yet*" from being
 the same value in the bag.
 
-**One key is reserved across kinds: `tools`.** It is not part of the contract — your kind declares it or leaves it out — but if you declare it, it means the names of tools that seat may call, because the hire step reads it. (On the built-in `agent` kind, a seat with no `tools:` line can also call what its own file chose: the tools of the capability presets it selected under `capabilities:`, and the blocks of the packages it holds. A written line is the whole grant.) A name in a worker's `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, along with the blocks of the packages it holds, then your kind's catalog), and the ones that resolved to the seat's own folders or packages arrive on `seatTools` as live blocks instead. You decide what to check the remaining names against, and you may declare no `tools` at all. What the key is not available for is unrelated string configuration, which hiring would rewrite — give that its own name.
+**One key is reserved across kinds: `tools`.** It is not part of the contract — your kind declares it or leaves it out — but if you declare it, it means the names of tools that seat may call, because the hire step reads it. (On the built-in `agent` kind, a seat with no `tools:` line can also call what its own file chose: the tools of the capability presets it selected under `capabilities:`, and the blocks of the packages it holds. A written line is the whole grant.) A name in a worker's `tools:` is resolved against what is registered for that seat (its own `blocks/` folder, then its team's, along with the blocks of the packages it holds, then your kind's catalog; an org seat has neither folder, so only the last two apply), and the ones that resolved to the seat's own folders or packages arrive on `seatTools` as live blocks instead. You decide what to check the remaining names against, and you may declare no `tools` at all. What the key is not available for is unrelated string configuration, which hiring would rewrite — give that its own name.
 
 Add your kind's own settings on top, at the same level:
 
@@ -668,7 +676,8 @@ const seats = hireWorkforce(workers, { kinds: { ...kinds, agent }, seatBlocks, p
 ```
 
 A `blocks/` folder **registers** a name: `workforce/blocks/` for every worker, a team's for that
-team's workers, a worker's own for that worker. It does not grant use — a worker still names the
+team's workers, a team seat's own for that seat. An org seat (`org/workers/<name>/`) has no `blocks/`
+folder, and `fsdev gen` refuses one there: it gets tools from the catalog and the packages it holds. A folder does not grant use — a worker still names the
 block in its `tools:`, and a name resolves nearest first (its own folder, its team's, the catalog).
 Two rules are checked before any worker runs: the file's basename, the map key and the block's own
 `name` must agree, and a block in a worker's own folder may read a store the kind installed but may
@@ -795,7 +804,7 @@ package it holds. A written `tools:` line is the whole list, and a package block
 it; `tools: []` gets the text and no tools.
 
 `readWorkforce` puts the packages in each worker's reach on its record as `packages`
-(`PackageManifest[]`: the org's library, its team's, and its own folder) and reports refused package
+(`PackageManifest[]`: the org's library, its team's, and its own folder; an org seat has no team's) and reports refused package
 folders on `packageErrors`. `readDeclaredRoster` reports the same entries on its `package` layer.
 The blocks come from `fsdev gen`'s `packageBlocks` export, keyed by package path and then block
 name; pass it to `hireWorkforce`, which decides from each worker's folder and `packages:` line which
@@ -951,9 +960,9 @@ own drops whatever resources the flow kind declared. Spread it into your own map
 **A reference is walled by where its file sits.** A seat reaches the org's references, its own
 team's, and its own folder's. Another team's and a teammate's are not on its map at all, so
 `ctx.resources.get` on one throws `is not registered`. No install-side filter is involved and there
-is no setting that widens the wall: a reference reaches more people by moving up the tree. Seats are
-read from `teams/<teamId>/workers/<name>/`, so a reference under `org/workers/<name>/references/`
-sits beside the org level rather than above any seat, and no seat reaches it.
+is no setting that widens the wall: a reference reaches more people by moving up the tree. A
+reference under `org/workers/<name>/references/` belongs to the org seat at that folder: it reaches
+that seat and no other. An org seat has no team, so no team's references reach it.
 
 A `references:` list in a `WORKER.md` narrows within that wall. Each entry is a ref on its own —
 there is no mode, since nothing writes a reference. An entry naming a reference the seat could not
@@ -1964,9 +1973,10 @@ the root exports, and reaches no Node built-in.
 | `SEAT_DISCOVER_KEY` | The pinned worker-file key, `"discover"` — the domains one seat sees, out of what its scope carries. Narrows only: a seat can never reach a domain the app did not install. |
 | `readDeclaredRoster(root)` | Read the whole tree in one call — workers with their skills and packages in reach, teams, documents and channels — plus one list of everything that failed to load, each entry tagged with the layer that reported it. Collects rather than throws, so the boot policy stays yours. Ships from the `./loader` subpath (Node only). |
 | `readWorkforce(root)` | Read the tree into worker records that already carry their own skills and the packages in their reach — `readWorkforceDirectory` joined with `readSeatSkills` per seat and `readPackagesDirectory`. Returns `{ workers, errors, skillErrors, teams, teamErrors, packageErrors }`. Reach for it when seats are all you need. Ships from the `./loader` subpath (Node only). |
-| `readWorkforceDirectory(root)` | Read a `teams/<id>/workers/<name>/` tree into one `WorkerManifest` per worker, without their skills. Ships from the `./loader` subpath (Node only). |
+| `readWorkforceDirectory(root)` | Read every `org/workers/<name>/` and `teams/<id>/workers/<name>/` folder into one `WorkerManifest` per worker, org seats first, without their skills. Ships from the `./loader` subpath (Node only). |
 | `readPackagesDirectory(root)` | Read every `packages/<name>/PACKAGE.md` at the org, team and worker levels into one `PackageManifest` each, returning `{ packages, errors }`. Ships from the `./loader` subpath (Node only). |
-| `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Ships from the `./loader` subpath (Node only). |
+| `readSeatSkills(root, { team, worker })` | Read one worker's skills across the org, team and worker levels into `InitialSkill[]`. Leave `team` out for an org seat: it reads `org/skills` and `org/workers/<worker>/skills`. Ships from the `./loader` subpath (Node only). |
+| `parseDeclaredSeatId(id)` | Read a declared seat's id back into its folders: `"<name>"` is an org seat, `{ name }`; `"<teamId>.<name>"` a team seat, `{ team, name }`. `undefined` for an id that matches neither shape. For a runtime-hired seat, pass `seatId`, not `id`: its `id` is the `<orgId>.<seatId>` address, which would parse as a team seat. Ships from the package root. |
 | `openRoot(root)` / `walkTeams(root, report)` | The walk every reader above shares: open the configured root (throwing on a symlinked or unreadable one, with or without a trailing separator, and on one spelled with a `..` that steps back through an earlier segment — pass the path it resolves to; a `.` segment and anything above the root are not checked), then enumerate `teams/`, reporting a team folder that is refused or unreadable and yielding the rest. `report` may be `async` and is awaited before the walk moves on. What a reader does *inside* a team stays its own. Ships from the `./loader` subpath (Node only). |
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |

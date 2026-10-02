@@ -36,6 +36,7 @@ import { BLOCKS_SLOT, readBlocksSlot } from "./discover-seat-blocks";
 /** Where a package's blocks may sit, as the command reports it. */
 export const PACKAGE_BLOCK_SLOT_PATTERNS: readonly string[] = Object.freeze([
   `org/${PACKAGES_SLOT}/*/${BLOCKS_SLOT}`,
+  `org/${WORKERS_LEVEL}/*/${PACKAGES_SLOT}/*/${BLOCKS_SLOT}`,
   `teams/*/${PACKAGES_SLOT}/*/${BLOCKS_SLOT}`,
   `teams/*/${WORKERS_LEVEL}/*/${PACKAGES_SLOT}/*/${BLOCKS_SLOT}`,
 ]);
@@ -80,32 +81,42 @@ export async function discoverPackageBlocks(root: string): Promise<PackageBlockD
   const org = await openStructuralDirectory(path.join(root, "org"), "org");
   if (org.entries !== undefined) {
     await readPackagesSlot(path.join(root, "org"), "org", packageBlocks, problems);
+    await readWorkerPackagesSlots(path.join(root, "org"), "org", packageBlocks, problems);
   }
 
   for await (const team of walkTeams(root, () => undefined)) {
     await readPackagesSlot(team.dir, team.path, packageBlocks, problems);
-
-    const workersPath = `${team.path}/${WORKERS_LEVEL}`;
-    const workers = await openStructuralDirectory(path.join(team.dir, WORKERS_LEVEL), workersPath);
-    if (workers.entries === undefined) continue;
-    for (const workerName of [...workers.entries].sort()) {
-      if (IGNORED_ENTRIES.has(workerName)) continue;
-      const workerDir = path.join(team.dir, WORKERS_LEVEL, workerName);
-      if ((await classify(workerDir)).kind !== "directory") continue;
-      // A badly named worker folder is the worker reader's to report, and the
-      // loader skips its packages; so does this walk, or it would generate
-      // blocks for a package no seat can hold.
-      try {
-        validateSegment(workerName, "Worker");
-      } catch {
-        continue;
-      }
-      await readPackagesSlot(workerDir, `${workersPath}/${workerName}`, packageBlocks, problems);
-    }
+    await readWorkerPackagesSlots(team.dir, team.path, packageBlocks, problems);
   }
 
   packageBlocks.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return { packageBlocks, problems };
+}
+
+/** Read each worker's own `packages/` slot under one parent — `org/` or a team folder. */
+async function readWorkerPackagesSlots(
+  parentDir: string,
+  parentPath: string,
+  packageBlocks: DiscoveredPackageBlock[],
+  problems: string[],
+): Promise<void> {
+  const workersPath = `${parentPath}/${WORKERS_LEVEL}`;
+  const workers = await openStructuralDirectory(path.join(parentDir, WORKERS_LEVEL), workersPath);
+  if (workers.entries === undefined) return;
+  for (const workerName of [...workers.entries].sort()) {
+    if (IGNORED_ENTRIES.has(workerName)) continue;
+    const workerDir = path.join(parentDir, WORKERS_LEVEL, workerName);
+    if ((await classify(workerDir)).kind !== "directory") continue;
+    // A badly named worker folder is the worker reader's to report, and the
+    // loader skips its packages; so does this walk, or it would generate
+    // blocks for a package no seat can hold.
+    try {
+      validateSegment(workerName, "Worker");
+    } catch {
+      continue;
+    }
+    await readPackagesSlot(workerDir, `${workersPath}/${workerName}`, packageBlocks, problems);
+  }
 }
 
 /** Read one `packages/` slot's packages' `blocks/` folders. Absent is silent. */

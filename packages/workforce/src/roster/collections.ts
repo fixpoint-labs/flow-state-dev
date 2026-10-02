@@ -48,8 +48,9 @@ import { z } from "zod";
  */
 export const hiredSeatRowSchema = z.object({
   /**
-   * The seat's id within its org — `"support.ada"`. Dotted, because a seat id
-   * is already `"<teamId>.<name>"`; the org is NOT part of it. The address is
+   * The seat's id within its org — `"support.ada"` for a team seat
+   * (`"<teamId>.<name>"`), or a bare `"<name>"` for a seat on no team; the org
+   * is NOT part of it. The address is
    * built by joining the two, which is why the ORG is the segment that has to
    * be dot-free (see `seatAddress`).
    */

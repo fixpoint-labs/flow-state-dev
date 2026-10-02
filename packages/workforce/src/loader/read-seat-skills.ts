@@ -3,8 +3,9 @@
  *
  * A skills folder is the same folder wherever it sits: a directory of
  * `<name>/SKILL.md`, read by `readSkillsDirectory`. What this module adds is
- * *which* folders one seat draws from — the org's, its own team's, and any
- * sitting beside the worker itself — and the two refusals that only make sense
+ * *which* folders one seat draws from — the org's, its own team's (a team seat
+ * has one; an org seat does not), and any sitting beside the worker itself —
+ * and the two refusals that only make sense
  * once a seat draws from more than one.
  *
  * Reading per seat is what makes teams isolated. Two teams may each have a
@@ -93,11 +94,14 @@ export type SeatSkillError =
       paths: string[];
     });
 
-/** Which seat to read for. Both segments name folders in the tree. */
+/**
+ * Which seat to read for. Both segments name folders in the tree;
+ * `parseDeclaredSeatId` turns a seat's id into them.
+ */
 export interface ReadSeatSkillsOptions {
-  /** The team the seat belongs to — `teams/<team>/`. */
-  team: string;
-  /** The worker's own folder — `teams/<team>/workers/<worker>/`. */
+  /** The team the seat belongs to — `teams/<team>/` — or `undefined` for an org seat. */
+  team?: string;
+  /** The worker's own folder — `teams/<team>/workers/<worker>/`, or `org/workers/<worker>/` for an org seat. */
   worker: string;
 }
 
@@ -134,6 +138,8 @@ export interface ReadSeatSkillsResult {
 /**
  * Read the skills one seat can see: `<root>/org/skills`,
  * `<root>/teams/<team>/skills`, and `<root>/teams/<team>/workers/<worker>/skills`.
+ * An org seat (no `team`) sees `<root>/org/skills` and
+ * `<root>/org/workers/<worker>/skills`: no team level.
  *
  * A skill beside the worker is included without being listed anywhere — the
  * folder already says whose it is.
@@ -165,7 +171,7 @@ export async function readSeatSkills(
   // the folders they name. Thrown rather than collected: a segment that breaks
   // them names no seat, so there is no seat to report against — and one
   // carrying `..` would read a folder the caller never configured.
-  validateSegment(team, "Team");
+  if (team !== undefined) validateSegment(team, "Team");
   validateSegment(worker, "Worker");
 
   // The levels below are each allowed to be absent, so nothing further down
@@ -183,11 +189,11 @@ export async function readSeatSkills(
   // file in play rather than just the two the author happened to write first.
   const sources = new Map<string, { paths: string[]; skills: InitialSkill[] }>();
 
-  for (const level of [
-    "org/skills",
-    `teams/${team}/skills`,
-    `teams/${team}/workers/${worker}/skills`,
-  ]) {
+  const levels =
+    team === undefined
+      ? ["org/skills", `org/workers/${worker}/skills`]
+      : ["org/skills", `teams/${team}/skills`, `teams/${team}/workers/${worker}/skills`];
+  for (const level of levels) {
     const dir = path.join(root, ...level.split("/"));
     // The level is jumped to rather than walked down to, so every folder above
     // it has to be classified here — `lstat` answers for the final component

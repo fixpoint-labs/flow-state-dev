@@ -33,6 +33,7 @@ import {
   type ReadWorkforceDirectoryResult,
 } from "./read-workforce-directory";
 import type { TeamManifest, WorkerManifest } from "../manifest";
+import { parseDeclaredSeatId } from "../seat-references";
 
 /** What {@link readWorkforce} hands back. */
 export interface ReadWorkforceResult {
@@ -142,16 +143,18 @@ export async function readWorkforce(root: string): Promise<ReadWorkforceResult> 
   const skillErrors: ReadWorkforceResult["skillErrors"] = [];
 
   for (const worker of workers) {
-    const { team, name } = splitWorkerId(worker.id);
+    // The reader minted this id, so it always parses. An org seat has no team:
+    // no team skills, no `TEAM.md` instructions, no team library.
+    const { team, name } = parseDeclaredSeatId(worker.id)!;
     const seat = await readSeatSkills(root, { team, worker: name });
-    const teamInstructions = instructionsByTeam.get(team);
+    const teamInstructions = team === undefined ? undefined : instructionsByTeam.get(team);
     // The org's library, the worker's team's, then its own folder — in walk
     // order, which is that order. Another team's library and a sibling's own
     // folder are not in reach, so they never reach this record at all.
     const reach = packages.filter(
       (candidate) =>
         candidate.level === "org" ||
-        (candidate.level === "team" && candidate.team === team) ||
+        (candidate.level === "team" && team !== undefined && candidate.team === team) ||
         (candidate.level === "worker" && candidate.worker === worker.id),
     );
     joined.push({
@@ -174,16 +177,3 @@ export async function readWorkforce(root: string): Promise<ReadWorkforceResult> 
   return { workers: joined, errors, skillErrors, teams, teamErrors, packageErrors };
 }
 
-/**
- * Split a minted worker id back into the two folder names it was made of.
- *
- * Safe because the segment rules exclude `.` deliberately — see
- * `segments.ts`, where that exclusion is called load-bearing for exactly this:
- * a dotted segment would make `a.b.lead` readable two ways. Both halves came
- * through `validateSegment` when the id was minted, so they are re-validated by
- * `readSeatSkills` and not here.
- */
-function splitWorkerId(id: string): { team: string; name: string } {
-  const at = id.indexOf(".");
-  return { team: id.slice(0, at), name: id.slice(at + 1) };
-}

@@ -85,9 +85,11 @@ export {
 } from "./clear-shadowed-references";
 export {
   SEAT_REFERENCES_KEY,
+  parseDeclaredSeatId,
   placeOfReference,
   placeOfSeat,
   referenceReachableBySeat,
+  type DeclaredSeatId,
   type TreePlace,
 } from "./seat-references";
 export { splitResourceModules, type ResourceModuleHalves } from "./split-resource-modules";

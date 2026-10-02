@@ -74,7 +74,7 @@ result — the fence's whole claim is about what the model can call.
 
 **A tool registered per instance is not an exemption from this fence.** A
 higher layer may register a block for one flow instance only (Workforce does,
-from an instance's own `blocks/` folder). Registration makes the name
+from a team seat's own `blocks/` folder). Registration makes the name
 resolvable; it does not grant its use. The instance still names the block in
 its `tools:`, and what reaches the generator is one declared list. Core is
 untouched by per-instance registration, and the fence stays exactly as literal
@@ -85,7 +85,7 @@ wrote no `tools:` line, the built-in `agent` kind adds to its declaration the
 tools of the capability presets the seat's own file picked and the blocks of
 the packages it holds (FIX-1459); a seat that wrote a line gets exactly that
 line, and `tools: []` gets nothing. A package's blocks are registered for the
-seats that hold it and no others, the way a seat's own `blocks/` folder is, so
+seats that hold it and no others, the way a team seat's own `blocks/` folder is, so
 holding a package is the choice and a seat that does not hold one cannot name
 its blocks. Presets the kind switches on by
 default are not a choice and add nothing. Core sees one declared list either
