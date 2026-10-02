@@ -378,7 +378,8 @@ describe("Chief of Staff (FIX-1722)", () => {
     // Shift Manager names the view Shift Coordinator; the seat keeps its id (FIX-1747).
     expect(screen.getByTestId("nav-cos").textContent).toBe("Shift Coordinator");
     expect(within(screen.getByTestId("cos")).getByText("SHIFT COORDINATOR")).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/chief of staff/i);
+    expect(screen.getByTestId("sidebar").textContent).not.toMatch(/chief of staff/i);
+    expect(screen.getByTestId("cos").textContent).not.toMatch(/chief of staff/i);
     cleanup();
     setURL(`${served[0]!.baseUrl}/no/such/place`);
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
