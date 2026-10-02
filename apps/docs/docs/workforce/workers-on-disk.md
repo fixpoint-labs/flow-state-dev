@@ -215,7 +215,7 @@ An `errors[].path` never includes the root and is always slash-separated: it sta
 
 What lands in `errors`:
 
-- a worker folder with no `WORKER.md`, including one that holds only other files (custom behavior is [a flow kind](#when-a-worker-needs-more-than-settings), not a second file in the folder);
+- a team's worker folder with no `WORKER.md`, including one that holds only other files (custom behavior is [a flow kind](#when-a-worker-needs-more-than-settings), not a second file in the folder);
 - a `WORKER.md` with no frontmatter, or one whose `description` is missing, empty, or not a string;
 - a `WORKER.md` that declares `persona:`, `seatSkills:`, `seatTools:`, `seatPackages:`, `seatId:` or `teamInstructions:`, none of which is a setting a worker declares — team instructions go in the team's own [`TEAM.md`](#what-a-teammd-says);
 - a team or worker folder name that breaks the naming rules;
@@ -257,7 +257,7 @@ A reported folder is a worker your app was supposed to have, so logging a warnin
 
 A team's `channels/`, `resources/`, `skills/` or `tools/` folder, a `workers/` folder at the top of the tree, a `README.md` sitting inside `teams/<team>/workers/`, an OS or editor file such as `.DS_Store`: none of these produces a worker, and none is reported. The rule is that the path occupies a worker slot, `teams/<team>/workers/<worker>/` or `org/workers/<worker>/`, not that the path looks like a worker.
 
-`org/workers/<name>/` is a seat slot like a team's, so a folder there with no `WORKER.md` is reported. An org seat reads the organization's skills, packages and references, then its own folder's. It has no team, so no team's folders reach it and no `TEAM.md` instructions apply.
+A folder under `org/workers/<name>/` with a `WORKER.md` is a seat slot like a team's, and a `WORKER.md` there that fails to load is reported. A folder there with no `WORKER.md` declares no seat and is not reported: it holds documents only, and they load as they always have. An org seat reads the organization's skills, packages and references, then its own folder's. It has no team, so no team's folders reach it and no `TEAM.md` instructions apply.
 
 Passed over by the *worker* walk is not the same as unread. A team's `skills/` folder is read by the separate walk described under [Skills](./built-in-worker.md#skills), its `resources/` folder by [Documents on disk](./documents-on-disk.md), its `packages/` folder by [Packages on disk](./packages-on-disk.md), and its `TEAM.md` by the team walk described [above](#what-a-teammd-says). A `TEAM.md` anywhere else — at `org/`, or at the root — is read by nothing and reported by nothing. There is no org-wide instruction layer.
 
