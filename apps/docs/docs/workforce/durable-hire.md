@@ -262,17 +262,11 @@ The organization is part of the address because two organizations can both want 
 
 ## Who can reach a hired seat
 
-A hired seat belongs to the organization that hired it, and to the person who hired it when it is user-owned. The `pin` you register the seat with names both, and every caller is checked against it. Knowing or guessing a seat's address grants nothing.
+![Two seats hired in the acme organization. The org-visible seat answers at acme.support.ada; its roster row can be listed by any acme member's browser, showing seatId, flow and instructions, and any acme member the resolver admits can use it. The user-owned seat answers at acme.~alice.research; its roster row, at workforce/roster/~alice/research, has no browser read, and only alice signed in to acme can use it, so bob in acme gets 404 Unknown flow. Outside acme, whether globex or alice signed in there, both seats answer 404 Unknown flow and are left out of the flow list; a research seat in globex is hired there and starts empty. The row is not the seat, the address is not a permission, and firing deletes the roster row and the inventory row the hire wrote.](./hired-seat-reach.svg)
 
-A caller your resolver identifies, but who is outside that pair, gets the answer an address your app does not serve would get:
+A hired seat answers only the callers its `pin` admits: the organization that hired it, and the one person who hired it when it is user-owned. Anyone else gets `404 Unknown flow`, the same answer as an address your app does not serve, and `GET /api/flows` leaves the seat out. A session opened earlier can't be resumed by them either. Knowing a seat's address grants nothing.
 
-- Opening a session with the seat, or sending it an action, answers `404 Unknown flow`.
-- `GET /api/flows` leaves the seat out of the list.
-- A session opened earlier cannot be resumed by a caller outside the pair.
-- A task board in another organization cannot hand work to the seat. The hand-off is refused as if the seat did not exist: the task ends errored and unclaimed, and its error reads `flow-not-found` with `no flow instance "<address>" is registered in this process`, the same as for an address nobody holds.
-- With debug endpoints switched on, the debug listing does not show another person's private roster row.
-
-For example, Alice hires a user-owned `research` seat while signed in to Acme. Bob, also in Acme, cannot open it. Neither can Alice while she is signed in to Globex. If she wants a research seat there, she hires one in Globex, and it starts empty. If Bob hires his own, his starts empty too. [What a seat saves for a person](#what-a-seat-saves-for-a-person) covers why.
+A task board in another organization can't hand work to the seat either. The task ends errored and unclaimed, with `flow-not-found` and `no flow instance "<address>" is registered in this process`, as for an address nobody holds. With debug endpoints switched on, the debug listing doesn't show another person's private roster row.
 
 A caller the seat's resolver refuses, such as a request with no credential, gets that resolver's error before the pin is checked. With the `adminAuthentication` above installed on the seat, that is `401 Invalid admin credential.`
 
@@ -587,11 +581,9 @@ The roster is not the [inventory](./inventory.md). An inventory row means *was r
 
 ### What a seat saves for a person
 
-Say Alice uses seats in two organizations, Acme and Globex. Anything a seat stores for her while she works in Acme stays in Acme and stays hers. Her Globex seat of the same kind cannot read it, and neither can a seat belonging to Bob, another member of Acme. Her other seats in Acme can, if they declare the same resource. A seat does not move between organizations, and there is no setting that makes it move.
+![Where a hired seat keeps what it learns about alice. Inside the acme organization: one shared cell for alice in acme, which every hired seat in acme reads and writes unless it is flow-isolated, holding her user record and her user-scoped resources; and one cell per seat address for flow-isolated data, such as alice at acme.support.ada. In globex, alice has a separate cell of her own, which acme's seats cannot read. Outside hired seats, alice's own data, keyed by her id alone and kept by your app's other flows, is a third place that no hired seat reads or writes. Nothing moves between organizations.](./seat-person-data.svg)
 
-User state and user-scoped resources a seat writes are kept per person, per organization. That covers the user record a seat reads as `ctx.user.state`, and every user-scoped resource that isn't flow-isolated. A resource's own `flowIsolation` decides whether it is isolated; a resource that doesn't set it follows the kind's `isolateUserState`. Flow-isolated data, including the user record when the kind sets `isolateUserState: true`, is kept per person and per seat address instead.
-
-The person's own data outside hired seats, such as preferences your app's other flows keep, is kept separately, by the person's id alone. A hired seat does not read it and cannot write to it.
+A seat keeps what it learns about a person in one of three places, shown above. By default, one cell per person per organization, which every seat in that organization shares. With flow isolation, one cell per person per seat. The person's own data outside hired seats is a third cell, which no hired seat reads or writes. A resource's own `flowIsolation` decides which applies; a resource that doesn't set it follows the kind's `isolateUserState`.
 
 A user resource backed by your own hooks (a projected resource) is stored by your app, not the framework. Its hooks receive the person's id and the organization, so key its rows by `orgId` as well, or a seat in one organization reads what was saved in another.
 

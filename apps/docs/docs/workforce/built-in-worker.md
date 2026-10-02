@@ -253,6 +253,8 @@ tools: [memory/recall]
 
 `isolateUserState: true` keys each worker's storage on that worker's id, so two workers serving the same person do not read each other's memory. Leave it off and they share one, per organization for [workers hired at runtime](./durable-hire.md#what-a-seat-saves-for-a-person).
 
+![Where a hired seat keeps what it learns about alice. Inside the acme organization: one shared cell for alice in acme, which every hired seat in acme reads and writes unless it is flow-isolated, holding her user record and her user-scoped resources; and one cell per seat address for flow-isolated data, such as alice at acme.support.ada. In globex, alice has a separate cell of her own, which acme's seats cannot read. Outside hired seats, alice's own data, keyed by her id alone and kept by your app's other flows, is a third place that no hired seat reads or writes. Nothing moves between organizations.](./seat-person-data.svg)
+
 It is a decision for the whole kind. A roster is all-separate or all-shared; you cannot keep one shared store across the team while giving each worker its own of something else.
 
 The flag decides *where* a worker's memory is stored, so anything that moves the key leaves the old memory behind. Renaming a worker does it, because the key is the worker's id. So does turning the flag on for a roster that has already been talking to people, because shared and separate are different places. Neither has a migration. Decide it before the roster has anything worth keeping, or accept that workers start fresh.
