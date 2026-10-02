@@ -71,6 +71,7 @@ import {
 import { PROJECTS_COLLECTION, roomLineKey, roomLineSchema, type RoomLine } from "../projects/collections";
 import {
   recentTalkLines,
+  markTalkDelivered,
   recordTalkDelivery,
   TALK_RESOURCES,
   talkAnswer,
@@ -280,11 +281,23 @@ function refuseTemplateChannel(ctx: { session: { identity: { id: string } } }): 
 }
 
 /**
+ * The open channel this session is, after the template fence: every channel
+ * action that acts on its channel (post, read, answer, the board actions and
+ * the inventory registration) finds it here, so none of them serves a session
+ * whose id is now a project talk template's. `undefined` when the session is
+ * not a bound channel; each caller refuses that in its own words.
+ */
+function openChannelOf(ctx: { session: { identity: { id: string }; state: Readonly<Record<string, unknown>> } }) {
+  refuseTemplateChannel(ctx);
+  return boundChannel(ctx.session.state);
+}
+
+/**
  * The line a post makes, or the channel's refusal. Writes nothing: each append
  * keeps the line itself.
  */
 function lineFor(input: ChannelPostInput, ctx: BlockContext): ChannelTranscriptLine {
-  const channel = boundChannel(ctx.session.state);
+  const channel = openChannelOf(ctx);
   if (channel === undefined) {
     throw new ChannelPostRefusedError(
       "channel-not-bound",
@@ -466,7 +479,7 @@ const readChannelFor = (boardIds: readonly string[]) =>
     inputSchema: z.object({}).strict(),
     outputSchema: channelReadOutputSchema,
     execute: async (_input, ctx): Promise<ChannelReadOutput> => {
-      const channel = boundChannel(ctx.session.state);
+      const channel = openChannelOf(ctx);
       if (channel === undefined) {
         throw new ChannelPostRefusedError(
           "channel-not-bound",
@@ -607,7 +620,7 @@ async function ledgerNamed(
   boardIds: readonly string[],
   name: string
 ): Promise<{ boardId: string; channel: ChannelSessionState; ledger: ChannelTaskLedger }> {
-  const channel = boundChannel(ctx.session.state);
+  const channel = openChannelOf(ctx);
   if (channel === undefined) {
     throw new ChannelPostRefusedError(
       "channel-not-bound",
@@ -1014,7 +1027,7 @@ export function inventoryWriterActions(kind: string) {
     outputSchema: inventoryChannelRegisteredSchema,
     resources: { channels, memberships },
     execute: async (_input, ctx) => {
-      const channel = boundChannel(ctx.session.state);
+      const channel = openChannelOf(ctx);
       if (channel === undefined) {
         throw new ChannelPostRefusedError(
           "channel-not-bound",
@@ -1563,10 +1576,14 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     execute: async (posted: TalkFanOutInput, ctx): Promise<ChannelNotifyInput[]> => {
       const recent = await recentTalkLines(ctx as unknown as BlockContext, posted.projectId, posted.seq);
       const postId = roomLineKey(posted.projectId, posted.seq);
-      // One delivery per post, seat and session, recorded before the seat is
-      // woken: its token is how the seat's answer proves which seat it speaks
-      // for. A delivery already recorded (a replayed fan-out) is not woken again.
-      const deliveries = await Promise.all(
+      // One delivery per post, seat and session, recorded `pending` before the
+      // seat is woken and marked `delivered` after (`talkDelivered`): its token
+      // is how the seat's answer proves which seat it speaks for. A replay
+      // wakes a still-pending delivery again with its token, and skips a
+      // delivered one. Every row is attempted before a failure is reported, so
+      // a row that failed beside persisted siblings leaves them pending for
+      // the replay rather than half-recorded and forgotten.
+      const settled = await Promise.allSettled(
         templateSeats.map(async (member) => {
           const answerToken = await recordTalkDelivery(ctx as unknown as BlockContext, {
             projectId: posted.projectId,
@@ -1588,7 +1605,27 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
               };
         })
       );
-      return deliveries.filter((delivery) => delivery !== undefined);
+      const failed = settled.find((outcome) => outcome.status === "rejected");
+      if (failed !== undefined) throw failed.reason;
+      return settled.flatMap((outcome) =>
+        outcome.status === "fulfilled" && outcome.value !== undefined ? [outcome.value] : []
+      );
+    }
+  });
+  // After a seat's wake has been dispatched: its delivery stops being one a
+  // replay would wake again.
+  const talkDelivered = handler({
+    name: "channel-talk-delivered",
+    inputSchema: channelNotifyInputSchema,
+    outputSchema: z.object({}),
+    resources: TALK_RESOURCES,
+    execute: async (delivery: ChannelNotifyInput, ctx) => {
+      await markTalkDelivered(ctx as unknown as BlockContext, {
+        postId: delivery.postId as string,
+        seat: delivery.member,
+        sessionId: delivery.channelId
+      });
+      return {};
     }
   });
   const talkFanOut =
@@ -1596,7 +1633,12 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
       ? undefined
       : sequencer({ name: "channel-talk-fan-out", inputSchema: talkFanOutInputSchema })
           .step(talkDeliveries)
-          .forEach((deliveries: ChannelNotifyInput[]) => deliveries, deliver);
+          .forEach(
+            (deliveries: ChannelNotifyInput[]) => deliveries,
+            sequencer({ name: "channel-talk-deliver", inputSchema: channelNotifyInputSchema })
+              .tap(deliver)
+              .tap(talkDelivered)
+          );
   const talkPostEntry =
     talkFanOut === undefined
       ? talkPost

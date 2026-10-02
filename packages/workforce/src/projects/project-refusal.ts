@@ -31,7 +31,8 @@ export type ProjectRefusalReason =
   | "talk-on-a-channel"
   | "author-on-a-person-post"
   | "answer-not-delivered"
-  | "answer-not-yours";
+  | "answer-not-yours"
+  | "talk-session-not-listed";
 
 /** A project write or room entry refused on the project's own terms. */
 export class ProjectRefusedError extends Error {

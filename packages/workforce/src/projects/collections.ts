@@ -322,9 +322,10 @@ const ROOM_ANSWERS_COLLECTION = defineResourceCollection({
 /**
  * One post's delivery to one seat through one talk session, at
  * `room-deliveries/<postId>/<seat>/<sessionId>` ({@link roomDeliveryKey}):
- * created once by the talk fan-out before it wakes the seat, so a replayed
- * fan-out finds it and wakes nobody again. `token` is handed to that seat
- * alone; an answer is looked up by its post, its author and the session it
+ * created once by the talk fan-out before it wakes the seat. It is
+ * `pending` until the seat's wake has been dispatched, then `delivered`: a
+ * replayed fan-out wakes a `pending` delivery again, with the same token, and
+ * skips a `delivered` one. `token` is handed to that seat alone; an answer is looked up by its post, its author and the session it
  * comes through, and must carry the token. The token is unguessable, so a
  * seat cannot answer under a delivery it was not handed. No browser read.
  */
@@ -333,7 +334,8 @@ export const roomDeliverySchema = z.object({
   postId: z.string().min(1),
   seat: z.string().min(1),
   sessionId: z.string().min(1),
-  token: z.string().min(1)
+  token: z.string().min(1),
+  status: z.enum(["pending", "delivered"])
 });
 
 /** The key of one post's delivery to one seat through one session. */

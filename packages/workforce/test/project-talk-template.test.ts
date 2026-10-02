@@ -791,6 +791,45 @@ describe("a project's talk template at runtime", () => {
     ]);
   }, 15_000);
 
+  it("wakes a seat whose delivery an earlier run recorded but never dispatched, once, with that delivery's token", async () => {
+    const h = await boot({ talk: { seats: ["eng.em"] } });
+    await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
+    const talk = await h.sessionOf("apollo", "alice");
+    // An earlier run of this post's fan-out recorded eng.em's delivery and died before waking it.
+    const postId = roomLineKey("apollo", 1);
+    await h.stores.resourceState.set(
+      "org",
+      ORG,
+      `room-deliveries/${postId}/eng.em/${talk}`,
+      { projectId: "apollo", postId, seat: "eng.em", sessionId: talk, token: "t-crashed", status: "pending" } as never,
+      "any"
+    );
+
+    await h.ok("alice", CHANNEL_KIND, talk, "post", { body: "[answer] who is on call?" });
+    await h.until(async () => (h.heard.length === 1 ? true : undefined), "eng.em's wake");
+    await h.until(async () => {
+      const read = await h.ok("alice", CHANNEL_KIND, talk, "read", { after: 0 });
+      return read.lines.some((line: { author: string | null }) => line.author === "eng.em") ? true : undefined;
+    }, "eng.em's answer under the recorded token");
+    await new Promise((r) => setTimeout(r, 200));
+    expect(h.heard.map((run) => [run.seat, run.post.answerToken])).toEqual([["eng.em", "t-crashed"]]);
+  });
+
+  it("refuses a post through a talk session the project does not list for its owner", async () => {
+    const h = await boot({ talk: { seats: ["eng.em"] } });
+    await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });
+    await h.sessionOf("apollo", "alice");
+    // A second session of alice's, seeded as bound to the project but never listed on the row.
+    const created = await h.call("POST", "alice", [CHANNEL_KIND, "sessions"], { userId: "alice", state: { resourceId: "apollo" } });
+    const stray = created.json.session.id as string;
+    await expect(h.ok("alice", CHANNEL_KIND, stray, "post", { body: "from a side window" })).rejects.toThrow(
+      /talk-session-not-listed/
+    );
+    await expect(h.ok("alice", CHANNEL_KIND, stray, "read", { after: 0 })).rejects.toThrow(/talk-session-not-listed/);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(h.heard).toEqual([]);
+  });
+
   it("wakes each seat once when the fan-out for one post runs twice", async () => {
     const h = await boot({ talk: { seats: ["eng.em", "ops.lead"] } });
     await h.ok("alice", "app", h.app, "writeRow", { id: "apollo", members: ["alice"] });

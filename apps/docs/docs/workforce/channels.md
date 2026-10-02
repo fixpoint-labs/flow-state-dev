@@ -822,12 +822,12 @@ members: [engineering.lead, operations.lead]
 Plan the work, and say what is blocked.
 ```
 
-That file is a template, not a channel. It's never opened, and it never shows up in the [inventory](./inventory.md). If the file used to be a channel, its old session is kept in the store, but `post` and `read` on it are refused with `channel-is-a-template`.
+That file is a template, not a channel. It's never opened, and it never shows up in the [inventory](./inventory.md). If the file used to be a channel, its old session is kept in the store, but every channel action on it, including inventory registration, is refused with `channel-is-a-template`.
 
 What a template does:
 
 - **It applies to every project's room, and edits land at the next restart.** The seats and charter are built onto the channel kind each time the app boots and are never copied into a session. An edit reaches every room, including ones that already exist.
-- **A post wakes each seat once, as the person who posted.** Each seat keeps one conversation per person per room, and gets the room's last 20 lines along with the post. Its reply goes into the room, where every member reads it. A seat answers a post once, even when the post reaches it twice, and only for itself: each delivery carries an `answerToken` for that seat, which the answer hands back as `token`. The built-in agent kind does this for you, and a kind of your own passes it through. The answer must come back through the poster's session. A seat's reply wakes nobody.
+- **A post wakes each seat once, as the person who posted.** Each seat keeps one conversation per person per room, and gets the room's last 20 lines along with the post. Its reply goes into the room, where every member reads it. A seat answers a post once, even when the post reaches it twice, and only for itself: each delivery carries an `answerToken` for that seat, which the answer hands back as `token`. The built-in agent kind does this for you, and a kind of your own passes it through. The answer must come back through the poster's session. A member posts and reads through the one talk session the project lists for them, the one `join` returns; any other session is refused with `talk-session-not-listed`. A seat's reply wakes nobody.
 - **Other members' lines arrive on the next read, not live.** Your own post shows up when you post it. Everyone else's appears the next time your view calls `read`.
 - **It holds no board, routes no post, and picks no kind.** A template that declares `flow:`, `boards:`, `routing:` or `boardActions:` is refused.
 - **Rooms aren't in the inventory.** The inventory lists the channels you declared, and no talk session is ever one of its rows.
