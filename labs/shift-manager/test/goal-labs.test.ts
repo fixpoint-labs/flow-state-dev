@@ -7,6 +7,9 @@
  * here: this file names a config path and nothing inside the tree.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
@@ -23,7 +26,9 @@ const repo = fileURLToPath(new URL("../../../", import.meta.url));
 type Opened = { lab: ServedLab; roster: DeclaredRoster; snapshot: LoadedSnapshot; clients: LabClients };
 
 async function open(configPath: string, treePath: string): Promise<Opened> {
-  const loaded = await loadFsdevConfig({ cwd: repo, configPath });
+  // DevTeam keeps a store across restarts; each open here gets its own.
+  process.env.DEVTEAM_STORE = join(mkdtempSync(join(tmpdir(), "sm-goal-labs-")), "devteam.sqlite");
+  const loaded = await loadFsdevConfig({ cwd: repo, configPath }).finally(() => delete process.env.DEVTEAM_STORE);
   if (loaded === undefined) throw new Error(`no config at ${configPath}`);
   const lab = await serveLab(loaded.flowState);
   const devtool = loaded.flowState.meta.devtool;

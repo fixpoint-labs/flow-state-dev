@@ -14,7 +14,8 @@ import { GAPS } from "../src/gaps";
 import { createLabClients, type LabClients } from "../src/lib/connection";
 import { projectsOf, talkFor, type LoadedSnapshot } from "../src/lib/derive";
 import type { Project } from "../src/lib/reads";
-import { postToRoom, readRoom } from "../src/lib/talk";
+import { postToRoom, readRoom, TalkRefused, untilAnswered, type RoomLine } from "../src/lib/talk";
+import { ClientHttpError } from "@flow-state-dev/client";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -196,6 +197,77 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
     act(() => void window.dispatchEvent(new Event("focus")));
     await waitFor(() => expect(document.body.textContent).toContain("a reply from the other member"));
     void clients;
+  });
+
+  it("a read the Lab can't answer shows beside the lines with Retry, and a post whose read-back fails keeps its draft", async () => {
+    const { baseUrl } = await lab();
+    const own = (await storedRow(baseUrl, "desk")).sessions.find((s) => s.userId === ASK_LAB_USER_ID)!.sessionId;
+    await postToRoom(createLabClients({ userId: ASK_LAB_USER_ID, baseUrl }), "channel", own, "a line already here");
+    const real = globalThis.fetch;
+    let down = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (down && /\/actions\/read$/.test(url)) {
+        return Promise.resolve(new Response(JSON.stringify({ error: "room offline" }), { status: 503 }));
+      }
+      return real(input, init);
+    });
+    openApp(baseUrl, "/p/desk/stream");
+    await waitFor(() => expect(document.body.textContent).toContain("a line already here"));
+
+    down = true;
+    fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "posted while reads are down" } });
+    act(() => fireEvent.click(screen.getByTestId("composer-send")));
+    // The post went through; reading it back did not. The draft stays, and says so.
+    const error = await screen.findByTestId("composer-error", undefined, { timeout: 10_000 });
+    expect(error.textContent).toMatch(/posted, but reading it back failed/);
+    expect((screen.getByTestId("composer-input") as HTMLTextAreaElement).value).toBe("posted while reads are down");
+    // A 5xx is the Lab out of reach, not a refusal: Retry, beside the lines already drawn.
+    const failure = screen.getByTestId("room-failure");
+    expect(screen.queryByTestId("room-refused")).toBeNull();
+    expect(screen.getAllByTestId("transcript-line-body").map((b) => b.textContent)).toContain("a line already here");
+
+    down = false;
+    act(() => fireEvent.click(within(failure).getByRole("button", { name: "Retry" })));
+    await waitFor(() => expect(screen.getAllByTestId("transcript-line-body").map((b) => b.textContent)).toContain("posted while reads are down"));
+    await waitFor(() => expect(screen.queryByTestId("room-failure")).toBeNull());
+  });
+
+  it("only the Lab's own answer is a refusal: a 4xx or a failed request is TalkRefused, a 5xx is thrown as it came", async () => {
+    const fake = (send: () => Promise<unknown>, status = "completed", error?: string) =>
+      ({
+        actions: () => ({
+          sendAction: send,
+          getRequestStatus: async () => ({ status }),
+        }),
+        sessions: {
+          listSessionRequests: async () => [{ id: "r1", result: error === undefined ? { output: { seq: 1 } } : { error: { message: error } } }],
+        },
+      }) as unknown as LabClients;
+    const started = async () => ({ request: { id: "r1" } });
+
+    await expect(postToRoom(fake(() => Promise.reject(new ClientHttpError("not-a-member", { status: 403, body: { error: "not-a-member" } }))), "channel", "s", "x")).rejects.toBeInstanceOf(TalkRefused);
+    await expect(postToRoom(fake(started, "failed", "not-a-member: you are not in this room"), "channel", "s", "x")).rejects.toThrow(TalkRefused);
+    const unreachable = postToRoom(fake(() => Promise.reject(new ClientHttpError("upstream", { status: 503, body: null }))), "channel", "s", "x");
+    await expect(unreachable).rejects.toBeInstanceOf(ClientHttpError);
+    await expect(postToRoom(fake(() => Promise.reject(new TypeError("fetch failed"))), "channel", "s", "x")).rejects.not.toBeInstanceOf(TalkRefused);
+  });
+
+  it("after a post, waits for each seat's answer however long it takes, not for a quiet spell", async () => {
+    // A slow seat: nothing new for three reads after the post, then its answer.
+    let reads = 0;
+    const held: RoomLine[] = [{ projectId: "p", seq: 1, userId: ASK_LAB_USER_ID, author: null, body: "the post" }];
+    const read = async () => {
+      reads += 1;
+      if (reads === 4) held.push({ projectId: "p", seq: 2, userId: ASK_LAB_USER_ID, author: "ops.slow", body: "done, at last" });
+      return held;
+    };
+    expect(await untilAnswered(read, 1, ["ops.slow"], { pollMs: 5, timeoutMs: 5_000 })).toBe(true);
+    expect(reads).toBe(4);
+    // A seat that never answers ends at the bound, not before.
+    const begun = Date.now();
+    expect(await untilAnswered(async () => held, 2, ["ops.never"], { pollMs: 5, timeoutMs: 200 })).toBe(false);
+    expect(Date.now() - begun).toBeGreaterThanOrEqual(200);
   });
 
   it("a member with no talk session gets Join, and joining binds one that the row then lists", async () => {

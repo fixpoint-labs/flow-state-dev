@@ -18,6 +18,7 @@
  * project's Stream reuses that component.
  */
 import type { ChannelTranscriptLine } from "@flow-state-dev/workforce/browser";
+import { ClientHttpError } from "@flow-state-dev/client";
 import type { LabClients } from "./connection";
 import { describeFailure } from "./reads";
 
@@ -27,7 +28,11 @@ export type RoomLine = { projectId: string; seq: number; userId: string; author:
 /** One page of a room: its lines after the cursor, and the cursor to read after next. */
 export type RoomPage = { lines: RoomLine[]; nextCursor: number; charter: string; seats: string[] };
 
-/** A talk action that the Lab refused, with its reason. */
+/**
+ * A talk action the Lab answered with a refusal and its reason: a request
+ * that ended failed, or a 4xx naming why. Anything else (the Lab out of
+ * reach, a 5xx) is thrown as it came, and is something to retry.
+ */
 export class TalkRefused extends Error {
   constructor(message: string) {
     super(message);
@@ -61,7 +66,11 @@ async function runTalkAction(
   try {
     started = await actions.sendAction(action, input, { sessionId: session });
   } catch (error) {
-    throw new TalkRefused(describeFailure(error).message);
+    // The Lab said no, with a reason. A 5xx or no answer at all is not a refusal.
+    if (error instanceof ClientHttpError && error.status >= 400 && error.status < 500) {
+      throw new TalkRefused(describeFailure(error).message);
+    }
+    throw error;
   }
   const requestId = started.request.id;
 
@@ -109,8 +118,11 @@ export async function readRoom(clients: LabClients, kind: string, sessionId: str
 }
 
 /** Post a line into the room as the person, through their talk session. */
-export async function postToRoom(clients: LabClients, kind: string, sessionId: string, body: string): Promise<void> {
-  await runTalkAction(clients, kind, sessionId, "post", { body });
+export async function postToRoom(clients: LabClients, kind: string, sessionId: string, body: string): Promise<RoomLine> {
+  const { output } = await runTalkAction(clients, kind, sessionId, "post", { body });
+  const line = output as Partial<RoomLine> | undefined;
+  if (typeof line?.seq !== "number") throw new Error("The talk session answered `post` with no line.");
+  return line as RoomLine;
 }
 
 /**
@@ -126,20 +138,26 @@ export async function joinRoom(clients: LabClients, kind: string, projectId: str
 }
 
 /**
- * Wait until the talk session has nothing in flight: the wake a post hands
- * off, and each seat's answer back into the room. Bounded; a wake that is
- * still running when it runs out is simply read on the next focus.
+ * After a post at `postSeq`, read the room again until each of its seats has
+ * a line after the post, or `timeoutMs` runs out. A seat takes as long as it
+ * takes to answer, so this waits on the room's own progress rather than on a
+ * quiet spell; a seat still working when the bound runs out is read on the
+ * next focus. `read` reads the room's new lines and returns every line held.
+ *
+ * @returns whether every seat answered within the bound.
  */
-export async function settled(clients: LabClients, sessionId: string, timeoutMs = 20_000): Promise<void> {
-  const until = Date.now() + timeoutMs;
-  // The hand-off starts just after the post's own request ends, and a seat's
-  // answer just after the hand-off reaches it: two quiet reads in a row, not
-  // one, before the wake counts as done.
-  let quiet = 0;
-  while (Date.now() < until && quiet < 2) {
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    const running = await clients.sessions.listSessionRequests(sessionId, { status: "in_progress" });
-    quiet = running.length === 0 ? quiet + 1 : 0;
+export async function untilAnswered(
+  read: () => Promise<readonly RoomLine[]>,
+  postSeq: number,
+  seats: readonly string[],
+  options: { timeoutMs?: number; pollMs?: number } = {},
+): Promise<boolean> {
+  const until = Date.now() + (options.timeoutMs ?? 30_000);
+  for (;;) {
+    const answered = new Set((await read()).filter((l) => l.seq > postSeq && l.author !== null).map((l) => l.author));
+    if (seats.every((seat) => answered.has(seat))) return true;
+    if (Date.now() >= until) return false;
+    await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? 1_000));
   }
 }
 

@@ -29,7 +29,8 @@ function start(config: string | { team: string }, extra: string[] = [], host = "
   const child = spawn(
     process.execPath,
     ["--import", "tsx", "bin/start.mts", ...(typeof config === "string" ? ["--config", config] : ["--team", config.team]), "--port", "0", "--host", host, "--assets", assets, "--devtool-assets", devtoolAssets, ...extra],
-    { cwd: pkg, env: { ...process.env, SHIFT_MANAGER_SHIFT: undefined, INIT_CWD: repo, ...env }, stdio: ["ignore", "pipe", "pipe"] },
+    // DevTeam keeps a store across restarts; each start here gets its own.
+    { cwd: pkg, env: { ...process.env, SHIFT_MANAGER_SHIFT: undefined, INIT_CWD: repo, DEVTEAM_STORE: join(mkdtempSync(join(tmpdir(), "sm-start-")), "devteam.sqlite"), ...env }, stdio: ["ignore", "pipe", "pipe"] },
   );
   running.push(child);
   let output = "";

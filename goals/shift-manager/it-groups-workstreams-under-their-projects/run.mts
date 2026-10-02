@@ -7,19 +7,26 @@
  *
  * Built like `it-opens-a-lab`: Shift Manager is built with Vite into a scratch
  * directory and served by its own start script over the DevTeam profile,
- * whose config creates two default projects at boot. Two legs, graded against
- * the tree on disk and the Lab's store read through its HTTP routes:
+ * whose config creates two default projects at boot. Three legs, graded
+ * against the tree on disk and the Lab's store read through its HTTP routes:
  *
  *   screens  Chromium, as the projects' owner. PROJECTS equals the rows, then
  *            No project; the cross-team project groups both teams'
  *            workstreams; every project's four tabs show its row, a line
  *            posted from its Stream is in the room, and no gap copy is reached.
- *   room     HTTP, as three verified users. The inventory equals the tree's
- *            channels; a burst of joins leaves one talk session per member;
- *            two members read each other's lines by cursor and both see the
- *            seat's answer; an outsider is refused, even from a session it
- *            made naming the project; and a burst of posts from both members
- *            lands whole.
+ *   room     HTTP, as the owner, the profile's members and an outsider. The
+ *            inventory equals the tree's channels; a burst of first joins from
+ *            every member at once leaves one talk session per member; two
+ *            members read each other's lines by cursor and both see the seat's
+ *            answer; an outsider is refused, even from a session it made naming
+ *            the project; and a burst of posts from both members lands whole.
+ *   restart  the Lab stopped and started on the same store: every project row,
+ *            with its talk links, is as it was, and each room reads back
+ *            through the same talk session with every line once.
+ *
+ * Every run, the plain one and each control, serves the Lab with its checked
+ * store writes held up to WRITE_LATENCY_MS (`devforce-lab/lab/write-latency.mts`)
+ * and releases each burst from a barrier, so the bursts really race.
  *
  * Controls (each must fail; the run fails if a swap never fired):
  *
@@ -30,10 +37,12 @@
  *   no-gate   the room's membership check removed (Node swap of
  *             membership-gate.ts in the served Lab). Must fail at "the
  *             outsider is refused".
- *   no-retry  the room's own retry removed (Node swap of cas-retry.ts). Meant to
- *             fail at both "a burst of posts lands whole" and "a burst of
- *             joins leaves one session per member"; on the served in-memory
- *             Lab it does not go red yet (goal.md says why).
+ *   no-retry  the room's own retry removed (Node swap of cas-retry.ts). Must
+ *             fail at "a burst of posts lands whole" and "a burst of joins
+ *             leaves one session per member".
+ *   in-memory the profile's store kept in memory (Node swap of store-sqlite's
+ *             index.ts). Must fail at "a restart keeps the projects and their
+ *             rooms".
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-groups-workstreams-under-their-projects/run.mts
  * Control:  GOAL_CONTROL=no-gate <the same>
@@ -50,7 +59,7 @@ import { launchChromium } from "../../lib/playwright.mts";
 import { LAB_CROWD, LAB_USERS } from "../../devforce-lab/lab/host.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
-const CONTROLS = ["unread", "gap-tabs", "no-gate", "no-retry"] as const;
+const CONTROLS = ["unread", "gap-tabs", "no-gate", "no-retry", "in-memory"] as const;
 if (CONTROL === "list") {
   console.log(`controls: ${CONTROLS.join(", ")}`);
   process.exit(0);
@@ -72,6 +81,7 @@ const fixture = loadFixture<{
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
 const PROJECTS_SRC = join(REPO_ROOT, "packages", "workforce", "src", "projects");
+const SQLITE_SRC = join(REPO_ROOT, "packages", "store-sqlite", "src", "index.ts");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager-projects");
 const CONFIG = join(SHIFT_MANAGER, "teams", "devteam", "fsdev.config.mts");
@@ -105,6 +115,7 @@ function pageSwapFor(control: string): { target: string; with: string } | undefi
 function serverSwapFor(control: string): { target: string; with: string } | undefined {
   if (control === "no-gate") return { target: join(PROJECTS_SRC, "membership-gate.ts"), with: join(HERE, "controls", "no-gate.ts") };
   if (control === "no-retry") return { target: join(PROJECTS_SRC, "cas-retry.ts"), with: join(HERE, "controls", "no-retry.ts") };
+  if (control === "in-memory") return { target: SQLITE_SRC, with: join(HERE, "controls", "in-memory.ts") };
   return undefined;
 }
 
@@ -149,8 +160,11 @@ async function buildShiftManager(control: string): Promise<string> {
 
 type Running = { origin: string; child: ChildProcess; log: () => string; exited: Promise<void> };
 
-/** Shift Manager's start script over the DevTeam profile, with the server control's swap if one is set. */
-async function startLab(pages: string, fired: string | undefined): Promise<Running> {
+/**
+ * Shift Manager's start script over the DevTeam profile, on the store file at
+ * `store`, with the server control's swap if one is set.
+ */
+async function startLab(pages: string, fired: string | undefined, store: string): Promise<Running> {
   mkdirSync(join(SCRATCH, "labs"), { recursive: true });
   const workDir = mkdtempSync(join(SCRATCH, "labs", "devteam-"));
   const swap = serverSwapFor(CONTROL);
@@ -166,13 +180,13 @@ async function startLab(pages: string, fired: string | undefined): Promise<Runni
   let log = "";
   const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", CONFIG, "--port", "0", "--assets", pages], {
     cwd: workDir,
-    // A fresh store per run, for a profile whose store outlives the process.
-    // Every run, the plain one and each control, holds the store's checked writes
+    // A fresh store per run, for a profile whose store outlives the process;
+    // the restart opens the same one. Every run, the plain one and each control, holds the store's checked writes
     // (`write-latency.mts`), so the bursts really race and a PASS means the room absorbed it.
     env: intentFreeEnv(process.env, {
       INIT_CWD: workDir,
       GOAL_CONTROL: "",
-      DEVTEAM_STORE: join(workDir, "devteam.sqlite"),
+      DEVTEAM_STORE: store,
       DEVFORCE_LAB_WRITE_LATENCY_MS: String(WRITE_LATENCY_MS),
       ...swapEnv,
     }),
@@ -592,6 +606,79 @@ async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; crowd: La
   );
 }
 
+// ---- a restart ---------------------------------------------------------------
+
+/** One project as a restart must keep it: its row, and its room read through the owner's talk session. */
+type Kept = { row: Row; kind: string; own: string; lines: RoomLine[] };
+
+const rowKey = (r: Row) =>
+  JSON.stringify({
+    title: r.title,
+    brief: r.brief ?? null,
+    owner: r.ownerUserId,
+    members: sorted(r.members),
+    workstreams: r.workstreams,
+    sessions: sorted(r.sessions.map((s) => `${s.userId}=${s.sessionId}`)),
+  });
+
+/** Every project and its room, as the owner reads them now. */
+async function whatIsHeld(owner: LabApi, host: string): Promise<Kept[]> {
+  const kept: Kept[] = [];
+  for (const row of (await readStore(owner, host)).rows) {
+    const own = row.sessions.find((s) => s.userId === owner.user.userId)?.sessionId;
+    if (own === undefined) throw new Error(`${row.id}'s row lists no talk session for its owner`);
+    const kind = String((await owner.get(`/sessions/${encodeURIComponent(own)}`)).session?.flowKind ?? "");
+    kept.push({ row, kind, own, lines: (await readAll(owner, kind, own)).lines });
+  }
+  return kept;
+}
+
+/**
+ * After the Lab restarts on the same store: every project row is as it was,
+ * with the same talk links and none added, and each room reads back through
+ * the same talk session with every line it held, once, at the same place.
+ */
+async function restarted(before: Kept[], owner: LabApi, host: string, fail: (leg: string, why: string) => void, evidence: string[]) {
+  const leg = "a restart keeps the projects and their rooms";
+  let rows: Row[];
+  try {
+    rows = (await readStore(owner, host)).rows;
+  } catch (error) {
+    fail(leg, `the projects could not be read after the restart: ${(error as Error).message}`);
+    return;
+  }
+  if (rows.length !== before.length) fail(leg, `${before.length} project row(s) before the restart, ${rows.length} after`);
+  const ownerLine = `${fixture.ownerLine} (${RUN_STAMP})`;
+  let ownerLineKept = false;
+  let linesKept = 0;
+  for (const { row, kind, own, lines } of before) {
+    const now = rows.find((r) => r.id === row.id);
+    if (now === undefined) {
+      fail(leg, `${row.id} is gone after the restart`);
+      continue;
+    }
+    if (rowKey(now) !== rowKey(row)) fail(leg, `${row.id}'s row changed across the restart: ${rowKey(row)} became ${rowKey(now)}`);
+    let read: RoomLine[];
+    try {
+      read = (await readAll(owner, kind, own)).lines;
+    } catch (error) {
+      fail(leg, `${row.id}'s room could not be read through the owner's talk session ${own} after the restart: ${(error as Error).message}`);
+      continue;
+    }
+    const at = (l: RoomLine) => `${l.seq}|${l.userId}|${l.author ?? ""}|${l.body}`;
+    const after = new Map<string, number>();
+    for (const l of read) after.set(at(l), (after.get(at(l)) ?? 0) + 1);
+    const lost = lines.filter((l) => after.get(at(l)) !== 1);
+    if (lost.length > 0) fail(leg, `${row.id}: ${lost.length} of ${lines.length} lines are not in the room once, at their place, after the restart`);
+    const seqs = read.map((l) => l.seq);
+    if (new Set(seqs).size !== seqs.length) fail(leg, `${row.id}: two lines share a sequence number after the restart`);
+    if (read.some((l) => l.body === ownerLine && l.userId === owner.user.userId)) ownerLineKept = true;
+    linesKept += lines.length - lost.length;
+  }
+  if (!ownerLineKept) fail(leg, "the owner's line is not in its room after the restart");
+  evidence.push(`restart: ${rows.length} of ${before.length} project rows unchanged with their talk links; ${linesKept} lines read back through the same talk sessions`);
+}
+
 await runGoal(async () => {
   const pages = await buildShiftManager(CONTROL);
   const swap = serverSwapFor(CONTROL);
@@ -601,7 +688,9 @@ await runGoal(async () => {
   const fail = (leg: string, why: string) => failures.push(`${leg}: ${why}`);
   const tree = await readTree();
   const host = tree.channels[0]!.id;
-  const served = await startLab(pages, fired);
+  mkdirSync(join(SCRATCH, "stores"), { recursive: true });
+  const store = join(mkdtempSync(join(SCRATCH, "stores", "devteam-")), "devteam.sqlite");
+  let served = await startLab(pages, fired, store);
   try {
     const apis = {
       owner: labApi(served.origin, LAB_USERS.owner),
@@ -616,6 +705,13 @@ await runGoal(async () => {
     }
     await screens(served, tree, apis.owner, host, fail, evidence);
     await room(tree, apis, host, fail, evidence);
+
+    // Stop the Lab and start it again on the same store.
+    const before = await whatIsHeld(apis.owner, host);
+    served.child.kill("SIGTERM");
+    await served.exited;
+    served = await startLab(pages, fired, store);
+    await restarted(before, labApi(served.origin, LAB_USERS.owner), host, fail, evidence);
   } finally {
     served.child.kill("SIGTERM");
     await served.exited;
@@ -626,6 +722,6 @@ await runGoal(async () => {
   const swapNote = fired === undefined ? "" : ` Swap fired for: ${readFileSync(fired, "utf8").trim().split("\n").map((p) => p.split("/").pop()).join(", ")}.`;
   return {
     failures: CONTROL === "" ? failures : failures.map((f) => `[control ${CONTROL}] ${f}`),
-    evidence: `Shift Manager built with Vite and served by its start script over the DevTeam profile; the screens walked in Chromium as the owner and the room driven over HTTP as three verified users, all graded against the tree and the store. ${evidence.join("; ")}.${swapNote}`,
+    evidence: `Shift Manager built with Vite and served by its start script over the DevTeam profile; the screens walked in Chromium as the owner and the room driven over HTTP as the owner, ${1 + LAB_CROWD.length} verified members and an outsider, then the Lab restarted on its store; all graded against the tree and the store. ${evidence.join("; ")}.${swapNote}`,
   };
 });

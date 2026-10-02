@@ -569,6 +569,8 @@ export function createLabReader(clients: LabClients): LabReader {
           (r) => r.kind === "collection" && r.pattern === PROJECT_PATTERNS.projects && r.client.state?.read === true,
         );
         if (projects === undefined) continue;
+        // Invariant: `projects/*` is one org-wide collection, so the first kind
+        // that declares it reads every project, and the rest are not asked.
         const rows = (await readCollection(workstream.id, projects.ref))
           .map((row) => toProject(row.clientData))
           .filter((p): p is Project => p !== undefined);
