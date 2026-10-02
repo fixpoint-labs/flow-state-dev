@@ -111,6 +111,12 @@ describe("V8", () => {
     expect(ROOM_KIND).toBe(CHANNEL_KIND);
   });
 
+  it("finds a room's end with the page size workforce's `read` answers in", async () => {
+    const { ROOM_PAGE_SIZE } = await import("@flow-state-dev/workforce");
+    const { ROOM_PAGE } = await import("../src/lib/talk");
+    expect(ROOM_PAGE).toBe(ROOM_PAGE_SIZE);
+  });
+
   it("draws no literal colour outside the token definitions", () => {
     expect(sources.length).toBeGreaterThan(10);
     expect(sources.flatMap((file) => literalColours(file, readFileSync(file, "utf8")))).toEqual([]);
