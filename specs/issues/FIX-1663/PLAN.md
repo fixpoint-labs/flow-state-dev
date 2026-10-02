@@ -71,6 +71,8 @@ Shift Manager is absent, and that is its expected red.
 | Today's `main` | Shift Manager | a · b | c's static half | Epic goal |
 | `hardcoded-accent` | The tool card's token: Shift Manager's accent as a literal, in Shift Manager's copy (S3) | c, naming the tool card | a · b | Epic goal; name shared with FIX-1655 |
 | FIX-1737's `drift` | One sidebar row rounded, Tasks' ID cells in sans (a scratch patch FIX-1737's goal names) | d, naming both, day and night | a · b · c | FIX-1737 |
+| FIX-1737's `unclassified` | Adds one visible element no look-table row covers | d, at totality, naming it | a · b · c | FIX-1737 |
+| FIX-1737's `missing` | Removes the Tasks ID column | d, at that row's expected count | a · b · c | FIX-1737 |
 | `GOAL_CONTROL=static-names` | Reading the tree: DevForce's names compiled in | b, at TEAMS, naming a pentest seat | a · c | FIX-1662 |
 | `GOAL_CONTROL=optimistic-post` | The send: the composer draws the line without posting | a4, at the turn in the running task session · b's post step, at the stored transcript | a1 to a3 · b's reach · c | FIX-1662 |
 | FIX-1664's control(s) | As `goals/shift-manager/it-shows-and-stops-a-task-run/goal.md` names | As that goal names, mapped onto a2 or a4 | The rest | FIX-1664 |
@@ -120,7 +122,7 @@ A doc gap follows [QR-20](BUSINESS-RULES.md#what-happens-to-a-finding).
 | Goal check | `goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/` |
 | Pentest config | `goals/pentest-lab/lab/fsdev.config.mts` |
 | Legs | `a1` to `a4`, `b0`, `b`, `c`, `d`; journeys `J3`, `J4` |
-| Controls | `hardcoded-accent` and `no-org` (scratch patches, no switch), FIX-1662's `static-names` and `optimistic-post`, FIX-1664's and FIX-1690's as their goals name them |
+| Controls | `hardcoded-accent` and `no-org` (scratch patches, no switch), FIX-1737's `drift`, `unclassified` and `missing`, FIX-1662's `static-names` and `optimistic-post`, FIX-1664's and FIX-1690's as their goals name them |
 
 Everything else is yours to name.
 

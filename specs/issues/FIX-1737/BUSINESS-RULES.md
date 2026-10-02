@@ -48,6 +48,7 @@ each look-table row cites its line. *Probe* is the goal check, `it-draws-v2s-loo
 |---|---|---|---|
 | BR-20 | A registry copy renders (ask card buttons, message, reasoning, tool, code block cards) | Unedited. Its radius is graded only where the theme's radius reaches it; what can't is listed by name in the probe's exceptions | Probe; `test/static.test.ts` |
 | BR-21 | The probe meets an element on the exceptions list | Skips its radius and colour-role rows only; fonts and highlighter still graded | Probe |
+| BR-21b | A look-table row matches fewer elements than its expected count | The check fails at that row, naming it: an element that went missing is a failure | Probe, control `missing` |
 
 ## Checks that pin copy
 

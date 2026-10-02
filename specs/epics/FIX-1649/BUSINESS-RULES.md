@@ -38,5 +38,5 @@ checks. Each says who owns it and where it's checked.
 
 | # | The epic is done when | Proved by |
 |---|---|---|
-| ER-13 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) is met: legs a, b, c and d pass, leg c fails under its control, and leg d under FIX-1737's (leg d added 2026-10-02) | FIX-1663's goal check, in a browser, real model |
+| ER-13 | [The goal](SPEC.md#the-goal-and-how-well-know-its-met) is met: legs a, b, c and d pass, leg c fails under its control, and leg d under each of FIX-1737's three controls (leg d added 2026-10-02) | FIX-1663's goal check, in a browser, real model |
 | ER-14 | The docs teach skinning FSD components from one token set, and App Lab's README says how to open a Lab in it, what each level and destination shows, and how to switch day and night | FIX-1655's, FIX-1662's, FIX-1664's, FIX-1722's, FIX-1723's and FIX-1725's docs, per [DOCS.md](DOCS.md) |

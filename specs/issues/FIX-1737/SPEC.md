@@ -38,6 +38,7 @@ flowchart LR
   R -->|"each matches its row in the v2 look table"| P["PASS · goal met"]
   C1["control · drift · one row rounded, one ID column in sans"] -.-> S
   C2["control · unclassified · one element no row covers"] -.-> S
+  C3["control · missing · the Tasks ID column removed"] -.-> S
   R -.->|"under a control"| F["must FAIL · names the element and the v2 line"]
 ```
 
@@ -47,10 +48,10 @@ came from.
 | How we verify | |
 |---|---|
 | **Goal check** | `goals/shift-manager/it-draws-v2s-look/` · model n/a · real Chromium · run by the implementer at each slice and on the assembled set · verdict in each implementation PR; the epic's closure re-runs it as leg d |
-| **Signal** | Five legs, tagged `<leg> [<screen> <shift>]`: **type** (both fonts loaded, not only named; mono on meta; title scale), **surface** (v2's surfaces; radius 0 outside the [registry list](BUSINESS-RULES.md#registry-parts)), **marks** (the highlighter on every needs-you element and nothing else; state squares), **layout** (widths; the rail drops below 1180px), **content** (each drawable row, equal to the store). Zero failures, every visible element classified |
-| **Input** | DevTeam (`--team devteam`) with one ask pending and runs live, as the audit rendered it; the CoS conversation on `it-briefs-and-talks-with-the-chief-of-staff`'s lab. At 1600×1000 and 1100×1000. A different Lab must pass too |
+| **Signal** | Five legs, tagged `<leg> [<screen> <shift>]`: **type** (both fonts loaded, not only named; mono on meta; title scale), **surface** (v2's surfaces; radius 0 outside the [registry list](BUSINESS-RULES.md#registry-parts)), **marks** (the highlighter on every needs-you element and nothing else; state squares), **layout** (widths; the rail drops below 1180px), **content** (each drawable row, equal to the store). Zero failures: every visible element classified, and every look-table row matched by at least its expected count of elements, so a missing element fails as surely as an extra one |
+| **Input** | Two Labs, both keyless. DevTeam (`--team devteam`) with one ask pending and runs live, as the audit rendered it. For Chief of Staff, the check's own desk Lab (`goals/shift-manager/it-draws-v2s-look/lab/`): a `chief-of-staff` seat whose model is `@flow-state-dev/testing`'s `createMockModelResolver` with one scripted reply, and one exchange sent through the seat's door before the sweep. At 1600×1000 and 1100×1000. A different Lab must pass too |
 | **Anti-game** | Grade computed values, never class names. No row exists that v2 doesn't draw. No registry copy edited, no behaviour check weakened. The check does not count until FIX-1736 has merged |
-| **Control that must fail** | `GOAL_CONTROL=drift`: one sidebar row rounded, Tasks' ID cells in sans. Must FAIL at **surface** on that row and **type** on those cells, both shifts, nothing else. `GOAL_CONTROL=unclassified`: one element no row covers; must FAIL at totality. Today's `main` fails every leg |
+| **Control that must fail** | `GOAL_CONTROL=drift`: one sidebar row rounded, Tasks' ID cells in sans. Must FAIL at **surface** on that row and **type** on those cells, both shifts, nothing else. `GOAL_CONTROL=unclassified`: one element no row covers; must FAIL at totality. `GOAL_CONTROL=missing`: the Tasks ID column removed; must FAIL at that row's expected count, and nowhere else. Today's `main` fails every leg |
 
 ## What changes
 

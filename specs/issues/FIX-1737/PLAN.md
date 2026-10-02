@@ -10,7 +10,7 @@ v2 lines are in [`assets/GAPS.md`](assets/GAPS.md).
 
 | ID | Where | Change | Rules |
 |---|---|---|---|
-| S1 | `goals/shift-manager/it-draws-v2s-look/` | `goal.md` from SPEC's goal; `run.mts`: build, start over DevTeam, visit every screen by clicking, both shifts, both widths; the v2 look table (role → expected computed properties → v2 line); legs type, surface, marks, layout, content; controls `drift`, `unclassified` as scratch patches | BR-5–21 |
+| S1 | `goals/shift-manager/it-draws-v2s-look/` | `goal.md` from SPEC's goal; `run.mts`: build, start over DevTeam, visit every screen by clicking, both shifts, both widths; the v2 look table (role → expected computed properties → v2 line); legs type, surface, marks, layout, content; an expected match count per row (at least one); controls `drift`, `unclassified` and `missing` as scratch patches; its own desk Lab under `lab/` for Chief of Staff, with `createMockModelResolver` scripting the CoS reply, so no run needs a key | BR-5–21b |
 | S2 | `labs/design-system/shift-manager.css` + its test | `--sidebar` and `--inspector` in both shifts, v2's values; the test covers them and still checks leg c's tolerance | BR-9 |
 | S3 | `styles.css` | The two names with neutral fallbacks to existing tokens, in the base layer | BR-9 |
 | S4 | `components/ui.tsx` and a mono-meta primitive | The shared parts: meta text, state square, Tabs (W4), title scale. Remove the `rounded*` classes in shell code | BR-6–8, 11 |
@@ -49,13 +49,13 @@ flowchart LR
 ```
 
 Each PR's probe run covers the screens it has added; a screen joins the sweep with its slice.
-Done is the assembled run on `main`, after D.
+FIX-1737 is Done only when A, B, C and D have all merged and the assembled check then passes on `main`. B, C and D merge in any order, so no single merge is the last one.
 
 ## Checks
 
 | ID | After | Passes when |
 |---|---|---|
-| G | each PR, and assembled | `it-draws-v2s-look` passes on the rows present; `drift` and `unclassified` FAIL as SPEC names. Today's `main` fails every leg (shown once, in A) |
+| G | each PR, and assembled | `it-draws-v2s-look` passes on the rows present; `drift`, `unclassified` and `missing` FAIL as SPEC names. Today's `main` fails every leg (shown once, in A) |
 | C1 | A | Token test: both new names set in both shifts, darker than `--background`, none within 3 of a registry default |
 | C2 | A | Leg c (`it-takes-its-look-from-the-design-system`) still passes, `hardcoded-accent` still fails |
 | C3 | C | `columns.test.ts` asserts column order, not only mapping |
@@ -69,7 +69,7 @@ Done is the assembled run on `main`, after D.
 | Name | Why |
 |---|---|
 | `goals/shift-manager/it-draws-v2s-look/` | The epic's closure runs it as leg d |
-| Legs `type`, `surface`, `marks`, `layout`, `content`; controls `drift`, `unclassified` | Named in the epic and the closure plan |
+| Legs `type`, `surface`, `marks`, `layout`, `content`; controls `drift`, `unclassified`, `missing` | Named in the epic and the closure plan |
 | `--sidebar`, `--inspector` | v2's own names; FIX-1663's leg c reads every declared value |
 
 ## Guardrails
@@ -103,8 +103,6 @@ unclassified row and fails. It reads slices from `scope.json` and fails if this 
   moves a row into or out of scope. Moving a row is a note on the PR, not a re-spec.
 - Measure why `rounded` paints 4px though `--radius*` is 0; if the theme can't reach a registry
   part's radius, it joins the exceptions list by name.
-- The CoS conversation (C5) needs a stored exchange. Seed one without a model if the CoS lab
-  allows it; otherwise C5's rows run only with a key, and the verdict says which.
 - FIX-1736's font load decides whether **type**'s loaded test reads `document.fonts` or a width.
 
 ## Follow-ups
