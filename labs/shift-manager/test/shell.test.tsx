@@ -375,6 +375,10 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(screen.getByTestId("nav-inbox").getAttribute("aria-current")).toBeNull();
     expect(screen.queryByTestId("nav-cos-count")).toBeNull();
     expect(screen.getByTestId("centre").getAttribute("data-level")).toBe("cos");
+    // Shift Manager names the view Shift Coordinator; the seat keeps its id (FIX-1747).
+    expect(screen.getByTestId("nav-cos").textContent).toBe("Shift Coordinator");
+    expect(within(screen.getByTestId("cos")).getByText("SHIFT COORDINATOR")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/chief of staff/i);
     cleanup();
     setURL(`${served[0]!.baseUrl}/no/such/place`);
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
@@ -385,9 +389,10 @@ describe("Chief of Staff (FIX-1722)", () => {
     await openCos("/");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     act(() => fireEvent.click(screen.getByTestId("jump-to")));
-    act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "chief" } }));
+    act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "coordinator" } }));
     const [result, ...rest] = await screen.findAllByTestId("jump-result");
     expect(rest).toEqual([]);
+    expect(result!.textContent).toMatch(/^Shift Coordinator/);
     act(() => fireEvent.click(result!));
     await screen.findByTestId("cos");
     expect(window.location.pathname).toBe("/cos");
@@ -444,6 +449,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     const { clients } = await openCos("/", { chiefOfStaff: true });
     const conversation = await screen.findByTestId("cos-conversation");
     expect(conversation.getAttribute("data-seat-id")).toBe("ops.chief-of-staff");
+    expect(conversation.textContent).toContain("Your shift coordinator.");
     expect(screen.getByTestId("cos-conversation-empty")).toBeTruthy();
 
     // Hold the door's request open: nothing may read delivered, or draw a reply, while it is.
@@ -632,7 +638,7 @@ describe("Jump to from the keyboard", () => {
     act(() => fireEvent.change(input, { target: { value: "" } }));
 
     // Enter opens the highlighted result, not the first one: the ask Lab's
-    // first three results are Chief of Staff, then its workstreams, ops.desk
+    // first three results are Shift Coordinator, then its workstreams, ops.desk
     // then ops.side.
     act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
     act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
