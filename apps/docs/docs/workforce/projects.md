@@ -13,6 +13,12 @@ A project is data, not a file. You don't write a folder or a `CHANNEL.md` for on
 
 Each project also has a **room**: one conversation its members share. Everyone on the project reads and posts in the same room, each through a session of their own.
 
+## How it fits together
+
+The organization owns the projects. A project groups the workstreams that belong together and the people on it. Those members share one private room; anyone else in the org can see the project exists, but cannot read the conversation.
+
+![A project groups work and gives its people one private room](./project-overview.svg)
+
 ## The row
 
 | Field | What it holds |
