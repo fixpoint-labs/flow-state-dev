@@ -25,7 +25,7 @@
 
 **Controls:** each rebuilds Shift Manager with `src/lib/run.ts` swapped for a module under `controls/`. The build fails if the swap never fired.
 
-- `GOAL_CONTROL=worker-session`: the Session reads the newest other session on the run's flow and follows no stream. Must fail at **items equal the run session's**.
+- `GOAL_CONTROL=worker-session`: the Session reads the newest other session on the run's flow, or on any flow when the run's flow has no other, and follows no stream. Must fail at **items equal the run session's**.
 - `GOAL_CONTROL=optimistic-interrupt`: Interrupt draws *interrupted* without calling abort. Must fail at **the request reads aborted first**.
 - `GOAL_CONTROL=board-flow`: every run is opened through the drainer's flow, not the flow its session names. Must fail at **items equal the run session's** on the row whose run is on a flow of its own, and pass the others.
 

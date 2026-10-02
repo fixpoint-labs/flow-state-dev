@@ -1438,6 +1438,9 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // attempt failed) and `answers` (what a person answered), for the reason
       // those two are already apart. Taken last, once the checkout is ready, so
       // an attempt that could not start leaves them for the next one.
+      // Before the harness starts, and the door depends on it: a turn this
+      // attempt takes is marked taken before any session can be named
+      // (`continueOnceStarted` in `./door`, pinned in `message-door.spec.ts`).
       const turns = await takeTurns(ctx, state.issue!, state.phase!, input.attempts);
       return {
         prompt: turns.length === 0 ? prompt : `${prompt}\n\n${turnsPromptSection(turns)}`,

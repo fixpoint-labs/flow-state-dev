@@ -7,6 +7,7 @@
  * a temp tree, adds one theme value, and shows the same search names it.
  */
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -49,6 +50,26 @@ describe("both variants", () => {
     expect(light["--font-mono"]).toMatch(/^"IBM Plex Mono"/);
     expect(light["--font-display"]).toMatch(/^"Space Grotesk"/);
     for (const [prop, value] of Object.entries(light)) if (prop.startsWith("--radius")) expect(value, prop).toBe("0");
+  });
+
+  it("imports a Latin face for every family it names, in every weight it is set in", () => {
+    // A family named with nothing loading it falls back to the system font, silently.
+    // That the faces load in a browser is the look goal's job; this keeps the imports honest.
+    const require = createRequire(join(PACKAGE_ROOT, "package.json"));
+    const imports = [...css.matchAll(/@import "([^"]+)";/g)].map((m) => m[1]!);
+    const named = themeValues(css).filter((value) => !value.startsWith("#"));
+    expect(named.sort()).toEqual(["IBM Plex Mono", "Space Grotesk"]);
+    // Each import declares its face under the exact name the tokens use ("Space Grotesk", not
+    // fontsource-variable's "Space Grotesk Variable"), or the named family still has no face.
+    const declared = new Set(
+      imports.flatMap((spec) => [...readFileSync(require.resolve(spec), "utf8").matchAll(/font-family:\s*'([^']+)'/g)].map((m) => m[1]!)),
+    );
+    expect([...declared].sort()).toEqual(named);
+    expect(imports.sort()).toEqual([
+      // 700 beyond the design's weights: highlighted code sets bold on some tokens.
+      ...["400", "500", "600", "700"].map((w) => `@fontsource/ibm-plex-mono/latin-${w}.css`),
+      ...["400", "500", "600", "700"].map((w) => `@fontsource/space-grotesk/latin-${w}.css`),
+    ]);
   });
 
   it("points the navigator and panels at the tokens, in both variants", () => {
@@ -102,14 +123,14 @@ describe("the fence", () => {
 });
 
 describe("the package stays a skin", () => {
-  it("depends on nothing from FSD, Workforce included", () => {
+  it("depends on nothing from FSD, Workforce included: only its fonts", () => {
     const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as Record<string, unknown>;
     const deps = { ...(manifest.dependencies as object), ...(manifest.peerDependencies as object) };
-    expect(Object.keys(deps)).toEqual([]);
+    expect(Object.keys(deps).sort()).toEqual(["@fontsource/ibm-plex-mono", "@fontsource/space-grotesk"]);
   });
 
-  it("imports nothing and names no Workforce word in the stylesheet", () => {
-    expect(css).not.toMatch(/@import/);
+  it("imports only its fonts and names no Workforce word in the stylesheet", () => {
+    for (const [line] of css.matchAll(/@import[^;]*;/g)) expect(line).toMatch(/^@import "@fontsource\/[a-z-]+\/latin-\d+\.css";$/);
     expect(css).not.toMatch(/workforce|needs you|roster|seat/i);
   });
 });

@@ -403,10 +403,6 @@ function extensionsDeclaredIn(text: string): Set<string> {
  */
 const PROSE_PUBLISHED: ReadonlyArray<{ shape: string; why: string }> = [
   {
-    shape: "org/resources/<name>.ts",
-    why: "published by 'A capability lives at the organization level or in a team.' — no page writes the path",
-  },
-  {
     shape: "org/workers/<worker>/resources/<name>.ts",
     why: "published by 'A plain resource there is fine…' — the sentence covers a worker's folder at either level",
   },

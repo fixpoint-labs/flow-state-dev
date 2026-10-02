@@ -18,6 +18,7 @@ import {
 import { atomicWrite, ensureDirectory, toRecordPath } from "./shared";
 import {
   matchesRequestStatusFilter,
+  mergeItemsById,
   withRequestSourceDefault,
   withStoredAbortRequested
 } from "../shared";
@@ -722,7 +723,7 @@ export class FilesystemRequestStore implements RequestStore {
       // but only the items + updatedAt fields, never the state field.
       await this.store.update(requestId, (current) => ({
         ...current,
-        items: snapshot,
+        items: mergeItemsById(current.items ?? [], snapshot),
         updatedAt: Date.now()
       }));
     });
