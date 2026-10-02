@@ -13,3 +13,19 @@
 | A channel's transcript is its `channel-post` items in its one owner's session (`channel-flow.ts:10-23`) | **Retained** for declared channels | A room can't use it, because items live in one person's session. Project talk lives in room rows only, with no `channel-post` mirror (BR-15) | None here | Declared channels unchanged |
 
 FIX-1719 consumes this issue's entries; it is not a predecessor.
+
+<a name="amendment-after-merge-cross-spec-alignment"></a>
+## Amendment after merge: cross-spec alignment
+
+The original review is [#2625](https://github.com/fixpoint-labs/flow-state-dev/pull/2625). This
+amendment is a new PR from `main`, shared with the epic, FIX-1621 and FIX-1719, on the EM's calls
+after a cross-spec review. The approach is unchanged.
+
+| What | Treatment | Why |
+|---|---|---|
+| S11's default template seats | **Amended**: `chief-of-staff` beside the EM | The chief of staff reaches every project's room through the default template |
+| S7's seat-id check | **Amended**: accepts a dotless org-seat id as well as `team.seat`; an implementer note adds the case to V3 | FIX-1719 PR 1 makes org seat ids dotless, and either may land first |
+| The appendix: the chief of staff "joins" | **Struck** | Seats never `join`; `join` is people-only (BR-11) |
+| S15 | **Amended**: the host installs `createProject` on the agent kind | [FIX-1719 BR-22](../FIX-1719/BUSINESS-RULES.md#who-may-ask-for-a-change): a tool the catalog lacks is not callable |
+| The goal's input | **Amended**: the goal resets the profile's store | FIX-1719 S7 makes that store durable |
+| DOCS, PR 3 and PR 4 | **Amended**: PR 3 publishes the epic's paragraphs 1–2 only; PR 4 the CoS project clause, and an "asking the chief of staff" line in `projects.md` and `chief-of-staff.md` | Each clause publishes with the behaviour it describes |

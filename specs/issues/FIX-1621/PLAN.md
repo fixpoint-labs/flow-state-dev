@@ -110,6 +110,8 @@ skipped row. No counted factual base, so no checker.
   where a team shares the org's name.
 - Check whether the DevTeam profile declares the roster on a listed flow yet. If not, S6's
   BR-24 path is what Shift Manager shows until FIX-1719 adds it.
+- This issue may land before FIX-1719's PR 1, which introduces dotless org-seat ids. Add a
+  dotless-id case such as `chief-of-staff` to S5's declared-seat test, through S6, and to V5.
 - Compare [Evolution](EVOLUTION.md)'s predecessor claims with current code and docs.
 
 ## Follow-ups

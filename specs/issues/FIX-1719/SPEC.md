@@ -62,7 +62,7 @@ The left half is today. On the right, the only new path is the approval in front
   workforce/
     org/
 +     workers/
-+       chief-of-staff/WORKER.md    # flow: agent · tools: [hire, fire] · discover, post to channels
++       chief-of-staff/WORKER.md    # flow: agent · tools: [hire, fire, rehire, brokenSeats] · discover, post to channels
     teams/eng/workers/…              # no tools: [hire] anywhere here
 ```
 

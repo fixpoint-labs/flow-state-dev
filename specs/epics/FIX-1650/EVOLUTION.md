@@ -19,3 +19,19 @@ evolution record.
 
 No predecessor is superseded. Re-check each cited intent against current code before
 implementing.
+
+<a name="amendment--2026-10-02--cross-spec-alignment"></a>
+## Amendment · 2026-10-02 · cross-spec alignment
+
+A cross-spec review of this set and FIX-1621, FIX-1718 and FIX-1719 found surfaces that
+disagreed; the EM's calls align them. It is a new PR from `main`;
+[#2602](https://github.com/fixpoint-labs/flow-state-dev/pull/2602),
+[#2609](https://github.com/fixpoint-labs/flow-state-dev/pull/2609) and
+[#2622](https://github.com/fixpoint-labs/flow-state-dev/pull/2622) stay the review record. No rule
+is added.
+
+| Prior intent in this set | Treatment | Reason / evidence | Replacement | Compatibility |
+|---|---|---|---|---|
+| ER-5 and ER-20: every retire and fire asks | **Amended**, wording only | The ask exists only where a Lab passes it ([FIX-1719 D2](../../issues/FIX-1719/DECISIONS.md#d2)) | Both rules say approval holds through `askBefore`, and that DevTeam passes `["fire"]` | None; nothing shipped |
+| DOCS: "asking CoS for a project" on `channels.md`; paragraph 2's template is a `CHANNEL.md` with `mintFor:` | **Amended** | FIX-1718 declares the default template org-level, in `org/resources/projects.ts` | A row of its own on `projects.md`; paragraph 2 names the org-level default and keeps a team `mintFor:` allowed | None |
+| PLAN seam: "the DevTeam profile's tree" | **Amended**: the tree, host and profile | Both children change the host's install on the agent kind and the profile | The widened seam row; the second lander adds | None |
