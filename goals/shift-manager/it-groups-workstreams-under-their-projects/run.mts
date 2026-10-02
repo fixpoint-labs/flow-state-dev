@@ -740,6 +740,18 @@ const rowKey = (r: Row) =>
     sessions: sorted(r.sessions.map((s) => `${s.userId}=${s.sessionId}`)),
   });
 
+/**
+ * The owner's own top-level sessions on the room kinds, by id: every talk
+ * session they hold, listed on a row or not. A boot that mints one, even one
+ * no row lists, shows up here.
+ */
+async function talkSessionsOf(owner: LabApi, kinds: ReadonlySet<string>): Promise<string[]> {
+  const { sessions } = (await owner.get(`/sessions?userId=${encodeURIComponent(owner.user.userId)}`)) as {
+    sessions: Array<{ id: string; flowKind: string; parentSessionId?: string | null }>;
+  };
+  return sorted(sessions.filter((s) => s.parentSessionId == null && kinds.has(s.flowKind)).map((s) => s.id));
+}
+
 /** Every project and its room, as the owner reads them now. */
 async function whatIsHeld(owner: LabApi, host: string): Promise<Kept[]> {
   const kept: Kept[] = [];
@@ -831,12 +843,28 @@ await runGoal(async () => {
     if (MODEL_FREE) {
       await screens(served, tree, apis.owner, host, fail, evidence);
       await room(tree, apis, host, fail, evidence);
+
       // Stop the Lab and start it again on the same store.
       const before = await whatIsHeld(apis.owner, host);
+      const roomKinds = new Set(before.map((k) => k.kind));
+      const talkBefore = await talkSessionsOf(apis.owner, roomKinds);
       served.child.kill("SIGTERM");
       await served.exited;
       served = await startLab(pages, fired, store);
-      await restarted(before, labApi(served.origin, LAB_USERS.owner), host, fail, evidence);
+      const ownerAfter = labApi(served.origin, LAB_USERS.owner);
+      await restarted(before, ownerAfter, host, fail, evidence);
+      // Boot creates the default projects again; a row it already holds must come
+      // back without a talk session minted on the way, listed or not.
+      const talkAfter = await talkSessionsOf(ownerAfter, roomKinds);
+      const minted = talkAfter.filter((id) => !talkBefore.includes(id));
+      const lostTalk = talkBefore.filter((id) => !talkAfter.includes(id));
+      if (minted.length > 0 || lostTalk.length > 0) {
+        fail(
+          "a restart keeps the projects and their rooms",
+          `the owner's talk sessions changed across the restart: ${minted.length} minted (${minted.join(", ")}), ${lostTalk.length} gone (${lostTalk.join(", ")})`,
+        );
+      }
+      evidence.push(`the owner's ${talkBefore.length} talk session(s) the same set after the restart`);
     }
     // Last, on the Lab as it now runs: its rows are the member's.
     if (COS_LEG) {

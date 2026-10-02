@@ -276,6 +276,9 @@ function ProjectStream({ project }: { project: Project }) {
   return <Room key={talk.sessionId} sessionId={talk.sessionId} />;
 }
 
+/** The most pages one refresh of an open room reads; the burst reads the rest. */
+const CATCH_UP_PAGES = 5;
+
 /** The room through one talk session, as the Lab answers it. */
 function Room({ sessionId }: { sessionId: string }) {
   const { clients } = useLab();
@@ -316,11 +319,12 @@ export function RoomView({
   const refresh = useRef<{ wake(): void; stop(): void } | undefined>(undefined);
 
   /**
-   * Open the room at its end, or once it is open read every page after the
-   * cursor. One read at a time; a second call waits for the first. A failure
-   * is shown, and thrown to the caller.
+   * Open the room at its end, or once it is open read up to
+   * {@link CATCH_UP_PAGES} pages after the cursor. One read at a time; a
+   * second call waits for the first. A failure is shown, and thrown to the
+   * caller.
    *
-   * @returns how many new lines it read.
+   * @returns how many new lines it read; at least 1 if the cursor moved.
    */
   const readNew = useCallback(async (): Promise<number> => {
     const previous = reading.current;
@@ -335,12 +339,22 @@ export function RoomView({
           setFloor(tail.floor);
           cursor.current = tail.cursor;
         } else {
-          await readRoomPages(page, cursor.current, (read) => {
-            found += read.lines.length;
-            const fresh = read.lines.map(asTranscriptLine);
-            setLines((shown) => mergeLines(shown ?? [], fresh));
-            cursor.current = Math.max(cursor.current ?? 0, read.nextCursor);
-          });
+          const from = cursor.current;
+          // A few pages per refresh: a room far behind is caught up by the
+          // burst's next reads, from the cursor this one leaves.
+          await readRoomPages(
+            page,
+            from,
+            (read) => {
+              found += read.lines.length;
+              const fresh = read.lines.map(asTranscriptLine);
+              setLines((shown) => mergeLines(shown ?? [], fresh));
+              cursor.current = Math.max(cursor.current ?? 0, read.nextCursor);
+            },
+            CATCH_UP_PAGES,
+          );
+          // Pages of removed lines alone still moved the room on: not a quiet read.
+          if (found === 0 && cursor.current > from) found = 1;
         }
         setFailure(undefined);
         return found;
@@ -366,7 +380,8 @@ export function RoomView({
       setEarlier({ reading: false, failure: describeFailure(error).message });
     }
   };
-  const retry = () => void readNew().catch(() => undefined);
+  /** Read now; once the loop runs, through it, so the read also arms a fresh burst. */
+  const retry = () => (refresh.current === undefined ? void readNew().catch(() => undefined) : refresh.current.wake());
 
   // Read on open, on focus, on coming back to the tab and after a post, each
   // followed by a bounded burst of reads that then rests (DECISIONS Q3): other
@@ -445,10 +460,14 @@ export function RoomView({
         placeholder="Post a line to the project's room…"
         send={post}
         onKept={async () => {
-          // Thrown when the read fails: the composer keeps the draft and says so.
-          await readNew();
-          // The post woke the room's seats; the loop reads their answers as they land.
-          refresh.current?.wake();
+          try {
+            // Thrown when the read fails: the composer keeps the draft and says so.
+            await readNew();
+          } finally {
+            // The post woke the room's seats, whether or not the read-back worked;
+            // the loop reads their answers as they land.
+            refresh.current?.wake();
+          }
         }}
       />
     </div>
