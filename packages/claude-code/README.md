@@ -97,6 +97,13 @@ starts fresh instead of re-sending a session that is gone.
 Both are background-path only. In session the block already resumes and records
 the id itself, so passing either without `detached: true` throws at construction.
 
+#### Cancelling a run
+
+When the block's signal fires, the block tells the agent to stop, then waits for
+its process to exit before it rejects. The agent writes the session's transcript
+until it exits, so a run you cancel and resume straight away finds its
+conversation. The wait lasts at most 5 seconds; past that the block rejects anyway.
+
 ### Giving a run its own working directory
 
 By default a run works in whatever directory the server process is running in.
