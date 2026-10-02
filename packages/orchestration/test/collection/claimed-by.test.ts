@@ -24,7 +24,7 @@ import { handler } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   createResourceBackedTaskCollection,
   getOrCreateTaskCollection,
   taskSchema,
@@ -67,9 +67,9 @@ const sequencerBacking: BackingFactory = async (arg = IDENTITY) => {
   });
   const captured = createCapturedChanges();
   return {
-    collection: createSequencerBackedTaskCollection({
+    collection: createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer,
+      state: sequencer,
       onChange: captured.onChange,
       now: () => 1000,
       claimIdentity: identity,
@@ -374,9 +374,9 @@ describe("claimedBy — a claim never inherits the previous coordinate", () => {
     const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
       tasks: { t1: rowCarryingStaleCoordinate() },
     });
-    const collection = createSequencerBackedTaskCollection({
+    const collection = createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer,
+      state: sequencer,
       now: () => 5_000,
       // No `claimIdentity` — the backing has nothing to record.
     });
@@ -485,7 +485,7 @@ describe("claimedBy — the emission boundary (the leak this PR must not ship)",
       execute: async (_input, ctx) => {
         const collection = await getOrCreateTaskCollection({
           ctx,
-          backing: "request",
+          backing: "state",
           collectionId: "leak",
           changeVisibility: { client: true, history: false },
         });

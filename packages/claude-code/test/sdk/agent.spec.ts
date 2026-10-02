@@ -1043,6 +1043,55 @@ describe("claudeCodeAgent", () => {
     expect(items.some((i) => i.type === "error")).toBe(true);
   });
 
+  it("reports a failed run when a success result carries is_error", async () => {
+    // The SDK ends a turn that hit an API error with subtype "success" AND
+    // `is_error: true`, putting the error text in `result`. Reading the
+    // subtype alone records that run as a success: a flow downstream sees a
+    // completed handle and no error item, and the failure surfaces later as
+    // missing output with nothing to trace it back to.
+    const messages: SdkMessageLike[] = [
+      {
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "API Error: 529 overloaded",
+        session_id: "sess_api",
+      },
+    ];
+    const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages) });
+    const { output, error, items, state } = await testBlock(block, { input: { prompt: "x" } });
+
+    // Still a return, not a throw — the same contract as every errored result.
+    expect(error).toBeNull();
+    const handle = output as SdkAgentHandle;
+    expect(handle.status).toBe("errored");
+    expect(handle.outcome).toBe("failed");
+    // The vendor's own word is kept as reported, beside the verdict.
+    expect(handle.resultSubtype).toBe("success");
+
+    const errorItem = items.find((i) => i.type === "error") as
+      | { message?: string; code?: string }
+      | undefined;
+    expect(errorItem?.message).toBe("API Error: 529 overloaded");
+    expect(errorItem?.code).toBe("is_error");
+
+    // What the session records is the failure, not a success.
+    const runs = state.session[SDK_AGENT_RUNS_KEY] as SdkAgentHandle[];
+    expect(runs.at(-1)).toMatchObject({ status: "errored", outcome: "failed" });
+  });
+
+  it("keeps a success result with is_error: false a completed run", async () => {
+    // The other side of the line above: the flag, not its presence, decides.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([{ ...RESULT_OK, is_error: false } as SdkMessageLike]),
+    });
+    const { output, items } = await testBlock(block, { input: { prompt: "x" } });
+
+    expect((output as SdkAgentHandle).status).toBe("completed");
+    expect((output as SdkAgentHandle).outcome).toBe("finished");
+    expect(items.some((i) => i.type === "error")).toBe(false);
+  });
+
 });
 
 /**
@@ -1065,7 +1114,7 @@ describe("claudeCodeAgent", () => {
 describe("claudeCodeAgent — task attribution", () => {
   // A run inside a task-board task entry: the entry's leading tap marks the task
   // scope, and the agent runs as a later step. Every item the run produces must
-  // carry that taskId, or it is missing from the task's own view (App Lab's task
+  // carry that taskId, or it is missing from the task's own view (Shift Manager's task
   // screen reads items by taskId). Driven through the real block over a
   // scripted SDK stream, so every emit site the stream reaches is covered, not
   // just the ones a per-site test happens to name.
@@ -1122,6 +1171,89 @@ describe("claudeCodeAgent — task attribution", () => {
         taskId: "row-7--implement",
       });
     }
+  });
+});
+
+describe("claudeCodeAgent — inside an owned container", () => {
+  // The Container Ownership contract (`docs/architecture/streaming.md`): every
+  // item emitted inside a container carries that container's `ownedBy`, and a
+  // nested container's own item carries the outer owner. A Claude Code run
+  // placed inside a container must show its steps inside it, as Codex and
+  // Cursor runs do; a sub-agent's own steps still show inside the sub-agent.
+  // Driven through the real block inside a real sequencer that declares a
+  // container, so the owner comes from the runtime, not a hand-built identity.
+  it("stamps the container's owner on every top-level item and sub-agent box, and the sub-agent's on its own items", async () => {
+    const messages: SdkMessageLike[] = [
+      { type: "system", subtype: "init", session_id: "sess_owned" },
+      {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "thinking", thinking: "plan" },
+            { type: "text", text: "working" },
+            { type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "ls" } },
+          ],
+        },
+      },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "ok" }] } },
+      {
+        type: "assistant",
+        message: { content: [{ type: "tool_use", id: "toolu_agent", name: "Agent", input: { task: "sub" } }] },
+      },
+      {
+        type: "assistant",
+        parent_tool_use_id: "toolu_agent",
+        message: { content: [{ type: "tool_use", id: "toolu_inner", name: "Read", input: { path: "a" } }] },
+      },
+      {
+        type: "user",
+        parent_tool_use_id: "toolu_agent",
+        message: { content: [{ type: "tool_result", tool_use_id: "toolu_inner", content: "ok" }] },
+      },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_agent", content: "child done" }] } },
+      { type: "result", subtype: "error_max_turns", result: "too many turns", session_id: "sess_owned" },
+    ];
+    const owned = sequencer({
+      name: "owned-run",
+      inputSchema: z.object({ prompt: z.string() }),
+      container: { component: "harness-run" },
+    }).step(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages), includePartialMessages: false }));
+
+    const { items, error } = await testBlock(owned, { input: { prompt: "do the thing" } });
+
+    expect(error).toBeNull();
+    const outer = items.find((i) => i.type === "container" && i.blockName === "owned-run") as
+      | { provenance: { blockInstanceId: string } }
+      | undefined;
+    expect(outer).toBeDefined();
+    const outerOwner = outer!.provenance.blockInstanceId;
+    const subagent = items.find((i) => i.type === "container" && i.blockName === "Agent") as
+      | { provenance: { blockInstanceId: string } }
+      | undefined;
+    expect(subagent).toBeDefined();
+    const subagentOwner = subagent!.provenance.blockInstanceId;
+
+    const RUN_TYPES = new Set(["message", "reasoning", "tool_output", "container", "error"]);
+    const runItems = items.filter((i) => RUN_TYPES.has(i.type) && i !== outer);
+    expect(new Set(runItems.map((i) => i.type))).toEqual(
+      new Set(["message", "reasoning", "tool_output", "container", "error"]),
+    );
+    const ownership = runItems.map((i) => {
+      const callId = (i as { toolCall?: { callId?: string } }).toolCall?.callId;
+      return { type: i.type, callId, ownedBy: (i as { ownedBy?: string }).ownedBy };
+    });
+    // Spelled out from the script above, not derived from what was emitted: the
+    // sub-agent's own tool call (`toolu_inner`) sits in the sub-agent's box;
+    // every other step, and the sub-agent box itself, sits in the container.
+    const expectedOwnership = [
+      { type: "reasoning", callId: undefined, ownedBy: outerOwner },
+      { type: "message", callId: undefined, ownedBy: outerOwner },
+      { type: "tool_output", callId: "toolu_1", ownedBy: outerOwner },
+      { type: "container", callId: undefined, ownedBy: outerOwner },
+      { type: "tool_output", callId: "toolu_inner", ownedBy: subagentOwner },
+      { type: "error", callId: undefined, ownedBy: outerOwner },
+    ];
+    expect(ownership).toEqual(expectedOwnership);
   });
 });
 
@@ -2751,6 +2883,29 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
       expect(handle.outcome).toBe("failed");
       expect(handle.status).toBe("errored");
       expect(handle.resultSubtype).toBeNull();
+    });
+
+    it("reads a success flagged is_error as failed, and a limit flagged is_error as a limit", async () => {
+      // The SDK sets `is_error` on its error subtypes too. The flag turns a
+      // `success` into a failure; it must not turn a turn cap into one, or a
+      // manager would stop telling "ran out of turns" apart from "broke".
+      const apiError = await runFor({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "API Error: 500",
+        session_id: "s",
+      });
+      expect(apiError.outcome).toBe("failed");
+
+      const capped = await runFor({
+        type: "result",
+        subtype: "error_max_turns",
+        is_error: true,
+        session_id: "s",
+      });
+      expect(capped.outcome).toBe("stopped-at-limit");
+      expect(capped.status).toBe("errored");
     });
 
     it("leaves outcome, usage and cost null when the run reported no result", async () => {

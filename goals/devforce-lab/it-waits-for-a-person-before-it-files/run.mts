@@ -176,7 +176,7 @@ function messagesOf(requests: Array<{ items?: any[] }>): string[] {
     .map((i) => JSON.stringify(i.content ?? i.text ?? i));
 }
 
-/** Answer through the engine's resume route, as App Lab does. */
+/** Answer through the engine's resume route, as Shift Manager does. */
 async function answer(
   lab: Lab,
   ask: PendingAsk,

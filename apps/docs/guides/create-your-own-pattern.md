@@ -84,7 +84,9 @@ export function planMapReduce<TResult>(
     inputSchema: planOutputSchema,   // consumes the plan block's output
     outputSchema: z.object({ seeded: z.number() }),
     execute: async (input, ctx) => {
-      const collection = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId });
+      // The board says `backing: "request"`; the collection under it says
+      // `backing: "state"` with no `state` field. Same tasks, on the request.
+      const collection = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId });
       for (const item of input.items) {
         await collection.addTask({ id: item.id, goal: item.id, assignee: "map", input: item.input });
       }
@@ -97,7 +99,7 @@ export function planMapReduce<TResult>(
     inputSchema: z.unknown(),
     outputSchema: z.unknown(),
     execute: async (_input, ctx) => {
-      const collection = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId });
+      const collection = await getOrCreateTaskCollection({ ctx, backing: "state", collectionId });
       const outputs = collection.list({ status: "completed" }).map((task) => task.output);
       return config.reduce(outputs);
     },

@@ -79,7 +79,6 @@ import {
   type ErrorCaptureIdentity
 } from "../errors/error-capture";
 import { SuspensionError, SuspensionRejectedError } from "@flow-state-dev/core";
-import type { ResumeContext } from "@flow-state-dev/core/types";
 import { DISPATCH_SEAM, SUSPENSION_SKIPPED } from "@flow-state-dev/core/types";
 import { generateId } from "../utils/generate-id";
 import {
@@ -93,6 +92,7 @@ import {
   tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
+import { mergeOwnKeyRecords, ownKeyRecord } from "../resources/own-key-record";
 import {
   isSharedToLineage,
   resolveOwnershipFlag,
@@ -1251,7 +1251,7 @@ export async function createExecutionContext<
     for (const [accessor, config] of Object.entries(configs)) {
       const scopeId = resolveConfigScopeId(scope, config);
       if (scopeId === undefined) continue;
-      const group = groups.get(scopeId) ?? {};
+      const group = groups.get(scopeId) ?? ownKeyRecord<ResourceConfig | ResourceCollectionConfig>();
       group[accessor] = config;
       groups.set(scopeId, group);
     }
@@ -1273,7 +1273,7 @@ export async function createExecutionContext<
     scopeId: string,
     rows: Record<string, T>
   ): Record<string, T> => {
-    const owned: Record<string, T> = {};
+    const owned = ownKeyRecord<T>();
     for (const [key, value] of Object.entries(rows)) {
       if (!ownerKeyMaySeed(key, userId)) continue;
       if (resolveResourceStorageScopeId(scope, key) === scopeId) owned[key] = value;
@@ -1306,10 +1306,7 @@ export async function createExecutionContext<
     if (scope !== "session" || scopeId !== lineageId) return loaded;
     if (scopeId === sessionKey) return loaded; // nothing moved
     const prior = retainOwnedKeys(scope, sessionKey, await read(sessionKey, sub));
-    const merged: Record<string, T> = {};
-    for (const [key, value] of Object.entries(prior)) merged[key] = value;
-    for (const [key, value] of Object.entries(loaded)) merged[key] = value;
-    return merged;
+    return mergeOwnKeyRecords(prior, loaded);
   };
 
   const loadScopeStateByBuckets = async (
@@ -1330,7 +1327,7 @@ export async function createExecutionContext<
         )
       )
     );
-    return Object.assign({}, ...results) as Record<string, VersionedResourceState>;
+    return mergeOwnKeyRecords(...results);
   };
 
   const loadScopeContentByBuckets = async (
@@ -1351,7 +1348,7 @@ export async function createExecutionContext<
         )
       )
     );
-    return Object.assign({}, ...results) as Record<string, string>;
+    return mergeOwnKeyRecords(...results);
   };
 
   const wave1Start = Date.now();
@@ -1561,7 +1558,7 @@ export async function createExecutionContext<
   };
   const withoutDeleted = <T>(snapshot: Record<string, T>, deleted: Set<string>): Record<string, T> => {
     if (deleted.size === 0) return snapshot;
-    const kept: Record<string, T> = {};
+    const kept = ownKeyRecord<T>();
     for (const [key, value] of Object.entries(snapshot)) {
       if (!deleted.has(key)) kept[key] = value;
     }
@@ -1664,7 +1661,7 @@ export async function createExecutionContext<
           fetched = true;
           const state = toBareState(row);
           if (state !== undefined) {
-            stateRef.current = { [storageKey]: state, ...stateRef.current };
+            stateRef.current = mergeOwnKeyRecords({ [storageKey]: state }, stateRef.current);
             // Record the version this read observed — without it a write to a
             // lazily-loaded key would have no basis to be conditional on.
             versionRef.current[storageKey] = row!.version;
@@ -1673,7 +1670,7 @@ export async function createExecutionContext<
             missingResourceKeys[scope].add(storageKey);
           }
           if (typeof content === "string") {
-            contentRef.current = { [storageKey]: content, ...contentRef.current };
+            contentRef.current = mergeOwnKeyRecords({ [storageKey]: content }, contentRef.current);
           }
         });
         return { fetched, durationMs };
@@ -1701,7 +1698,7 @@ export async function createExecutionContext<
           durationMs = Date.now() - started;
           fetched = true;
           const state = toBareStates(rows);
-          stateRef.current = { ...withoutDeleted(state, deletedStateKeys[scope]), ...stateRef.current };
+          stateRef.current = mergeOwnKeyRecords(withoutDeleted(state, deletedStateKeys[scope]), stateRef.current);
           // Versions for the keys this prefix read just brought in. Keys the
           // cache already held keep the version they were first read at, so a
           // later bulk load never silently re-bases an in-flight write.
@@ -1709,10 +1706,10 @@ export async function createExecutionContext<
             if (deletedStateKeys[scope].has(key)) continue;
             versionRef.current[key] ??= version;
           }
-          contentRef.current = {
-            ...withoutDeleted(content, deletedContentKeys[scope]),
-            ...contentRef.current
-          };
+          contentRef.current = mergeOwnKeyRecords(
+            withoutDeleted(content, deletedContentKeys[scope]),
+            contentRef.current
+          );
           loadedCollectionPrefixes[scope].add(coverageToken(scopeId, keyPrefix));
         });
         return { fetched, durationMs };
@@ -1788,14 +1785,14 @@ export async function createExecutionContext<
           if (deletedStateKeys[scope].has(key)) continue;
           versionRef.current[key] ??= version;
         }
-        stateRef.current = {
-          ...normalizeScopeResources(subConfig, toBareStates(stateSeed)),
-          ...stateRef.current
-        };
-        contentRef.current = {
-          ...normalizeScopeResourceContent(subConfig, contentSeed),
-          ...contentRef.current
-        };
+        stateRef.current = mergeOwnKeyRecords(
+          normalizeScopeResources(subConfig, toBareStates(stateSeed)),
+          stateRef.current
+        );
+        contentRef.current = mergeOwnKeyRecords(
+          normalizeScopeResourceContent(subConfig, contentSeed),
+          contentRef.current
+        );
       };
 
       if (isCollectionConfig(config)) {
@@ -3083,16 +3080,6 @@ export async function createExecutionContext<
   // because every nested ctx shares the same `_runtimeHooks` reference.
   const blockTraceMap = new Map<string, BlockTraceItem>();
 
-  // Run-scoped guard for the legacy resume fallback (FIX-811). When a bare
-  // `resumeContext` (no `pendingBlockLogicalId`) is threaded — the pre-Step-3
-  // two-request / direct-`runAction` path — the payload must be consumed at the
-  // FIRST gate reached and re-suspend at every later gate. Without this shared
-  // flag a multi-gate legacy resume would re-inject the same approval at every
-  // gate and skip required approvals. Lives in the outer closure so all
-  // per-scope `suspend` closures (each built by `createContext`) share it. The
-  // Step-3 same-request path sets `pendingBlockLogicalId` and never touches it.
-  let legacyResumeConsumed = false;
-
   // Run-scoped cursor for replaying ALREADY-resolved gates across a restart. On
   // a continuation that replays the sequencer from the top, a `ctx.suspend()`
   // re-reached at a gate that was resolved on a PRIOR continuation must return
@@ -3100,7 +3087,7 @@ export async function createExecutionContext<
   // otherwise a multi-gate sequencer resumed at a later gate bounces back to the
   // earlier one forever. Keyed by logical block id; the value counts how many of
   // that gate's recorded resolutions this replay has consumed. Shared across all
-  // per-scope `suspend` closures, like `legacyResumeConsumed`.
+  // per-scope `suspend` closures.
   const resolvedResumeCursor = new Map<string, number>();
 
   // FIX-402: in-process inflight map for ctx.runOnce. Two concurrent calls
@@ -3402,7 +3389,10 @@ export async function createExecutionContext<
       // distinct, monotonic index that continues the prior log on resume.
       _reserveItemIndex: () => emittedItemCount++,
       suspend: async (suspendOpts) => {
-        const resumeCtx = options.metadata?.resumeContext as ResumeContext | undefined;
+        // The typed resolution `runAction` threads on a same-request
+        // continuation — never `options.metadata`, which callers control
+        // (BP-031, FIX-1707).
+        const resumeCtx = options.resumeContext;
         // The suspending block's logical id is the attempt-independent prefix
         // of its blockInstanceId — `${requestId}:${path}`. `parentChain.parent`
         // is the scope this `suspend` was created for (the calling block). The
@@ -3452,25 +3442,13 @@ export async function createExecutionContext<
           // other gate reached during the same replay falls through and
           // re-suspends, which is what makes multi-gate and loop-iteration
           // flows resume one gate at a time without a shared "consumed" flag.
+          // A resolution with no `pendingBlockLogicalId` matches no gate: there
+          // is no first-reached-gate fallback (FIX-1707).
           const isResolvingGate =
             resumeCtx.pendingBlockLogicalId !== undefined &&
             resumeCtx.pendingBlockLogicalId === callerLogicalId;
 
-          // Legacy fallback: the old two-request resume path threaded a
-          // resumeContext without `pendingBlockLogicalId`. Preserve its
-          // first-reached-gate-consumes behavior there — but ONLY once per run,
-          // via the shared `legacyResumeConsumed` flag, so a multi-gate legacy
-          // resume re-suspends at later gates instead of re-injecting the same
-          // payload and skipping their approvals (FIX-811). The Step-3
-          // same-request continuation always sets `pendingBlockLogicalId` (see
-          // runAction), so this branch is dead on that path — it exists only for
-          // callers that pass a bare resumeContext directly to runAction.
-          const isLegacyFirstGate =
-            resumeCtx.pendingBlockLogicalId === undefined && !legacyResumeConsumed;
-
-          if (isResolvingGate || isLegacyFirstGate) {
-            // Mark the legacy payload consumed so later gates re-suspend.
-            if (isLegacyFirstGate) legacyResumeConsumed = true;
+          if (isResolvingGate) {
             if (resumeCtx.action === "reject") {
               throw new SuspensionRejectedError(resumeCtx.suspensionId, resumeCtx.resumedBy, resumeCtx.data);
             }

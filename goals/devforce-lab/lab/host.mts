@@ -218,7 +218,7 @@ export interface OpenLabOptions {
   ask?: AskFeature;
   /**
    * Open the organization's seat and channel inventory after the channels, the
-   * collections App Lab's TEAMS and PROJECTS read. Needs `channels`: the
+   * collections Shift Manager's TEAMS and PROJECTS read. Needs `channels`: the
    * inventory's writer is the channel kind, built with `inventory: true`.
    *
    * **Absent means absent**: the channel kind is built without the writer and
@@ -228,7 +228,7 @@ export interface OpenLabOptions {
   /**
    * Hand a page the lab's user and verified bearer through the `devtool`
    * connection config, which the host injects on a loopback bind only. For a
-   * long-lived server a browser reads (App Lab, the DevTool). Absent for the
+   * long-lived server a browser reads (Shift Manager, the DevTool). Absent for the
    * checks, which read in-process.
    */
   devtool?: boolean;
@@ -267,6 +267,11 @@ export interface OpenLabOptions {
    * the mutated set and reads it back through its own config.
    */
   mutateSkills?: (seatId: string, skills: SeatSkill[]) => SeatSkill[];
+  /**
+   * Build the phase so its prompt builder ignores the task the manager hands
+   * it. The red state of "a run is handed the work a person approved".
+   */
+  dropTask?: boolean;
 }
 
 /** One skill on a worker record, as the loader shapes it. */
@@ -328,7 +333,7 @@ export interface Lab {
   transcript?(): Promise<ChannelTranscriptLine[]>;
   /**
    * Run one of the channel's own actions (`read`, `readBoard`) — the reads
-   * App Lab makes of a workstream. Absent when no channel was opened.
+   * Shift Manager makes of a workstream. Absent when no channel was opened.
    */
   channelAct?(actionName: string, input: unknown): Promise<{ output?: unknown; error?: string }>;
   /**
@@ -447,11 +452,32 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ledger,
     ...(options.fileBeforeAsking === true ? { fileBeforeAsking: true } : {}),
   });
+  // The coordinator a coder seat's message door re-runs the board on, read off
+  // the tree like the board. Two would be a guess, so the lab refuses; none
+  // leaves the coder with no door, since nothing re-runs its board.
+  const emRecords = roster.workers.filter((worker) => worker.declared.flow === EM_KIND);
+  if (emRecords.length > 1) {
+    throw new Error(`the tree declares ${emRecords.length} EM seats; this lab runs one`);
+  }
   const coderKind = defineCoderWorkerFlow({
     ledger,
+    ...(emRecords[0] === undefined ? {} : { coordinatorSeatId: emRecords[0].id }),
     harness: options.harness,
     workspace: options.workspace,
-    phase: defineImplementPhase({ requireAcceptance: options.requireAcceptance === true }),
+    // The channel's charter and members, resolved once here so the prompt
+    // builder stays a function of the run and these options. Not the whole
+    // manifest: the charter is the only channel content a run is handed.
+    // Known limit: this is a snapshot, so a charter edited while the lab is
+    // open does not reach later prompts. A real host should read it per run.
+    phase: defineImplementPhase({
+      requireAcceptance: options.requireAcceptance === true,
+      channel: {
+        id: channel.id,
+        charter: channel.body,
+        members: (channel.declared.members as string[] | undefined) ?? [],
+      },
+      ...(options.dropTask === true ? { dropTask: true } : {}),
+    }),
     runTimeoutMs: options.runTimeoutMs ?? 60_000,
     resources,
   });
@@ -616,7 +642,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       return result;
     };
     const opened = await openInventory(
-      { seats: hired.map((seat) => ({ id: seat.id, kind: seat.kind })), channels: roster.channels },
+      { seats: hired, channels: roster.channels },
       { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
     );
     if (opened.problems.length > 0) {

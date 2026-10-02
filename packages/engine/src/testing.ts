@@ -31,6 +31,10 @@ export {
   type ScopeStoreUnderTest
 } from "./stores/testing/scope-store-conformance";
 export {
+  createLeaseStoreConformanceTests,
+  type CreateLeaseStoreConformanceTestsOptions
+} from "./stores/testing/lease-store-conformance";
+export {
   createSessionStreamConformanceTests,
   type CreateSessionStreamConformanceTestsOptions
 } from "./stores/testing/session-stream-conformance";

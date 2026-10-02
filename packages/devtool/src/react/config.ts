@@ -173,7 +173,7 @@ export const SESSION_ADDRESS_PARAM = "session";
 /**
  * The session id the page's address names (`?session=<id>`), or `undefined`.
  * The standalone shell hands it to `DevToolPanel`'s `openSessionId`, so a link
- * such as App Lab's *Open trace* opens that run without a paste.
+ * such as Shift Manager's *Open trace* opens that run without a paste.
  */
 export function readSessionAddress(): string | undefined {
   if (!hasWindow()) return undefined;

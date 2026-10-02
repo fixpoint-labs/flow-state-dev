@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 362" role="img" aria-label="D2, what a project&#x27;s talk session stores. Chosen: only its link, the project&#x27;s id; its seats and charter come from the template at every start, and its lines from the project&#x27;s room. Instead of: seats and charter copied in when it is minted, as a declared channel&#x27;s are at first open. It comes down to the first row: a seat added to the template, such as the chief of staff, reaches every project&#x27;s conversation at the next restart, while a copy never gains it. The price is the second row: every project of a template has the same seats. Locks in: talk state is resourceId alone, which grants nothing, and a template holds no board. Flips if a Lab needs different seats per project; then the row carries them."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="362"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">What does a project&#x27;s talk session store?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Only its link</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Seats and charter, copied at mint</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">A SEAT ADDED</text>
+    <text class="t-lbl" x="32" y="169">LATER</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Reaches every project</text>
+    <text class="t-s" x="248" y="179">at the next restart</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Never reaches old ones</text>
+    <text class="t-s" x="612" y="179">the copy is frozen at mint</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="222">SEATS PER</text>
+    <text class="t-lbl" x="32" y="235">PROJECT</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">All the template&#x27;s</text>
+    <text class="t-s" x="248" y="241">the same on every project</text>
+    <text class="mark plus" x="592" y="224">+</text>
+    <text class="t-b" x="612" y="223">Could differ</text>
+    <text class="t-s" x="612" y="241">each copy is its own</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="272" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="293">LOCKS IN</text>
+    <text class="t-b" x="32" y="313">Talk state: resourceId alone, granting nothing</text>
+    <text class="t-s" x="32" y="331">lines live in the room; a template holds no board</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="272" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="293">FLIPS IF</text>
+    <text class="t-b" x="494" y="313">A Lab needs seats per project</text>
+    <text class="t-s" x="494" y="331">then the row carries them, not the session</text>
+  </g>
+</svg>

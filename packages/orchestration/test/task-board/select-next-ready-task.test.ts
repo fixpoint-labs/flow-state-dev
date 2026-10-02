@@ -21,7 +21,7 @@ import { describe, expect, it } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { runForTest } from "@flow-state-dev/testing";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   DEFAULT_MAX_ABANDONMENTS,
   MIN_LEASE_DURATION_MS,
   type TaskCollectionRef,
@@ -37,9 +37,9 @@ function steppedCollection(): {
   advancePastLease: () => void;
 } {
   let clock = 1_000;
-  const collection = createSequencerBackedTaskCollection({
+  const collection = createStateBackedTaskCollection({
     collectionId: "tasks",
-    sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+    state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
     now: () => clock,
   });
   return {

@@ -1,0 +1,90 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today: a channel's CHANNEL.md says nothing about a project, its inventory row holds id, kind, members and openedAt, PROJECTS lists every workstream flat, and the project level is four empty states. After: the org collection projects holds one row per project with title, brief, members, workstreams from any team (here eng and ops) and sessions; the project names no team. The org-level talk template, declared with the collection, names the seats. The room is the org collection room-lines, one row per line, with its sequence counter on a row of its own. Each member reads and posts the room through their own talk session, minted from that template, which holds only the project's id; the gate is the row's members against the session owner. The channel inventory is unchanged. Shift Manager groups workstreams under the rows, Brief, Board and Workstreams come from the row, and Stream is the room."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .pane  { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost  { fill:var(--surface); stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.4; fill:none; marker-end:url(#a); }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-new { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-gone { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .mk    { fill:var(--ink-3); }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="mk" d="M0,0 L8,4 L0,8 z"/></marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="pane" x="16" y="16" width="340" height="368" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY</text>
+    <rect class="n-box" x="32" y="52" width="308" height="52" rx="5"/>
+    <text class="t-s" x="46" y="72">teams/eng/channels/feature/CHANNEL.md</text>
+    <text class="t-b" x="46" y="92">members, boards · no project</text>
+    <path class="arrow" d="M186,104 L186,128"/>
+    <rect class="n-box" x="32" y="132" width="308" height="52" rx="5"/>
+    <text class="t-lbl" x="46" y="152">INVENTORY ROW</text>
+    <text class="t-b" x="46" y="172">id, kind, members, openedAt</text>
+    <path class="arrow" d="M186,184 L186,208"/>
+    <rect class="n-box" x="32" y="212" width="308" height="76" rx="5"/>
+    <text class="t-lbl" x="46" y="232">SHIFT MANAGER · PROJECTS</text>
+    <text class="t-b" x="46" y="252">every workstream, flat</text>
+    <text class="t-s" x="46" y="270">eng.feature · eng.…</text>
+    <rect class="lost" x="32" y="304" width="308" height="64" rx="5"/>
+    <text class="t-lbl" x="46" y="324">THE PROJECT LEVEL</text>
+    <text class="t-gone" x="46" y="344">four empty states</text>
+    <text class="t-s" x="46" y="360">"arrives with FIX-1650"</text>
+  </g>
+
+  <g id="after">
+    <rect class="pane" x="372" y="16" width="552" height="368" rx="6"/>
+    <text class="t-lbl" x="388" y="38">AFTER</text>
+    <rect class="new" x="388" y="52" width="252" height="76" rx="5"/>
+    <text class="t-lbl" x="402" y="72">PROJECTS/* · ORG ROWS · RUNTIME</text>
+    <text class="t-b" x="402" y="92">title, brief, status, owner</text>
+    <text class="t-new" x="402" y="108">+ members · workstreams: eng, ops</text>
+    <text class="t-new" x="402" y="122">+ sessions: [{ sessionId, userId }]</text>
+    <rect class="new" x="656" y="52" width="252" height="76" rx="5"/>
+    <text class="t-lbl" x="670" y="72">ROOM-LINES/* · ORG ROWS</text>
+    <text class="t-new" x="670" y="92">projectId, seq, userId, author, body</text>
+    <text class="t-s" x="670" y="108">created, never edited</text>
+    <text class="t-s" x="670" y="122">seq on its own row · retried</text>
+
+    <path class="arrow" d="M514,128 L514,152"/>
+    <text class="t-lbl" x="524" y="145">GATE: OWNER IN MEMBERS</text>
+    <path class="arrow" d="M782,152 L782,128"/>
+    <rect class="new" x="388" y="156" width="520" height="40" rx="5"/>
+    <text class="t-lbl" x="402" y="174">EACH MEMBER'S OWN TALK SESSION · FROM THE ORG TEMPLATE</text>
+    <text class="t-new" x="402" y="188">resourceId only · grants nothing</text>
+    <text class="t-s" x="640" y="188">post · read after cursor</text>
+
+    <rect class="n-box" x="388" y="208" width="520" height="34" rx="5"/>
+    <text class="t-lbl" x="402" y="229">INVENTORY ROW</text>
+    <text class="t-b" x="520" y="230">unchanged · no talk session listed</text>
+
+    <rect class="new" x="388" y="254" width="320" height="114" rx="5"/>
+    <text class="t-lbl" x="402" y="274">SHIFT MANAGER · PROJECTS</text>
+    <text class="t-b" x="402" y="294">Storefront rebuild</text>
+    <text class="t-s" x="418" y="310">└ eng.feature · ops.release</text>
+    <text class="t-b" x="402" y="330">Second project</text>
+    <text class="t-s" x="418" y="346">└ none yet</text>
+    <text class="t-b" x="402" y="362">No project · the rest</text>
+    <rect class="new" x="724" y="254" width="184" height="114" rx="5"/>
+    <text class="t-lbl" x="738" y="274">THE PROJECT LEVEL</text>
+    <text class="t-b" x="738" y="296">Brief, Board,</text>
+    <text class="t-b" x="738" y="314">Workstreams: the row</text>
+    <text class="t-b" x="738" y="336">Stream: the room</text>
+    <text class="t-s" x="738" y="354">members · on focus</text>
+  </g>
+</svg>

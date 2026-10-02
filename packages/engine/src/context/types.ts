@@ -5,7 +5,8 @@ import type {
   JsonObject,
   ModelResolver,
   RequestStatus,
-  ResponseEmitterHandle
+  ResponseEmitterHandle,
+  ResumeContext
 } from "@flow-state-dev/core/types";
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "../execution/logging";
@@ -74,6 +75,12 @@ export type CreateExecutionContextOptions<
   userState?: TUserState;
   orgState?: TOrgState;
   metadata?: Record<string, unknown>;
+  /**
+   * The suspension resolution `ctx.suspend()` returns at the gate named by its
+   * `pendingBlockLogicalId`. Set by `runAction` on a same-request continuation
+   * only; never read from `metadata`, which callers control (FIX-1707).
+   */
+  resumeContext?: ResumeContext;
   input?: unknown;
   signal?: AbortSignal;
   /**

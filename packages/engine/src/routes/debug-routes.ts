@@ -51,6 +51,9 @@ const DEFAULT_COUNT_LIMIT = 1000;
  * `debugEndpointsEnabled` always wins; `undefined` falls back to the
  * `FSDEV_DEBUG_ENDPOINTS=1` env flag. Origin allowlist defaults to empty —
  * loopback hosts are always permitted by `assertDebugAllowed` regardless.
+ * Anonymous (Origin-less) access is closed by default: an explicit
+ * `debugAllowAnonymousLocal` wins, and `undefined` falls back to the
+ * `FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL=1` env flag (set by `fsdev dev`).
  */
 export function resolveDebugConfig(opts: {
   debugEndpointsEnabled?: boolean;
@@ -66,7 +69,9 @@ export function resolveDebugConfig(opts: {
   return {
     enabled,
     allowedOrigins: opts.debugAllowedOrigins ?? [],
-    allowAnonymousLocal: opts.debugAllowAnonymousLocal ?? true,
+    allowAnonymousLocal:
+      opts.debugAllowAnonymousLocal ??
+      process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL === "1",
     countLimit: opts.debugCountLimit ?? DEFAULT_COUNT_LIMIT
   };
 }

@@ -124,7 +124,7 @@ async function devtoolResources(root: string): Promise<SnapshotEntry[]> {
   const stores = createInMemoryStores();
   const registry = createFlowRegistry();
   registry.register(seat!);
-  const router = createFlowApiRouter({ registry, stores, debugEndpointsEnabled: true });
+  const router = createFlowApiRouter({ registry, stores, debugEndpointsEnabled: true, debugAllowAnonymousLocal: true });
 
   const run = await router.POST(
     new Request(`http://localhost/api/flows/${SEAT}/${SESSION}/actions/run`, {

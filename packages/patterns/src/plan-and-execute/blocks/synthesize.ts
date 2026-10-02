@@ -75,7 +75,7 @@ export function createBuildPlanOutput(options: { name: string }) {
     execute: async (_input, ctx) => {
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "request",
+        backing: "state",
         collectionId,
       });
       const tasks = collection.list();

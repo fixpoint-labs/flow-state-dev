@@ -23,7 +23,7 @@ import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   createResourceBackedTaskCollection,
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   DEFAULT_MAX_TOTAL_RETRIES,
   getOrCreateTaskCollection,
   type Task,
@@ -56,9 +56,9 @@ function budgetedCollection(caps: {
   maxEnqueuedTasks?: number | null;
   maxTotalRetries?: number | null;
 }): TaskCollectionRef {
-  return createSequencerBackedTaskCollection({
+  return createStateBackedTaskCollection({
     collectionId: "budgeted",
-    sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+    state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
     ...caps,
   });
 }
@@ -221,9 +221,9 @@ describe("retry budget — the board reports it honestly", () => {
     // off the collection, where enforcement actually lives.
     const supplied = await getOrCreateTaskCollection({
       ctx: { emit: { component: () => {} }, response: undefined } as never,
-      backing: "sequencer",
+      backing: "state",
       collectionId: "caller-built",
-      sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+      state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
       maxTotalRetries: 5,
     });
     await supplied.addTask({ goal: "t" });
@@ -279,7 +279,7 @@ describe("retry budget — the request backing inherits the sequencer path", () 
 
     const collection = await getOrCreateTaskCollection({
       ctx,
-      backing: "request",
+      backing: "state",
       collectionId: "req-board",
       maxTotalRetries: 1,
     });

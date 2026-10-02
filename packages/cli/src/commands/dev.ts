@@ -98,6 +98,10 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
     beforeConfigLoad: () => {
       if (options.config !== false) {
         process.env.FSDEV_DEBUG_ENDPOINTS ??= "1";
+        // The DevTool's same-origin GETs carry no Origin header; the engine
+        // closes the debug surface to those unless opted in. Safe here: the
+        // dev server binds 127.0.0.1 (see serve() below).
+        process.env.FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL ??= "1";
         process.env.FSDEV_TRACING_LEVEL ??= "verbose";
       }
     },
@@ -180,6 +184,9 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<voi
       // fsdev dev is local-only by definition; opt in to the privileged debug
       // surface so the DevTool's Resources panel can read full server state.
       debugEndpointsEnabled: true,
+      // The DevTool's same-origin GETs carry no Origin header; this server
+      // binds 127.0.0.1, so admitting them is safe.
+      debugAllowAnonymousLocal: true,
       // The DevTool observes per-step state snapshots, so the dev server runs at
       // the most verbose tracing level (FIX-406 6H).
       tracingLevel: "verbose",

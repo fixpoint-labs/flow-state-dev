@@ -474,6 +474,11 @@ export function createFilesystemRecordStore<
         expectedVersion,
         (current) => {
           const existing = current.state?.[path[0]];
+          if (existing !== undefined && existing !== null && typeof existing !== "number") {
+            throw new Error(
+              `incField target at path[${path[0]}] is not a number (got ${Array.isArray(existing) ? "array" : typeof existing})`
+            );
+          }
           const baseline = typeof existing === "number" ? existing : 0;
           return {
             ...current,

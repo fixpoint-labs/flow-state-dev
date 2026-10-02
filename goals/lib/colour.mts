@@ -4,12 +4,12 @@
  * Computed styles come back in several colour spaces (`rgb()`, `color(srgb …)`,
  * `oklab()`, `oklch()`); these turn each into sRGB so a painted colour can be
  * compared with a declared one. Also here: reading the custom properties a
- * stylesheet declares on one selector, and App Lab's theme values read from
+ * stylesheet declares on one selector, and Shift Manager's theme values read from
  * the design-system package itself, so no goal restates them.
  *
  * Kept out of `index.mts`: only the goals that read a page's colours need it.
  *
- *   import { parseColour, near, readAppLabTheme } from "../../lib/colour.mts";
+ *   import { parseColour, near, readShiftManagerTheme } from "../../lib/colour.mts";
  */
 import { readFileSync } from "node:fs";
 import { repoPath } from "./paths.mts";
@@ -85,8 +85,8 @@ export function declarations(css: string, selector: string): Record<string, stri
   return out;
 }
 
-/** App Lab's theme as the design-system package declares it. */
-export interface AppLabTheme {
+/** Shift Manager's theme as the design-system package declares it. */
+export interface ShiftManagerTheme {
   /** Every colour value per variant, as written (`#rrggbb`). */
   light: string[];
   dark: string[];
@@ -97,9 +97,9 @@ export interface AppLabTheme {
   families: string[];
 }
 
-/** Read App Lab's values off `labs/design-system/app-lab.css`. */
-export function readAppLabTheme(): AppLabTheme {
-  const css = readFileSync(repoPath("labs/design-system/app-lab.css"), "utf8");
+/** Read Shift Manager's values off `labs/design-system/shift-manager.css`. */
+export function readShiftManagerTheme(): ShiftManagerTheme {
+  const css = readFileSync(repoPath("labs/design-system/shift-manager.css"), "utf8");
   const light = declarations(css, ":root");
   const dark = declarations(css, ".dark");
   const colours = (d: Record<string, string>) => Object.values(d).filter((v) => /^#[0-9a-f]{3,8}$/i.test(v));

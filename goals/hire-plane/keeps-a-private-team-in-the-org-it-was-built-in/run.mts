@@ -238,6 +238,7 @@ await runGoal(async () => {
     stores: { default: { primary: inMemoryStores() } },
     // What `fsdev dev` does; leg (g) only exists with it on.
     debugEndpointsEnabled: true,
+    debugAllowAnonymousLocal: true,
   });
   const router = (await state.getRouter()) as {
     GET: (request: Request, ctx: { params: { path: string[] } }) => Promise<Response>;

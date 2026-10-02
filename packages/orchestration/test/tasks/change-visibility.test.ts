@@ -30,7 +30,7 @@ function makeBoardMutator(changeVisibility?: { client: boolean; history: boolean
     execute: async (_input, ctx) => {
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "request",
+        backing: "state",
         collectionId: "vis",
         ...(changeVisibility ? { changeVisibility } : {}),
       });

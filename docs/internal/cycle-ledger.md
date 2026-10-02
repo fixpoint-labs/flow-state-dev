@@ -65,3 +65,4 @@ earlier cycle files are records and are not rewritten.
 | 17 | W5 Workforce release QA epic wrap (FIX-1457) (2026-09-24) | [`cycle-17.md`](cycle-ledger/cycle-17.md) |
 | 18 | kitchen-sink rebuild / Workforce reference epic wrap (FIX-1455) (2026-09-24) | [`cycle-18.md`](cycle-ledger/cycle-18.md) |
 | 19 | kitchen-sink support desk epic wrap (FIX-1592) (2026-09-29) | [`cycle-19.md`](cycle-ledger/cycle-19.md) |
+| 20 | hard-gates-before-public-release epic wrap (FIX-1635) (2026-10-01) | [`cycle-20.md`](cycle-ledger/cycle-20.md) |

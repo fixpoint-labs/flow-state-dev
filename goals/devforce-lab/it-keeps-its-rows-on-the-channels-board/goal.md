@@ -5,7 +5,7 @@
 **Outcome:** Anyone in the DevForce Lab's organization who opens the feature channel's workstream
 sees the board that channel holds and every row on it, at the status its coding run left it, with
 no second copy of the row anywhere. A line posted on the channel ends as one completed row, and
-that row is read back the way App Lab reads a workstream: through the channel, through the HTTP door
+that row is read back the way Shift Manager reads a workstream: through the channel, through the HTTP door
 a browser uses, and from the organization's storage under the id the framework minted.
 
 **Input:** the DevForce tree as it stands, with the lab's scripted harness in the coder seat's slot
@@ -29,7 +29,7 @@ by renaming the board to `queue`).
 
 **Anti-game:** a hollow pass is a run that completes while the row sits on a ledger the channel
 does not hold. So nothing here reads the drain's report, the run record or the EM's output — all
-three are green in exactly that case. The row is only ever read where App Lab reads it.
+three are green in exactly that case. The row is only ever read where Shift Manager reads it.
 
 **Model:** n/a — model-free by design; what is graded is where the row lives, not how the work
 went. The sibling `it-commits-from-the-seats-own-file` covers a real coding agent.

@@ -61,7 +61,7 @@ import { resolveResourceTaskCollection } from "./resolve-resource";
 
 /**
  * Sequencer-spec options. Resolves the collection via
- * `getOrCreateTaskCollection({ backing: "sequencer", ... })` against the parent
+ * `getOrCreateTaskCollection({ backing: "state", state, ... })` against the parent
  * board sequencer's state ref (`ctx.getTarget(boardName)`). Consumers must run
  * inside the board's sequencer subtree; using the capability from a sibling
  * throws rather than writing to the wrong state.
@@ -242,7 +242,7 @@ export function createTaskBoardCapability<
         buildTaskBoardAccessor<TInput, TOutput>(() =>
           getOrCreateTaskCollection<TInput, TOutput>({
             ctx,
-            backing: "request",
+            backing: "state",
             collectionId,
             stateKey,
             maxTotalTasks,
@@ -294,9 +294,9 @@ export function createTaskBoardCapability<
         }
         return getOrCreateTaskCollection<TInput, TOutput>({
           ctx,
-          backing: "sequencer",
+          backing: "state",
           collectionId,
-          sequencer: target as StateRef<Record<string, unknown>>,
+          state: target as StateRef<Record<string, unknown>>,
           stateKey,
           maxTotalTasks,
           maxEnqueuedTasks,

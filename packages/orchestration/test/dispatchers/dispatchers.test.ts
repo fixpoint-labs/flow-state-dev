@@ -8,7 +8,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   classifierDispatcher,
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   eventDispatcher,
   fifoDispatcher,
   priorityDispatcher,
@@ -24,9 +24,9 @@ function buildCollection(): TaskCollectionRef {
   let clock = 0;
   const captured = createCapturedChanges();
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
-  return createSequencerBackedTaskCollection({
+  return createStateBackedTaskCollection({
     collectionId: "tasks",
-    sequencer,
+    state: sequencer,
     onChange: captured.onChange,
     now: () => ++clock,
   });

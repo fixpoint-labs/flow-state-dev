@@ -10,7 +10,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import type { ComponentItem, MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import {
   createResourceBackedTaskCollection,
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   getOrCreateTaskCollection,
   type TaskCollectionRef,
 } from "../../src/tasks";
@@ -76,9 +76,9 @@ const factories: Array<{ name: string; build: Factory }> = [
       const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
       const captured = createCapturedChanges();
       const itemLog: OutputItem[] = [];
-      const collection = createSequencerBackedTaskCollection({
+      const collection = createStateBackedTaskCollection({
         collectionId: "c1",
-        sequencer,
+        state: sequencer,
         onChange: captured.onChange,
         getItems: () => itemLog,
         now: () => 1000,
@@ -187,9 +187,9 @@ for (const { name, build } of factories) {
       let collection: TaskCollectionRef;
       if (name === "sequencer-backed") {
         const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
-        collection = createSequencerBackedTaskCollection({
+        collection = createStateBackedTaskCollection({
           collectionId: "c1",
-          sequencer,
+          state: sequencer,
           now: () => 1000,
         });
       } else {
@@ -222,9 +222,9 @@ describe("getOrCreateTaskCollection items() — undefined ctx.response", () => {
 
     const collection = await getOrCreateTaskCollection({
       ctx,
-      backing: "sequencer",
+      backing: "state",
       collectionId: "plan",
-      sequencer: sequencerState,
+      state: sequencerState,
       now: () => 1000,
     });
 

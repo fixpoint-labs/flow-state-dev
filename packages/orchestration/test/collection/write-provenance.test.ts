@@ -29,7 +29,7 @@ import { z } from "zod";
 import {
   beginTaskWrite,
   createResourceBackedTaskCollection,
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   didWriteLand,
   ticketForClaim,
   type Task,
@@ -355,9 +355,9 @@ const sequencerBacking: BackingFactory = async () => {
   let clock = 1000;
   const captured = breakableChanges();
   return {
-    collection: createSequencerBackedTaskCollection({
+    collection: createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+      state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
       onChange: captured.onChange,
       now: () => clock,
     }),
@@ -811,9 +811,9 @@ describe("a lost CAS round stamps once, off the state that committed", () => {
     const seedState = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
       tasks: {},
     });
-    const seed = createSequencerBackedTaskCollection({
+    const seed = createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer: seedState,
+      state: seedState,
       now: () => clock,
     });
     await seed.addTask({ id: "t", goal: "t" });
@@ -830,9 +830,9 @@ describe("a lost CAS round stamps once, off the state that committed", () => {
         },
       }
     );
-    const collection = createSequencerBackedTaskCollection({
+    const collection = createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer: replaying,
+      state: replaying,
       now: () => clock,
     });
 

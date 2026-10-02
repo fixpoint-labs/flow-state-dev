@@ -661,6 +661,7 @@ that work will plug into.
 |-----------|----------|
 | `@anthropic-ai/claude-agent-sdk` not installed | Throws `ClaudeAgentSdkNotInstalledError` with an install hint. |
 | The agent finishes with an error result (hit max turns, budget, or a runtime error) | Treated as an outcome: the handle's `status` is `"errored"`, its `outcome` is `stopped-at-limit` or `failed` (with the SDK's own `resultSubtype` alongside), and an `error` item is emitted. No throw. |
+| The turn ends on an API error (the SDK reports a `success` result with `is_error` set) | Treated as a failure, not a success: `status` is `"errored"`, `outcome` is `failed`, `resultSubtype` stays `"success"`, and an `error` item carries the SDK's error text with code `is_error`. No throw. |
 | The SDK throws mid-stream | Wrapped in `ClaudeAgentRunError` and rethrown after an `error` item. |
 | A tool or sub-agent is still open when the stream ends | Its item is marked `incomplete`. |
 | Empty prompt | Validation error before the agent starts. |

@@ -29,7 +29,7 @@ import { handler, SuspensionError } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   leaseLapsed,
   MIN_LEASE_DURATION_MS,
   type TaskCollectionRef,
@@ -43,9 +43,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** A board collection on the real clock, so leases genuinely expire. */
 function liveCollection(collectionId: string): TaskCollectionRef {
-  return createSequencerBackedTaskCollection({
+  return createStateBackedTaskCollection({
     collectionId,
-    sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+    state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
     now: () => Date.now(),
   });
 }

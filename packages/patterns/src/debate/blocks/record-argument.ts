@@ -45,9 +45,9 @@ export function createRecordArgument(opts: {
 
       const collection = await getOrCreateTaskCollection({
         ctx: ctx as unknown as BlockContext,
-        backing: "sequencer",
+        backing: "state",
         collectionId: opts.collectionId,
-        sequencer: ctx.sequencer!,
+        state: ctx.sequencer!,
       });
       const task = await collection.addTask({
         goal: `${opts.agentName} (round ${round})`,

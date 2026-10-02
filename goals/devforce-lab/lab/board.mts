@@ -8,7 +8,7 @@
  * so no file in the tree, and no line of this lab, writes that id.
  * The host resolves the ledger with `channelBoard(channel.id, boardName)`,
  * reading both off the tree, and hands it to the two kinds below. The ledger
- * is kept per organization, which is what lets App Lab show the workstream's
+ * is kept per organization, which is what lets Shift Manager show the workstream's
  * board to everyone working it.
  *
  * Two shapes, because the row crosses flows (D1 of the lab's own spec):
@@ -57,6 +57,13 @@ export const ASSIGNEE = "coder";
 
 /** The task entry the hand-off addresses on the recipient flow. */
 export const WORK_ENTRY = "work";
+
+/**
+ * The coordinator's `internal` entry that runs its board's drain. The coder
+ * seat's message door dispatches it into the EM session that claimed a run's
+ * row, so the run's next attempt is handed off into the session it ran in.
+ */
+export const RESUME_ENTRY = "resume";
 
 /**
  * The ledger both declarations read and write, with the id it is registered

@@ -169,6 +169,7 @@ async function boot(stores = inMemoryStores(), options: { debug?: boolean } = {}
     stores: { default: { primary: stores } },
     modelResolver: createMockModelResolver({}),
     debugEndpointsEnabled: options.debug ?? false,
+    debugAllowAnonymousLocal: true,
   });
   const router = (await state.getRouter()) as {
     GET: (request: Request, ctx: { params: { path: string[] } }) => Promise<Response>;

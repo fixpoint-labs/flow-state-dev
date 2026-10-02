@@ -44,7 +44,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import type { DeclaredResources } from "@flow-state-dev/core";
 import { harnessManager, type PhaseSpec, type WorkspaceConfig } from "@flow-state-dev/harness-manager";
 import type { HarnessBlock, HarnessCallbackContext } from "@flow-state-dev/core/types";
-import { recipientBoard, WORK_ENTRY, type FeatureLedger } from "../../../board.mts";
+import { recipientBoard, RESUME_ENTRY, WORK_ENTRY, type FeatureLedger } from "../../../board.mts";
 import {
   INSPECT_ENTRY,
   readOwnFacts,
@@ -86,6 +86,12 @@ export interface CoderWorkerFlowOptions {
    * what every run's checkout folder and branch are derived from.
    */
   ledger: FeatureLedger;
+  /**
+   * The hired EM seat's instance id: the coordinator whose board hands this
+   * seat its rows. The message door re-runs that board there after a stop.
+   * Absent, the kind declares no message door: nothing would re-run its board.
+   */
+  coordinatorSeatId?: string;
 }
 
 /**
@@ -127,6 +133,11 @@ export function defineCoderWorkerFlow(options: CoderWorkerFlowOptions) {
         block: readOwnFacts,
         description: "Read what this seat can see of its own configuration. Writes nothing.",
       },
+      // The seat's door: a person's message into one of its running coding
+      // runs, which stops and continues the same coding session with it.
+      ...(options.coordinatorSeatId === undefined
+        ? {}
+        : { message: manager.messageDoor({ drain: RESUME_ENTRY, flowKind: options.coordinatorSeatId }) }),
     },
     // Reachable only through the board's claim gate, by a hand-off that named
     // this instance.

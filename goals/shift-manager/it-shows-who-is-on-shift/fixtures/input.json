@@ -1,0 +1,6 @@
+{
+  "spreads": [
+    { "coder": ["held"], "reviewer": ["parked"], "asker": ["ask"], "waiter": ["queued"] },
+    { "coder": ["parked", "queued"], "reviewer": ["held", "parked"], "spare": ["ask", "ask"], "waiter": ["held"], "asker": ["queued"] }
+  ]
+}

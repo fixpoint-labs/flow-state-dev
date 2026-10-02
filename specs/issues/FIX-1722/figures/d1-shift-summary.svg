@@ -1,0 +1,98 @@
+<svg viewBox="0 0 940 422" role="img" aria-label="D1, who writes the briefing on the Chief of Staff screen. Chosen: Shift Manager draws it as a shift summary from the reads it already makes. Instead of: the CoS seat writing it each time the screen opens. It comes down to the first row, who said it: the summary shows only what the store holds and always agrees with Inbox and Tasks, while a seat-written brief is a model&#x27;s words that can disagree with them. Second row: the summary costs nothing per open, a seat-written brief costs a model call and a turn in the conversation every time. Third row, the price: the summary reads as a summary, not as a colleague talking, which v2 draws. Locks in: the summary is the screen&#x27;s own reads, answered inline with Inbox&#x27;s card. Flips if: Jake wants the CoS&#x27;s judgement in the brief, which needs a routine the CoS runs on its own."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .rec    { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; stroke-dasharray:5 4; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="422"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">Who writes the briefing a person lands on?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Shift Manager, as a shift summary</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">The CoS seat, on every open</text>
+  </g>
+
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHO SAID IT</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">What the store holds</text>
+    <text class="t-s" x="248" y="179">the same reads as Inbox and Tasks</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">A model&#x27;s words</text>
+    <text class="t-s" x="612" y="179">can disagree with Inbox&#x27;s count</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="226">COST PER OPEN</text>
+    <text class="mark plus" x="228" y="228">+</text>
+    <text class="t-b" x="248" y="227">None</text>
+    <text class="t-s" x="248" y="245">no model call, no turn written</text>
+    <text class="mark minus" x="592" y="228">−</text>
+    <text class="t-b" x="612" y="227">A model call and a turn</text>
+    <text class="t-s" x="612" y="245">the conversation fills with briefs</text>
+    <line class="row" x1="16" y1="258" x2="924" y2="258"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="284">HOW IT READS</text>
+    <text class="mark minus" x="228" y="286">−</text>
+    <text class="t-b" x="248" y="285">A summary, not a colleague</text>
+    <text class="t-s" x="248" y="303">labelled as the shift summary</text>
+    <text class="mark plus" x="592" y="286">+</text>
+    <text class="t-b" x="612" y="285">As v2 draws it</text>
+    <text class="t-s" x="612" y="303">the CoS talking to you</text>
+    <line class="row" x1="16" y1="316" x2="924" y2="316"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="353">LOCKS IN</text>
+    <text class="t-b" x="32" y="373">A summary of what is on screen, answerable inline</text>
+    <text class="t-s" x="32" y="391">the CoS speaks only in the conversation</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="353">FLIPS IF</text>
+    <text class="t-b" x="494" y="373">Jake wants the CoS&#x27;s own judgement in it</text>
+    <text class="t-s" x="494" y="391">then the CoS writes one on a routine; this is its fallback</text>
+  </g>
+</svg>

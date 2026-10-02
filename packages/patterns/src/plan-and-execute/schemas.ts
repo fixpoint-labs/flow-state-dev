@@ -3,7 +3,7 @@
  *
  * After the FIX-447 migration onto the taskBoard substrate, the pattern's
  * own state is intentionally minimal — task storage lives on the request-
- * scoped TaskCollection (see `getOrCreateTaskCollection({ backing: "request" })`)
+ * scoped TaskCollection (see `getOrCreateTaskCollection({ backing: "state" })` with no `state`)
  * and the outer sequencer only tracks the original goal, an optional
  * pattern-specific status, and the iteration counter consumed by the
  * replan loop.
