@@ -1,8 +1,9 @@
 /**
  * Shift Manager's small shared pieces: the named empty state, a failed section with
- * Retry, and tabs whose selection lives in the URL.
+ * Retry, tabs whose selection lives in the URL, and a worker's status mark.
  */
 import type { ReactNode } from "react";
+import type { ShiftStatus } from "../lib/derive";
 import type { Failure } from "../lib/reads";
 
 /**
@@ -77,13 +78,38 @@ export function Tabs<T extends string>({
   );
 }
 
-/** A worker's status, as a dot and a word (BR-8). */
-export function StatusWord({ status }: { status: "working" | "waiting on you" | "idle" }) {
-  const dot = status === "working" ? "bg-info" : status === "waiting on you" ? "bg-attention" : "bg-muted-foreground/40";
+/**
+ * A worker's status mark: solid for on shift, half for on call, an outline
+ * for off shift.
+ */
+export function ShiftMark({ status, className = "size-2" }: { status: ShiftStatus; className?: string }) {
+  const fill =
+    status === "on shift"
+      ? "border-info bg-info"
+      : status === "on call"
+        ? "border-info bg-[linear-gradient(135deg,var(--color-info)_50%,transparent_50%)]"
+        : "border-muted-foreground";
+  return <span className={`inline-block shrink-0 border ${fill} ${className}`} data-mark={status} aria-hidden />;
+}
+
+/** A worker's status, as its mark and its word. */
+export function StatusWord({ status }: { status: ShiftStatus }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-status={status}>
-      <span className={`size-1.5 rounded-full ${dot}`} aria-hidden />
+    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="status-word" data-status={status}>
+      <ShiftMark status={status} />
       {status}
+    </span>
+  );
+}
+
+/**
+ * The mark every screen that draws a status or a count shows when the status
+ * result is partial (asks did not load). The words are the caller's.
+ */
+export function PartialMark({ title }: { title: string }) {
+  return (
+    <span className="ml-1 border border-dashed border-muted-foreground px-1 text-[10px] text-muted-foreground" title={title} data-testid="partial-mark">
+      partial
     </span>
   );
 }

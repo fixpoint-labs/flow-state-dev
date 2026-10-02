@@ -21,9 +21,9 @@ import { AskCard } from "../components/AskCard";
 import { chatAssistantRenderers } from "../components/flow-state/chat-assistant";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { TurnComposer } from "../components/TurnComposer";
-import { SectionFailure } from "../components/ui";
+import { PartialMark, SectionFailure, ShiftMark } from "../components/ui";
 import { currentConversation, newConversationId, readConversation, sendToChiefOfStaff } from "../lib/cos";
-import { chiefOfStaffOf, shiftSummary, streamCounts, type LoadedSnapshot } from "../lib/derive";
+import { chiefOfStaffOf, seatStates, shiftSummary, streamCounts, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { describeFailure, type Failure, type Seat } from "../lib/reads";
@@ -274,10 +274,12 @@ function Items({ stored }: { stored: SessionItems }) {
   );
 }
 
-/** The right panel at Chief of Staff: STREAMS and ON CALL (BR-19, BR-20). */
+/** The right panel at Chief of Staff: STREAMS (BR-19) and ON CALL, the workers Roster reads on call. */
 export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
   const { refresh } = useLab();
   const streams = streamCounts(snapshot);
+  const states = seatStates(snapshot);
+  const onCall = [...states.seats.values()].filter((state) => state.status === "on call");
   return (
     <div className="p-3" data-testid="cos-panel">
       <p className="px-1 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">STREAMS</p>
@@ -313,10 +315,32 @@ export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot
       ) : (
         <SectionFailure what="Workstreams" failure={streams.failure} onRetry={() => void refresh()} testId="cos-streams-failure" />
       )}
-      <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">ON CALL</p>
-      <p className="px-1 text-xs text-muted-foreground" data-testid="cos-on-call-gap">
-        {gaps.chiefOfStaff.onCall}
+      <p className="px-1 pt-4 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">
+        ON CALL
+        {states.partial ? <PartialMark title={gaps.roster.partial} /> : null}
       </p>
+      {onCall.length === 0 ? (
+        <p className="px-1 text-xs text-muted-foreground" data-testid="cos-on-call-none">
+          No worker is on call.
+        </p>
+      ) : (
+        <ul className="space-y-0.5">
+          {onCall.map(({ seat }) => (
+            <li key={seat.id}>
+              <button
+                type="button"
+                onClick={() => navigate({ level: "roster", team: seat.team })}
+                className="flex w-full items-center gap-2 rounded px-1 py-1 text-left text-sm hover:bg-accent/60"
+                data-testid="cos-on-call"
+                data-seat-id={seat.id}
+              >
+                <ShiftMark status="on call" />
+                <span className="truncate">{seat.id}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

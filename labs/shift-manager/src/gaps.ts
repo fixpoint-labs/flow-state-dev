@@ -74,10 +74,16 @@ export const GAPS = {
     /** `@name` that names no member of this workstream. Drawn after the name. */
     noWorker: "is not a worker in this workstream.",
   },
-  /** The Chief of Staff view's gaps and named states (BR-9, BR-11, BR-12, BR-20). */
+  /** Roster's gaps, and the partial mark every status screen shares (FIX-1723). */
+  roster: {
+    watches:
+      "What a worker is on call for beyond you, such as webhooks, schedules and other standing watches, arrives with FIX-1675. Until then on call means waiting on you, and a worker that only waits for a webhook reads off shift.",
+    seatMatch:
+      "Which worker holds a task is a best match on the task's assignee: its id, then a unique name, then who is in the task's workstream. A task whose assignee matches no single worker counts for no one. A declared map arrives with FIX-1672.",
+    partial: "Asks did not load, so on call may be missing workers waiting on you.",
+  },
+  /** The Chief of Staff view's named states (BR-11, BR-12). */
   chiefOfStaff: {
-    /** BR-20: the rail's ON CALL before shift status ships. */
-    onCall: "Who is on call arrives with FIX-1723.",
     /** BR-11: the Lab's inventory holds no chief-of-staff seat. */
     none: {
       title: "This Lab declares no chief of staff",

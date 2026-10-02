@@ -4,7 +4,7 @@
  */
 import { splitSeatAddress } from "@flow-state-dev/workforce/browser";
 import { columnFor, isDone, readStatus } from "./columns";
-import type { Ask, BoardRow, Failure, LabSnapshot, Section, Seat, Workstream } from "./reads";
+import { STAFF_TEAM, type Ask, type BoardRow, type Failure, type LabSnapshot, type Section, type Seat, type Workstream } from "./reads";
 
 /** A loaded snapshot (not a refusal, not an unreachable Lab). */
 export type LoadedSnapshot = Exclude<LabSnapshot, { refused: Failure } | { unreachable: Failure }>;
@@ -29,10 +29,11 @@ export type Roster = { seats: readonly Seat[]; workstreams: readonly Workstream[
  * to, not a seat address: a board may name `<name>` for the seat
  * `<team>.<name>`. So, in order:
  *
- * 1. a seat whose id is the assignee;
+ * 1. a seat whose id, or whose logical seat id (a hired seat's `<seatId>`
+ *    inside its `<org>.<seatId>` address), is the assignee;
  * 2. the one seat whose own name is the assignee;
  * 3. when that name belongs to seats in more than one team, the one of them
- *    that is a member of the row's channel.
+ *    that is a member of the row's channel, by either id.
  *
  * Still more than one, or none, is no seat: a row is never shown against
  * several seats, or against a guess. Which seat actually claimed the row is
@@ -41,24 +42,84 @@ export type Roster = { seats: readonly Seat[]; workstreams: readonly Workstream[
  */
 export function seatFor(roster: Roster, row: BoardRow): Seat | undefined {
   if (row.assignee === null) return undefined;
-  const exact = roster.seats.find((seat) => seat.id === row.assignee);
+  const exact = roster.seats.find((seat) => seat.id === row.assignee || seat.seatId === row.assignee);
   if (exact !== undefined) return exact;
   const named = roster.seats.filter((seat) => seat.name === row.assignee);
   if (named.length <= 1) return named[0];
   const members = new Set(roster.workstreams.find((w) => w.id === row.channelId)?.members ?? []);
-  const inChannel = named.filter((seat) => members.has(seat.id));
+  const inChannel = named.filter((seat) => members.has(seat.id) || members.has(seat.seatId));
   return inChannel.length === 1 ? inChannel[0] : undefined;
 }
 
-/** A worker's status (BR-8). */
-export type WorkerStatus = "working" | "waiting on you" | "idle";
+/** A worker's shift status, the one word Roster, the sidebar and the workstream panel draw. */
+export type ShiftStatus = "on shift" | "on call" | "off shift";
 
-/** *working* with a running row, *waiting on you* with a parked one, *idle* otherwise. */
-export function workerStatus(seat: Seat, rows: readonly BoardRow[], roster: Roster): WorkerStatus {
-  const held = rows.filter((row) => seatFor(roster, row)?.id === seat.id);
-  if (held.some((row) => readStatus(row.status) === "in_progress")) return "working";
-  if (held.some((row) => readStatus(row.status) === "parked")) return "waiting on you";
-  return "idle";
+/** The three statuses, in the order Roster groups them. */
+export const SHIFT_STATUSES: readonly ShiftStatus[] = ["on shift", "on call", "off shift"];
+
+/** One seat's state: its status, the tasks it holds, and the asks it waits on you with. */
+export type SeatState = {
+  seat: Seat;
+  status: ShiftStatus;
+  /** Its rows that are running or waiting on you, in board order: its slots in use. */
+  held: BoardRow[];
+  /** Its pending asks, in Inbox's order. */
+  asks: Ask[];
+};
+
+/** Every seat's state, and whether the result is partial. */
+export type SeatStates = {
+  /** Keyed by seat id, in inventory order. */
+  seats: Map<string, SeatState>;
+  /** Asks did not load: a seat waiting on you only through an ask reads off shift. */
+  partial: boolean;
+};
+
+const computed = new WeakMap<LoadedSnapshot, SeatStates>();
+
+/**
+ * Every seat's status, worked out once per snapshot from what the Lab records:
+ * its rows (each resolved by {@link seatFor}) and its pending asks.
+ *
+ * - **on shift**: it holds a running row;
+ * - **on call**: otherwise, it holds a row waiting on you (the legacy
+ *   `awaiting_review` included) or has a pending ask;
+ * - **off shift**: neither. Queued, blocked, errored and finished rows hold no
+ *   slot.
+ *
+ * A row no single seat resolves to, and an ask whose session names no seat in
+ * the inventory, count for nobody. Asks that did not load leave every status
+ * as the boards give it and mark the result `partial`.
+ *
+ * Every screen that draws a status or a count reads this result, and the same
+ * snapshot always gets the same object.
+ */
+export function seatStates(snapshot: LoadedSnapshot): SeatStates {
+  const cached = computed.get(snapshot);
+  if (cached !== undefined) return cached;
+  const roster = rosterOf(snapshot);
+  const seats = new Map<string, SeatState>(
+    roster.seats.map((seat) => [seat.id, { seat, status: "off shift", held: [], asks: [] }]),
+  );
+  for (const row of allRows(snapshot)) {
+    const status = readStatus(row.status);
+    if (status !== "in_progress" && status !== "parked") continue;
+    const owner = seatFor(roster, row);
+    if (owner !== undefined) seats.get(owner.id)?.held.push(row);
+  }
+  for (const ask of snapshot.asks.ok ? snapshot.asks.value : []) {
+    if (ask.seatId !== null) seats.get(ask.seatId)?.asks.push(ask);
+  }
+  for (const state of seats.values()) {
+    state.status = state.held.some((row) => readStatus(row.status) === "in_progress")
+      ? "on shift"
+      : state.held.length > 0 || state.asks.length > 0
+        ? "on call"
+        : "off shift";
+  }
+  const result = { seats, partial: !snapshot.asks.ok };
+  computed.set(snapshot, result);
+  return result;
 }
 
 /** The seats and workstreams of a snapshot whose inventory loaded; empty otherwise. */
@@ -127,13 +188,36 @@ export function byColumn(rows: readonly BoardRow[]): Map<ReturnType<typeof colum
 }
 
 /**
- * The teams in the seat inventory, each with its seats, in first-seen order.
- * An org seat sits in no team, so it is in none of them.
+ * The teams in the seat inventory, each with its seats, in first-seen order,
+ * with the org seats' Staff group first.
  */
 export function teamsOf(seats: readonly Seat[]): Array<{ team: string; seats: Seat[] }> {
   const teams = new Map<string, Seat[]>();
-  for (const seat of seats) if (seat.team !== null) teams.set(seat.team, [...(teams.get(seat.team) ?? []), seat]);
-  return [...teams].map(([team, members]) => ({ team, seats: members }));
+  for (const seat of seats) teams.set(seat.team, [...(teams.get(seat.team) ?? []), seat]);
+  const all = [...teams].map(([team, members]) => ({ team, seats: members }));
+  return [...all.filter((t) => t.team === STAFF_TEAM), ...all.filter((t) => t.team !== STAFF_TEAM)];
+}
+
+/** How many seats are in each status, and how many waits-on entries they have. */
+export type ShiftCounts = Record<ShiftStatus, number> & {
+  /** Each held task waiting on you plus each pending ask, across the seats counted. */
+  waiting: number;
+};
+
+/** The counts over every seat in `states`, or over one team's. */
+export function shiftCounts(states: SeatStates, team?: string): ShiftCounts {
+  const counts: ShiftCounts = { "on shift": 0, "on call": 0, "off shift": 0, waiting: 0 };
+  for (const { seat, status, held, asks } of states.seats.values()) {
+    if (team !== undefined && seat.team !== team) continue;
+    counts[status] += 1;
+    counts.waiting += held.filter((row) => readStatus(row.status) === "parked").length + asks.length;
+  }
+  return counts;
+}
+
+/** The team a Roster address picks, or `null` (All) when the inventory has no such team. */
+export function pickedTeam(seats: readonly Seat[], team: string | null): string | null {
+  return team !== null && seats.some((seat) => seat.team === team) ? team : null;
 }
 
 /**

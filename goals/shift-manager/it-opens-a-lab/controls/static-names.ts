@@ -18,7 +18,7 @@ declare const __STATIC_SEATS__: Array<{ id: string; kind: string }>;
 /** The real reader, with the seat list swapped for the one written in. */
 export function createLabReader(clients: Parameters<typeof readerAsWritten>[0]): LabReader {
   const reader = readerAsWritten(clients);
-  const seats = __STATIC_SEATS__.map((row) => toSeat(row)).filter((s): s is Seat => s !== undefined);
+  const seats = __STATIC_SEATS__.map((row) => toSeat(row, "")).filter((s): s is Seat => s !== undefined);
   return {
     ...reader,
     read: async () => {

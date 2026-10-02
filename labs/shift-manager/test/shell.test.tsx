@@ -42,6 +42,10 @@ describe("the sidebar's shift switch", () => {
     try {
       render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} look={look} />);
       const day = await screen.findByTestId("shift-day");
+      // The sidebar can commit before its passive effects run, and the switch
+      // subscribes to the look in one. Flush them, so the first click can't
+      // land before the switch is listening.
+      await act(async () => {});
       const night = screen.getByTestId("shift-night");
       expect(within(screen.getByTestId("sidebar-footer")).getByTestId("shift-switch")).toBeTruthy();
       expect([day.textContent, night.textContent]).toEqual(["Day shift", "Night shift"]);
@@ -412,7 +416,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(screen.getByTestId("cos-summary-running")).toBeTruthy();
   });
 
-  it("draws each workstream's running rows and its members' asks in the rail, and ON CALL as a gap (BR-19, BR-20)", async () => {
+  it("draws each workstream's running rows and its members' asks in the rail, and the workers on call (BR-19)", async () => {
     await openCos("/cos", {}, 1);
     await waitFor(() => expect(screen.getByTestId("cos-needs-you").textContent).toBe("1"));
     const streams = screen.getAllByTestId("cos-stream").map((el) => [
@@ -425,7 +429,8 @@ describe("Chief of Staff (FIX-1722)", () => {
       ["ops.desk", "0", "1"],
       ["ops.side", "0", "1"],
     ]);
-    expect(screen.getByTestId("cos-on-call-gap").textContent).toBe(GAPS.chiefOfStaff.onCall);
+    // ops.asker's pending ask puts it on call, by the rule Roster uses.
+    expect(screen.getAllByTestId("cos-on-call").map((el) => el.getAttribute("data-seat-id"))).toEqual(["ops.asker"]);
   });
 
   it("names the missing seat in place of the conversation, with the summary still drawn (BR-11)", async () => {

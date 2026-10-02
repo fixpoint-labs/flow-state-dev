@@ -6,9 +6,9 @@
  */
 import { useEffect, useState } from "react";
 import { Board } from "../components/Board";
-import { EmptyState, SectionFailure, StatusWord, Tabs } from "../components/ui";
+import { EmptyState, PartialMark, SectionFailure, StatusWord, Tabs } from "../components/ui";
 import { COLUMNS } from "../lib/columns";
-import { allRows, byColumn, rosterOf, workerStatus, type LoadedSnapshot } from "../lib/derive";
+import { byColumn, seatStates, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Failure, type Workstream } from "../lib/reads";
 import { navigate, WORKSTREAM_TABS, type WorkstreamTab } from "../lib/routes";
@@ -122,7 +122,7 @@ function Brief({ workstream }: { workstream: Workstream }) {
 export function WorkstreamPanel({ snapshot, workstream, gaps }: { snapshot: LoadedSnapshot; workstream: Workstream; gaps: Gaps }) {
   const { refresh } = useLab();
   const seats = snapshot.inventory.ok ? snapshot.inventory.value.seats : [];
-  const rows = allRows(snapshot);
+  const states = seatStates(snapshot);
   const boards = snapshot.boards[workstream.id];
   const columns = boards?.ok === true ? byColumn(boards.value.rows) : undefined;
   return (
@@ -134,7 +134,9 @@ export function WorkstreamPanel({ snapshot, workstream, gaps }: { snapshot: Load
         </p>
       </section>
       <section data-testid="panel-team">
-        <h3 className="pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">TEAM</h3>
+        <h3 className="pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground">
+          TEAM{states.partial ? <PartialMark title={gaps.roster.partial} /> : null}
+        </h3>
         <ul className="space-y-1">
           {workstream.members.map((member) => {
             const seat = seats.find((s) => s.id === member);
@@ -144,7 +146,7 @@ export function WorkstreamPanel({ snapshot, workstream, gaps }: { snapshot: Load
                 {seat === undefined ? (
                   <span className="text-xs text-muted-foreground">not in the seat inventory</span>
                 ) : (
-                  <StatusWord status={workerStatus(seat, rows, rosterOf(snapshot))} />
+                  <StatusWord status={states.seats.get(seat.id)!.status} />
                 )}
               </li>
             );

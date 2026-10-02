@@ -21,6 +21,7 @@ import { ChiefOfStaffPanel, ChiefOfStaffView } from "./surfaces/ChiefOfStaff";
 import { Inbox } from "./surfaces/Inbox";
 import { JumpTo } from "./surfaces/JumpTo";
 import { ProjectView } from "./surfaces/Project";
+import { RosterView } from "./surfaces/Roster";
 import { Sidebar } from "./surfaces/Sidebar";
 import { TaskProvider } from "./lib/task";
 import { TaskFrame } from "./surfaces/TaskFrame";
@@ -110,7 +111,7 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   const levels = (
     <>
       <main className="min-w-0 flex-1 overflow-hidden" data-testid="centre" data-level={route.level}>
-        <Centre snapshot={snapshot} route={route} gaps={gaps} />
+        <Centre snapshot={snapshot} route={route} gaps={gaps} look={look} />
       </main>
       <Panel snapshot={snapshot} route={route} gaps={gaps} />
     </>
@@ -137,10 +138,12 @@ function Shell({ gaps, devtoolUrl, look }: { gaps: Gaps; devtoolUrl: string | un
   );
 }
 
-function Centre({ snapshot, route, gaps }: { snapshot: LoadedSnapshot; route: Route; gaps: Gaps }) {
+function Centre({ snapshot, route, gaps, look }: { snapshot: LoadedSnapshot; route: Route; gaps: Gaps; look: ShiftLook | undefined }) {
   switch (route.level) {
     case "cos":
       return <ChiefOfStaffView snapshot={snapshot} gaps={gaps} />;
+    case "roster":
+      return <RosterView snapshot={snapshot} team={route.team} gaps={gaps} look={look} />;
     case "inbox":
       return <Inbox snapshot={snapshot} suspensionId={route.suspensionId} gaps={gaps} />;
     case "tasks":

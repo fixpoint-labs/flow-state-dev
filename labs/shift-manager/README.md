@@ -156,13 +156,14 @@ What it can do is up to its instructions and the tools you give it. Shift Manage
 
 ## What you see
 
-- **Chief of Staff.** Where Shift Manager opens, at `/` or `/cos`. The top of the screen is Shift Manager's own summary of the shift: how many asks wait on you, each one with the same Approve and Reject you'd get in Inbox, and how many runs are going across how many workstreams. The numbers are the ones Inbox and Tasks show. Below it is your conversation with the Lab's chief-of-staff seat. A line goes through the seat's door, like any other line you send to a worker, and shows *delivered* once the seat's session holds it. The reply is what the seat wrote in that session. Come back later and the same conversation is there. The panel on the right lists each workstream with its running tasks and the asks its members have raised.
+- **Chief of Staff.** Where Shift Manager opens, at `/` or `/cos`. The top of the screen is Shift Manager's own summary of the shift: how many asks wait on you, each one with the same Approve and Reject you'd get in Inbox, and how many runs are going across how many workstreams. The numbers are the ones Inbox and Tasks show. Below it is your conversation with the Lab's chief-of-staff seat. A line goes through the seat's door, like any other line you send to a worker, and shows *delivered* once the seat's session holds it. The reply is what the seat wrote in that session. Come back later and the same conversation is there. The panel on the right lists each workstream with its running tasks and the asks its members have raised, and the workers on call, as Roster counts them.
 
   A Lab with no chief-of-staff seat still opens here. You get the summary, and in place of the conversation a line saying how to add one.
-- **Sidebar.** The organization, Jump to (⌘K), Chief of Staff, Inbox and Tasks with their counts, PROJECTS (the workstreams, until projects exist), and TEAMS: each team in the Lab's seat inventory, with exactly its seats.
-- **Jump to (⌘K).** Finds Chief of Staff, workstreams, seats, tasks and the Lab's [readable documents](#what-a-labs-config-provides). A document opens read-only.
+- **Sidebar.** The organization, Jump to (⌘K), Chief of Staff, Inbox and Tasks with their counts, Roster with how many workers are on shift and on call, PROJECTS (the workstreams, until projects exist), and TEAMS: one row per team in the Lab's seat inventory, with how many of its workers are on shift and a square for each worker. Organization-level workers, such as a chief of staff, sit in one Staff row at the top. Hover a square for the worker and its status. Click a team to open Roster for that team. The footer repeats the on-shift and on-call counts.
+- **Jump to (⌘K).** Finds Chief of Staff, workstreams, seats, tasks and the Lab's [readable documents](#what-a-labs-config-provides). A seat opens Roster. A document opens read-only.
 - **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card, and can reply to the worker under it. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
 - **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream.
+- **Roster.** Every worker in the Lab, grouped by whether it's on shift, on call or off shift. Pick a team at the top to see only its workers. See [Roster](#roster).
 - **A workstream.** One channel and the boards attached to it. It has four tabs: Stream (the transcript, the composer, and its members' asks), Board (five columns: QUEUED, RUNNING, NEEDS YOU, IN REVIEW, DONE), Brief (the channel's charter) and Results. The right panel lists the channel's members with their status, and its rows by column.
 - **A task.** One task's run, live, with Interrupt. See [A task](#a-task).
 
@@ -220,6 +221,22 @@ Other Labs build their own prompts from the same task fields. See [`run.task`](.
 
 A board that hands work off keeps each task on the worker it was given to, which is why reassigning is off rather than refused.
 
+## Roster
+
+Roster shows every worker the Lab's seat inventory lists, in three groups:
+
+- **On shift**: it holds a task that is running.
+- **On call**: nothing of its is running, but it is waiting on you, either on a task it parked for you or on an ask in Inbox.
+- **Off shift**: neither. A worker with only queued tasks is off shift until it claims one.
+
+Each worker shows its team and kind, how many slots it has in use (one square per task it holds), the tasks it holds, and what it is waiting on. Click a task to open it. The counts at the top are for the workers shown.
+
+The same status appears in the sidebar and in a workstream's panel, so a worker reads the same everywhere. If the Lab's asks didn't load, each of those places marks its status *partial*: a worker waiting on you only through an ask would read off shift.
+
+Roster is read with the rest of the screen, when Shift Manager starts, on Retry and after you answer an ask. It says when it was read. It doesn't refresh on its own.
+
+Slots count what a worker holds now. Nothing in a Lab limits how many tasks a worker takes, so Roster shows no capacity and no free slots.
+
 ## What isn't here yet
 
 Each of these is drawn as a named empty state or a disabled control:
@@ -229,7 +246,8 @@ Each of these is drawn as a named empty state or a disabled control:
 - **Posting a task's message to its workstream too.** Sending to the worker and posting to the channel are two separate things for now.
 - **Worker detail.** A seat's harness, and the NOW, TIME and COST columns on Tasks.
 - **IN REVIEW.** The column is drawn empty, because no row status means "in review" yet.
-- **Who's on call.** The Chief of Staff panel's ON CALL list is drawn empty and names what fills it, until shift status ships.
+- **What a worker is on call for, beyond you.** Webhooks, schedules and other standing watches arrive with the standing routines work. Until then on call means waiting on you, and a worker that only waits for a webhook reads off shift.
+- **A declared map from a task's assignee to its worker.** Shift Manager matches the assignee to a worker by id, then by a unique name, then by who is in the channel. A task whose assignee matches no single worker counts for no one, so that worker can read off shift while it works.
 
 ## How it looks
 
@@ -266,7 +284,13 @@ A third builds Shift Manager twice, as written and with its theme import removed
 PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/shift-manager/it-takes-its-look-from-the-design-system/run.mts
 ```
 
-A fourth sends a line to a Lab's chief-of-staff seat, which runs a real model, and answers an ask from the summary. It compares the summary, the conversation and the reply with what the store holds. It needs a model key, such as `AI_GATEWAY_API_KEY`, in the environment:
+A fourth serves a Lab of two teams whose workers are put into each status on purpose, opens Roster for all teams and for each one, and compares every worker's status, slots, tasks and waits with the Lab's store:
+
+```bash
+PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/shift-manager/it-shows-who-is-on-shift/run.mts
+```
+
+A fifth sends a line to a Lab's chief-of-staff seat, which runs a real model, and answers an ask from the summary. It compares the summary, the conversation and the reply with what the store holds. It needs a model key, such as `AI_GATEWAY_API_KEY`, in the environment:
 
 ```bash
 PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/shift-manager/it-briefs-and-talks-with-the-chief-of-staff/run.mts

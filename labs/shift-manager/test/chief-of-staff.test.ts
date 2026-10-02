@@ -9,10 +9,10 @@ import type { SessionSummary } from "@flow-state-dev/client";
 import { chiefOfStaffOf, shiftSummary, streamCounts, type LoadedSnapshot } from "../src/lib/derive";
 import { conversationSession, currentConversation, newConversationId } from "../src/lib/cos";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
-import { toSeat, type Ask, type BoardRow, type Seat } from "../src/lib/reads";
+import { STAFF_TEAM, toSeat, type Ask, type BoardRow, type Seat } from "../src/lib/reads";
 
 const ORG = "org_1";
-const seat = (id: string, door: string | null = "run"): Seat => ({ ...toSeat({ id, kind: "agent", door })! });
+const seat = (id: string, door: string | null = "run"): Seat => ({ ...toSeat({ id, kind: "agent", door }, ORG)! });
 
 describe("landing (V1, BR-1)", () => {
   it("opens Chief of Staff at /, at /cos and at any path Shift Manager doesn't know", () => {
@@ -67,11 +67,12 @@ describe("which seat is the chief of staff (V2, D2)", () => {
   });
 
   it("reads an org seat's row, which has no team, without error", () => {
-    expect(toSeat({ id: "chief-of-staff", kind: "agent", door: "run" })).toEqual({
+    expect(toSeat({ id: "chief-of-staff", kind: "agent", door: "run" }, ORG)).toEqual({
       id: "chief-of-staff",
       kind: "agent",
       door: "run",
-      team: null,
+      seatId: "chief-of-staff",
+      team: STAFF_TEAM,
       name: "chief-of-staff",
     });
   });

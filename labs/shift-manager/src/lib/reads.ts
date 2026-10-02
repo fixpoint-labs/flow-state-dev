@@ -48,6 +48,7 @@ import { ClientHttpError, type ResourceManifest, type SessionSummary } from "@fl
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import type { ResumeAction } from "@flow-state-dev/core/types";
 import { deriveSuspensions, suspensionShape } from "@flow-state-dev/react";
+import { splitSeatAddress } from "@flow-state-dev/workforce/browser";
 import type { LabClients } from "./connection";
 
 /** Why a read did not load. */
@@ -58,7 +59,10 @@ export type Section<T> = { ok: true; value: T } | { ok: false; failure: Failure 
 
 /** A seat, as the seat inventory registers it. */
 export type Seat = {
-  /** The seat's address, `<team>.<name>`, which is also its flow instance id. */
+  /**
+   * The seat's address, which is also its flow instance id: `<team>.<name>`,
+   * a bare name for an org seat, or `<org>.<seatId>` for a hired one.
+   */
   id: string;
   /** The kind the seat was hired from; `null` on a row that has none. */
   kind: string | null;
@@ -69,10 +73,12 @@ export type Seat = {
    */
   door: string | null;
   /**
-   * The team the seat sits in, or `null` for an org seat, whose row carries
-   * no team (its id has no dot).
+   * The id boards and channels name the seat by: for a hired seat the
+   * `<seatId>` inside its `<org>.<seatId>` address, otherwise `id` itself.
    */
-  team: string | null;
+  seatId: string;
+  /** The team it sits under, or {@link STAFF_TEAM} for an org seat (see {@link toSeat}). */
+  team: string;
   name: string;
 };
 
@@ -252,17 +258,33 @@ function time(value: unknown): number | null {
 }
 
 /**
- * A seat inventory row. A team seat's id is `<teamId>.<name>` and a team id
- * carries no dot, so the team is everything before the first one. An id with
- * no dot is an org seat: it is its own name, and sits in no team.
+ * The group an org seat sits in: a seat whose address has no team, such as a
+ * chief of staff or Ops. Capitalised, so no team id (lowercase by Workforce's
+ * segment rule) can be it.
  */
-export function toSeat(row: unknown): Seat | undefined {
+export const STAFF_TEAM = "Staff";
+
+/**
+ * A seat inventory row, grouped by its address (FIX-1719's seat contract):
+ *
+ * - `<org>.<seatId>`, a seat hired at runtime into this organization (a
+ *   user-owned one too), is split the way Workforce splits it and grouped by
+ *   the seat id it holds;
+ * - `<team>.<name>` sits under its team: a team id carries no dot, so the team
+ *   is everything before the first one;
+ * - an id with no dot is an org seat, and sits in {@link STAFF_TEAM}.
+ *
+ * A team whose id equals the organization's would read as hired; nothing in a
+ * Lab today names one so.
+ */
+export function toSeat(row: unknown, orgId: string): Seat | undefined {
   const id = text(field(row, "id"));
   if (id === null) return undefined;
-  const dot = id.indexOf(".");
-  const team = dot > 0 ? id.slice(0, dot) : null;
-  const name = dot > 0 ? id.slice(dot + 1) : id;
-  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), team, name };
+  const address = splitSeatAddress(orgId, id) ?? id;
+  const dot = address.indexOf(".");
+  const team = dot > 0 ? address.slice(0, dot) : STAFF_TEAM;
+  const name = dot > 0 ? address.slice(dot + 1) : address;
+  return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), seatId: address, team, name };
 }
 
 /** A channel inventory row. A row written before `members` existed reads as none (BP-030). */
@@ -395,7 +417,7 @@ export function createLabReader(clients: LabClients): LabReader {
     (await readCollection(channelId, boardRef)).map((row) => toBoardRow(boardRef, channelId, row.topic, row.clientData));
 
   /** Find the inventory through the first listed session whose flow declares it. */
-  const readInventory = async (sessions: SessionSummary[]): Promise<Section<{ seats: Seat[]; workstreams: Workstream[] }>> => {
+  const readInventory = async (sessions: SessionSummary[], orgId: string): Promise<Section<{ seats: Seat[]; workstreams: Workstream[] }>> => {
     const byKind = new Map<string, string>();
     for (const session of sessions) {
       if (session.parentSessionId == null && !byKind.has(session.flowKind)) byKind.set(session.flowKind, session.id);
@@ -418,7 +440,7 @@ export function createLabReader(clients: LabClients): LabReader {
           readCollection(sessionId, seatsRef),
           readCollection(sessionId, channelsRef),
         ]);
-        const seats = seatRows.map((r) => toSeat(r.clientData)).filter((s): s is Seat => s !== undefined);
+        const seats = seatRows.map((r) => toSeat(r.clientData, orgId)).filter((s): s is Seat => s !== undefined);
         const workstreams = channelRows
           .map((r) => toWorkstream(r.clientData))
           .filter((w): w is Workstream => w !== undefined);
@@ -544,7 +566,7 @@ export function createLabReader(clients: LabClients): LabReader {
     }
     if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(clients.userId) } };
 
-    const inventory = await readInventory(sessions);
+    const inventory = await readInventory(sessions, orgId);
 
     const [boardEntries, asks, resources] = await Promise.all([
       inventory.ok
