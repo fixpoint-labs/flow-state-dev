@@ -145,6 +145,14 @@ function boundProject(ctx: BlockContext): string {
  */
 async function bindTalk(ctx: BlockContext, projectId: string): Promise<{ sessionId: string }> {
   const self = ctx.session.identity.id;
+  // A declared channel's session carries its roster and charter. Binding it
+  // would turn its own `post` and `read` into the project's room.
+  if ("members" in ctx.session.state || "instructions" in ctx.session.state) {
+    throw new ProjectRefusedError(
+      "talk-on-a-channel",
+      `session "${self}" is a declared channel's session. Join a project from a session of its own.`
+    );
+  }
   const bound = talkProjectOf(ctx.session.state);
   if (bound !== undefined && bound !== projectId) {
     throw new ProjectRefusedError(
@@ -202,7 +210,8 @@ export const talkBind = handler({
  * `join`: a member's way into a project's room. Returns the member's one talk
  * session: the one the row lists, or this session, now bound and listed. A
  * non-member is refused and nothing is written; `join` never adds its caller
- * to `members`. Also repairs a row whose owner was never bound.
+ * to `members`. A declared channel's own session is refused too: `join` binds
+ * a session of its own, never a channel. Also repairs a row whose owner was never bound.
  */
 export const talkJoin = handler({
   name: "talk-join",
