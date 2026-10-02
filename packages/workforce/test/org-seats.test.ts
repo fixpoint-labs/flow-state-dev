@@ -238,8 +238,11 @@ describe("parseDeclaredSeatId — the one rule for a declared seat's id (BR-5, S
     });
   });
 
-  it("splits at the first dot, the minter's rule", () => {
-    expect(parseDeclaredSeatId("a.b.c")).toEqual({ team: "a", name: "b.c" });
+  it("names no seat for an id with a second dot: a worker folder name is one segment, so the loader never mints one", () => {
+    for (const id of ["a.b.c", "eng.lead.x", "eng.chief-of-staff.extra"]) {
+      expect(parseDeclaredSeatId(id), id).toBeUndefined();
+      expect(placeOfSeat(id), id).toBeUndefined();
+    }
   });
 
   it("names no seat for an id the loader cannot mint", () => {
