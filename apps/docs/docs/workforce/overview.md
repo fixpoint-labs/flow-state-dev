@@ -95,6 +95,12 @@ Pass a flow under a key that is not its own `kind` and the hire is refused. [Wor
 
 `readWorkforce` is Node-only (`@flow-state-dev/workforce/loader`). Import `hireWorkforce` from `@flow-state-dev/workforce`.
 
+## What it will not do
+
+- Workforce does not staff a task board. A task's `assignee` names a board worker, never a seat.
+- It does not replace flows, sessions, or resources. Sessions and resources live on the seat you hired.
+- Hiring at runtime adds to the roster in your files. It doesn't replace the tree.
+
 ## Related pages
 
 - [Workers on disk](./workers-on-disk) — the folder tree, `WORKER.md`, `readWorkforce`, and `hireWorkforce`.

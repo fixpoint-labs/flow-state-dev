@@ -49,6 +49,8 @@ Config options:
 
 ![Session state is flat fields on the session record; a resource is its own record in the resource store](./state-vs-resources.svg)
 
+Scope state is one flat set of fields that every block in the flow shares, so two blocks can collide on a field name. A resource is its own named record, with a content body and typed state, so it can't collide with anything.
+
 Use **scope state** for simple fields: mode flags, counters, config values. Use **resources** when you're working with content that has structure — documents, plans, artifacts, knowledge bases. See [State vs Resources](/docs/resources/storage) for more guidance on when to use which.
 
 ## When resources load

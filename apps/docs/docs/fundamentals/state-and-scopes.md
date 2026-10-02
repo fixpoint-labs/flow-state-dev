@@ -21,6 +21,8 @@ State is organized into four scopes, each its own record with its own key:
 
 ![Request, session, user and org state are four separate records, each with its own key](./state-scopes.svg)
 
+A session names the user and organization it belongs to. It doesn't contain their state: each scope is read and written on its own record.
+
 Most of your state lives at the session level. The other three matter, but they show up after you've shipped your first conversation. Start with session.
 
 Not everything on the context is state. Read-only instance config arrives separately as `ctx.settings` — see [Engine setup → Settings](/docs/server/setup#settings).
