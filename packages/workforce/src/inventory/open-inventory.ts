@@ -48,7 +48,7 @@ import { seatDoorOf } from "../seat-door";
  * actually exist, and a manifest the hire step refused never became one.
  */
 export interface InventorySeat {
-  /** The seat's id, `"<teamId>.<name>"` — the id its row is keyed by. */
+  /** The seat's id (`"<teamId>.<name>"`, or a bare `"<name>"` for an org seat) — the id its row is keyed by. */
   id: string;
   /** The flow kind it was hired into. */
   kind: string;
