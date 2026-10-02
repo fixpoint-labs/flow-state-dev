@@ -126,7 +126,7 @@ Loading, an empty board and a failed read look different from each other. A fail
 
 ## Where each component reads from
 
-![Three sources a component reads, side by side: one session's items, an organization's standing collection, and your server's flow list, each with the components that read it and when they read](./ui-read-sources.svg)
+![Three columns. One session's items, read by messages, task plans and approval cards: they arrive live and are still there after a reload. An organization's collection, read by the roster, board columns and board list: everyone sees the same rows, read once on mount. Your server's flow list, read by the navigator: read once, with a leaf's sessions read only when that leaf opens. A footer says how each reads again: items keep arriving, a panel reads again when its React key changes, and the navigator's leafToolbar slot is handed a refresh function](./ui-read-sources.svg)
 
 What a component reads decides when it updates. Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) follow one session's items as they arrive. The roster and board panels read a standing collection once, when they mount; a `BoardList` with `live` is the exception ([A board as a list](#a-board-as-a-list)). The navigator reads the flow list once, and a leaf's sessions only when that leaf opens. A leaf is a singleton kind, or one instance of a collection kind, so opening a collection kind's own row reads nothing and a roster of two hundred seats costs one request to draw.
 

@@ -131,7 +131,7 @@ that way: booting past it runs those workers short of instructions someone wrote
 Instructions written in a `TEAM.md` reach only that team's workers. They ride each worker's own
 configuration, so a worker on another team never sees them.
 
-![References folders drawn as nested walls around the seat ada, which reaches the organization's, its own team's and its own folder's references and none beside them; resources folders drawn as one organization-wide store of rows, where a folder is only part of a document's name](./documents-reach.svg)
+![Two panels. references/: the file is the text, re-read on each request and never written by the product. Its folders are nested walls: the seat ada reads the organization's references, its own team's and its own folder's, but not a teammate's folder, another team's, or an org seat's. resources/: the file seeds a stored row at first boot, which the product, a block or the agent can then write, and later edits to the file do not change a written row. Its folder is only part of the name. Each organization gets its own row, and flowIsolation: true gives each seat its own](./documents-reach.svg)
 
 Team documents work differently by folder. Under `teams/<team>/resources/` they reach every worker of the kind that installed them, whatever its team; under `teams/<team>/references/` they reach only that team's workers. [Who reaches what](./documents-on-disk.md#who-reaches-what) shows how to filter the first.
 
