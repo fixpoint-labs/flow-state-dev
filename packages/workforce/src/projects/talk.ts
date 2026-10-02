@@ -65,7 +65,7 @@ import { isMember } from "./membership-gate";
 import { ProjectRefusedError } from "./project-refusal";
 import { answerInRoom } from "./room-answer";
 import { isAlreadyExists } from "./store-errors";
-import { appendRoomLine, readRoom, type RoomCollections } from "./room-store";
+import { appendRoomLine, readRoom, readRoomForMember, type RoomCollections } from "./room-store";
 import type { TalkTemplateFacts } from "./talk-template";
 
 /**
@@ -404,7 +404,7 @@ export function talkReadFor(template: TalkTemplateFacts | undefined) {
       const ctx = rawCtx as unknown as BlockContext;
       const projectId = boundProject(ctx);
       await memberRow(ctx, projectId);
-      const page = await readRoom(roomOf(ctx), projectId, input.after);
+      const page = await readRoomForMember(roomOf(ctx), projectId, input.after);
       return { projectId, ...page, charter, seats };
     }
   });

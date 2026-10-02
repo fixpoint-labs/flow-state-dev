@@ -32,7 +32,14 @@ import {
   type RoomSeq
 } from "../src/projects/collections";
 import { answerInRoom, claimAnswer, type AnswerDraft } from "../src/projects/room-answer";
-import { advanceCommitted, allocateSeq, readRoom, writeLineAt, type RoomCollections } from "../src/projects/room-store";
+import {
+  advanceCommitted,
+  allocateSeq,
+  readRoom,
+  readRoomForMember,
+  writeLineAt,
+  type RoomCollections
+} from "../src/projects/room-store";
 import { recentRoomLines } from "../src/projects/talk";
 
 const ORG = "lab";
@@ -131,6 +138,10 @@ const labFlow = defineFlow({
         await advanceCommitted(rooms, input.projectId);
         return (await readRoom(rooms, input.projectId, input.committed - 1)).nextCursor;
       })
+    },
+    // A member's read, with the grace period already over.
+    memberRead: {
+      block: step("member-read", (input, { rooms }) => readRoomForMember(rooms, input.projectId, 0, { graceMs: 0 }))
     },
     readRoom: { block: step("read-room", (input, { rooms }) => readRoom(rooms, input.projectId, 0)) },
     wakeContext: { block: step("wake-context", (input, { rooms }) => recentRoomLines(rooms, input.projectId, input.seq)) }
@@ -237,5 +248,20 @@ describe("a woken seat's context", () => {
     expect(context.map((line: { body: string }) => line.body)).toEqual(
       Array.from({ length: 20 }, (_, i) => `line ${81 + i}`)
     );
+  });
+
+});
+
+describe("a member's read of a quiet room", () => {
+  it("shows a line written past a dead writer's gap once the grace period is over, with nobody posting again", async () => {
+    const h = await boot();
+    // Seq 1's writer died after allocating; seq 2 was written; nobody writes after it.
+    expect(await h.ok("allocate", { projectId: "apollo" })).toBe(1);
+    expect(await h.ok("allocate", { projectId: "apollo" })).toBe(2);
+    expect(await h.ok("writeAt", { projectId: "apollo", seq: 2, body: "past the gap" })).toBe(true);
+
+    const page = await h.ok("memberRead", { projectId: "apollo" });
+    expect(page.lines.map((line: { body: string }) => line.body)).toEqual(["past the gap"]);
+    expect(page.nextCursor).toBe(2);
   });
 });
