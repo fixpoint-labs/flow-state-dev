@@ -17,7 +17,8 @@ which stays the one source for refusals. Nothing under `apps/docs` carries an is
   project's members read or post it.
 - **Talk session:** a person's own way into a project's room, minted from a template. It
   stores only which project it's about, and that grants nothing: membership does.
-- **`mintFor:`** marks a `CHANNEL.md` as a template for a collection's rows, not a channel. Its
+- **Template:** the shape of a project's room: its seats and charter. The default is org-level, in `org/resources/projects.ts`. A project names no team, and usually spans several.
+- **`mintFor:`** marks a team's `CHANNEL.md` as that team's template for a collection's rows, not a channel. Its
   `members:` are the seats a post wakes, which is not the same thing as a project's members.
 - **No project:** where a workstream that no project lists is shown. It is not a project.
 - **Vocabulary:** "seat", never "worker" as a noun (ER-13).

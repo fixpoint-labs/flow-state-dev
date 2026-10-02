@@ -151,7 +151,9 @@ is written to the recommendation for each.
 - **A reader never passes an unwritten line.** The counter row keeps a committed watermark; a line missing past a grace period is tombstoned with `create` (BR-16b). The spike's counter CAS carries it, with no new lock.
 - **A workstream claim is one shared key,** `workstream-claims/<channelId>`, created with `create`, so two projects can't both claim it (BR-4).
 - **Binding is recoverable.** A row whose owner has no session is unbound, and `join`, opening the project, or re-sending the create repairs it (BR-8a).
-- **One template per collection and kind,** refused at boot otherwise (BR-6).
+- **A project belongs to the organization and names no team (Jake, 2026-10-02).** Its workstreams come from any team, and spanning teams is the normal case. A team-only project is allowed, and is not the default (BR-2a).
+- **The default talk template is org-level, declared in `org/resources/projects.ts`,** beside the collection. The tree has no `org/channels/` slot. Adding one would be a new folder, which the epic's ER-15 sends back as an escalation. The module is an existing slot, and it is where the Architect put app defaults. A team `CHANNEL.md` marked `mintFor:` stays for a team's own projects. A template's seats may come from any team.
+- **One template per collection and kind, across both sites,** refused at boot otherwise (BR-6).
 - **The chief of staff's `createProject` tool is this issue's** (PLAN S15), on FIX-1719's seat.
 - **Project talk is room rows only.** No `channel-post` mirror in anyone's session.
 - **The room's sequence counter is a row of its own,** so editing a project never contends with
@@ -176,6 +178,7 @@ is written to the recommendation for each.
 | One session several people share (FIX-1729's option A) | It breaks "a session belongs to one person" at seven engine sites. That's an auth change, with 4 to 6 PRs |
 | A service principal that owns the room | The poster becomes an unverified label again; isolation off with extra steps |
 | A `CHANNELS.md` list of rooms | Invent-killed (ER-10) |
+| An `org/channels/` slot for the default template | A new folder slot, which ER-15 sends back to the epic. The projects module already sits at org level |
 | Registering each talk session in the inventory | Floods the Lab's channel list |
 | A membership check that trusts `resourceId` in session state | A caller writes that state at create (FIX-1729, N1) |
 
