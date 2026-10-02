@@ -1114,22 +1114,25 @@ export function inventoryWriterActions(kind: string) {
             "the inventory is org-scoped storage. Run it under the same `orgId` the channels were opened with."
         );
       }
+      // What to delete comes from the membership rows themselves, never from
+      // the channel row's `members`: registration can leave a membership row
+      // the channel row no longer lists, and the channel row may already be
+      // gone. The index is keyed seat-first (`<seatId>/<channelId>`), so no
+      // prefix reaches one channel's rows; the closest the store gets is one
+      // listing of the index per run, kept to the retiring ids' rows before
+      // anything is deleted. This runs once per boot, and only when the roster
+      // carries a template.
+      const retiring = new Set(input.ids);
+      const stale = (await ctx.resources.memberships.list()).filter((ref) => retiring.has(ref.state.channelId));
+      // Every membership row first, the channel rows last: a run that fails
+      // partway leaves the channel row standing, and the next run lists and
+      // finishes whatever is left either way.
+      for (const ref of stale) {
+        await ctx.resources.memberships.delete(membershipKey(ref.state.seatId, ref.state.channelId));
+      }
       let retired = 0;
       for (const id of input.ids) {
-        const row = await ctx.resources.channels.getOptional(id);
-        if (row === undefined) continue;
-        const members = [...(row.state.members ?? [])];
-        // The membership rows first, the channel row last. The channel row is
-        // the only record of which membership rows exist, so it goes only once
-        // they are all gone: a run that fails partway leaves it standing, and
-        // the next boot's run finishes the job instead of skipping an id whose
-        // membership rows would otherwise be orphaned.
-        for (const seatId of members) {
-          const key = membershipKey(seatId, id);
-          if ((await ctx.resources.memberships.getOptional(key)) !== undefined) {
-            await ctx.resources.memberships.delete(key);
-          }
-        }
+        if ((await ctx.resources.channels.getOptional(id)) === undefined) continue;
         await ctx.resources.channels.delete(id);
         retired += 1;
       }
