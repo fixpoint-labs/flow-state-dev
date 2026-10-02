@@ -41,8 +41,7 @@ export interface HeldPackages {
  * @param seatId The seat id it was hired as (`manifest.seatId ?? manifest.id`,
  *   never a hired seat's org-qualified address, whose org would read as a
  *   team). `<team>.<worker>` is a team seat; a dotless id is an org seat
- *   (`<worker>`), which has no team library. A longer id is read by its last
- *   two segments, through `parseDeclaredSeatId`.
+ *   (`<worker>`), which has no team library. Any other id is refused.
  * @param declared The seat's `packages:` value as written, or `undefined` when
  *   the file wrote no such line.
  * @param reach The packages in the seat's reach, as the loader joined them. A
@@ -57,11 +56,24 @@ export function resolveHeldPackages(
   packageBlocks: Record<string, Record<string, BlockDefinition<any, any>>>
 ): HeldPackages {
   const problems: string[] = [];
-  // A hired seat's id carries its org in front; the declared id is the last
-  // two segments at most, and `parseDeclaredSeatId` is the one rule for those.
-  const declaredId = parseDeclaredSeatId(seatId.split(".").slice(-2).join("."));
-  const team = declaredId?.team;
-  const seatName = declaredId?.name ?? "";
+  // The seat id as given, never cut down: `a.b.c` matches neither shape, and
+  // its last two segments would read as a seat on team `b`.
+  const declaredId = parseDeclaredSeatId(seatId);
+  // With nothing in reach and no line, there is nothing to place: a hand-built
+  // record keyed some other way is not this step's to refuse.
+  if (declaredId === undefined && (reach ?? []).length === 0 && declared === undefined) {
+    return { held: [], problems };
+  }
+  if (declaredId === undefined) {
+    problems.push(
+      `has the id "${seatId}", which is neither an org seat ("<worker>") nor a team seat ` +
+        `("<team>.<worker>"), so no package can be placed as its own. A hired seat is resolved ` +
+        `by its \`seatId\`, not its org-qualified address.`
+    );
+    return { held: [], problems };
+  }
+  const team = declaredId.team;
+  const seatName = declaredId.name;
   const worker = team === undefined ? seatName : `${team}.${seatName}`;
 
   // The level says what kind of package it is, not whose: the owner on the

@@ -120,7 +120,7 @@ workforce/
 
 The `tester` worker holds all three. The `qa` lead next door holds the first two. Nobody on another team holds `regression` at all, and no one anywhere else holds `write-regression`.
 
-A worker on no team, under `org/workers/<name>/`, is fed by two: `org/skills/` and its own `org/workers/<name>/skills/`.
+An org seat is fed by two: `org/skills/` and its own `org/workers/<name>/skills/`.
 
 `readWorkforce` resolves that union per worker. [Reading the tree](./workers-on-disk.md#reading-the-tree) covers the walk and what it reports.
 
