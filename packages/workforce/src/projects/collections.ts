@@ -203,7 +203,12 @@ export type ProjectsCollectionOptions = {
   talk?: TalkTemplate;
 };
 
-const PROJECTS_COLLECTION = defineResourceCollection({
+/**
+ * The one projects declaration, for an identity check (`channelInstances`
+ * asks whether a `mintFor:` names it). Not re-exported from the package root:
+ * apps declare it with {@link defineProjectsCollection}.
+ */
+export const PROJECTS_COLLECTION = defineResourceCollection({
   pattern: "projects/*",
   scope: "org",
   flowIsolation: SHARED_ACROSS_FLOWS,

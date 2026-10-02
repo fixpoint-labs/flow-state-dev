@@ -51,7 +51,7 @@ import {
   channelBoardNameProblem
 } from "./channel-board";
 import type { ChannelRouting } from "./channel-route";
-import { defineProjectsCollection } from "../projects/collections";
+import { PROJECTS_COLLECTION } from "../projects/collections";
 import {
   installTalkReaction,
   orgTalkTemplateOf,
@@ -203,6 +203,13 @@ export interface ChannelInstancesOptions {
    *
    * Absent, no org-level template is read, and a `mintFor:` names no
    * collection, so it is refused.
+   *
+   * **This call installs the mint on the projects collection.** When it finds
+   * a projects template, it sets `reactTo.created` on the one projects
+   * declaration, so creating a row in a flow turn mints the creator's talk
+   * session on the template's kind. That declaration is one per process, so
+   * one process runs its rooms on one kind: a later call naming another kind
+   * throws, and a later call with no template leaves the reaction in place.
    */
   resources?: Readonly<Record<string, unknown>>;
 }
@@ -636,18 +643,13 @@ export function channelInstances(
     if (template === undefined) continue;
     orgDeclarations += 1;
     const site = `the talk template beside "${ref}" in the org's resources`;
-    const seatProblem = Array.isArray(template.seats)
-      ? template.seats.map(templateSeatIdProblem).find((problem) => problem !== undefined)
-      : "`seats` is not a list of seat ids";
-    const declared =
-      seatProblem !== undefined
-        ? { problem: seatProblem }
-        : templateFrom(
-            { ref, kind: template.kind ?? CHANNEL_KIND, seats: template.seats, charter: template.charter ?? "" },
-            site,
-            kinds,
-            options.resources
-          );
+    // Its seats were checked where it was declared (`defineProjectsCollection`).
+    const declared = templateFrom(
+      { ref, kind: template.kind ?? CHANNEL_KIND, seats: template.seats, charter: template.charter ?? "" },
+      site,
+      kinds,
+      options.resources
+    );
     if ("problem" in declared) problems.push(`${site} — ${declared.problem}`);
     else templates.push(declared);
   }
@@ -731,14 +733,17 @@ export function channelInstances(
   }
 
   // One template per collection, across both sites. A project's members each
-  // hold one talk session on it, so its rows are minted from one template;
-  // every template that shares a collection is named, together.
+  // hold one talk session on it, so its rows are minted from one template.
+  // One refusal per collection, naming every template that shares it.
+  const byCollection = new Map<object, DeclaredTemplate[]>();
   for (const template of templates) {
-    const rivals = templates.filter((other) => other.collection === template.collection);
+    byCollection.set(template.collection, [...(byCollection.get(template.collection) ?? []), template]);
+  }
+  for (const rivals of byCollection.values()) {
     if (rivals.length < 2) continue;
     problems.push(
-      `${template.site} — is one of ${rivals.length} talk templates for the "${template.ref}" collection ` +
-        `(${rivals.map((other) => `${other.site} on kind "${other.kind}"`).join("; ")}). A project's ` +
+      `the "${rivals[0]!.ref}" collection has ${rivals.length} talk templates: ` +
+        `${rivals.map((other) => `${other.site} on kind "${other.kind}"`).join("; ")}. A project's ` +
         `members each hold one talk session, so a collection's rows are minted from one template. Keep one.`
     );
   }
@@ -754,13 +759,15 @@ export function channelInstances(
   }
 
   // A template's kind is registered even when no channel runs on it: its talk
-  // sessions do. The reaction that mints a creator's talk session is set to
-  // the projects template's kind, or cleared when there is none, so a roster
-  // with no template binds as it did before templates existed.
+  // sessions do. With a projects template, the reaction that mints a
+  // creator's talk session is installed on the projects collection, which is
+  // one per process (`talk-template.ts`). A roster with no template leaves the
+  // collection alone, so a host that calls this once per flow keeps the
+  // reaction an earlier call's template installed.
   const templateByKind = new Map(templates.map((template) => [template.kind, template]));
   for (const kind of templateByKind.keys()) selected.add(kind);
-  const projects = defineProjectsCollection();
-  installTalkReaction(projects, templates.find((template) => template.collection === projects)?.kind);
+  const projectsTemplate = templates.find((template) => template.collection === PROJECTS_COLLECTION);
+  if (projectsTemplate !== undefined) installTalkReaction(PROJECTS_COLLECTION, projectsTemplate.kind);
 
   return [...selected].sort().map((kind) => {
     const factory = kinds[kind]!;
@@ -801,7 +808,7 @@ function templateFrom(
         `Declare it in \`org/resources/${declared.ref}.ts\` and pass the org's resource map as \`resources\`.`
     };
   }
-  if (collection !== defineProjectsCollection()) {
+  if (collection !== PROJECTS_COLLECTION) {
     return {
       problem:
         `names "${declared.ref}", which is not the projects collection. A talk session is about a project, ` +
