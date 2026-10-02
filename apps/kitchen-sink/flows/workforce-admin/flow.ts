@@ -48,6 +48,7 @@ import {
   hiredSeatManifest,
   hireWorkforce,
   removeHiredSeat,
+  resolveHiredSeatLocation,
   seatAddress,
   toHiredSeatRow,
   type HiredSeatRelease,
@@ -86,7 +87,14 @@ const hireOutput = z.object({
   orgId: z.string(),
 });
 
-const fireInput = z.object({ seatId: z.string().min(1) });
+const fireInput = z.object({
+  seatId: z.string().min(1),
+  /**
+   * Which row: a legacy org row, or the caller's own user-owned one. Omitted,
+   * the only row under the id; refused when the caller has both.
+   */
+  owner: z.enum(["organization", "me"]).optional(),
+});
 
 const fireOutput = z.object({
   address: z.string(),
@@ -248,19 +256,23 @@ const fire = handler({
   execute: async (input, ctx) => {
     const orgId = orgOf(ctx);
     const userId = userOf(ctx);
-    const rows = rosterOf(ctx);
-    const owned = privateRosterOf(ctx);
 
     // Org-scoped, so another organization's seat is not reachable by fire even
     // by exact id. A file-declared seat has no row here either, which is the
     // same refusal reached from the other side — its folder is where it is
     // removed. User-owned rows live on the private collection; a legacy
-    // org-visible row is still the flat key.
-    const ownedKey = { owner: `~${encodeUserSegment(userId)}`, seat: input.seatId };
-    const ownedRow = await owned.getOptional(ownedKey);
+    // org-visible row is still the flat key. Workforce decides which row the
+    // seat id names, the same way its own `fire` does.
+    const located = await resolveHiredSeatLocation({
+      seatId: input.seatId,
+      owner: input.owner,
+      roster: rosterOf(ctx),
+      privateRoster: privateRosterOf(ctx),
+      userId,
+    });
     // A user-owned row answers on `<org>.~<user>.<seat>`. A legacy flat row,
     // and a file-declared seat, stay on `<org>.<seat>`.
-    const address = seatAddress(orgId, input.seatId, ownedRow !== undefined ? userId : null);
+    const address = seatAddress(orgId, input.seatId, located.ownerUserId);
 
     // Workforce's one removal of a hired seat: roster row, then the address,
     // then the seat's inventory row. This app's hire writes no inventory row,
@@ -268,8 +280,8 @@ const fire = handler({
     // that true if it starts to.
     const removed = await removeHiredSeat({
       orgId,
-      roster: ownedRow !== undefined ? owned : rows,
-      key: ownedRow !== undefined ? ownedKey : input.seatId,
+      roster: located.roster,
+      key: located.key,
       inventory: inventoryOf(ctx),
       address,
       isHeld: (at) => workforceRegistrar.kindAt(at) !== undefined,

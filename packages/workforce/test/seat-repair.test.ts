@@ -23,6 +23,7 @@ import { defineHiredRosterCollection, defineHiredRosterPrivateCollection } from 
 import { defineSeatInventoryCollection } from "../src/inventory/collections";
 import { reloadHiredSeats } from "../src/roster/reload";
 import { encodeUserSegment, toHiredSeatRow } from "../src/roster/rows";
+import { listedSeatRows } from "../src/inventory/listed-seats";
 import { workerConfigSchema } from "../src/worker-config";
 
 const ROSTER = "workforce/roster/";
@@ -437,7 +438,8 @@ describe("a user-owned seat whose kind was cut", () => {
     await h.seed(OWNED, ownedRow("desk-clerk"));
     const listed = (await h.run("brokenSeats", {})).output as Array<{ seatId: string; key: string; detail: string }>;
     const started = await h.reload();
-    expect(listed.find((entry) => entry.key === `${ROSTER}${OWNED}`)).toMatchObject({ seatId: "research" });
+    expect(listed.find((entry) => entry.key === `${ROSTER}${OWNED}`)).toMatchObject({ seatId: "research", owner: "me" });
+    expect(listed.find((entry) => entry.key === `${ROSTER}support.joe`)).toMatchObject({ owner: "organization" });
     expect(new Set(listed.map((entry) => `organization "acme", row "${entry.key}" — ${entry.detail}`))).toEqual(
       new Set(started.problems),
     );
@@ -479,6 +481,11 @@ describe("a user-owned seat whose kind was cut", () => {
     expect(first.error?.message).toMatch(/process died/);
     expect(await h.rows(ROSTER)).toEqual({});
     expect(Object.keys(await h.rows(SEATS))).toEqual(["acme.~u1.research"]);
+    // The leftover still carries the incarnation its hire stamped; with the
+    // owner's roster row gone, the team list doesn't show it.
+    const leftover = Object.values(await h.rows(SEATS)) as Array<{ id: string; hired: boolean; incarnation: string | null }>;
+    expect(leftover[0]!.incarnation).toEqual(expect.any(String));
+    expect(listedSeatRows("acme", leftover, [], [])).toEqual([]);
 
     crash = false;
     h.live.held.clear(); // the restart: nothing holds the address
@@ -506,7 +513,8 @@ describe("a user-owned seat whose kind was cut", () => {
     expect(org.error).toBeUndefined();
     crash = true;
 
-    const first = await h.run("fire", { seatId: "research" });
+    // Two rows under the id, so the first fire names its own.
+    const first = await h.run("fire", { seatId: "research", owner: "me" });
     expect(first.error?.message).toMatch(/process died/);
     expect(Object.keys(await h.rows(ROSTER))).toEqual(["research"]);
 
@@ -518,6 +526,69 @@ describe("a user-owned seat whose kind was cut", () => {
     expect(Object.keys(await h.rows(ROSTER))).toEqual(["research"]);
     expect(Object.keys(await h.rows(SEATS))).toEqual(["acme.research"]);
     expect(h.live.held.has("acme.research")).toBe(true);
+  });
+
+  /** u1 holds a user-owned `research` and the org holds one too, both healthy. */
+  async function twoUnderOneId() {
+    const h = await harness({}, { userOwned: true });
+    await h.seed(OWNED, ownedRow("desk-clerk"));
+    expect((await h.run("rehire", { seatId: "research", owner: "me", flow: "desk", settings: { queue: "mine" } })).error).toBeUndefined();
+    expect((await h.run("hire", { seatId: "research", flow: "desk", settings: { queue: "org" } })).error).toBeUndefined();
+    return h;
+  }
+
+  it("fire and rehire with no owner refuse when the caller has both rows under the seat id, and name the two", async () => {
+    const h = await twoUnderOneId();
+    const before = await h.snapshot();
+    for (const [action, input] of [
+      ["fire", { seatId: "research" }],
+      ["rehire", { seatId: "research", flow: "desk", settings: { queue: "x" } }],
+    ] as const) {
+      const refused = await h.run(action, input);
+      expect(refused.error?.message).toMatch(/"research" names two seats: the organization's and yours.*owner: "organization" or owner: "me"/);
+    }
+    expect(await h.snapshot()).toEqual(before);
+    expect([...h.live.held.keys()].sort()).toEqual(["acme.research", "acme.~u1.research"]);
+  });
+
+  it("owner picks the row: \"organization\" fires the org seat and leaves the caller's own", async () => {
+    const h = await twoUnderOneId();
+    const fired = await h.run("fire", { seatId: "research", owner: "organization" });
+    expect(fired.output).toEqual({ seatId: "research", address: "acme.research", released: true });
+    expect(Object.keys(await h.rows(ROSTER))).toEqual([OWNED]);
+    expect(Object.keys(await h.rows(SEATS))).toEqual(["acme.~u1.research"]);
+    expect([...h.live.held.keys()]).toEqual(["acme.~u1.research"]);
+  });
+
+  it("owner picks the row: \"me\" fires the caller's own and leaves the org seat", async () => {
+    const h = await twoUnderOneId();
+    const fired = await h.run("fire", { seatId: "research", owner: "me" });
+    expect(fired.output).toEqual({ seatId: "research", address: "acme.~u1.research", released: true });
+    expect(Object.keys(await h.rows(ROSTER))).toEqual(["research"]);
+    expect(Object.keys(await h.rows(SEATS))).toEqual(["acme.research"]);
+    expect([...h.live.held.keys()]).toEqual(["acme.research"]);
+  });
+
+  it("a broken org seat beside a healthy user-owned one: the owner brokenSeats reports is the row rehire repairs", async () => {
+    const h = await harness({}, { userOwned: true });
+    await h.seed("research", row({ seatId: "research", flow: "desk-clerk" }));
+    await h.seed(OWNED, ownedRow("desk-clerk"));
+    expect((await h.run("rehire", { seatId: "research", owner: "me", flow: "desk", settings: { queue: "mine" } })).error).toBeUndefined();
+    const listed = (await h.run("brokenSeats", {})).output as Array<{ seatId: string; owner: "organization" | "me" }>;
+    expect(listed.map((entry) => [entry.seatId, entry.owner])).toEqual([["research", "organization"]]);
+    const rehired = await h.run("rehire", { seatId: listed[0]!.seatId, owner: listed[0]!.owner, flow: "desk", settings: { queue: "org" } });
+    expect(rehired.output).toEqual({ seatId: "research", address: "acme.research" });
+    const roster = await h.rows(ROSTER);
+    expect(roster.research).toMatchObject({ flow: "desk", settings: { queue: "org" }, ownerUserId: null });
+    expect(roster[OWNED]).toMatchObject({ flow: "desk", settings: { queue: "mine" }, ownerUserId: "u1" });
+  });
+
+  it("owner \"me\" on a flow with no user-owned roster is refused, not read as the org's row", async () => {
+    const h = await harness();
+    await cutKindStore(h);
+    const fired = await h.run("fire", { seatId: "support.joe", owner: "me" });
+    expect(fired.error?.message).toMatch(/no user-owned roster/);
+    expect(Object.keys(await h.rows(ROSTER))).toContain("support.joe");
   });
 
   it("fire retires it: its row goes, and the next start names nothing", async () => {

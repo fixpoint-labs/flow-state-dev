@@ -16,10 +16,11 @@
  * longer starts at its address, on a kind the caller names; it never picks one.
  *
  * User-owned seats: when the mounting flow has the user-owned roster under
- * `HIRED_ROSTER_PRIVATE_RESOURCE`, `fire` and `rehire` find the caller's own
- * user-owned row first and the org's row second (as kitchen-sink's admin fire
- * does), and `brokenSeats` lists the caller's own user-owned rows beside the
- * org's. That collection serves a row only to the member it belongs to, so
+ * `HIRED_ROSTER_PRIVATE_RESOURCE`, `fire` and `rehire` take an `owner`
+ * (`"organization"` or `"me"`) naming which row they act on, and `brokenSeats`
+ * lists the caller's own user-owned rows beside the org's, each with its
+ * `owner`. Without `owner` they act on the only row under the seat id, and
+ * refuse when the caller has both. That collection serves a row only to the member it belongs to, so
  * another member's user-owned seats are theirs to list and repair.
  */
 
@@ -47,7 +48,8 @@ import { HIRED_ROSTER_PREFIX, type HiredSeatRow } from "./roster/collections";
 import { hiredSeatOwnerPinFromRosterOwner, registerHiredSeat } from "./roster/register-hired-seat";
 import { deleteOwnInventoryRow, removeHiredSeat } from "./roster/remove";
 import { incarnationOf, incarnationOfRow, newIncarnation, tagIncarnation } from "./roster/incarnation";
-import { encodeUserSegment, hiredSeatManifest, seatAddress, toHiredSeatRow } from "./roster/rows";
+import { hiredSeatManifest, seatAddress, toHiredSeatRow } from "./roster/rows";
+import { resolveHiredSeatLocation, type HiredSeatLocation, type HiredSeatOwner } from "./roster/locate";
 
 /** The registry keys live in a leaf module; re-exported here by name. */
 export { HIRED_ROSTER_PRIVATE_RESOURCE, HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE };
@@ -135,9 +137,18 @@ const hireOutput = z.object({
   warning: z.string().optional(),
 });
 
+/**
+ * Whose roster row a seat id names: the organization's, or the caller's own
+ * user-owned one. `brokenSeats` reports it on each entry; `fire` and `rehire`
+ * take it, and need it when the caller has both rows under one seat id.
+ */
+const seatOwner = z.enum(["organization", "me"]);
+
 const fireInput = z
   .object({
     seatId: z.string().min(1),
+    /** Which row to fire. Omitted, the only row under the id; refused when there are two. */
+    owner: seatOwner.optional(),
     orgId: z.unknown().optional(),
   })
   .strict();
@@ -166,6 +177,8 @@ const brokenSeatOutput = z.object({
   seatId: z.string(),
   /** The row's full storage key, as the boot report names it. */
   key: z.string(),
+  /** Whose row it is: what `fire` and `rehire` take as `owner` to reach this row. */
+  owner: seatOwner,
   /** The kind the row stored, or `null` when the row did not read. */
   kind: z.string().nullable(),
   reason: z.enum(["kind-gone", "refused", "unreadable"]),
@@ -183,6 +196,8 @@ const rehireInput = z
     settings: z.record(z.unknown()).default({}),
     /** Replaces the stored instructions. Omitted, the stored ones carry over. */
     instructions: z.string().optional(),
+    /** Which row to repair. Omitted, the only row under the id; refused when there are two. */
+    owner: seatOwner.optional(),
     orgId: z.unknown().optional(),
   })
   .strict();
@@ -214,44 +229,24 @@ function privateRosterOf(ctx: BlockContext): ResourceCollectionRef | undefined {
   return ctx.resources[HIRED_ROSTER_PRIVATE_RESOURCE] as unknown as ResourceCollectionRef | undefined;
 }
 
-/** Where one seat's roster row is, and whose it is. */
-interface LocatedSeatRow {
-  roster: ResourceCollectionRef;
-  key: string | Record<string, string>;
-  /** The member a user-owned row belongs to; `null` for an org-visible row. */
-  ownerUserId: string | null;
-}
-
 /**
- * Find a seat's roster row: the caller's own user-owned row when the flow
- * mounts that roster and it has one, otherwise the org's row (present or not).
- *
- * With `leftoverAt` (fire): when the caller has no user-owned row, a hired
- * inventory row the caller's own fire left at the caller's user-owned address
- * (a crash after its roster row went) keeps the seat the caller's, ahead of
- * any org row, so the retry removes that row rather than firing an org-wide
- * seat that shares the id.
+ * Find a seat's roster row for this call: `resolveHiredSeatLocation` over this
+ * flow's two rosters and the session's user.
  */
-async function locateSeatRow(
+function locateSeatRow(
   ctx: BlockContext,
   seatId: string,
+  owner: HiredSeatOwner | undefined,
   leftoverAt?: { orgId: string; inventory: ResourceCollectionRef }
-): Promise<LocatedSeatRow> {
-  const owned = privateRosterOf(ctx);
-  const userId = ctx.session.identity.userId;
-  const org: LocatedSeatRow = { roster: collectionOf(ctx, HIRED_ROSTER_RESOURCE), key: seatId, ownerUserId: null };
-  if (owned === undefined || typeof userId !== "string" || userId.length === 0) return org;
-  const own: LocatedSeatRow = {
-    roster: owned,
-    key: { owner: `~${encodeUserSegment(userId)}`, seat: seatId },
-    ownerUserId: userId,
-  };
-  if ((await owned.getOptional(own.key)) !== undefined) return own;
-  if (leftoverAt === undefined) return org;
-  // Probed before the org row: an org-wide seat can share the seat id, and a
-  // retry that fell through to it would fire that seat instead.
-  const leftover = await leftoverAt.inventory.getOptional(seatAddress(leftoverAt.orgId, seatId, userId));
-  return leftover?.state.hired === true ? own : org;
+): Promise<HiredSeatLocation> {
+  return resolveHiredSeatLocation({
+    seatId,
+    owner,
+    roster: collectionOf(ctx, HIRED_ROSTER_RESOURCE),
+    privateRoster: privateRosterOf(ctx),
+    userId: ctx.session.identity.userId,
+    leftoverAt,
+  });
 }
 
 /** A row's pending-repair marker; `null` when none, or on a row from before the field (BP-030). */
@@ -507,7 +502,7 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
     execute: async (input, ctx) => {
       const orgId = orgOf(ctx);
       const inventory = collectionOf(ctx, SEAT_INVENTORY_RESOURCE);
-      const located = await locateSeatRow(ctx, input.seatId, { orgId, inventory });
+      const located = await locateSeatRow(ctx, input.seatId, input.owner, { orgId, inventory });
       const removed = await removeHiredSeat({
         orgId,
         roster: located.roster,
@@ -572,11 +567,11 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
       // mounts that roster: the same rows the start reads for this member.
       const owned = privateRosterOf(ctx);
       const rows = [
-        ...(await collectionOf(ctx, HIRED_ROSTER_RESOURCE).list()),
-        ...(owned === undefined ? [] : await owned.list()),
+        ...(await collectionOf(ctx, HIRED_ROSTER_RESOURCE).list()).map((ref) => ({ ref, owner: "organization" as const })),
+        ...(owned === undefined ? [] : await owned.list()).map((ref) => ({ ref, owner: "me" as const })),
       ];
       const broken: Array<z.infer<typeof brokenSeatOutput>> = [];
-      for (const ref of rows) {
+      for (const { ref, owner } of rows) {
         const checked = checkHiredSeatRow(orgId, ref.state, kinds);
         if (checked.ok) continue;
         // The id `fire` takes: the key's last segment (`~<user>/<seat>` for a
@@ -587,6 +582,7 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
         broken.push({
           seatId: checked.reason === "unreadable" ? relativeKey : (checked.row?.seatId ?? relativeKey),
           key: ref.path,
+          owner,
           kind: checked.row?.flow ?? null,
           reason: checked.reason,
           detail: checked.detail,
@@ -605,7 +601,7 @@ export function createSeatHireBlocks(options: SeatHireCapabilityOptions): SeatHi
     outputSchema: hireOutput,
     execute: async (input, ctx) => {
       const orgId = orgOf(ctx);
-      const located = await locateSeatRow(ctx, input.seatId);
+      const located = await locateSeatRow(ctx, input.seatId, input.owner);
       const address = seatAddress(orgId, input.seatId, located.ownerUserId);
       const existing = await located.roster.getOptional(located.key);
       if (existing === undefined) {
