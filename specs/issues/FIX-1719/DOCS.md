@@ -10,7 +10,7 @@ shared section.
 
 - **Opt-in:** a Lab gets a chief of staff by adding `org/workers/chief-of-staff/WORKER.md` and
   installing the `seat-hire` capability on the agent kind once, with `askBefore: ["fire"]` so a
-  fire waits for approval. If the Lab has projects, it also lists `chief-of-staff` in the project template's `seats`, so the chief of staff is in every project's room. A Lab that doesn't add it has none.
+  fire waits for approval. If the Lab has projects, it also lists `chief-of-staff` in the project template's `seats` (a team `CHANNEL.md` template's `members:`), so the chief of staff is in every project's room. A Lab that doesn't add it has none.
 - **One admin seat:** the chief of staff is the only seat that hires or fires. Another seat that
   wants a hire sends the chief of staff a message, and it decides.
 - **Id shape:** an org seat's id is its folder name, with no dot (`org/workers/chief-of-staff/`
