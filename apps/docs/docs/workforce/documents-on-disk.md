@@ -250,7 +250,7 @@ Both functions throw rather than collecting. A record that cannot become a resou
 
 ## Who reaches what
 
-![A references document is the file in your repository, re-read on each request, and its folder is a wall: the seat ada reads the organization's references, its own team's and its own folder's, and not a teammate's folder, another team's, or an org seat's folder. A resources document is seeded from its file and is then a stored row each organization gets its own copy of; its folder is only part of its name, so every seat on a flow that installed it reaches it unless you filter the records before installing them](./documents-reach.svg)
+![References folders drawn as nested walls around the seat ada, which reaches the organization's, its own team's and its own folder's references and none beside them; resources folders drawn as one organization-wide store of rows, where a folder is only part of a document's name](./documents-reach.svg)
 
 A folder means two different things here. Under `references/`, it is a wall: a seat reads the references of its organization, its team and its own folder, and nothing beside them. Under `resources/`, it is only part of the name: every document there is the organization's, and a flow that installs them reaches all of them unless you filter.
 

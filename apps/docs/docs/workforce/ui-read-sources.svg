@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 512" role="img" aria-label="Where each component reads from, and when it reads. One session's items feed messages, task plans and approval cards: they arrive live and are still there after a reload. An organization's standing collection, outside any one session, feeds the roster, the board columns and the board list: everyone in the organization sees the same rows, each component reads once when it mounts and does not watch, except a BoardList with live, which reads again when the session it follows records a change to the board. Your server's flow list feeds the navigator: it is read once, and a leaf's sessions are read only when that leaf opens. To read again, change a panel's React key, or call the refresh function the navigator's leafToolbar slot is handed. Items need nothing.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 512" role="img" aria-labelledby="title desc">
+  <title id="title">Where each component reads from, and when it reads</title>
+  <desc id="desc">One session's items feed messages, task plans and approval cards, live and still there after a reload. An organization's standing collection feeds the roster, the board columns and the board list, read once on mount. Your server's flow list feeds the navigator, read once, with a leaf's sessions read when that leaf opens.</desc>
   <style>
     :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
             --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
