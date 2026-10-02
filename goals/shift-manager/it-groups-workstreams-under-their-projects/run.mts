@@ -542,11 +542,13 @@ async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; crowd: La
   // allocated before it (a seat answering the last post) is still being
   // written, so each read is retried, bounded, the way an open room view
   // keeps reading. The wait is reported.
+  let rereads = 0;
   const readUntil = async (api: LabApi, session: string, after: number, has: (l: RoomLine) => boolean) => {
     const begun = Date.now();
     for (;;) {
       if ((await readAll(api, kind, session, after)).lines.some(has)) return Date.now() - begun;
       if (Date.now() - begun > 10_000) return undefined;
+      rereads += 1;
       await sleep(100);
     }
   };
@@ -618,7 +620,7 @@ async function room(tree: Tree, apis: { owner: LabApi; member: LabApi; crowd: La
   if (new Set(seqs).size !== seqs.length) fail(burstLeg, "two lines share a sequence number");
 
   evidence.push(
-    `room: ${channels.length} channels as declared; ${joinsSent} joins from ${joiners.length} members at once left one session per member on ${memberProjects.length} project(s); cross-member reads by cursor (longest wait ${crossWait} ms); ${SEAT_ANSWERS} answered in the room for both; outsider join ${outJoin.status}, forged read ${outRead.status}, post ${outPost.status}; ${burst.length - lost.length} of ${burst.length} burst posts completed, ${held.length} lines in ${project.id}'s room`,
+    `room: ${channels.length} channels as declared; ${joinsSent} joins from ${joiners.length} members at once left one session per member on ${memberProjects.length} project(s); cross-member reads by cursor (longest wait ${crossWait} ms, ${rereads} re-read(s)); ${SEAT_ANSWERS} answered in the room for both; outsider join ${outJoin.status}, forged read ${outRead.status}, post ${outPost.status}; ${burst.length - lost.length} of ${burst.length} burst posts completed, ${held.length} lines in ${project.id}'s room`,
   );
 }
 

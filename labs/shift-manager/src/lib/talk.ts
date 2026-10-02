@@ -90,7 +90,8 @@ async function runTalkAction(
     if (Date.now() > until) throw new Error(`The Lab did not finish ${action} in time.`);
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   }
-  if (status !== "completed" && status !== "failed") throw new TalkRefused(`${action} ended ${status}.`);
+  // Ended without the Lab's answer (aborted, interrupted, incomplete): not a refusal, so the view offers Retry.
+  if (status !== "completed" && status !== "failed") throw new Error(`The Lab's ${action} ended ${status} before it answered.`);
 
   for (let page = 0; page < REQUEST_PAGES; page += 1) {
     const listed = await clients.sessions.listSessionRequests(session, {

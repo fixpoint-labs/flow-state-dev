@@ -13,7 +13,7 @@ import { App } from "../src/App";
 import { GAPS } from "../src/gaps";
 import { createLabClients, type LabClients } from "../src/lib/connection";
 import { projectsOf, talkFor, type LoadedSnapshot } from "../src/lib/derive";
-import type { Project } from "../src/lib/reads";
+import { toProject, type Project } from "../src/lib/reads";
 import { postToRoom, readRoom, readRoomPages, startRoomRefresh, TalkRefused, type RoomLine, type RoomPage } from "../src/lib/talk";
 import { ClientHttpError } from "@flow-state-dev/client";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
@@ -327,6 +327,12 @@ describe("a project's Stream is its room (BR-23, BR-24)", () => {
     const unreachable = postToRoom(fake(() => Promise.reject(new ClientHttpError("upstream", { status: 503, body: null }))), "channel", "s", "x");
     await expect(unreachable).rejects.toBeInstanceOf(ClientHttpError);
     await expect(postToRoom(fake(() => Promise.reject(new TypeError("fetch failed"))), "channel", "s", "x")).rejects.not.toBeInstanceOf(TalkRefused);
+    // A request that ended without the Lab's answer is something to retry, not a refusal.
+    for (const ended of ["aborted", "interrupted", "incomplete"]) {
+      const cut = postToRoom(fake(started, ended), "channel", "s", "x");
+      await expect(cut).rejects.toThrow(new RegExp(ended));
+      await expect(postToRoom(fake(started, ended), "channel", "s", "x")).rejects.not.toBeInstanceOf(TalkRefused);
+    }
   });
 
   it("a page holding only tombstones moves the cursor on, and the lines after it are read", async () => {
@@ -513,6 +519,14 @@ describe("grouping is the snapshot's (V4)", () => {
     workstreams: [],
     sessions: [],
     ...over,
+  });
+
+  it("a row's brief: an empty one stays an empty string; absent or not a string is no brief", () => {
+    const row = { id: "p", title: "P", ownerUserId: ASK_LAB_USER_ID };
+    expect(toProject({ ...row, brief: "" })?.brief).toBe("");
+    expect(toProject({ ...row, brief: "Ship it." })?.brief).toBe("Ship it.");
+    expect(toProject(row)?.brief).toBeNull();
+    expect(toProject({ ...row, brief: 7 })?.brief).toBeNull();
   });
 
   it("projectsOf groups a cross-team project, keeps a gone id as gone, and makes no read", () => {

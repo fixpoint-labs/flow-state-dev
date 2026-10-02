@@ -358,7 +358,8 @@ export function toProject(row: unknown): Project | undefined {
   return {
     id,
     title,
-    brief: text(field(row, "brief")),
+    // An empty brief is still the brief the row was given; only a missing or non-string one is none.
+    brief: typeof field(row, "brief") === "string" ? (field(row, "brief") as string) : null,
     status: text(field(row, "status")) ?? "active",
     ownerUserId,
     members: strings(field(row, "members")),
