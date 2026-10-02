@@ -234,7 +234,9 @@ const status = await readCommitted(rowRef, (row) => row?.status);
 
 The second argument picks out what you want from the stored state, and that's what comes back. The call writes nothing.
 
-On a resource, your function always runs, so you get `undefined` back only when it returns `undefined` itself, for example because the field isn't set yet. A read that can't happen, such as one on a collection row deleted since you fetched it, throws instead. So a fallback like `?? "pending"` is only needed for a field that may be missing. It takes the same refs as [`updateStateWith`](/docs/state/mutation-model#writing-an-updater-that-may-run-twice), which is the helper to use when you also want to change the value.
+It needs a resource or collection ref the block is allowed to write. On a resource declared `writable: false`, the call is refused with a `resource_read_only` error and your function never runs.
+
+On a writable resource, your function always runs, so you get `undefined` back only when it returns `undefined` itself, for example because the field isn't set yet. A read that can't happen, such as one on a collection row deleted since you fetched it, throws instead. So a fallback like `?? "pending"` is only needed for a field that may be missing. It takes the same refs as [`updateStateWith`](/docs/state/mutation-model#writing-an-updater-that-may-run-twice), which is the helper to use when you also want to change the value.
 
 ## Working with content
 
