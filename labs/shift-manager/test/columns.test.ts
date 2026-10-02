@@ -24,6 +24,10 @@ const EXPECTED: Record<string, (typeof COLUMNS)[number]> = {
 };
 
 describe("BR-12: a row's column", () => {
+  it("draws the five columns in v2's order: IN REVIEW before NEEDS YOU (v2:1327)", () => {
+    expect([...COLUMNS]).toEqual(["QUEUED", "RUNNING", "IN REVIEW", "NEEDS YOU", "DONE"]);
+  });
+
   it("places every shipped status", () => {
     const shipped = taskStatusSchema.options;
     expect([...shipped].sort()).toEqual(Object.keys(EXPECTED).sort());

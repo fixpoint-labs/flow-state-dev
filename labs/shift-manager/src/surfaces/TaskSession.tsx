@@ -9,17 +9,20 @@
  *
  * Each item is drawn by Shift Manager's copy of the registry's item components
  * (`chatAssistantRenderers`: message, reasoning, tool, status, error, task
- * plan), the same copies the design system skins.
+ * plan), the same copies the design system skins. An ask the run raised and
+ * that still waits is drawn inline, with the one ask card Inbox uses.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { buildItemRenderStream, FlowProvider, ItemRenderer, useFlowContext } from "@flow-state-dev/react";
+import { AskCard } from "../components/AskCard";
 import { chatAssistantRenderers } from "../components/flow-state/chat-assistant";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { EmptyState, SectionFailure } from "../components/ui";
 import { readStatus } from "../lib/columns";
+import { asksOfTask } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
-import { describeFailure, type Failure } from "../lib/reads";
+import { describeFailure, type Ask, type Failure } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { followRequest, mergeItems, readSessionItems, RunReadError, taskItems, type OpenRun } from "../lib/run";
 import { useTask } from "../lib/task";
@@ -27,7 +30,9 @@ import { useTask } from "../lib/task";
 export function TaskSession() {
   const task = useTask();
   const { row, run } = task;
-  const parked = row !== undefined && readStatus(row.status) === "parked";
+  const { snapshot } = useLab();
+  // A parked row whose run holds a pending ask shows that ask inline instead (BR-17).
+  const parked = row !== undefined && readStatus(row.status) === "parked" && asksOfTask(snapshot, row).length === 0;
 
   const body = (() => {
     switch (run.kind) {
@@ -96,8 +101,9 @@ export function TaskSession() {
 
 /** The open run's items: one stored read, then its request's stream. */
 function RunItems({ run }: { run: OpenRun }) {
-  const { clients } = useLab();
+  const { clients, snapshot } = useLab();
   const task = useTask();
+  const asks = asksOfTask(snapshot, task.row);
   const [stored, setStored] = useState<{ items: OutputItem[]; truncated: boolean } | undefined>(undefined);
   const [failure, setFailure] = useState<Failure | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
@@ -167,14 +173,20 @@ function RunItems({ run }: { run: OpenRun }) {
           {shown.items.map((item) => (
             <li key={`${item.requestId}/${item.id}`} data-testid="session-item" data-item-id={item.id} data-item-type={item.type}>
               {item.type === "suspension" ? (
-                <button type="button" className="text-sm underline" onClick={() => navigate({ level: "inbox", suspensionId: null })}>
-                  Waiting on you: answer it in Inbox
-                </button>
+                <PendingAsk ask={asks.find((ask) => ask.item.suspensionId === item.suspensionId)} />
               ) : (
                 <ItemRenderer item={item} />
               )}
             </li>
           ))}
+          {/* An ask the framework raised without this task's stamp is not among the task's items; it waits at the run's end. */}
+          {asks
+            .filter((ask) => !shown.items.some((item) => item.type === "suspension" && item.suspensionId === ask.item.suspensionId))
+            .map((ask) => (
+              <li key={ask.item.suspensionId} data-testid="session-pending-ask">
+                <PendingAsk ask={ask} />
+              </li>
+            ))}
         </ol>
       </SessionItemsProvider>
       {shown.items.length === 0 ? (
@@ -182,6 +194,31 @@ function RunItems({ run }: { run: OpenRun }) {
           The run hasn't recorded a step yet.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * A suspension in the run. Pending, it is the ask itself, inline (v2:404-423):
+ * its kind on the highlighter, because it waits on the person, and the one
+ * ask card Inbox draws, answered the same way. Otherwise, a way to Inbox.
+ */
+function PendingAsk({ ask }: { ask: Ask | undefined }) {
+  if (ask === undefined) {
+    return (
+      <button type="button" className="text-sm underline" onClick={() => navigate({ level: "inbox", suspensionId: null })}>
+        Waiting on you: answer it in Inbox
+      </button>
+    );
+  }
+  return (
+    <div data-testid="session-ask" data-suspension-id={ask.item.suspensionId}>
+      <span className="bg-attention px-[5px] py-px font-mono text-[9.5px] font-semibold tracking-[0.12em] text-attention-foreground" data-look="ask-kind">
+        {ask.kind.toUpperCase()}
+      </span>
+      <div className="mt-1.5">
+        <AskCard ask={ask} />
+      </div>
     </div>
   );
 }

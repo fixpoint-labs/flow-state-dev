@@ -11,7 +11,7 @@ import { GAPS } from "../src/gaps";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createLabClients } from "../src/lib/connection";
 import { toBoardRow, type BoardRow } from "../src/lib/reads";
-import { openRunLab, RUN_LAB_USER_ID } from "../../../goals/shift-manager/it-shows-and-stops-a-task-run/lab/lab.mts";
+import { openRunLab, RUN_LAB_ASK, RUN_LAB_USER_ID } from "../../../goals/shift-manager/it-shows-and-stops-a-task-run/lab/lab.mts";
 import { eventually, serveLab, type ServedLab } from "./helpers/serve-lab";
 
 type Opened = Awaited<ReturnType<typeof openRunLab>>;
@@ -27,8 +27,8 @@ afterEach(async () => {
   }
 });
 
-async function openLab() {
-  const lab = await openRunLab();
+async function openLab(options: Parameters<typeof openRunLab>[0] = {}) {
+  const lab = await openRunLab(options);
   const s = await serveLab(lab.flowState);
   served.push({ lab, served: s });
   const clients = createLabClients({ baseUrl: s.baseUrl, userId: RUN_LAB_USER_ID });
@@ -417,4 +417,40 @@ describe("the inspector (BR-18 to BR-23)", () => {
     // Brief open: no run stream was mounted.
     expect(screen.queryByTestId("session")).toBeNull();
   }, 30_000);
+});
+
+describe("a task whose run waits on a person (BR-17)", () => {
+  it("draws the ask inline in the Session, on the highlighter in the activity line and the inspector, and no Inbox detour", async () => {
+    const opened = await openLab({ asking: true });
+    const filed = opened.lab.filed.find((f) => f.kind === "asking")!;
+    const row = await eventually(async () => (await opened.rows()).find((r) => r.id === filed.taskId && r.run !== null), "the asking run's link");
+    // Render once the run has stopped to ask, so the first read holds the ask.
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(opened.served.baseUrl);
+    await eventually(async () => {
+      const state = await opened.clients.sessions.getSessionState(row.run!.sessionId, { includeItems: true, itemTypes: ["suspension"] });
+      return (state.items ?? []).length > 0 ? true : undefined;
+    }, "the run's ask");
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+
+    const ask = await screen.findByTestId("session-ask", {}, { timeout: 10_000 });
+    // Its kind on the highlighter, and the one ask card Inbox draws.
+    expect(within(ask).getByText("APPROVAL").getAttribute("data-look")).toBe("ask-kind");
+    expect(within(ask).getByTestId("ask-card").textContent).toContain(RUN_LAB_ASK);
+    expect(screen.queryByText("Waiting on you: answer it in Inbox")).toBeNull();
+    // The activity line's mark is the needs square; the inspector says what waits, and links to it in Inbox.
+    expect(within(screen.getByTestId("task-activity")).getByText("", { selector: "[data-state-square]" }).getAttribute("data-state-square")).toBe("needs");
+    const banner = screen.getByTestId("inspector-needs");
+    expect(banner.textContent).toMatch(/^approval waiting \d+[smhd]inbox ↗$/);
+    expect(banner.getAttribute("data-suspension-id")).toBe(ask.getAttribute("data-suspension-id"));
+  });
+
+  it("marks nothing as waiting on a task whose run asks nothing", async () => {
+    const opened = await openLab({ asking: true });
+    const row = await heldRow(opened, true);
+    await renderAt(opened.served.baseUrl, `/tasks/${row.boardRef}/${row.id}/session`);
+    await waitFor(() => expect(screen.getByTestId("run-state").getAttribute("data-state")).toBe("in_progress"));
+    expect(screen.queryByTestId("session-ask")).toBeNull();
+    expect(screen.queryByTestId("inspector-needs")).toBeNull();
+    expect(within(screen.getByTestId("task-activity")).getByText("", { selector: "[data-state-square]" }).getAttribute("data-state-square")).toBe("run");
+  });
 });

@@ -32,7 +32,8 @@
  *            as an extra one
  *
  * Which regions are graded whole grows with the screens' slices: the sidebar
- * and the shared parts now. The fonts, the radius and the highlighter are
+ * and the shared parts, and slice C's workstream, Board, task and team strip
+ * (their rows are in `look-c.mts`). The fonts, the radius and the highlighter are
  * graded on every element of every screen.
  *
  * Controls (scratch patches to a copy of Shift Manager, never the checkout):
@@ -59,6 +60,7 @@ import { EM_KIND } from "../../devforce-lab/lab/workforce/flows/workers/em.mts";
 import { hex, parseColour, type Rgb } from "../../lib/colour.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { buildShiftManagerCopy, labApi, startShiftManager, type LabApi, type Patch } from "../../lib/shift-manager.mts";
+import { SLICE_C_EXCEPTIONS, SLICE_C_ROWS, SLICE_C_WHOLE } from "./look-c.mts";
 
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const CONTROLS = ["drift", "unclassified", "missing"] as const;
@@ -92,8 +94,8 @@ const LABS = {
 } as const;
 type LabName = keyof typeof LABS;
 
-const SCREENS = ["workstream", "task", "tasks", "cos", "inbox", "roster", "project"] as const;
-type Screen = (typeof SCREENS)[number];
+const SCREENS = ["workstream", "board", "task", "tasks", "cos", "inbox", "roster", "project"] as const;
+export type Screen = (typeof SCREENS)[number];
 const SHIFTS = ["day", "night"] as const;
 type Shift = (typeof SHIFTS)[number];
 const WIDTHS = [1600, 1100] as const;
@@ -113,8 +115,11 @@ type Store = {
   running: number;
   /** Whether the Lab has a chief-of-staff seat. */
   chiefOfStaff: boolean;
-  /** Per channel: its stored rows, and the names of its members running one. */
-  channels: Record<string, { rows: number; live: string[] }>;
+  /**
+   * Per channel: its stored rows, the names of its members running one, its
+   * kept transcript lines, and its members' pending asks.
+   */
+  channels: Record<string, { rows: number; live: string[]; lines: number; asks: number }>;
 };
 type Where = { screen: Screen; width: Width; store: Store };
 
@@ -128,12 +133,14 @@ type Want = {
   weight?: number;
   /** type: letter-spacing, in em of the element's own size. */
   tracking?: number;
-  /** surface: the background is this token. */
-  surface?: "sidebar" | "inspector";
+  /** surface: the background is this token, or none is painted. */
+  surface?: "sidebar" | "inspector" | "none";
   /** surface: every side's border is this wide, in px, in this token. */
   border?: { width: number; colour: "foreground" };
   /** marks: the bottom border is 2px of `info`, or none painted. */
   underline?: "info" | "none";
+  /** marks: the background is the highlighter, because the element waits on a person. */
+  highlighter?: true;
   /** marks: v2's state square for this state (`NODE`). */
   square?: "needs" | "run" | "review" | "queued" | "done";
   /** layout: the element's own width, in px. */
@@ -145,7 +152,7 @@ type Want = {
 };
 
 /** One row: a role, the elements that play it, what v2 gives it, and the v2 line it came from. */
-type Row = {
+export type Row = {
   id: string;
   /** The audit rows (`assets/GAPS.md`) it grades. */
   audit: string;
@@ -162,8 +169,8 @@ type Row = {
 };
 
 const OFF_COS: readonly Screen[] = SCREENS.filter((s) => s !== "cos");
-const WITH_RAIL: readonly Screen[] = ["cos", "workstream", "task"];
-const WITH_TABS: readonly Screen[] = ["workstream", "task", "project"];
+const WITH_RAIL: readonly Screen[] = ["cos", "workstream", "board", "task"];
+const WITH_TABS: readonly Screen[] = ["workstream", "board", "task", "project"];
 const COMPOSERS = "[data-testid=composer], [data-testid=task-composer], [data-testid=inbox-reply]";
 
 const LOOK: Row[] = [
@@ -216,6 +223,10 @@ const LOOK: Row[] = [
   { id: "state square, in review", audit: "F7", v2: { line: 894, has: "review: { nb: 'transparent', nbd: A, nbs: 'solid' }" }, select: "[data-state-square=review]", min: 0, want: { square: "review" } },
   { id: "state square, queued", audit: "F7", v2: { line: 895, has: "queued: { nb: 'transparent', nbd: 'rgba(var(--inkrgb),.5)', nbs: 'dashed' }" }, select: "[data-state-square=queued]", min: 0, want: { square: "queued" } },
   { id: "state square, done", audit: "F7", v2: { line: 895, has: "done: { nb: INK, nbd: INK, nbs: 'solid' }" }, select: "[data-state-square=done]", min: 0, want: { square: "done" } },
+
+  // ---- slice C: the workstream, its Board, the task screen, the team strip (look-c.mts) ----
+  ...SLICE_C_ROWS,
+  // ---- end slice C ----
 ];
 
 /**
@@ -223,7 +234,7 @@ const LOOK: Row[] = [
  * skipped only where the theme's radius can't reach it; everything else on
  * this list is still graded for its fonts, its radius and the highlighter.
  */
-type Exception = { id: string; select: string; why: string; radius?: "skip" };
+export type Exception = { id: string; select: string; why: string; radius?: "skip" };
 const EXCEPTIONS: Exception[] = [
   { id: "organization switcher", select: "[data-testid=org-switcher], [data-testid=org-switcher] *", why: "kept by the epic (ER-1); v2's brand header waits on FIX-1650 for an organization's display name" },
   { id: "PROJECTS note", select: "[data-testid=projects] > p", why: "the named gap PROJECTS keeps until FIX-1650 ships projects" },
@@ -232,10 +243,22 @@ const EXCEPTIONS: Exception[] = [
   { id: "section failure", select: "[data-testid$=-failure], [data-testid$=-failure] *", why: "a section's Retry; v2 draws no failed state" },
   { id: "also post to the workstream", select: "[data-testid=task-also-post]", why: "the task composer's also-post box waits on FIX-1474" },
   { id: "registry pill", select: "[data-slot=badge]", why: "a registry part whose `rounded-full` is a literal the theme's radius can't reach", radius: "skip" },
+  // ---- slice C ----
+  ...SLICE_C_EXCEPTIONS,
+  // ---- end slice C ----
 ];
 
 /** The regions every painting element of which must be covered by a row or an exception. */
-const WHOLE = ["[data-testid=sidebar]", "[data-look=tabs]", "[data-look=composer]", "[data-look=composer-footer]", "[data-look=screen-title]"];
+const WHOLE = [
+  "[data-testid=sidebar]",
+  "[data-look=tabs]",
+  "[data-look=composer]",
+  "[data-look=composer-footer]",
+  "[data-look=screen-title]",
+  // ---- slice C ----
+  ...SLICE_C_WHOLE,
+  // ---- end slice C ----
+];
 
 // ---- reading the page ----------------------------------------------------------
 
@@ -419,7 +442,10 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
       if (w.tracking !== undefined && e.text && Math.abs(e.tracking - w.tracking * e.size) > 0.06) {
         failures.add("type", `${at} tracks ${px(e.tracking)}, v2 ${w.tracking}em (${px(w.tracking * e.size)}) ${cite(row)}`, tag);
       }
-      if (w.surface !== undefined && token[w.surface] !== null && !same(rgbOf(e.bg), token[w.surface])) {
+      if (w.surface === "none") {
+        const alpha = parseColour(e.bg)?.alpha ?? 0;
+        if (alpha > 0) failures.add("surface", `${at} paints ${e.bg}, v2 paints no fill there ${cite(row)}`, tag);
+      } else if (w.surface !== undefined && token[w.surface] !== null && !same(rgbOf(e.bg), token[w.surface])) {
         const got = rgbOf(e.bg);
         failures.add("surface", `${at} paints ${got === null ? "no background" : hex(got)}, v2's ${w.surface} surface is ${hex(token[w.surface]!)} ${cite(row)}`, tag);
       }
@@ -428,6 +454,9 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
         const painted = Math.floor(w.border.width);
         const off = e.border.filter((b) => Math.abs(b.width - painted) > 0.01 || b.style !== "solid" || !same(rgbOf(b.colour), token[w.border!.colour]));
         if (off.length > 0) failures.add("surface", `${at} has a ${e.border.map((b) => `${px(b.width)} ${b.style}`).join(" / ")} border, v2 a ${px(w.border.width)} ink one ${cite(row)}`, tag);
+      }
+      if (w.highlighter === true && !same(rgbOf(e.bg), token.attention)) {
+        failures.add("marks", `${at} is not on the highlighter, and it waits on a person ${cite(row)}`, tag);
       }
       if (w.underline !== undefined) {
         const b = e.border[2]!;
@@ -465,7 +494,7 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
   }
 
   // marks: the highlighter on a needs-you element and nothing else.
-  const needsYou = new Set(LOOK.filter((r) => r.want.square === "needs").map((r) => r.id));
+  const needsYou = new Set(LOOK.filter((r) => r.want.square === "needs" || r.want.highlighter === true).map((r) => r.id));
   for (const e of read.els) {
     if (token.attention !== null && same(rgbOf(e.bg), token.attention) && !e.rows.some((id) => needsYou.has(id))) {
       failures.add("marks", `${e.el} carries the highlighter, and nothing on it waits on a person`, tag);
@@ -489,7 +518,7 @@ function grade(read: Sweep, where: Where, tag: string, failures: Failures, lab: 
 /** Suspension reasons that are a person being asked something. */
 const PERSON_REASONS = new Set(["human_approval", "human_input"]);
 
-async function readStore(api: LabApi, tree: string): Promise<Store> {
+async function readStore(api: LabApi, tree: string, userId: string): Promise<Store> {
   const roster = await readDeclaredRoster(tree);
   const host = roster.channels[0]!.id;
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
@@ -504,6 +533,17 @@ async function readStore(api: LabApi, tree: string): Promise<Store> {
           const id = String(r.id);
           return { id, name: id.includes(".") ? id.slice(id.indexOf(".") + 1) : id };
         });
+  // The flow each listed session belongs to, dispatch runs included, and the
+  // person-asks still pending in each: a member's ask is in its channel's feed.
+  const listing = await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`);
+  const asksBySeat = new Map<string, number>();
+  for (const session of (listing.sessions ?? []) as Array<Record<string, any>>) {
+    if (typeof session.flowId !== "string") continue;
+    const found = await api.items(String(session.id), ["suspension", "suspension_resume"]);
+    const resumed = new Set(found.filter((i) => i.type === "suspension_resume").map((i) => String(i.suspensionId)));
+    const pending = found.filter((i) => i.type === "suspension" && PERSON_REASONS.has(String(i.reason)) && !resumed.has(String(i.suspensionId))).length;
+    asksBySeat.set(session.flowId, (asksBySeat.get(session.flowId) ?? 0) + pending);
+  }
   const channels: Store["channels"] = {};
   let running = 0;
   for (const channel of roster.channels) {
@@ -521,6 +561,8 @@ async function readStore(api: LabApi, tree: string): Promise<Store> {
         .slice(0, 3)
         // A name two members share reaches neither, so that member is offered by its id.
         .map((s) => (members.filter((m) => seats.find((x) => x.id === m)?.name === s.name).length > 1 ? s.id : s.name)),
+      lines: (await api.items(channel.id, ["component"])).filter((i) => i.component === "channel-post").length,
+      asks: members.reduce((n, m) => n + (asksBySeat.get(m) ?? 0), 0),
     };
   }
   return {
@@ -578,6 +620,12 @@ async function open(page: Page, screen: Screen, ids: { channel: string; taskId: 
       await ready("workstream");
       await page.locator("[role=tab][data-tab=stream]").click();
       await ready("transcript-line");
+      return;
+    case "board":
+      await page.getByTestId(`nav-workstream-${ids.channel}`).click();
+      await ready("workstream");
+      await page.locator("[role=tab][data-tab=board]").click();
+      await ready("board");
       return;
     case "task":
       await page.getByTestId("nav-tasks").click();
@@ -671,7 +719,7 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
     // The page read the Lab before the row was filed; read it again.
     await page.reload();
     await page.getByTestId("shell").waitFor({ timeout: 20_000 });
-    const store = await readStore(api, LABS[lab].tree);
+    const store = await readStore(api, LABS[lab].tree, injected.userId);
     evidence.push(`${lab}: ${store.teams} team(s), ${store.seats} seats, ${store.running} running, chief of staff ${store.chiefOfStaff ? "yes" : "no"}`);
 
     const counts: string[] = [];

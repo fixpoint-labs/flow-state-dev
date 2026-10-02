@@ -189,7 +189,7 @@ A Lab with no chief of staff needs nothing in its config. Every screen works, an
 - **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card, and can reply to the worker under it. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
 - **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream.
 - **Roster.** Every worker in the Lab, grouped by whether it's on shift, on call or off shift. Pick a team at the top to see only its workers. See [Roster](#roster).
-- **A workstream.** One channel and the boards attached to it. It has four tabs: Stream (the transcript, the composer, and its members' asks), Board (five columns: QUEUED, RUNNING, NEEDS YOU, IN REVIEW, DONE), Brief (the channel's charter) and Results. The right panel lists the channel's members with their status, and its rows by column.
+- **A workstream.** One channel and the boards attached to it. It has four tabs: Stream (the transcript and the composer; an ask a member raises appears in the transcript at the time it was raised, and answering it there clears it from Inbox too), Board (five columns: QUEUED, RUNNING, IN REVIEW, NEEDS YOU, DONE, with done tasks as one line each), Brief (the channel's charter) and Results. The right panel lists the channel's members with their status, and its rows by column.
 - **A task.** One task's run, live, with Interrupt. See [A task](#a-task).
 
 A post appears in the transcript only once the channel has kept it. Until then the composer keeps your draft and says it's posting. If the post is refused, the draft stays and the reason is shown.
@@ -206,7 +206,9 @@ Each section loads on its own. If one read fails, that section says what the Lab
 
 Open a task from Tasks or from a card on a board. The Session tab is that task's own run: every step the worker takes, the tool calls and edits as they happen, and earlier attempts above them when they ran in the same place. It isn't the worker's chat, so what you read is what the task did. If the worker keeps one session for several tasks, the tab shows only this task's steps and says the session is shared. A task handed off a moment ago shows its run once the run starts. The screen checks for it every 2 seconds for up to a minute, then offers Retry.
 
-**Interrupt** stops the run (Esc does the same while the Session has focus). The screen says *interrupted* once the run has actually stopped. What happens to the task afterwards, whether it's retried or left, is up to the board, not Shift Manager.
+**Interrupt** stops the run (Esc does the same while the Session has focus). The line above the composer says what the worker is doing, and *interrupted* once the run has actually stopped. What happens to the task afterwards, whether it's retried or left, is up to the board, not Shift Manager.
+
+When the run stops to ask you something, the ask sits in the Session where the run stopped, on the same card Inbox shows. The panel shows it too, with how long it has waited and a link to it in Inbox.
 
 The panel on the right shows who is on it and when it started. If the harness records its plan and the files it touched, as Claude Code does, they're listed. Otherwise the panel says so. *Open trace* opens the run's session in the devtool, for the full detail, with the session id beside the link.
 
