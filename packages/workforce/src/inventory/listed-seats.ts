@@ -55,11 +55,22 @@ export function listedSeatRows<T extends { id: string; hired?: boolean | null; i
   roster: readonly { seatId: string; incarnation: string | null }[] | undefined,
   owned: readonly { seatId: string; ownerUserId: string; incarnation: string | null }[] = []
 ): T[] {
-  // The incarnation each backed address carries. A user-owned address can't
-  // collide with an org one: a seat id never starts with `~`.
+  // The incarnation each backed address carries, at the address the canonical
+  // rules build. A roster row whose seat id they refuse (empty, or starting
+  // with `~`, the user-owned marker) backs nothing, so an org row can never
+  // stand in for a user-owned address.
   const backing = new Map<string, string | null>();
-  for (const row of roster ?? []) backing.set(`${orgId}.${row.seatId}`, row.incarnation);
-  for (const row of owned) backing.set(seatAddress(orgId, row.seatId, row.ownerUserId), row.incarnation);
+  const back = (seatId: string, ownerUserId: string | null, incarnation: string | null) => {
+    let address: string;
+    try {
+      address = seatAddress(orgId, seatId, ownerUserId);
+    } catch {
+      return;
+    }
+    backing.set(address, incarnation);
+  };
+  for (const row of roster ?? []) back(row.seatId, null, row.incarnation);
+  for (const row of owned) back(row.seatId, row.ownerUserId, row.incarnation);
   return rows.filter(
     (row) => !isHiredSeatRow(orgId, row) || (backing.has(row.id) && backing.get(row.id) === (row.incarnation ?? null))
   );
