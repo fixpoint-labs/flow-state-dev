@@ -51,7 +51,7 @@ Five documents: a code of conduct everyone reads, a handbook for engineering, a 
 
 Both folders name documents the same way, and they share one namespace. `references/handbook.md` and `resources/handbook.md` in one team are two spellings of the name `handbook`. Neither single-folder reader sees the other folder, so neither reports the pair on its own. `readDeclaredRoster`, which walks the whole tree in one call, puts it in its `problems` and names both files; `hireWorkforce` throws on a ref handed to it as both a document and a reference.
 
-A worker's own folder is what lets two seats each have a `runbook` without their authors agreeing on a name. Organization-level workers, under `org/workers/`, are read the same way.
+A worker's own folder is what lets two seats each have a `runbook` without their authors agreeing on a name. An org seat's folder is read the same way: `org/workers/build/`, holding a `WORKER.md` and `resources/runbook.md`, is the `build` seat and its runbook.
 
 A document is a **file**, not a folder. A worker and a skill are each a folder with a fixed file inside it; a document is `<name>.md` sitting directly in `references/` or `resources/`. A directory in one of those folders is reported rather than passed over, so `resources/handbook/RESOURCE.md` is an error and not a document that quietly went missing.
 
@@ -278,7 +278,7 @@ references:
 
 Leaving the key out means every reference at or above the seat. Writing `references: []` means none.
 
-Seats are read from `teams/<team>/workers/<name>/`, so a reference under `org/workers/<name>/references/` sits beside the organization level rather than above any seat, and no seat reaches it.
+A reference under `org/workers/<name>/references/` belongs to the org seat declared in that folder. That seat reaches it, along with the organization's references. No other seat does, and no team's references reach an org seat, because it has no team.
 
 **For a `resources/` document, the folder is a namespace and nothing more.** Every one is org-scoped, and a generator's resource tools reach every installed document marked `llmReadable`. Install a whole tree on one flow and every team's writable documents are reachable from it, one team from another included.
 

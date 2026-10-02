@@ -145,30 +145,61 @@ function placeOfEntry(entry: unknown): TreePlace | undefined {
   return placeOfReference(minted);
 }
 
+/** A declared seat's id, read back into the folder names it was minted from. */
+export interface DeclaredSeatId {
+  /** The team folder, or `undefined` for an org seat (`org/workers/<name>/`). */
+  team?: string;
+  /** The seat's own folder name. */
+  name: string;
+}
+
+/**
+ * Read a declared seat's id back into the folders it was minted from.
+ *
+ * The one rule every reader that needs a seat's team uses, so none of them
+ * splits an id on its own. The loader mints two shapes:
+ *
+ * - `"<name>"` — no dot: an org seat, declared at `org/workers/<name>/`;
+ * - `"<teamId>.<name>"` — a team seat, at `teams/<teamId>/workers/<name>/`.
+ *
+ * The split is at the first dot, which is the minter's rule; a second dot stays
+ * in `name`. Neither folder name may hold a `.`, so the two shapes never
+ * overlap.
+ *
+ * @param seatId The seat's id, as the roster minted it.
+ * @returns The folders, or `undefined` for an id the loader cannot mint: empty,
+ *   an empty half around the dot, or a `/` anywhere.
+ *
+ * @example
+ * parseDeclaredSeatId("chief-of-staff"); // { name: "chief-of-staff" }
+ * parseDeclaredSeatId("eng.lead");       // { team: "eng", name: "lead" }
+ */
+export function parseDeclaredSeatId(seatId: string): DeclaredSeatId | undefined {
+  if (seatId.length === 0 || seatId.includes("/")) return undefined;
+  const dot = seatId.indexOf(".");
+  if (dot === -1) return { name: seatId };
+  if (dot === 0 || dot === seatId.length - 1) return undefined;
+  return { team: seatId.slice(0, dot), name: seatId.slice(dot + 1) };
+}
+
 /**
  * Read a seat's id back into the place its folder sits.
  *
- * A worker id is `"<teamId>.<name>"` — dot-joined, because it becomes a flow
- * address and a `/` there is unroutable — so a seat always sits at
+ * Through {@link parseDeclaredSeatId}: an org seat (`"<name>"`) sits at
+ * `org/workers/<name>/`, a team seat (`"<teamId>.<name>"`) at
  * `teams/<teamId>/workers/<name>/`.
  *
- * Returns `undefined` for an id that is not team-qualified. That is not a seat
- * the loader can mint, so there is no folder to place it at and no honest
- * answer to what is above it; {@link seatHasNoPlaceMessage} is what the caller
- * does with it.
+ * Returns `undefined` for an id the loader cannot mint, so there is no folder
+ * to place it at and no honest answer to what is above it;
+ * {@link seatHasNoPlaceMessage} is what the caller does with it.
  *
  * @param seatId The worker's id, as the roster minted it.
  * @returns Where the seat sits, or `undefined` if the id names no place.
  */
 export function placeOfSeat(seatId: string): TreePlace | undefined {
-  const dot = seatId.indexOf(".");
-  if (dot <= 0 || dot === seatId.length - 1) return undefined;
-  const team = seatId.slice(0, dot);
-  const worker = seatId.slice(dot + 1);
-  // A second dot is still one team and one name — `indexOf` splits at the
-  // first, which is the rule the id minter uses.
-  if (team.includes("/") || worker.includes("/")) return undefined;
-  return { team, worker };
+  const parsed = parseDeclaredSeatId(seatId);
+  if (parsed === undefined) return undefined;
+  return { team: parsed.team, worker: parsed.name };
 }
 
 /**
@@ -178,20 +209,26 @@ export function placeOfSeat(seatId: string): TreePlace | undefined {
  * Three ways yes, and nothing else:
  *
  * - the org level is above everyone;
- * - the seat's own team's folder;
- * - the seat's own worker folder.
+ * - the seat's own team's folder (a team seat's);
+ * - the seat's own worker folder — under its team, or under `org/workers/` for
+ *   an org seat.
  *
  * Everything else is no, and the two that matter are the ones a person expects
  * to be yes and should not be: **another team's folder**, and **a sibling
  * seat's folder on the same team**. The walk inherits downward only — a
  * sibling's folder is not above anyone.
  *
- * An org WORKER's folder (`workers/<w>/<name>`) is also no, for the same
- * reason: it is an address beside the org level, not above a team's seat.
+ * An org WORKER's folder (`workers/<w>/<name>`) is also no to every seat but
+ * that org seat, for the same reason: it is an address beside the org level,
+ * not above anyone else. And an org seat has no team, so no team's folder is
+ * above it.
  */
 export function referenceReachableBySeat(seat: TreePlace, reference: TreePlace): boolean {
-  // The org level: above every seat.
-  if (reference.team === undefined) return reference.worker === undefined;
+  // The org level: above every seat. An org worker's folder: that seat's own.
+  if (reference.team === undefined) {
+    if (reference.worker === undefined) return true;
+    return seat.team === undefined && reference.worker === seat.worker;
+  }
   // Another team's tree is never above this seat.
   if (reference.team !== seat.team) return false;
   // The seat's own team folder, or its own worker folder. A sibling's is not.
@@ -261,9 +298,9 @@ const referencesNotDeclaredMessage = (refs: readonly string[]): string =>
  */
 const seatHasNoPlaceMessage = (seatId: string): string =>
   `has the id "${seatId}", which names no place in the tree, and this kind holds references. ` +
-  `A worker id is "<teamId>.<name>" — the loader mints it from the seat's folder, and a ` +
-  `reference is reachable because of where it sits relative to that folder. Give the seat a ` +
-  `team-qualified id.`;
+  `A worker id is "<teamId>.<name>", or "<name>" for an org seat — the loader mints it from ` +
+  `the seat's folder, and a reference is reachable because of where it sits relative to that ` +
+  `folder. Give the seat an id of one of those shapes.`;
 
 /**
  * The wording for a reference the wall denied that the minted flow reaches

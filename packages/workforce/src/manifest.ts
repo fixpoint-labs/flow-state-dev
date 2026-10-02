@@ -275,9 +275,9 @@ export interface PackageManifest {
   path: string;
   /** Where the folder sits: the org's library, a team's library, or one worker's own folder. */
   level: "org" | "team" | "worker";
-  /** The team whose folder holds it. Set at the `team` and `worker` levels. */
+  /** The team whose folder holds it. Set at the `team` level, and at the `worker` level for a team seat. */
   team?: string;
-  /** The worker id (`<team>.<worker>`) whose folder holds it. Set at the `worker` level only. */
+  /** The worker id (`<team>.<worker>`, or `<worker>` for an org seat) whose folder holds it. Set at the `worker` level only. */
   worker?: string;
   /** The file's required `description` — a label for people, never handed to a model. */
   description: string;
