@@ -110,6 +110,7 @@ describe("the channel kind", () => {
       expect(line?.principal).toBe(USER_ID);
       expect(line?.author).toBe("engineering.lead");
       expect(line?.authorVerified).toBe(false);
+      expect(line?.seatAuthored).toBeUndefined();
     } finally {
       await state.dispose();
     }

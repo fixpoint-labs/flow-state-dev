@@ -17,9 +17,10 @@
  *         reply under it, and no other specialist hears it (FIX-1611 BR-4).
  *         Red: the name-only stub (`GOAL_CONTROL=name-only-notify`) runs
  *         nobody; the route taken off (`GOAL_CONTROL=no-route`) runs everyone.
- *   BR-3  a post a seat wrote runs no seat, the writer included (FIX-1602's
- *         BR-3). Red: the author dropped before the wake
- *         (`GOAL_CONTROL=no-author-filter`).
+ *   BR-3  a post a seat wrote, through the internal seat entry, runs no seat,
+ *         the writer included (FIX-1602's BR-3). A public post that only
+ *         claims that seat as `author` still runs the specialist. Red: the
+ *         seat mark stripped before the wake (`GOAL_CONTROL=no-author-filter`).
  *   BR-9  a second post lands in the same conversation of the specialist.
  *   BR-10 two posts at once each run exactly once, in that same conversation.
  *   BR-14 the post's own request carries no seat's answer: the wake runs in
@@ -91,12 +92,40 @@ async function call(router: Router, method: "GET" | "POST", segments: string[], 
   return { status: res.status, text: await res.text() };
 }
 
-/** Post the way the page's composer does, or as a seat would with `author`. */
+/**
+ * Post the way the page's composer does. `author`, when set, is only the
+ * caller's claim. It is not a seat's post.
+ */
 async function post(router: Router, sessionId: string, body: string, author?: string) {
   const input = author === undefined ? { body } : { body, author };
   const res = await call(router, "POST", ["channel", "actions", "post"], { userId: USER, sessionId, input });
   expect(res.status, res.text).toBe(200);
   return res;
+}
+
+/**
+ * Post the way a seat does: the channel's `seatPost` action, which is what
+ * marks the line a seat's. `author` is the name on the line.
+ */
+async function seatPost(sessionId: string, body: string, author: string) {
+  const flowstate = (globalThis as { __fsdFlowstate?: FlowState }).__fsdFlowstate;
+  if (flowstate === undefined) throw new Error("the app is not booted");
+  const runtime = await flowstate.getRuntime();
+  const channel = runtime.registry.get(CHANNEL_KIND);
+  if (channel === undefined) throw new Error("the channel kind is not registered");
+  const { KITCHEN_SINK_ORG_ID } = await import("@/lib/kitchen-sink-principal");
+  const result = await runAction({
+    source: "internal",
+    orgId: KITCHEN_SINK_ORG_ID,
+    flow: channel,
+    actionName: "seatPost",
+    input: { body, author },
+    userId: USER,
+    sessionId,
+    stores: runtime.stores,
+    runtimeConfig: { ...runtime.runtimeConfig },
+  });
+  expect(result.error, JSON.stringify(result.error)).toBeUndefined();
 }
 
 type Message = { role: string; text: string };
@@ -208,11 +237,23 @@ describe("V3 · a post runs the specialist it was routed to once, on the app's o
   it("runs no seat on a post a seat wrote, the writer included", async () => {
     const router = await bootApp();
     const mark = token("authored");
-    await post(router, CHANNEL, `[route:${ROUTED}] [scenario:wake] ${mark}`, "support.devices");
+    await seatPost(CHANNEL, `[route:${ROUTED}] [scenario:wake] ${mark}`, "support.devices");
     // A wrongly woken seat answers within this in every run of the scripted model.
     await new Promise((resolve) => setTimeout(resolve, 1_500));
 
     for (const seat of SPECIALISTS) expect(await holding(router, seat, mark), seat).toEqual([]);
+  });
+
+  it("still runs the routed specialist when a public post claims a hire address as author", async () => {
+    const router = await bootApp();
+    const mark = token("claimed");
+    const body = `[route:${ROUTED}] [scenario:wake] ${mark} can someone look at my refund?`;
+    await post(router, CHANNEL, body, "support.devices");
+
+    await until(() => routedAnswered(router, mark), "the routed specialist to answer a claimed author");
+    const convs = await holding(router, ROUTED, mark);
+    expect(convs, `${ROUTED}'s conversations holding the claimed post`).toHaveLength(1);
+    expect(convs[0]!.messages[0]?.text).toEqual(expect.stringContaining(`support.devices in ${CHANNEL}: ${body}`));
   });
 });
 
