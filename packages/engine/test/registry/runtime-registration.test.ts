@@ -42,7 +42,13 @@ const deskClerk = defineFlow({
         name: "answer",
         inputSchema: z.object({}).passthrough(),
         outputSchema: z.object({ desk: z.string() }),
-        execute: async (_input, ctx) => ({ desk: String(ctx.flow.config.desk) }),
+        execute: async (_input, ctx) => {
+          const desk = String(ctx.flow.config.desk);
+          // Said in a message so it reaches the caller's stream: a handler's
+          // return value rides on its block_trace, which a client never sees.
+          await ctx.emit.message(`desk: ${desk}`);
+          return { desk };
+        },
       }),
     },
   },
