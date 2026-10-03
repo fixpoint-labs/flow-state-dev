@@ -272,8 +272,10 @@ await runGoal(async () => {
   // ---- part 3 ---------------------------------------------------------------------------
   if (wants("p3")) {
     say("part 3: building @flow-state-dev/workforce and its dependencies (hire-plane checks import its dist)");
-    const built = spawnSync("pnpm", ["--filter", "@flow-state-dev/workforce...", "build"], { cwd: REPO_ROOT, encoding: "utf8", timeout: 1_200_000 });
-    if (built.status !== 0) failures.push(`part 3: the workforce build failed: ${built.stderr.slice(-800)}`);
+    // Through turbo, as the root build does: a plain `pnpm --filter workforce...` also
+    // builds engine's dev dependency `testing` alongside engine and fails on the cycle.
+    const built = spawnSync("pnpm", ["exec", "turbo", "run", "build", "--filter=@flow-state-dev/workforce..."], { cwd: REPO_ROOT, encoding: "utf8", timeout: 1_200_000 });
+    if (built.status !== 0) failures.push(`part 3: the workforce build failed: ${(built.stdout + built.stderr).slice(-800)}`);
     const logs = join(SCRATCH, "part3");
     mkdirSync(logs, { recursive: true });
     const env: Record<string, string> = { PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? "/opt/pw-browsers" };
