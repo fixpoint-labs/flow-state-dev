@@ -76,7 +76,7 @@ export async function answerInRoom(
   let seq = claim.state.seq;
   let wrote = false;
   let landed = false;
-  for (let attempt = 0; attempt < 3 && !landed; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     if (await writeLineAt(rooms, line, seq)) {
       wrote = true;
       landed = true;
