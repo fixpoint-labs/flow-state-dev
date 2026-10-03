@@ -1,6 +1,6 @@
 # Shift Manager
 
-Shift Manager is the browser app you run a Workforce team through. A team is served as a Lab: a set of Workforce seats and channels from one `fsdev.config.mts`. You point Shift Manager at a Lab's config, or open one of the [team profiles](#team-profiles) this package ships, and it shows what that Lab holds. It opens on Chief of Staff: a summary of what's waiting on you and what's running, and a conversation with the Lab's chief-of-staff seat. From there it shows the teams and their seats, the workstreams, each channel's board, the asks waiting on you, and each channel's transcript, which you can post to.
+Shift Manager is the browser app you run a Workforce team through. A team is served as a Lab: a set of Workforce seats and channels from one `fsdev.config.mts`. You point Shift Manager at a Lab's config, or open one of the [team profiles](#team-profiles) this package ships, and it shows what that Lab holds. It opens on Shift Coordinator: a summary of what's waiting on you and what's running, and a conversation with the Lab's chief-of-staff seat. From there it shows the teams and their seats, the workstreams, each channel's board, the asks waiting on you, and each channel's transcript, which you can post to.
 
 A task shows one worker's run as it happens, and lets you stop it. The panel on the right follows along, with the team and its tasks at a workstream and the task's details at a task.
 
@@ -162,7 +162,7 @@ client:
 
 It's listed once a session whose flow serves it exists. A document without that line stays out of Jump to.
 
-**A chief of staff, if you want one.** Shift Manager talks to the seat named `chief-of-staff`, whether it's an org seat or a team's worker. Declare it like any other worker, on the built-in `agent` kind, with instructions that say what it should do for the person running the Lab:
+**A chief of staff, if you want one.** On the Shift Coordinator screen, Shift Manager talks to the seat named `chief-of-staff`, whether it's an org seat or a team's worker. Declare it like any other worker, on the built-in `agent` kind, with instructions that say what it should do for the person running the Lab:
 
 ```md title="workforce/teams/<team>/workers/chief-of-staff/WORKER.md"
 ---
@@ -175,17 +175,17 @@ You are the chief of staff for this team. Answer questions about who is working 
 
 What it can do is up to its instructions and the tools you give it. Shift Manager only carries your lines to it and shows what it answers. A Lab with two seats of that name gets a line naming both, and Shift Manager talks to neither.
 
-A Lab with no chief of staff needs nothing in its config. Every screen works, and Chief of Staff shows the summary of asks and runs. Where the conversation would be, it says "This Lab declares no chief of staff" and how to declare one. That message needs an open inventory (above). With no inventory, the conversation area shows an error about the inventory instead.
+A Lab with no chief of staff needs nothing in its config. Every screen works, and Shift Coordinator shows the summary of asks and runs. Where the conversation would be, it says "This Lab declares no shift coordinator" and how to declare a `chief-of-staff` seat. That message needs an open inventory (above). With no inventory, the conversation area shows an error about the inventory instead.
 
 `test/fixtures/ask-lab/lab.mts` is a small Lab that does all of the above in one file.
 
 ## What you see
 
-- **Chief of Staff.** Where Shift Manager opens, at `/` or `/cos`. The top of the screen is Shift Manager's own summary of the shift: how many asks wait on you, each one with the same Approve and Reject you'd get in Inbox, and how many runs are going across how many workstreams. The numbers are the ones Inbox and Tasks show. Below it is your conversation with the Lab's chief-of-staff seat. A line goes through the seat's door, like any other line you send to a worker, and shows *delivered* once the seat's session holds it. The reply is what the seat wrote in that session. Come back later and the same conversation is there. The panel on the right lists each workstream with its running tasks and the asks its members have raised, and the workers on call, as Roster counts them.
+- **Shift Coordinator.** Where Shift Manager opens, at `/` or `/cos`. The top of the screen is Shift Manager's own summary of the shift: how many asks wait on you, each one with the same Approve and Reject you'd get in Inbox, and how many runs are going across how many workstreams. The numbers are the ones Inbox and Tasks show. Below it is your conversation with the Lab's chief-of-staff seat. A line goes through the seat's door, like any other line you send to a worker, and shows *delivered* once the seat's session holds it. The reply is what the seat wrote in that session. Come back later and the same conversation is there. The panel on the right lists each workstream with its running tasks and the asks its members have raised, and the workers on call, as Roster counts them.
 
   A Lab with no chief-of-staff seat still opens here. You get the summary, and in place of the conversation a line saying how to add one.
-- **Sidebar.** The organization, Jump to (⌘K), Chief of Staff, Inbox and Tasks with their counts, Roster with how many workers are on shift and on call, PROJECTS (the workstreams, until projects exist), and TEAMS: one row per team in the Lab's seat inventory, with how many of its workers are on shift and a square for each worker. Organization-level workers, such as a chief of staff, sit in one Staff row at the top. A worker hired while the Lab runs is listed only while the organization's roster has its row, so a fired worker leaves the list, including one fired before Workforce removed inventory rows on a fire. When no flow the person uses lets Shift Manager read the roster, hired workers aren't listed and TEAMS says how many were left out. Hover a square for the worker and its status. Click a team to open Roster for that team. The footer repeats the on-shift and on-call counts.
-- **Jump to (⌘K).** Finds Chief of Staff, workstreams, seats, tasks and the Lab's [readable documents](#what-a-labs-config-provides). A seat opens Roster. A document opens read-only.
+- **Sidebar.** The organization, Jump to (⌘K), Shift Coordinator, Inbox and Tasks with their counts, Roster with how many workers are on shift and on call, PROJECTS (the workstreams, until projects exist), and TEAMS: one row per team in the Lab's seat inventory, with how many of its workers are on shift and a square for each worker. Organization-level workers, such as a chief of staff, sit in one Staff row at the top. A worker hired while the Lab runs is listed only while the organization's roster has its row, so a fired worker leaves the list, including one fired before Workforce removed inventory rows on a fire. When no flow the person uses lets Shift Manager read the roster, hired workers aren't listed and TEAMS says how many were left out. Hover a square for the worker and its status. Click a team to open Roster for that team. The footer repeats the on-shift and on-call counts.
+- **Jump to (⌘K).** Finds Shift Coordinator, workstreams, seats, tasks and the Lab's [readable documents](#what-a-labs-config-provides). A seat opens Roster. A document opens read-only.
 - **Inbox.** Every approval or question a seat is waiting on you for, oldest first. You answer it on its card, and can reply to the worker under it. An ask from a run the Lab started by itself, such as a seat woken by a channel post, is shown without buttons, and its card says why: the Lab never reopens those runs from outside.
 - **Tasks.** Every row on every attached board that isn't done, grouped by state, worker or workstream.
 - **Roster.** Every worker in the Lab, grouped by whether it's on shift, on call or off shift. Pick a team at the top to see only its workers. See [Roster](#roster).
@@ -222,7 +222,7 @@ pnpm --filter @flow-state-dev/shift-manager start --config <your config> --devto
 
 ### What a coding run is handed
 
-When you approve a feature in Inbox, or post `slug: what to build` on a workstream, the team's coordinator files it as a task and a coder seat picks it up as a coding run. In the `devteam` profile, the run's prompt holds, in this order:
+When you approve a feature in Inbox, or post `slug: what to build` on a workstream, the team's own coordinator seat, not the `chief-of-staff` seat behind Shift Coordinator, files it as a task and a coder seat picks it up as a coding run. In the `devteam` profile, the run's prompt holds, in this order:
 
 - **The task.** The feature you approved, or what you posted after `slug:`, word for word.
 - **The seat's own files.** Its instructions, the document it names (the team's standing brief), and its skills.

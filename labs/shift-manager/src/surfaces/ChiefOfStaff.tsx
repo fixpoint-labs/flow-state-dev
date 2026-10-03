@@ -38,7 +38,7 @@ export function ChiefOfStaffView({ snapshot, gaps }: { snapshot: LoadedSnapshot;
     <div className="h-full overflow-y-auto" data-testid="cos">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-5">
         <header>
-          <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">CHIEF OF STAFF</p>
+          <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">SHIFT COORDINATOR</p>
           <h1 className="text-base font-semibold">Your shift</h1>
         </header>
         <ShiftSummary snapshot={snapshot} />
@@ -106,7 +106,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
 function Conversation({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
   const { refresh } = useLab();
   if (!snapshot.inventory.ok) {
-    return <SectionFailure what="The chief of staff" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="cos-seat-failure" />;
+    return <SectionFailure what="The shift coordinator" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="cos-seat-failure" />;
   }
   const cos = chiefOfStaffOf(snapshot.inventory.value.seats, snapshot.orgId);
   if (cos.kind === "none") {
@@ -181,7 +181,7 @@ function Talk({ seat, sessions, gaps }: { seat: Seat; sessions: readonly Session
     <section aria-label={`Conversation with ${seat.id}`} className="rounded-md border" data-testid="cos-conversation" data-seat-id={seat.id} data-session-id={sessionId ?? ""}>
       <header className="border-b px-4 py-2">
         <p className="text-sm font-medium">{seat.id}</p>
-        <p className="text-xs text-muted-foreground">Your chief of staff. What it says here is what its session holds.</p>
+        <p className="text-xs text-muted-foreground">Your shift coordinator. What it says here is what its session holds.</p>
       </header>
       {failure !== undefined ? (
         <div className="p-4">
