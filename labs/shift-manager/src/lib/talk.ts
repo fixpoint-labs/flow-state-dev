@@ -20,6 +20,7 @@
 import type { ChannelTranscriptLine } from "@flow-state-dev/workforce/browser";
 import { ClientHttpError } from "@flow-state-dev/client";
 import type { LabClients } from "./connection";
+import { newSessionId } from "./ids";
 import { describeFailure } from "./reads";
 
 export { ROOM_KIND } from "./reads";
@@ -63,7 +64,7 @@ async function runTalkAction(
   const actions = clients.actions(kind);
   // A new session is named here: the Lab's answer to an action started with
   // no session names none, and its requests are read back by session.
-  const session = sessionId ?? `talk-${crypto.randomUUID()}`;
+  const session = sessionId ?? newSessionId("talk");
   let started: Awaited<ReturnType<typeof actions.sendAction>>;
   try {
     started = await actions.sendAction(action, input, { sessionId: session });
