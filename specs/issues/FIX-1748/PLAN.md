@@ -7,26 +7,26 @@ For the implementing agent; BR-n and D-n cite [rules](BUSINESS-RULES.md) and [de
 <a name="inventory"></a>
 ## Inventory · `origin/main` at `6e8685e79`
 
-Re-derived by `node specs/issues/FIX-1748/poc/channel-inventory/inventory.mjs`. A *product line* means the pipe; a *survivor* means something else, named phrase by phrase. An unclassified file fails the run.
+Re-derived by `node specs/issues/FIX-1748/poc/channel-inventory/inventory.mjs` (per-name hit counts: `--json`). A *product line* means the pipe; a *survivor* is another meaning, in English phrases only. An unclassified file fails the run.
 
 | Group | Measured over | Files | Product lines |
 |---|---|---|---|
 | Public API, published packages | `packages/<published>/src/**` | 54 | 1,306 |
 | UI: Shift Manager, kitchen-sink, DevTool | `labs/**`, `apps/kitchen-sink/**`, `packages/{devtool,ui}/**` | 53 | 446 |
 | Goals | `goals/**` | 145 | 1,890 |
-| Docs | `apps/docs/**`, `docs/**` but `internal/`, READMEs | 44 | 923 |
-| Tests | `test/`, `e2e/`, `*.test.*`, `*.spec.*` | 92 | 2,076 |
-| **In scope** | | **388** | **6,641** |
+| Docs | `apps/docs/**`, `docs/**` but `internal/`, READMEs | 44 | 924 |
+| Tests | `test/`, `e2e/`, `*.test.*`, `*.spec.*` | 92 | 2,083 |
+| **In scope** | | **388** | **6,649** |
 | Not renamed: history | retained specs, `docs/internal/`, CHANGELOGs, pending changesets | 435 | — |
 | Not renamed: process | `.agents/`, `.omp/`, `.github/`, `CLAUDE.md`, all other meanings | 9 | — |
 
 - **Exports:** 70 identifiers, all in `workforce`, plus `channels` in `contracts`' `MANIFEST_DOMAINS`, re-exported by `core`.
 - **File convention:** 26 `CHANNEL.md`, 24 `channels/` folders, 1 kind file under `flows/channels/`, and 72 more paths named channel (31 goals, 22 tests, 11 API, 5 UI, 3 docs).
 - **Routes:** none defined with the word. It reaches URLs only as the kind in `/flows/:kind/actions/:action` and the action `registerChannelInInventory` (19). Shift Manager's `/w/<id>` has none.
-- **Stored wire names:** kind `channel` (229 hits), `channelId` on membership rows (288), `channel-post` items (40), `channel-route` items (24), `inventory/channels/` (35), `channelRoutedPost` seat state (8).
-- **Model- and trace-facing:** `post-to-channel` (46), discovery `channels` (45), `channelKinds` (42), `channel-*` block names (31), capability `channel-post` (6), refusal `talk-on-a-channel` (6).
+- **Stored wire names:** kind `channel`, `channelId` on membership rows, `channel-post` and `channel-route` items, `inventory/channels/`, `channelRoutedPost` seat state.
+- **Model- and trace-facing:** `post-to-channel`, discovery `channels`, `channelKinds`, `channel-*` block names, capability `channel-post`, refusal `talk-on-a-channel`.
 
-Not on `main` yet: FIX-1718 PRs 2–4 add 76 files and about 650 lines. Re-run at the cut.
+These counts are a snapshot. FIX-1718 PRs 2–4 add 76 files and about 650 lines, so the cut re-runs the script with `--json` and works from that, not from this table.
 
 ## Surfaces
 
@@ -100,7 +100,7 @@ Everything else is yours to name.
 |---|---|
 | One sweep: no aliases or deprecated re-exports | An alias is the temporary wire name the lock forbids |
 | Old words only in S3 and the survivor list | Anywhere else is a missed rename |
-| Never widen a survivor rule to go green | The first one swallowed a planted line ([Settled](DECISIONS.md#settled)) |
+| Never widen a survivor rule to go green; never let one match code | Two have swallowed product lines ([Settled](DECISIONS.md#settled)) |
 | Never delete a store: set aside, or stop | D1's price is history; a moved file is recoverable |
 | Rename paths, headers, test names (BP-034) | A `channel-*.test.ts` testing mailboxes is drift |
 | No behaviour change rides along | Suites are the net only while assertions hold |
@@ -109,13 +109,22 @@ Everything else is yours to name.
 
 Publish [DOCS.md](DOCS.md) in P2, after P1 and FIX-1746's plates. P1 touches only READMEs and the shapes the tree test pins.
 
-**POC:** [`poc/channel-inventory/`](poc/channel-inventory/inventory.mjs) re-derives the inventory, asserts totality, drafts the guard. Both controls went red, the product one only after a file-wide survivor rule was narrowed.
+**POC:** [`poc/channel-inventory/`](poc/channel-inventory/inventory.mjs) re-derives the inventory, asserts totality, drafts the guard. All three controls go red (`PLANT=unclassified`, `product`, `wire`); the last two only after survivor rules were narrowed twice.
 
 ## At implement time
 
 - Re-run the inventory; check FIX-1718, #2604 and FIX-1737 (D2's flip).
 - Unshipped changesets naming renamed surfaces get reworded.
 - Check [Evolution](EVOLUTION.md)'s names against code, not specs.
+
+## Notes from review
+
+- "Drop wire-shaped patterns from survivors (`input.channels`, `channels: z.array`): they are product in `inventory-collections.test.ts`." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324001)). Fixed in the POC; counts above re-run.
+- "Promote a thin `scripts/check-mailbox-rename.mjs`: classify every path (totality), then the product scan, with its functions exported for vitest as `check-isolation-coordinate.mjs` does. The full inventory stays in the POC for `--json` at the cut." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324004), [thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324008))
+- "Tie the `PLANT=product` control to a green-tree vitest fixture; on today's `main` the guard is red everywhere." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324014))
+- "Re-run the inventory at the cut instead of trusting the PLAN counts." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324010)). Optionally add `poc/channel-inventory/README.md`.
+
+Inputs, not instructions.
 
 ## Follow-ups
 

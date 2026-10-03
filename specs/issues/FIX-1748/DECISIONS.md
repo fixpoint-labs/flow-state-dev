@@ -87,7 +87,7 @@ It comes down to where a board sits: beside the mailbox, never inside it.
 <a name="settled"></a>
 ## Settled
 
-- **The inventory's numbers** — **CONFIRMED** by [`poc/channel-inventory/`](poc/channel-inventory/inventory.mjs) on `6e8685e79`: every file classified, both controls red. Its first survivor rule absorbed a planted line, and was narrowed.
+- **The inventory's numbers** — **CONFIRMED** by [`poc/channel-inventory/`](poc/channel-inventory/inventory.mjs) on `6e8685e79`: every file classified, all three controls red. Survivor rules twice absorbed product lines, a planted one and (found in review) wire-shaped fields; survivors are now English phrases only.
 - **An old store already fails, with the wrong advice** — **CONFIRMED** from the binder's occupant check: another kind at the id throws, telling the person to rename. BR-14 fixes the advice.
 
 ## How it got here

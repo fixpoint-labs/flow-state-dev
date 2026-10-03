@@ -28,8 +28,11 @@
  *   PLANT=unclassified  plants a hit at a path no group owns → must exit 1 (totality)
  *   PLANT=product       plants a product line inside a survivor-only file → must be
  *                       counted as product, not absorbed by the survivor rules
+ *   PLANT=wire          plants a wire-shaped field (`channels: z.array`, `input.channels`)
+ *                       the same way → must count as product too
  *
  * Run:   node specs/issues/FIX-1748/poc/channel-inventory/inventory.mjs [--json] [--guard]
+ *        LIST=<group> prints every product line in that group, for review
  * Throwaway evidence for the spec. Reads only; writes nothing.
  */
 
@@ -39,6 +42,7 @@ import { readFileSync, existsSync } from "node:fs";
 const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
 const args = new Set(process.argv.slice(2));
 const PLANT = process.env.PLANT ?? "";
+const LIST = process.env.LIST ?? ""; // LIST=<group> prints that group's product lines
 
 // ── The groups. First match wins; order is the precedence. ───────────────────
 const published = new Set();
@@ -63,38 +67,44 @@ const IN_SCOPE = new Set(["api", "ui", "goals", "docs", "tests"]);
 
 // ── Survivors: the ordinary English word, not the product pipe. ──────────────
 // Line-level, because files mix the two (harness-manager says "question
-// channel" and "a channel's board" in one file).
+// channel" and "a channel's board" in one file). English phrases ONLY: nothing
+// here may match a code identifier, a field or a string literal, because the
+// product pipe is spelled that way too (`channels: z.array(...)` is a product
+// field in workforce's tests). An earlier version listed `input\.channels` and
+// `channels: z\.array` and absorbed those product lines; review caught it.
 const SURVIVOR_LINE = new RegExp(
   [
-    "trace[- ]channel", "side[- ]?channel", "pub/sub", "channelPrefix", "CHANNEL_PREFIX",
-    "eventChannel", "abortChannel", "channel pair", "NOTIFY_CHANNEL", "LISTEN ", "msg\\.channel",
+    "trace[- ]channel", "side[- ]?channel", "pub/sub", "channel pair", "slack",
     "question channel", "label channel", "approval channel", "review channel", "scan channel",
     "exec channel", "write channel", "intent channel", "notice channel", "recovery channel",
     "trusted channel", "structured channel", "background channel", "failure channel",
-    "error channels?", "separate channels?", "slack", "content\\.delta", "unsubscribe\\(channel",
-    "subscribe\\(channel", "publish\\(channel", "two channels, two meanings", "third channel beside",
-    "through a channel (the|a) ", "point of the channel", "its own channel rather",
+    "error channels?", "separate channels?", "content\\.delta` channel", "two channels, two meanings",
+    "third channel beside", "through a channel (the|a) ", "point of the channel", "its own channel rather",
     "channel a cancellation", "either channel", "the channel does not matter", "a channel that does not require",
-    "the two channels are fed", "background channel", "for the channel\\)", "Linear access\" for the channel",
+    "the two channels are fed", "for the channel\\)", "Linear access\" for the channel",
     "the channel\\)\\.", "cheaper channel", "live channel\\. Use", "has no channel to receive",
     "alternative channel", "provenance` — a channel whose", "channel is used when available",
     "channel a hand-off refusal", "self-bias channel", "SSE channel", "opens two channels",
-    "input\\.channels", "channels: z\\.array", "Which channels should", "Four channels",
-    "outbound channel", "no channel for a per-seat", "runtime channel", "public-channel item",
-    "whole of the$", "^\\s*channel\\.$",
+    "Four channels", "outbound channel", "no channel for a per-seat", "runtime channel", "public-channel item",
   ].join("|"),
   "i",
 );
-// Files whose every hit is the English word (checked by hand, listed so the
-// line rules above stay short). A product line planted into one still counts:
-// these files are exempt only from SURVIVOR_LINE-missing lines that ALSO match
-// FILE_SURVIVOR_LINE, the narrow per-file pattern.
+// Another meaning of the word spelled in code (Redis pub/sub, Postgres LISTEN,
+// colour channels) or in a docs example about marketing channels. Scoped to the
+// one file and narrow on purpose: the first bullmq entry was /channel/i, and
+// PLANT=product showed it swallowing a planted product line whole. A product
+// line planted into any of these files still counts.
 const FILE_SURVIVORS = {
-  // Narrow on purpose. The first version was /channel/i, and PLANT=product
-  // showed it swallowing a planted product line whole.
-  "packages/bullmq/src/stream-bridge.ts": /eventChannel|abortChannel|events to a channel|Redis channel|const channel = |^\s*channel,$/,
-  "packages/ui/test/token-contrast.test.ts": /channel\(|const channel = \(n/,
+  "packages/bullmq/src/stream-bridge.ts": /eventChannel|abortChannel|channelPrefix|CHANNEL_PREFIX|events to a channel|Redis channel|const channel = |^\s*channel,$|(un)?subscribe\(channel|publish\(channel/,
+  "packages/bullmq/src/flowstate-adapter.ts": /channelPrefix/,
+  "packages/bullmq/test/flowstate-adapter.test.ts": /channelPrefix/,
+  "packages/bullmq/README.md": /channelPrefix/,
   "packages/store-postgres/src/request-store.ts": /NOTIFY_CHANNEL|msg\.channel|channel: string/,
+  "packages/ui/test/token-contrast.test.ts": /channel\(|const channel = \(n/,
+  "apps/docs/guides/human-in-the-loop.md": /Which channels should this post to|channels: z\.array\(z\.enum\(\["blog"/,
+  "apps/docs/docs/advanced/sequencer-side-chains.md": /input\.channels\.map\(\(ch\) => \(\{ channel: ch/,
+  "docs/architecture/sequencer-dsl.md": /\(input\) => input\.channels,/,
+  "docs/architecture/dispatched-work.md": /^\s*channel\.$/,
 };
 
 const isSurvivor = (path, line) =>
@@ -130,9 +140,13 @@ for (const p of tracked) {
   if (/channel/i.test(text) || /channel/i.test(p)) files.set(p, text);
 }
 if (PLANT === "unclassified") files.set("zz-planted/new-surface.ts", "export const kind = \"channel\";\n");
-if (PLANT === "product") {
+if (PLANT === "product" || PLANT === "wire") {
+  // Into a survivor file: the plant must count as product, not be absorbed.
   const p = "packages/bullmq/src/stream-bridge.ts";
-  files.set(p, `${files.get(p)}\n// a post on the support channel wakes its member seats\n`);
+  const line = PLANT === "product"
+    ? "// a post on the support channel wakes its member seats"
+    : "  channels: z.array(z.unknown()), // input.channels is the product roster";
+  files.set(p, `${files.get(p)}\n${line}\n`);
 }
 
 // ── Content: product vs survivor lines, per group. ───────────────────────────
@@ -147,7 +161,7 @@ for (const [p, text] of files) {
   for (const line of text.split("\n")) {
     if (!/channel/i.test(line)) continue;
     if (isSurvivor(p, line)) survivor++;
-    else product++;
+    else { product++; if (LIST === g) console.log(`${p}: ${line.trim().slice(0, 160)}`); }
   }
   const c = (content[g] ??= { files: 0, productLines: 0, survivorLines: 0, survivorOnlyFiles: 0 });
   if (product > 0) { c.files++; c.productLines += product; (productFiles[g] ??= []).push([p, product]); }
