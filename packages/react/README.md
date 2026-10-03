@@ -73,7 +73,8 @@ Props:
 - `flowKind?: string` — Default flow instance for child hooks (a kind, or a collection member's own id)
 - `sessionId?: string` — Default session ID
 - `userId?: string` — Required for Phase 1
-- `baseUrl?: string` — Forwarded to the client. It is where the FlowState routes are mounted, minus `/api/flows`, which the client adds. On the same origin with no base path, omit it; behind a base path, pass it (e.g. `/portal`); for an API on another origin, pass that origin plus any prefix (e.g. `https://api.example.com/portal`). See [Choosing `baseUrl`](https://flow-state.dev/docs/configuration/client#choosing-baseurl). A nested provider inherits its parent's `baseUrl`, so pass `baseUrl=""` to reset it to same-origin.
+- `baseUrl?: string` — Forwarded to the client. It is where the FlowState routes are mounted, minus the mount (`apiPath`, `/api/flows` by default), which the client adds. On the same origin with no base path, omit it; behind a base path, pass it (e.g. `/portal`); for an API on another origin, pass that origin plus any prefix (e.g. `https://api.example.com/portal`). See [Choosing `baseUrl`](https://flow-state.dev/docs/configuration/client#choosing-baseurl). A nested provider inherits its parent's `baseUrl`, so pass `baseUrl=""` to reset it to same-origin.
+- `apiPath?: string` — Where the server mounts the flow API. Default `/api/flows`. Set it to the server's mount when that differs, such as a Node host's `basePath`. Every hook and component under the provider uses it. A nested provider inherits its parent's. See [Choosing `apiPath`](https://flow-state.dev/docs/configuration/client#choosing-apipath).
 - `renderers?: RendererRegistry` — Custom renderers keyed by item type or component key
 - `children: ReactNode`
 

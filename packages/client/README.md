@@ -14,10 +14,15 @@ pnpm add @flow-state-dev/client
 import { createClient } from "@flow-state-dev/client";
 
 const client = createClient({ flowKind: "my-app", userId: "user_1" });
-// `baseUrl` is where the FlowState routes are mounted, minus `/api/flows` (the
-// client adds that). In a browser on the same origin with no base path, leave it
-// off. In Node or another server runtime, pass an absolute URL, plus any base path:
+// `baseUrl` is where the FlowState routes are mounted, minus the mount
+// (`apiPath`, `/api/flows` by default), which the client adds. In a browser on
+// the same origin with no base path, leave it off. In Node or another server
+// runtime, pass an absolute URL, plus any base path:
 //   createClient({ flowKind: "my-app", userId: "user_1", baseUrl: "http://localhost:3000" })
+// `apiPath` is where the server mounts the flow API (default `/api/flows`). Set
+// it when the server mounts it elsewhere, e.g. a Node host's `basePath`:
+//   createClient({ ..., baseUrl: "http://localhost:3000", apiPath: "/flows" })
+// Every client constructor accepts it.
 // `flowKind` binds the client to one flow instance (a kind, or a collection
 // member's own id). Sessions it starts are recorded as that instance's, and
 // returned records carry `flowId`, the owner a retry or continuation re-enters.
@@ -346,5 +351,5 @@ pnpm --filter @flow-state-dev/client test
 ## Architecture reference
 
 - [Client](https://flow-state.dev/docs/client/overview) — Routes, transport, React hooks contract
-- [Client options](https://flow-state.dev/docs/configuration/client#choosing-baseurl) — `createClient` and `FlowProvider` options, including what to pass as `baseUrl` in the browser vs. Node
+- [Client options](https://flow-state.dev/docs/configuration/client#choosing-baseurl) — `createClient` and `FlowProvider` options, including what to pass as `baseUrl` in the browser vs. Node, and [`apiPath`](https://flow-state.dev/docs/configuration/client#choosing-apipath) for a server mounted somewhere other than `/api/flows`
 - [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, SSE protocol, resume semantics

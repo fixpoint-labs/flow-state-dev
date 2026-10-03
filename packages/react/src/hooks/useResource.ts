@@ -40,6 +40,7 @@ export function useResource<TClient = unknown>(
 ): UseResourceResult<TClient> {
   const context = useFlowContext();
   const baseUrl = context.baseUrl;
+  const apiPath = context.apiPath;
 
   const entry = useMemo(() => {
     const resources = session.snapshot?.resources;
@@ -77,10 +78,10 @@ export function useResource<TClient = unknown>(
       return entry.content;
     }
 
-    const client = createResourceClient({ baseUrl });
+    const client = createResourceClient({ baseUrl, apiPath });
     const result = await client.getResourceContent(sessionId, ref);
     return result.content;
-  }, [session.sessionId, ref, baseUrl, entry?.content]);
+  }, [session.sessionId, ref, baseUrl, apiPath, entry?.content]);
 
   return { clientData, fetchContent };
 }
