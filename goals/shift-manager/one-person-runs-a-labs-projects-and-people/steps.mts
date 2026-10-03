@@ -276,7 +276,7 @@ export async function answerInInbox(world: World, suspensionId: string, action: 
 
 /** A provider error: the model never answered (QR-8), as opposed to a CoS that answered wrong. */
 function providerError(message: string): boolean {
-  return /rate.?limit|429|5\d\d |overloaded|timed? ?out|ECONNRESET|fetch failed|provider|gateway|unavailable/i.test(message);
+  return /rate.?limit|429|5\d\d |overloaded|timed? ?out|ECONNRESET|fetch failed|provider|gateway|unavailable|AI SDK stream failed/i.test(message);
 }
 
 /** The text of a message item. */
@@ -298,7 +298,7 @@ export function textOf(item: StoredItem | undefined): string {
  */
 export async function askCos(world: World, step: string, words: string): Promise<Turn | undefined> {
   const turn = await sayOnce(world, step, words);
-  if (turn !== undefined && turn.status === "failed" && providerError(turn.reply)) {
+  if (turn !== undefined && (turn.status === "failed" || turn.status === "refused") && providerError(turn.reply)) {
     const first = turn.reply;
     const again = await sayOnce(world, step, words);
     if (again !== undefined) {
