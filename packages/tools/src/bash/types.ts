@@ -180,6 +180,24 @@ export type SandboxProvider =
        * Set to `false` to disable guards. A warning is logged at initialization.
        */
       strictPaths?: boolean;
+      /**
+       * Extra environment variables for each command. Commands get a minimal
+       * environment (the `BASE_ENV_KEYS` list in `adapters/local-fs.ts`,
+       * copied from the server when set) plus these, layered over it — not
+       * the server's full `process.env`, so commands don't inherit the
+       * server's API keys by accident. This is not an isolation boundary:
+       * commands run as the server's user and can still read its
+       * environment deliberately (e.g. `/proc/$PPID/environ`). Run untrusted
+       * commands with the moat adapter or in a container.
+       */
+      env?: Record<string, string>;
+      /**
+       * Per-command deadline in milliseconds. Default: 60 000. On overrun the
+       * command's process group is killed and the result has `exitCode: 124`.
+       * A process that detaches into its own session (`setsid`, a daemon)
+       * leaves the group and can survive.
+       */
+      execTimeoutMs?: number;
     }
   | {
       type: "vercel";
