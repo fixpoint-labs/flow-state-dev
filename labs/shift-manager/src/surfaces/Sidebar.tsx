@@ -1,19 +1,19 @@
 /**
- * The sidebar (S5): in order, the organization, Jump to, Chief of Staff,
+ * The sidebar (S5): in order, the organization, Jump to, Shift Coordinator,
  * Inbox, Tasks and Roster with their counts, PROJECTS, TEAMS, and a footer
  * (BR-6) with the on-shift and on-call counts that ends in the Day shift /
  * Night shift switch.
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
  * opens always agree; every status and status count from its one
- * `seatStates` result, so they agree with Roster. PROJECTS lists the
- * workstreams directly while no projects ship (BR-9); TEAMS is one row per
+ * `seatStates` result, so they agree with Roster. PROJECTS lists each project
+ * with its workstreams, then No project; TEAMS is one row per
  * team with a status square per seat, opening Roster for that team. A failed
  * read shows its section's Retry and nothing else changes (BR-11).
  *
  * Drawn in design v2's frame: 248px wide on v2's sidebar surface, darker than
- * the page; square; labels, counts and the footer in mono (v2:26-113). Chief
- * of Staff is v2's bordered entry; Inbox, Tasks and Roster carry v2's icons;
+ * the page; square; labels, counts and the footer in mono (v2:26-113). Shift
+ * Coordinator is v2's bordered entry; Inbox, Tasks and Roster carry v2's icons;
  * Inbox's count wears the highlighter only while an ask waits, and Tasks' is
  * blue; the current row is v2's blue tint at 700; each workstream has its `#`
  * and its needs-you or running dot; TEAMS says what its counts are; and the
@@ -23,7 +23,8 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 import type { ColorScheme, ShiftLook } from "../lib/color-scheme";
 import { navigate, NO_PROJECT, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
-import { openRows, seatStates, shiftCounts, streamCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { openRows, projectsOf, seatStates, shiftCounts, streamCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import type { Workstream } from "../lib/reads";
 import { initialsOf, streamMark } from "../lib/shell";
 import { useChiefOfStaffWorking } from "../lib/working";
 import { Meta, PartialMark, SectionFailure, ShiftMark, StateSquare } from "../components/ui";
@@ -88,9 +89,9 @@ function NavIcon({ name }: { name: keyof typeof ICON_PATHS }) {
 }
 
 /**
- * The Chief of Staff entry, v2's bordered card row (v2:52-56): an 18px CS
+ * The Shift Coordinator entry, v2's bordered card row (v2:52-56): an 18px SC
  * square, the name at 600, inverted to ink when it is the current screen, and
- * a blue dot while the chief of staff works on a line sent from this page.
+ * a blue dot while the shift coordinator works on a line sent from this page.
  */
 function ChiefOfStaffEntry({ active }: { active: boolean }) {
   const working = useChiefOfStaffWorking();
@@ -111,10 +112,10 @@ function ChiefOfStaffEntry({ active }: { active: boolean }) {
         data-look="avatar"
         aria-hidden
       >
-        CS
+        SC
       </span>
       <span className="flex-1 truncate" data-look="nav-label">
-        Chief of Staff
+        Shift Coordinator
       </span>
       <span className={`size-[7px] shrink-0 ${working ? "bg-info" : ""}`} data-look="working" data-working={working} aria-hidden />
     </button>
@@ -232,6 +233,68 @@ function ShiftSwitch({ look }: { look: ShiftLook }) {
   );
 }
 
+/**
+ * PROJECTS (BR-22): each project by title, its workstreams beneath it, a
+ * project with none still listed; then No project with every workstream no
+ * project lists, only when there is one. A workstream id whose channel left
+ * the tree is shown as gone, with no link.
+ */
+function ProjectsSection({
+  snapshot,
+  route,
+  marks,
+  onRetry,
+}: {
+  snapshot: LoadedSnapshot;
+  route: Route;
+  /** Each workstream's square, by workstream id. */
+  marks: ReadonlyMap<string, "needs" | "run" | null>;
+  onRetry: () => void;
+}) {
+  const view = projectsOf(snapshot);
+  if (!view.ok) {
+    const what = snapshot.inventory.ok ? "Projects" : "Workstreams";
+    return <SectionFailure what={what} failure={view.failure} onRetry={onRetry} testId="projects-failure" />;
+  }
+  const workstreamItem = (w: Workstream) => (
+    <StreamItem key={w.id} id={w.id} state={marks.get(w.id) ?? null} active={route.level === "workstream" && route.channelId === w.id} />
+  );
+  const projectItem = (projectId: string, label: string) => (
+    <NavItem
+      label={label}
+      active={route.level === "project" && route.projectId === projectId}
+      onClick={() => navigate({ level: "project", projectId, tab: "stream" })}
+      testId={`nav-project-${projectId}`}
+    />
+  );
+  return (
+    <>
+      {view.value.projects.map(({ project, workstreams }) => (
+        <div key={project.id} data-testid="project-group" data-project-id={project.id}>
+          {projectItem(project.id, project.title)}
+          <div className="pl-3">
+            {workstreams.map(({ id, workstream }) =>
+              workstream === undefined ? (
+                <p key={id} className="px-2 py-1 text-xs text-muted-foreground" data-testid="nav-workstream-gone" data-channel-id={id}>
+                  {id} · no longer in the Lab
+                </p>
+              ) : (
+                workstreamItem(workstream)
+              ),
+            )}
+          </div>
+        </div>
+      ))}
+      {view.value.noProject.length === 0 ? null : (
+        <div data-testid="project-group" data-project-id={NO_PROJECT}>
+          {projectItem(NO_PROJECT, "No project")}
+          <div className="pl-3">{view.value.noProject.map(workstreamItem)}</div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gaps; onJump: () => void; look?: ShiftLook }) {
   const { snapshot, refresh, clients } = useLab();
   const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
@@ -310,21 +373,7 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
           PROJECTS
         </Heading>
         <div data-testid="projects">
-          {loaded === undefined ? null : loaded.inventory.ok ? (
-            <>
-              <p className="px-2 pb-1 text-xs text-muted-foreground">{gaps.projectWorkstreams.title}; workstreams:</p>
-              {loaded.inventory.value.workstreams.map((w) => (
-                <StreamItem
-                  key={w.id}
-                  id={w.id}
-                  state={dots.get(w.id) ?? null}
-                  active={route.level === "workstream" && route.channelId === w.id}
-                />
-              ))}
-            </>
-          ) : (
-            <SectionFailure what="Workstreams" failure={loaded.inventory.failure} onRetry={retry} testId="projects-failure" />
-          )}
+          {loaded === undefined ? null : <ProjectsSection snapshot={loaded} route={route} marks={dots} onRetry={retry} />}
         </div>
 
         <Heading testId="teams-heading" aside="on shift">

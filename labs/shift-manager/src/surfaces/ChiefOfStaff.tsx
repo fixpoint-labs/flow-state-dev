@@ -53,7 +53,7 @@ export function ChiefOfStaffView({ snapshot, gaps }: { snapshot: LoadedSnapshot;
 }
 
 /**
- * v2's Chief of Staff frame (v2:122-180): the feed in a 720px column padded
+ * v2's Shift Coordinator frame (v2:122-180): the feed in a 720px column padded
  * 36/32, and the composer under it, outside the scroll, in the same column.
  */
 function Frame({ children, composer }: { children: ReactNode; composer?: ReactNode }) {
@@ -95,10 +95,10 @@ function Header({ snapshot }: { snapshot: LoadedSnapshot }) {
         data-look="avatar"
         aria-hidden
       >
-        CS
+        SC
       </span>
       <div className="min-w-0">
-        <ScreenTitle scale="cos">Chief of Staff</ScreenTitle>
+        <ScreenTitle scale="cos">Shift Coordinator</ScreenTitle>
         {working ? (
           <Meta className="block text-[11.5px] text-muted-foreground" testId="cos-sub">
             working…
@@ -202,7 +202,7 @@ function Conversation({ snapshot, gaps, lead }: { snapshot: LoadedSnapshot; gaps
     return (
       <Frame>
         {lead}
-        <SectionFailure what="The chief of staff" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="cos-seat-failure" />
+        <SectionFailure what="The shift coordinator" failure={snapshot.inventory.failure} onRetry={() => void refresh()} testId="cos-seat-failure" />
       </Frame>
     );
   }
@@ -362,7 +362,7 @@ function Talk({
 /**
  * The session's items as stored, with the same render filters the task
  * session applies. Each item is the registry's own rendering; around it the
- * shell draws v2's label over each of the seat's messages, "CHIEF OF STAFF"
+ * shell draws v2's label over each of the seat's messages, "SHIFT COORDINATOR"
  * and the time it was written (v2:135), and an ask the seat raised as a
  * needs-you line that opens Inbox, where it is answered.
  */
@@ -400,7 +400,7 @@ function Items({ stored }: { stored: SessionItems }) {
             >
               {item.type === "message" && role === "assistant" ? (
                 <p className="mb-2.5 flex items-baseline gap-2 font-mono text-[10.5px] font-medium tracking-[0.12em] text-muted-foreground" data-look="message-label">
-                  CHIEF OF STAFF
+                  SHIFT COORDINATOR
                   <span className="tracking-normal" data-look="message-time">
                     {clockTime(item.ts)}
                   </span>
@@ -430,7 +430,7 @@ function Items({ stored }: { stored: SessionItems }) {
   );
 }
 
-/** The right panel at Chief of Staff: STREAMS (BR-19) and ON CALL, the workers Roster reads on call. */
+/** The right panel at Shift Coordinator: STREAMS (BR-19) and ON CALL, the workers Roster reads on call. */
 export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps }) {
   const { refresh } = useLab();
   const streams = streamCounts(snapshot);

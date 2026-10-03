@@ -37,18 +37,23 @@ workforce/
     workers/coder.mts                              kind `coder`
   org/
     resources/engineering-handbook.md              the coordinator's document
+    resources/projects.ts                          the projects collection, and its rooms' seats and charter
   teams/
     eng/
       resources/feature-brief.md                   the working seat's brief
       skills/commit-style/SKILL.md                 every eng seat holds it
       channels/feature/CHANNEL.md                  holds the board, `boards: [work]`; driven by the third check
+      channels/triage/CHANNEL.md                   no board, in no default project
       workers/em/WORKER.md                         flow: em      — names no harness
       workers/coder/WORKER.md                      flow: coder
       workers/coder/skills/branch-naming/SKILL.md  the coder's alone
       workers/reviewer/WORKER.md                   flow: coder   — declared, never woken
+    ops/
+      channels/release/CHANNEL.md                  no board; the cross-team workstream of Shift Manager's Storefront project
+      channels/oncall/CHANNEL.md                   no board, in no default project
 ```
 
-Seven Markdown files, and **none of them is named anywhere in this directory's
+Eleven Markdown files, and **none of them is named anywhere in this directory's
 code** except the root of the tree. Everything else is walked.
 
 Nothing in either `WORKER.md` names Claude Code, Codex or Cursor. The harness is

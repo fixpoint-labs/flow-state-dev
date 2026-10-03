@@ -33,3 +33,12 @@ export const SEAT_INVENTORY_RESOURCE = "seatInventory";
  * Pinned; see `roster/collections.ts`'s header.
  */
 export const HIRED_ROSTER_BROWSER_PATTERN = "workforce/roster/*";
+
+/** The capability name a worker file spells under `capabilities:`. */
+export const SEAT_HIRE_CAPABILITY = "seat-hire";
+
+/**
+ * The seat-hire capability's tool names. A seat a tool hires never carries
+ * them: roster admin stays with the seats the app declares.
+ */
+export const SEAT_ADMIN_TOOLS: readonly string[] = ["hire", "fire", "rehire", "brokenSeats"];

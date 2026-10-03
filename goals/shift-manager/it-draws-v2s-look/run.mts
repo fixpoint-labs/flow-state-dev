@@ -122,6 +122,8 @@ export type Store = {
   running: number;
   /** Whether the Lab has a chief-of-staff seat. */
   chiefOfStaff: boolean;
+  /** Whether the person's conversation with it holds a reply: only the desk Lab's sweep sends a line. */
+  replied: boolean;
   /** The person's pending asks, across the seats' sessions. */
   asks: number;
   /**
@@ -250,7 +252,6 @@ const LOOK: Row[] = [
 export type Exception = { id: string; select: string; why: string; radius?: "skip" };
 const EXCEPTIONS: Exception[] = [
   { id: "organization switcher", select: "[data-testid=org-switcher], [data-testid=org-switcher] *", why: "kept by the epic (ER-1); v2's brand header waits on FIX-1650 for an organization's display name" },
-  { id: "PROJECTS note", select: "[data-testid=projects] > p", why: "the named gap PROJECTS keeps until FIX-1650 ships projects" },
   { id: "TEAMS unread note", select: "[data-testid=teams-roster-unread]", why: "says why TEAMS can't be read; v2 draws no failed state" },
   { id: "partial mark", select: "[data-testid=partial-mark]", why: "Shift Manager's mark for a partial status read; v2 draws no failed state" },
   { id: "section failure", select: "[data-testid$=-failure], [data-testid$=-failure] *", why: "a section's Retry; v2 draws no failed state" },
@@ -364,7 +365,7 @@ function sweep(args: { rows: Array<{ id: string; select: string }>; exceptions: 
     boardCount: document.querySelector("[data-testid=tab-count-board]")?.textContent ?? null,
     sidebarAndCos: {
       inbox: ((el) => (el === null ? null : { text: el.textContent ?? "", waiting: el.getAttribute("data-waiting") }))(document.querySelector("[data-testid=nav-inbox-count]")),
-      dots: Array.from(document.querySelectorAll("[data-testid^=nav-workstream-]")).map((el) => ({
+      dots: Array.from(document.querySelectorAll("[data-testid^=nav-workstream-]:not([data-testid=nav-workstream-gone])")).map((el) => ({
         channel: el.getAttribute("data-testid")!.slice("nav-workstream-".length),
         dot: el.getAttribute("data-dot"),
       })),
@@ -587,6 +588,7 @@ async function readStore(api: LabApi, tree: string, userId: string): Promise<Sto
     seats: seats.length,
     running,
     chiefOfStaff: seats.some((s) => s.name === "chief-of-staff"),
+    replied: false,
     asks: [...asks.values()].reduce((a, b) => a + b, 0),
     channels,
   };
@@ -747,7 +749,8 @@ async function checkLab(lab: LabName, pages: string, failures: Failures, evidenc
     // The page read the Lab before the row was filed; read it again.
     await page.reload();
     await page.getByTestId("shell").waitFor({ timeout: 20_000 });
-    const store = await readStore(api, LABS[lab].tree, injected.userId);
+    // The desk Lab's exchange above waited for the seat's reply to be drawn.
+    const store = { ...(await readStore(api, LABS[lab].tree, injected.userId)), replied: lab === "desk" };
     evidence.push(`${lab}: ${store.teams} team(s), ${store.seats} seats, ${store.running} running, ${store.asks} ask(s) pending, chief of staff ${store.chiefOfStaff ? "yes" : "no"}`);
 
     const counts: string[] = [];

@@ -3,7 +3,7 @@
  */
 import { buildFlowApiUrl, requestJson, resolveFetch } from "../internal/http";
 import type {
-  ClientFetch,
+  ClientTransportOptions,
   DebugCollectionItemsResponse,
   DebugResourcesResponse,
   DebugSuspensionsResponse,
@@ -17,13 +17,8 @@ import type {
   ChildSessionSummary
 } from "../types";
 
-/**
- * Shared options for session API clients.
- */
-export type CreateSessionClientOptions = {
-  baseUrl?: string;
-  fetcher?: ClientFetch;
-};
+/** Options for session API clients: the shared {@link ClientTransportOptions}. */
+export type CreateSessionClientOptions = ClientTransportOptions;
 
 /**
  * Query options for listing sessions.
@@ -200,6 +195,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: "/api/flows/sessions",
         query: asQuery(listOptions)
       })
@@ -213,6 +209,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}`
       })
     });
@@ -228,6 +225,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/requests`,
         query: asQuery({
           status: listOptions?.status,
@@ -251,6 +249,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${encodeURIComponent(parentId)}/children`,
         query: asQuery({
           limit: listOptions?.limit,
@@ -280,6 +279,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/state`,
         query: asQuery({
           include_items: stateOptions?.includeItems,
@@ -309,6 +309,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/${encodeURIComponent(flowKind)}/sessions`
       }),
       init: {
@@ -339,6 +340,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/metadata`
       }),
       init: {
@@ -360,6 +362,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/debug/resources`
       })
     });
@@ -373,6 +376,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/debug/suspensions`,
         query: asQuery({
           status: listOptions?.status,
@@ -393,6 +397,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/debug/resources/${encodeURIComponent(requireId(ref, "ref"))}/items`,
         query: asQuery({
           limit: listOptions?.limit,
@@ -409,6 +414,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
   ): Promise<string> => {
     const url = buildFlowApiUrl({
       baseUrl: options.baseUrl,
+      apiPath: options.apiPath,
       path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/debug/resources/${encodeURIComponent(requireId(ref, "ref"))}/content`
     });
     const res = await fetcher(url);
@@ -427,6 +433,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
     // mounted as `:ref/*topic/content` and accepts slashes.
     const url = buildFlowApiUrl({
       baseUrl: options.baseUrl,
+      apiPath: options.apiPath,
       path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/debug/resources/${encodeURIComponent(requireId(ref, "ref"))}/${topic
         .split("/")
         .map(encodeURIComponent)
@@ -444,6 +451,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
+        apiPath: options.apiPath,
         path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}`
       }),
       init: {

@@ -15,6 +15,8 @@ import { defineSeatInventoryCollection } from "../src/inventory/collections";
 const captured = vi.hoisted(() => ({
   hire: undefined as unknown,
   fire: undefined as unknown,
+  brokenSeats: undefined as unknown,
+  rehire: undefined as unknown,
 }));
 
 vi.mock("../src/seat-hire-blocks", async () => {
@@ -23,10 +25,9 @@ vi.mock("../src/seat-hire-blocks", async () => {
   );
   return {
     ...actual,
-    createSeatHireBlocks: (options: Parameters<typeof actual.createSeatHireBlocks>[0]) => {
-      const real = actual.createSeatHireBlocks(options);
-      captured.hire = real.hire;
-      captured.fire = real.fire;
+    buildSeatHire: (options: Parameters<typeof actual.buildSeatHire>[0]) => {
+      const real = actual.buildSeatHire(options);
+      Object.assign(captured, real.blocks);
       return real;
     },
   };
@@ -71,15 +72,29 @@ async function listedIds(ctx: { resources: object }, key: string, field: string)
 }
 
 describe("the capability mounts the factory's blocks", () => {
-  it("puts that call's hire and fire into the tools preset", () => {
+  it("with askBefore omitted, puts that call's hire, fire and brokenSeats in the preset as they are", () => {
     const cap = createSeatHireCapability({
       register: () => {},
       unregister: () => true,
     });
-    const tools = presetTools(cap);
-    expect(tools).toHaveLength(2);
+    const tools = presetTools(cap) as Array<{ name: string }>;
+    expect(tools.map((tool) => tool.name)).toEqual(["hire", "fire", "brokenSeats", "rehire"]);
     expect(tools[0]).toBe(captured.hire);
     expect(tools[1]).toBe(captured.fire);
+    expect(tools[2]).toBe(captured.brokenSeats);
+    // rehire always asks, so the tool is never the bare block.
+    expect(tools[3]).not.toBe(captured.rehire);
+  });
+
+  it("wraps only the verbs askBefore names", () => {
+    const cap = createSeatHireCapability({
+      register: () => {},
+      unregister: () => true,
+      askBefore: ["fire"],
+    });
+    const tools = presetTools(cap);
+    expect(tools[0]).toBe(captured.hire);
+    expect(tools[1]).not.toBe(captured.fire);
   });
 });
 

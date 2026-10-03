@@ -237,9 +237,11 @@ export function TurnComposer({
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSend) return;
+    const submitted = draft;
     const message = draft.trim();
     if (await run(() => send(message))) {
-      setDraft("");
+      // Only the line that was sent goes: anything typed since stays.
+      setDraft((current) => (current === submitted ? "" : current));
       onDelivered?.(message);
     }
   };

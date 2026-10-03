@@ -38,6 +38,8 @@ export {
   registerHiredSeat,
 } from "./register-hired-seat";
 
+export { newIncarnation, tagIncarnation } from "./incarnation";
+
 export {
   resolveHiredSeatLocation,
   type HiredSeatLocation,

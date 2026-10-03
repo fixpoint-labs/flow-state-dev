@@ -308,7 +308,7 @@ await runGoal(async () => {
       const stub = stubFor(seen);
       const { lab } = await open("handed-a3", stub.slot, fixture.approved, { root });
       try {
-        const members = (lab.roster.channels[0]?.declared.members as string[] | undefined) ?? [];
+        const members = (lab.roster.channels.find((c) => c.id === lab.channelId)?.declared.members as string[] | undefined) ?? [];
         if (members.includes(fixture.assignedSeat)) note("a3", "the tree copy still lists the coder as a member");
         const refused = await approve(lab);
         if (refused !== undefined) note("a3", refused);
