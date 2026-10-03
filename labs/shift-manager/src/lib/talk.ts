@@ -120,7 +120,7 @@ async function runTalkAction(
  */
 export class TalkAnswerUnread extends Error {
   constructor(action: string, cause: unknown) {
-    super(`The Lab finished ${action}, but its answer could not be read: ${cause instanceof Error ? cause.message : String(cause)}`);
+    super(`The Lab finished ${action}, but its answer could not be read: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
     this.name = "TalkAnswerUnread";
   }
 }
@@ -233,7 +233,8 @@ export async function readRoomTail(
  *
  * @returns the line, or `undefined` when the Lab completed the post but its
  * answer couldn't be read back: the line is in the room all the same, so it
- * must not be offered again as unsent. The room's next read shows it.
+ * must not be offered again as unsent. The room's next read shows it. (The
+ * same outcome as `send.ts`'s `unconfirmed`: it may be there; don't resend.)
  */
 export async function postToRoom(clients: LabClients, kind: string, sessionId: string, body: string): Promise<RoomLine | undefined> {
   let output: unknown;
