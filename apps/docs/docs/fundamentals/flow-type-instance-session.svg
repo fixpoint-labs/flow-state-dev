@@ -3,19 +3,28 @@
   <desc id="desc">defineFlow returns a definition in your code: its kind, what a copy's settings may carry, and the webhooks, schedules and MCP entry points every copy serves. Calling it makes an instance with its own id and settings, which you register; the settings stay in the process and are never stored. Requests address an instance by its id. Sessions live in the store and are owned by the instance that created them; they record the kind only as a label. A session named through a different instance is refused.</desc>
   <defs>
     <style>
-      .bg { fill: #ffffff; }
-      .wall-sess { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 2; }
-      .wall-org { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
-      .wall-file { fill: #f8fafc; stroke: #334155; stroke-width: 2; }
-      .card { fill: #ffffff; stroke: #334155; stroke-width: 1.5; }
-      .card-sess { fill: #ffffff; stroke: #1d4ed8; stroke-width: 1.5; }
-      .card-line { fill: #ffffff; stroke: #15803d; stroke-width: 1.5; }
-      .box { fill: #f8fafc; stroke: #334155; stroke-width: 1.5; }
-      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
-      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
-      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: #334155; }
-      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
-      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #0f172a; }
+      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
+              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
+              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
+              --faint:#94a3b8; --no:#b91c1c; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
+                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
+                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
+                --faint:#64748b; --no:#f87171; } }
+      .bg { fill: var(--bg); }
+      .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 2; }
+      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 2; }
+      .wall-file { fill: var(--box); stroke: var(--card-line); stroke-width: 2; }
+      .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.5; }
+      .card-sess { fill: var(--card); stroke: var(--sess); stroke-width: 1.5; }
+      .card-line { fill: var(--card); stroke: var(--org); stroke-width: 1.5; }
+      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
     </style>
   </defs>
 
