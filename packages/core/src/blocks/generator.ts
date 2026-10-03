@@ -1429,16 +1429,18 @@ async function executeOwnedStepToolCalls(
     })
   );
 
-  // First-suspension-wins: after ALL siblings settle, surface exactly one gate.
+  // A mapper that threw is the framework's failure, not the tool's: fail the
+  // run rather than tell the model the call failed. Checked before any gate:
+  // the failure is already recorded, so a sibling's approval could only lead
+  // to a resume that fails on it.
   for (const s of settled) {
-    if (!s.ok && s.error instanceof SuspensionError) {
+    if (!s.ok && s.error instanceof ToolModelOutputMapError) {
       throw s.error;
     }
   }
-  // A mapper that threw is the framework's failure, not the tool's: fail the
-  // run rather than tell the model the call failed.
+  // First-suspension-wins: after ALL siblings settle, surface exactly one gate.
   for (const s of settled) {
-    if (!s.ok && s.error instanceof ToolModelOutputMapError) {
+    if (!s.ok && s.error instanceof SuspensionError) {
       throw s.error;
     }
   }

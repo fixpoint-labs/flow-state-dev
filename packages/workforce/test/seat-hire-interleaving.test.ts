@@ -460,3 +460,85 @@ describe("hire, fire and rehire interleaved at every store call", () => {
     expect(windows).toEqual([]);
   }, 120_000);
 });
+
+/**
+ * Two crashes in a row leave a hired seat's address with an inventory row
+ * from a hire the roster no longer has: a fire of A stopped after deleting
+ * A's roster row and before deleting A's inventory row, then the replacement
+ * hire B stopped after writing its roster row and before publishing its
+ * inventory row. Every boot after that reloads B. Its row has to land, or B
+ * is never listed (the team list wants the roster's incarnation on the
+ * inventory row) however many times the app restarts.
+ */
+describe("a boot over the row a fire left behind", () => {
+  const staleA = { id: "acme.support.ada", kind: "desk", door: "run", hired: true, incarnation: "i-A" };
+  const rosterRow = (incarnation: string) =>
+    toHiredSeatRow({ seatId: "support.ada", flow: "desk", settings: { queue: "q" }, owningOrgId: "acme", incarnation });
+  const boot = (incarnation: string, label = "boot"): Op => ({
+    action: "boot",
+    input: { seats: [{ id: "acme.support.ada", kind: "desk", door: "run", hired: true, incarnation }] },
+    label,
+  });
+
+  it("replaces it with the hire the roster holds, so that hire is listed", async () => {
+    const w = await world();
+    await w.seed(`${ROSTER}support.ada`, rosterRow("i-B") as never);
+    await w.seed(`${SEATS}acme.support.ada`, staleA);
+
+    for (const label of ["first boot", "second boot"]) {
+      expect((await w.run(boot("i-B", label))).error).toBeUndefined();
+      const row = (await w.rows(SEATS))["acme.support.ada"];
+      expect(row, label).toMatchObject({ hired: true, incarnation: "i-B" });
+      expect(
+        listedSeatRows("acme", [row as { id: string; hired: boolean; incarnation: string }], [{ seatId: "support.ada", incarnation: "i-B" }]),
+        label
+      ).toHaveLength(1);
+    }
+  });
+
+  it("leaves it to a later hire: a boot carrying a hire the roster no longer holds writes nothing", async () => {
+    // The roster has moved on to C, which has not published yet. A boot that
+    // read B before that must not put B's row there.
+    const w = await world();
+    await w.seed(`${ROSTER}support.ada`, rosterRow("i-C") as never);
+    await w.seed(`${SEATS}acme.support.ada`, staleA);
+
+    expect((await w.run(boot("i-B"))).error).toBeUndefined();
+    expect((await w.rows(SEATS))["acme.support.ada"]).toEqual(staleA);
+  });
+
+  it("never replaces a newer hire's published row", async () => {
+    const w = await world();
+    const published = { ...staleA, incarnation: "i-C" };
+    await w.seed(`${ROSTER}support.ada`, rosterRow("i-C") as never);
+    await w.seed(`${SEATS}acme.support.ada`, published);
+
+    expect((await w.run(boot("i-B"))).error).toBeUndefined();
+    expect((await w.rows(SEATS))["acme.support.ada"]).toEqual(published);
+  });
+
+  it("with a fire and a replacement hire landing at any two of its store calls", async () => {
+    const { runs, windows } = await everyInterleaving(
+      "boot (roster's hire, stale row) | fire, replacement hire",
+      async (w) => {
+        expect((await w.run(hireAda("first", "setup"))).error).toBeUndefined();
+        // Then the two crashes: the first hire's inventory row is replaced by
+        // a fired hire's leftover, which is what the boot finds.
+        await w.seed(`${SEATS}acme.support.ada`, staleA);
+        return {};
+      },
+      {
+        action: "boot",
+        input: async (rows) => ({
+          seats: [{ id: "acme.support.ada", kind: "desk", door: "run", hired: true, incarnation: (await rows(ROSTER))["support.ada"]!.incarnation }],
+        }),
+        label: "boot",
+      },
+      [fireAda, hireAda("second", "replacement")],
+      "support.ada"
+    );
+    expect(runs).toBeGreaterThan(2);
+    expect(windows).toEqual([]);
+  }, 120_000);
+});
+

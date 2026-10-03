@@ -70,7 +70,7 @@ export const GAPS = {
   chiefOfStaff: {
     /** BR-11: the Lab's inventory holds no chief-of-staff seat. */
     none: {
-      title: "This Lab declares no chief of staff",
+      title: "This Lab declares no shift coordinator",
       body: "Shift Manager talks to the seat named chief-of-staff. Declare one on the built-in agent kind: in a team's workers/ folder today, or under org/workers/ once org seats ship (FIX-1719).",
     },
     /** BR-12: drawn before the seats' ids. */

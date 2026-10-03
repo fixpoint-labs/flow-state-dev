@@ -221,7 +221,7 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
 
         <div className="mt-3 space-y-0.5">
           <NavItem
-            label="Chief of Staff"
+            label="Shift Coordinator"
             active={route.level === "cos"}
             onClick={() => navigate({ level: "cos" })}
             testId="nav-cos"

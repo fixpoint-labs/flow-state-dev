@@ -109,7 +109,7 @@ The chief of staff reads workstream channels; it never opens, closes, or renames
 
 - Workforce does not staff a task board. A task's `assignee` names a board worker, never a seat.
 - It does not replace flows, sessions, or resources. Sessions and resources live on the seat you hired.
-- Hiring at runtime adds to the roster in your files. It doesn't replace the tree.
+- Hiring at runtime writes no files. It stores the new seat as a row in the hired roster, which the app reads back at start alongside the seats your files declare, and the tree stays as you wrote it. See [Hiring while the app runs](./durable-hire.md).
 
 ## Related pages
 

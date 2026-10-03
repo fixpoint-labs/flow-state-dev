@@ -137,6 +137,11 @@ export const PROJECTS_SESSION = "devforce-projects";
 export const LAB_USER_ID = "u_devforce_lab";
 export const LAB_ORG_ID = "devforce-lab";
 
+/** The roster tools this Lab has wait for a person before they change anything. */
+const ASKS_BEFORE = ["fire"] as const;
+/** Every roster tool that waits for a person here: those, and `rehire`, which always does. */
+const ASKS_FIRST = new Set<string>([...ASKS_BEFORE, "rehire"]);
+
 /**
  * Host-owned verified identity for this lab's HTTP door (FIX-1515).
  *
@@ -352,9 +357,9 @@ export interface OpenLabOptions {
    * Raise the EM seat's ask on open: one pending approval, in the EM seat's
    * own session, naming this feature (`ask.mts`).
    *
-   * **Absent means absent**, as with `channels`: no durable execution, no
-   * request, no store write, and the other checks open exactly as they
-   * did. Present turns durable execution on, because the answer arrives later
+   * **Absent means absent**, as with `channels`: no request and no store write
+   * for it (durable execution stays on when a seat holds `fire` or `rehire`).
+   * Present turns durable execution on, because the answer arrives later
    * through the engine's resume route, and open fails, naming the step, if the
    * ask could not be raised.
    */
@@ -663,7 +668,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // seat holds post, hire, fire, the repairs and the project writes only by
   // naming them in its `tools:`, and in this tree only the chief of staff does. A hire lands at
   // once; a fire, and a repair always, waits for a person's Approve in Inbox,
-  // which needs durable execution (`ask` turns it on). The kind mounts no
+  // which needs durable execution (on whenever a seat holds one). The kind mounts no
   // members' private roster, so the chief of staff lists, fires and repairs
   // the organization's seats only. The register reaches
   // the flow state built below, so it is bound once that exists.
@@ -683,10 +688,15 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     instanceAt: (id) => registrar?.registry.get(id),
     allowKinds: [CODER_KIND, AGENT_KIND],
     channelBoards: channelBoardIds(roster.channels),
-    askBefore: ["fire"],
+    askBefore: [...ASKS_BEFORE],
     // Roster admin stays with the chief of staff: a hired seat can't be given it.
     refuseRosterAdmin: true,
   });
+  // A declared seat holding a tool that waits for a person (`rehire` always
+  // does) needs durable execution, whatever else the caller asked for.
+  const asksBeforeChanging = roster.workers.some((worker) =>
+    ((worker.declared.tools as string[] | undefined) ?? []).some((tool) => ASKS_FIRST.has(tool)),
+  );
   kinds[AGENT_KIND] = defineAgentWorkerFlow({
     // The project tools a seat names in `tools:`. The kind carries them, and
     // only the chief of staff's line names them.
@@ -784,8 +794,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // not answer an unauthenticated HTTP read (FIX-1515 / BR-17).
     resolvePrincipal: resolveLabPrincipal,
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
-    // Only when the ask is: the other checks run without it, as before.
-    ...(options.ask === undefined ? {} : { durable: true }),
+    // When something can wait for a person: the EM's ask, or a seat holding a
+    // roster tool that asks first (`fire`, `rehire`). Trees with neither run
+    // without it, as before.
+    ...(options.ask === undefined && !asksBeforeChanging ? {} : { durable: true }),
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),
   } as never);
 
