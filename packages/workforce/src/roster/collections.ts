@@ -103,7 +103,8 @@ export const hiredSeatRowSchema = z.object({
    * fresh id on every hire and re-hire, stamped on the inventory row it
    * publishes and the seat minted from it. `null` on a row written before the
    * field (BP-023, BP-030), or by a writer that doesn't stamp one.
-   * Server-side only: not in the browser projection.
+   * Published to browsers by the org collection, beside `seatId`, `flow` and
+   * `instructions`, so a browser can join a roster row to its inventory row.
    */
   incarnation: z.string().nullable().default(null),
 });

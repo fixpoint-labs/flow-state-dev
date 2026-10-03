@@ -4,22 +4,6 @@
  * the issue that fills a surface replaces its entry here and nothing else.
  */
 export const GAPS = {
-  projectStream: {
-    title: "No project stream yet",
-    body: "Projects arrive with FIX-1650. Until then every workstream is listed on its own under PROJECTS.",
-  },
-  projectBoard: {
-    title: "No project board yet",
-    body: "A project's board gathers its workstreams' boards once projects ship (FIX-1650).",
-  },
-  projectWorkstreams: {
-    title: "No project holds a workstream yet",
-    body: "Grouping workstreams into projects arrives with FIX-1650. The sidebar lists every workstream directly meanwhile.",
-  },
-  projectBrief: {
-    title: "No project brief yet",
-    body: "A project's brief arrives with FIX-1650.",
-  },
   results: {
     title: "No results yet",
     body: "What a workstream has produced arrives with FIX-1651.",
@@ -86,7 +70,7 @@ export const GAPS = {
   chiefOfStaff: {
     /** BR-11: the Lab's inventory holds no chief-of-staff seat. */
     none: {
-      title: "This Lab declares no chief of staff",
+      title: "This Lab declares no shift coordinator",
       body: "Shift Manager talks to the seat named chief-of-staff. Declare one on the built-in agent kind: in a team's workers/ folder today, or under org/workers/ once org seats ship (FIX-1719).",
     },
     /** BR-12: drawn before the seats' ids. */

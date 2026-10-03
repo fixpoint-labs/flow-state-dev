@@ -3,12 +3,10 @@
  * /api/flows/transcribe endpoint as raw binary (no base64 encoding).
  */
 import { buildFlowApiUrl, requestJson, resolveFetch } from "../internal/http";
-import type { ClientFetch } from "../types";
+import type { ClientTransportOptions } from "../types";
 
-export type TranscribeOptions = {
-  baseUrl?: string;
-  fetcher?: ClientFetch;
-};
+/** Options for {@link transcribe}: the shared {@link ClientTransportOptions}. */
+export type TranscribeOptions = ClientTransportOptions;
 
 export type TranscribeRequest = {
   audio: Uint8Array | Blob;
@@ -42,6 +40,7 @@ export async function transcribe(
     fetcher,
     url: buildFlowApiUrl({
       baseUrl: options?.baseUrl,
+      apiPath: options?.apiPath,
       path: "/api/flows/transcribe",
       query: {
         userId: request.userId,

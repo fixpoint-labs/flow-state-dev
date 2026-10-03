@@ -101,6 +101,9 @@ If all clear, move to Step 3.
      deliverables** (not the whole issue), and base it on the dependency's branch if it has one
      (`git fetch origin {dep branch} && git checkout -B fix/{ISSUE-ID}-{sub-PR id} origin/{dep branch}`)
      — else on `origin/main` as above. The branch must include the merged spec; do not repeat its merge per sub-PR.
+     When the git base is a dependency branch, the GitHub PR you open in Step 9 is stacked:
+     mark it there (`DO NOT MERGE` title, body names the dependency, `--base` is that branch,
+     not main).
 2. **Confirm the implementation base contains the retained spec and approved amendments.** If merge is still pending, return the exact gate blocker rather than starting code. A disclosed in-flight POC does not waive spec merge; later evidence is folded through a new amendment PR.
 3. Update the Linear issue state to "In Development" using `save_issue`
 
@@ -390,7 +393,15 @@ Once approved:
 1. Ensure all changes are committed with conventional commit messages referencing the issue ID
 2. Push: `git push -u origin fix/{ISSUE-ID}`
 3. Open PR with `gh pr create`:
-   - Title: concise description (under 70 characters)
+   - Title: concise description (under 70 characters). The stacked `DO NOT MERGE until
+     #<dependency PR> is on main — stacked on <branch>` prefix is **outside** that budget.
+     **Stacked (GitHub base is another feature branch, not main):** title **starts with**
+     that prefix. Open with `--base <dependency-branch>` — never `--base main` while
+     stacked. Body states that dependency PR and that the GitHub base is not main. After
+     the dependency merges, `gh pr edit --base main` and remove the `DO NOT MERGE` prefix;
+     the diff is only this slice. Do not report the PR as ready to merge while its GitHub
+     base is not main. Canonical:
+     [`orchestration.md`](../../../docs/contributing/orchestration.md) → Worktree branching.
    - **Body: follow [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout"** — canonical for the block order, what collapses, when a diagram earns its place, and what never collapses. Don't restate it here. What's specific to an **implementation** PR is the mapping:
 
      - **Block 1 (the problem)** ← the spec's people table condensed to a sentence on the spec route, or the reported failure on a bug. **Block 3 (what's asked of you)** ← the Key Decisions & Ramifications from Step 7, **sorted and shaped per [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → §3** — it owns the filters, the three-decision ceiling (live forks included), the subheading-and-bullets shape, and where the filtered calls go; don't re-derive them here. Where the spec already settled everything and nothing new was decided, **say exactly that in one line** — its absence reads as an omission.
@@ -425,7 +436,7 @@ Once the PR is open, this skill owns it until it merges. Whenever the skill is r
 
 #### 10.1: Enumerate every comment and review on the PR
 
-**First, get onto the PR branch.** Under a coordinator each feedback round runs in a *fresh* worktree, so don't assume you're still on `fix/{ISSUE-ID}`. Run `gh pr view` for the identifiers, extract `headRefName`, then check out the PR head from origin before enumerating (and before any later change or `git push`) — do **not** re-base it on `main`, that would drop the PR's commits:
+**First, get onto the PR branch.** Under a coordinator each feedback round runs in a *fresh* worktree, so don't assume you're still on `fix/{ISSUE-ID}`. Run `gh pr view` for the identifiers, extract `headRefName`, then check out the PR head from origin before enumerating (and before any later change or `git push`) — do **not** re-base it on `main`, that would drop the PR's commits. If `baseRefName` is not `main`, the PR is stacked: do not report it ready to merge.
 
 ```bash
 # repo identifiers (use jq to extract from the PR URL or run once and cache)
@@ -560,7 +571,7 @@ When the answer comes back, carry it in as given (implement the decision, don't 
 
 - If reviews requested changes and you've addressed them all, re-request review:
   `gh pr edit {PR} --add-reviewer {handle}`
-- If the PR is approved with no open threads **and an automated review (Codex or Cursor) has returned on its current head** (some completed automated review ran against the PR's head sha: a Codex review's `commit_id` from `get_reviews`, or a Cursor check run's `head_sha`, equals it), it's ready to merge — but defer the merge decision to the user unless the workflow explicitly allows auto-merge.
+- If the PR is approved with no open threads **and an automated review (Codex or Cursor) has returned on its current head** (some completed automated review ran against the PR's head sha: a Codex review's `commit_id` from `get_reviews`, or a Cursor check run's `head_sha`, equals it), it's ready to merge — but **not** while `baseRefName` is not `main`, and defer the merge decision to the user unless the workflow explicitly allows auto-merge.
 - If new activity arrives later, re-enter at Step 10.1.
 - If merge conflicts are detected (and you should check), then automatically handle them. If there is any major concern about how to merge, ask the user first before merging
 

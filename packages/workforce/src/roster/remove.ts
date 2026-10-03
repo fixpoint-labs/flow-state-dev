@@ -21,7 +21,7 @@
  */
 
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import { hiredSeatManifestFromStored } from "./rows";
+import { hiredSeatManifestFromStored, keyMismatch } from "./rows";
 import { incarnationOfRow } from "./incarnation";
 
 /** How many times an inventory write or delete re-reads after losing a race. */
@@ -100,6 +100,15 @@ export interface RemoveHiredSeatOptions {
    * inventory row is left alone.
    */
   isHeld: (address: string) => boolean;
+  /**
+   * The incarnation a person approved removing. Set, the row is removed only
+   * while it still carries it: a row that carries another (or none) is a
+   * replacement, and nothing is touched. Checked on the row this call read,
+   * with no await before the delete, and the delete is version-checked
+   * against that read, so a replacement written after it conflicts and is
+   * left too. Omitted, whatever row is there is removed.
+   */
+  incarnation?: string | null;
 }
 
 /** What the removal did. */
@@ -111,7 +120,9 @@ export type RemovedHiredSeat =
   /** No roster row, but a hired seat's inventory row was left at the address; it was removed. */
   | { outcome: "already-gone"; address: string }
   /** Nothing of this seat's was found. The caller words the refusal. */
-  | { outcome: "nothing"; address: string };
+  | { outcome: "nothing"; address: string }
+  /** The row is no longer the approved incarnation's. Nothing was touched. */
+  | { outcome: "replaced"; address: string };
 
 /**
  * Remove one hired seat: roster row, address, inventory row, in that order.
@@ -146,19 +157,40 @@ export async function removeHiredSeat(options: RemoveHiredSeatOptions): Promise<
     return { outcome: "already-gone", address: options.address };
   }
 
-  const record = hiredSeatManifestFromStored(options.orgId, existing.state);
+  // Read before the delete: a deleted ref reads as its schema defaults.
+  const incarnation = incarnationOfRow(existing.state);
+  const fenced = options.incarnation !== undefined;
+  if (fenced && (options.incarnation === null || incarnation !== options.incarnation)) {
+    return { outcome: "replaced", address: options.address };
+  }
+  /** The roster delete; under the fence, a row that moved since the read is a replacement. */
+  const deleteRow = async (): Promise<boolean> => {
+    try {
+      await options.roster.delete(options.key);
+      return true;
+    } catch (error) {
+      if (fenced && isWriteConflict(error)) return false;
+      throw error;
+    }
+  };
+
+  const read = hiredSeatManifestFromStored(options.orgId, existing.state);
+  // A row whose seat id is not its key's names an address it isn't stored
+  // under: unreadable, like a row that does not parse.
+  const keySeat = typeof options.key === "string" ? options.key : options.key.seat;
+  const mismatch =
+    "problem" in read || keySeat === undefined ? undefined : keyMismatch(keySeat, String(existing.state.seatId));
+  const record = mismatch === undefined ? read : { problem: mismatch };
   if ("problem" in record) {
     // No address can be trusted from a row that does not read, so there is
     // nothing to release and no inventory row that is provably its own.
-    await options.roster.delete(options.key);
+    if (!(await deleteRow())) return { outcome: "replaced", address: options.address };
     return { outcome: "unreadable", problem: record.problem };
   }
 
   const address = record.manifest.id;
   const storedKind = String(existing.state.flow);
-  // Read before the delete: a deleted ref reads as its schema defaults.
-  const incarnation = incarnationOfRow(existing.state);
-  await options.roster.delete(options.key);
+  if (!(await deleteRow())) return { outcome: "replaced", address };
   const release = options.release(address, storedKind, incarnation);
   if (release !== "held-by-another") {
     // Only this incarnation's row, re-read: the roster row is gone, so a row

@@ -48,6 +48,8 @@ export async function resolveSandbox(
           cwd: options.cwd ?? provider.cwd,
           destination: options.destination,
           strictPaths: provider.strictPaths,
+          env: provider.env,
+          execTimeoutMs: provider.execTimeoutMs,
         }),
       };
 

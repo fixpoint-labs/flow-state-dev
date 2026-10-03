@@ -218,7 +218,7 @@ export async function reloadHiredSeats(
       // through, so the list a person repairs from is this list. A row it
       // refuses is left on disk exactly as it is: a boot that repaired a row
       // it did not understand would destroy the evidence of why it did not.
-      const checked = checkHiredSeatRow(orgId, stored.state, options.kinds);
+      const checked = checkHiredSeatRow(orgId, stored.state, options.kinds, key);
       if (checked.ok) {
         org.seats.push(checked.seat);
       } else {

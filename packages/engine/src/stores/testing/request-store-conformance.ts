@@ -530,6 +530,37 @@ export function createRequestStoreConformanceTests(
       });
     });
 
+    // A state write in the middle of a run writes the whole record, built
+    // from the snapshot the run took when it started (FIX-1735). Its items
+    // are stale, so it leaves them off, and the store keeps the items
+    // persisted since: a read would otherwise lose them until the request
+    // settled.
+    it("a set that leaves items off keeps the items persisted since", async () => {
+      await withStore(async (store) => {
+        const requestId = "req_state_write_conformance";
+        const started = makeRecord(requestId, "in_progress", []);
+        await store.set(requestId, started, "absent");
+
+        store.persistItems(requestId, [makeItem(requestId, 0), makeItem(requestId, 1)]);
+        await store.flushItems(requestId);
+        const { items: _stale, ...withoutItems } = started;
+        const written = await store.set(
+          requestId,
+          { ...withoutItems, state: { phase: "editing" }, version: 1, updatedAt: Date.now() },
+          0
+        );
+        expect(written.ok).toBe(true);
+
+        const reread = await store.get(requestId);
+        expect(reread?.state).toEqual({ phase: "editing" });
+        expect((reread?.items ?? []).map((item) => item.id)).toEqual([
+          `item_${requestId}_0`,
+          `item_${requestId}_1`
+        ]);
+        expect(await store.countItems(requestId)).toBe(2);
+      });
+    });
+
     // The merge is the contract, not a replace (FIX-811): a call that carries
     // only some of the log adds to what is held rather than dropping the rest.
     // (Calls coalesced before a flush may keep only the latest list: the
