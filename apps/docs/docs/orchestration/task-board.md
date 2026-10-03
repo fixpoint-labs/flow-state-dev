@@ -29,6 +29,12 @@ Use the higher-level wrappers when their shape fits:
 
 Drop to the board only when none of those fit.
 
+## The parts
+
+The board is a handle you drain. Its tasks are rows in a collection. Workers are blocks keyed by assignee.
+
+![The board is a handle that drains, the task collection holds the rows, and workers are blocks keyed by assignee](./task-board-parts.svg)
+
 ## Block composition
 
 ```
@@ -707,11 +713,12 @@ These are public actions. Anyone who can call your flow can call them, so add th
 
 ## Collection backing
 
-A board stores its tasks in one of three places. You choose once; nothing downstream restates it.
+A board stores its tasks in one of four places. You choose once; nothing downstream restates it.
 
 - **Request (default)** — tasks live on `ctx.request` and survive every block boundary in the request, including re-entry across an outer loop (Plan and Execute replans this way) and adds from sibling steps before or during the drain. Omit `collection` entirely, or pass `{ collectionId }` to name it (the id defaults to the board name).
 - **Durable (resource-backed)** — tasks outlive the request. Declare the collection with `defineTaskCollection` and pass it as `collection`; the board registers and resolves it for you. Don't count on a running request seeing a write made by another request; a later request reads it.
 - **Sequencer** — tasks live on the board's own sequencer state, which lasts one `board.drain` invocation. Opt in with `{ backing: "sequencer", collectionId }`. Calling the board twice gives two independent collections.
+- **Factory** — tasks live in a store you manage. Pass a function `(ctx) => TaskCollectionRef` as `collection`; the rules for writing that ref are below.
 
 ```ts
 // Request default — nothing to restate.

@@ -73,6 +73,12 @@ interface Fixture {
   coordinatorSeat: string;
   unknownSeat: string;
   seats: Record<string, SeatFixture>;
+  /**
+   * The org seats the tree declares under `org/workers/`, by id, with their
+   * kind. Hired with the team seats, and outside this check's per-seat legs:
+   * the chief of staff runs the built-in kind, which has no inspect entry.
+   */
+  orgSeats: Record<string, { kind: string }>;
   documents: string[];
   channels: string[];
   promptTokens: string[];
@@ -313,12 +319,11 @@ await runGoal(async () => {
     // ---- (a) BR-1, BR-2 — the tree alone produced all of it ---------------
     {
       const seatIds = Object.keys(lab.seats).sort();
-      if (!sameSet(seatIds, Object.keys(fixture.seats))) {
-        note(
-          `hired ${JSON.stringify(seatIds)}, wanted ${JSON.stringify(Object.keys(fixture.seats))}`,
-        );
+      const wantedSeats = [...Object.keys(fixture.seats), ...Object.keys(fixture.orgSeats)];
+      if (!sameSet(seatIds, wantedSeats)) {
+        note(`hired ${JSON.stringify(seatIds)}, wanted ${JSON.stringify(wantedSeats)}`);
       }
-      for (const [seatId, expected] of Object.entries(fixture.seats)) {
+      for (const [seatId, expected] of Object.entries({ ...fixture.seats, ...fixture.orgSeats })) {
         const seat = lab.seats[seatId] as { kind?: string } | undefined;
         if (seat === undefined) continue;
         if (seat.kind !== expected.kind) {

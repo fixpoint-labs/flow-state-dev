@@ -412,7 +412,7 @@ function settingsSchema(
       .superRefine((seatSkills, ctx) => {
         // Both sources fill ONE catalog, so a bare name arriving from both has
         // no answer — the same rule the loader already applies across a seat's
-        // three levels, rather than a second precedence story beside it.
+        // levels, rather than a second precedence story beside it.
         for (const skill of seatSkills) {
           if (!appSkillNames.has(skill.name)) continue;
           ctx.addIssue({
@@ -1114,7 +1114,13 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     outputSchema: z.object({}),
     requestStateSchema: routedTurnStateSchema,
     execute: async (post: ChannelNotifyInput, ctx) => {
-      await ctx.request.patchState({ [ROUTED_TURN_STATE]: { channelId: post.channelId, postId: post.postId } });
+      await ctx.request.patchState({
+        [ROUTED_TURN_STATE]: {
+          channelId: post.channelId,
+          postId: post.postId,
+          ...(post.answerToken === undefined ? {} : { answerToken: post.answerToken })
+        }
+      });
       return {};
     }
   });
@@ -1136,7 +1142,13 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
     name: "agent-routed-answer",
     inputSchema: z.unknown(),
     outputSchema: z.union([
-      z.object({ channel: z.string(), postId: z.string(), body: z.string(), author: z.string() }),
+      z.object({
+        channel: z.string(),
+        postId: z.string(),
+        body: z.string(),
+        author: z.string(),
+        token: z.string().optional()
+      }),
       z.object({ answeredAlready: z.literal(true) })
     ]),
     requestStateSchema: routedTurnStateSchema,
@@ -1145,7 +1157,13 @@ export function defineAgentWorkerFlow(options: AgentWorkerFlowOptions = {}) {
       // Run only on a routed turn (the `tapIf` below), which is marked.
       const routed = ctx.request.state.channelRoutedPost!;
       if (typeof reply === "string" && reply.trim().length > 0) {
-        return { channel: routed.channelId, postId: routed.postId, body: reply, author: ctx.flow.config.seatId };
+        return {
+          channel: routed.channelId,
+          postId: routed.postId,
+          body: reply,
+          author: ctx.flow.config.seatId,
+          ...(routed.answerToken === undefined ? {} : { token: routed.answerToken })
+        };
       }
       if (routed.handed === true) return { answeredAlready: true as const };
       throw new Error(

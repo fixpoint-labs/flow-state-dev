@@ -20,10 +20,18 @@
  * (BR-16), which is why the code side of the fence can sit inside the tree.
  */
 
-import { defineFlow, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
+import { defineFlow, dispatcher, handler, sequencer, SuspensionRejectedError } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
+import { CHANNEL_KIND } from "@flow-state-dev/workforce";
+
+/**
+ * The channel kind's internal entry a seat's reply to a routed post goes
+ * through; on a talk session it writes the line into the project's room. The
+ * package keeps the constant internal, so the lab spells it.
+ */
+const CHANNEL_ANSWER_ACTION = "answer";
 import { PHASE } from "../../../phase.mts";
 import {
   ASSIGNEE,
@@ -57,6 +65,16 @@ export const FILE_ENTRY = "file";
  * the EM's action directly" is precisely what the channel leg is a proof of.
  */
 export const POST_ENTRY = "onPost";
+
+/**
+ * The action a post in a **project's room** reaches: the room's talk template
+ * names this seat, so every post there wakes it, under the person who posted.
+ *
+ * Its own entry, not {@link POST_ENTRY}: a room is not a workstream, and a line
+ * there files nothing. The seat answers into the room instead, through the
+ * poster's talk session, so the answer lands for every member.
+ */
+export const ROOM_ENTRY = "onRoomPost";
 
 /** The action that runs the board. */
 export const DRAIN_ENTRY = "drain";
@@ -106,6 +124,48 @@ export const postInputSchema = z
     body: z.string().min(1),
   })
   .strict();
+
+/**
+ * What one room delivery carries: the poster's talk session, the line it
+ * answers, and the words. Built by the lab's notify block from the channel
+ * kind's routed delivery, never by a caller.
+ */
+export const roomPostInputSchema = z
+  .object({
+    /** The poster's talk session: where the answer goes. */
+    channelId: z.string().min(1),
+    /** The room line being answered. */
+    postId: z.string().min(1),
+    /** The seat id this delivery woke. Posted as the answer's author. */
+    member: z.string().min(1),
+    /** The line somebody wrote. */
+    body: z.string().min(1),
+    /** The delivery's answer token, issued to this seat; the room takes an answer only with it. */
+    token: z.string().min(1),
+  })
+  .strict();
+
+type RoomPost = z.infer<typeof roomPostInputSchema>;
+
+/**
+ * The EM's answer in a room. Deterministic, like the rest of this kind: what
+ * the lab proves is that a seat's answer reaches every member, not what the
+ * answer says.
+ */
+const answerRoomPost = dispatcher({
+  name: "devforce-em-answer-room",
+  flowKind: CHANNEL_KIND,
+  action: CHANNEL_ANSWER_ACTION,
+  inputSchema: roomPostInputSchema,
+  // `{ id }`: the poster's talk session exists; it is the one that woke us.
+  session: { id: (input: RoomPost) => input.channelId },
+  payload: (input: RoomPost) => ({
+    postId: input.postId,
+    author: input.member,
+    body: `${input.member} read: ${input.body}`,
+    token: input.token,
+  }),
+});
 
 /**
  * The shape a post has to be in for the EM to file from it:
@@ -371,6 +431,9 @@ export function defineEmWorkerFlow(options: EmWorkerFlowOptions) {
         // ever posting, which is the thing the channel leg exists to prove is
         // not how work starts.
         [POST_ENTRY]: { block: fileFromPost, inputSchema: postInputSchema },
+        // A project room's post, delivered because the room's template names
+        // this seat. Internal for the same reason as the post door.
+        [ROOM_ENTRY]: { block: answerRoomPost, inputSchema: roomPostInputSchema },
         // The coder seat's message door re-runs the board here after it stops
         // a run for a person's message, in the session that claimed the row:
         // the hand-off then lands in the run's own session again.

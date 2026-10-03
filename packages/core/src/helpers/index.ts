@@ -34,6 +34,7 @@ export { shortId, tokenize, tokenOverlap, findBestOverlap } from "./text-match";
 export {
   withOutcome,
   updateStateWith,
+  readCommitted,
   type UpdateOutcome,
   type UpdateStateRunner,
 } from "./update-state-with";

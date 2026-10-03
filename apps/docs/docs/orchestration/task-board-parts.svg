@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 540" role="img" aria-labelledby="title desc">
+  <title id="title">Board, task collection and worker: what each is and where it lives</title>
+  <desc id="desc">taskBoard returns a handle in your flow: it drains, and it holds no tasks itself. Tasks are rows in a task collection, which lives on the request by default, in a durable resource collection when you declare one with defineTaskCollection, on the board's sequencer state for one drain, or in your own store through a factory. Workers are blocks keyed by assignee, with an optional default worker, or seats that hand a task off to a dispatch run. A worker receives an input built from the row and the outputs of its dependencies, not the row itself, and the board writes its result back.</desc>
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .wall-sess { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 2; }
+      .wall-org { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
+      .wall-file { fill: #f8fafc; stroke: #334155; stroke-width: 2; }
+      .card { fill: #ffffff; stroke: #334155; stroke-width: 1.5; }
+      .card-sess { fill: #ffffff; stroke: #1d4ed8; stroke-width: 1.5; }
+      .card-line { fill: #ffffff; stroke: #15803d; stroke-width: 1.5; }
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 1.5; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: #334155; }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #0f172a; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="540" rx="16" class="bg"/>
+
+  <text x="28" y="36" class="title">Board, task collection, worker: where each lives</text>
+  <text x="28" y="58" class="muted">The rows live in the collection; the board only drains them.</text>
+
+  <!-- Board -->
+  <rect x="28" y="84" width="236" height="320" rx="14" class="wall-file"/>
+  <text x="44" y="108" class="h">The board</text>
+  <text x="44" y="126" class="muted">A handle in your flow</text>
+
+  <rect x="44" y="142" width="204" height="120" rx="10" class="card"/>
+  <text x="58" y="166" class="code">taskBoard({ name })</text>
+  <text x="58" y="192" class="p">drain · capability</text>
+  <text x="58" y="210" class="p">boardId</text>
+  <text x="58" y="240" class="muted">Holds no tasks itself</text>
+
+  <text x="44" y="292" class="p">Claims ready rows,</text>
+  <text x="44" y="310" class="p">hands each to a worker,</text>
+  <text x="44" y="328" class="p">writes the result back.</text>
+  <text x="44" y="362" class="muted">Stops when a termination</text>
+  <text x="44" y="378" class="muted">rule says so</text>
+
+  <!-- Collection -->
+  <rect x="284" y="84" width="320" height="320" rx="14" class="wall-org"/>
+  <text x="300" y="108" class="h">The task collection</text>
+  <text x="300" y="126" class="muted">Where the rows live. You pick one backing.</text>
+
+  <rect x="300" y="142" width="288" height="124" rx="10" class="card-line"/>
+  <text x="314" y="166" class="h">One task</text>
+  <text x="314" y="186" class="code">id · goal · assignee · deps</text>
+  <text x="314" y="204" class="code">status · priority · run</text>
+  <text x="314" y="228" class="code">claimedBy</text>
+  <text x="314" y="246" class="muted">Server only. The rest streams to pages.</text>
+
+  <text x="300" y="294" class="p">request</text>
+  <text x="380" y="294" class="muted">default; lasts one request</text>
+  <text x="300" y="316" class="p">durable</text>
+  <text x="380" y="316" class="muted">defineTaskCollection</text>
+  <text x="300" y="338" class="p">sequencer</text>
+  <text x="380" y="338" class="muted">one drain call</text>
+  <text x="300" y="360" class="p">factory</text>
+  <text x="380" y="360" class="muted">your own store</text>
+  <text x="300" y="388" class="muted">request and sequencer end with the run.</text>
+
+  <!-- Workers -->
+  <rect x="624" y="84" width="268" height="320" rx="14" class="wall-sess"/>
+  <text x="640" y="108" class="h">Workers</text>
+  <text x="640" y="126" class="muted">Blocks, keyed by assignee</text>
+
+  <rect x="640" y="142" width="236" height="96" rx="10" class="card-sess"/>
+  <text x="654" y="166" class="code">workers: {</text>
+  <text x="654" y="184" class="code">  "market-analyst": …,</text>
+  <text x="654" y="202" class="code">}</text>
+  <text x="654" y="224" class="muted">Plus an optional defaultWorker</text>
+
+  <rect x="640" y="250" width="236" height="70" rx="10" class="card-sess"/>
+  <text x="654" y="272" class="h">A seat that hands off</text>
+  <text x="654" y="292" class="muted">Runs the task in a dispatch run,</text>
+  <text x="654" y="308" class="muted">a session of its own</text>
+
+  <text x="640" y="346" class="p">A worker gets taskId, goal,</text>
+  <text x="640" y="364" class="p">input, and its deps' outputs.</text>
+  <text x="640" y="388" class="muted">Not the row itself.</text>
+
+  <!-- Not a copy -->
+  <rect x="28" y="424" width="864" height="100" rx="12" class="box"/>
+  <text x="44" y="448" class="h">Not a copy</text>
+  <text x="44" y="472" class="p">The board is a handle, not the storage. The rows live in the collection you chose.</text>
+  <text x="44" y="492" class="p">A worker's input is built from the row. Its result is written back, and declined if the task was already settled.</text>
+  <text x="44" y="512" class="p">assignee names a key in the workers map. It is not a flow id or a Workforce seat.</text>
+</svg>

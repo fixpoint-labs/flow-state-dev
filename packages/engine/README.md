@@ -640,6 +640,8 @@ Do not implement it as a version CAS. Terminal transitions persist `version` **u
 
 How you store the flag is yours. The shipped adapters differ: in-memory and the SQL pair keep it on the record and force the stored value through on `set`; the filesystem adapter keeps a marker file beside the record, because its `get()` loads inline items and would break the O(1) bound. Whichever you pick, `get()` must still surface the flag on the returned record.
 
+**A `set` that leaves `items` off keeps the stored items.** The runtime writes the whole request record when a block changes request state, and it leaves `items` off that record, because its copy is from when the run started. If your adapter keeps items on the record and `set` replaces the record, carry the stored items through whenever `value.items` is absent, or every item persisted since the run started disappears until the request settles. An adapter that keeps items out of `set`, as the SQLite and Postgres adapters do, already holds this. A record that does carry `items` may still replace them.
+
 The cross-store conformance suite (`createRequestStoreConformanceTests`, from `@flow-state-dev/engine/testing`) covers all of this.
 
 ## Custom model resolution

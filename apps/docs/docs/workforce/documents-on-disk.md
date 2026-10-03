@@ -11,10 +11,7 @@ A handbook, a glossary, an escalation procedure: the reference material a team s
 
 Two folders hold documents, and the one you pick decides where the text lives from then on.
 
-| Folder | The body an agent reads | Who can change it | Which seats reach it |
-|---|---|---|---|
-| `references/` | the file on disk, re-read on each request | whoever edits the file in your repository | every seat at or below the folder it sits in |
-| `resources/` | the file's body at first boot, then whatever the product last wrote | the file, until something writes it; the product after that | every seat the flow installed it on |
+![A references document is the file itself and its folder bounds who reaches it; a resources document is a stored row and its folder is only a namespace](./documents-reach.svg)
 
 Choose by who does the editing. A company handbook goes in `references/`: you change it by editing the file and deploying, and nothing running in the product can overwrite it. An agent's working notes go in `resources/`, where a block or the agent itself can write and the text survives the turn.
 
@@ -31,6 +28,11 @@ workforce/
   org/
     references/
       code-of-conduct.md
+    workers/
+      build/
+        WORKER.md
+        resources/
+          runbook.md
   teams/
     engineering/
       references/
@@ -47,11 +49,11 @@ workforce/
         escalation.md
 ```
 
-Five documents: a code of conduct everyone reads, a handbook for engineering, a runbook for one seat, an escalation procedure for support, and a scratchpad the engineering agents can write. Every example below reads this tree.
+Six documents: a code of conduct everyone reads, a handbook for engineering, a runbook for the seat `ada`, a runbook for the org seat `build`, an escalation procedure for support, and a scratchpad the engineering agents can write. Every example below reads this tree.
 
 Both folders name documents the same way, and they share one namespace. `references/handbook.md` and `resources/handbook.md` in one team are two spellings of the name `handbook`. Neither single-folder reader sees the other folder, so neither reports the pair on its own. `readDeclaredRoster`, which walks the whole tree in one call, puts it in its `problems` and names both files; `hireWorkforce` throws on a ref handed to it as both a document and a reference.
 
-A worker's own folder is what lets two seats each have a `runbook` without their authors agreeing on a name. Organization-level workers, under `org/workers/`, are read the same way.
+A worker's own folder is what lets two seats each have a `runbook` without their authors agreeing on a name. An org seat's folder is read the same way: `org/workers/build/` in the tree above is the `build` seat, and `resources/runbook.md` beside its `WORKER.md` is its runbook.
 
 A document is a **file**, not a folder. A worker and a skill are each a folder with a fixed file inside it; a document is `<name>.md` sitting directly in `references/` or `resources/`. A directory in one of those folders is reported rather than passed over, so `resources/handbook/RESOURCE.md` is an error and not a document that quietly went missing.
 
@@ -252,15 +254,6 @@ Both functions throw rather than collecting. A record that cannot become a resou
 
 **For a `references/` document, the folder is the boundary.** A seat reaches the references at or above its own place in the tree: the organization's, its own team's, and its own folder's. Not another team's, and not a teammate's folder. You write no filter, and there is no setting to get wrong.
 
-```
-teams/engineering/workers/ada/     a seat here reads…
-  org/references/code-of-conduct                     yes — the organization is above everyone
-  teams/engineering/references/handbook              yes — its own team
-  teams/engineering/workers/ada/references/runbook   yes — its own folder
-  teams/engineering/workers/ivan/references/runbook  no  — a teammate's folder
-  teams/support/references/escalation                no  — another team
-```
-
 An unreachable reference is not an empty read. The accessor is not on the seat's map at all, so `ctx.resources.get("teams/support/escalation")` throws `is not registered`.
 
 To let a reference reach more people, move the file up the tree. Nothing on the install side widens it.
@@ -278,7 +271,7 @@ references:
 
 Leaving the key out means every reference at or above the seat. Writing `references: []` means none.
 
-Seats are read from `teams/<team>/workers/<name>/`, so a reference under `org/workers/<name>/references/` sits beside the organization level rather than above any seat, and no seat reaches it.
+A reference under `org/workers/<name>/references/` belongs to the org seat declared in that folder. That seat reaches it, along with the organization's references. No other seat does, and no team's references reach an org seat, because it has no team.
 
 **For a `resources/` document, the folder is a namespace and nothing more.** Every one is org-scoped, and a generator's resource tools reach every installed document marked `llmReadable`. Install a whole tree on one flow and every team's writable documents are reachable from it, one team from another included.
 

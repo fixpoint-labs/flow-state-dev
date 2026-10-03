@@ -100,6 +100,7 @@ export function useRequestStream(
   const context = useFlowContext();
   const flowKind = options.flowKind ?? context.flowKind;
   const baseUrl = options.baseUrl ?? context.baseUrl;
+  const apiPath = context.apiPath;
   const {
     source,
     filter,
@@ -202,6 +203,7 @@ export function useRequestStream(
       : createSSEClient({
           url: `/api/flows/${encodeURIComponent(flowKind!)}/requests/${encodeURIComponent(reqId!)}/stream${includeTrace ? "?include=trace" : ""}`,
           baseUrl,
+          apiPath,
           lastEventId: sourceLastEventId,
           startingAfter,
           ...callbacks
@@ -221,6 +223,7 @@ export function useRequestStream(
     enabled,
     flowKind,
     baseUrl,
+    apiPath,
     reconnectToken,
     includeTrace,
     filterKey,

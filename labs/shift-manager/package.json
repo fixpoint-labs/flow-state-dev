@@ -22,6 +22,7 @@
     "@flow-state-dev/fsdev": "workspace:*",
     "@flow-state-dev/node": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
+    "@flow-state-dev/store-sqlite": "workspace:*",
     "@flow-state-dev/workforce": "workspace:*",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@streamdown/cjk": "^1.0.2",
@@ -42,7 +43,7 @@
   },
   "devDependencies": {
     "@flow-state-dev/orchestration": "workspace:*",
-    "@tailwindcss/postcss": "^4.1.12",
+    "@tailwindcss/vite": "^4.2.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.1.12",

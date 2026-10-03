@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 630" role="img" aria-labelledby="title desc">
+  <title id="title">Channel, transcript and member seat: what each is and where it lives</title>
+  <desc id="desc">The framework registers one instance of the channel kind. Each channel is a named session on it, whose state holds the members and the charter, and whose channel-post items are the transcript. Boards, routing and board actions come from the channel's file at every start. Each member is a seat: a separate flow instance with its own sessions. When a post wakes it, the seat answers in one conversation per channel, a child of the channel's session that holds what the seat heard, not the transcript.</desc>
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .wall-sess { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 2; }
+      .wall-org { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
+      .card { fill: #ffffff; stroke: #334155; stroke-width: 1.5; }
+      .card-sess { fill: #ffffff; stroke: #1d4ed8; stroke-width: 1.5; }
+      .card-line { fill: #ffffff; stroke: #15803d; stroke-width: 1.5; }
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 1.5; }
+      .out { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.5; stroke-dasharray: 5 4; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: #334155; }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #0f172a; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="630" rx="16" class="bg"/>
+
+  <text x="28" y="36" class="title">Channel, transcript, member seat: what each is and where it lives</text>
+  <text x="28" y="58" class="muted">A channel is a session on one shared instance. Its members are separate flows.</text>
+
+  <!-- Channel kind -->
+  <rect x="28" y="84" width="464" height="388" rx="14" class="wall-sess"/>
+  <text x="44" y="108" class="h">The channel kind: one registered instance</text>
+  <text x="44" y="126" class="muted">Every channel is another named session on it</text>
+
+  <rect x="44" y="142" width="432" height="228" rx="10" class="card-sess"/>
+  <text x="58" y="166" class="h">Session engineering.standup</text>
+  <text x="58" y="184" class="muted">The id is team, then the channel's folder name</text>
+
+  <text x="58" y="210" class="p">State</text>
+  <text x="58" y="230" class="code">members: [engineering.lead, …]</text>
+  <text x="58" y="248" class="code">instructions: "Post what you…"</text>
+  <text x="58" y="268" class="muted">Written when the channel opens. Never reaches a page.</text>
+
+  <rect x="58" y="282" width="404" height="74" rx="8" class="card-line"/>
+  <text x="70" y="302" class="h">Transcript: its channel-post items</text>
+  <text x="70" y="322" class="code">{ id, at, principal, author, body }</text>
+  <text x="70" y="342" class="muted">One per post. The rest of its history is not transcript.</text>
+
+  <rect x="44" y="382" width="210" height="74" rx="10" class="out"/>
+  <text x="58" y="404" class="h">engineering.design</text>
+  <text x="58" y="424" class="muted">Another channel, another</text>
+  <text x="58" y="442" class="muted">session. Same instance.</text>
+
+  <rect x="266" y="382" width="210" height="74" rx="10" class="box"/>
+  <text x="280" y="404" class="h">Rebuilt at every start</text>
+  <text x="280" y="424" class="code">boards · routing</text>
+  <text x="280" y="442" class="code">boardActions</text>
+
+  <!-- Seats -->
+  <rect x="512" y="84" width="380" height="388" rx="14" class="wall-org"/>
+  <text x="528" y="108" class="h">Each member's seat</text>
+  <text x="528" y="126" class="muted">Its own flow instance, outside the channel</text>
+
+  <rect x="528" y="142" width="348" height="94" rx="10" class="card"/>
+  <text x="542" y="166" class="h">Seat engineering.lead</text>
+  <text x="542" y="186" class="p">Its own sessions with people</text>
+  <text x="542" y="206" class="p">Its own state and resources</text>
+  <text x="542" y="224" class="muted">The channel cannot read any of it</text>
+
+  <rect x="528" y="248" width="348" height="208" rx="10" class="card-line"/>
+  <text x="542" y="272" class="h">Woken conversation</text>
+  <text x="542" y="292" class="code">channel:engineering.standup</text>
+  <text x="542" y="316" class="p">One per seat per channel</text>
+  <text x="542" y="336" class="p">Holds the posts this seat heard,</text>
+  <text x="542" y="354" class="p">and its own answers</text>
+  <text x="542" y="380" class="muted">A child of the channel's session,</text>
+  <text x="542" y="397" class="muted">so a plain session list hides it.</text>
+  <text x="542" y="422" class="muted">List with dispatch runs included</text>
+  <text x="542" y="439" class="muted">to find it.</text>
+
+  <!-- Not a copy -->
+  <rect x="28" y="488" width="864" height="126" rx="12" class="box"/>
+  <text x="44" y="512" class="h">Not a copy</text>
+  <text x="44" y="536" class="p">The transcript is the channel session's channel-post items. It is not the session's state, and not any seat's conversation.</text>
+  <text x="44" y="556" class="p">A seat's woken conversation holds what that seat heard. It is not the transcript, and it forgets past its history window.</text>
+  <text x="44" y="576" class="p">members lists names. A seat is a flow your app hired. Naming a member does not hire it.</text>
+  <text x="44" y="596" class="muted">A post hands nobody work. Work someone takes and finishes goes on a board the channel holds.</text>
+</svg>

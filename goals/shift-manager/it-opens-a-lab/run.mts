@@ -24,13 +24,14 @@
  *   post      a composer post is drawn, and is in the stored transcript
  *   answer    an ask approved from Inbox is no longer pending in the store
  *
- * Controls rebuild Shift Manager with one source module swapped for a module under
- * `controls/` (a Vite `resolveId` plugin; the build fails if the swap never
+ * Controls rebuild Shift Manager with source modules swapped for a module under
+ * `controls/` (a Vite `resolveId` plugin; the build fails if a swap never
  * fired):
  *
  *   static-names     seats written in from the DevTeam tree. Must fail at
  *                    "TEAMS equals the store's seats" on multi-seat-collab.
- *   optimistic-post  the composer draws its own line and sends nothing. Must
+ *   optimistic-post  the composer draws its own line and sends nothing, on
+ *                    both its paths (`transcript.ts` and `send.ts`). Must
  *                    fail at "the post is in the stored transcript".
  *   unanswerable-asks  every ask is marked unanswerable. Must fail at "an
  *                    answer from Inbox lands in the store" on DevTeam.
@@ -101,16 +102,17 @@ const diff = (want: Iterable<string>, got: Iterable<string>) => {
 
 // ---- building Shift Manager --------------------------------------------------------
 
-/** The control's module swap: which source file, for which module under `controls/`. */
-function swapFor(control: string): { target: string; with: string } | undefined {
+/** The control's module swap: which source files, for which module under `controls/`. */
+function swapFor(control: string): { targets: string[]; with: string } | undefined {
+  const lib = (file: string) => join(SHIFT_MANAGER, "src", "lib", file);
   if (control === "static-names") {
-    return { target: join(SHIFT_MANAGER, "src", "lib", "reads.ts"), with: join(HERE, "controls", "static-names.ts") };
+    return { targets: [lib("reads.ts")], with: join(HERE, "controls", "static-names.ts") };
   }
   if (control === "optimistic-post") {
-    return { target: join(SHIFT_MANAGER, "src", "lib", "transcript.ts"), with: join(HERE, "controls", "optimistic-post.ts") };
+    return { targets: [lib("transcript.ts"), lib("send.ts")], with: join(HERE, "controls", "optimistic-post.ts") };
   }
   if (control === "unanswerable-asks") {
-    return { target: join(SHIFT_MANAGER, "src", "lib", "reads.ts"), with: join(HERE, "controls", "unanswerable-asks.ts") };
+    return { targets: [lib("reads.ts")], with: join(HERE, "controls", "unanswerable-asks.ts") };
   }
   return undefined;
 }
@@ -121,7 +123,7 @@ async function buildShiftManager(control: string): Promise<string> {
   const viteEntry = createRequire(join(SHIFT_MANAGER, "package.json")).resolve("vite");
   const vite = (await import(pathToFileURL(viteEntry).href)) as { build(config: Record<string, unknown>): Promise<unknown> };
   const swap = swapFor(control);
-  let swapped = 0;
+  const swapped = new Set<string>();
   const staticSeats =
     control === "static-names"
       ? (await readDeclaredRoster(LABS.devteam.tree)).workers.map((w) => ({ id: w.id, kind: String(w.declared.flow) }))
@@ -142,15 +144,17 @@ async function buildShiftManager(control: string): Promise<string> {
               async resolveId(this: any, source: string, importer: string | undefined, options: Record<string, unknown>) {
                 if (importer === undefined || importer === swap.with) return null;
                 const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-                if (resolved?.id !== swap.target) return null;
-                swapped += 1;
+                const id: string | undefined = resolved?.id;
+                if (id === undefined || !swap.targets.includes(id)) return null;
+                swapped.add(id);
                 return swap.with;
               },
             },
           ],
   });
-  if (swap !== undefined && swapped === 0) {
-    throw new Error(`control ${control}: the build never imported ${swap.target}, so nothing was swapped`);
+  const missed = swap?.targets.filter((target) => !swapped.has(target)) ?? [];
+  if (missed.length > 0) {
+    throw new Error(`control ${control}: the build never imported ${missed.join(", ")}, so nothing was swapped there`);
   }
   return outDir;
 }
@@ -167,7 +171,8 @@ async function startLab(name: LabName, pages: string, env: Record<string, string
   const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", LABS[name].config, "--port", "0", "--assets", pages], {
     cwd: workDir,
     // GOAL_CONTROL is this script's, not the Lab's: multi-seat-collab's config reads it too.
-    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", ...env }),
+    // DEVTEAM_STORE: DevTeam keeps a store across restarts; each run gets its own.
+    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", DEVTEAM_STORE: join(workDir, "devteam.sqlite"), ...env }),
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout!.on("data", (d) => (log += String(d)));
@@ -252,6 +257,13 @@ type Tree = {
   channels: Array<{ id: string; members: string[]; boardRefs: string[] }>;
 };
 
+/** The tree's one board-holding channel: where a row is filed, and where the composer posts. */
+function boardChannel(tree: Tree): Tree["channels"][number] {
+  const holding = tree.channels.filter((c) => c.boardRefs.length > 0);
+  if (holding.length !== 1) throw new Error(`the tree holds ${holding.length} board-holding channels, not one`);
+  return holding[0]!;
+}
+
 async function readTree(root: string): Promise<Tree> {
   const roster = await readDeclaredRoster(root);
   if (roster.problems.length > 0) throw new Error(`the tree at ${root} did not load: ${roster.problems.map((p) => p.path).join(", ")}`);
@@ -273,6 +285,8 @@ type Store = {
   rows: Record<string, Array<{ ref: string; id: string; status: string; title: string }>>;
   /** Suspension ids pending on a person, across the seats' sessions. */
   asks: string[];
+  /** The organization's project rows: which workstreams each one lists. */
+  projects: Array<{ id: string; workstreams: string[] }>;
 };
 
 async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store> {
@@ -285,6 +299,7 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
     )?.ref;
   const seatsRef = refOf("inventory/seats/*");
   const channelsRef = refOf("inventory/channels/*");
+  const projectsRef = refOf("projects/*");
   const seats = seatsRef === undefined ? [] : (await api.collection(host, seatsRef)).map((r) => String(r.id));
   const channels =
     channelsRef === undefined
@@ -319,7 +334,14 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
       }
     }
   }
-  return { seats, channels, rows, asks };
+  const projects =
+    projectsRef === undefined
+      ? []
+      : (await api.collection(host, projectsRef)).map((r) => ({
+          id: String(r.id),
+          workstreams: Array.isArray(r.workstreams) ? (r.workstreams as string[]) : [],
+        }));
+  return { seats, channels, rows, asks, projects };
 }
 
 // ---- putting a row on each board ---------------------------------------------
@@ -377,7 +399,12 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
   const fail = (leg: string, why: string) => failures.push(`[${name}] ${leg}: ${why}`);
   const tree = await readTree(LABS[name].tree);
   const outbox = join(SCRATCH, `${name}-work.ndjson`);
-  const served = await startLab(name, pages, name === "multi-seat-collab" ? { MULTI_SEAT_COLLAB_OUTBOX: outbox } : {});
+  const served = await startLab(
+    name,
+    pages,
+    // DevTeam on a fresh store each run, for a profile whose store outlives the process.
+    name === "multi-seat-collab" ? { MULTI_SEAT_COLLAB_OUTBOX: outbox } : { DEVTEAM_STORE: join(SCRATCH, `devteam-${RUN_STAMP}.sqlite`) },
+  );
   const browser = await launchChromium();
   try {
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
@@ -405,7 +432,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       await scenario.drainAll();
       if (!(await waitForRow(api, tree, (s) => s === "parked", userId))) throw new Error(`${name}: the filed row never parked`);
     } else {
-      const channel = tree.channels[0]!;
+      const channel = boardChannel(tree);
       const kind = (await readStore(api, tree, userId)).channels.find((c) => c.id === channel.id)?.kind;
       if (kind === undefined) throw new Error(`${name}: the inventory registers no channel ${channel.id}`);
       const status = await act(api, kind, channel.id, "post", { body: `${fixture.devteam.issue}: ${fixture.devteam.text}` }, userId);
@@ -439,7 +466,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     }
 
     // ---- PROJECTS ------------------------------------------------------------
-    const shownStreams = (await page.locator("[data-testid^=nav-workstream-]").evaluateAll((els) =>
+    const shownStreams = (await page.locator("[data-testid^=nav-workstream-]:not([data-testid=nav-workstream-gone])").evaluateAll((els) =>
       els.map((e) => e.getAttribute("data-testid") ?? ""),
     )).map((t) => t.slice("nav-workstream-".length));
     if (!same(shownStreams, store.channels.map((c) => c.id))) {
@@ -478,11 +505,32 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     if (!(await visible(page, "cos-summary"))) fail("reach", "Chief of Staff draws no shift summary");
     if (!(await visible(page, "cos-panel"))) fail("reach", "Chief of Staff has no right panel");
 
-    // ---- Project level -------------------------------------------------------
+    // ---- Project level: PROJECTS' heading opens No project ------------------
+    // No project lists every workstream no project row names. It has no room
+    // and no brief, and says so; its Board draws a lane per board-holding one.
     await page.getByTestId("projects-heading").click();
-    for (const tab of ["stream", "board", "workstreams", "brief"]) {
+    const listed = new Set(store.projects.flatMap((p) => p.workstreams));
+    const unlisted = store.channels.map((c) => c.id).filter((id) => !listed.has(id));
+    const unlistedBoards = tree.channels.filter((c) => unlisted.includes(c.id) && c.boardRefs.length > 0).map((c) => c.id);
+    for (const tab of ["stream", "brief"]) {
       await page.locator(`[role=tab][data-tab=${tab}]`).click();
-      if (!(await visible(page, `project-${tab}-empty`))) fail("reach", `the project's ${tab} tab shows no named empty state`);
+      if (!(await visible(page, `project-${tab}-none`))) fail("reach", `No project's ${tab} tab doesn't say it has none`);
+    }
+    await page.locator("[role=tab][data-tab=workstreams]").click();
+    if (unlisted.length === 0) {
+      if (!(await visible(page, "project-workstreams-none"))) fail("reach", "No project lists no workstream and its Workstreams tab doesn't say so");
+    } else {
+      await visible(page, "project-workstream");
+      const shown = await attr(page, "project-workstream", "data-channel-id");
+      if (!same(shown, unlisted)) fail("reach", `No project's Workstreams: ${diff(unlisted, shown)}`);
+    }
+    await page.locator("[role=tab][data-tab=board]").click();
+    if (unlistedBoards.length === 0) {
+      if (!(await visible(page, "project-board-none"))) fail("reach", "No project holds no board and its Board tab doesn't say so");
+    } else {
+      await visible(page, "project-lane");
+      const lanes = await attr(page, "project-lane", "data-channel-id");
+      if (!same(lanes, unlistedBoards)) fail("reach", `No project's Board lanes: ${diff(unlistedBoards, lanes)}`);
     }
 
     // ---- each workstream -----------------------------------------------------
@@ -535,8 +583,8 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       }
     }
 
-    // ---- post: the composer, on the first workstream -------------------------
-    const channel = tree.channels[0]!;
+    // ---- post: the composer, on the board-holding workstream ---------------
+    const channel = boardChannel(tree);
     const line = `${fixture.line} (${name} ${RUN_STAMP})`;
     await open(page, served.origin, `/w/${encodeURIComponent(channel.id)}/stream`);
     await page.getByTestId("composer-input").fill(line);

@@ -32,7 +32,15 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser, Locator, Page } from "playwright";
-import { REPO_ROOT, goalTmpDir, intentFreeEnv, loadFixture, runGoal } from "../../lib/index.mts";
+import {
+  REPO_ROOT,
+  goalTmpDir,
+  intentFreeEnv,
+  loadFixture,
+  refuseIfAnswering,
+  runGoal,
+  stopProcessGroup,
+} from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 
 type Answers = {
@@ -96,7 +104,12 @@ async function waitForHealth(origin: string, child: ChildProcess, log: () => str
 async function serve(port: number): Promise<{ origin: string; stop: () => void }> {
   const workDir = join(SHOTS, "server");
   mkdirSync(workDir, { recursive: true });
+  const origin = `http://127.0.0.1:${port}`;
+  // Refuse beside anything already on the port: our child would fail to bind
+  // and the health probe could be answered by the incumbent.
+  await refuseIfAnswering(origin);
   let log = "";
+  // Detached, so `stop` reaches the whole group and not only the `tsx` wrapper.
   const child = spawn(
     join(REPO_ROOT, "node_modules", ".bin", "tsx"),
     [join(REPO_ROOT, "packages", "cli", "bin", "fsdev.ts"), "dev", "--config", CONFIG, "--no-open", "--port", String(port)],
@@ -107,13 +120,18 @@ async function serve(port: number): Promise<{ origin: string; stop: () => void }
         FSDEV_DEBUG_ENDPOINTS: "1",
       }),
       stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
     },
   );
   child.stdout?.on("data", (chunk) => (log += String(chunk)));
   child.stderr?.on("data", (chunk) => (log += String(chunk)));
-  const origin = `http://127.0.0.1:${port}`;
-  await waitForHealth(origin, child, () => log);
-  return { origin, stop: () => child.kill("SIGTERM") };
+  try {
+    await waitForHealth(origin, child, () => log);
+  } catch (error) {
+    stopProcessGroup(child);
+    throw error;
+  }
+  return { origin, stop: () => stopProcessGroup(child) };
 }
 
 /** The session request list, which the `no-result` control rewrites. */

@@ -6,8 +6,8 @@
  *
  * Every entry is drawn from the one snapshot, so a count and the screen it
  * opens always agree; every status and status count from its one
- * `seatStates` result, so they agree with Roster. PROJECTS lists the
- * workstreams directly while no projects ship (BR-9); TEAMS is one row per
+ * `seatStates` result, so they agree with Roster. PROJECTS lists each project
+ * with its workstreams, then No project; TEAMS is one row per
  * team with a status square per seat, opening Roster for that team. A failed
  * read shows its section's Retry and nothing else changes (BR-11).
  */
@@ -15,7 +15,8 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 import type { ColorScheme, ShiftLook } from "../lib/color-scheme";
 import { navigate, NO_PROJECT, type Route } from "../lib/routes";
 import { useLab } from "../lib/lab-data";
-import { openRows, seatStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import { openRows, projectsOf, seatStates, shiftCounts, teamsOf, type LoadedSnapshot } from "../lib/derive";
+import type { Workstream } from "../lib/reads";
 import { PartialMark, SectionFailure, ShiftMark } from "../components/ui";
 import type { Gaps } from "../gaps";
 
@@ -135,6 +136,63 @@ function ShiftSwitch({ look }: { look: ShiftLook }) {
   );
 }
 
+/**
+ * PROJECTS (BR-22): each project by title, its workstreams beneath it, a
+ * project with none still listed; then No project with every workstream no
+ * project lists, only when there is one. A workstream id whose channel left
+ * the tree is shown as gone, with no link.
+ */
+function ProjectsSection({ snapshot, route, onRetry }: { snapshot: LoadedSnapshot; route: Route; onRetry: () => void }) {
+  const view = projectsOf(snapshot);
+  if (!view.ok) {
+    const what = snapshot.inventory.ok ? "Projects" : "Workstreams";
+    return <SectionFailure what={what} failure={view.failure} onRetry={onRetry} testId="projects-failure" />;
+  }
+  const workstreamItem = (w: Workstream) => (
+    <NavItem
+      key={w.id}
+      label={w.id}
+      active={route.level === "workstream" && route.channelId === w.id}
+      onClick={() => navigate({ level: "workstream", channelId: w.id, tab: "stream" })}
+      testId={`nav-workstream-${w.id}`}
+    />
+  );
+  const projectItem = (projectId: string, label: string) => (
+    <NavItem
+      label={label}
+      active={route.level === "project" && route.projectId === projectId}
+      onClick={() => navigate({ level: "project", projectId, tab: "stream" })}
+      testId={`nav-project-${projectId}`}
+    />
+  );
+  return (
+    <>
+      {view.value.projects.map(({ project, workstreams }) => (
+        <div key={project.id} data-testid="project-group" data-project-id={project.id}>
+          {projectItem(project.id, project.title)}
+          <div className="pl-3">
+            {workstreams.map(({ id, workstream }) =>
+              workstream === undefined ? (
+                <p key={id} className="px-2 py-1 text-xs text-muted-foreground" data-testid="nav-workstream-gone" data-channel-id={id}>
+                  {id} · no longer in the Lab
+                </p>
+              ) : (
+                workstreamItem(workstream)
+              ),
+            )}
+          </div>
+        </div>
+      ))}
+      {view.value.noProject.length === 0 ? null : (
+        <div data-testid="project-group" data-project-id={NO_PROJECT}>
+          {projectItem(NO_PROJECT, "No project")}
+          <div className="pl-3">{view.value.noProject.map(workstreamItem)}</div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gaps; onJump: () => void; look?: ShiftLook }) {
   const { snapshot, refresh, clients } = useLab();
   const loaded = snapshot !== undefined && snapshot.refused === undefined && snapshot.unreachable === undefined ? (snapshot as LoadedSnapshot) : undefined;
@@ -163,7 +221,7 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
 
         <div className="mt-3 space-y-0.5">
           <NavItem
-            label="Chief of Staff"
+            label="Shift Coordinator"
             active={route.level === "cos"}
             onClick={() => navigate({ level: "cos" })}
             testId="nav-cos"
@@ -196,26 +254,16 @@ export function Sidebar({ route, gaps, onJump, look }: { route: Route; gaps: Gap
           PROJECTS
         </Heading>
         <div data-testid="projects">
-          {loaded === undefined ? null : loaded.inventory.ok ? (
-            <>
-              <p className="px-2 pb-1 text-xs text-muted-foreground">{gaps.projectWorkstreams.title}; workstreams:</p>
-              {loaded.inventory.value.workstreams.map((w) => (
-                <NavItem
-                  key={w.id}
-                  label={w.id}
-                  active={route.level === "workstream" && route.channelId === w.id}
-                  onClick={() => navigate({ level: "workstream", channelId: w.id, tab: "stream" })}
-                  testId={`nav-workstream-${w.id}`}
-                />
-              ))}
-            </>
-          ) : (
-            <SectionFailure what="Workstreams" failure={loaded.inventory.failure} onRetry={retry} testId="projects-failure" />
-          )}
+          {loaded === undefined ? null : <ProjectsSection snapshot={loaded} route={route} onRetry={retry} />}
         </div>
 
         <Heading testId="teams-heading">TEAMS</Heading>
         <div data-testid="teams">
+          {loaded?.inventory.ok && loaded.inventory.value.rosterUnread !== undefined ? (
+            <p className="px-2 py-1 text-xs text-muted-foreground" data-testid="teams-roster-unread">
+              {loaded.inventory.value.rosterUnread}
+            </p>
+          ) : null}
           {loaded === undefined ? null : loaded.inventory.ok ? (
             teamsOf(loaded.inventory.value.seats).map(({ team, seats }) => (
               <button

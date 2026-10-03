@@ -161,6 +161,7 @@ The door starts that next attempt by dispatching `drain` into the session that c
 It answers `{ outcome: "continuing" | "kept", taskId }`:
 
 - **running** → `continuing`.
+- **running, but its harness hasn't named its coding session yet** → held for up to a minute while the attempt starts. `continuing` once the attempt takes the message into its prompt, or names its session (then as **running**). Refused as still starting if it does neither in that time, and as a harness that can't continue if the attempt ends without naming one.
 - **running, but it didn't stop within the wait, or the row couldn't be re-queued or drained** → `kept`. The run gets the message from whatever runs the row next.
 - **claimed, with its run not started yet** → `kept` for that attempt.
 - **parked on its own question, or between attempts** → `kept` for the next attempt; nothing is stopped and the question still needs answering.

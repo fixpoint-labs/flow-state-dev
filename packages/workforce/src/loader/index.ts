@@ -9,9 +9,10 @@
  * policy. Under it, `readWorkforce` is the entry point an app wanting seats
  * alone still reaches for: it reads the tree and hands back records that already carry their
  * own skills, ready for `hireWorkforce`. Underneath it, `readWorkforceDirectory`
- * scans `teams/<id>/workers/<name>/` and returns one neutral `WorkerManifest`
- * per worker, and `readSeatSkills` reads the skills one seat can see across the
- * three levels it draws from; both stay exported for a caller that wants one
+ * scans `org/workers/<name>/` and `teams/<id>/workers/<name>/` and returns one
+ * neutral `WorkerManifest` per worker, and `readSeatSkills` reads the skills one seat can see across the
+ * levels it draws from (org, team and own for a team seat; org and own for an
+ * org seat, which has no team); both stay exported for a caller that wants one
  * half on its own. Alongside them, `readTeamsDirectory` reads each team's own
  * optional `TEAM.md` — what a team is, and the instructions every seat on it
  * carries — `readResourcesDirectory` scans `org/resources/` and

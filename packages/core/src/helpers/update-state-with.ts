@@ -147,3 +147,31 @@ export async function updateStateWith<TState, TResult>(
     updater as OutcomeUpdater<TState, TState | Promise<TState>, TResult>
   );
 }
+
+/**
+ * Read a resource's state as it is committed now, not as this request first
+ * read it.
+ *
+ * A request's resource reads are the snapshot it took when it first touched
+ * each key, so a value another request wrote since is invisible to a plain
+ * read. A write that changes nothing is checked against the stored row before
+ * it reports "no change", and refreshes from it when the two differ, so
+ * running one and projecting what it saw reads the committed state, and
+ * writes nothing. For a waiter that polls a value another request will move.
+ *
+ * Needs a writable resource or collection ref: it reads through
+ * `updateState`, so on a ref declared `writable: false` it is refused with
+ * `resource_read_only` and `project` never runs.
+ *
+ * Returns `undefined` when the updater never ran (see {@link withOutcome}).
+ *
+ * ```ts
+ * const status = await readCommitted(rowRef, (row) => row?.status);
+ * ```
+ */
+export async function readCommitted<TState, TResult>(
+  ref: UpdateStateRunner<TState>,
+  project: (state: TState) => TResult
+): Promise<TResult | undefined> {
+  return updateStateWith<TState, TResult>(ref, (state) => ({ state, result: project(state) }));
+}
