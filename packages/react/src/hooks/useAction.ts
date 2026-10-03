@@ -38,6 +38,7 @@ export function useAction(options: UseActionOptions): UseActionResult {
   const flowKind = options.flowKind ?? context.flowKind;
   const userId = options.userId ?? context.userId;
   const baseUrl = options.baseUrl ?? context.baseUrl;
+  const apiPath = context.apiPath;
 
   if (!flowKind?.trim()) {
     throw new Error("useAction requires flowKind (option or FlowProvider)");
@@ -51,8 +52,8 @@ export function useAction(options: UseActionOptions): UseActionResult {
   const [error, setError] = useState<Error | undefined>();
 
   const client = useMemo(
-    () => createClient({ flowKind: flowKind!, userId: userId!, baseUrl }),
-    [flowKind, userId, baseUrl]
+    () => createClient({ flowKind: flowKind!, userId: userId!, baseUrl, apiPath }),
+    [flowKind, userId, baseUrl, apiPath]
   );
 
   const execute = useCallback(

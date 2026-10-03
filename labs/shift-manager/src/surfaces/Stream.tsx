@@ -122,8 +122,6 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
     [clients, gaps, snapshot, workstream],
   );
 
-  const feed = transcript === undefined && failure === undefined ? [] : feedOf(transcript?.lines ?? [], asks, Date.now());
-
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="stream">
       <div className="min-h-0 flex-1 overflow-y-auto" data-testid="transcript">
@@ -147,28 +145,7 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
               </button>
             </li>
           ) : null}
-          {feed.map((day) => (
-            <Fragment key={day.label}>
-              <li className="flex items-center gap-2.5 px-2 pt-2 pb-1" data-look="day-divider" aria-label={day.label}>
-                <span className="font-mono text-[10.5px] font-medium tracking-[0.14em] text-muted-foreground">{day.label}</span>
-                <span className="h-px flex-1 bg-foreground/[0.14]" data-look="day-rule" />
-              </li>
-              {day.entries.map((entry) =>
-                "line" in entry ? (
-                  <li key={entry.line.id} className="px-2 py-2.5" data-testid="transcript-line" data-line-id={entry.line.id}>
-                    <span className="text-[13.5px] font-semibold" data-look="feed-name">
-                      {lineLabel(entry.line)}
-                    </span>
-                    <span className="mt-0.5 block whitespace-pre-wrap text-sm leading-[1.55]" data-testid="transcript-line-body">
-                      {entry.line.body}
-                    </span>
-                  </li>
-                ) : (
-                  <FeedAsk key={entry.ask.item.suspensionId} ask={entry.ask} />
-                ),
-              )}
-            </Fragment>
-          ))}
+          {transcript === undefined && failure === undefined ? null : <TranscriptLines lines={transcript?.lines ?? []} asks={asks} />}
           {transcript !== undefined && transcript.lines.length === 0 && asks.length === 0 ? (
             <li className="py-6 text-center text-sm text-muted-foreground" data-testid="feed-empty">
               Nothing has been posted here yet.
@@ -221,6 +198,41 @@ function feedOf(lines: readonly ChannelTranscriptLine[], asks: readonly Ask[], n
     days.at(-1)!.entries.push(entry);
   }
   return days;
+}
+
+/**
+ * The lines of a transcript as design v2 draws them, oldest first: who wrote
+ * each, then its words, under a divider per day. A workstream's Stream and a
+ * project's draw lines with this one list; a workstream's also passes its
+ * members' pending asks, each placed at the time it was raised.
+ */
+export function TranscriptLines({ lines, asks = [] }: { lines: readonly ChannelTranscriptLine[]; asks?: readonly Ask[] }) {
+  return (
+    <>
+      {feedOf(lines, asks, Date.now()).map((day) => (
+        <Fragment key={day.label}>
+          <li className="flex items-center gap-2.5 px-2 pt-2 pb-1" data-look="day-divider" aria-label={day.label}>
+            <span className="font-mono text-[10.5px] font-medium tracking-[0.14em] text-muted-foreground">{day.label}</span>
+            <span className="h-px flex-1 bg-foreground/[0.14]" data-look="day-rule" />
+          </li>
+          {day.entries.map((entry) =>
+            "line" in entry ? (
+              <li key={entry.line.id} className="px-2 py-2.5" data-testid="transcript-line" data-line-id={entry.line.id}>
+                <span className="text-[13.5px] font-semibold" data-look="feed-name">
+                  {lineLabel(entry.line)}
+                </span>
+                <span className="mt-0.5 block whitespace-pre-wrap text-sm leading-[1.55]" data-testid="transcript-line-body">
+                  {entry.line.body}
+                </span>
+              </li>
+            ) : (
+              <FeedAsk key={entry.ask.item.suspensionId} ask={entry.ask} />
+            ),
+          )}
+        </Fragment>
+      ))}
+    </>
+  );
 }
 
 /**
@@ -277,13 +289,18 @@ export function Composer({
   send,
   onKept,
   addressing,
-  mentions,
+  label = "Post to this workstream",
+  placeholder = "Post a line to this workstream, or @worker to message one…",
+  mentions = [],
 }: {
   send: (body: string) => Promise<void>;
   onKept: () => Promise<void>;
-  addressing: (name: string) => Addressing;
-  /** The names offered as `@name` in the footer: the members running a task here. */
-  mentions: readonly string[];
+  /** Where an `@name` line goes. Absent: every line, `@` or not, is a post. */
+  addressing?: (name: string) => Addressing;
+  label?: string;
+  placeholder?: string;
+  /** The names offered as `@name` in the footer: the members running a task here. Absent: none. */
+  mentions?: readonly string[];
 }) {
   const [draft, setDraft] = useState("");
   const [posting, setPosting] = useState(false);
@@ -293,8 +310,8 @@ export function Composer({
   const mounted = useRef(true);
   useEffect(() => () => void (mounted.current = false), []);
 
-  const address = parseAddress(draft);
-  const target = address === undefined ? undefined : addressing(address.name);
+  const address = addressing === undefined ? undefined : parseAddress(draft);
+  const target = address === undefined ? undefined : addressing?.(address.name);
   const rows = target !== undefined && target.blocked === null ? target.rows : [];
   const row = rows.length === 1 ? rows[0] : rows.find((r) => r.id === chosen);
   const blocked =
@@ -314,11 +331,14 @@ export function Composer({
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSend) return;
+    // What was sent. A send that finishes clears only this; a line typed since stays.
+    const submitted = draft;
+    const clearSent = () => setDraft((current) => (current === submitted ? "" : current));
     if (address !== undefined) {
       const to = target as Extract<Addressing, { blocked: null }>;
       setPostError(null);
       if (await turn.run(() => to.send(row!, address.message))) {
-        setDraft("");
+        clearSent();
         setChosen("");
       }
       return;
@@ -326,13 +346,19 @@ export function Composer({
     setPosting(true);
     setPostError(null);
     turn.clear();
+    let sent = false;
     try {
-      await send(draft.trim());
-      if (!mounted.current) return;
-      setDraft("");
+      await send(submitted.trim());
+      sent = true;
+      // The draft goes only once the line is read back: a read that fails
+      // leaves it here, with the reason.
       await onKept();
+      if (mounted.current) clearSent();
     } catch (err) {
-      if (mounted.current) setPostError(err instanceof Error ? err.message : String(err));
+      const reason = err instanceof Error ? err.message : String(err);
+      if (mounted.current) {
+        setPostError(sent ? `Your line was posted, but reading it back failed: ${reason} Your draft is kept; check the conversation before sending it again.` : reason);
+      }
     } finally {
       if (mounted.current) setPosting(false);
     }
@@ -342,8 +368,8 @@ export function Composer({
   return (
     <ComposerShell
       testId="composer"
-      label="Post to this workstream"
-      placeholder="Post a line to this workstream, or @worker to message one…"
+      label={label}
+      placeholder={placeholder}
       draft={draft}
       onDraft={(next) => {
         setDraft(next);
@@ -357,7 +383,7 @@ export function Composer({
         blocked !== null ? (
           blocked
         ) : posting ? (
-          "Posting… the line appears once the channel keeps it."
+          "Posting… the line appears once it is kept."
         ) : postError !== null ? (
           <span role="alert" className="text-destructive" data-testid="composer-error">
             {postError}

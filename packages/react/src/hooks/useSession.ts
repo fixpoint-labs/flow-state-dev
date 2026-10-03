@@ -467,6 +467,7 @@ export function useSession(
   const resolvedFlowKind = normalizeFlowKind(options?.flowKind ?? context.flowKind ?? "");
   const userId = options?.userId ?? context.userId ?? "devuser";
   const baseUrl = options?.baseUrl ?? context.baseUrl;
+  const apiPath = context.apiPath;
   const autoResume = options?.autoResume === true;
   const live = options?.live === true;
   const stuckThresholdMs = options?.stuckThresholdMs ?? 30_000;
@@ -662,18 +663,18 @@ export function useSession(
   }, []);
 
   const sessionClient = useMemo(
-    () => createSessionClient({ baseUrl }),
-    [baseUrl]
+    () => createSessionClient({ baseUrl, apiPath }),
+    [baseUrl, apiPath]
   );
 
   const client = useMemo(
-    () => createClient({ flowKind: resolvedFlowKind, userId, baseUrl }),
-    [resolvedFlowKind, userId, baseUrl]
+    () => createClient({ flowKind: resolvedFlowKind, userId, baseUrl, apiPath }),
+    [resolvedFlowKind, userId, baseUrl, apiPath]
   );
 
   const recoveryClient = useMemo(
-    () => createRecoveryClient({ baseUrl }),
-    [baseUrl]
+    () => createRecoveryClient({ baseUrl, apiPath }),
+    [baseUrl, apiPath]
   );
 
   /**
@@ -1284,6 +1285,7 @@ export function useSession(
         : createSSEClient({
             url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
             baseUrl,
+            apiPath,
             startingAfter: startingAfter !== undefined ? Number(startingAfter) : undefined,
             ...sseCallbacks
           });
@@ -1295,6 +1297,7 @@ export function useSession(
       itemConfig.itemTypes,
       resolvedFlowKind,
       baseUrl,
+      apiPath,
       refreshSnapshot,
       refreshLatestRequest,
       scheduleContentFlush,
@@ -1538,6 +1541,7 @@ export function useSession(
     const close = followSession({
       sessionId,
       baseUrl,
+      apiPath,
       since: snapshotAtRef.current,
       sessionCreatedAt: followedSessionCreatedAt,
       itemTypes: itemConfig.itemTypes,
@@ -1563,6 +1567,7 @@ export function useSession(
     snapshotAppliedFor,
     followedSessionCreatedAt,
     baseUrl,
+    apiPath,
     takeLiveItem,
     itemConfig.enabled,
     itemConfig.includeTransient,

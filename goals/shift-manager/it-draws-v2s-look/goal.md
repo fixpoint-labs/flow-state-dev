@@ -10,7 +10,7 @@
 
 The look table is read against v2 itself (`specs/epics/FIX-1649/assets/design/v2/shift-manager-v2.dc.html`).
 
-**Signal:** Chromium walks every screen by clicking: workstream (its Stream, then its Board), task, Tasks, Chief of Staff, Inbox, Roster and project on DevTeam, and Chief of Staff on the desk. It toggles the sidebar's shift switch and the window width (1600 and 1100) in place. It reads the computed style of every visible element in one `page.evaluate` per screen state. Each failure is tagged `<leg> [<screen> <shift> <width>]` and cites the v2 line.
+**Signal:** Chromium walks every screen by clicking: workstream (its Stream, then its Board), task, Tasks, Chief of Staff, Inbox, Roster and project (the project holding the workstream, on its Board) on DevTeam, and Chief of Staff on the desk. It toggles the sidebar's shift switch and the window width (1600 and 1100) in place. It reads the computed style of every visible element in one `page.evaluate` per screen state. Each failure is tagged `<leg> [<screen> <shift> <width>]` and cites the v2 line.
 
 - **type**: for every family and weight the page's text is set in, `document.fonts` holds a loaded face. Each row's family, size, weight and tracking match.
 - **surface**: each row's surface token and border. Radius 0 on every element, except the registry parts the theme's radius can't reach.
@@ -19,7 +19,7 @@ The look table is read against v2 itself (`specs/epics/FIX-1649/assets/design/v2
 - **content**: the stream composer's @-mentions are the store's running members. The Board tab's count is the store's rows. The Stream's feed names one author per stored line and pending member ask, and marks each such ask NEEDS YOU. The Board's columns stand in v2's order.
 - **totality**: every painting element inside a graded region (the sidebar, the tabs, the composers, the screen titles) is covered by a look-table row or a named exception. Every row matches at least its expected number of elements, so a missing element fails as surely as an extra one.
 
-Which regions are graded whole grows with each slice's screens: the workstream's header, feed and Board, the task's activity line, an ask in its session and the inspector's needs banner, and the project's team strip joined with slice C (`look-c.mts`). The fonts, the radius and the highlighter are graded on every element of every screen now.
+Which regions are graded whole grows with each slice's screens: the workstream's header, feed and Board, the task's activity line, an ask in its session and the inspector's needs banner, and the project's team strip and Board lanes joined with slice C (`look-c.mts`). The fonts, the radius and the highlighter are graded on every element of every screen now.
 
 **Anti-game:**
 - Computed values are graded, never class names. A border is compared at the whole pixel Chromium computes, so v2's 1.5px box reads as 1px.
@@ -54,3 +54,4 @@ The SPEC names Tasks' ID column for `drift` and `missing`. That column arrives w
 | 2026-10-02 | feat/FIX-1737-c-workstream-board (pre-PR), `GOAL_CONTROL=drift` | n/a | FAIL (expected) | Only **surface** (`button[team]` radius) and **type** (nav counts in Space Grotesk), as on A. No C row moved. |
 | 2026-10-02 | feat/FIX-1737-c-workstream-board (pre-PR), `GOAL_CONTROL=unclassified` | n/a | FAIL (expected) | Only **totality**: `p "A line no row covers"`, on every screen state including board. |
 | 2026-10-02 | feat/FIX-1737-c-workstream-board (pre-PR), `GOAL_CONTROL=missing` | n/a | FAIL (expected) | Only **totality**: the team on-shift count matches 0, 1 expected, on every screen state. |
+| 2026-10-03 | feat/FIX-1737-c-workstream-board, merge of 839a5f550 (pre-push) | n/a | PASS | The project screen is now the project holding the workstream, on its Board: C's Board rows also grade its lanes, under the team strip. 62 rows, 14 exceptions. DevTeam: 2 teams, 4 seats, 1 running; project 93 painting elements per state. Controls drift, unclassified and missing each FAIL only at their named legs, as before. |

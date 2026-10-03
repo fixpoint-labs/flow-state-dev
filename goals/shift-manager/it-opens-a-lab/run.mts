@@ -173,6 +173,13 @@ type Tree = {
   channels: Array<{ id: string; members: string[]; boardRefs: string[] }>;
 };
 
+/** The tree's one board-holding channel: where a row is filed, and where the composer posts. */
+function boardChannel(tree: Tree): Tree["channels"][number] {
+  const holding = tree.channels.filter((c) => c.boardRefs.length > 0);
+  if (holding.length !== 1) throw new Error(`the tree holds ${holding.length} board-holding channels, not one`);
+  return holding[0]!;
+}
+
 async function readTree(root: string): Promise<Tree> {
   const roster = await readDeclaredRoster(root);
   if (roster.problems.length > 0) throw new Error(`the tree at ${root} did not load: ${roster.problems.map((p) => p.path).join(", ")}`);
@@ -194,6 +201,8 @@ type Store = {
   rows: Record<string, Array<{ ref: string; id: string; status: string; title: string }>>;
   /** Suspension ids pending on a person, across the seats' sessions. */
   asks: string[];
+  /** The organization's project rows: which workstreams each one lists. */
+  projects: Array<{ id: string; workstreams: string[] }>;
 };
 
 async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store> {
@@ -206,6 +215,7 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
     )?.ref;
   const seatsRef = refOf("inventory/seats/*");
   const channelsRef = refOf("inventory/channels/*");
+  const projectsRef = refOf("projects/*");
   const seats = seatsRef === undefined ? [] : (await api.collection(host, seatsRef)).map((r) => String(r.id));
   const channels =
     channelsRef === undefined
@@ -240,7 +250,14 @@ async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store
       }
     }
   }
-  return { seats, channels, rows, asks };
+  const projects =
+    projectsRef === undefined
+      ? []
+      : (await api.collection(host, projectsRef)).map((r) => ({
+          id: String(r.id),
+          workstreams: Array.isArray(r.workstreams) ? (r.workstreams as string[]) : [],
+        }));
+  return { seats, channels, rows, asks, projects };
 }
 
 // ---- putting a row on each board ---------------------------------------------
@@ -298,7 +315,12 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
   const fail = (leg: string, why: string) => failures.push(`[${name}] ${leg}: ${why}`);
   const tree = await readTree(LABS[name].tree);
   const outbox = join(SCRATCH, `${name}-work.ndjson`);
-  const served = await startLab(name, pages, name === "multi-seat-collab" ? { MULTI_SEAT_COLLAB_OUTBOX: outbox } : {});
+  const served = await startLab(
+    name,
+    pages,
+    // DevTeam on a fresh store each run, for a profile whose store outlives the process.
+    name === "multi-seat-collab" ? { MULTI_SEAT_COLLAB_OUTBOX: outbox } : { DEVTEAM_STORE: join(SCRATCH, `devteam-${RUN_STAMP}.sqlite`) },
+  );
   const browser = await launchChromium();
   try {
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
@@ -326,7 +348,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       await scenario.drainAll();
       if (!(await waitForRow(api, tree, (s) => s === "parked", userId))) throw new Error(`${name}: the filed row never parked`);
     } else {
-      const channel = tree.channels[0]!;
+      const channel = boardChannel(tree);
       const kind = (await readStore(api, tree, userId)).channels.find((c) => c.id === channel.id)?.kind;
       if (kind === undefined) throw new Error(`${name}: the inventory registers no channel ${channel.id}`);
       const status = await act(api, kind, channel.id, "post", { body: `${fixture.devteam.issue}: ${fixture.devteam.text}` }, userId);
@@ -360,7 +382,7 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     }
 
     // ---- PROJECTS ------------------------------------------------------------
-    const shownStreams = (await page.locator("[data-testid^=nav-workstream-]").evaluateAll((els) =>
+    const shownStreams = (await page.locator("[data-testid^=nav-workstream-]:not([data-testid=nav-workstream-gone])").evaluateAll((els) =>
       els.map((e) => e.getAttribute("data-testid") ?? ""),
     )).map((t) => t.slice("nav-workstream-".length));
     if (!same(shownStreams, store.channels.map((c) => c.id))) {
@@ -399,11 +421,32 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
     if (!(await visible(page, "cos-summary"))) fail("reach", "Chief of Staff draws no shift summary");
     if (!(await visible(page, "cos-panel"))) fail("reach", "Chief of Staff has no right panel");
 
-    // ---- Project level -------------------------------------------------------
+    // ---- Project level: PROJECTS' heading opens No project ------------------
+    // No project lists every workstream no project row names. It has no room
+    // and no brief, and says so; its Board draws a lane per board-holding one.
     await page.getByTestId("projects-heading").click();
-    for (const tab of ["stream", "board", "workstreams", "brief"]) {
+    const listed = new Set(store.projects.flatMap((p) => p.workstreams));
+    const unlisted = store.channels.map((c) => c.id).filter((id) => !listed.has(id));
+    const unlistedBoards = tree.channels.filter((c) => unlisted.includes(c.id) && c.boardRefs.length > 0).map((c) => c.id);
+    for (const tab of ["stream", "brief"]) {
       await page.locator(`[role=tab][data-tab=${tab}]`).click();
-      if (!(await visible(page, `project-${tab}-empty`))) fail("reach", `the project's ${tab} tab shows no named empty state`);
+      if (!(await visible(page, `project-${tab}-none`))) fail("reach", `No project's ${tab} tab doesn't say it has none`);
+    }
+    await page.locator("[role=tab][data-tab=workstreams]").click();
+    if (unlisted.length === 0) {
+      if (!(await visible(page, "project-workstreams-none"))) fail("reach", "No project lists no workstream and its Workstreams tab doesn't say so");
+    } else {
+      await visible(page, "project-workstream");
+      const shown = await attr(page, "project-workstream", "data-channel-id");
+      if (!same(shown, unlisted)) fail("reach", `No project's Workstreams: ${diff(unlisted, shown)}`);
+    }
+    await page.locator("[role=tab][data-tab=board]").click();
+    if (unlistedBoards.length === 0) {
+      if (!(await visible(page, "project-board-none"))) fail("reach", "No project holds no board and its Board tab doesn't say so");
+    } else {
+      await visible(page, "project-lane");
+      const lanes = await attr(page, "project-lane", "data-channel-id");
+      if (!same(lanes, unlistedBoards)) fail("reach", `No project's Board lanes: ${diff(unlistedBoards, lanes)}`);
     }
 
     // ---- each workstream -----------------------------------------------------
@@ -462,8 +505,8 @@ async function checkLab(name: LabName, pages: string, failures: string[], eviden
       }
     }
 
-    // ---- post: the composer, on the first workstream -------------------------
-    const channel = tree.channels[0]!;
+    // ---- post: the composer, on the board-holding workstream ---------------
+    const channel = boardChannel(tree);
     const line = `${fixture.line} (${name} ${RUN_STAMP})`;
     await open(page, served.origin, `/w/${encodeURIComponent(channel.id)}/stream`);
     await page.getByTestId("composer-input").fill(line);

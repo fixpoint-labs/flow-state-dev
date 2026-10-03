@@ -27,7 +27,7 @@ import { readDeclaredFlow } from "../declared-flow";
 import { AGENT_KIND } from "../agent-worker-flow";
 import { hireWorkforce, missingKindRefusal, resolvableKinds, type HireOptions } from "../hire";
 import type { HiredSeatRow } from "./collections";
-import { hiredSeatManifestFromStored, parseHiredSeatRow } from "./rows";
+import { hiredSeatManifestFromStored, keyMismatch, parseHiredSeatRow } from "./rows";
 import { tagIncarnation } from "./incarnation";
 
 /** Why a stored row does not become a seat. Pinned names; see the file header. */
@@ -49,18 +49,24 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+
 /**
  * Check one stored roster value, read under `orgId`, against the app's kinds.
  *
  * @param orgId The organization whose cell the value was read from.
  * @param stored The stored state, as the store returned it.
  * @param kinds The app's kind map, the same one the reload and the hire take.
+ * @param key The storage key the value was read under, when the caller has
+ *   it. A row whose `seatId` is not the key's last segment is `unreadable`:
+ *   routed by its envelope, a repair of it would act on whatever row the
+ *   envelope's seat id names, and by its key, on an address the row disowns.
  * @returns the seat it mints to, or the reason and detail it does not. Never throws.
  */
 export function checkHiredSeatRow(
   orgId: string,
   stored: unknown,
-  kinds: HireOptions["kinds"]
+  kinds: HireOptions["kinds"],
+  key?: string
 ): HiredSeatRowCheck {
   // The row is parsed for its fields, and the record is read through the same
   // walk the reload uses (which parses again) so the two can't disagree on
@@ -68,6 +74,8 @@ export function checkHiredSeatRow(
   const parsed = parseHiredSeatRow(stored);
   if ("problem" in parsed) return { ok: false, reason: "unreadable", detail: parsed.problem };
   const row = parsed.row;
+  const mismatch = key === undefined ? undefined : keyMismatch(key, row.seatId);
+  if (mismatch !== undefined) return { ok: false, reason: "unreadable", detail: mismatch, row };
   const record = hiredSeatManifestFromStored(orgId, stored);
   if ("problem" in record) return { ok: false, reason: "unreadable", detail: record.problem, row };
 

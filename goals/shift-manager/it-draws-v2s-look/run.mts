@@ -661,8 +661,12 @@ async function open(page: Page, screen: Screen, ids: { channel: string; taskId: 
       await ready("roster");
       return;
     case "project":
-      await page.getByTestId("projects-heading").click();
+      // ---- slice C: the project holding the workstream, on its Board, under the team strip ----
+      await page.locator(`[data-testid=project-group]:has([data-testid="nav-workstream-${ids.channel}"]) [data-testid^=nav-project-]`).click();
       await ready("project");
+      await page.locator("[role=tab][data-tab=board]").click();
+      await ready("project-lane");
+      // ---- end slice C ----
   }
 }
 

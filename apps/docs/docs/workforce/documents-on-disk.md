@@ -11,11 +11,6 @@ A handbook, a glossary, an escalation procedure: the reference material a team s
 
 Two folders hold documents, and the one you pick decides where the text lives from then on.
 
-| Folder | The body an agent reads | Who can change it | Which seats reach it |
-|---|---|---|---|
-| `references/` | the file on disk, re-read on each request | whoever edits the file in your repository | every seat at or below the folder it sits in |
-| `resources/` | the file's body at first boot, then whatever the product last wrote | the file, until something writes it; the product after that | every seat the flow installed it on |
-
 Choose by who does the editing. A company handbook goes in `references/`: you change it by editing the file and deploying, and nothing running in the product can overwrite it. An agent's working notes go in `resources/`, where a block or the agent itself can write and the text survives the turn.
 
 `readReferencesDirectory` and `readResourcesDirectory` turn the folder tree into plain records. `referencesFromDocs` and `resourcesFromDocs` turn those records into the resource maps you pass to `defineFlow`.
@@ -255,20 +250,11 @@ Both functions throw rather than collecting. A record that cannot become a resou
 
 ## Who reaches what
 
-**For a `references/` document, the folder is the boundary.** A seat reaches the references at or above its own place in the tree: the organization's, its own team's, and its own folder's. Not another team's, and not a teammate's folder. You write no filter, and there is no setting to get wrong.
+![Two panels. references/: the file is the text, re-read on each request and never written by the product. Its folders are nested walls: the seat ada reads the organization's references, its own team's and its own folder's, but not a teammate's folder, another team's, or an org seat's. resources/: the file seeds a stored row at first boot, which the product, a block or the agent can then write, and later edits to the file do not change a written row. Its folder is only part of the name. Each organization gets its own row, and flowIsolation: true gives each seat its own](./documents-reach.svg)
 
-```
-teams/engineering/workers/ada/     a seat here reads…
-  org/references/code-of-conduct                     yes — the organization is above everyone
-  teams/engineering/references/handbook              yes — its own team
-  teams/engineering/workers/ada/references/runbook   yes — its own folder
-  teams/engineering/workers/ivan/references/runbook  no  — a teammate's folder
-  teams/support/references/escalation                no  — another team
-```
+A folder means two different things here. Under `references/`, it is a wall: a seat reads the references of its organization, its team and its own folder, and nothing beside them. Under `resources/`, it is only part of the name: every document there is the organization's, and a flow that installs them reaches all of them unless you filter.
 
-An unreachable reference is not an empty read. The accessor is not on the seat's map at all, so `ctx.resources.get("teams/support/escalation")` throws `is not registered`.
-
-To let a reference reach more people, move the file up the tree. Nothing on the install side widens it.
+You write no filter for a reference, and there is no setting to widen it: to let a reference reach more people, move the file up the tree. An unreachable reference is not an empty read. The accessor is not on the seat's map at all, so `ctx.resources.get("teams/support/escalation")` throws `is not registered`.
 
 A seat can ask for less than its place gives it, by listing what it wants in its own file. The list narrows and never widens, so naming a document the seat could not already reach refuses the whole roster at the hire, naming the seat and the ref:
 
@@ -285,9 +271,7 @@ Leaving the key out means every reference at or above the seat. Writing `referen
 
 A reference under `org/workers/<name>/references/` belongs to the org seat declared in that folder. That seat reaches it, along with the organization's references. No other seat does, and no team's references reach an org seat, because it has no team.
 
-**For a `resources/` document, the folder is a namespace and nothing more.** Every one is org-scoped, and a generator's resource tools reach every installed document marked `llmReadable`. Install a whole tree on one flow and every team's writable documents are reachable from it, one team from another included.
-
-So if you want a team's writable documents kept to that team, filter the records before installing them:
+To keep a team's `resources/` documents to that team, filter the records before installing them:
 
 ```ts
 const engineering = resourcesFromDocs(
@@ -295,7 +279,7 @@ const engineering = resourcesFromDocs(
 );
 ```
 
-The same holds one level down. Putting a `resources/` document under `workers/ada/` addresses it to that seat. It does not keep it from the others. Seats hired into one kind share that kind's flow definition, so by default every one of them reads the same row.
+A worker's folder is also only part of the name. Putting a `resources/` document under `workers/ada/` addresses it to that seat. It does not keep it from the others. Seats hired into one kind share that kind's flow definition, so by default every one of them reads the same row.
 
 Filtering decides what a whole kind installs. To narrow one seat within a kind, the seat's own file names the documents it may touch under `resources:`, and can take one read-only: see [what a `WORKER.md` says](./workers-on-disk.md#what-a-workermd-says). A seat naming a document its kind was not installed with is refused at the hire, so the filter holds.
 

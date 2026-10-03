@@ -25,7 +25,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openChannels } from "@flow-state-dev/workforce";
-import { REPO_ROOT, intentFreeEnv } from "../../lib/index.mts";
+import { REPO_ROOT, intentFreeEnv, refuseIfAnswering, stopProcessGroup } from "../../lib/index.mts";
 import { LAB_USER_ID, type LabTree } from "./host.mts";
 import { FILE_ENTRY, type FileInput } from "./workforce/flows/workers/planner.mts";
 import {
@@ -73,9 +73,11 @@ export async function serveLab(options: {
   const outbox = join(options.workDir, "work.ndjson");
   writeFileSync(outbox, "", "utf8");
   // Never a fixed port: an incumbent on it would answer the readiness probe
-  // while our child died on EADDRINUSE. The exit watch closes the same hole.
+  // while our child died on EADDRINUSE. A random port can still land on one,
+  // so the pre-flight refuses it; the exit watch below closes the same hole.
   const port = 4300 + Math.floor(Math.random() * 600);
   const origin = `http://127.0.0.1:${port}`;
+  await refuseIfAnswering(origin);
 
   let log = "";
   let exited: string | undefined;
@@ -98,6 +100,8 @@ export async function serveLab(options: {
         ...(options.debugEndpoints === false ? { FSDEV_DEBUG_ENDPOINTS: "0" } : {}),
       }),
       stdio: ["ignore", "pipe", "pipe"],
+      // Detached, so `stop` reaches the whole group, not only the `tsx` wrapper.
+      detached: true,
     },
   );
   child.stdout?.on("data", (chunk) => (log += String(chunk)));
@@ -118,9 +122,7 @@ export async function serveLab(options: {
           workDir: options.workDir,
           outbox,
           log: () => log,
-          stop: () => {
-            child.kill("SIGTERM");
-          },
+          stop: () => stopProcessGroup(child),
           exited: () => exitedPromise,
         };
       }
@@ -129,7 +131,7 @@ export async function serveLab(options: {
     }
     await new Promise((r) => setTimeout(r, 250));
   }
-  child.kill("SIGTERM");
+  stopProcessGroup(child);
   if (log.includes("DevTool assets not found")) {
     throw new Error(
       "the DevTool bundle is not built, so `fsdev dev` refused to start. Build it once:\n" +

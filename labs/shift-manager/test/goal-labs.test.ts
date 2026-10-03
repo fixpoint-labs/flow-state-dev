@@ -7,11 +7,14 @@
  * here: this file names a config path and nothing inside the tree.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { readDeclaredRoster, type DeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { createLabClients, type LabClients } from "../src/lib/connection";
-import { createLabReader, type BoardRow } from "../src/lib/reads";
+import { createLabReader, STAFF_TEAM, type BoardRow } from "../src/lib/reads";
 import { teamsOf, type LoadedSnapshot } from "../src/lib/derive";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { followRequest, readSessionItems, resolveRunFlow, taskItems } from "../src/lib/run";
@@ -23,7 +26,9 @@ const repo = fileURLToPath(new URL("../../../", import.meta.url));
 type Opened = { lab: ServedLab; roster: DeclaredRoster; snapshot: LoadedSnapshot; clients: LabClients };
 
 async function open(configPath: string, treePath: string): Promise<Opened> {
-  const loaded = await loadFsdevConfig({ cwd: repo, configPath });
+  // DevTeam keeps a store across restarts; each open here gets its own.
+  process.env.DEVTEAM_STORE = join(mkdtempSync(join(tmpdir(), "sm-goal-labs-")), "devteam.sqlite");
+  const loaded = await loadFsdevConfig({ cwd: repo, configPath }).finally(() => delete process.env.DEVTEAM_STORE);
   if (loaded === undefined) throw new Error(`no config at ${configPath}`);
   const lab = await serveLab(loaded.flowState);
   const devtool = loaded.flowState.meta.devtool;
@@ -38,10 +43,12 @@ async function open(configPath: string, treePath: string): Promise<Opened> {
   return { lab, roster: await readDeclaredRoster(`${repo}/${treePath}`), snapshot, clients };
 }
 
-/** TEAMS, as the tree declares it: each team's seat ids. */
+/** TEAMS, as the tree declares it: each team's seat ids, an org seat (no team in its id) under Staff. */
 function declaredTeams(roster: DeclaredRoster): Record<string, string[]> {
   const teams: Record<string, string[]> = {};
-  for (const worker of roster.workers) (teams[worker.id.split(".")[0]!] ??= []).push(worker.id);
+  for (const worker of roster.workers) {
+    (teams[worker.id.includes(".") ? worker.id.split(".")[0]! : STAFF_TEAM] ??= []).push(worker.id);
+  }
   for (const ids of Object.values(teams)) ids.sort();
   return teams;
 }

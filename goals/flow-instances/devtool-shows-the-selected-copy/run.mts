@@ -17,7 +17,14 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page, type Request as PwRequest } from "playwright";
-import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
+import {
+  REPO_ROOT,
+  goalTmpDir,
+  loadFixture,
+  refuseIfAnswering,
+  runGoal,
+  stopProcessGroup,
+} from "../../lib/index.mts";
 
 type Copy = { id: string; marker: string };
 type Fixture = { copies: Copy[]; singleton: Copy; userId: string };
@@ -49,9 +56,14 @@ async function shot(page: Page, name: string): Promise<string> {
   return path;
 }
 
-/** Wait for the dev server to answer its health check, or give up loudly. */
-async function waitForServer(): Promise<void> {
-  for (let i = 0; i < 240; i += 1) {
+/**
+ * Wait for OUR dev server to answer its health check, or give up loudly.
+ *
+ * Only a 200 counts, and only while the child is alive: a child that exited
+ * (EADDRINUSE, say) did not produce whatever is answering.
+ */
+async function waitForServer(server: ChildProcess): Promise<void> {
+  for (let i = 0; i < 240 && server.exitCode === null && server.signalCode === null; i += 1) {
     try {
       const res = await fetch(`${ORIGIN}/healthz`);
       if (res.status === 200) return;
@@ -141,6 +153,11 @@ async function main() {
     // (or by whoever last ran `fsdev dev` here). Each run starts empty.
     const workDir = join(SHOTS, "server");
     mkdirSync(workDir, { recursive: true });
+    // Refuse beside anything already on the port: our child would fail to
+    // bind and the readiness probe below would grade the incumbent.
+    await refuseIfAnswering(ORIGIN);
+    // Detached, so the stop in `finally` reaches the whole group: `tsx` runs
+    // `fsdev dev` in a child, and signalling only `tsx` can leave it listening.
     server = spawn(
       join(REPO_ROOT, "node_modules", ".bin", "tsx"),
       [
@@ -157,11 +174,12 @@ async function main() {
         cwd: workDir,
         env: { ...process.env, FSDEV_DEBUG_ENDPOINTS: "1" },
         stdio: ["ignore", "pipe", "pipe"],
+        detached: true,
       },
     );
     server.stdout?.on("data", () => {});
     server.stderr?.on("data", () => {});
-    await waitForServer();
+    await waitForServer(server);
 
     // The catalog is the ground truth the navigator renders. Grading it here
     // means a navigator failure below is the UI's, not the server's.
@@ -356,7 +374,7 @@ async function main() {
     };
   } finally {
     await browser?.close().catch(() => {});
-    server?.kill("SIGTERM");
+    stopProcessGroup(server);
   }
 }
 

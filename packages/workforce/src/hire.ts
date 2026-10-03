@@ -735,7 +735,9 @@ export function hireWorkforce(
       manifest.seatId ?? manifest.id,
       manifest.declared[PACKAGES_KEY],
       manifest.packages,
-      packageBlocks
+      packageBlocks,
+      // Only an address carries the org to peel; a seat id never does.
+      manifest.seatId === undefined ? manifest.ownerPin?.orgId : undefined
     );
     const packageProblems = [...heldProblems, ...heldPackageProblems(held, registry)];
     if (packageProblems.length > 0) {

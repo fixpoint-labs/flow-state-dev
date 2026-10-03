@@ -110,6 +110,24 @@ describe("createModelResolver — provider package loading", () => {
     expect(text).toMatch(/abort/i);
   });
 
+  it("a package-loaded model offers the single-step methods, so a generator owns its tool loop", async () => {
+    // Without `generateStep`/`streamStep` a generator hands the tool loop to
+    // the SDK, where a tool's `ctx.suspend()` comes back to the model as a
+    // failed tool call instead of pausing the run for a person's answer.
+    const resolver = createModelResolver({ keys: { openai: "sk-test-not-real" } });
+    const model = resolver("openai/gpt-5.4-mini");
+    expect(typeof model.generateStep).toBe("function");
+    expect(typeof model.streamStep).toBe("function");
+
+    // Delegates through the real loader: an abort, not a load failure.
+    const controller = new AbortController();
+    controller.abort();
+    const caught = await model
+      .generateStep!({ messages: [{ role: "user", content: "hi" }], signal: controller.signal })
+      .then(() => undefined, (err: unknown) => err as Error);
+    expect(`${caught?.name}: ${caught?.message}`).toMatch(/abort/i);
+  });
+
   it("falls back to process.cwd() resolution for pnpm-strict app installs", async () => {
     // Build a fake app root whose node_modules contains `@ai-sdk/google`
     // (which the workspace does NOT install), exporting the v7 factory name.

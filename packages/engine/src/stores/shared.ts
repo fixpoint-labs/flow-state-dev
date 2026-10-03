@@ -120,6 +120,23 @@ export function assertMaxDepthTwo(path: string[], verb: string): void {
 }
 
 /**
+ * A full-record `set` whose record carries no `items` keeps the items the
+ * store holds (FIX-1735), on the stores that keep items on the record
+ * (in-memory, filesystem). A state write in the middle of a run is built from
+ * a snapshot that predates the items persisted since, so it leaves `items`
+ * off rather than replace them; the SQL adapters keep items out of `set`
+ * entirely, so the same write leaves theirs alone too. A record that does
+ * carry `items` still replaces them.
+ */
+export function withHeldItems<T extends RequestRecord>(
+  value: T,
+  held: OutputItem[] | undefined
+): T {
+  if (value.items !== undefined || held === undefined) return value;
+  return { ...value, items: held };
+}
+
+/**
  * Union two item logs by `id`, last write wins per id, in order: `prior` keeps
  * its positions and ids new in `next` append in `next`'s order. The
  * `RequestStore.persistItems` merge contract (FIX-811), shared by the runtime's

@@ -131,12 +131,9 @@ that way: booting past it runs those workers short of instructions someone wrote
 Instructions written in a `TEAM.md` reach only that team's workers. They ride each worker's own
 configuration, so a worker on another team never sees them.
 
-Documents under `teams/<team>/resources/` work the other way. They are installed on a worker
-*kind*, so every worker of that kind can read every team's documents. The folder addresses a
-document; it does not fence it. To give one team's workers only its own documents, filter the
-records before installing them: [Who reaches what](./documents-on-disk.md#who-reaches-what) shows
-how, and covers a worker's own folder too. A document under `teams/<team>/references/` is the other
-case: that folder does fence it, to that team's workers.
+![Two panels. references/: the file is the text, re-read on each request and never written by the product. Its folders are nested walls: the seat ada reads the organization's references, its own team's and its own folder's, but not a teammate's folder, another team's, or an org seat's. resources/: the file seeds a stored row at first boot, which the product, a block or the agent can then write, and later edits to the file do not change a written row. Its folder is only part of the name. Each organization gets its own row, and flowIsolation: true gives each seat its own](./documents-reach.svg)
+
+Team documents work differently by folder. Under `teams/<team>/resources/` they reach every worker of the kind that installed them, whatever its team; under `teams/<team>/references/` they reach only that team's workers. [Who reaches what](./documents-on-disk.md#who-reaches-what) shows how to filter the first.
 
 ## A worker's identity
 
@@ -338,6 +335,7 @@ lead.config;
 // { instructions: "You are the engineering lead. …",
 //   seatSkills: [],
 //   seatTools: [],
+//   seatId: "engineering.lead",
 //   model: "openai/gpt-5.4-mini",
 //   tools: ["board", "search"] }
 ```
@@ -349,7 +347,7 @@ Schema defaults fill in. `support.intake` declared no settings beyond its `flow`
 ```ts
 const intake = seats.find((seat) => seat.id === "support.intake")!;
 
-intake.config; // { seatSkills: [], seatTools: [], desk: "front" }
+intake.config; // { seatSkills: [], seatTools: [], seatId: "support.intake", desk: "front" }
 ```
 
 Every `config` is frozen. A worker asking for something its flow never declared does not quietly run without it:

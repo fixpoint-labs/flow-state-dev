@@ -1,0 +1,12 @@
+{
+  "composerLine": "Project check: this line is posted from a project's Stream and should be kept by its room.",
+  "ownerLine": "Can someone confirm the release window for the storefront?",
+  "memberLine": "The release window is Thursday afternoon.",
+  "outsiderLine": "An outsider should never get a line into this room.",
+  "burst": { "perMember": 4, "body": "burst line" },
+  "joins": 4,
+  "cos": {
+    "ask": "I need two new projects, please. Call the first one \"{first}\" and add {named} to it as a member. Call the second one \"{second}\", just for me.",
+    "titles": ["Launch review", "Pricing research"]
+  }
+}

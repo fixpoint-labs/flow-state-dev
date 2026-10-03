@@ -276,3 +276,17 @@ export function hiredSeatRowFromManifest(
     }),
   };
 }
+
+/**
+ * Why a row stored under `key` can't be taken as the seat it names, or
+ * `undefined` when the key's last segment is its `seatId`.
+ *
+ * @param key A roster storage key, with or without the roster prefix.
+ * @param seatId The `seatId` the row's envelope carries.
+ */
+export function keyMismatch(key: string, seatId: string): string | undefined {
+  const keySeat = key.split("/").pop()!;
+  return keySeat === seatId
+    ? undefined
+    : `the row is stored under "${keySeat}" but names the seat "${seatId}", so it can't be taken as either; fire "${keySeat}" to retire it`;
+}

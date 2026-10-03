@@ -1,6 +1,6 @@
 /**
  * The v2 look table's rows for the workstream, its Board, the task screen and
- * the project's team strip (FIX-1737 slice C: W1, W5, W11, T7, T9, T13, P2,
+ * the project's team strip and Board lanes (FIX-1737 slice C: W1, W5, W11, T7, T9, T13, P2,
  * P5, P7, P8), with the exceptions and graded regions those screens add.
  *
  * Kept beside `run.mts`, which spreads them into its table, so each screen's
@@ -10,6 +10,8 @@
 import type { Exception, Row, Screen } from "./run.mts";
 
 const WORKSTREAM: readonly Screen[] = ["workstream", "board"];
+/** Where the Board is drawn: a workstream's Board tab, and its project's Board, one lane per workstream. */
+const BOARDS: readonly Screen[] = ["board", "project"];
 
 /** The five columns, in the order v2 draws them (v2:1327), and the one v2 tints. */
 const COLUMN_ORDER = ["QUEUED", "RUNNING", "IN REVIEW", "NEEDS YOU", "DONE"] as const;
@@ -49,14 +51,14 @@ export const SLICE_C_ROWS: Row[] = [
   },
   { id: "ask in inbox", audit: "W11", v2: { line: 290, has: "font:500 12px 'IBM Plex Mono'" }, select: "[data-testid=feed-ask-inbox]", on: ["workstream"], min: ({ store }) => feed(store).asks, want: { family: "mono", size: 12 } },
 
-  // A workstream's Board (P5, P7, P8): columns in v2's order, hairlines, no fill but RUNNING's tint.
+  // A workstream's Board, and each lane of its project's (P5, P7, P8): columns in v2's order, hairlines, no fill but RUNNING's tint.
   ...COLUMN_ORDER.map(
     (column, i): Row => ({
       id: `board column ${i + 1}, ${column}`,
       audit: column === "RUNNING" ? "P5" : "P5, P8",
       v2: column === "RUNNING" ? { line: 1335, has: "bg: st === 'run' ? 'rgba(var(--bluergb),.035)' : 'transparent'" } : COLS_LINE,
       select: `[data-testid=board] > [data-testid=board-column]:nth-child(${i + 1})[data-column="${column}"]`,
-      on: ["board"],
+      on: BOARDS,
       min: 1,
       want: column === "RUNNING" ? {} : { surface: "none" },
     }),
@@ -66,12 +68,12 @@ export const SLICE_C_ROWS: Row[] = [
     audit: "P5",
     v2: { line: 528, has: "font:500 10.5px 'IBM Plex Mono',monospace;letter-spacing:.1em" },
     select: "[data-testid=board-column] > [data-look=column-head], [data-testid=board-column] > [data-look=column-head] > span:not([data-state-square])",
-    on: ["board"],
+    on: BOARDS,
     min: 15,
     want: { family: "mono", size: 10.5, tracking: 0.1 },
   },
-  { id: "board running square", audit: "P5", v2: { line: 894, has: "run: { nb: A, nbd: A, nbs: 'solid' }" }, select: "[data-testid=board] [data-state-square=run]", on: ["board"], min: 1, want: { square: "run" } },
-  { id: "DONE line", audit: "P7", v2: { line: 547, has: "font:500 11px 'IBM Plex Mono'" }, select: "[data-column=DONE] [data-look=done-line], [data-column=DONE] [data-look=done-line] > span", on: ["board"], min: 0, want: { family: "mono", size: 11 } },
+  { id: "board running square", audit: "P5", v2: { line: 894, has: "run: { nb: A, nbd: A, nbs: 'solid' }" }, select: "[data-testid=board] [data-state-square=run]", on: BOARDS, min: 1, want: { square: "run" } },
+  { id: "DONE line", audit: "P7", v2: { line: 547, has: "font:500 11px 'IBM Plex Mono'" }, select: "[data-column=DONE] [data-look=done-line], [data-column=DONE] [data-look=done-line] > span", on: BOARDS, min: 0, want: { family: "mono", size: 11 } },
 
   // The task screen: the activity line (T9), an ask the run waits on (T7, T13).
   { id: "activity line", audit: "T9", v2: { line: 429, has: "font:500 11px 'IBM Plex Mono'" }, select: "[data-testid=task-activity] > span:not([aria-hidden])", on: ["task"], min: 1, want: { family: "mono", size: 11 } },
