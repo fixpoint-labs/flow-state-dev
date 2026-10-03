@@ -12,7 +12,7 @@
  * and the copies are deleted when the run ends.
  */
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { REPO_ROOT } from "../../../lib/index.mts";
 
@@ -56,9 +56,11 @@ export function extraKind(kind: string): Patch {
 export const noCos: Patch = {
   name: "no-cos",
   apply(lab) {
-    const doc = join(lab, "workforce", "org", "workers", "chief-of-staff", "WORKER.md");
-    if (!existsSync(doc)) throw new Error("no-cos: the tree has no chief-of-staff WORKER.md to remove");
-    unlinkSync(doc);
+    // The tree loader refuses a worker folder with no WORKER.md, so removing
+    // CoS's WORKER.md means removing its folder: the seat is simply not declared.
+    const folder = join(lab, "workforce", "org", "workers", "chief-of-staff");
+    if (!existsSync(join(folder, "WORKER.md"))) throw new Error("no-cos: the tree has no chief-of-staff WORKER.md to remove");
+    rmSync(folder, { recursive: true, force: true });
   },
 };
 

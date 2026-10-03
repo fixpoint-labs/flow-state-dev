@@ -174,7 +174,14 @@ await runGoal(async () => {
     const grade = (control: string, run: LegsRun, mustFail: string, reason: RegExp, staysGreen: RegExp) => {
       const red = reds(run);
       const at = red.find((r) => r.id === mustFail && r.notes.some((n) => reason.test(n)));
-      const leaked = red.filter((r) => r.id !== mustFail && staysGreen.test(r.id));
+      // A step that is red in the plain run for the same reason is that run's
+      // finding, not the control's leak: excuse it only when every failing note
+      // also failed the plain run.
+      const plainRun = runs.find((x) => x.label === "plain");
+      const shape = (n: string) => n.replace(/[0-9a-f]{4,}/g, "#").replace(/\s+/g, " ").slice(0, 160);
+      const baseline = new Set((plainRun === undefined ? [] : reds(plainRun)).flatMap((x) => x.notes.filter((n) => n.startsWith("FAIL")).map(shape)));
+      const excused = (x: { notes: string[] }) => plainRun !== undefined && x.notes.filter((n) => n.startsWith("FAIL")).every((n) => baseline.has(shape(n)));
+      const leaked = red.filter((r) => r.id !== mustFail && staysGreen.test(r.id) && !excused(r));
       const ok = at !== undefined && leaked.length === 0;
       const line = at === undefined ? `never failed ${mustFail} on ${reason.source}` : `failed ${mustFail}: ${at.notes.find((n) => reason.test(n))?.slice(0, 300)}`;
       controlVerdicts.push({ control, ok, line: `${line}${leaked.length > 0 ? `; also red: ${leaked.map((l) => `${l.id} ${l.notes.join(" / ").slice(0, 200)}`).join("; ")}` : ""}` });
