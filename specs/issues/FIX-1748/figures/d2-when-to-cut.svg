@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, when the rename is cut. Chosen: after the in-flight Workforce and Shift Manager work lands. Instead of: cutting now. It comes down to the first row, who redoes work: waiting means the mechanical sweep is re-run on a newer main, while cutting now makes four in-flight stacks rebase reviewed logic onto new names. The price is the second row: mailbox reaches main later, after those land, where cutting now ships it today. The third row is a tie: either way the cut lands as one change, with no temporary old names. Locks in: the cut waits on the projects stack, the post-author fix and the Shift Manager redesign, and the docs wait on the diagram PRs. Flips if: the projects stack stays stalled, then cut now and hand it one rebase."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, when the rename is cut. Chosen: after the in-flight Workforce and Shift Manager work lands. Instead of: cutting now. It comes down to the first row, who redoes work: waiting means the mechanical sweep is re-run on a newer main, while cutting now makes four in-flight stacks rebase reviewed logic onto new names. The price is the second row: mailbox reaches main later, after those land, where cutting now ships it today. The third row is a tie: either way code and docs land as one change, with no temporary old names. Locks in: the cut waits on the projects stack, the post-author fix, the Shift Manager redesign and the diagram PRs, and code and docs reach main together. Flips if: the projects stack stays stalled, then cut now and hand it one rebase."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -78,7 +78,7 @@
     <text class="t-lbl" x="32" y="280">WHAT LANDS</text>
     <text class="mark tie" x="228" y="282">=</text>
     <text class="t-b" x="248" y="281">One cut, no temporary old names</text>
-    <text class="t-s" x="248" y="299">code first, docs second</text>
+    <text class="t-s" x="248" y="299">code and docs reach main together</text>
     <text class="mark tie" x="592" y="282">=</text>
     <text class="t-b" x="612" y="281">One cut, no temporary old names</text>
     <text class="t-s" x="612" y="299">the same</text>
@@ -88,8 +88,8 @@
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">The code cut waits on three stacks</text>
-    <text class="t-s" x="32" y="389">and the docs on the five diagram PRs</text>
+    <text class="t-b" x="32" y="371">The cut waits on four stacks</text>
+    <text class="t-s" x="32" y="389">three code stacks and the five diagram PRs</text>
   </g>
 
   <g id="flips-if">

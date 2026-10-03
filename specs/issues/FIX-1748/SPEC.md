@@ -45,7 +45,7 @@ The guard reads the whole tree, not a remembered list; the boot leg reads what a
 | **Signal** | Guard: every file classified, zero product hits in the PR's renamed surfaces. Boot: stops or sets the store aside, naming the rename; never opens |
 | **Input** | Today's tree; a fixture with one `CHANNEL.md` and a store with one old-kind session. A custom-kind mailbox on a fresh store must open |
 | **Anti-game** | Never widen a survivor rule to go green. Assert on the message a person reads, not that something threw |
-| **Control that must fail** | Guard on today's `main` (388 files, measured) and with `PLANT=product`. Boot leg with the legacy detector removed must FAIL on *boot stopped with the rename named* |
+| **Control that must fail** | Guard on today's `main` (402 files and 103 paths, measured), `PLANT=product`, and a planted `CHANNEL.md` in a clean subtree. Boot leg with the legacy detector removed must FAIL on *boot stopped with the rename named* |
 
 ## What changes
 
@@ -81,9 +81,9 @@ Read across each row: every place the word lives moves together. Below the fence
 **[The goal](#the-goal-and-how-well-know-its-met), at that size:** product and wire, measured by a guard over the whole tree and a boot over old data. If wrong: we ship new copy over an old wire, or a Lab that opens with silent holes.
 
 1. **[D1](DECISIONS.md#d1) · Data and files from before the rename are refused by name, and in-repo Labs reset their stores; nothing reads the old names.** If wrong: someone loses Lab history they wanted.
-2. **[D2](DECISIONS.md#d2) · Cut the rename once the in-flight Workforce and Shift Manager work lands, then the docs.** If wrong: days of delay, or four stacks rebased for nothing.
+2. **[D2](DECISIONS.md#d2) · Cut the rename once the in-flight Workforce, Shift Manager and docs work lands, and land code and docs together.** If wrong: days of delay, or four stacks rebased for nothing.
 3. **[D3](DECISIONS.md#d3) · In Shift Manager a workstream stays a workstream, and "mailbox" names its conversation.** If wrong: two words where you wanted one.
 
 **Open: none.** D1 is the one to weigh: the only call that loses data.
 
-Rename · `workforce` · `contracts` · `core` · `fsdev` · `devtool`, plus Shift Manager, kitchen-sink, goals and docs · large: 388 files, 13 wire names, 26 `CHANNEL.md` files · 2 PRs · no epic
+Rename · `workforce` · `contracts` · `core` · `fsdev` · `devtool`, plus Shift Manager, kitchen-sink, goals and docs · large: 402 files, 13 wire names, 26 `CHANNEL.md` files · 2 PRs, one landing · no epic

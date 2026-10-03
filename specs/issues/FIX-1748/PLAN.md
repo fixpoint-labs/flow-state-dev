@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · **Plan** · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-For the implementing agent; BR-n and D-n cite [rules](BUSINESS-RULES.md) and [decisions](DECISIONS.md). `tdd`: renamed suites are the net; refusals are the only new behaviour. Two PRs.
+For the implementing agent; BR-n and D-n cite [rules](BUSINESS-RULES.md) and [decisions](DECISIONS.md). `tdd`: renamed suites are the net; refusals are the only new behaviour. Two PRs, one landing on `main`.
 
 <a name="inventory"></a>
 ## Inventory · `origin/main` at `6e8685e79`
@@ -16,12 +16,13 @@ Re-derived by `node specs/issues/FIX-1748/poc/channel-inventory/inventory.mjs` (
 | Goals | `goals/**` | 145 | 1,890 |
 | Docs | `apps/docs/**`, `docs/**` but `internal/`, READMEs | 44 | 924 |
 | Tests | `test/`, `e2e/`, `*.test.*`, `*.spec.*` | 92 | 2,083 |
-| **In scope** | | **388** | **6,649** |
-| Not renamed: history | retained specs, `docs/internal/`, CHANGELOGs, pending changesets | 435 | — |
+| Pending changesets | `.changeset/*.md`, unreleased | 14 | 15 |
+| **In scope** | | **402** | **6,664** |
+| Not renamed: history | retained specs, `docs/internal/`, CHANGELOGs | 431 | — |
 | Not renamed: process | `.agents/`, `.omp/`, `.github/`, `CLAUDE.md`, all other meanings | 9 | — |
 
 - **Exports:** 70 identifiers, all in `workforce`, plus `channels` in `contracts`' `MANIFEST_DOMAINS`, re-exported by `core`.
-- **File convention:** 26 `CHANNEL.md`, 24 `channels/` folders, 1 kind file under `flows/channels/`, and 72 more paths named channel (31 goals, 22 tests, 11 API, 5 UI, 3 docs).
+- **File convention:** 26 `CHANNEL.md`, 24 `channels/` folders, 1 kind file under `flows/channels/`, and 76 more paths named channel (31 goals, 22 tests, 11 API, 5 UI, 5 changesets, 2 docs). The guard fails on all 103 in-scope paths; `trace-channel.md` is the one path survivor.
 - **Routes:** none defined with the word. It reaches URLs only as the kind in `/flows/:kind/actions/:action` and the action `registerChannelInInventory` (19). Shift Manager's `/w/<id>` has none.
 - **Stored wire names:** kind `channel`, `channelId` on membership rows, `channel-post` and `channel-route` items, `inventory/channels/`, `channelRoutedPost` seat state.
 - **Model- and trace-facing:** `post-to-channel`, discovery `channels`, `channelKinds`, `channel-*` block names, capability `channel-post`, refusal `talk-on-a-channel`.
@@ -40,8 +41,8 @@ These counts are a snapshot. FIX-1718 PRs 2–4 add 76 files and about 650 lines
 | S6 | Shift Manager | Reads, data attributes, copy; DevTeam's set-aside learns the old kind | BR-5 BR-7 BR-8 BR-15 BR-17 |
 | S7 | kitchen-sink | Tree, controls, sections, copy, e2e selectors; the stale-store check learns the old kind | BR-5 BR-16 BR-17 |
 | S8 | goals, tests | Rename directories, files and subjects with their code; assertions keep their meaning | BR-10 |
-| S9 | READMEs, changeset | READMEs; the tree shapes `published-tree-surface.test.ts` reads from `apps/docs` | BR-1 |
-| S10 | The guard | The POC as `scripts/check-mailbox-rename.mjs` in CI, scoped per PR | BR-22 |
+| S9 | READMEs, changesets | READMEs; the tree shapes `published-tree-surface.test.ts` reads from `apps/docs`; reword pending fragments that name renamed surfaces | BR-1 |
+| S10 | The guard | The POC in CI as `scripts/check-mailbox-rename.mjs`; fails on product lines **and** paths named channel. Allowlisted by path: S3, the redirect, the upgrade section, this issue's changeset | BR-22 |
 | S11 | Docs (P2) | [DOCS.md](DOCS.md) | BR-20 BR-21 |
 
 ## Sequence
@@ -64,8 +65,10 @@ flowchart TD
 
 | id | Deliverables | depends_on |
 |---|---|---|
-| P1 · the cut | S1–S10, atomic. `minor`: `workforce`, `contracts`, `core`, `fsdev`; `patch`: `devtool` | FIX-1718 PRs 2–4 on `main` · #2604 · FIX-1737 #2675 #2681 #2682 #2683 |
-| P2 · the docs | S11; guard widened to docs | P1 · FIX-1746 #2674 #2676 #2677 #2679 #2680 |
+| P1 · the cut | S1–S10, atomic, from `main`. `minor`: `workforce`, `contracts`, `core`, `fsdev`; `patch`: `devtool` | FIX-1718 PRs 2–4 on `main` · #2604 · FIX-1737 #2675 #2681 #2682 #2683 |
+| P2 · the docs | S11, stacked on P1's branch; guard widened to docs | P1 · FIX-1746 #2674 #2676 #2677 #2679 #2680 |
+
+**One landing.** P2 merges into P1's branch, then P1 merges to `main` once, so `main` never carries the renamed API without its docs (CLAUDE.md: same change set). Chosen over folding docs into P1 so the code and the copy are reviewed apart while FIX-1746's plates are still landing; the cost is that P1 reaches `main` only after those plates do.
 
 ## Checks
 
@@ -107,9 +110,9 @@ Everything else is yours to name.
 
 ## Docs
 
-Publish [DOCS.md](DOCS.md) in P2, after P1 and FIX-1746's plates. P1 touches only READMEs and the shapes the tree test pins.
+Publish [DOCS.md](DOCS.md) in P2, after FIX-1746's plates, landing with P1. P1 itself touches only READMEs and the shapes the tree test pins.
 
-**POC:** [`poc/channel-inventory/`](poc/channel-inventory/inventory.mjs) re-derives the inventory, asserts totality, drafts the guard. All three controls go red (`PLANT=unclassified`, `product`, `wire`); the last two only after survivor rules were narrowed twice.
+**POC:** [`poc/channel-inventory/`](poc/channel-inventory/inventory.mjs) re-derives the inventory, asserts totality, drafts the guard. Every control goes red: `PLANT=unclassified` (totality), `product` and `wire` (counted, not absorbed), and `PLANT=path ONLY=goals/zz-planted --guard`, a clean subtree that passes until one `CHANNEL.md` is planted.
 
 ## At implement time
 
@@ -119,10 +122,9 @@ Publish [DOCS.md](DOCS.md) in P2, after P1 and FIX-1746's plates. P1 touches onl
 
 ## Notes from review
 
-- "Drop wire-shaped patterns from survivors (`input.channels`, `channels: z.array`): they are product in `inventory-collections.test.ts`." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324001)). Fixed in the POC; counts above re-run.
-- "Promote a thin `scripts/check-mailbox-rename.mjs`: classify every path (totality), then the product scan, with its functions exported for vitest as `check-isolation-coordinate.mjs` does. The full inventory stays in the POC for `--json` at the cut." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324004), [thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324008))
-- "Tie the `PLANT=product` control to a green-tree vitest fixture; on today's `main` the guard is red everywhere." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324014))
-- "Re-run the inventory at the cut instead of trusting the PLAN counts." — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324010)). Optionally add `poc/channel-inventory/README.md`.
+- Promote a thin `scripts/check-mailbox-rename.mjs` (totality, then product and path scan), functions exported for vitest as in `check-isolation-coordinate.mjs`; the full inventory stays in the POC. — cursor ([1](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324004), [2](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324008))
+- Tie `PLANT=product` to a green-tree vitest fixture. — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324014))
+- Re-run the inventory at the cut rather than trusting these counts; optionally a POC README. — cursor ([thread](https://github.com/fixpoint-labs/flow-state-dev/pull/2686#discussion_r4171324010))
 
 Inputs, not instructions.
 

@@ -37,13 +37,13 @@ Without D1 an old store still fails, but blames a collision and gives the wrong 
 **What would change my mind:** a store you use, such as your DevTeam Lab or the deployed kitchen-sink database, holding history you want kept. Then a one-off script migrates that store once, and nothing reads old names after.
 
 <a name="d2"></a>
-## D2 · Cut the rename once the in-flight Workforce and Shift Manager work lands, then the docs
+## D2 · Cut the rename once the in-flight Workforce, Shift Manager and docs work lands, and land code and docs together
 
 | | |
 |---|---|
 | **Instead of** | Cutting now, and asking four in-flight stacks to redo their changes under the new names |
 | **Because** | The rename is a mechanical sweep the guard checks, so re-running it on a newer `main` is cheap. The in-flight PRs carry reviewed logic, which isn't. FIX-1718's last three PRs, 76 files and about 650 lines saying channel, aren't on `main` yet |
-| **Locks in** | The code cut waits on FIX-1718's stack, FIX-1715's fix and Shift Manager's redesign (FIX-1737); the docs wait on FIX-1746's five diagram PRs, so no plate is renamed twice |
+| **Locks in** | The cut reaches `main` after FIX-1718's stack, FIX-1715's fix, Shift Manager's redesign (FIX-1737) and FIX-1746's five diagram PRs, so no plate is renamed twice. Code and docs land in one merge, so `main` never teaches removed names |
 
 ![After the in-flight work lands, chosen, beside cut now. Decides it: who redoes work. Price: mailbox lands later](figures/d2-when-to-cut.svg)
 
@@ -70,7 +70,7 @@ It comes down to where a board sits: beside the mailbox, never inside it.
 
 - **Names follow mechanically**, pinned in [the plan](PLAN.md#pinned-names).
 - **No deprecated aliases.** The lock says code too; pre-1.0 the break ships as `minor`.
-- **Two PRs, not one per layer.** Shift Manager, the DevTool and the goals read the wire, and a workforce test reads tree shapes from the docs, so a layer split needs the aliases the lock forbids.
+- **Two PRs, one landing.** Shift Manager, the DevTool and the goals read the wire, so a layer split needs the aliases the lock forbids. Docs stack on the code PR and reach `main` with it, so the copy is reviewed apart but never ships apart.
 - **Other meanings stay**, each named in the guard: trace channel, pub/sub, `LISTEN`, Slack, side channel.
 - **History stays.** Specs, CHANGELOGs and released notes keep the old word; an unshipped changeset naming a renamed surface is reworded.
 - **The docs page moves** to `/docs/workforce/mailboxes`, and the old address redirects.
@@ -93,5 +93,6 @@ It comes down to where a board sits: beside the mailbox, never inside it.
 ## How it got here
 
 - **Draft** — a locked rename with three calls left open: old data, timing, Shift Manager's two words. One atomic code cut, then docs; proved by a tree-wide guard and a boot over old data.
+- **Review** — the code cut and its docs now reach `main` in one merge (docs stacked on the code PR), because a renamed API must ship with its docs; the cut therefore also waits on FIX-1746's plates.
 
 **Open: none.**

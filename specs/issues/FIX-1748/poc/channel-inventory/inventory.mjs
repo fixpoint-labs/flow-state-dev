@@ -28,6 +28,10 @@
  *   PLANT=unclassified  plants a hit at a path no group owns → must exit 1 (totality)
  *   PLANT=product       plants a product line inside a survivor-only file → must be
  *                       counted as product, not absorbed by the survivor rules
+ *   PLANT=path ONLY=goals/zz-planted --guard
+ *                       plants a CHANNEL.md under a channels/ folder, its text clean, into
+ *                       an otherwise empty subtree → the guard must fail on the path
+ *                       (and pass on the same subtree without the plant)
  *   PLANT=wire          plants a wire-shaped field (`channels: z.array`, `input.channels`)
  *                       the same way → must count as product too
  *
@@ -52,6 +56,9 @@ for (const f of execFileSync("git", ["ls-files", "packages/*/package.json"], { c
 }
 
 const GROUPS = [
+  // Pending changeset fragments are unreleased notes, so they are in scope:
+  // `changeset version` deletes a fragment when it ships into a CHANGELOG.
+  ["changesets", (p) => /^\.changeset\/[^/]+\.md$/.test(p) && p !== ".changeset/README.md"],
   ["history", (p) => /^specs\/|^docs\/internal\/|(^|\/)CHANGELOG\.md$|^\.changeset\/|^pnpm-lock\.yaml$/.test(p)],
   ["process", (p) => /^\.agents\/|^\.omp\/|^\.github\/|^\.claude\/|^CLAUDE\.md$|^AGENTS\.md$|^knip\.json$/.test(p)],
   ["tests", (p) => /^(packages|labs|apps)\/.*(\/(test|tests|e2e)\/|\.(test|spec)(-d)?\.[cm]?tsx?$)/.test(p)],
@@ -63,7 +70,10 @@ const GROUPS = [
 const groupOf = (p) => GROUPS.find(([, test]) => test(p))?.[0] ?? "UNCLASSIFIED";
 
 // The rename's scope: history and process are classified but never renamed.
-const IN_SCOPE = new Set(["api", "ui", "goals", "docs", "tests"]);
+const IN_SCOPE = new Set(["api", "ui", "goals", "docs", "tests", "changesets"]);
+
+// A path whose own name uses the word for something else.
+const PATH_SURVIVOR = /(^|\/)trace-channel\.md$/;
 
 // ── Survivors: the ordinary English word, not the product pipe. ──────────────
 // Line-level, because files mix the two (harness-manager says "question
@@ -130,7 +140,10 @@ const WIRE = [
 ];
 
 // ── Read the tree. ────────────────────────────────────────────────────────────
-const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" }).split("\0").filter(Boolean);
+// ONLY=<prefix> scans just that subtree: a content-clean tree for the path control.
+const ONLY = process.env.ONLY ?? "";
+const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" })
+  .split("\0").filter(Boolean).filter((p) => p.startsWith(ONLY));
 const files = new Map(); // path → text
 for (const p of tracked) {
   if (!existsSync(`${ROOT}/${p}`)) continue;
@@ -140,6 +153,12 @@ for (const p of tracked) {
   if (/channel/i.test(text) || /channel/i.test(p)) files.set(p, text);
 }
 if (PLANT === "unclassified") files.set("zz-planted/new-surface.ts", "export const kind = \"channel\";\n");
+if (PLANT === "path") {
+  // A record left under its old name whose text never says the word.
+  const p = "goals/zz-planted/teams/eng/channels/feature/CHANNEL.md";
+  tracked.push(p);
+  files.set(p, "Post what you finished.\n");
+}
 if (PLANT === "product" || PLANT === "wire") {
   // Into a survivor file: the plant must count as product, not be absorbed.
   const p = "packages/bullmq/src/stream-bridge.ts";
@@ -182,8 +201,11 @@ const wire = WIRE.map(([name, re]) => {
 
 // ── Paths: names that say channel, in the surfaces the rename touches. ───────
 const paths = { channelMd: 0, channelsDirs: new Set(), kindFiles: 0, otherNamed: {} };
+const pathHits = []; // every in-scope path whose name still says channel; the guard fails on any
 for (const p of tracked) {
   if (!IN_SCOPE.has(groupOf(p))) continue; // retained specs keep their fixtures' names
+  if (PATH_SURVIVOR.test(p)) continue;
+  if (/channel/i.test(p)) pathHits.push(p);
   if (/(^|\/)CHANNEL\.md$/.test(p)) paths.channelMd++;
   const dirs = p.split("/").slice(0, -1);
   dirs.forEach((d, i) => { if (/^channels$/i.test(d)) paths.channelsDirs.add(dirs.slice(0, i + 1).join("/")); });
@@ -213,7 +235,7 @@ const report = {
   base: execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim(),
   content,
   wire,
-  paths: { ...paths, channelsDirs: paths.channelsDirs.size },
+  paths: { ...paths, channelsDirs: paths.channelsDirs.size, inScopePathHits: pathHits.length },
   exportedSymbols: [...exported].sort(),
   unclassified,
 };
@@ -229,6 +251,7 @@ else {
   for (const w of wire) console.log(`         ${String(w.hits).padStart(4)}  ${w.name}  [${w.groups.join(" ")}]`);
   console.log(`\nPATHS    CHANNEL.md files ${paths.channelMd} · channels/ folders ${paths.channelsDirs.size} · kind files under flows/channels/ ${paths.kindFiles}`);
   console.log(`         other paths named channel: ${JSON.stringify(paths.otherNamed)}`);
+  console.log(`         in-scope paths the guard fails on: ${pathHits.length}`);
   console.log(`\nAPI      ${exported.size} exported symbols in published packages carry the word`);
 }
 
@@ -238,8 +261,11 @@ if (unclassified.length > 0) {
 }
 if (args.has("--guard")) {
   const left = [...IN_SCOPE].flatMap((g) => productFiles[g] ?? []);
-  if (left.length > 0) {
-    console.error(`\nGUARD FAILED: ${left.length} in-scope file(s) still say channel about the product pipe, e.g.\n  ${left.slice(0, 5).map(([p, n]) => `${p} (${n})`).join("\n  ")}`);
+  if (left.length > 0 || pathHits.length > 0) {
+    if (left.length > 0)
+      console.error(`\nGUARD FAILED: ${left.length} in-scope file(s) still say channel about the product pipe, e.g.\n  ${left.slice(0, 5).map(([p, n]) => `${p} (${n})`).join("\n  ")}`);
+    if (pathHits.length > 0)
+      console.error(`\nGUARD FAILED: ${pathHits.length} in-scope path(s) still named channel, e.g.\n  ${pathHits.slice(0, 5).join("\n  ")}`);
     process.exit(1);
   }
   console.log("\nGUARD PASSED");

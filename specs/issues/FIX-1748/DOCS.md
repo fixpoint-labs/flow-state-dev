@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
-A rename changes words, not what any page teaches. So this draft carries new prose only where a reader needs more than the swap: the mailbox page's opening, what happened to old trees and stores, and Inbox beside mailbox. Everywhere else the operation is the swap, with the anchors and copy it moves listed. Owner: this issue. P1 publishes the README and UI copy; P2 publishes the site.
+A rename changes words, not what any page teaches. So this draft carries new prose only where a reader needs more than the swap: the mailbox page's opening, what happened to old trees and stores, and Inbox beside mailbox. Everywhere else the operation is the swap, with the anchors and copy it moves listed. Owner: this issue. P1 carries the README and UI copy, P2 the site; both reach `main` in one merge.
 
 ## MOVE · `apps/docs/docs/workforce/channels.md` → `mailboxes.md` · frontmatter and opening
 
