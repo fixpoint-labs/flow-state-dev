@@ -107,7 +107,7 @@ function classify(node, byId, answeredIds) {
     // the two rules above already make.
     const openDeps = deps.filter((d) => d.status === 'open')
     if (allAtLeastOpen && deps.length === 1 && openDeps.length === 1 && openDeps[0].branch && openDeps[0].pr && !openDeps[0].blocker) {
-      return { action: 'build', base: openDeps[0].branch }
+      return { action: 'build', base: openDeps[0].branch, depPr: openDeps[0].pr }
     }
     return null
   }
@@ -271,6 +271,11 @@ const BUILD_SCHEMA = {
         'Needs a human decision — lifted to the row and surfaced by the coordinator. Carry the ASK, not a topic: all six parts, per docs/contributing/asking-for-decisions.md (the fork, plain terms, the trade-off, your recommendation, what would change your mind, and what being wrong costs). The coordinator holds only status lines and cannot reconstruct any of that.',
     },
     summary: { type: 'string', description: 'One compact line' },
+    baseRefName: {
+      type: ['string', 'null'],
+      description:
+        'The GitHub PR base after this wake (`gh pr view --json baseRefName`). A rebase is not done until this is main; omitting it, or any other value, leaves the stack marker so the rebase retries.',
+    },
   },
 }
 
@@ -398,6 +403,25 @@ if (hasUntargeted && !untargetedOwner && !untargetedRepair) {
 
 /** Answers aimed at this node — by name, or as the sole blocked fork an untargeted answer must belong to. */
 const resolutionsFor = (nodeId) => resolutions.filter((r) => (r.for ? r.for === nodeId : untargetedOwner === nodeId))
+/** GitHub's base, not a git remote-tracking ref. */
+function githubBaseIsMain(baseRefName) {
+  return baseRefName === 'main'
+}
+
+function stackedOpenNote(item) {
+  const depPr = item.depPr || '<dependency PR>'
+  return (
+    `You are stacking on an unmerged dependency's branch so review can start now; it will be rebased onto main when the dependency merges.\n` +
+    `Before you open the GitHub PR, mark it. Title starts with \`DO NOT MERGE until #${depPr} is on main — stacked on ${item.base}\`. Body states that dependency PR and that the GitHub base is not main. Create with \`--base ${item.base}\` (not main). Do not report it as ready to merge while its GitHub base is not main.\n`
+  )
+}
+
+function stackedRebaseNote(item) {
+  return (
+    `Then rebase it onto fresh ${item.base} so its diff carries only its own slice. Done means \`gh pr view ${item.node.pr} --json baseRefName\` is main (\`gh pr edit ${item.node.pr} --base main\`) and the title no longer starts with \`DO NOT MERGE\`. Report \`baseRefName: main\`. Push and report. Do not merge it. Do not report it as ready to merge while its GitHub base is not main.`
+  )
+}
+
 const resolutionNote = (nodeId) => {
   const mine = resolutionsFor(nodeId)
   if (!mine.length) return ''
@@ -659,14 +683,13 @@ const built = await parallel(
         ? `Sub-PR ${item.node.id} of ${issueId} (PR #${item.node.pr}, branch ${item.node.branch}) was stacked on ${item.node.stackedOn}, which has now merged.\n` +
           `Fetch and check out ${item.node.branch} first — your worktree is fresh and starts on the lifecycle's checkout, NOT on this sub-PR. Rebasing whatever you inherited would move the wrong branch, and a reported success clears the stack marker so nothing retries it.\n` +
           `Fetch ${item.base} explicitly as well, as a separate ref: the shared worktree's remote-tracking copy can predate the very merge that triggered this rebase, and rebasing onto a stale ref drops it while still reporting success — which clears the stack marker, so nothing retries it either.\n` +
-          `Then rebase it onto fresh ${item.base} so its diff carries only its own slice. A git rebase that leaves the GitHub PR's baseRefName as ${item.node.stackedOn} is not done. Done means ALL of: \`gh pr view ${item.node.pr} --json baseRefName\` is main (run \`gh pr edit ${item.node.pr} --base main\` after the rebase), the diff against main contains only this slice, and the title no longer starts with \`DO NOT MERGE\` (remove that prefix). Push, verify baseRefName is main, and report. Do not merge it. Do not report it as ready to merge while its GitHub base is not main.` +
+          stackedRebaseNote(item) +
           resolutionNote(item.node.id)
         : `Implement sub-PR ${item.node.id} of ${issueId} in your own worktree.\n` +
           `Branch: fix/${issueId}-${item.node.id}, based on ${item.base}.\n` +
           (item.base === 'origin/main'
             ? `Fetch origin/main first — the checkout you inherited drifts behind as sibling PRs merge.\n`
-            : `You are stacking on an unmerged dependency's branch so review can start now; it will be rebased onto main when the dependency merges.\n` +
-              `Before you open the GitHub PR, mark it. Title starts with \`DO NOT MERGE until #${(nodes.find((n) => n.branch === item.base) || {}).pr || '<dependency PR>'} is on main — stacked on ${item.base}\`. Body states that dependency PR and that the GitHub base is not main. Create with \`--base ${item.base}\` (not main). A git branch based on the dependency without those marks is not a stacked PR Jake can refuse. Do not report it as ready to merge while its GitHub base is not main.\n`) +
+            : stackedOpenNote(item)) +
           resolutionNote(item.node.id) +
           `Run issue-implement scoped to THIS sub-PR's deliverables only: implement the slice, run \`review\`, open the sub-PR. Stop before merge. Do not prompt the user.`,
       {
@@ -726,16 +749,20 @@ const subPrs = nodes.map((node) => {
   // and `classify` only schedules the required rebase while the marker is set, so the sub-PR
   // would keep its dependency's commits in its own diff forever.
   //
-  // A rebase clears the marker ONLY on explicit success (`status: 'open'`). Any other outcome
-  // — `failed`, or `pending` (also schema-valid) — leaves the sub-PR still stacked, so the
-  // marker has to survive or nothing ever retries the rebase and the slice keeps its
-  // dependency's commits forever.
+  // A rebase clears the marker ONLY on explicit success: `status: 'open'`, no blocker, AND
+  // `baseRefName: main`. `open` alone is a git rebase that may have left GitHub pointed at the
+  // old branch — clearing then lets epic-wake offer merge (`!stackedOn`) onto that branch.
+  // Any other outcome — `failed`, `pending`, omitted/non-main base — leaves the marker so the
+  // rebase retries.
   const rebasing = planned && planned.action === 'rebase'
   // ...and NOT while it escalated. `open` alone was read as success, so a rebase that stopped on a human
   // decision cleared the marker: after the answer, `classify` picks the generic `resume`, which applies
   // the decision but never retries the rebase — and the still-stacked PR could then be offered for merge
   // and land its dependency's commits.
-  const rebased = rebasing && r.status === 'open' && !r.blocker
+  const rebased = rebasing && r.status === 'open' && !r.blocker && githubBaseIsMain(r.baseRefName)
+  if (rebasing && r.status === 'open' && !r.blocker && !githubBaseIsMain(r.baseRefName)) {
+    log(`${node.id}: rebase reported open but GitHub base is ${r.baseRefName == null ? 'unreported' : r.baseRefName} — keeping the stack marker until baseRefName is main.`)
+  }
   // A resume works on an EXISTING open PR, so like a rebase it can only ever confirm `open` — never
   // demote to `pending`, which the next wake would misread as "never built" and rebuild from scratch.
   const resuming = planned && planned.action === 'resume'

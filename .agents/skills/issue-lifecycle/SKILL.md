@@ -120,7 +120,7 @@ generic approval request. Implementation PR merge remains the user's separate ga
 | **NEEDS_SPEC** — spec route, no spec yet | Dispatch `issue-spec`: author `SPEC.md`, `DECISIONS.md`, `BUSINESS-RULES.md`, `PLAN.md`, `DOCS.md`, conditional `EVOLUTION.md`, and owned artifacts under `specs/issues/<ISSUE-ID>/`; open ready for review. | Surface the direction ask and PR; record handles → AWAITING_SPEC_APPROVAL. |
 | **AWAITING_SPEC_APPROVAL** — spec PR not yet merged | On review events within the existing budget, dispatch Step 6.5 and preserve its reported counters. Human approval binds to the reviewed head. After approval, dispatch `issue-worker` **MERGE-ONLY** under the canonical merge contract with the PR and reviewed head. Observe merge; never infer it from approval or closure. If the owner merged the spec PR themselves, that merge is the approval: skip MERGE-ONLY and go straight to implementation. | If blocked, report the actual approval/check/merge wait, not another approval ask. Resume implementation on the next wake after observed merge; an authorized implement backstop may continue in the same wake. |
 | **NEEDS_IMPLEMENTATION** — spec confirmed merged, or direct-route bug | Dispatch `issue-implement` on a base containing the merged spec. Direct-route `specRequired` re-routes to NEEDS_SPEC. Multi-PR plans advance via `issue-multi-pr` only after the same spec merge gate. | Record implementation PRs; subscribe → PR_FEEDBACK. |
-| **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR, *and only while the round cap allows* (see below): dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit; add the rounds it reports spent to `prFeedbackRounds`. | End turn between events. When a PR is approved + green **and an automated review (Codex or Cursor) has returned on its current head** (some completed automated review ran against the PR's head sha: a Codex review's `commit_id` from `get_reviews`, or a Cursor check run's `head_sha`, equals it): surface **"ready to merge"** and stop (merge is the user's) — **except a stacked PR whose GitHub `baseRefName` is not `main`**, which is not ready even if approved and green (see `stackedOn` below). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); after the **last** sub-PR merges the issue is **not** yet DONE — run the assembled end-to-end goal first (see [Multi-PR issues](#multi-pr-issues-pr-plan) §4). |
+| **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR, *and only while the round cap allows* (see below): dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit; add the rounds it reports spent to `prFeedbackRounds`. | End turn between events. When a PR is approved + green **and an automated review (Codex or Cursor) has returned on its current head** (some completed automated review ran against the PR's head sha: a Codex review's `commit_id` from `get_reviews`, or a Cursor check run's `head_sha`, equals it): surface **"ready to merge"** and stop (merge is the user's) — **except a stacked PR whose GitHub `baseRefName` is not `main`**, which is not ready even if approved and green. Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); after the **last** sub-PR merges the issue is **not** yet DONE — run the assembled end-to-end goal first (see [Multi-PR issues](#multi-pr-issues-pr-plan) §4). |
 | **DONE** — impl PR merged **and** (multi-PR) the assembled goal passed | none | Update the cache to DONE; report completion. |
 
 ## Surfacing to the user (every "surface" above means this)
@@ -380,14 +380,10 @@ Two things you must carry back verbatim:
 
 - **`stackedOn`** — set by the script from the base it chose, and it is what schedules the
   later rebase. Lose it and a stacked sub-PR silently keeps its dependency's commits in its own
-  diff. It survives a *failed* rebase on purpose, so the next wake retries.
-  A stacked PR must be marked on GitHub **before it is opened**: title starts with
-  `DO NOT MERGE until #<dependency PR> is on main — stacked on <branch>`, and the body states
-  that dependency PR and that the GitHub base is not main. When the dependency has merged,
-  the rebase is not done until the GitHub PR's base is `main` **and** the diff contains only
-  that slice — then remove the `DO NOT MERGE` prefix. A git rebase that leaves `baseRefName`
-  as the old branch is not done. **Do not report the PR as ready for Jake while its GitHub
-  base is not main.**
+  diff. It survives a *failed* rebase on purpose, so the next wake retries — including a rebase
+  that reports `open` without `baseRefName: main`. The GitHub mark and retarget procedure is
+  [`orchestration.md`](../../../docs/contributing/orchestration.md) → Worktree branching; this
+  row only persists the marker. The PR_FEEDBACK refusal below is the coordinator's action.
 - **`fixPr` / `fixIssue`** — the repair a failed assembled goal opened. While either is set and
   `fixMerged` is false, the script refuses to re-run the goal; that's what stops a single
   failure filing a duplicate issue and PR on every wake. Both are tracked because the repair
