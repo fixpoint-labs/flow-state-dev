@@ -103,6 +103,7 @@ export async function legB(world: World, channelSession: string, boardChannel: s
 
   // ---- b2 · fire asks ------------------------------------------------------------
   const fire = await askCos(world, "b2", `Please fire the seat "${seat}".`);
+  if (fire?.composerSaid !== undefined) r.fail("b2", `the CoS composer told the person "${fire.composerSaid}" for a line its session holds`);
   let ask: StoredItem | undefined;
   if (fire === undefined || fire.requestId === null || fire.sessionId === null) {
     r.fail("b2", `the fire was not asked: ${quote(fire)}`);

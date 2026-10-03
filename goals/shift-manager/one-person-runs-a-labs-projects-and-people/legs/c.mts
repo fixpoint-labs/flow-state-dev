@@ -59,6 +59,7 @@ export async function legC(
 
     // ---- c3 · retire, on Approve ---------------------------------------------------
     const retire = await askCos(world, "c3", `Please retire the seat "${seat}".`);
+    if (retire?.composerSaid !== undefined) r.fail("c3", `the CoS composer told the person "${retire.composerSaid}" for a line its session holds`);
     if (retire === undefined || retire.requestId === null || retire.sessionId === null) {
       r.fail("c3", `the retire was not asked: ${quote(retire)}`);
     } else {

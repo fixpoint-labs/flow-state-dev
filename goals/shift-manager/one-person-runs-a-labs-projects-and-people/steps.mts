@@ -50,6 +50,8 @@ export interface Turn {
   onScreen: boolean;
   /** A provider error re-ran this turn once (QR-8). */
   providerRetry?: string;
+  /** What the composer told the person when it reported anything but delivered for a line the store holds. */
+  composerSaid?: string;
 }
 
 /** Every step's verdict and what it was graded on, for one run of legs (plain, or under a control). */
@@ -326,7 +328,11 @@ async function sayOnce(world: World, step: string, words: string): Promise<Turn 
   const turn: Turn = { step, words, sessionId: null, requestId: null, status: state || "not-delivered", tools: [], reply: "", onScreen: false };
   if (state !== "delivered") {
     turn.reply = (await page.getByTestId("cos-composer-error").textContent({ timeout: 500 }).catch(() => null)) ?? "";
-    return turn;
+    // A turn that suspends on an ask ends "suspended" by design (FIX-1719 D2). The
+    // composer may report that as not sent; the store still decides what happened.
+    if (!/ended suspended/.test(turn.reply)) return turn;
+    turn.composerSaid = `${state}: ${turn.reply.trim()}`;
+    turn.reply = "";
   }
   // The session the line went into, as the view names it, and the request that carries the line.
   let sessionId = "";
@@ -374,7 +380,7 @@ export function callsTo(turn: Turn | undefined, name: string) {
 /** One line quoting a turn, for a failure. */
 export function quote(turn: Turn | undefined): string {
   if (turn === undefined) return "no chief of staff to ask";
-  return `turn ${turn.status} (session ${turn.sessionId}, request ${turn.requestId}); tools [${turn.tools.map((t) => `${t.name}#${t.itemId} ${t.ok ? "ok" : "not ok"}`).join(", ")}]; said "${turn.reply.slice(0, 300)}"`;
+  return `turn ${turn.status} (session ${turn.sessionId}, request ${turn.requestId}); tools [${turn.tools.map((t) => `${t.name}#${t.itemId} ${t.ok ? "ok" : "not ok"}`).join(", ")}]; said "${turn.reply.slice(0, 300)}"${turn.composerSaid !== undefined ? `; composer showed "${turn.composerSaid}"` : ""}`;
 }
 
 /** The suspensions a request raised, as stored in its session. */

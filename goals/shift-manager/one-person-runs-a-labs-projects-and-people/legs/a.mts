@@ -31,6 +31,21 @@ export interface LegA {
 const teamOf = (channelId: string) => channelId.split(".")[0]!;
 const rowKey = (r: ProjectRow) => JSON.stringify({ t: r.title, b: r.brief ?? null, o: r.ownerUserId, m: [...r.members].sort(), w: r.workstreams, s: r.sessions.map((s) => `${s.userId}=${s.sessionId}`).sort() });
 
+/**
+ * When Shift Manager refuses a person who holds no session (the refusal is
+ * graded first), make them one session over HTTP on the flow `channelSession`
+ * runs, and open `url` again, so the rest of a4 is still graded.
+ */
+async function openWithSession(world: World, who: "member" | "outsider", page: Page, url: string, channelSession: string): Promise<{ ok: true; madeSession?: string } | { ok: false; why: string }> {
+  const first = await openAs(page, url);
+  if (first.ok) return first;
+  const kind = String((await world.routes.owner.get(`/sessions/${encodeURIComponent(channelSession)}`)).session?.flowKind ?? "");
+  const made = await world.routes[who].call("POST", `/${encodeURIComponent(kind)}/sessions`, { userId: world.routes[who].user.userId });
+  if (made.status >= 400) return first;
+  const again = await openAs(page, url);
+  return again.ok ? { ok: true, madeSession: `${kind}/${String(made.body?.session?.id)}` } : first;
+}
+
 /** a1 and a2 to a4: ask, then read. Returns undefined when a1 left nothing to grade. */
 export async function legA(world: World, channelSession: string): Promise<LegA | undefined> {
   const r = world.record;
@@ -213,9 +228,12 @@ export async function readBack(world: World, channelSession: string, state: LegA
   const a4 = tag("a4");
   const memberView = await world.as("member");
   try {
-    const opened = await openAs(memberView.page, `${world.served.origin}/p/${encodeURIComponent(row1.id)}/stream`);
-    if (!opened.ok) r.fail(a4, `the second member can't open Shift Manager: "${opened.why}"`);
-    else {
+    const url = `${world.served.origin}/p/${encodeURIComponent(row1.id)}/stream`;
+    const refused = await openAs(memberView.page, url);
+    if (!refused.ok) r.fail(a4, `the second member can't open Shift Manager: "${refused.why}"`);
+    const opened = refused.ok ? refused : await openWithSession(world, "member", memberView.page, url, channelSession);
+    if (!refused.ok && opened.ok) r.saw(a4, `the rest of a4's member checks ran after the check made the member a session over HTTP (${(opened as { madeSession?: string }).madeSession})`);
+    if (opened.ok) {
       if (await visible(memberView.page, "project-join", 8_000)) await memberView.page.getByTestId("project-join").click();
       for (const body of [state.token, ...(state.answer === undefined ? [] : [state.answer.slice(0, 60)])]) {
         try {
@@ -231,12 +249,15 @@ export async function readBack(world: World, channelSession: string, state: LegA
   }
   const outsiderView = await world.as("outsider");
   try {
-    const opened = await openAs(outsiderView.page, `${world.served.origin}/cos`);
+    const url = `${world.served.origin}/cos`;
+    const refused = await openAs(outsiderView.page, url);
+    if (!refused.ok) r.fail(a4, `the outsider can't open Shift Manager: "${refused.why}"`);
+    const opened = refused.ok ? refused : await openWithSession(world, "outsider", outsiderView.page, url, channelSession);
     if (!opened.ok) {
-      r.fail(a4, `the outsider can't open Shift Manager: "${opened.why}"`);
       await r.shot(outsiderView.page, restarted ? "a5-outsider" : "a4-outsider");
       return;
     }
+    if (!refused.ok) r.saw(a4, `the rest of a4's outsider checks ran after the check made the outsider a session over HTTP (${(opened as { madeSession?: string }).madeSession})`);
     const seen = await projectsDrawn(outsiderView.page);
     for (const row of [row1, row2]) if (!seen.some((g) => g.id === row.id)) r.fail(a4, `the outsider's PROJECTS doesn't list ${row.id}`);
     await outsiderView.page.goto(`${world.served.origin}/p/${encodeURIComponent(row1.id)}/stream`);
