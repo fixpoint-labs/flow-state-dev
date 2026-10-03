@@ -55,7 +55,7 @@ import {
   type FlowState,
   type PrincipalResolver,
 } from "@flow-state-dev/engine";
-import { defineCapability } from "@flow-state-dev/core";
+import { defineCapability, sequencer } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   AGENT_KIND,
@@ -68,25 +68,37 @@ import {
   createWorkforceCapability,
   defineAgentWorkerFlow,
   defineChannelFlow,
-  defineChannelInventoryCollection,
   HIRED_ROSTER_RESOURCE,
   hireWorkforce,
+  createProjectInputSchema,
+  createProjectOutputSchema,
+  defineProjectBlocks,
+  projectWritesChannelInventory,
   mergeSeatFlows,
   openChannels,
   openInventory,
   reloadHiredSeats,
   resourcesFromDocs,
   SEAT_INVENTORY_RESOURCE,
+  splitResourceModules,
   type ChannelTranscriptLine,
+  type CreateProjectInput,
+  type CreateProjectOutput,
   type HireOptions,
+  setWorkstreamsInputSchema,
+  setWorkstreamsOutputSchema,
   type InventoryActionRequest,
+  type ProjectBlocks,
 } from "@flow-state-dev/workforce";
+import { discoverWorkforceCode } from "@flow-state-dev/workforce/codegen";
 import {
   readDeclaredRoster,
   type DeclaredRoster,
 } from "@flow-state-dev/workforce/loader";
+import { defineFlow } from "@flow-state-dev/core";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { FeatureLedger } from "./board.mts";
 import { INSPECT_ENTRY, SEAT_FACTS_COMPONENT } from "./seat-config.mts";
 import { defineImplementPhase } from "./phase.mts";
@@ -99,6 +111,7 @@ import {
 } from "./workforce/flows/workers/em.mts";
 import type { HarnessStub } from "./harness-stub.mts";
 import { labNotify, type NotifyLog } from "./notify.mts";
+import { withWriteLatency } from "./write-latency.mts";
 import {
   RAISE_ASK_STEP,
   raiseAsk,
@@ -110,6 +123,12 @@ import {
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 
+/** The flow kind the lab creates projects through at open. */
+export const PROJECTS_KIND = "projects";
+
+/** The session the lab's own project writes run in, as the owner. Each creator's talk session is its child. */
+export const PROJECTS_SESSION = "devforce-projects";
+
 /**
  * Who the lab runs as, and the org every document read is bound to. The org id
  * is a legal address segment (lowercase, hyphenated) because a seat the chief
@@ -117,6 +136,11 @@ export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
  */
 export const LAB_USER_ID = "u_devforce_lab";
 export const LAB_ORG_ID = "devforce-lab";
+
+/** The roster tools this Lab has wait for a person before they change anything. */
+const ASKS_BEFORE = ["fire"] as const;
+/** Every roster tool that waits for a person here: those, and `rehire`, which always does. */
+const ASKS_FIRST = new Set<string>([...ASKS_BEFORE, "rehire"]);
 
 /**
  * Host-owned verified identity for this lab's HTTP door (FIX-1515).
@@ -127,8 +151,8 @@ export const LAB_ORG_ID = "devforce-lab";
  * `resolvePrincipal` is what makes an unauthenticated read have nothing to
  * fall back to — the same posture a deployment that has verified identity
  * uses. The mint FIX-1503 will ship is not here yet; this is the thin
- * host-owned stub that issue allows: one secret, one principal, fail-closed
- * when nothing verified is presented.
+ * host-owned stub that issue allows: one secret per principal
+ * ({@link LAB_USERS}), fail-closed when nothing verified is presented.
  *
  * In-process `runAction` is not HTTP and keeps the explicit lab org
  * (FIX-1503: trusted process callers). Only the door this check probes goes
@@ -136,20 +160,58 @@ export const LAB_ORG_ID = "devforce-lab";
  */
 const LAB_PRINCIPAL_SECRET = "devforce-lab-verified-principal";
 
-const verifyLabBearer = createBearerSecretPrincipalResolver({
-  secret: LAB_PRINCIPAL_SECRET,
-  principal: { userId: LAB_USER_ID, orgId: LAB_ORG_ID },
-});
+/**
+ * The three named people this lab's door knows, each by a secret of their
+ * own, all in the lab's organization: the owner (who the lab runs as, and who
+ * the page is handed), a second member of the default projects, and an
+ * outsider who is in the organization and on no project. The two others exist
+ * so a check can read a project's room as a member who did not create it, and
+ * be refused it as someone who is not a member.
+ */
+export const LAB_USERS = {
+  owner: { userId: LAB_USER_ID, bearer: LAB_PRINCIPAL_SECRET },
+  member: { userId: "u_devforce_member", bearer: "devforce-lab-verified-member" },
+  outsider: { userId: "u_devforce_outsider", bearer: "devforce-lab-verified-outsider" },
+} as const;
 
+/**
+ * More members of the default projects, each with a secret of their own. With
+ * the member above they are eight people whose first joins of one project can
+ * race: the engine's own retries absorb a race between two or three people
+ * appending to a row's `sessions`, so a check that the room's own retry is
+ * load-bearing needs more of them.
+ */
+export const LAB_CROWD = Array.from({ length: 7 }, (_, i) => ({
+  userId: `u_devforce_crowd_${i + 1}`,
+  bearer: `devforce-lab-verified-crowd-${i + 1}`,
+}));
+
+const labBearers = [...Object.values(LAB_USERS), ...LAB_CROWD].map((user) =>
+  createBearerSecretPrincipalResolver({
+    secret: user.bearer,
+    principal: { userId: user.userId, orgId: LAB_ORG_ID },
+  }),
+);
+
+/**
+ * One secret per person. Each resolver refuses a bearer that is not its own,
+ * so the first that recognises the token answers; a token none recognises,
+ * and a request with none, is refused.
+ */
 const resolveLabPrincipal: PrincipalResolver = async (context) => {
-  const principal = await verifyLabBearer(context);
-  if (principal === null) {
-    throw new PrincipalResolutionError(
-      "Request requires a verified organization: no verified principal was presented.",
-      { status: 401 },
-    );
+  for (const verify of labBearers) {
+    try {
+      const principal = await verify(context);
+      if (principal !== null) return principal;
+      break; // No bearer at all: every resolver would say the same.
+    } catch (error) {
+      if (!(error instanceof PrincipalResolutionError)) throw error;
+    }
   }
-  return principal;
+  throw new PrincipalResolutionError(
+    "Request requires a verified organization: no verified principal was presented.",
+    { status: 401 },
+  );
 };
 
 /**
@@ -173,6 +235,76 @@ async function loadTree(root: string): Promise<DeclaredRoster> {
     throw new Error(`the tree at ${root} did not load cleanly:\n  - ${lines.join("\n  - ")}`);
   }
   return roster;
+}
+
+/**
+ * The one channel in the tree that holds a board: the one the EM files onto
+ * and the coder's runs settle. Refuses a tree where none does, or several do.
+ *
+ * @throws Naming how many channels hold a board.
+ */
+export function boardChannelOf(roster: Pick<DeclaredRoster, "channels">): DeclaredRoster["channels"][number] {
+  const holding = roster.channels.filter(
+    (channel) => ((channel.declared.boards as string[] | undefined) ?? []).length > 0,
+  );
+  if (holding.length !== 1) {
+    throw new Error(
+      `the tree has ${holding.length} channel(s) holding a board` +
+        `${holding.length === 0 ? "" : ` (${holding.map((c) => c.id).join(", ")})`}; this lab runs one`,
+    );
+  }
+  return holding[0]!;
+}
+
+/**
+ * The project writes as the chief of staff's tools, `createProject` and
+ * `setWorkstreams`: the same blocks the Lab's own open creates projects
+ * through, under the names its `tools:` line spells. A catalog key must be the
+ * tool's own name, so each is a one-step sequencer carrying the name and what
+ * the model reads about it.
+ *
+ * The owner is the session's user, so a project the chief of staff creates
+ * belongs to the person talking to it, who is always a member; `members` adds
+ * whoever they name.
+ */
+function chiefOfStaffProjectTools(blocks: ProjectBlocks) {
+  return {
+    createProject: sequencer({
+      name: "createProject",
+      description:
+        "Create a project for the person you are talking to. They own it and are always a member. " +
+        "`id` is a short lowercase slug; `members` adds the user ids they name; `workstreams` takes " +
+        "full channel ids (`team.channel`), each in at most one project.",
+      inputSchema: createProjectInputSchema,
+      outputSchema: createProjectOutputSchema,
+    }).step(blocks.createProject),
+    setWorkstreams: sequencer({
+      name: "setWorkstreams",
+      description:
+        "Replace a project's workstreams with this list of full channel ids. Only the project's " +
+        "members may; a workstream belongs to at most one project.",
+      inputSchema: setWorkstreamsInputSchema,
+      outputSchema: setWorkstreamsOutputSchema,
+    }).step(blocks.setWorkstreams),
+  };
+}
+
+/**
+ * The organization's TypeScript resource modules (`org/resources/*.ts`), found
+ * by walking the tree and imported, as the resource map `fsdev gen` would
+ * render for an app. This lab has no generated module (see the header), so the
+ * walk and the import happen here. The projects collection and its talk
+ * template are declared this way.
+ */
+async function loadResourceModules(root: string): Promise<Record<string, unknown>> {
+  // Throws, naming every problem, when the walk finds a file it won't render.
+  const found = await discoverWorkforceCode(root);
+  const modules: Record<string, unknown> = {};
+  for (const module of found.resourceModules) {
+    const imported = (await import(pathToFileURL(join(root, module.path)).href)) as { default?: unknown };
+    modules[module.ref] = imported.default;
+  }
+  return splitResourceModules(modules as never).resources;
 }
 
 export interface OpenLabOptions {
@@ -225,9 +357,9 @@ export interface OpenLabOptions {
    * Raise the EM seat's ask on open: one pending approval, in the EM seat's
    * own session, naming this feature (`ask.mts`).
    *
-   * **Absent means absent**, as with `channels`: no durable execution, no
-   * request, no store write, and the other checks open exactly as they
-   * did. Present turns durable execution on, because the answer arrives later
+   * **Absent means absent**, as with `channels`: no request and no store write
+   * for it (durable execution stays on when a seat holds `fire` or `rehire`).
+   * Present turns durable execution on, because the answer arrives later
    * through the engine's resume route, and open fails, naming the step, if the
    * ask could not be raised.
    */
@@ -248,6 +380,18 @@ export interface OpenLabOptions {
    * checks, which read in-process.
    */
   devtool?: boolean;
+  /**
+   * Projects to create at open, as the lab's owner, through the same
+   * `createProject` action anything else creates a project with. A project
+   * the store already holds for the owner is handed back unchanged, so a
+   * second open on a surviving store creates and mints nothing new. Each
+   * creator's talk session is bound in the same turn.
+   *
+   * Needs `channels`: a project's room runs on the channel kind, and its
+   * workstreams must be channels the inventory registers, so `inventory` too.
+   * **Absent means absent**: nothing is created, as the other checks run.
+   */
+  projects?: readonly CreateProjectInput[];
 
   // ---- controls, each the red state of one claim -------------------------
 
@@ -288,6 +432,13 @@ export interface OpenLabOptions {
    * it. The red state of "a run is handed the work a person approved".
    */
   dropTask?: boolean;
+  /**
+   * Leave the project tools out: not in the agent kind's catalog, and not in
+   * any seat's `tools:`, as before the chief of staff had them. Applied to the
+   * record before the mint, so the seat boots and genuinely cannot create a
+   * project. The red state of "the chief of staff creates projects".
+   */
+  withoutProjectTools?: boolean;
 }
 
 /** One skill on a worker record, as the loader shapes it. */
@@ -333,7 +484,8 @@ export interface Lab {
    */
   rows(): Promise<Record<string, Task>>;
   /**
-   * The channel the tree declared, once `channels` was asked for.
+   * The channel that holds the tree's board, once `channels` was asked for.
+   * The tree's other channels are opened too, and hold no board.
    *
    * The id is minted from where `CHANNEL.md` sits, never named in this code.
    */
@@ -392,6 +544,11 @@ export interface Lab {
    */
   ask?: RaiseAskResult;
   /**
+   * What creating each of `projects` returned, in order: the row, and whether
+   * this open wrote it. Absent when `projects` was not asked for.
+   */
+  projects?: CreateProjectOutput[];
+  /**
    * The flow state the seats are registered in: what a host hands `raiseAsk`
    * when it calls the step itself.
    */
@@ -403,12 +560,13 @@ export interface Lab {
    *
    * `path` is everything after `/api/flows/`, query string included. The lab's
    * verified bearer is sent unless `bearer` is `false`, which is how a check
-   * shows the door refuses a caller that presented nothing.
+   * shows the door refuses a caller that presented nothing. `as` sends one of
+   * the other {@link LAB_USERS}' bearers instead.
    */
   door(
     method: "GET" | "POST",
     path: string,
-    options?: { body?: unknown; bearer?: boolean },
+    options?: { body?: unknown; bearer?: boolean; as?: keyof typeof LAB_USERS },
   ): Promise<{ status: number; body: any }>;
   dispose(): Promise<void>;
 }
@@ -424,14 +582,13 @@ export interface Lab {
 export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const roster = await loadTree(options.root ?? LAB_TREE);
 
-  // **The board, read off the tree.** One channel, one declared board: the
-  // lab's wiring hands one ledger to both kinds, so a tree that grew a second
-  // channel or board would be a different lab, and is refused by what it has
-  // rather than resolved by guessing which one was meant.
-  if (roster.channels.length !== 1) {
-    throw new Error(`the tree declares ${roster.channels.length} channel(s); this lab runs one`);
-  }
-  const channel = roster.channels[0]!;
+  // **The board, read off the tree.** One channel holds a board, and it holds
+  // one: the lab's wiring hands one ledger to both kinds, so a tree that grew
+  // a second board would be a different lab, and is refused by what it has
+  // rather than resolved by guessing which one was meant. Channels that hold
+  // no board are workstreams like any other; they are opened, registered and
+  // grouped into projects, and file nothing.
+  const channel = boardChannelOf(roster);
   const declaredBoards = channel.declared.boards as string[] | undefined;
   if (declaredBoards?.length !== 1) {
     throw new Error(
@@ -446,6 +603,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // what makes the seats' document reads — and BR-17 — matter.
   const resources = resourcesFromDocs(roster.documents);
 
+  // The project writes, built once: the flow that creates projects at open runs
+  // them as actions, and the chief of staff calls the same two as tools.
+  const projectBlocks = defineProjectBlocks();
+  const projectTools = chiefOfStaffProjectTools(projectBlocks);
+
   // The controls mutate the RECORD, before the mint, so a perturbed seat
   // genuinely runs on what the control gave it rather than being graded as if
   // it did.
@@ -453,6 +615,9 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const workers = roster.workers.map((worker) => {
     const declared = { ...worker.declared };
     if (Object.hasOwn(overrides, worker.id)) declared.document = overrides[worker.id];
+    if (options.withoutProjectTools === true && Array.isArray(declared.tools)) {
+      declared.tools = (declared.tools as string[]).filter((name) => !Object.hasOwn(projectTools, name));
+    }
     const redirected = { ...worker, declared };
     return options.mutateSkills === undefined
       ? redirected
@@ -500,10 +665,10 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
   // The built-in `agent` kind, which the chief of staff (`org/workers/
   // chief-of-staff/`) runs on. Every seat of it gets the discovery door; a
-  // seat holds post, hire, fire and the repairs only by naming them in its
-  // `tools:`, and in this tree only the chief of staff does. A hire lands at
+  // seat holds post, hire, fire, the repairs and the project writes only by
+  // naming them in its `tools:`, and in this tree only the chief of staff does. A hire lands at
   // once; a fire, and a repair always, waits for a person's Approve in Inbox,
-  // which needs durable execution (`ask` turns it on). The kind mounts no
+  // which needs durable execution (on whenever a seat holds one). The kind mounts no
   // members' private roster, so the chief of staff lists, fires and repairs
   // the organization's seats only. The register reaches
   // the flow state built below, so it is bound once that exists.
@@ -523,15 +688,25 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     instanceAt: (id) => registrar?.registry.get(id),
     allowKinds: [CODER_KIND, AGENT_KIND],
     channelBoards: channelBoardIds(roster.channels),
-    askBefore: ["fire"],
+    askBefore: [...ASKS_BEFORE],
     // Roster admin stays with the chief of staff: a hired seat can't be given it.
     refuseRosterAdmin: true,
   });
+  // A declared seat holding a tool that waits for a person (`rehire` always
+  // does) needs durable execution, whatever else the caller asked for.
+  const asksBeforeChanging = roster.workers.some((worker) =>
+    ((worker.declared.tools as string[] | undefined) ?? []).some((tool) => ASKS_FIRST.has(tool)),
+  );
   kinds[AGENT_KIND] = defineAgentWorkerFlow({
+    // The project tools a seat names in `tools:`. The kind carries them, and
+    // only the chief of staff's line names them.
+    catalog: options.withoutProjectTools === true ? {} : projectTools,
     uses: [
       // The channel inventory, which the discovery door reads beside the seats
-      // the hire capability mounts.
-      defineCapability({ name: "lab-channel-inventory", resources: { channelInventory: defineChannelInventoryCollection() } }),
+      // the hire capability mounts. Declared with the project writes' own
+      // object, because the project tools read it too and a flow takes one
+      // declaration per storage key.
+      defineCapability({ name: "lab-channel-inventory", resources: { channelInventory: projectWritesChannelInventory } }),
       createWorkforceCapability({
         roster: { workers: roster.workers, channels: roster.channels },
         inventory: { seats: SEAT_INVENTORY_RESOURCE, channels: "channelInventory" },
@@ -570,30 +745,59 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           notify: labNotify(options.channels) as never,
           ...(options.inventory === true ? { inventory: true } : {}),
         });
+  // The org's resource modules: where the projects collection and its talk
+  // template are declared. The binder reads the template off them, builds its
+  // seats and charter onto the channel kind, and installs the mint on create.
+  const orgResources = channelKind === undefined ? {} : await loadResourceModules(options.root ?? LAB_TREE);
   const instances =
     channelKind === undefined
       ? []
       : channelInstances(roster.channels, {
           kinds: { [CHANNEL_KIND]: channelKind as never },
+          resources: orgResources,
         });
 
+  if (options.projects !== undefined && options.inventory !== true) {
+    throw new Error("openLab: `projects` needs `inventory`: a project's workstreams are checked against it");
+  }
+  // The flow a project is created through at open: the project writes, as an
+  // app installs them. The chief of staff calls the same two as tools.
+  const projectsFlow =
+    options.projects === undefined
+      ? undefined
+      : defineFlow({ kind: PROJECTS_KIND, actions: projectBlocks.actions } as never)();
+
+  const latencyEnv = process.env.DEVFORCE_LAB_WRITE_LATENCY_MS;
+  const writeLatency = latencyEnv === undefined || latencyEnv === "" ? undefined : Number(latencyEnv);
+  if (writeLatency !== undefined && !(writeLatency > 0)) {
+    throw new Error(`DEVFORCE_LAB_WRITE_LATENCY_MS must be a positive number of milliseconds, not "${latencyEnv}"`);
+  }
+  if (writeLatency !== undefined) console.error(`[devforce-lab] holding checked store writes up to ${writeLatency}ms`);
+
   // One record for the Lab's own flows and its seats. An org seat's id is its
-  // bare folder name, so a folder named like one of the Lab's flows (`channel`)
-  // would take that flow's key; `mergeSeatFlows` refuses it, by name.
+  // bare folder name, so a folder named like one of the Lab's flows (`channel`,
+  // `projects`) would take that flow's key; `mergeSeatFlows` refuses it, by name.
   const flows: Record<string, unknown> = mergeSeatFlows(
-    Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
+    {
+      ...Object.fromEntries(instances.map((instance) => [instance.kind, instance])),
+      ...(projectsFlow === undefined ? {} : { [PROJECTS_KIND]: projectsFlow }),
+    },
     hired,
   );
 
   const state = createFlowState({
     flows,
-    stores: { default: { primary: options.stores } },
+    // A goal that grades a burst sets DEVFORCE_LAB_WRITE_LATENCY_MS, so the
+    // burst's writes really race (`write-latency.mts`). Unset, the store is as given.
+    stores: { default: { primary: writeLatency === undefined ? options.stores : withWriteLatency(options.stores, writeLatency) } },
     // A configured resolver, so the development-organization fallback does
     // not answer an unauthenticated HTTP read (FIX-1515 / BR-17).
     resolvePrincipal: resolveLabPrincipal,
     ...(options.logger === undefined ? {} : { runtimeConfig: { logger: options.logger } }),
-    // Only when the ask is: the other checks run without it, as before.
-    ...(options.ask === undefined ? {} : { durable: true }),
+    // When something can wait for a person: the EM's ask, or a seat holding a
+    // roster tool that asks first (`fire`, `rehire`). Trees with neither run
+    // without it, as before.
+    ...(options.ask === undefined && !asksBeforeChanging ? {} : { durable: true }),
     ...(options.devtool === true ? { devtool: { userId: LAB_USER_ID, bearerToken: LAB_PRINCIPAL_SECRET } } : {}),
   } as never);
 
@@ -737,8 +941,33 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     }
   }
 
+  // The projects, once the inventory their workstreams are checked against is
+  // written: one `createProject` turn each, as the owner, in the lab's own
+  // projects session. A row the owner already holds comes back unchanged.
+  let projects: CreateProjectOutput[] | undefined;
+  if (options.projects !== undefined) {
+    projects = [];
+    for (const input of options.projects) {
+      const result = (await runAction({
+        flow: projectsFlow,
+        actionName: "createProject",
+        input,
+        userId: LAB_USER_ID,
+        orgId: LAB_ORG_ID,
+        sessionId: PROJECTS_SESSION,
+        stores: runtime.stores,
+        runtimeConfig: runtime.runtimeConfig,
+      } as never)) as { output?: unknown; error?: unknown };
+      if (result.error !== undefined) {
+        await state.dispose();
+        throw new Error(`openLab: project "${input.id}" was not created: ${messageOf(result.error)}`);
+      }
+      projects.push(result.output as CreateProjectOutput);
+    }
+  }
+
   const channelInstance = instances.find((instance) => instance.kind === CHANNEL_KIND);
-  /** The one channel this tree declares. Its id is its session id. */
+  /** The channel holding the board. Its id is its session id. */
   const channelId = channel.id;
 
   /**
@@ -812,7 +1041,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const door = async (
     method: "GET" | "POST",
     path: string,
-    doorOptions?: { body?: unknown; bearer?: boolean },
+    doorOptions?: { body?: unknown; bearer?: boolean; as?: keyof typeof LAB_USERS },
   ): Promise<{ status: number; body: any }> => {
     const url = new URL(`http://lab/api/flows/${path}`);
     const segments = url.pathname.slice("/api/flows/".length).split("/");
@@ -823,7 +1052,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
         accept: "application/json",
         ...(doorOptions?.bearer === false
           ? {}
-          : { authorization: `Bearer ${LAB_PRINCIPAL_SECRET}` }),
+          : { authorization: `Bearer ${LAB_USERS[doorOptions?.as ?? "owner"].bearer}` }),
       },
       ...(doorOptions?.body === undefined ? {} : { body: JSON.stringify(doorOptions.body) }),
     });
@@ -1018,6 +1247,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     },
 
     ...(ask === undefined ? {} : { ask }),
+    ...(projects === undefined ? {} : { projects }),
     state,
     ledger,
     door,

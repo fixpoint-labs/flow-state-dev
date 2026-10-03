@@ -43,6 +43,7 @@ import {
   defineChannelFlow,
   holdsBoards,
   routeOf,
+  wakesSeats,
   type ChannelSessionState
 } from "./channel-flow";
 import {
@@ -51,6 +52,15 @@ import {
   channelBoardNameProblem
 } from "./channel-board";
 import type { ChannelRouting } from "./channel-route";
+import { PROJECTS_COLLECTION } from "../projects/collections";
+import {
+  orgTalkTemplateOf,
+  registeredTalkTemplate,
+  registerTalkTemplate,
+  talkTemplateConflict,
+  templateSeatsProblem,
+  type TalkTemplateFacts
+} from "../projects/talk-template";
 
 /** The `CHANNEL.md` key that routes a channel, and its one subkey. */
 const ROUTING_KEY = "routing";
@@ -58,6 +68,9 @@ const FALLBACK_KEY = "fallback";
 
 /** The `CHANNEL.md` key that exposes a channel's boards' task tools as actions. */
 const BOARD_ACTIONS_KEY = "boardActions";
+
+/** The `CHANNEL.md` key that marks the file a project talk template, not a channel. */
+const MINT_FOR_KEY = "mintFor";
 
 /**
  * Every key a `CHANNEL.md` may declare. Closed, and checked by name.
@@ -74,9 +87,15 @@ const BOARD_ACTIONS_KEY = "boardActions";
  * who takes a post the route cannot place. Like `boards`, it is built onto the
  * kind at every boot and never written into the channel's session.
  *
- * `boardActions` is the seventh and the newest: `true` exposes each of the
- * channel's boards' eight task tools as channel actions. Boolean only, off by
- * default, and built onto the kind the same way.
+ * `boardActions` is the seventh: `true` exposes each of the channel's boards'
+ * eight task tools as channel actions. Boolean only, off by default, and built
+ * onto the kind the same way.
+ *
+ * `mintFor` is the eighth and the newest: it names a collection in the org's
+ * resource map, and makes the file that collection's project talk template
+ * rather than a channel. A template is never opened and never registered; its
+ * `members:` are the seats a post in a project's room wakes and its body is
+ * the room's charter, built onto the kind at every boot.
  */
 const DECLARABLE_KEYS = [
   "flow",
@@ -85,8 +104,55 @@ const DECLARABLE_KEYS = [
   CHANNEL_BOARDS_KEY,
   INSTRUCTIONS_KEY,
   ROUTING_KEY,
-  BOARD_ACTIONS_KEY
+  BOARD_ACTIONS_KEY,
+  MINT_FOR_KEY
 ] as const;
+
+/**
+ * Is this record a project talk template (`mintFor:`) rather than a channel?
+ * A template is never opened and never registered in the inventory, so
+ * `openChannels` and `openInventory` pass it over. Not re-exported from the
+ * package root.
+ */
+export function isTalkTemplate(manifest: ChannelManifest): boolean {
+  return Object.hasOwn(manifest.declared, MINT_FOR_KEY);
+}
+
+/**
+ * Why a template file is not one, or `undefined`. A template is the shape of a
+ * project's room, not a channel: it holds no board (a board per project is
+ * still an open question), routes no post (every seat it names hears every
+ * post), and its `members:` are seat ids.
+ */
+function templateFileProblem(declared: Record<string, unknown>): string | undefined {
+  const target = declared[MINT_FOR_KEY];
+  if (typeof target !== "string" || target.trim().length === 0) {
+    return `declares a \`${MINT_FOR_KEY}:\` that is not a collection name. Name the collection whose rows this template mints a room for, as \`${MINT_FOR_KEY}: projects\`.`;
+  }
+  const notHeld = ["flow", CHANNEL_BOARDS_KEY, ROUTING_KEY, BOARD_ACTIONS_KEY].filter((key) => Object.hasOwn(declared, key));
+  if (notHeld.length > 0) {
+    return (
+      `declares \`${MINT_FOR_KEY}:\` and ${notHeld.map((key) => `\`${key}:\``).join(", ")}. A talk template is ` +
+      `not a channel: it holds no board, routes no post, and runs on the built-in channel kind. ` +
+      `Drop ${notHeld.length === 1 ? "that line" : "those lines"}.`
+    );
+  }
+  if (Object.hasOwn(declared, "members") && isListOfNames(declared.members)) {
+    const problem = templateSeatsProblem(declared.members);
+    if (problem !== undefined) return `declares \`${MINT_FOR_KEY}:\`, and ${problem}`;
+  }
+  return undefined;
+}
+
+/** One talk template, from either site, as the binder checks and builds it. */
+type DeclaredTemplate = {
+  /** Where it was declared, for a refusal to name. */
+  site: string;
+  collection: object;
+  /** The collection's ref in the org's resource map. */
+  ref: string;
+  facts: TalkTemplateFacts;
+};
 
 /**
  * A channel kind: a flow factory carrying the same identity contract the
@@ -128,6 +194,27 @@ export interface ChannelInstancesOptions {
    * this to one: a custom kind is zero-arg by contract.
    */
   inventory?: boolean;
+
+  /**
+   * The organization's resource map, keyed by ref: the `resources` half of
+   * `splitResourceModules(resourceModules)`, or the app's own map. Where the
+   * project talk templates are read from. The org-level default rides on the
+   * projects collection itself (`defineProjectsCollection({ talk })`), and a
+   * `CHANNEL.md`'s `mintFor:` names a collection by its ref here.
+   *
+   * Absent, no org-level template is read, and a `mintFor:` names no
+   * collection, so it is refused.
+   *
+   * **The first call that finds a projects template registers it for the
+   * process** and sets `reactTo.created` on the one projects declaration, so
+   * creating a row in a flow turn mints the creator's talk session on the
+   * built-in channel kind. Every later call builds its channel kind from that
+   * registration, whether or not it passes `resources`, so its talk sessions
+   * hold the same seats and charter. A later call that finds a different
+   * template throws, and every call's channel kind must be able to wake the
+   * template's seats.
+   */
+  resources?: Readonly<Record<string, unknown>>;
 }
 
 export interface OpenChannelsOptions {
@@ -305,6 +392,11 @@ function validate(
 
   if (Object.hasOwn(declared, "description") && typeof declared.description !== "string") {
     return { problem: "declares a `description:` that is not text" };
+  }
+
+  if (Object.hasOwn(declared, MINT_FOR_KEY)) {
+    const problem = templateFileProblem(declared);
+    if (problem !== undefined) return { problem };
   }
 
   // Shape first, then each name. A `boards:` that is not a list is one problem
@@ -543,6 +635,30 @@ export function channelInstances(
   const routingByKind = new Map<string, Record<string, ChannelRouting>>();
   /** Each selected kind's channels that declared `boardActions: true`. */
   const boardActionsByKind = new Map<string, string[]>();
+  /** Every project talk template, from either site, checked. */
+  const templates: DeclaredTemplate[] = [];
+
+  // The org-level defaults first: each rides on the collection it was
+  // declared beside, in the org's resource map.
+  let orgDeclarations = 0;
+  const readCollections = new Set<unknown>();
+  for (const [ref, entry] of Object.entries(options.resources ?? {})) {
+    const template = orgTalkTemplateOf(entry);
+    if (template === undefined) continue;
+    // One collection under two refs is one declaration, not two rivals.
+    if (readCollections.has(entry)) continue;
+    readCollections.add(entry);
+    orgDeclarations += 1;
+    const site = `the talk template beside "${ref}" in the org's resources`;
+    // Its seats were checked where it was declared (`defineProjectsCollection`).
+    const declared = templateFrom(
+      { ref, seats: template.seats, charter: template.charter ?? "" },
+      site,
+      options.resources
+    );
+    if ("problem" in declared) problems.push(`${site} — ${declared.problem}`);
+    else templates.push(declared);
+  }
 
   for (const manifest of ordered) {
     const refuse = (reason: string): void => {
@@ -563,6 +679,25 @@ export function channelInstances(
       refuse(result.problem);
       continue;
     }
+
+    // A template is the shape of a project's room, not a channel: it adds its
+    // template, and nothing a channel adds.
+    if (isTalkTemplate(manifest)) {
+      const ref = manifest.declared[MINT_FOR_KEY] as string;
+      const declared = templateFrom(
+        {
+          ref,
+          seats: isListOfNames(manifest.declared.members) ? manifest.declared.members : [],
+          charter: stateFor(manifest).instructions
+        },
+        `channel "${manifest.id}"`,
+        options.resources
+      );
+      if ("problem" in declared) refuse(declared.problem);
+      else templates.push(declared);
+      continue;
+    }
+
     selected.add(result.kind);
     if (result.routing !== undefined) {
       routingByKind.set(result.kind, { ...routingByKind.get(result.kind), [manifest.id]: result.routing });
@@ -601,12 +736,64 @@ export function channelInstances(
     }
   }
 
-  if (problems.length > 0) {
-    throw new Error(
-      `channelInstances refused ${problems.length} of ${ordered.length} ` +
-        `channel${ordered.length === 1 ? "" : "s"}; nothing was registered:\n  - ${problems.join("\n  - ")}`
+  // One template per collection, across both sites. A project's members each
+  // hold one talk session on it, so its rows are minted from one template.
+  // One refusal per collection, naming every template that shares it.
+  const byCollection = new Map<object, DeclaredTemplate[]>();
+  for (const template of templates) {
+    byCollection.set(template.collection, [...(byCollection.get(template.collection) ?? []), template]);
+  }
+  for (const rivals of byCollection.values()) {
+    if (rivals.length < 2) continue;
+    problems.push(
+      `the "${rivals[0]!.ref}" collection has ${rivals.length} talk templates: ` +
+        `${rivals.map((other) => other.site).join("; ")}. A project's ` +
+        `members each hold one talk session, so a collection's rows are minted from one template. Keep one.`
     );
   }
+
+  // The template this call builds on: the one it found, or the one an earlier
+  // call registered for the process. Either way, this call's channel kind
+  // runs the talk sessions, so it must be able to hold and wake it.
+  const found = templates.find((template) => template.collection === PROJECTS_COLLECTION);
+  // A template found here that differs from the one an earlier call
+  // registered is refused with everything else, not after it.
+  const conflict = found === undefined ? undefined : talkTemplateConflict(PROJECTS_COLLECTION, found);
+  if (conflict !== undefined) problems.push(`${found!.site} — ${conflict}`);
+  const standing = found ?? registeredTalkTemplate(PROJECTS_COLLECTION);
+  if (standing !== undefined) {
+    const problem = talkKindProblem(kinds, standing.facts);
+    if (problem !== undefined) {
+      problems.push(
+        found !== undefined
+          ? `${found.site} — ${problem}`
+          : `the talk template registered in this process (${standing.site}) — ${problem}`
+      );
+    }
+  }
+
+  if (problems.length > 0) {
+    // Worded as before when every declaration is a channel file.
+    const declarations = ordered.length + orgDeclarations;
+    const noun = orgDeclarations > 0 ? "declarations" : `channel${ordered.length === 1 ? "" : "s"}`;
+    throw new Error(
+      `channelInstances refused ${problems.length} of ${declarations} ` +
+        `${noun}; nothing was registered:\n  - ${problems.join("\n  - ")}`
+    );
+  }
+
+  // The template found here is registered for the process, with the reaction
+  // that mints a creator's talk session (`talk-template.ts`); a different one
+  // already registered throws. The channel kind is then built holding the
+  // registered template, and registered even when no channel runs on it: its
+  // talk sessions do. A call that finds no template still builds from the
+  // registration, so every channel kind in the process holds the same one.
+  if (found !== undefined) {
+    const templateIds = ordered.filter(isTalkTemplate).map((manifest) => manifest.id);
+    registerTalkTemplate(PROJECTS_COLLECTION, { site: found.site, facts: found.facts }, CHANNEL_KIND, templateIds);
+  }
+  const template = registeredTalkTemplate(PROJECTS_COLLECTION);
+  if (template !== undefined) selected.add(CHANNEL_KIND);
 
   return [...selected].sort().map((kind) => {
     const factory = kinds[kind]!;
@@ -614,14 +801,81 @@ export function channelInstances(
     const routing = routingByKind.get(kind);
     // A kind holding nothing is built exactly as it was before boards existed,
     // and `validate` has already refused the third case — boards named on a
-    // kind that cannot hold them. Routing likewise: only a kind built with a
-    // route gets here holding any.
+    // kind that cannot hold them. Routing and templates likewise: only a kind
+    // this package built gets here holding any.
     if (!holdsBoards(factory)) return factory();
     const boardActions = boardActionsByKind.get(kind);
+    const facts = kind === CHANNEL_KIND ? template?.facts : undefined;
     const withBoards = boards === undefined ? factory : factory.withBoards(boards);
     const withRouting = routing === undefined ? withBoards : withBoards.withRouting(routing);
-    return (boardActions === undefined ? withRouting : withRouting.withBoardActions(boardActions))();
+    const withBoardActions = boardActions === undefined ? withRouting : withRouting.withBoardActions(boardActions);
+    return (facts === undefined ? withBoardActions : withBoardActions.withTemplate(facts))();
   });
+}
+
+/**
+ * Check one talk template's collection, from either site. It must be the
+ * projects collection in the org's resource map: a talk session is about a
+ * project, and its entries read that collection.
+ */
+function templateFrom(
+  declared: { ref: string; seats: readonly string[]; charter: string },
+  site: string,
+  resources: Readonly<Record<string, unknown>> | undefined
+): DeclaredTemplate | { problem: string } {
+  const collection = resources !== undefined && Object.hasOwn(resources, declared.ref) ? resources[declared.ref] : undefined;
+  if (collection === undefined) {
+    return {
+      problem:
+        `names collection "${declared.ref}", which is not in the org's resources passed to channelInstances. ` +
+        `Declare it in \`org/resources/${declared.ref}.ts\` and pass the org's resource map as \`resources\`.`
+    };
+  }
+  if (collection !== PROJECTS_COLLECTION) {
+    return {
+      problem:
+        `names "${declared.ref}", which is not the projects collection. A talk session is about a project, ` +
+        `so a template mints rooms for the rows \`defineProjectsCollection()\` declares.`
+    };
+  }
+  return {
+    site,
+    collection,
+    ref: declared.ref,
+    facts: { seats: [...declared.seats], charter: declared.charter }
+  };
+}
+
+/**
+ * Why this call's channel kind cannot run talk sessions on `facts`, or
+ * `undefined`. Talk sessions run on the built-in kind (`"channel"`), so what
+ * sits under that key must be a kind {@link defineChannelFlow} built (the
+ * template is built onto it, as `boards:` is), of that kind, and able to wake
+ * the template's seats.
+ */
+function talkKindProblem(kinds: Record<string, ChannelKind>, facts: TalkTemplateFacts): string | undefined {
+  const factory = kinds[CHANNEL_KIND]!;
+  if (factory.kind !== CHANNEL_KIND) {
+    return (
+      `talk sessions run on kind "${CHANNEL_KIND}", but the flow passed under that key is kind ` +
+      `"${String(factory.kind)}" — they would run a different channel's graph.`
+    );
+  }
+  if (!holdsBoards(factory)) {
+    return (
+      `talk sessions run on kind "${CHANNEL_KIND}", and the flow passed under that key is not one ` +
+      `\`defineChannelFlow\` built. A custom kind is zero-arg, so there is no way to hand it the template's ` +
+      `seats and charter.`
+    );
+  }
+  if (facts.seats.length > 0 && !wakesSeats(factory)) {
+    return (
+      `names seats, but talk sessions run on kind "${CHANNEL_KIND}", which was built with no \`notify\` ` +
+      `block, so a post would wake none of them. Pass it built with one, as ` +
+      `\`kinds: { channel: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }\`.`
+    );
+  }
+  return undefined;
 }
 
 /**
@@ -629,9 +883,10 @@ export function channelInstances(
  *
  * Built from named keys only, which is why an undeclared key cannot reach
  * state even though the session route would not refuse one: there is nowhere
- * for it to go.
+ * for it to go. `resourceId` is a talk session's alone, and a declared
+ * channel's state carries no such key.
  */
-function stateFor(manifest: ChannelManifest): ChannelSessionState {
+function stateFor(manifest: ChannelManifest): Omit<ChannelSessionState, "resourceId"> {
   const declared = manifest.declared;
   const charter =
     manifest.body.trim().length > 0
@@ -792,7 +1047,9 @@ export async function openChannels(
   // address. The binder no longer takes an `orgId` at all, and never did have
   // the authority to choose one.
 
-  for (const manifest of orderedById(manifests)) {
+  // A talk template is the shape of a project's room, never a channel, so it
+  // is never opened.
+  for (const manifest of orderedById(manifests.filter((record) => !isTalkTemplate(record)))) {
     const selected = kindOf(manifest.declared);
     if ("problem" in selected) {
       throw new Error(`channel "${manifest.id}" — ${selected.problem}`);

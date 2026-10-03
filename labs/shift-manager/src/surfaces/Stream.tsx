@@ -137,14 +137,7 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
                   </button>
                 </li>
               ) : null}
-              {transcript.lines.map((line) => (
-                <li key={line.id} className="flex flex-col gap-0.5" data-testid="transcript-line" data-line-id={line.id}>
-                  <span className="text-xs font-medium text-muted-foreground">{lineLabel(line)}</span>
-                  <span className="whitespace-pre-wrap text-sm" data-testid="transcript-line-body">
-                    {line.body}
-                  </span>
-                </li>
-              ))}
+              <TranscriptLines lines={transcript.lines} />
               {transcript.lines.length === 0 ? (
                 <li className="py-6 text-center text-sm text-muted-foreground">Nothing has been posted here yet.</li>
               ) : null}
@@ -197,6 +190,25 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
   );
 }
 
+/**
+ * The lines of a transcript, oldest first: who wrote each, then its words.
+ * A workstream's Stream and a project's draw lines with this one list.
+ */
+export function TranscriptLines({ lines }: { lines: readonly ChannelTranscriptLine[] }) {
+  return (
+    <>
+      {lines.map((line) => (
+        <li key={line.id} className="flex flex-col gap-0.5" data-testid="transcript-line" data-line-id={line.id}>
+          <span className="text-xs font-medium text-muted-foreground">{lineLabel(line)}</span>
+          <span className="whitespace-pre-wrap text-sm" data-testid="transcript-line-body">
+            {line.body}
+          </span>
+        </li>
+      ))}
+    </>
+  );
+}
+
 /** Where an `@name` line goes: nowhere, and why; or one of the worker's tasks. */
 type Addressing =
   | { blocked: string }
@@ -214,14 +226,19 @@ function parseAddress(draft: string): { name: string; message: string } | undefi
  * the send state every turn composer shares ({@link useTurnSend}): delivered
  * only once the run's session holds it (BR-4).
  */
-function Composer({
+export function Composer({
   send,
   onKept,
   addressing,
+  label = "Post to this workstream",
+  placeholder = "Post a line to this workstream, or @worker to message one…",
 }: {
   send: (body: string) => Promise<void>;
   onKept: () => Promise<void>;
-  addressing: (name: string) => Addressing;
+  /** Where an `@name` line goes. Absent: every line, `@` or not, is a post. */
+  addressing?: (name: string) => Addressing;
+  label?: string;
+  placeholder?: string;
 }) {
   const [draft, setDraft] = useState("");
   const [posting, setPosting] = useState(false);
@@ -231,8 +248,8 @@ function Composer({
   const mounted = useRef(true);
   useEffect(() => () => void (mounted.current = false), []);
 
-  const address = parseAddress(draft);
-  const target = address === undefined ? undefined : addressing(address.name);
+  const address = addressing === undefined ? undefined : parseAddress(draft);
+  const target = address === undefined ? undefined : addressing?.(address.name);
   const rows = target !== undefined && target.blocked === null ? target.rows : [];
   const row = rows.length === 1 ? rows[0] : rows.find((r) => r.id === chosen);
   const blocked =
@@ -252,11 +269,14 @@ function Composer({
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSend) return;
+    // What was sent. A send that finishes clears only this; a line typed since stays.
+    const submitted = draft;
+    const clearSent = () => setDraft((current) => (current === submitted ? "" : current));
     if (address !== undefined) {
       const to = target as Extract<Addressing, { blocked: null }>;
       setPostError(null);
       if (await turn.run(() => to.send(row!, address.message))) {
-        setDraft("");
+        clearSent();
         setChosen("");
       }
       return;
@@ -264,13 +284,19 @@ function Composer({
     setPosting(true);
     setPostError(null);
     turn.clear();
+    let sent = false;
     try {
-      await send(draft.trim());
-      if (!mounted.current) return;
-      setDraft("");
+      await send(submitted.trim());
+      sent = true;
+      // The draft goes only once the line is read back: a read that fails
+      // leaves it here, with the reason.
       await onKept();
+      if (mounted.current) clearSent();
     } catch (err) {
-      if (mounted.current) setPostError(err instanceof Error ? err.message : String(err));
+      const reason = err instanceof Error ? err.message : String(err);
+      if (mounted.current) {
+        setPostError(sent ? `Your line was posted, but reading it back failed: ${reason} Your draft is kept; check the conversation before sending it again.` : reason);
+      }
     } finally {
       if (mounted.current) setPosting(false);
     }
@@ -280,7 +306,7 @@ function Composer({
   return (
     <form onSubmit={(e) => void submit(e)} className="border-t p-3" data-testid="composer">
       <label className="sr-only" htmlFor="composer-input">
-        Post to this workstream
+        {label}
       </label>
       <textarea
         id="composer-input"
@@ -291,7 +317,7 @@ function Composer({
           turn.reset();
         }}
         rows={2}
-        placeholder="Post a line to this workstream, or @worker to message one…"
+        placeholder={placeholder}
         className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm"
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void submit(e);
@@ -320,7 +346,7 @@ function Composer({
           {blocked !== null ? (
             blocked
           ) : posting ? (
-            "Posting… the line appears once the channel keeps it."
+            "Posting… the line appears once it is kept."
           ) : postError !== null ? (
             <span role="alert" className="text-destructive" data-testid="composer-error">
               {postError}

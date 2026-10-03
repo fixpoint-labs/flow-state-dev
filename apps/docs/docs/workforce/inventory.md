@@ -13,21 +13,21 @@ The inventory keeps that record as data: three org-scoped resource collections t
 
 | Collection | One row per | Key |
 |------------|-------------|-----|
-| Seats | registered seat | `inventory/seats/<seatId>` |
+| Seats | registered seat | `inventory/seats/<id>`; for a seat hired at runtime, `<id>` is its address, such as `acme.support.ada` |
 | Channels | registered channel | `inventory/channels/<channelId>` |
 | Memberships | seat-in-channel | `inventory/members/<seatId>/<channelId>` |
 
-**A row means registered, not open.** It records that a seat or channel was registered in this organization. It says nothing about whether that seat is working or that channel is open now. A declared seat's or channel's row is never deleted, so one a later roster no longer names keeps its row. A seat hired at runtime is the exception: firing it removes its row, and only the row its own hire published (see below). Label rows that way wherever you show them.
+**A row means registered, not open.** It records that a seat or channel was registered in this organization. It says nothing about whether that seat is working or that channel is open now. Nothing deletes a row for going missing, so a seat or channel a later roster no longer names keeps its row. Label rows that way wherever you show them.
+
+There are two removals. Firing a seat hired at runtime removes its row, and only the row its own hire published (see below). And when a `CHANNEL.md` becomes a project talk template (`mintFor: projects`), it is no longer a channel, so the next `openInventory` removes its channel row and membership rows through the `seatWriter`. Discovery never lists a template as a channel, even before that boot runs.
 
 ## When to use which source
 
-![The inventory records what was registered; the channel's own session checks a post's author; the hired roster lists who is hired now](./inventory-rows.svg)
+![Four records, each answering one question. Your files: what is declared? A WORKER.md or CHANNEL.md, read at every start; a seat hired at runtime has no file. Inventory, in the organization's store: was it registered here? A seat row (id, kind, door, hired, incarnation, where hired says the seat came from a runtime hire rather than a file), a channel row with a copy of its members, and a membership row per seat in a channel. A declared row is never deleted; firing a seat hired at runtime removes its row. Hired roster, a row at workforce/roster/ plus the seat id: is it hired right now? It holds only seats hired while the app runs, and a row is deleted when its seat is fired. The channel's session: will this post be accepted? Its state holds members and instructions, and post and fileTask check the author a post names against those members. The inventory's members is a copy for finding channels, never the check. A seat hired at runtime has its address as its inventory id, such as acme.support.ada, while members name it support.ada.](./seat-channel-records.svg)
 
-The tree says where a seat or channel is declared. The inventory says which channels registered in this organization, which seats a channel was registered with (the channel row's `members`), and which channels a seat is in (the membership rows). The two layers join on the seat's `id`. A seat hired at runtime through the ready-made hire is the exception: its seat row's `id` is its address, such as `acme.support.ada`, while a channel's `members` name it `support.ada`.
+Each column answers one question, so ask the record that owns yours. Two are easy to mix up. Whether a seat hired at runtime is hired right now is the [hired roster](./durable-hire.md#the-roster)'s, not the inventory's. Whether a post's `author` is accepted depends on the `members` in the channel's session state, not the inventory's copy.
 
-To find out whether a post that names a member will be accepted, ask the channel. The `post` and `fileTask` blocks read `members` from the channel's session, not from the inventory, whose `members` is a copy for finding things.
-
-For the seats hired at runtime and not yet fired, read the [hired roster](./durable-hire.md#the-roster). Firing a seat removes both its roster row and its inventory row. A row an earlier version left behind after a fire has no roster row; a reader that wants only current seats joins the two, and `listedSeatRows` from `@flow-state-dev/workforce/browser` does that join. Fire removes a leftover row only when the row says `hired: true`, so it never touches a declared seat's row at the same address.
+The inventory and your files join on the seat's `id`, except for a seat hired at runtime: its inventory `id` is its address, such as `acme.support.ada`, while a channel's `members` name it `support.ada`. For a team list, use `listedSeatRows` from `@flow-state-dev/workforce/browser`. It keeps every declared seat's row and a hired seat's row only while the hired roster backs it, so a seat that is no longer hired drops out.
 
 ## Wiring the boot
 
@@ -190,6 +190,8 @@ const seatChannels = handler({
 }
 ```
 
+A project's talk session is never a channel row. The channel rows are the channels you declared, and nothing else.
+
 **Membership:**
 
 ```ts
@@ -248,10 +250,11 @@ The DevTool's [Inventory tab](../devtool/overview.md#inventory) makes the same r
 
 ## Writing from your own kind
 
-A channel kind you wrote yourself gets rows when it carries the writer. `inventoryWriterActions(kind)` gives back its two blocks by action name. Split them across `actions` and `internal.actions`, the way the built-in kind does:
+A channel kind you wrote yourself gets rows when it carries the writer. `inventoryWriterActions(kind)` gives back its three blocks by action name. Split them across `actions` and `internal.actions`, the way the built-in kind does:
 
 - `registerChannelInInventory` is safe to leave public. It takes no input and builds its row from the channel's own open session.
 - `registerSeatsInInventory` is not. Its whole input is the row data, so it belongs only in `internal.actions`, where only the `runAction({ source: "internal", ... })` call `openInventory` makes can reach it.
+- `retireChannelsInInventory` belongs there too. Its input is the ids of channel rows to remove.
 
 ```ts
 import { defineFlow } from "@flow-state-dev/core";
@@ -271,7 +274,10 @@ const briefingKind = defineFlow({
     registerChannelInInventory: writer.registerChannelInInventory,
   },
   internal: {
-    actions: { registerSeatsInInventory: writer.registerSeatsInInventory },
+    actions: {
+      registerSeatsInInventory: writer.registerSeatsInInventory,
+      retireChannelsInInventory: writer.retireChannelsInInventory,
+    },
   },
 });
 ```

@@ -218,6 +218,26 @@ One `incState` call is one write. If any field in a multi-field call is wrong-ty
 
 A delta that commits is validated against `stateSchema` like every other state write. `incState({ retries: -1 })` on a `z.number().nonnegative()` field throws and stores nothing; see [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes). And a resource declared `writable: false` refuses `incState` and `pushState` alongside `patchState`, `setState`, and `updateState`.
 
+### Reading what another request wrote
+
+A request reads each resource as it was when the request first touched it. If another request writes the same resource afterwards, `ref.state` in this one keeps showing the older value. That's usually what you want, since a handler sees one consistent picture for the length of its run.
+
+It gets in the way when you're waiting on someone else. Say a block polls a row until another request moves its `status` from `"pending"` to `"done"`. Reading `ref.state.status` in a loop never sees the change.
+
+`readCommitted` reads the value as it's stored right now:
+
+```ts
+import { readCommitted } from "@flow-state-dev/core/helpers";
+
+const status = await readCommitted(rowRef, (row) => row?.status);
+```
+
+The second argument picks out what you want from the stored state, and that's what comes back. The call writes nothing.
+
+It needs a resource or collection ref the block is allowed to write. On a resource declared `writable: false`, the call is refused with a `resource_read_only` error and your function never runs.
+
+On a writable resource, your function always runs, so you get `undefined` back only when it returns `undefined` itself, for example because the field isn't set yet. A read that can't happen, such as one on a collection row deleted since you fetched it, throws instead. So a fallback like `?? "pending"` is only needed for a field that may be missing. It takes the same refs as [`updateStateWith`](/docs/state/mutation-model#writing-an-updater-that-may-run-twice), which is the helper to use when you also want to change the value.
+
 ## Working with content
 
 Read content with `readContent()` (renders templates) or `readContentRaw()` (returns the stored body):

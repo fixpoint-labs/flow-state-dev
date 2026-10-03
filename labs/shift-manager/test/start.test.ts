@@ -5,7 +5,7 @@
  * loader's own message (BR-2).
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -119,19 +119,24 @@ describe("the start command", () => {
   }, 120_000);
 
   it("removes the --devtool copy of the pages when it stops, and makes none when the Lab doesn't load", async () => {
-    const copies = () => new Set(readdirSync(tmpdir()).filter((d) => d.startsWith("shift-manager-pages-")));
+    // A temp directory of this test's own: the system one is shared with every
+    // other process on the machine, any of which may make a copy of its own.
+    const tmp = mkdtempSync(join(tmpdir(), "shift-manager-start-test-"));
+    const env = { TMPDIR: tmp, TMP: tmp, TEMP: tmp };
+    const copies = () => new Set(readdirSync(tmp).filter((d) => d.startsWith("shift-manager-pages-")));
     const before = copies();
-    const app = start("goals/multi-seat-collab/lab/fsdev.config.mts", ["--devtool", "http://127.0.0.1:4000"]);
+    const app = start("goals/multi-seat-collab/lab/fsdev.config.mts", ["--devtool", "http://127.0.0.1:4000"], "127.0.0.1", env);
     await app.listening;
     const made = [...copies()].filter((d) => !before.has(d));
     expect(made).toHaveLength(1);
     app.child.kill("SIGTERM");
     await app.exited;
-    expect(existsSync(join(tmpdir(), made[0]!))).toBe(false);
+    expect(existsSync(join(tmp, made[0]!))).toBe(false);
 
-    const unloaded = start("labs/shift-manager/test/fixtures/missing/fsdev.config.mts", ["--devtool", "http://127.0.0.1:4000"]);
+    const unloaded = start("labs/shift-manager/test/fixtures/missing/fsdev.config.mts", ["--devtool", "http://127.0.0.1:4000"], "127.0.0.1", env);
     expect(await unloaded.exited).not.toBe(0);
     expect([...copies()].filter((d) => !before.has(d))).toEqual([]);
+    rmSync(tmp, { recursive: true, force: true });
   }, 120_000);
 
   it("hands the page the Lab's bearer on a loopback host, and refuses a network host outright", async () => {

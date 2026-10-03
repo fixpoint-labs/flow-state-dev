@@ -3,22 +3,31 @@
   <desc id="desc">Alice, Bob and Cara each have one talk session on the project. Alice's two windows share her one session. The project row lists one session per person, and every session is a handle onto the same single room in the organization's data.</desc>
   <defs>
     <style>
-      .bg { fill: #ffffff; }
-      .person { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.5; stroke-dasharray: 5 4; }
-      .win { fill: #ffffff; stroke: #94a3b8; stroke-width: 1.25; }
-      .sess { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 1.5; }
-      .wall-org { fill: #f0fdf4; stroke: #15803d; stroke-width: 2; }
-      .card { fill: #ffffff; stroke: #334155; stroke-width: 1.5; }
-      .room { fill: #ffffff; stroke: #15803d; stroke-width: 2; }
-      .box { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1; }
-      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
-      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
-      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: #334155; }
-      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
-      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #0f172a; }
-      .tie { stroke: #94a3b8; stroke-width: 1.25; fill: none; }
-      .handle { stroke: #1d4ed8; stroke-width: 1.75; fill: none; }
-      .dot { fill: #1d4ed8; }
+      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
+              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
+              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
+              --faint:#94a3b8; --no:#b91c1c; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
+                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
+                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
+                --faint:#64748b; --no:#f87171; } }
+      .bg { fill: var(--bg); }
+      .person { fill: var(--box); stroke: var(--faint); stroke-width: 1.5; stroke-dasharray: 5 4; }
+      .win { fill: var(--card); stroke: var(--faint); stroke-width: 1.25; }
+      .sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 1.5; }
+      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 2; }
+      .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.5; }
+      .room { fill: var(--card); stroke: var(--org); stroke-width: 2; }
+      .box { fill: var(--box); stroke: var(--faint); stroke-width: 1; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
+      .tie { stroke: var(--faint); stroke-width: 1.25; fill: none; }
+      .handle { stroke: var(--sess); stroke-width: 1.75; fill: none; }
+      .dot { fill: var(--sess); }
     </style>
   </defs>
 

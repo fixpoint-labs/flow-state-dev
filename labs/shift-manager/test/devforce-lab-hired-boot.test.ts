@@ -74,7 +74,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function open(file: string, root?: string, scriptedModel?: ModelResolver): Promise<Lab> {
+async function open(file: string, root?: string, scriptedModel?: ModelResolver, withAsk = true): Promise<Lab> {
   const scratch = createScratchRepo("hired-boot");
   const harness = selectHarness();
   opened = await openLab({
@@ -85,7 +85,7 @@ async function open(file: string, root?: string, scriptedModel?: ModelResolver):
     coderSeatId: "eng.coder",
     channels: { addresses: {}, log: createNotifyLog() },
     inventory: true,
-    ask: ASK_FEATURE,
+    ...(withAsk ? { ask: ASK_FEATURE } : {}),
     ...(root === undefined ? {} : { root }),
   });
   if (scriptedModel !== undefined) {
@@ -138,6 +138,60 @@ describe("an org worker folder named like one of the Lab's own flows", () => {
     );
     const file = await seededStore({});
     await expect(open(file, root)).rejects.toThrow(/seat "channel".*already the flow "channel"/);
+  }, 120_000);
+});
+
+describe("a Lab opened without the EM's ask", () => {
+  it("still has the chief of staff's fire and re-hire wait for a person in Inbox, rather than refuse", async () => {
+    // The ask option only raises the EM's approval on open; the chief of
+    // staff's own approvals need durable execution whether it is set or not.
+    const token = "inc-pending";
+    const file = await seededStore({
+      helper: agentRow("helper", "inc-helper"),
+      fixer: agentRow("fixer", token, { pendingRepair: token }),
+    });
+    const calls = [
+      { toolCallId: "f1", toolName: "fire", args: { seatId: "helper" } },
+      { toolCallId: "r1", toolName: "rehire", args: { seatId: "fixer", flow: "agent", settings: {}, instructions: "You are fixer." } },
+    ];
+    let n = 0;
+    const model: GeneratorModel = {
+      modelId: "test/step",
+      async generate() {
+        throw new Error("the owned tool loop calls generateStep");
+      },
+      async generateStep() {
+        const call = calls[n++];
+        return call === undefined
+          ? { text: "done", finishReason: "stop" }
+          : { toolCalls: [call], finishReason: "tool-calls" };
+      },
+    };
+    const resolver = Object.assign(() => model, { resolveId: (id: string) => id }) as unknown as ModelResolver;
+    const lab = await open(file, undefined, resolver, false);
+    const runtime = await lab.state.getRuntime();
+
+    for (const [i, verb] of (["fire", "rehire"] as const).entries()) {
+      const started = await runAction({
+        orgId: LAB_ORG_ID,
+        flow: runtime.registry.get(COS) as FlowInstance,
+        actionName: "run",
+        input: { message: `${verb} it` },
+        userId: "u_person",
+        sessionId: `s-cos-${i}`,
+        stores: runtime.stores,
+        runtimeConfig: runtime.runtimeConfig,
+      } as never);
+      expect((await runtime.stores.request.get(started.requestId!))?.status).toBe("suspended");
+      const pending = ((await runtime.stores.suspensions.list({ status: "pending" })) as SuspensionRecord[]).filter(
+        (s) => (s.data as { verb?: string } | undefined)?.verb === verb,
+      );
+      expect(pending).toHaveLength(1);
+    }
+    // Nothing changed while they wait.
+    const stored = await lab.stored("org", "");
+    expect(stored[`${HIRED_ROSTER_PREFIX}helper`]).toBeDefined();
+    expect(stored[`${HIRED_ROSTER_PREFIX}fixer`]).toMatchObject({ pendingRepair: token });
   }, 120_000);
 });
 

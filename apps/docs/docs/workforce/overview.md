@@ -19,13 +19,15 @@ Reach for [Orchestration](../orchestration/overview) when you want to coordinate
 
 ## What a Workforce app looks like
 
-A Workforce app is a roster, the channels that roster talks in, and the boards its work sits on. A board is a list of tasks, each one something somebody takes and finishes. You describe the roster in files, hire it, and open sessions against the seats you get back.
+![A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, hireWorkforce turns each record into a seat, a configured copy of a flow kind with its own id, and your app registers the seats. Sessions, state and resources a seat writes live in your store. A seat hired while the app runs is also written to the store as a roster row. A task board's assignee names a board worker, never a seat.](./workforce-overview.svg)
 
-![A worker file describes a worker, a seat runs it, and the store keeps what it does](./workforce-overview.svg)
+Workforce reads your files and hires them. Each `WORKER.md` becomes a flow copy with its own address. Each `CHANNEL.md` becomes a named session on a channel kind, the built-in one unless the file names another. Sessions, resources and boards work as they do on any flow, and live where they always do.
 
 - **The roster outlives the process.** A team you hire while the app is running is still there after a restart or a redeploy, because the hire is written to the store your app uses. See [Hiring while the app runs](./durable-hire).
 - **A channel is what a reader opens.** A channel is a named session on a kind the framework ships, and its transcript is the part of that conversation a person or another agent should read. A routed channel sends each post to the one member whose job fits it. See [Channels](./channels).
 - **The screens are importable.** One navigator browses the whole workforce, and the roster and a board, as columns or as a live list, ship beside it as components from `@flow-state-dev/react`. See [Workforce components](./ui).
+- **It does not staff a task board.** A task's `assignee` names a board worker, never a seat.
+- **It adds to flows, sessions and resources, and replaces none of them.** Hiring at runtime adds to the roster in your files, and doesn't replace the tree.
 
 For a working example, the [kitchen-sink reference app](https://github.com/fixpoint-labs/flow-state-dev/tree/main/apps/kitchen-sink) is a support desk built this way: four specialists and one routed channel, declared under its `workforce/` folder, with a board for cases that need a person.
 
@@ -97,15 +99,19 @@ Pass a flow under a key that is not its own `kind` and the hire is refused. [Wor
 
 ## Projects, workstreams, and the seats that run them
 
-One seat helps a person run an organization. The chief of staff is who you ask who works here and who is on a channel. It also changes who works there: ask it for another seat and it hires one; ask it for one fewer and it puts the request in front of you to approve, and nothing is removed until you do. The seats it hires belong to the organization, and other seats ask it rather than hiring for themselves. It is a seat on the built-in `agent` kind, declared under `org/workers/`, and a Lab that doesn't add it doesn't have one. See [The chief of staff](./chief-of-staff).
+A workstream is a channel with the boards it holds: one place for the conversation about a piece of work, and the rows people claim to do it. You declare it the way you declare any channel, in a `CHANNEL.md`.
 
-Workstream channels are declared on disk. The chief of staff reads them; it never opens, closes, or renames a channel.
+A project groups workstreams. It is a record your organization keeps: a title, a status, an owner, its members, and links, stored once and visible to everyone in the organization. You don't write a file for each project. Each project has a room, one conversation its members share with the project's seats. You reach it through your own talk channel, which your Lab shapes once for every project, in an org-level default template declared beside the collection in `org/resources/projects.ts`. A team that wants its own can still declare one in a `CHANNEL.md` with `mintFor: projects`. Only members read or post in a project's room. Other members' lines show up when your view next reads the room, not the instant they're posted. [Projects](./projects) covers the record and how to create one.
+
+One seat helps a person run an organization. The chief of staff is who you ask who works here and who is on a channel. It also changes who works there: ask it for another seat and it hires one; ask it for one fewer and it puts the request in front of you to approve, and nothing is removed until you do. Given the project tools, it also starts projects for the person who asks, owned by them. The seats it hires belong to the organization, and other seats ask it rather than hiring for themselves. It is a seat on the built-in `agent` kind, declared under `org/workers/`, and a Lab that doesn't add it doesn't have one. See [The chief of staff](./chief-of-staff).
+
+The chief of staff reads workstream channels; it never opens, closes, or renames one.
 
 ## What it will not do
 
 - Workforce does not staff a task board. A task's `assignee` names a board worker, never a seat.
 - It does not replace flows, sessions, or resources. Sessions and resources live on the seat you hired.
-- Hiring at runtime adds to the roster in your files. It doesn't replace the tree.
+- Hiring at runtime writes no files. It stores the new seat as a row in the hired roster, which the app reads back at start alongside the seats your files declare, and the tree stays as you wrote it. See [Hiring while the app runs](./durable-hire.md).
 
 ## Related pages
 

@@ -16,6 +16,7 @@
  */
 import type { SessionSummary } from "@flow-state-dev/client";
 import type { LabClients } from "./connection";
+import { newSessionId } from "./ids";
 import { readSessionItems, type SessionItems } from "./run";
 import { sendTurn } from "./send";
 
@@ -44,13 +45,9 @@ export function currentConversation(sessions: readonly SessionSummary[], seatId:
   return conversationSession(sessions, seatId);
 }
 
-/**
- * A fresh session id for a new conversation. Built from `getRandomValues`,
- * which a page served over plain HTTP has, unlike `randomUUID`.
- */
+/** A fresh session id for a new conversation ({@link newSessionId}). */
 export function newConversationId(): string {
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
-  return `cos_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+  return newSessionId("cos", "_");
 }
 
 /** Every item the conversation's session holds, in stored order. */

@@ -1417,6 +1417,9 @@ importers:
         specifier: ^4.6.14
         version: 4.12.27
     devDependencies:
+      '@flow-state-dev/client':
+        specifier: workspace:*
+        version: link:../client
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core

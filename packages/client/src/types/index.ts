@@ -57,6 +57,12 @@ export type QueryValue = string | number | boolean | undefined;
  */
 export type ClientTransportOptions = {
   baseUrl?: string;
+  /**
+   * Where the server mounts the flow API, after `baseUrl`. Default
+   * `"/api/flows"`. Set it to the server's mount when that differs, such as
+   * the Node host's `basePath`.
+   */
+  apiPath?: string;
   fetcher?: ClientFetch;
 };
 
