@@ -2082,6 +2082,11 @@ const PR_STATE_SCHEMA = {
           ciFailed: { type: 'boolean' },
           /** This slice's PR was closed WITHOUT merging — durably `open` otherwise, which nothing advances. */
           closedUnmerged: { type: 'boolean' },
+          baseRefName: {
+            type: ['string', 'null'],
+            description:
+              "This sub-PR's GitHub base (`gh pr view --json baseRefName`). A value other than main withholds the merge gate even if stackedOn is already cleared.",
+          },
         },
       },
     },
@@ -2479,7 +2484,7 @@ const [gate, linear, prScan] = await parallel([
                         // `implPr` is unset for these rows. Per-handle readiness is what lets the coordinator
                         // surface "merge sub-PR a (#41)" — without it the gate carries `pr: null` and the DAG
                         // stops at its first merge-ready slice.
-                        `    Report subPrStates: one entry per sub-PR id above — { id, merged, readyToMerge, ciFailed, headSha, reviewedHeadSha }. readyToMerge means THAT PR is approved, green and mergeable now; headSha and reviewedHeadSha are filled per MERGE READINESS below.\n`
+                        `    Report subPrStates: one entry per sub-PR id above — { id, merged, readyToMerge, ciFailed, headSha, reviewedHeadSha, baseRefName }. readyToMerge means THAT PR is approved, green and mergeable now; headSha and reviewedHeadSha are filled per MERGE READINESS below. baseRefName is the GitHub PR base; report what you saw, do not fold it into readyToMerge.\n`
                       : '') +
                     // The repair PR is the other handle these rows wait on, and it is invisible in `subPrs`.
                     // Its merge is what re-arms the assembled goal; unreported, the DAG sits in AWAITING_FIX
@@ -3744,7 +3749,10 @@ const gates = [
         // implementation that ignores the decision the human was asked for, and merging it is worse
         // than the stall clearing the blocker early was meant to fix.
         const answerPending = (r.blockerResolutions || []).some((x) => !x.for || x.for === s.id)
-        if (live && live.readyToMerge && !live.merged && s.pr && !s.stackedOn && !answerPending) {
+        // Observed GitHub base, not only the durable marker: a rebase that reported `open` and
+        // cleared stackedOn while GitHub still pointed at the dependency would otherwise be offered.
+        const baseOk = !live || live.baseRefName == null || live.baseRefName === 'main'
+        if (live && live.readyToMerge && !live.merged && s.pr && !s.stackedOn && !answerPending && baseOk) {
           gates.push({ kind: 'merge', issueId: r.id, pr: s.pr, subPr: s.id })
         }
       }
