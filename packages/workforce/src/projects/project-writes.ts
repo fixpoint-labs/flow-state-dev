@@ -64,9 +64,7 @@ import {
 import { isMember } from "./membership-gate";
 import { isAlreadyExists, isConcurrentModification, isResourceDeleted } from "./store-errors";
 import { ProjectRefusedError } from "./project-refusal";
-
-/** The talk kind's internal entry `createProject` dispatches to. */
-const BIND_ACTION = "bind";
+import { noteBindRefusal, TALK_BIND_ACTION, talkSessionKey } from "./talk-template";
 
 /**
  * The resource-map ref the channel inventory is read through here. Private to
@@ -112,15 +110,6 @@ export type SetWorkstreamsInput = z.infer<typeof setWorkstreamsInputSchema>;
 
 /** What setting a project's workstreams returns: the row as written. */
 export const setWorkstreamsOutputSchema = z.object({ project: projectRowSchema });
-
-/** Options for {@link defineProjectBlocks}. */
-export type ProjectBlocksOptions = {
-  /**
-   * The flow kind a project's talk sessions run on — the one `bind` is
-   * dispatched to. Defaults to the built-in `channel` kind.
-   */
-  talkKind?: string;
-};
 
 /** The two project writes, and the same two as an `actions` map. */
 export type ProjectBlocks = {
@@ -325,26 +314,19 @@ const writeProject = handler({
   }
 });
 
-/** Absorbs a refused `bind` dispatch: the row stands, unbound, until a repair. */
-const noteBindRefusal = handler({
-  name: "project-bind-refused",
-  inputSchema: z.unknown(),
-  outputSchema: z.object({ bound: z.literal(false), reason: z.string() }),
-  execute: async (error: unknown) => ({
-    bound: false as const,
-    reason: `talk session not bound: ${error instanceof Error ? error.message : String(error)}`
-  })
-});
-
-function createProjectSequence(talkKind: string) {
+function createProjectSequence() {
+  // Talk sessions run on the built-in channel kind, the one the talk
+  // template's reaction mints on too (`talk-template.ts`).
   const bindOwner = dispatcher({
     name: "project-bind-owner",
-    flowKind: talkKind,
-    action: BIND_ACTION,
+    flowKind: CHANNEL_KIND,
+    action: TALK_BIND_ACTION,
     inputSchema: createProjectOutputSchema,
     // Keyed on the row, from the creating session: a re-sent create from the
-    // same session re-enters the same talk session rather than minting another.
-    session: { key: (out: CreateProjectOutput) => `talk:${out.project.id}` },
+    // same session re-enters the same talk session rather than minting another,
+    // and the template's reaction on create (`talk-template.ts`) derives the
+    // same key, so the two converge on one session.
+    session: { key: (out: CreateProjectOutput) => talkSessionKey(out.project.id) },
     payload: (out: CreateProjectOutput) => ({ resourceId: out.project.id })
   }).rescue([{ block: noteBindRefusal }]);
 
@@ -483,8 +465,8 @@ async function settleFailedStamps(
  *   const projects = defineProjectBlocks();
  *   defineFlow({ kind: "lab", actions: { ...projects.actions } });
  */
-export function defineProjectBlocks(options: ProjectBlocksOptions = {}): ProjectBlocks {
-  const createProject = createProjectSequence(options.talkKind ?? CHANNEL_KIND);
+export function defineProjectBlocks(): ProjectBlocks {
+  const createProject = createProjectSequence();
   return {
     createProject,
     setWorkstreams,

@@ -131,10 +131,10 @@ await runGoal(async () => {
 
   // ---- (0) BR-1, read off the tree before anything is built ---------------
   const roster = await readDeclaredRoster(LAB_TREE);
-  const channel = roster.channels[0];
+  const channel = roster.channels.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
   const declared = (channel?.declared.boards as string[] | undefined) ?? [];
   if (channel === undefined) {
-    return { failures: ["the tree declares no channel"], evidence: "" };
+    return { failures: ["no channel in the tree holds a board"], evidence: "" };
   }
 
   const dirs = createScratchRepo("channel-board");

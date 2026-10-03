@@ -1,0 +1,8 @@
+{
+  "composerLine": "Project check: this line is posted from a project's Stream and should be kept by its room.",
+  "ownerLine": "Can someone confirm the release window for the storefront?",
+  "memberLine": "The release window is Thursday afternoon.",
+  "outsiderLine": "An outsider should never get a line into this room.",
+  "burst": { "perMember": 4, "body": "burst line" },
+  "joins": 4
+}

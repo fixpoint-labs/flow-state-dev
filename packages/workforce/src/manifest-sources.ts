@@ -13,8 +13,10 @@
  * knows what actually got registered in this org. It cannot say what anything is
  * for: a row carries an id, a kind, and for a channel its members. And it is
  * **append-only** — `open-inventory.ts` is explicit that "a row means *was
- * registered in this org*, not *still declared*", and nothing ever reconciles or
- * deletes. So a row on its own cannot mean *open*.
+ * registered in this org*, not *still declared*", and nothing reconciles or
+ * deletes a row for going missing. So a row on its own cannot mean *open*. A
+ * channel declaration that became a project talk template (`mintFor:`) is not a
+ * channel, so it is never the declaration behind a row here.
  *
  * An entry is therefore projected only where BOTH layers answer. That is the
  * liveness filter (BR-12a) and it is also what makes a well-formed entry
@@ -48,6 +50,7 @@
 import type { BlockManifestSource, ManifestEntry } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { resolveResourceCollection } from "@flow-state-dev/orchestration";
+import { isTalkTemplate } from "./channel/channel-binder";
 import type { ChannelManifest, WorkerManifest } from "./manifest";
 import type { ChannelInventoryRow, SeatInventoryRow } from "./inventory/collections";
 import { hiredSeatManifestFromStored } from "./roster/rows";
@@ -230,7 +233,7 @@ function seatsSource(
 }
 
 /**
- * The channels domain: registered channels that are still declared.
+ * The channels domain: registered channels that are still declared as channels.
  *
  * `members` and `openedAt` are `== null`-guarded rather than assumed: both
  * carry defaults for rows written before they existed (BP-030), and a row that
@@ -246,7 +249,11 @@ function seatsSource(
  * a recorded past event rather than a claim about now.
  */
 function channelsSource(roster: DeclaredWorkforce, key: string): BlockManifestSource {
-  const declared = new Map(roster.channels.map((channel) => [channel.id, channel]));
+  // A project talk template (`mintFor:`) is not a channel, so a row an earlier
+  // boot wrote under its id when it was one is never advertised.
+  const declared = new Map(
+    roster.channels.filter((channel) => !isTalkTemplate(channel)).map((channel) => [channel.id, channel])
+  );
   return {
     domain: "channels",
     origin: "createWorkforceCapability",

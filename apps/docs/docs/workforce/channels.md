@@ -50,7 +50,7 @@ No line says which kind it runs. An omitted `flow:` selects the built-in, which 
 
 `members` is the channel's roster. It decides who gets woken when somebody posts, and it is checked when a post claims to be from a particular member. It is the declared list and nothing else writes it: there is no join or leave verb yet, so changing who is in a channel means editing the record and opening a fresh channel. An edit to `members` does not reach a channel that is already open.
 
-Six keys are declarable: `flow`, `description`, `members`, `boards`, `instructions` and `routing`. [Routing a channel](#routing-a-channel) covers the last. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
+Eight keys are declarable: `flow`, `description`, `members`, `boards`, `instructions`, `routing`, `boardActions` and `mintFor`. [Routing a channel](#routing-a-channel) covers `routing`, [Holding a board](#holding-a-board) covers `boards` and `boardActions`, and [A room per project](#a-room-per-project) covers `mintFor`. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
 
 ## Channels on disk
 
@@ -103,7 +103,7 @@ Both folder names follow [the tree's name rule](./workers-on-disk.md#names-in-th
 
 ### What the file is checked for
 
-`description` is the only key the file itself requires, and `system:` the only one it refuses. Everything else lands on `declared` spelled exactly as you spelled it, and the closed list of seven keys is checked later. So a `CHANNEL.md` that says `member:` instead of `members:` reads without complaint and is refused by name when you bind the roster.
+`description` is the only key the file itself requires, and `system:` the only one it refuses. Everything else lands on `declared` spelled exactly as you spelled it, and the closed list of eight keys is checked later. So a `CHANNEL.md` that says `member:` instead of `members:` reads without complaint and is refused by name when you bind the roster.
 
 ### When a folder is wrong
 
@@ -216,6 +216,8 @@ The call answers `202` with the request it started. The action's return value is
   ],
 }
 ```
+
+`read` takes no input on a channel. An `after` cursor is ignored there: it only means something on a [project's talk session](#a-room-per-project).
 
 The transcript is the channel's `channel-post` items and nothing else from its history, which also carries fan-out requests, dispatch handles and refusals. `read` returns the recent lines: the ones inside the session's history window, which is 50 requests by default. On a channel with a notify block, each post uses two of them.
 
@@ -777,6 +779,64 @@ A board's rows are stored at organization scope, so they sit in [the organizatio
 Rename or move a channel's folder and its boards move with it, since a board's id comes from where the channel sits. Rows filed under the old id stay there and nothing migrates them. The unattended-board warning is what makes that visible.
 
 The rows themselves are [task substrate](../orchestration/task-substrate.md) rows, with the same fields, statuses and transitions any other board's carry.
+
+## A room per project
+
+A [project](./projects.md) has one room, a conversation its members share. A room isn't a channel you declare. It's built from a **template**: the seats that answer in it and the charter they work under. Every project's room shares one template.
+
+The default template is declared once for the organization, beside the projects collection in `workforce/org/resources/projects.ts`:
+
+```ts
+import { defineProjectsCollection } from "@flow-state-dev/workforce";
+
+export default defineProjectsCollection({
+  talk: {
+    seats: ["engineering.lead", "chief-of-staff"],
+    charter: "Plan the work, and say what is blocked.",
+  },
+});
+```
+
+A seat is named by its full id from any team, like `engineering.lead`, or by an organization-level seat's own name, like `chief-of-staff`. These seats are not the project's members. Members are the people who can read and post; seats are who a post wakes.
+
+Pass the organization's resource map to `channelInstances`, so `channelInstances` can find the template:
+
+```ts
+const { resources } = splitResourceModules(resourceModules);
+const instances = channelInstances(channels, { kinds, resources });
+```
+
+Rooms run on the built-in channel kind, and that kind has to be able to wake seats, so build it with a notify block, as in `kinds: { channel: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }`. Left as the plain built-in, a template that names seats is refused, because no post would wake them.
+
+If your app calls `channelInstances` more than once, say once per flow, only one call needs `resources`. The first call that finds the template keeps it for the whole process, and every other call builds its channel kind with the same seats and charter. A call that finds a different template is refused.
+
+A team can declare the template in a `CHANNEL.md` instead, by marking it `mintFor: projects`. Its `members:` are the seats and its body is the charter:
+
+```md
+---
+description: The room every project gets.
+mintFor: projects
+members: [engineering.lead, operations.lead]
+---
+
+Plan the work, and say what is blocked.
+```
+
+That file is a template, not a channel. It's never opened, and it never shows up in the [inventory](./inventory.md). If the file used to be a channel, its old session is kept in the store, but every channel action on it, including inventory registration, is refused with `channel-is-a-template`.
+
+What a template does:
+
+- **It applies to every project's room, and edits land at the next restart.** The seats and charter are built onto the channel kind each time the app boots and are never copied into a session. An edit reaches every room, including ones that already exist.
+- **A post wakes each seat once, as the person who posted.** Each seat keeps one conversation per person per room, and gets the room's last 20 lines along with the post. Its reply goes into the room, where every member reads it. A seat answers a post once, even when the post reaches it twice, and only for itself: each delivery carries an `answerToken` for that seat, which the answer hands back as `token`. The built-in agent kind does this for you, and a kind of your own passes it through. The answer must come back through the poster's session. A member posts and reads through the one talk session the project lists for them, the one `join` returns; any other session is refused with `talk-session-not-listed`. A seat's reply wakes nobody.
+- **Other members' lines arrive on the next read, not live.** Your own post shows up when you post it. Everyone else's appears the next time your view calls `read`.
+- **It holds no board, routes no post, and picks no kind.** A template that declares `flow:`, `boards:`, `routing:` or `boardActions:` is refused.
+- **Rooms aren't in the inventory.** The inventory lists the channels you declared, and no talk session is ever one of its rows.
+
+When a template is in place, any code that creates a project inside a flow turn also gets the creator's talk session ready, in the same turn. `createProject` does that with or without a template. A row your code writes outside a turn gets none, and its members reach the room through `join`.
+
+A room's lines aren't in any session's history. Read them with `read` on a member's talk session.
+
+`channelInstances` checks templates along with your channels and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or one that isn't `projects`, a seat that isn't a seat id or is listed twice, seats on a kind that can't wake them, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `CHANNEL.md`.
 
 ## Registering a kind of your own
 
