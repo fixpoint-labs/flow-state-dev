@@ -315,6 +315,17 @@ function createLazyGeneratorModel(
       const inner = await load();
       yield* inner.stream!(options);
     },
+    // The loaded model is always `wrapAiSdkModel`'s, which carries the
+    // single-step methods. Declared here, before the load, because a
+    // generator decides by their presence whether it owns the tool loop — and
+    // only the owned loop lets a tool's `ctx.suspend()` pause the run.
+    async generateStep(options) {
+      return (await load()).generateStep!(options);
+    },
+    async *streamStep(options) {
+      const inner = await load();
+      yield* inner.streamStep!(options);
+    },
     resolveSearchTool: () => undefined,
   };
 }

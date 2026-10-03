@@ -53,6 +53,9 @@ function liveRoster() {
     kindAt(id: string) {
       return held.get(id)?.seat.kind;
     },
+    instanceAt(id: string) {
+      return held.get(id)?.seat;
+    },
     pinAt(id: string) {
       return held.get(id)?.pin;
     },
@@ -149,6 +152,7 @@ await runGoal(async () => {
     register: live.register,
     unregister: live.unregister,
     kindAt: live.kindAt,
+    instanceAt: live.instanceAt,
   });
   kinds.agent = defineAgentWorkerFlow({ uses: [seatHire] });
 

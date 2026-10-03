@@ -26,7 +26,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
     const workstreams = snapshot.inventory.ok ? snapshot.inventory.value.workstreams : [];
     const seats = snapshot.inventory.ok ? snapshot.inventory.value.seats : [];
     return [
-      { group: "Views", label: "Chief of Staff", hint: "where Shift Manager opens", to: { level: "cos" } },
+      { group: "Views", label: "Shift Coordinator", hint: "where Shift Manager opens", to: { level: "cos" } },
       ...workstreams.map((w): Entry => ({ group: "Workstreams", label: w.id, hint: `${w.members.length} members`, to: { level: "workstream", channelId: w.id, tab: "stream" } })),
       ...seats.map((s): Entry => ({ group: "Workers", label: s.id, hint: s.kind ?? "", to: { level: "roster", team: null } })),
       ...allRows(snapshot).map((r): Entry => ({ group: "Tasks", label: r.title, hint: `${r.status} · ${r.boardRef}`, to: { level: "task", boardRef: r.boardRef, taskId: r.id, tab: "session" } })),

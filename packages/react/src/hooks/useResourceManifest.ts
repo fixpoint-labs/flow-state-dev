@@ -24,8 +24,8 @@ export type UseResourceManifestResult = {
 };
 
 export function useResourceManifest(session: SessionView): UseResourceManifestResult {
-  const { baseUrl } = useFlowContext();
-  const client = useMemo(() => createResourceClient({ baseUrl }), [baseUrl]);
+  const { baseUrl, apiPath } = useFlowContext();
+  const client = useMemo(() => createResourceClient({ baseUrl, apiPath }), [baseUrl, apiPath]);
   const flowKind = session.snapshot?.flowKind ?? session.flowKind;
   const sessionId = session.sessionId;
 

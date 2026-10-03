@@ -159,6 +159,10 @@ export async function updateStateWith<TState, TResult>(
  * running one and projecting what it saw reads the committed state, and
  * writes nothing. For a waiter that polls a value another request will move.
  *
+ * Needs a writable resource or collection ref: it reads through
+ * `updateState`, so on a ref declared `writable: false` it is refused with
+ * `resource_read_only` and `project` never runs.
+ *
  * Returns `undefined` when the updater never ran (see {@link withOutcome}).
  *
  * ```ts

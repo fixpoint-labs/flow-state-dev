@@ -37,6 +37,7 @@ import {
   toolResultOutputForModel,
   type LLMToolCallPart,
 } from "../../models/llm-messages";
+import { MODEL_OUTPUT_MAP_FAILED } from "./emit-tool-output";
 import { blockPathTool, extendBlockPath } from "./block-instance-id";
 
 /**
@@ -322,6 +323,11 @@ export function reconstructGeneratorResume(params: {
       }
       if (to.error?.code === "SUSPENSION") {
         return { ...base, kind: "losing" as const };
+      }
+      if (to.error?.code === MODEL_OUTPUT_MAP_FAILED) {
+        // The tool ran but its mapper threw, which failed the run live; fail
+        // it again here rather than replay the call to the model.
+        throw new Error(to.error.message ?? "mapModelOutput failed");
       }
       return {
         ...base,

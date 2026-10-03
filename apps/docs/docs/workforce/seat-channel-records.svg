@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 572" role="img" aria-label="The records about seats and channels, and the question each answers. Your files declare seats and channels and are read at every start. The inventory, in the organization's store, records what was registered here: a seat row, a channel row with a copy of its members, and a membership row per seat in a channel. A declared seat's or channel's row is never deleted; firing a seat hired at runtime removes its row. The hired roster, also in the organization's store, lists the seats hired while the app runs and loses a row when its seat is fired. The channel's own session holds the members and charter, and is what checks the author a post names. The inventory's members list is a copy for finding channels, never the check.">
+  <style>
+    :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
+            --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
+            --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
+              --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
+              --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822; } }
+    .bg { fill:var(--bg); }
+    .wall-proc { fill:var(--proc-fill); stroke:var(--proc); stroke-width:2; }
+    .wall-sess { fill:var(--sess-fill); stroke:var(--sess); stroke-width:2; }
+    .wall-org { fill:var(--org-fill); stroke:var(--org); stroke-width:2; }
+    .wall-file { fill:var(--box); stroke:var(--card-line); stroke-width:2; }
+    .card { fill:var(--card); stroke:var(--card-line); stroke-width:1.5; }
+    .card-sess { fill:var(--card); stroke:var(--sess); stroke-width:1.5; }
+    .box { fill:var(--box); stroke:var(--card-line); stroke-width:1.2; }
+    .title { font:700 20px ui-sans-serif, system-ui, sans-serif; fill:var(--ink); }
+    .h { font:700 14px ui-sans-serif, system-ui, sans-serif; fill:var(--ink); }
+    .p { font:13px ui-sans-serif, system-ui, sans-serif; fill:var(--ink-2); }
+    .muted { font:12px ui-sans-serif, system-ui, sans-serif; fill:var(--muted); }
+    .lbl { font:600 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing:.08em; fill:var(--muted); }
+    .code { font:11.5px ui-monospace, SFMono-Regular, Menlo, monospace; fill:var(--ink); }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="940" height="572" rx="16"/>
+  <text class="title" x="24" y="38">Four records, four questions</text>
+  <text class="muted" x="24" y="60">Ask the record that owns the answer. The others may name the same seat, but they answer something else.</text>
+
+  <g id="files">
+    <rect class="wall-file" x="24" y="80" width="211" height="356" rx="14"/>
+    <text class="h" x="40" y="104">Your files</text>
+    <text class="muted" x="40" y="122">What is declared</text>
+    <rect class="card" x="36" y="138" width="187" height="86" rx="10"/>
+    <text class="h" x="50" y="162">WORKER.md</text>
+    <text class="code" x="50" y="184">teams/engineering/</text>
+    <text class="code" x="50" y="202">  workers/lead/</text>
+    <rect class="card" x="36" y="236" width="187" height="86" rx="10"/>
+    <text class="h" x="50" y="260">CHANNEL.md</text>
+    <text class="code" x="50" y="282">teams/engineering/</text>
+    <text class="code" x="50" y="300">  channels/standup/</text>
+    <text class="p" x="40" y="352">Read at every start.</text>
+    <text class="muted" x="40" y="374">A seat hired at runtime</text>
+    <text class="muted" x="40" y="392">has no file here.</text>
+  </g>
+
+  <g id="inventory">
+    <rect class="wall-org" x="251" y="80" width="211" height="356" rx="14"/>
+    <text class="h" x="267" y="104">Inventory</text>
+    <text class="muted" x="267" y="122">Was it registered here?</text>
+    <rect class="card" x="263" y="138" width="187" height="68" rx="10"/>
+    <text class="lbl" x="277" y="158">SEAT ROW</text>
+    <text class="code" x="277" y="178">id · kind · door</text>
+    <text class="code" x="277" y="194">hired · incarnation</text>
+    <rect class="card" x="263" y="214" width="187" height="68" rx="10"/>
+    <text class="lbl" x="277" y="234">CHANNEL ROW</text>
+    <text class="code" x="277" y="254">members: [ … ]</text>
+    <text class="muted" x="277" y="272">A copy, for finding</text>
+    <rect class="card" x="263" y="290" width="187" height="52" rx="10"/>
+    <text class="lbl" x="277" y="310">MEMBERSHIP ROW</text>
+    <text class="muted" x="277" y="330">One per seat in a channel</text>
+    <text class="muted" x="267" y="368">A declared row is never</text>
+    <text class="muted" x="267" y="386">deleted. Firing a hired</text>
+    <text class="muted" x="267" y="404">seat removes its row.</text>
+  </g>
+
+  <g id="roster">
+    <rect class="wall-org" x="478" y="80" width="211" height="356" rx="14"/>
+    <text class="h" x="494" y="104">Hired roster</text>
+    <text class="muted" x="494" y="122">Is it hired right now?</text>
+    <rect class="card" x="490" y="138" width="187" height="104" rx="10"/>
+    <text class="lbl" x="504" y="158">ROSTER ROW</text>
+    <text class="code" x="504" y="178">workforce/roster/</text>
+    <text class="code" x="504" y="194">  support.ada</text>
+    <text class="code" x="504" y="220">seatId · flow</text>
+    <text class="p" x="494" y="270">Only seats hired while</text>
+    <text class="p" x="494" y="288">the app runs.</text>
+    <text class="muted" x="494" y="314">Deleted when the seat</text>
+    <text class="muted" x="494" y="332">is fired.</text>
+  </g>
+
+  <g id="channel">
+    <rect class="wall-sess" x="705" y="80" width="211" height="356" rx="14"/>
+    <text class="h" x="721" y="104">The channel's session</text>
+    <text class="muted" x="721" y="122">Will this post be accepted?</text>
+    <rect class="card-sess" x="717" y="138" width="187" height="104" rx="10"/>
+    <text class="lbl" x="731" y="158">SESSION STATE</text>
+    <text class="code" x="731" y="178">members: [</text>
+    <text class="code" x="731" y="194">  engineering.lead, …]</text>
+    <text class="code" x="731" y="220">instructions</text>
+    <text class="p" x="721" y="270">Checks the author</text>
+    <text class="p" x="721" y="288">a post names.</text>
+    <text class="muted" x="721" y="314">post and fileTask read</text>
+    <text class="muted" x="721" y="332">members here.</text>
+  </g>
+
+  <g id="not-a-copy">
+    <rect class="box" x="24" y="452" width="892" height="104" rx="12"/>
+    <text class="h" x="40" y="476">Not a copy</text>
+    <text class="p" x="40" y="500">The inventory's members is a copy for finding channels. The channel's session is the check on a post.</text>
+    <text class="p" x="40" y="520">A seat hired at runtime has its address as its inventory id, acme.support.ada; members name it support.ada.</text>
+    <text class="p" x="40" y="540">The roster says who is hired now. The inventory says what was registered, and keeps every declared row.</text>
+  </g>
+</svg>
