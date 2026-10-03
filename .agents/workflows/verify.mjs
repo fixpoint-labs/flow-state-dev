@@ -8441,6 +8441,9 @@ check('a dependent stacks on its open dependency so review can start', async () 
   assert.deepEqual(calls.map((c) => c.label), ['build:b'])
   assert.match(calls[0].prompt, /based on fix\/FIX-9-a/)
   assert.match(calls[0].prompt, /stacking on an unmerged dependency/)
+  assert.match(calls[0].prompt, /DO NOT MERGE until #1 is on main — stacked on fix\/FIX-9-a/)
+  assert.match(calls[0].prompt, /--base fix\/FIX-9-a/)
+  assert.match(calls[0].prompt, /GitHub base is not main/)
   // The worker response here deliberately omits `stackedOn` (the common case — it's optional).
   // The marker must come from the base the SCRIPT chose, or the later rebase never schedules
   // and the sub-PR keeps its dependency's commits in its own diff.
@@ -8659,6 +8662,9 @@ check('a merged dependency triggers a rebase off the stack and clears the marker
   assert.deepEqual(calls.map((c) => c.label), ['rebase:b'])
   assert.match(calls[0].prompt, /rebase it onto fresh origin\/main/)
   assert.match(calls[0].prompt, /Do not merge it/)
+  assert.match(calls[0].prompt, /baseRefName as fix\/FIX-9-a is not done/)
+  assert.match(calls[0].prompt, /gh pr edit 2 --base main/)
+  assert.match(calls[0].prompt, /title no longer starts with `DO NOT MERGE`/)
   assert.equal(result.subPrs.find((n) => n.id === 'b').stackedOn, null)
 })
 
