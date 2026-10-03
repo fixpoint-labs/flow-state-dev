@@ -104,9 +104,13 @@ async function run(
   }, `request ${request.id} to settle`);
   expect(status).toBe("completed");
   const text = await waitFor(async () => {
-    const stream = await caller(`/scratch/requests/${request.id}/stream`);
+    // The command's output is the block's result, which rides on its
+    // block_trace; a plain client stream withholds trace items. The trace
+    // also carries the command itself, so wait on the output field, not on
+    // marker text the command contains.
+    const stream = await caller(`/scratch/requests/${request.id}/stream?include=trace`);
     const body = await stream.text();
-    return until === undefined || body.includes(until) ? body : undefined;
+    return until === undefined || body.includes(`"stdout":"${until}`) ? body : undefined;
   }, `request ${request.id} to show ${until ?? "its replay"}`);
   return { id: request.id, text };
 }
@@ -130,7 +134,7 @@ describe("a run workspace, when another user sends the same request id", () => {
     const bob = server.as("bob");
 
     const a = await run(alice, "s_alice", ALICE_WRITES);
-    expect(a.text).toContain(SECRET); // Alice's run really wrote it
+    expect(a.text).toContain(`"stdout":"${SECRET}`); // Alice's run really wrote it
 
     const b = await run(bob, "s_bob", BOB_READS, a.id, "BOB_SAW:");
     expect(b.id).not.toBe(a.id);
@@ -154,7 +158,7 @@ describe("a run workspace, when another user sends the same request id", () => {
     shortenRetentionGrace();
 
     const a = await run(alice, "s_alice", ALICE_WRITES);
-    expect(a.text).toContain(SECRET);
+    expect(a.text).toContain(`"stdout":"${SECRET}`);
 
     // Real retention, over HTTP: each later request Alice completes in her
     // session evicts her older completed ones. Poll until her first id is

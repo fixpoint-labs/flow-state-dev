@@ -27,8 +27,8 @@ export type TaskTab = (typeof TASK_TABS)[number];
 export type TaskGrouping = (typeof TASK_GROUPINGS)[number];
 
 /**
- * The project the PROJECTS heading opens while no projects ship: every
- * workstream, held by no project.
+ * No project: the project level for the workstreams no project lists, and
+ * what the PROJECTS heading opens. No project row can take this id.
  */
 export const NO_PROJECT = "unassigned";
 

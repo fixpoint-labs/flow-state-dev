@@ -301,7 +301,7 @@ export function useSuspensionForm(
   options: UseSuspensionFormOptions = {}
 ): UseSuspensionFormResult {
   const { isResolved = false, resolution } = options;
-  const { flowKind, baseUrl, userId } = useFlowContext();
+  const { flowKind, baseUrl, apiPath, userId } = useFlowContext();
   const streamingResolve = useSuspensionResolver();
 
   const analysis = useMemo(
@@ -314,7 +314,10 @@ export function useSuspensionForm(
   const [error, setError] = useState<string | null>(null);
   const [localResolution, setLocalResolution] = useState<SuspensionStatus | null>(null);
 
-  const recoveryClient = useMemo(() => createRecoveryClient({ baseUrl }), [baseUrl]);
+  const recoveryClient = useMemo(
+    () => createRecoveryClient({ baseUrl, apiPath }),
+    [baseUrl, apiPath]
+  );
 
   const allow = item.allow ?? ["approve", "reject"];
   const canSkip = allow.includes("skip");

@@ -10,6 +10,8 @@ import type { SessionItemEvent, SessionRunsChangedEvent } from "@flow-state-dev/
 export type FollowSessionOptions = {
   readonly sessionId: string;
   readonly baseUrl?: string;
+  /** Where the server mounts the flow API; the provider's `apiPath`. */
+  readonly apiPath?: string;
   /** The transport the stream is sent with, so it carries the view's credential. */
   readonly fetcher?: ClientFetch;
   readonly since?: number;
@@ -40,6 +42,7 @@ export function followSession(options: FollowSessionOptions): () => void {
   const handle = createSessionSSEClient({
     sessionId: options.sessionId,
     baseUrl: options.baseUrl,
+    apiPath: options.apiPath,
     fetcher: options.fetcher,
     since: options.since,
     sessionCreatedAt: options.sessionCreatedAt,

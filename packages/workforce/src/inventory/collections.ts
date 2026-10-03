@@ -27,8 +27,10 @@
  * that prefix; {@link membershipKey} spells the row.
  *
  * These keys are a public surface. Moving one is a breaking change for any app
- * whose rows are already persisted. The boot binder never deletes a row; the
- * one delete is `fire`'s, of a hired seat's own row in `inventory/seats/`.
+ * whose rows are already persisted. Nothing here deletes a row for going
+ * missing. The two removals are `fire`'s, of a hired seat's own row in
+ * `inventory/seats/`, and a channel row whose id became a project talk
+ * template (see `open-inventory.ts`).
  *
  * ## The browser read
  *
@@ -51,9 +53,10 @@
  * Each read names its fields with `expose` rather than the identity default
  * (BP-015), so a key added to a row later stays server-side until someone adds
  * it to the list. A row means *was registered in this organization*, not *is
- * open now*, so a reader must label it that way. Firing a hired seat removes
- * its row; a row an earlier version's fire left behind has no roster row, and
- * `listedSeatRows` is the join that hides it.
+ * open now*: nothing deletes one for going missing, so a reader must label it
+ * that way. Firing a hired seat removes its row; a row an earlier version's
+ * fire left behind has no roster row, and `listedSeatRows` is the join that
+ * hides it.
  */
 
 import { defineResourceCollection } from "@flow-state-dev/core";

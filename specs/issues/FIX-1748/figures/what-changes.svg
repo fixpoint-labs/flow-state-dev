@@ -1,0 +1,104 @@
+<svg viewBox="0 0 940 470" role="img" aria-label="Where the word changes, row by row. On disk, teams/eng/channels/feature/CHANNEL.md becomes teams/eng/mailboxes/feature/MAILBOX.md. In code, channelFlow and openChannels become mailboxFlow and openMailboxes. In the store, the kind channel, channel-post items and inventory/channels rows become mailbox, mailbox-post and inventory/mailboxes. An agent calls post-to-mailbox and asks discovery for mailboxes. Shift Manager says the mailbox keeps a line. The docs page moves to /docs/workforce/mailboxes and the old address redirects. Below a fence, what stays: Inbox, the asks across every mailbox; a workstream, a mailbox and its boards; boards, seats, kinds and agents; and other meanings of the word, such as a trace channel, a Redis pub/sub channel or a Slack channel."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .old   { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; stroke-dasharray:5 4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .stay  { fill:var(--surface-2); }
+    .fence { stroke:var(--ink-3); stroke-width:1.2; stroke-dasharray:6 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-hd  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; letter-spacing:.12em; font-weight:600; }
+    .t-old { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .t-new { fill:var(--code); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:600; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-old { fill:var(--gone); }
+    .c-new { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="470"/>
+
+  <g id="heads">
+    <text class="t-hd c-old" x="196" y="30">TODAY</text>
+    <text class="t-hd c-new" x="576" y="30">AFTER</text>
+  </g>
+
+  <g id="row-disk">
+    <text class="t-lbl" x="16" y="66">ON DISK</text>
+    <rect class="old" x="180" y="44" width="364" height="38" rx="5"/>
+    <text class="t-old" x="196" y="67">teams/eng/channels/feature/CHANNEL.md</text>
+    <rect class="new" x="560" y="44" width="364" height="38" rx="5"/>
+    <text class="t-new" x="576" y="67">teams/eng/mailboxes/feature/MAILBOX.md</text>
+  </g>
+
+  <g id="row-code">
+    <text class="t-lbl" x="16" y="112">WHAT YOU IMPORT</text>
+    <rect class="old" x="180" y="90" width="364" height="38" rx="5"/>
+    <text class="t-old" x="196" y="113">channelFlow · openChannels · ChannelManifest</text>
+    <rect class="new" x="560" y="90" width="364" height="38" rx="5"/>
+    <text class="t-new" x="576" y="113">mailboxFlow · openMailboxes · MailboxManifest</text>
+  </g>
+
+  <g id="row-store">
+    <text class="t-lbl" x="16" y="158">WHAT IS STORED</text>
+    <rect class="old" x="180" y="136" width="364" height="38" rx="5"/>
+    <text class="t-old" x="196" y="159">kind channel · channel-post · inventory/channels/</text>
+    <rect class="new" x="560" y="136" width="364" height="38" rx="5"/>
+    <text class="t-new" x="576" y="159">kind mailbox · mailbox-post · inventory/mailboxes/</text>
+  </g>
+
+  <g id="row-agent">
+    <text class="t-lbl" x="16" y="204">WHAT AN AGENT CALLS</text>
+    <rect class="old" x="180" y="182" width="364" height="38" rx="5"/>
+    <text class="t-old" x="196" y="205">post-to-channel · discover "channels"</text>
+    <rect class="new" x="560" y="182" width="364" height="38" rx="5"/>
+    <text class="t-new" x="576" y="205">post-to-mailbox · discover "mailboxes"</text>
+  </g>
+
+  <g id="row-ui">
+    <text class="t-lbl" x="16" y="250">WHAT A PERSON READS</text>
+    <rect class="old" x="180" y="228" width="364" height="38" rx="5"/>
+    <text class="t-b" x="196" y="251">"…the line appears once the channel keeps it."</text>
+    <rect class="new" x="560" y="228" width="364" height="38" rx="5"/>
+    <text class="t-b" x="576" y="251">"…the line appears once the mailbox keeps it."</text>
+  </g>
+
+  <g id="row-docs">
+    <text class="t-lbl" x="16" y="296">THE DOCS</text>
+    <rect class="old" x="180" y="274" width="364" height="38" rx="5"/>
+    <text class="t-old" x="196" y="297">/docs/workforce/channels</text>
+    <rect class="new" x="560" y="274" width="364" height="38" rx="5"/>
+    <text class="t-new" x="576" y="297">/docs/workforce/mailboxes</text>
+    <text class="t-s" x="772" y="297">old link redirects</text>
+  </g>
+
+  <g id="fence">
+    <line class="fence" x1="16" y1="334" x2="924" y2="334"/>
+    <text class="t-lbl" x="16" y="356">STAYS AS IT IS</text>
+  </g>
+
+  <g id="stays">
+    <rect class="stay" x="16" y="366" width="218" height="86" rx="5"/>
+    <text class="t-b" x="30" y="390">Inbox</text>
+    <text class="t-s" x="30" y="408">the asks across every mailbox,</text>
+    <text class="t-s" x="30" y="424">never one mailbox</text>
+    <rect class="stay" x="246" y="366" width="218" height="86" rx="5"/>
+    <text class="t-b" x="260" y="390">Workstream</text>
+    <text class="t-s" x="260" y="408">a mailbox and the boards</text>
+    <text class="t-s" x="260" y="424">it holds, in Shift Manager</text>
+    <rect class="stay" x="476" y="366" width="218" height="86" rx="5"/>
+    <text class="t-b" x="490" y="390">Board · seat · kind · agent</text>
+    <text class="t-s" x="490" y="408">a board is still a task ledger</text>
+    <text class="t-s" x="490" y="424">a mailbox holds, not a mailbox</text>
+    <rect class="stay" x="706" y="366" width="218" height="86" rx="5"/>
+    <text class="t-b" x="720" y="390">Other meanings of the word</text>
+    <text class="t-s" x="720" y="408">trace channel · pub/sub channel</text>
+    <text class="t-s" x="720" y="424">Slack channel</text>
+  </g>
+</svg>

@@ -27,9 +27,12 @@ export function usePanelSource<TSource>(
   resourceClient: TSource | undefined,
   fallback: PanelSourceFallback = {}
 ): TSource | ResourceClient {
-  const providerBaseUrl = useFlowContext().baseUrl;
+  const { baseUrl: providerBaseUrl, apiPath } = useFlowContext();
   const baseUrl = fallback.baseUrl ?? providerBaseUrl;
   const fetcher = fallback.fetcher;
-  const built = useMemo(() => createResourceClient({ baseUrl, fetcher }), [baseUrl, fetcher]);
+  const built = useMemo(
+    () => createResourceClient({ baseUrl, apiPath, fetcher }),
+    [baseUrl, apiPath, fetcher]
+  );
   return resourceClient ?? built;
 }

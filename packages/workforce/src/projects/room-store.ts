@@ -12,7 +12,8 @@
  * Readers return only `seq <= committed`. Without that watermark a reader
  * could see line 6 while line 5 is still being written, move its cursor to 6,
  * and never see line 5. A line still missing after a grace period — its writer
- * died between steps 1 and 2 — is filled by the next poster with a tombstone,
+ * died between steps 1 and 2 — is filled by the next poster, or the next
+ * member's read ({@link readRoomForMember}), with a tombstone,
  * written with `create`, so exactly one of the line and its tombstone exists.
  * If the late writer then finds its key taken, it allocates again, so its post
  * is not lost. The grace period runs from the allocation that opened the gap,
@@ -195,6 +196,24 @@ export async function appendRoomLine(
     }
   }
   throw new Error(`room "${line.projectId}": the line lost its sequence number to a tombstone three times`);
+}
+
+/**
+ * A member's read: {@link readRoom}, after moving the watermark when it is
+ * stuck behind a gap. Without this, a gap left by a dead writer is filled only
+ * by the next poster after the grace period, so in a quiet room the lines
+ * written past it would stay hidden for as long as nobody posts. A watermark
+ * that is not stuck costs no write.
+ */
+export async function readRoomForMember(
+  rooms: RoomCollections,
+  projectId: string,
+  after: number,
+  options: RoomStoreOptions = {}
+): Promise<RoomPage> {
+  const counter = (await rooms.seq.getOptional(projectId))?.state;
+  if (counter !== undefined && counter.committed < counter.next) await advanceCommitted(rooms, projectId, options);
+  return readRoom(rooms, projectId, after);
 }
 
 /** One page of a room, and where the next read starts. */

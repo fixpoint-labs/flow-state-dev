@@ -46,7 +46,10 @@
     "teams/eng/feature-brief"
   ],
   "channels": [
-    "eng.feature"
+    "eng.feature",
+    "eng.triage",
+    "ops.oncall",
+    "ops.release"
   ],
   "promptTokens": [
     "CODER-INSTRUCTIONS-B42D9",
