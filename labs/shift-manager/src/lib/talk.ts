@@ -88,22 +88,41 @@ async function runTalkAction(
   // Ended without the Lab's answer (aborted, interrupted, incomplete): not a refusal, so the view offers Retry.
   if (status !== "completed" && status !== "failed") throw new Error(`The Lab's ${action} ended ${status} before it answered.`);
 
-  for (let page = 0; page < REQUEST_PAGES; page += 1) {
-    const listed = await clients.sessions.listSessionRequests(session, {
-      status,
-      includeResultOutput: true,
-      limit: REQUEST_PAGE,
-      offset: page * REQUEST_PAGE,
-    });
-    const found = listed.find((request) => request.id === requestId);
-    if (found !== undefined) {
-      if (status === "failed") throw new TalkRefused(found.result?.error?.message ?? `${action} was refused.`);
-      return { output: found.result?.output, sessionId: session };
+  const findAnswer = async () => {
+    for (let page = 0; page < REQUEST_PAGES; page += 1) {
+      const listed = await clients.sessions.listSessionRequests(session, {
+        status,
+        includeResultOutput: true,
+        limit: REQUEST_PAGE,
+        offset: page * REQUEST_PAGE,
+      });
+      const found = listed.find((request) => request.id === requestId);
+      if (found !== undefined || listed.length < REQUEST_PAGE) return found;
     }
-    if (listed.length < REQUEST_PAGE) break;
+    return undefined;
+  };
+  let found: Awaited<ReturnType<typeof findAnswer>>;
+  try {
+    found = await findAnswer();
+  } catch (error) {
+    // The action is done; only reading its answer failed.
+    if (status === "completed") throw new TalkAnswerUnread(action, error);
+    throw error;
   }
-  if (status === "failed") throw new TalkRefused(`${action} was refused.`);
-  throw new Error(`The Lab finished ${action} but its answer is not in the session's requests.`);
+  if (status === "failed") throw new TalkRefused(found?.result?.error?.message ?? `${action} was refused.`);
+  if (found === undefined) throw new TalkAnswerUnread(action, new Error("its answer is not in the session's requests"));
+  return { output: found.result?.output, sessionId: session };
+}
+
+/**
+ * A talk action the Lab completed whose answer couldn't be read back. What it
+ * did stands: a post is in the room.
+ */
+export class TalkAnswerUnread extends Error {
+  constructor(action: string, cause: unknown) {
+    super(`The Lab finished ${action}, but its answer could not be read: ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = "TalkAnswerUnread";
+  }
 }
 
 /** Read one page of the room after `after`, through the person's talk session. */
@@ -209,9 +228,21 @@ export async function readRoomTail(
   return { ...(await readRoomEarlier(page, cursor)), cursor };
 }
 
-/** Post a line into the room as the person, through their talk session. */
-export async function postToRoom(clients: LabClients, kind: string, sessionId: string, body: string): Promise<RoomLine> {
-  const { output } = await runTalkAction(clients, kind, sessionId, "post", { body });
+/**
+ * Post a line into the room as the person, through their talk session.
+ *
+ * @returns the line, or `undefined` when the Lab completed the post but its
+ * answer couldn't be read back: the line is in the room all the same, so it
+ * must not be offered again as unsent. The room's next read shows it.
+ */
+export async function postToRoom(clients: LabClients, kind: string, sessionId: string, body: string): Promise<RoomLine | undefined> {
+  let output: unknown;
+  try {
+    ({ output } = await runTalkAction(clients, kind, sessionId, "post", { body }));
+  } catch (error) {
+    if (error instanceof TalkAnswerUnread) return undefined;
+    throw error;
+  }
   const line = output as Partial<RoomLine> | undefined;
   if (typeof line?.seq !== "number") throw new Error("The talk session answered `post` with no line.");
   return line as RoomLine;

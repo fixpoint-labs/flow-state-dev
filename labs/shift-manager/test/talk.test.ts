@@ -36,6 +36,25 @@ afterEach(() => {
   Object.defineProperty(globalThis.crypto, "randomUUID", { value: realRandomUUID, configurable: true, writable: true });
 });
 
+describe("a post the Lab completed is posted, even when its answer can't be read back", () => {
+  const line = { projectId: "desk", seq: 7, userId: "u", author: null, body: "hello" };
+
+  it("resolves with no line when reading the answer fails, so the composer doesn't offer it again as unsent", async () => {
+    const { clients } = clientsAnswering(line, () => Promise.reject(new Error("503 from the request list")));
+    await expect(postToRoom(clients, "channel", "talk-1", "hello")).resolves.toBeUndefined();
+  });
+
+  it("resolves with the line when the answer reads back", async () => {
+    const { clients } = clientsAnswering(line);
+    await expect(postToRoom(clients, "channel", "talk-1", "hello")).resolves.toEqual(line);
+  });
+
+  it("a read or a join whose answer can't be read back still fails: there is nothing to show without it", async () => {
+    const { clients } = clientsAnswering({ sessionId: "talk-bound" }, () => Promise.reject(new Error("503 from the request list")));
+    await expect(joinRoom(clients, "channel", "desk")).rejects.toThrow(/503/);
+  });
+});
+
 describe("Join on a page without crypto.randomUUID (plain HTTP)", () => {
   it("names the new talk session from getRandomValues and sends the join", async () => {
     Object.defineProperty(globalThis.crypto, "randomUUID", { value: undefined, configurable: true, writable: true });
