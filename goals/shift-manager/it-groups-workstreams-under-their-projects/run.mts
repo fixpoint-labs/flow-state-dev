@@ -741,15 +741,17 @@ const rowKey = (r: Row) =>
   });
 
 /**
- * The owner's own top-level sessions on the room kinds, by id: every talk
- * session they hold, listed on a row or not. A boot that mints one, even one
- * no row lists, shows up here.
+ * The owner's own sessions on the room kinds, by id, dispatch-run children
+ * included: every talk session they hold, listed on a row or not. A project's
+ * talk session is minted by a keyed dispatch, as a child of the session that
+ * created the row, so a boot that mints one, even one no row lists, shows up
+ * here only with its children listed.
  */
 async function talkSessionsOf(owner: LabApi, kinds: ReadonlySet<string>): Promise<string[]> {
-  const { sessions } = (await owner.get(`/sessions?userId=${encodeURIComponent(owner.user.userId)}`)) as {
-    sessions: Array<{ id: string; flowKind: string; parentSessionId?: string | null }>;
+  const { sessions } = (await owner.get(`/sessions?userId=${encodeURIComponent(owner.user.userId)}&include=dispatch-runs`)) as {
+    sessions: Array<{ id: string; flowKind: string }>;
   };
-  return sorted(sessions.filter((s) => s.parentSessionId == null && kinds.has(s.flowKind)).map((s) => s.id));
+  return sorted(sessions.filter((s) => kinds.has(s.flowKind)).map((s) => s.id));
 }
 
 /** Every project and its room, as the owner reads them now. */
@@ -848,6 +850,13 @@ await runGoal(async () => {
       const before = await whatIsHeld(apis.owner, host);
       const roomKinds = new Set(before.map((k) => k.kind));
       const talkBefore = await talkSessionsOf(apis.owner, roomKinds);
+      // The count reaches the sessions it guards: every talk session a row lists
+      // for the owner is among them (they are dispatch-run children of the
+      // projects session, not top-level).
+      const unseen = before.map((k) => k.own).filter((id) => !talkBefore.includes(id));
+      if (unseen.length > 0) {
+        fail("a restart keeps the projects and their rooms", `the owner's talk sessions as listed miss ${unseen.length} the rows list (${unseen.join(", ")}), so a minted one would go unseen`);
+      }
       served.child.kill("SIGTERM");
       await served.exited;
       served = await startLab(pages, fired, store);
