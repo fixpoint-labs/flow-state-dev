@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 540" role="img" aria-label="A task board is two things with different lifetimes. The task rows are stored data: each task's goal, status, assignee, input and output, kept at the backing you choose, which sets how long they last. The sequencer backing lasts one board.drain call, the request backing, the default, lasts the whole request, and the resource backing, at session, user or org scope, lasts across requests. The drain, board.drain, is a block you mount in a flow and runs only inside a request: it claims pending rows, hands each to its worker, marks it completed or errored, and stops when no row is left it can run, which can leave rows waiting on a dependency or a person. A board is not a background queue. Rows nobody drains wait where they are, and a row added by another request wakes nothing. To run work outside the request that made it, dispatch a fresh flow run that builds and drains its own board.">
+  <style>
+    :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
+            --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
+            --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
+              --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
+              --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822; } }
+    .bg { fill:var(--bg); }
+    .wall-proc { fill:var(--proc-fill); stroke:var(--proc); stroke-width:2; }
+    .wall-sess { fill:var(--sess-fill); stroke:var(--sess); stroke-width:2; }
+    .wall-org { fill:var(--org-fill); stroke:var(--org); stroke-width:2; }
+    .wall-file { fill:var(--box); stroke:var(--card-line); stroke-width:2; }
+    .card { fill:var(--card); stroke:var(--card-line); stroke-width:1.5; }
+    .card-sess { fill:var(--card); stroke:var(--sess); stroke-width:1.5; }
+    .box { fill:var(--box); stroke:var(--card-line); stroke-width:1.2; }
+    .title { font:700 20px ui-sans-serif, system-ui, sans-serif; fill:var(--ink); }
+    .h { font:700 14px ui-sans-serif, system-ui, sans-serif; fill:var(--ink); }
+    .p { font:13px ui-sans-serif, system-ui, sans-serif; fill:var(--ink-2); }
+    .muted { font:12px ui-sans-serif, system-ui, sans-serif; fill:var(--muted); }
+    .lbl { font:600 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing:.08em; fill:var(--muted); }
+    .code { font:11.5px ui-monospace, SFMono-Regular, Menlo, monospace; fill:var(--ink); }
+  </style>
+
+  <rect class="bg" x="0" y="0" width="940" height="540" rx="16"/>
+  <text class="title" x="24" y="38">A board is two things</text>
+  <text class="muted" x="24" y="60">Stored rows that wait, and a block that works them only while a request runs.</text>
+
+  <g id="rows">
+    <rect class="wall-org" x="24" y="80" width="520" height="332" rx="14"/>
+    <text class="h" x="40" y="104">The task rows</text>
+    <text class="muted" x="40" y="122">Data. The backing you choose sets how long they last.</text>
+
+    <rect class="card" x="36" y="138" width="496" height="262" rx="12"/>
+    <text class="lbl" x="50" y="160">RESOURCE · SESSION, USER OR ORG</text>
+    <text class="muted" x="370" y="160">across requests</text>
+
+    <rect class="card-sess" x="50" y="174" width="468" height="212" rx="10"/>
+    <text class="lbl" x="64" y="196">REQUEST · THE DEFAULT</text>
+    <text class="muted" x="356" y="196">the whole request</text>
+
+    <rect class="box" x="64" y="210" width="440" height="162" rx="8"/>
+    <text class="lbl" x="78" y="232">SEQUENCER</text>
+    <text class="muted" x="342" y="232">one board.drain call</text>
+
+    <rect class="card" x="78" y="246" width="412" height="112" rx="8"/>
+    <text class="code" x="92" y="270" xml:space="preserve">task-0  pending    goal · assignee · input</text>
+    <text class="code" x="92" y="292" xml:space="preserve">task-1  completed  output: "ALPHA"</text>
+    <text class="code" x="92" y="314" xml:space="preserve">task-2  errored</text>
+    <text class="muted" x="92" y="342">One backing per board. An outer ring outlasts an inner one.</text>
+  </g>
+
+  <g id="drain">
+    <rect class="wall-proc" x="560" y="80" width="356" height="332" rx="14"/>
+    <text class="h" x="576" y="104">The drain</text>
+    <text class="muted" x="576" y="122">board.drain, a block you mount in a flow</text>
+    <rect class="card" x="572" y="138" width="332" height="132" rx="10"/>
+    <text class="lbl" x="586" y="158">WHEN IT RUNS</text>
+    <text class="p" x="586" y="182">Claims the pending rows.</text>
+    <text class="p" x="586" y="204">Hands each to its worker.</text>
+    <text class="p" x="586" y="226">Marks it completed or errored.</text>
+    <text class="p" x="586" y="248">Stops when no row is left it can run.</text>
+    <text class="h" x="576" y="306">Only inside a request</text>
+    <text class="p" x="576" y="330">No request running it, no work done.</text>
+    <text class="muted" x="576" y="356">A row added by another request</text>
+    <text class="muted" x="576" y="372">wakes nothing.</text>
+  </g>
+
+  <g id="not-a-queue">
+    <rect class="box" x="24" y="428" width="892" height="96" rx="12"/>
+    <text class="h" x="40" y="452">Not a background queue</text>
+    <text class="p" x="40" y="476">Rows nobody drains wait where they are, for as long as their backing lasts.</text>
+    <text class="p" x="40" y="496">To run work outside the request that made it, dispatch a fresh flow run</text>
+    <text class="p" x="40" y="514">that builds and drains its own board.</text>
+  </g>
+</svg>

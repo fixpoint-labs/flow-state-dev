@@ -19,15 +19,9 @@ the drain runs — you can watch the difference from the CLI.
 
 ## A board is two things
 
-`taskBoard(config)` gives you a handle with two parts:
+![A task board is two things with different lifetimes. The task rows are stored data: each task's goal, status, assignee, input and output, kept at the backing you choose, which sets how long they last. The sequencer backing lasts one board.drain call, the request backing, the default, lasts the whole request, and the resource backing, at session, user or org scope, lasts across requests. The drain, board.drain, is a block you mount in a flow and runs only inside a request: it claims pending rows, hands each to its worker, marks it completed or errored, and stops when no row is left it can run, which can leave rows waiting on a dependency or a person. A board is not a background queue. Rows nobody drains wait where they are, and a row added by another request wakes nothing. To run work outside the request that made it, dispatch a fresh flow run that builds and drains its own board](./board-two-things.svg)
 
-1. **A task collection** — the durable state. A `Record<id, Task>`: each task's
-   goal, status, assignee, input, and (once it runs) output. This is just data
-   sitting in a state store.
-2. **`board.drain`** — the drain. A normal block you mount in a flow. When it
-   runs, it claims pending tasks, hands each to its worker, and moves the task
-   from `pending` to `completed` (or `errored`). When there's nothing left to
-   do, it stops.
+A board is stored rows and a drain. The rows sit at the backing you choose, which decides how long they last. The drain is a block that claims rows and runs them, and it only works while a request is executing it. Rows nobody drains wait where they are. `taskBoard(config)` gives you both:
 
 ```ts
 const board = taskBoard({
@@ -40,10 +34,6 @@ const board = taskBoard({
 // board.drain  → the drain (a block you mount)
 // the collection lives at the backing you chose ("queue" on the request)
 ```
-
-Keep those two separate in your head and everything else follows. The
-collection can hold tasks that nobody has processed yet. `board.drain` is the
-only thing that processes them.
 
 ## When does the drain run?
 
@@ -239,14 +229,11 @@ resolves again.
 
 ## What a board is not
 
-A board is not a background job queue. The drain needs an active request to run
-in; there's no primitive that wakes a standing worker when a task is inserted by
-*another request*, and the durable-work-pool case — a foreground request
-appending tasks while a separate background process drains the same board — is
-not supported today. If you need work to run outside the request that created
-it, dispatch a fresh flow run (see [Background jobs](./background-jobs-bullmq))
-that constructs and drains its own board; that's a new request with its own
-drain, not a shared board with a separate drainer.
+A board is not a background job queue. Nothing wakes a drain when another
+request inserts a task, and a foreground request appending tasks while a
+separate background process drains the same board is not supported. To run work outside the request
+that created it, dispatch a fresh flow run (see [Background jobs](./background-jobs-bullmq))
+that builds and drains its own board.
 
 [Work that outlives the turn](./background-work) lays out the options side by
 side, including what a board's handed-off rows reach and what they don't.
