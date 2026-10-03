@@ -8662,7 +8662,7 @@ check('a merged dependency triggers a rebase off the stack and clears the marker
   assert.deepEqual(calls.map((c) => c.label), ['rebase:b'])
   assert.match(calls[0].prompt, /rebase it onto fresh origin\/main/)
   assert.match(calls[0].prompt, /Do not merge it/)
-  assert.match(calls[0].prompt, /baseRefName as fix\/FIX-9-a is not done/)
+  assert.match(calls[0].prompt, /gh pr view 2 --json baseRefName` is main/)
   assert.match(calls[0].prompt, /gh pr edit 2 --base main/)
   assert.match(calls[0].prompt, /title no longer starts with `DO NOT MERGE`/)
   assert.equal(result.subPrs.find((n) => n.id === 'b').stackedOn, null)

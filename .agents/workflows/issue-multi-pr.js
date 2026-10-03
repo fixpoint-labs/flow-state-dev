@@ -659,14 +659,14 @@ const built = await parallel(
         ? `Sub-PR ${item.node.id} of ${issueId} (PR #${item.node.pr}, branch ${item.node.branch}) was stacked on ${item.node.stackedOn}, which has now merged.\n` +
           `Fetch and check out ${item.node.branch} first — your worktree is fresh and starts on the lifecycle's checkout, NOT on this sub-PR. Rebasing whatever you inherited would move the wrong branch, and a reported success clears the stack marker so nothing retries it.\n` +
           `Fetch ${item.base} explicitly as well, as a separate ref: the shared worktree's remote-tracking copy can predate the very merge that triggered this rebase, and rebasing onto a stale ref drops it while still reporting success — which clears the stack marker, so nothing retries it either.\n` +
-          `Then rebase it onto fresh ${item.base} so its diff carries only its own slice. A git rebase that leaves the GitHub PR's baseRefName as ${item.node.stackedOn} is not done. Done means ALL of: \`gh pr view ${item.node.pr} --json baseRefName\` is main (run \`gh pr edit ${item.node.pr} --base main\` after the rebase), the diff against main contains only this slice, and the title no longer starts with \`DO NOT MERGE\` (remove that prefix). Push, verify baseRefName is main, and report. Do not merge it. Do not report it as ready to merge while its GitHub base is not main.` +
+          `Then rebase it onto fresh ${item.base} so its diff carries only its own slice. Done means \`gh pr view ${item.node.pr} --json baseRefName\` is main (\`gh pr edit ${item.node.pr} --base main\`) and the title no longer starts with \`DO NOT MERGE\`. Push and report. Do not merge it. Do not report it as ready to merge while its GitHub base is not main.` +
           resolutionNote(item.node.id)
         : `Implement sub-PR ${item.node.id} of ${issueId} in your own worktree.\n` +
           `Branch: fix/${issueId}-${item.node.id}, based on ${item.base}.\n` +
           (item.base === 'origin/main'
             ? `Fetch origin/main first — the checkout you inherited drifts behind as sibling PRs merge.\n`
             : `You are stacking on an unmerged dependency's branch so review can start now; it will be rebased onto main when the dependency merges.\n` +
-              `Before you open the GitHub PR, mark it. Title starts with \`DO NOT MERGE until #${(nodes.find((n) => n.branch === item.base) || {}).pr || '<dependency PR>'} is on main — stacked on ${item.base}\`. Body states that dependency PR and that the GitHub base is not main. Create with \`--base ${item.base}\` (not main). A git branch based on the dependency without those marks is not a stacked PR Jake can refuse. Do not report it as ready to merge while its GitHub base is not main.\n`) +
+              `Before you open the GitHub PR, mark it. Title starts with \`DO NOT MERGE until #${(nodes.find((n) => n.branch === item.base) || {}).pr || '<dependency PR>'} is on main — stacked on ${item.base}\`. Body states that dependency PR and that the GitHub base is not main. Create with \`--base ${item.base}\` (not main). Do not report it as ready to merge while its GitHub base is not main.\n`) +
           resolutionNote(item.node.id) +
           `Run issue-implement scoped to THIS sub-PR's deliverables only: implement the slice, run \`review\`, open the sub-PR. Stop before merge. Do not prompt the user.`,
       {

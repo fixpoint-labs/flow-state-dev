@@ -397,11 +397,9 @@ Once approved:
      **Stacked (GitHub base is another feature branch, not main):** title **starts with**
      `DO NOT MERGE until #<dependency PR> is on main — stacked on <branch>`. Open with
      `--base <dependency-branch>` — never `--base main` while stacked. Body states that
-     dependency PR and that the GitHub base is not main. When the dependency has merged,
-     done means the GitHub base is `main` (`gh pr edit --base main`) **and** the diff
-     contains only this slice; then remove the `DO NOT MERGE` prefix. A git rebase that
-     leaves `baseRefName` as the old branch is not done. Do not report the PR as ready
-     to merge while its GitHub base is not main.
+     dependency PR and that the GitHub base is not main. After the dependency merges,
+     `gh pr edit --base main` and remove the `DO NOT MERGE` prefix; the diff is only
+     this slice. Do not report the PR as ready to merge while its GitHub base is not main.
    - **Body: follow [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout"** — canonical for the block order, what collapses, when a diagram earns its place, and what never collapses. Don't restate it here. What's specific to an **implementation** PR is the mapping:
 
      - **Block 1 (the problem)** ← the spec's people table condensed to a sentence on the spec route, or the reported failure on a bug. **Block 3 (what's asked of you)** ← the Key Decisions & Ramifications from Step 7, **sorted and shaped per [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → §3** — it owns the filters, the three-decision ceiling (live forks included), the subheading-and-bullets shape, and where the filtered calls go; don't re-derive them here. Where the spec already settled everything and nothing new was decided, **say exactly that in one line** — its absence reads as an omission.
