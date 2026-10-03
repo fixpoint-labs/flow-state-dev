@@ -44,7 +44,9 @@ import { defineProjectsCollection } from "@flow-state-dev/workforce";
 export default defineProjectsCollection();
 ```
 
-`defineProjectsCollection()` takes no options. It always returns the same declaration, so your module, the project blocks and the channel kind can all hold it in one flow without a conflict. The collection is org-scoped, shared across flows, and readable from the browser, which is how a UI lists an organization's projects.
+You can call `defineProjectsCollection()` anywhere you need it. Every call returns the same declaration, so they never conflict. The collection is org-scoped, shared across flows, and readable from the browser, which is how a UI lists an organization's projects.
+
+Its one option, `talk`, is the template every project's room is built from: the seats a post wakes and the charter they work under. Declare it once, usually in `org/resources/projects.ts`. Passing the same template again changes nothing, and passing a different one throws. [A room per project](./channels.md#a-room-per-project) covers it.
 
 ## Creating a project
 
@@ -84,9 +86,66 @@ The write is a `create`, never an overwrite. An id another owner holds is refuse
 
 If your app should start with some projects already there, create them from its own code at boot, through the same `createProject` action, when the rows are absent. A re-run finds the row it already made and hands it back, so a second boot changes nothing.
 
+### Giving the writes to a seat
+
+A seat on the built-in `agent` kind can create projects for the person talking to it. Put the two blocks in the kind's tool catalog, under the names a seat's `tools:` line spells. A catalog key must match the tool's own name, so give each one its name with a one-step sequencer:
+
+```ts
+import { sequencer } from "@flow-state-dev/core";
+import {
+  createProjectInputSchema,
+  createProjectOutputSchema,
+  defineAgentWorkerFlow,
+  defineProjectBlocks,
+  setWorkstreamsInputSchema,
+  setWorkstreamsOutputSchema,
+} from "@flow-state-dev/workforce";
+
+const projects = defineProjectBlocks();
+
+const agent = defineAgentWorkerFlow({
+  catalog: {
+    createProject: sequencer({
+      name: "createProject",
+      description: "Create a project for the person you're talking to. They own it; `members` adds the user ids they name.",
+      inputSchema: createProjectInputSchema,
+      outputSchema: createProjectOutputSchema,
+    }).step(projects.createProject),
+    setWorkstreams: sequencer({
+      name: "setWorkstreams",
+      description: "Replace a project's workstreams with this list of full channel ids.",
+      inputSchema: setWorkstreamsInputSchema,
+      outputSchema: setWorkstreamsOutputSchema,
+    }).step(projects.setWorkstreams),
+  },
+});
+```
+
+A seat calls them only when its own `tools:` names them. The owner is the person whose session the seat is answering in, so a project a seat creates belongs to whoever asked for it, and `members` adds the people they name. The talk session `createProject` gets ready is that person's.
+
+The writes read the organization's [channel inventory](./inventory.md) to check workstream ids. A flow takes one declaration of a collection, so if the same kind reads the inventory itself, for example through `createWorkforceCapability`'s `discover`, declare that read with `projectWritesChannelInventory` rather than a `defineChannelInventoryCollection()` of its own:
+
+```ts
+import { defineCapability } from "@flow-state-dev/core";
+import { projectWritesChannelInventory } from "@flow-state-dev/workforce";
+
+const channelInventory = defineCapability({
+  name: "channel-inventory",
+  resources: { channelInventory: projectWritesChannelInventory },
+});
+```
+
+A second declaration of the inventory beside the writes fails when the flow is built:
+
+```text
+Resource collision in flow "agent": accessor keys "channelInventory" and "project-writes-channel-inventory" resolve to the same effective storage key (scope=org, ref=inventory/channels/*, flowIsolation=false). Pick distinct refs or flowIsolation settings.
+```
+
+[The chief of staff](./chief-of-staff.md#starting-projects) is a seat set up this way.
+
 ## One project per workstream
 
-A workstream belongs to at most one project. Each id must be a channel in the organization's [inventory](./inventory.md). Before a row is written, the write claims each of its workstreams. A claim is one shared key per workstream, so when two projects try to claim the same workstream at the same moment, exactly one of them gets it.
+A workstream belongs to at most one project. Each id must be a channel in the organization's [inventory](./inventory.md). Before a row is written, the write claims each of its workstreams. If two projects claim the same workstream at the same moment, exactly one of them gets it.
 
 A refused write leaves nothing behind. If one workstream is already claimed, the whole write fails, the refusal names that workstream, and any claims the write had already taken are released. Removing a workstream with `setWorkstreams` releases its claim.
 
@@ -112,19 +171,19 @@ Each member has exactly one talk session on the project, however many windows th
 |------|--------------|
 | `join { projectId }` | Returns your talk session on the project. If the project already lists one for you, you get that one back, so a second window ends up in the same session. Otherwise the session you called from becomes your talk session. A declared channel's own session can't become one: `join` from it is refused with `talk-on-a-channel` |
 | `post { body }` | Adds a line to the room, as you |
-| `read { after }` | Returns the lines after a cursor, up to 200 at a time, and the cursor for the next read |
+| `read { after }` | Returns the lines after a cursor, up to 200 at a time, and the cursor for the next read, with the room's charter and seats |
 
-Creating a project from inside a flow turn binds the creator's talk session for them. Every other member joins.
+`createProject` gets the creator's talk session ready for them. With a [talk template](./channels.md#a-room-per-project) in place, so does any other code that creates a project inside a flow turn. Every other member joins.
 
 Other members' lines aren't pushed to you. They show up the next time your view reads the room, so read on open, on focus, and after you post.
 
-When several people post at once, every line lands, in one order everyone sees. A reader never skips a line that is still being written: a read stops at the first gap and picks it up on the next read.
+When several people post at once, every line lands, in one order everyone sees. A read never skips a line. A line still being written appears on a later read.
 
 ### Members only
 
 Only a project's members can read or post in its room. A non-member's `join` is refused with `not-a-member`, binds nothing, and never adds them to `members`. Their `read` or `post` is refused too: with `talk-not-bound` when their session isn't bound to a project, and with `not-a-member` when its state names the project anyway.
 
-A talk session's own state names its project, and that grants nothing. Anyone can create a session and write whatever state they like into it, so the check never trusts the session's state. Every room call looks the project row up and checks the session's owner, as the server recorded it, against the row's `members`. Only trusted code writes `members`: the owner's own grant when the project is created.
+Access comes from the project row, never from the session. Every room call checks the caller against the row's `members`. Writing a project id into a session's state grants nothing.
 
 Everyone in the organization can see the row. Only the people in its `members` can get into the room, and `join` never changes who that is.
 

@@ -29,7 +29,10 @@ export type ProjectRefusalReason =
   | "talk-not-bound"
   | "talk-bound-elsewhere"
   | "talk-on-a-channel"
-  | "author-on-a-person-post";
+  | "author-on-a-person-post"
+  | "answer-not-delivered"
+  | "answer-not-yours"
+  | "talk-session-not-listed";
 
 /** A project write or room entry refused on the project's own terms. */
 export class ProjectRefusedError extends Error {

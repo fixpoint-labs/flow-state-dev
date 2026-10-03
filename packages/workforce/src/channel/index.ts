@@ -22,6 +22,7 @@ export {
   ChannelPostRefusedError,
   INVENTORY_REGISTER_CHANNEL,
   INVENTORY_REGISTER_SEATS,
+  INVENTORY_RETIRE_CHANNELS,
   inventoryChannelRegisteredSchema,
   inventorySeatsRegisteredSchema,
   inventoryWriterActions,

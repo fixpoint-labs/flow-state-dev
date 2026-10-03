@@ -4,22 +4,6 @@
  * the issue that fills a surface replaces its entry here and nothing else.
  */
 export const GAPS = {
-  projectStream: {
-    title: "No project stream yet",
-    body: "Projects arrive with FIX-1650. Until then every workstream is listed on its own under PROJECTS.",
-  },
-  projectBoard: {
-    title: "No project board yet",
-    body: "A project's board gathers its workstreams' boards once projects ship (FIX-1650).",
-  },
-  projectWorkstreams: {
-    title: "No project holds a workstream yet",
-    body: "Grouping workstreams into projects arrives with FIX-1650. The sidebar lists every workstream directly meanwhile.",
-  },
-  projectBrief: {
-    title: "No project brief yet",
-    body: "A project's brief arrives with FIX-1650.",
-  },
   results: {
     title: "No results yet",
     body: "What a workstream has produced arrives with FIX-1651.",

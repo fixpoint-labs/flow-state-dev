@@ -28,6 +28,7 @@
 
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
+import { recordOrgTalkTemplate, type TalkTemplate } from "./talk-template";
 
 /** The resource-map ref of the projects collection. Pinned: Shift Manager reads it by this name. */
 export const PROJECTS_RESOURCE = "projects";
@@ -37,6 +38,10 @@ export const ROOM_LINES_RESOURCE = "room-lines";
 export const ROOM_SEQ_RESOURCE = "room-seq";
 /** The resource-map ref of the workstream claims. */
 export const WORKSTREAM_CLAIMS_RESOURCE = "workstream-claims";
+/** The resource-map ref of the seat answers a room holds. Not re-exported from the package root. */
+export const ROOM_ANSWERS_RESOURCE = "room-answers";
+/** The resource-map ref of the deliveries a room's fan-out made. Not re-exported from the package root. */
+export const ROOM_DELIVERIES_RESOURCE = "room-deliveries";
 
 /**
  * The route id Shift Manager gives the workstreams no project lists. A project
@@ -186,15 +191,39 @@ const SHARED_ACROSS_FLOWS = false;
  * that is held, and that refusal is what stops a second project taking an id.
  * The project blocks (`defineProjectBlocks`) are the writers; prefer them.
  *
+ * **The org-level talk template** rides here, beside the collection: `talk`
+ * names the seats a post in any project's room wakes, the room's charter, and
+ * the channel kind talk sessions run on. It is read by `channelInstances`
+ * (pass it the org's resource map as `resources`), which builds it onto the
+ * kind and mints each creator's talk session when a row is created. The
+ * declaration returned is the same one every call returns; see
+ * `talk-template.ts` for why the template is the process's.
+ *
+ * @param options `talk`: the org-level talk template. Omitted, any template
+ *   recorded earlier stands.
  * @example
  *   // workforce/org/resources/projects.ts
- *   export default defineProjectsCollection();
+ *   export default defineProjectsCollection({
+ *     talk: { seats: ["eng.em", "chief-of-staff"], charter: "Plan the work; say what is blocked." }
+ *   });
  */
-export function defineProjectsCollection() {
+export function defineProjectsCollection(options: ProjectsCollectionOptions = {}) {
+  if (options.talk !== undefined) recordOrgTalkTemplate(PROJECTS_COLLECTION, options.talk);
   return PROJECTS_COLLECTION;
 }
 
-const PROJECTS_COLLECTION = defineResourceCollection({
+/** Options for {@link defineProjectsCollection}. */
+export type ProjectsCollectionOptions = {
+  /** The org-level talk template: the seats, charter and kind of every project's room. */
+  talk?: TalkTemplate;
+};
+
+/**
+ * The one projects declaration, for an identity check (`channelInstances`
+ * asks whether a `mintFor:` names it). Not re-exported from the package root:
+ * apps declare it with {@link defineProjectsCollection}.
+ */
+export const PROJECTS_COLLECTION = defineResourceCollection({
   pattern: "projects/*",
   scope: "org",
   flowIsolation: SHARED_ACROSS_FLOWS,
@@ -252,6 +281,82 @@ const WORKSTREAM_CLAIMS_COLLECTION = defineResourceCollection({
   flowIsolation: SHARED_ACROSS_FLOWS,
   prefetchMode: "lazy",
   stateSchema: workstreamClaimSchema
+});
+
+/**
+ * One seat's answer to one post in a room, at
+ * `room-answers/<projectId>/<postId>/<author>`: the durable record of the
+ * answer's progress (`room-answer.ts`). Created before the line, holding the
+ * seq allocated for it and the line itself, so a run that dies after the claim
+ * leaves the next delivery everything it needs to finish. Never deleted.
+ * Server-written: nothing a caller seeds into a session reaches it. No browser
+ * read.
+ */
+export const roomAnswerSchema = z.object({
+  projectId: z.string().min(1),
+  postId: z.string().min(1),
+  author: z.string().min(1),
+  /** The owner of the talk session the answer was delivered into: the line's `userId`. */
+  userId: z.string().min(1),
+  body: z.string().min(1),
+  /** The seq the line is written at. Moves only off a tombstone. */
+  seq: z.number().int().min(1)
+});
+
+/** @see roomAnswerSchema */
+export type RoomAnswer = z.infer<typeof roomAnswerSchema>;
+
+/** The seat-answer claims. Not re-exported from the package root: only the talk entries read it. */
+export function defineRoomAnswersCollection() {
+  return ROOM_ANSWERS_COLLECTION;
+}
+
+const ROOM_ANSWERS_COLLECTION = defineResourceCollection({
+  pattern: "room-answers/**",
+  scope: "org",
+  flowIsolation: SHARED_ACROSS_FLOWS,
+  prefetchMode: "lazy",
+  stateSchema: roomAnswerSchema
+});
+
+/**
+ * One post's delivery to one seat through one talk session, at
+ * `room-deliveries/<postId>/<seat>/<sessionId>` ({@link roomDeliveryKey}):
+ * created once by the talk fan-out before it wakes the seat. It is
+ * `pending` until the seat's wake has been dispatched, then `delivered`: a
+ * replayed fan-out wakes a `pending` delivery again, with the same token, and
+ * skips a `delivered` one. `token` is handed to that seat alone; an answer is looked up by its post, its author and the session it
+ * comes through, and must carry the token. The token is unguessable, so a
+ * seat cannot answer under a delivery it was not handed. No browser read.
+ */
+export const roomDeliverySchema = z.object({
+  projectId: z.string().min(1),
+  postId: z.string().min(1),
+  seat: z.string().min(1),
+  sessionId: z.string().min(1),
+  token: z.string().min(1),
+  status: z.enum(["pending", "delivered"])
+});
+
+/** The key of one post's delivery to one seat through one session. */
+export function roomDeliveryKey(delivery: Pick<RoomDelivery, "postId" | "seat" | "sessionId">): string {
+  return `${delivery.postId}/${delivery.seat}/${delivery.sessionId}`;
+}
+
+/** @see roomDeliverySchema */
+export type RoomDelivery = z.infer<typeof roomDeliverySchema>;
+
+/** The deliveries. Not re-exported from the package root: only the talk entries read it. */
+export function defineRoomDeliveriesCollection() {
+  return ROOM_DELIVERIES_COLLECTION;
+}
+
+const ROOM_DELIVERIES_COLLECTION = defineResourceCollection({
+  pattern: "room-deliveries/**",
+  scope: "org",
+  flowIsolation: SHARED_ACROSS_FLOWS,
+  prefetchMode: "lazy",
+  stateSchema: roomDeliverySchema
 });
 
 /** Digits a sequence number is padded to, so keys sort by `seq`. */

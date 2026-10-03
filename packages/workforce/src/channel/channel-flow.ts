@@ -72,17 +72,22 @@ import {
   membershipKey,
   seatInventoryRowSchema
 } from "../inventory/collections";
-import type { SeatInventoryRow } from "../inventory/collections";
-import { roomLineSchema } from "../projects/collections";
+import { PROJECTS_COLLECTION, roomLineKey, roomLineSchema, type RoomLine } from "../projects/collections";
 import {
+  recentTalkLines,
+  markTalkDelivered,
+  recordTalkDelivery,
+  TALK_RESOURCES,
   talkAnswer,
   talkBind,
   talkJoin,
   talkPost,
   talkProjectOf,
-  talkRead,
+  talkReadFor,
   talkReadOutputSchema
 } from "../projects/talk";
+import { isTemplateChannel, type TalkTemplateFacts } from "../projects/talk-template";
+import type { SeatInventoryRow } from "../inventory/collections";
 
 /** The built-in kind's name, and so the built-in instance's address. */
 export const CHANNEL_KIND = "channel";
@@ -112,7 +117,14 @@ export const channelSessionStateSchema = z.object({
    * `channel-post` item. Read-only: `read` returns them ahead of the posted
    * lines, and nothing writes here any more.
    */
-  transcript: z.array(channelTranscriptLineSchema).default([])
+  transcript: z.array(channelTranscriptLineSchema).default([]),
+  /**
+   * The project a talk session is about (`../projects/talk.ts`), or `null`. A
+   * declared channel never sets it. It selects which project row a talk entry
+   * checks, and grants nothing on its own. Nullable with a `null` default
+   * (BP-023, BP-030), so a channel opened before it existed still parses.
+   */
+  resourceId: z.string().nullable().default(null)
 });
 
 export type ChannelSessionState = z.infer<typeof channelSessionStateSchema>;
@@ -142,7 +154,17 @@ export const CHANNEL_ANSWER_ACTION = "answer";
  * take its one answer.
  */
 export const channelAnswerInputSchema = z
-  .object({ postId: z.string().min(1), body: z.string().min(1), author: z.string().min(1) })
+  .object({
+    postId: z.string().min(1),
+    body: z.string().min(1),
+    author: z.string().min(1),
+    /**
+     * The delivery's `answerToken`, handed back. Required on a project's talk
+     * session, where the answer's author is the seat the token was issued to;
+     * a declared channel ignores it.
+     */
+    token: z.string().min(1).optional()
+  })
   .strict();
 
 type ChannelAnswerInput = z.infer<typeof channelAnswerInputSchema>;
@@ -197,7 +219,8 @@ export type ChannelRefusalReason =
   | "channel-not-bound"
   | "author-not-a-member"
   | "board-not-declared"
-  | "board-needs-an-org";
+  | "board-needs-an-org"
+  | "channel-is-a-template";
 
 /**
  * A post refused on the channel's own terms, as opposed to by the substrate.
@@ -246,11 +269,40 @@ export function boundChannel(
 }
 
 /**
+ * Refuse a channel action on a session whose id is now a project talk
+ * template's `CHANNEL.md` (`mintFor:`). The session it had as a channel may
+ * survive in the store, still bound; a template is never a channel, so its
+ * `post`, `read` and `answer` are refused rather than served from that state.
+ */
+function refuseTemplateChannel(ctx: { session: { identity: { id: string } } }): void {
+  const id = ctx.session.identity.id;
+  if (isTemplateChannel(PROJECTS_COLLECTION, id)) {
+    throw new ChannelPostRefusedError(
+      "channel-is-a-template",
+      `"${id}" is declared as a project talk template (\`mintFor:\`), not a channel. A project's room is ` +
+        "reached through a member's talk session (`join`)."
+    );
+  }
+}
+
+/**
+ * The open channel this session is, after the template fence: every channel
+ * action that acts on its channel (post, read, answer, the board actions and
+ * the inventory registration) finds it here, so none of them serves a session
+ * whose id is now a project talk template's. `undefined` when the session is
+ * not a bound channel; each caller refuses that in its own words.
+ */
+function openChannelOf(ctx: { session: { identity: { id: string }; state: Readonly<Record<string, unknown>> } }) {
+  refuseTemplateChannel(ctx);
+  return boundChannel(ctx.session.state);
+}
+
+/**
  * The line a post makes, or the channel's refusal. Writes nothing: each append
  * keeps the line itself.
  */
 function lineFor(input: ChannelPostInput, ctx: BlockContext): ChannelTranscriptLine {
-  const channel = boundChannel(ctx.session.state);
+  const channel = openChannelOf(ctx);
   if (channel === undefined) {
     throw new ChannelPostRefusedError(
       "channel-not-bound",
@@ -432,7 +484,7 @@ const readChannelFor = (boardIds: readonly string[]) =>
     inputSchema: z.object({}).strict(),
     outputSchema: channelReadOutputSchema,
     execute: async (_input, ctx): Promise<ChannelReadOutput> => {
-      const channel = boundChannel(ctx.session.state);
+      const channel = openChannelOf(ctx);
       if (channel === undefined) {
         throw new ChannelPostRefusedError(
           "channel-not-bound",
@@ -573,7 +625,7 @@ async function ledgerNamed(
   boardIds: readonly string[],
   name: string
 ): Promise<{ boardId: string; channel: ChannelSessionState; ledger: ChannelTaskLedger }> {
-  const channel = boundChannel(ctx.session.state);
+  const channel = openChannelOf(ctx);
   if (channel === undefined) {
     throw new ChannelPostRefusedError(
       "channel-not-bound",
@@ -770,19 +822,42 @@ export const channelNotifyInputSchema = z.object({
   author: z.string().optional(),
   /**
    * `true` when the channel's route picked this member, the one member the
-   * post is delivered to. Absent on every other delivery. A kind that hears
-   * posts decides what it does with the mark; the built-in agent kind posts
-   * its reply into the channel.
+   * post is delivered to; and on a project's talk session, for each of the
+   * template's seats, every one of which answers into the room. Absent on
+   * every other delivery. A kind that hears posts decides what it does with
+   * the mark; the built-in agent kind posts its reply into the channel, which
+   * on a talk session is the project's room.
    */
   routed: z.boolean().optional(),
   /**
    * On a routed delivery, the channel's last lines before the post (up to
-   * 20), oldest first: the ones the route read. Absent on every other delivery.
+   * 20), oldest first: the ones the route read. On a talk session's delivery,
+   * the room's last lines before the post, up to 20. Absent on every other
+   * delivery.
    */
-  recent: z.array(channelTranscriptLineSchema).optional()
+  recent: z.array(channelTranscriptLineSchema).optional(),
+  /**
+   * On a talk session's delivery, the token for this seat's answer: issued to
+   * this member alone, and handed back as the answer's `token`. The answer's
+   * author is the seat it was issued to. Absent on every other delivery.
+   */
+  answerToken: z.string().optional()
 });
 
 export type ChannelNotifyInput = z.infer<typeof channelNotifyInputSchema>;
+
+/** The internal entry a talk post hands its fan-out to, in the poster's own talk session. */
+const TALK_POSTED_ACTION = "onTalkPosted";
+
+/** What a talk post's fan-out is handed: the line as the room stored it. Internal-only entry. */
+const talkFanOutInputSchema = z.object({
+  projectId: z.string(),
+  seq: z.number().int(),
+  body: z.string(),
+  principal: z.string()
+});
+
+type TalkFanOutInput = z.infer<typeof talkFanOutInputSchema>;
 
 /** What a rescued delivery failure carries out: the reason, and nothing durable. */
 const channelRefusalNoteSchema = z.object({
@@ -865,6 +940,17 @@ export const INVENTORY_REGISTER_CHANNEL = "registerChannelInInventory";
  */
 export const INVENTORY_REGISTER_SEATS = "registerSeatsInInventory";
 
+/**
+ * The action the boot binder dispatches ONCE when the roster carries project
+ * talk templates (`mintFor:`), naming their ids, so a channel row an earlier
+ * boot wrote under one of those ids is retired: a template is never a channel,
+ * so a row advertising it as one is wrong rather than merely old.
+ *
+ * **Pinned**, and internal-only like {@link INVENTORY_REGISTER_SEATS}: its whole
+ * input is ids to delete, with nothing to check them against.
+ */
+export const INVENTORY_RETIRE_CHANNELS = "retireChannelsInInventory";
+
 /** Nothing a caller supplies reaches the channel's row. */
 const registerChannelInputSchema = z.object({}).strict();
 
@@ -882,6 +968,12 @@ const registerSeatsInputSchema = z
 
 /** What the seat write reports: how many rows landed. */
 export const inventorySeatsRegisteredSchema = z.object({ written: z.number() });
+
+/** The ids of the roster's talk templates, whose channel rows are retired. */
+const retireChannelsInputSchema = z.object({ ids: z.array(z.string().min(1)) }).strict();
+
+/** What the retirement reports: how many channel rows it removed. */
+export const inventoryChannelsRetiredSchema = z.object({ retired: z.number() });
 
 /** The stored row is not one this boot may replace. */
 class NotTheBootsRow extends Error {}
@@ -1036,7 +1128,10 @@ async function publishBootSeatRow(
  *     session: { stateSchema: briefingState },
  *     actions: { ...myActions, registerChannelInInventory: writer.registerChannelInInventory },
  *     internal: {
- *       actions: { registerSeatsInInventory: writer.registerSeatsInInventory }
+ *       actions: {
+ *         registerSeatsInInventory: writer.registerSeatsInInventory,
+ *         retireChannelsInInventory: writer.retireChannelsInInventory
+ *       }
  *     }
  *   });
  */
@@ -1059,7 +1154,7 @@ export function inventoryWriterActions(kind: string) {
     outputSchema: inventoryChannelRegisteredSchema,
     resources: { channels, memberships },
     execute: async (_input, ctx) => {
-      const channel = boundChannel(ctx.session.state);
+      const channel = openChannelOf(ctx);
       if (channel === undefined) {
         throw new ChannelPostRefusedError(
           "channel-not-bound",
@@ -1165,6 +1260,44 @@ export function inventoryWriterActions(kind: string) {
     }
   });
 
+  const retireChannels = handler({
+    name: "inventory-retire-channels",
+    inputSchema: retireChannelsInputSchema,
+    outputSchema: inventoryChannelsRetiredSchema,
+    resources: { channels, memberships },
+    execute: async (input, ctx) => {
+      if (ctx.org === undefined) {
+        throw new Error(
+          "the retired channel rows cannot be removed: this request carries no organization, and " +
+            "the inventory is org-scoped storage. Run it under the same `orgId` the channels were opened with."
+        );
+      }
+      // What to delete comes from the membership rows themselves, never from
+      // the channel row's `members`: registration can leave a membership row
+      // the channel row no longer lists, and the channel row may already be
+      // gone. The index is keyed seat-first (`<seatId>/<channelId>`), so no
+      // prefix reaches one channel's rows; the closest the store gets is one
+      // listing of the index per run, kept to the retiring ids' rows before
+      // anything is deleted. This runs once per boot, and only when the roster
+      // carries a template.
+      const retiring = new Set(input.ids);
+      const stale = (await ctx.resources.memberships.list()).filter((ref) => retiring.has(ref.state.channelId));
+      // Every membership row first, the channel rows last: a run that fails
+      // partway leaves the channel row standing, and the next run lists and
+      // finishes whatever is left either way.
+      for (const ref of stale) {
+        await ctx.resources.memberships.delete(membershipKey(ref.state.seatId, ref.state.channelId));
+      }
+      let retired = 0;
+      for (const id of input.ids) {
+        if ((await ctx.resources.channels.getOptional(id)) === undefined) continue;
+        await ctx.resources.channels.delete(id);
+        retired += 1;
+      }
+      return { retired };
+    }
+  });
+
   return {
     [INVENTORY_REGISTER_CHANNEL]: {
       block: registerChannel,
@@ -1178,6 +1311,12 @@ export function inventoryWriterActions(kind: string) {
       description:
         "Write the org's seat rows into the live inventory. Boot machinery, called once by " +
         "`openInventory` with the roster it was hired from."
+    },
+    [INVENTORY_RETIRE_CHANNELS]: {
+      block: retireChannels,
+      description:
+        "Remove the channel rows of ids the roster now declares as project talk templates. Boot " +
+        "machinery, called once by `openInventory`."
     }
   };
 }
@@ -1258,6 +1397,16 @@ export interface DefineChannelFlowOptions {
    * `routing:` reaches an open channel at the next boot.
    */
   routing?: Readonly<Record<string, ChannelRouting>>;
+
+  /**
+   * The talk template this kind's project talk sessions run under: the seats
+   * a post in a project's room wakes, and the room's charter. Supplied by
+   * `channelInstances` from the org-level default or a `CHANNEL.md` marked
+   * `mintFor:`, as `boards` is, never by an app. Built onto the kind at every
+   * boot and never written into a session, so an edited template reaches
+   * every project's room at the next boot. Absent, a talk post wakes nobody.
+   */
+  template?: TalkTemplateFacts;
 }
 
 /**
@@ -1277,6 +1426,8 @@ export type ChannelFlowFactory = ReturnType<typeof defineFlow> & {
   withRouting: (routing: Readonly<Record<string, ChannelRouting>>) => ChannelFlowFactory;
   /** The same kind, rebuilt exposing these channels' board task actions. */
   withBoardActions: (channelIds: readonly string[]) => ChannelFlowFactory;
+  /** The same kind, rebuilt holding a project talk template's seats and charter. */
+  withTemplate: (template: TalkTemplateFacts) => ChannelFlowFactory;
 };
 
 /** Is this channel kind one {@link defineChannelFlow} built? */
@@ -1297,6 +1448,19 @@ const KIND_ROUTE = Symbol("channel-kind-route");
  */
 export function routeOf(kind: unknown): ChannelRoute | undefined {
   return typeof kind === "function" ? (kind as { [KIND_ROUTE]?: ChannelRoute })[KIND_ROUTE] : undefined;
+}
+
+/** The key a kind {@link defineChannelFlow} built with a notify slot carries `true` under. */
+const KIND_WAKES = Symbol("channel-kind-wakes");
+
+/**
+ * Was this channel kind built with a notify slot, so a post can wake anyone?
+ * `false` for a kind built without one, or one {@link defineChannelFlow} did
+ * not build. The binder reads it to refuse a talk template whose seats would
+ * never be woken. Not re-exported from the package root.
+ */
+export function wakesSeats(kind: unknown): boolean {
+  return typeof kind === "function" && (kind as { [KIND_WAKES]?: boolean })[KIND_WAKES] === true;
 }
 
 /**
@@ -1523,13 +1687,144 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     talkProjectOf(ctx.session.state) !== undefined;
   const anyBlock = (block: unknown) => block as BlockDefinition<any, any>;
 
+  // A talk post wakes the template's seats, once each, under the poster: the
+  // fan-out runs in the poster's own talk session, so each seat's
+  // conversation is keyed per person per room. Handed off to a separate
+  // request, as a channel's fan-out is, so the post queue's hold covers the
+  // append only. Each delivery is routed: every seat's reply lands in the
+  // room through this session's `answer`. Declared only when there is a seat
+  // to wake and a notify block to wake it with.
+  const templateSeats = [...(options.template?.seats ?? [])];
+  const talkDeliveries = handler({
+    name: "channel-talk-deliveries",
+    inputSchema: talkFanOutInputSchema,
+    outputSchema: z.array(channelNotifyInputSchema),
+    resources: TALK_RESOURCES,
+    execute: async (posted: TalkFanOutInput, ctx): Promise<ChannelNotifyInput[]> => {
+      const recent = await recentTalkLines(ctx as unknown as BlockContext, posted.projectId, posted.seq);
+      const postId = roomLineKey(posted.projectId, posted.seq);
+      // One wake per seat; each is recorded, woken and marked in its own
+      // rescued run (`talkDeliver`), so one seat's failure is that seat's alone.
+      return templateSeats.map((member) => ({
+        channelId: ctx.session.identity.id,
+        member,
+        postId,
+        body: posted.body,
+        principal: posted.principal,
+        routed: true,
+        recent
+      }));
+    }
+  });
+  // One delivery per post, seat and session, recorded `pending` before the
+  // seat is woken and marked `delivered` after (`talkDelivered`): its token is
+  // how the seat's answer proves which seat it speaks for. A replay wakes a
+  // still-pending delivery again with its token; a delivered one comes back
+  // with no token and is not woken.
+  const talkRecorded = handler({
+    name: "channel-talk-recorded",
+    inputSchema: channelNotifyInputSchema,
+    outputSchema: channelNotifyInputSchema,
+    resources: TALK_RESOURCES,
+    execute: async (delivery: ChannelNotifyInput, ctx): Promise<ChannelNotifyInput> => {
+      const answerToken = await recordTalkDelivery(ctx as unknown as BlockContext, {
+        projectId: talkProjectOf(ctx.session.state) as string,
+        postId: delivery.postId as string,
+        seat: delivery.member,
+        sessionId: delivery.channelId
+      });
+      return answerToken === undefined ? delivery : { ...delivery, answerToken };
+    }
+  });
+  const toWake = (delivery: ChannelNotifyInput): boolean => delivery.answerToken !== undefined;
+  // After a seat's wake has been dispatched: its delivery stops being one a
+  // replay would wake again.
+  const talkDelivered = handler({
+    name: "channel-talk-delivered",
+    inputSchema: channelNotifyInputSchema,
+    outputSchema: z.object({ delivered: z.literal(true) }),
+    resources: TALK_RESOURCES,
+    execute: async (delivery: ChannelNotifyInput, ctx) => {
+      await markTalkDelivered(ctx as unknown as BlockContext, {
+        postId: delivery.postId as string,
+        seat: delivery.member,
+        sessionId: delivery.channelId
+      });
+      return { delivered: true as const };
+    }
+  });
+  // One seat's record, wake and mark, rescued together: a failed record, or a
+  // refused or failed wake, skips the mark, so the delivery stays `pending`
+  // (or unrecorded) for a replay, and the failure is that seat's alone. `notify` runs bare here rather than as `deliver`,
+  // whose own rescue would turn the refusal into a success the mark follows.
+  const talkDeliver =
+    notify === undefined
+      ? undefined
+      : sequencer({ name: "channel-talk-deliver", inputSchema: channelNotifyInputSchema })
+          .step(talkRecorded)
+          .tapIf(toWake, notify)
+          .stepIf(toWake, talkDelivered)
+          .rescue([{ block: noteDeliveryRefusal }]);
+  // Every seat attempted, then any refused one reported: a fan-out with a seat
+  // left `pending` did not complete, and says so.
+  const talkSettled = handler({
+    name: "channel-talk-settled",
+    inputSchema: z.array(z.unknown()),
+    outputSchema: z.object({ woken: z.number() }),
+    execute: async (outcomes: unknown[]) => {
+      const refused = outcomes.filter(
+        (outcome): outcome is { delivered: false; reason: string } =>
+          typeof outcome === "object" && outcome !== null && (outcome as { delivered?: unknown }).delivered === false
+      );
+      if (refused.length > 0) {
+        throw new Error(
+          `${refused.length} of ${outcomes.length} seat wakes were not dispatched and stay pending for a replay:\n  - ` +
+            refused.map((outcome) => outcome.reason).join("\n  - ")
+        );
+      }
+      return { woken: outcomes.length };
+    }
+  });
+  const talkFanOut =
+    talkDeliver === undefined || templateSeats.length === 0
+      ? undefined
+      : sequencer({ name: "channel-talk-fan-out", inputSchema: talkFanOutInputSchema })
+          .step(talkDeliveries)
+          .forEach((deliveries: ChannelNotifyInput[]) => deliveries, talkDeliver)
+          .step(talkSettled);
+  const talkPostEntry =
+    talkFanOut === undefined
+      ? talkPost
+      : sequencer({ name: "channel-talk-post", inputSchema: channelPostInputSchema, outputSchema: roomLineSchema })
+          .step(talkPost)
+          .tap(
+            (line: RoomLine): TalkFanOutInput => ({
+              projectId: line.projectId,
+              seq: line.seq,
+              body: line.body,
+              principal: line.userId
+            }),
+            dispatcher({
+              name: "channel-talk-hand-off",
+              action: TALK_POSTED_ACTION,
+              inputSchema: talkFanOutInputSchema,
+              session: { id: (_input, ctx) => ctx.session.identity.id }
+            }).rescue([{ block: noteHandOffRefusal }])
+          );
+
   const postEntry = router({
     name: "channel-post-entry",
     inputSchema: channelPostInputSchema,
     outputSchema: z.union([channelTranscriptLineSchema, roomLineSchema]),
-    routes: [anyBlock(post), anyBlock(talkPost)],
-    execute: (_input, ctx) => (isTalk(ctx) ? anyBlock(talkPost) : anyBlock(post))
+    routes: [anyBlock(post), anyBlock(talkPostEntry)],
+    execute: (_input, ctx) => {
+      if (isTalk(ctx)) return anyBlock(talkPostEntry);
+      refuseTemplateChannel(ctx);
+      return anyBlock(post);
+    }
   });
+
+  const talkRead = talkReadFor(options.template);
 
   const readInputSchema = z.object({ after: z.number().int().min(0).optional() }).strict();
   const readEntry = router({
@@ -1538,10 +1833,11 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     outputSchema: z.union([channelReadOutputSchema, talkReadOutputSchema]),
     routes: [anyBlock(readChannel), anyBlock(talkRead)],
     // A channel's read takes no cursor: it returns the recent transcript.
-    execute: (input, ctx) =>
-      isTalk(ctx)
-        ? anyBlock(talkRead).connectInput(() => ({ after: input.after ?? 0 }))
-        : anyBlock(readChannel).connectInput(() => ({}))
+    execute: (input, ctx) => {
+      if (isTalk(ctx)) return anyBlock(talkRead).connectInput(() => ({ after: input.after ?? 0 }));
+      refuseTemplateChannel(ctx);
+      return anyBlock(readChannel).connectInput(() => ({}));
+    }
   });
 
   // On a kind without a route there is no channel answer, so a talk session's
@@ -1552,9 +1848,13 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
       : router({
           name: "channel-answer-entry",
           inputSchema: channelAnswerInputSchema,
-          outputSchema: z.union([channelTranscriptLineSchema.nullable(), roomLineSchema]),
+          outputSchema: z.union([channelTranscriptLineSchema.nullable(), roomLineSchema.nullable()]),
           routes: [anyBlock(answer), anyBlock(talkAnswer)],
-          execute: (_input, ctx) => (isTalk(ctx) ? anyBlock(talkAnswer) : anyBlock(answer))
+          execute: (_input, ctx) => {
+            if (isTalk(ctx)) return anyBlock(talkAnswer);
+            refuseTemplateChannel(ctx);
+            return anyBlock(answer);
+          }
         });
 
   const flow = defineFlow({
@@ -1584,10 +1884,10 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         // `boards` key at all.
         description:
           boardIds.length === 0
-            ? "Read this channel's recent transcript lines, members and description. On a project's " +
-              "talk session, read the room's lines after `after`, members only."
-            : "Read this channel's recent transcript lines, members, description and declared board names. " +
+            ? "Read this channel's recent transcript lines, members and description; `after` is ignored. " +
               "On a project's talk session, read the room's lines after `after`, members only."
+            : "Read this channel's recent transcript lines, members, description and declared board names; " +
+              "`after` is ignored. On a project's talk session, read the room's lines after `after`, members only."
       },
       join: {
         block: talkJoin,
@@ -1668,14 +1968,23 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         // that function's own doc comment.
         ...(inventoryActions === undefined
           ? {}
-          : { [INVENTORY_REGISTER_SEATS]: inventoryActions[INVENTORY_REGISTER_SEATS] }),
+          : {
+              [INVENTORY_REGISTER_SEATS]: inventoryActions[INVENTORY_REGISTER_SEATS],
+              // Internal for the same reason: its input is ids to delete.
+              [INVENTORY_RETIRE_CHANNELS]: inventoryActions[INVENTORY_RETIRE_CHANNELS]
+            }),
         ...(fanOut === undefined
           ? {}
           : {
               // `allow`, deliberately: this is the work that must NOT sit
               // behind the post queue.
               onPosted: { block: fanOut, concurrency: "allow" as const }
-            })
+            }),
+        // A talk post's wake, for the same reason, and only on a kind holding
+        // a template with seats to wake.
+        ...(talkFanOut === undefined
+          ? {}
+          : { [TALK_POSTED_ACTION]: { block: talkFanOut, concurrency: "allow" as const } })
       }
     }
   });
@@ -1689,9 +1998,11 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     withRouting: (routing: Readonly<Record<string, ChannelRouting>>) =>
       defineChannelFlow({ ...options, routing }),
     withBoardActions: (boardActions: readonly string[]) =>
-      defineChannelFlow({ ...options, boardActions })
+      defineChannelFlow({ ...options, boardActions }),
+    withTemplate: (template: TalkTemplateFacts) => defineChannelFlow({ ...options, template })
   }) as ChannelFlowFactory;
   if (options.route !== undefined) Object.assign(factory, { [KIND_ROUTE]: options.route });
+  if (options.notify !== undefined) Object.assign(factory, { [KIND_WAKES]: true });
   return factory;
 }
 
