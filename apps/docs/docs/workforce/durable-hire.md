@@ -254,6 +254,8 @@ curl -X POST localhost:3000/api/flows/acme.support.ada/actions/answer \
   -d '{"userId":"you","input":{"note":"is the printer fixed?"}}'
 ```
 
+When you build the URL by hand, pass the address through `encodeURIComponent(address)` and use the result as one path segment. The address `org%5Fpentest%5Flab.helper`, for the organization `org_pentest_lab`, goes out as `/api/flows/org%255Fpentest%255Flab.helper/actions/answer`. Sent as-is, the `%5F` is read as an underscore, which names a different seat, and the seat is not found. `acme.support.ada` has nothing to escape and works as written. `@flow-state-dev/client` and the React hooks encode the address for you.
+
 The organization is part of the address because two organizations can both want a seat called `support.ada`, and an app serves one flat set of addresses. It identifies the seat. It does not authorize anything: who may call it is decided by the principal on the request. The body does not name the organization.
 
 ## Who can reach a hired seat
