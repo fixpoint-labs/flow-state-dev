@@ -139,7 +139,7 @@ Mailboxes are opened at boot, and opening is idempotent. Re-opening is not a mig
 
 A specialist's answer does not wake the other specialists.
 
-Which organization the mailbox sessions land in comes from the caller's verified identity, not from anything a file declares. If you add authentication, open them as a caller whose identity already carries the organization you want: [which organization a mailbox runs in](../docs/docs/workforce/channels.md#which-organization-a-channel-runs-in).
+Which organization the mailbox sessions land in comes from the caller's verified identity, not from anything a file declares. If you add authentication, open them as a caller whose identity already carries the organization you want: [which organization a mailbox runs in](../docs/docs/workforce/mailboxes.md#which-organization-a-mailbox-runs-in).
 
 ### One organization
 

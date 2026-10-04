@@ -57,7 +57,7 @@ const GEN_MODULE = join(WORKFORCE, "workforce.gen.ts");
 const HIRE = join(WORKFORCE, "hire.ts");
 const CONFIG = join(KITCHEN_SINK, "fsdev.config.ts");
 const MAILBOXES = join(WORKFORCE, "teams", "support", "mailboxes");
-const PUBLISHED = repoPath("apps", "docs", "docs", "workforce", "channels.md");
+const PUBLISHED = repoPath("apps", "docs", "docs", "workforce", "mailboxes.md");
 /** The fixture host's tree, which `mailbox-boards/it-runs-a-row-a-file-declared-board-holds` also runs. */
 const FIXTURE = repoPath("goals", "mailbox-boards", "it-runs-a-row-a-file-declared-board-holds", "fixtures", "workforce");
 

@@ -33,7 +33,7 @@ Read before the boot, so a tree that disagrees with itself costs no runtime. If 
 - **V10 — the vocabulary.** No `description:`, charter, board name or mailbox id under `workforce/` uses a word from the *is not* column of FIX-1476's vocabulary table. Scoped to those strings; it does not reach a component label and does not claim to. One proper noun is read past, below.
 - **V2 — no hand-written kind name in the wiring.** `hire.ts` spreads `...mailboxKinds`, and neither it nor `fsdev.config.ts` writes a generated kind's name as a string. The app carries no mailbox kind of its own today; the spread is what lets one it adds reach the binder with no edit to either file.
 - **V6 — the minted id is in no file.** No file under `workforce/` contains `support.help.escalations`.
-- **V12 — the published page states both costs.** `apps/docs/docs/workforce/channels.md` says a custom kind cannot hold a board, and that re-opening is not a migration.
+- **V12 — the published page states both costs.** `apps/docs/docs/workforce/mailboxes.md` says a custom kind cannot hold a board, and that re-opening is not a migration.
 - **V11b — the open is an awaited module-scope statement.** Structural; see *Why V11 is two legs*.
 
 Then the boot, driven by `harness.mts` inside the app, with `KITCHEN_SINK_TEST_MODE=1` so the app's own goal controls can reach it:

@@ -30,7 +30,7 @@
   <rect x="0" y="0" width="880" height="520" rx="16" class="bg"/>
 
   <text x="28" y="36" class="title">A project groups work and gives its people one private room</text>
-  <text x="28" y="58" class="muted">Organization-level data — not a file, not a CHANNEL.md</text>
+  <text x="28" y="58" class="muted">Organization-level data — not a file, not a MAILBOX.md</text>
 
   <rect x="40" y="90" width="240" height="140" rx="12" class="org"/>
   <text x="56" y="122" class="h">Organization</text>

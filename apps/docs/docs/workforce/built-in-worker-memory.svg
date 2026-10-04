@@ -33,7 +33,7 @@
   <!-- Conversation -->
   <rect x="28" y="84" width="272" height="250" rx="14" class="wall-sess"/>
   <text x="44" y="108" class="h">One conversation</text>
-  <text x="44" y="126" class="muted">A session: a direct chat, or one channel</text>
+  <text x="44" y="126" class="muted">A session: a direct chat, or one mailbox</text>
   <text x="44" y="158" class="p">The recent turns</text>
   <text x="44" y="176" class="muted">Up to the history window, 50 by default.</text>
   <text x="44" y="192" class="muted">Older turns fall out. Nothing summarizes.</text>
