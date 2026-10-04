@@ -129,6 +129,10 @@ worker they added never hears anything, which is the "hired and stopped" bug aga
    including one that came from a file. The file is the starting list, not a lock.** If
    wrong: a `MAILBOX.md` stops being the whole truth about who is on it, and a person reading
    the file can be surprised.
+3. **[D3](DECISIONS.md#d3) · A `MAILBOX.md` that arrives later with the id of a mailbox the
+   coordinator set up is treated like an edited file and reported. The app still starts.** If
+   wrong: a deploy that adds that file doesn't get its members on that mailbox, and someone has
+   to read the start-up report to notice.
 
 **Open: none.** D1 is the one to weigh. Reasoning and what lost: [DECISIONS.md](DECISIONS.md).
 The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).

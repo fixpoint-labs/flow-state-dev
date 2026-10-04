@@ -66,7 +66,7 @@ tools: [hire, setUpMailbox, subscribeWorkers, unsubscribeWorkers, fileTask]
 |---|---|
 | `setUpMailbox` | Opens `<team>.<name>` with a description, a charter and members. It gets one task list, `tasks`, worked by those members |
 | `subscribeWorkers` | Adds workers to any mailbox, including one from a file. With `worksTaskList: true` they also work its task list |
-| `unsubscribeWorkers` | Takes workers off. Their open tasks stay on the list |
+| `unsubscribeWorkers` | Takes workers off the mailbox and off its task lists, a list the file's `workedBy` names them on included. Their open tasks stay on the list |
 | `fileTask` | Files a task on a mailbox's task list |
 
 A worker hired a moment ago can be added straight away, and the next post wakes it. To make the
@@ -82,7 +82,8 @@ What these mailboxes are, and aren't:
   for good, write its `MAILBOX.md`.
 - **A file is a starting list.** Adding a worker to `eng.feature` changes that mailbox, not
   `teams/eng/mailboxes/feature/MAILBOX.md`. A later `MAILBOX.md` with the id of a mailbox a
-  coordinator set up is refused at start, by name.
+  coordinator set up is treated like an edit to an open mailbox: its members and tasks stay,
+  the file's task lists are added, and start-up names the clash.
 - **No routing and no `boardActions`.** Both are set when the app starts. A coordinator posts and
   files without them.
 - **No delete or rename.** An emptied mailbox stays open.

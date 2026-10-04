@@ -2,7 +2,7 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-Two decisions are the sign-off surface. Everything else here is context for them.
+Three decisions are the sign-off surface. Everything else here is context for them.
 
 ## The tree
 
@@ -12,6 +12,9 @@ flowchart TD
   D1 -.->|"rejected"| X1["write a MAILBOX.md<br/>a deploy per mailbox, and no file system in a hosted app"]
   I --> D2["D2 · add and remove workers on any mailbox<br/>the file is the starting list"]
   D2 -.->|"rejected"| X2["only on mailboxes set up at run time<br/>a hire can't join the team's own mailbox"]
+  I --> D3["D3 · a file that later takes a run-time id<br/>is treated like an edited file, and reported"]
+  D3 -.->|"rejected"| X3["refuse to start<br/>one org's data takes the app down"]
+  D3 -.->|"rejected"| X4["a reserved shape for run-time ids<br/>names no person or agent would choose"]
 ```
 
 Solid edges are what you're signing. Dashed edges lost, and the label says why.
@@ -49,12 +52,30 @@ It comes down to a hire who must join `eng.feature`: the narrow rule forces a se
 **What would change my mind:** a team that needs a file mailbox's members fixed for audit. A
 per-file `lockMembers: true` would answer it without changing the default.
 
+<a name="d3"></a>
+## D3 · A `MAILBOX.md` that arrives later with the id of a mailbox the coordinator set up is treated like an edited file, and reported
+
+| | |
+|---|---|
+| **Instead of** | Refusing to start (the draft's rule), or giving run-time ids a shape no file can take |
+| **Because** | A refusal lets one org's run-time data stop the app for everyone it serves, until someone renames a file. Treating it as an edit is what the binder already does: a bound mailbox at an id is left as it is, so its members, charter and tasks stay, and the file's task lists, which are built onto the kind at start, are added. The only new thing is a start-up report naming the clash. A reserved shape avoids the clash but puts a marker into every name a person or agent reads and types |
+| **Locks in** | A deploy that adds a file with a taken id doesn't get the file's members on that mailbox. The report says so; the coordinator can subscribe them, or a person renames the file |
+
+![D3, a file that later takes a run-time id. Chosen: treat it like an edited file, and report it. Instead of: refuse to start. It comes down to one org's data meeting a deploy: chosen starts and names the clash, refusing keeps the app down until someone renames the file. The price is that the file's members don't apply to that mailbox. The mailbox's tasks are kept either way. Locks in: a name clash is a warning, not an outage. Flips if: a file's members must always apply; then run-time ids get a shape no file can take.](figures/d3-name-clash.svg)
+
+It comes down to one org's data meeting a deploy: an outage is the wrong price for a name clash.
+
+**What would change my mind:** a team that needs a file's members to always apply, for audit.
+Then run-time ids get a reserved shape, and the clash can't happen.
+
 ## Decided, not asked
 
 - **The tools are named grants.** `setUpMailbox`, `subscribeWorkers`, `unsubscribeWorkers`, `fileTask` are catalog tools from one capability a host installs on a kind; a worker reaches them only by naming them in `tools:`, the way `hire` works. Any coordinator in any app, not a DevTeam special case.
 - **Opening goes through the host.** The coordinator's turn runs as the person, and a mailbox belongs to the app. The host hands the capability an opener, as it hands `hire` a `register`. No core or engine change.
 - **The wake asks the host who can be reached, on every post.** Member names still come from the mailbox; where to deliver comes from the host's live worker list, never from stored data (BP-031). This also fixes hires reloaded at restart, which today are never woken.
 - **A run-time mailbox has exactly one task list, `tasks`, and records which workers work it.** Subscribing does not make a member a worker of the list: a member can be a reviewer or a person. `setUpMailbox` defaults the list's workers to its initial members.
+- **Who works a list is one read for every mailbox:** the file's `workedBy` (FIX-1777's field), plus workers subscribed with `worksTaskList`, minus workers unsubscribed since. The removal is recorded on the mailbox, so a file can't keep a removed worker on its list. FIX-1777 and FIX-1774 both call this read, so it lives here.
+- **The mailbox's session is the one record of members.** Its inventory row says it exists; `discover` reads members from the session, so a missed row write can't show a stale list.
 - **A worker name must exist in the org** (declared or hired) or the call is refused by name. This closes the "no member name resolution" gap for these tools only.
 - **Ids follow the file convention**, `<team>.<name>`, and the team must exist. An id already taken, by a file or by the coordinator, is refused.
 - **Setting up does not attach to a project.** `setWorkstreams` already does that, and accepts the mailbox once its inventory row exists.
@@ -70,6 +91,7 @@ per-file `lockMembers: true` would answer it without changing the default.
 | Restart the app after a change so the boot lists pick it up | Turns every hire into downtime, and the reloaded hires aren't woken even then |
 | A board per mailbox registered at run time | Task lists are resources fixed when the kind is built. One declared collection for all run-time lists, read by prefix, needs no re-registration |
 | Hand the work over by posting it | The rule is to file it on the list, which is what Jake asked for |
+| Drop the who-works-a-list read and leave it to FIX-1777 | FIX-1777's wake and FIX-1774's view both need it, and only this issue records the run-time side. Two copies would drift |
 
 ## Settled
 
@@ -79,5 +101,7 @@ per-file `lockMembers: true` would answer it without changing the default.
 
 - **Draft** — framed as two start-up lists (mailboxes with their task lists, and workers a post can wake) that must become run-time and durable. The mailbox's own session carries members, its task list and who works it; the wake asks the host per post. Two stacked PRs.
 - **Scope widened before publishing** — Jake (2026-10-04) asked for the coordinator's whole job, not one flow. D2 moved from run-time mailboxes only to any mailbox, and removing a worker came in.
+
+- **Review round 1** — two findings moved the design. A refusal at start became D3 (treat a clashing file like an edit, and report it). Who works a list now follows the file's `workedBy` with recorded removals, so unsubscribing a worker takes it off a file's list too. The rest went to the plan: one worker source per post, members read from the session.
 
 **Open: none.**
