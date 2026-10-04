@@ -25,7 +25,7 @@ All of these come from `@flow-state-dev/workforce`:
 | --- | --- |
 | `defineHiredRosterCollection()` | Declares the stored roster: an organization-scoped resource collection at `workforce/roster/*`, one row per hired seat. Takes no options. |
 | `defineHiredRosterPrivateCollection()` | Declares where a [user-owned seat](#hiring-a-seat-only-one-member-can-reach)'s row is written, at `workforce/roster/~<user>/<seatId>`. Server-side only, and a block that has it in `resources` reaches only the calling user's rows. |
-| `seatAddress(orgId, seatId, ownerUserId?)` | The address a hired seat answers on. Org-visible seats are `<orgId>.<seatId>`. A user-owned seat is `<orgId>.~<user>.<seatId>`, with the user escaped, so two people can hire the same seat id. Throws when the organization id is not a single address segment, or when the seat id starts with `~`. |
+| `seatAddress(orgId, seatId, ownerUserId?)` | The address a hired seat answers on. Org-visible seats are `<orgId>.<seatId>`. A user-owned seat is `<orgId>.~<user>.<seatId>`, so two people can hire the same seat id. The organization id and the user are percent-escaped, as [The organization has to come from the credential](#the-organization-has-to-come-from-the-credential) spells out. Throws when the organization id is empty, or when the seat id is empty or starts with `~`. |
 | `hireWorkforce(records, { kinds })` | Turns records into configured flow copies, one per record. The same call the file-declared roster goes through. |
 | `reloadHiredSeats({ stores, orgIds, kinds })` | Reads every stored row back at the next start and hires what it names. Returns `{ seats, problems, byOrg }`. It registers nothing. |
 | `createSeatHireBlocks(options)` | Returns `{ hire, fire, brokenSeats, rehire }`: two handlers that run the whole hire and fire sequence, and two that list and [repair a seat whose kind is gone](#repairing-a-seat-whose-kind-is-gone). Mount them as a flow's actions. See [the ready-made handlers](#the-ready-made-hire-and-fire-handlers). |
@@ -80,7 +80,7 @@ Give each organization its own token. A token written against two organizations 
 
 Register the flow only when a usable credential is configured. Then a deployment that has none has no hire route at all, and a call to `/api/flows/workforce-admin/actions/hire` comes back `404 Unknown flow "workforce-admin"` rather than reaching a check that can go wrong.
 
-The organization's id must be a single address segment: lowercase letters, digits and single hyphens, up to 64 characters, and no dots. A dot would make the address ambiguous, since it is also what joins the organization to the seat.
+`seatAddress` percent-escapes the organization id and the user in a seat's address: lowercase letters, digits and `-` stay, everything else is encoded. `acme` gives `acme.helper`, and `org_pentest_lab` becomes `org%5Fpentest%5Flab.helper`. Build and read addresses with `seatAddress` and `splitSeatAddress(orgId, address)`, which takes the seat id back out, rather than assembling `${orgId}.` prefixes by hand.
 
 ### Reaching the `FlowState`
 
@@ -184,13 +184,7 @@ export default workforceAdmin();
 
 The seats these handlers and the `seat-hire` tools hire are always org-visible: pinned to the organization and no user, so any caller the seat's resolver places in that organization can call one, and its roster row, `instructions` included, is readable by a browser in that organization. For a seat only one member can reach, write the hire yourself as in [Hiring a seat only one member can reach](#hiring-a-seat-only-one-member-can-reach).
 
-Both handlers take the organization from the principal your `resolvePrincipal` returns for the session, as [above](#the-organization-has-to-come-from-the-credential). A session whose principal names no organization, which includes every session on a flow with no `resolvePrincipal`, belongs to the framework's default organization. That id can't start a seat address, so every hire there is refused before anything is written:
-
-```text
-Organization id "__fsd_default_org__" must be lowercase letters, digits, and single hyphens (not at the start or end) — it becomes the leading segment of a hired seat's address, which is joined with a "."
-```
-
-Mount these handlers only on a flow whose resolver names a real organization.
+Both handlers take the organization from the principal your `resolvePrincipal` returns for the session, as [The organization has to come from the credential](#the-organization-has-to-come-from-the-credential) describes. A session whose principal names no organization, which includes every session on a flow with no `resolvePrincipal`, belongs to the framework's default organization, `__fsd_default_org__`. A hire there succeeds. Its seat answers on `%5F%5Ffsd%5Fdefault%5Forg%5F%5F.<seatId>` and is reloaded at the next start like any other. A seat hired this way is pinned to the default organization. Without a seat-level resolver that names that organization, a caller whose principal doesn't match the pin gets `404 Unknown flow`, as for any hired seat. Install the resolver on the seat the way `registerSeat` does in [Reaching the `FlowState`](#reaching-the-flowstate).
 
 ### Hiring
 
@@ -277,7 +271,8 @@ A caller the seat's resolver refuses, such as a request with no credential, gets
 `reloadHiredSeats` reads each organization's stored rows and hires what they name. It registers nothing, so you loop over what comes back:
 
 ```ts
-// Wherever you build the FlowState, after createFlowState and useFlowState.
+// Wherever you build the FlowState, after createFlowState and useFlowState
+// (and useRegistry, if you pass kindAt and instanceAt).
 const runtime = await flowstate.getRuntime();
 
 // Your policy. This one reloads every organization the deployment has a record for.

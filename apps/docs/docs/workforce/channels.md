@@ -816,7 +816,23 @@ const { resources } = splitResourceModules(resourceModules);
 const instances = channelInstances(channels, { kinds, resources });
 ```
 
+An app that doesn't run `fsdev gen` imports the file's default export and passes it under the collection's name, `projects`, the basename of `projects.ts`:
+
+```ts
+import projectsCollection from "./workforce/org/resources/projects";
+
+// channels and kinds as above
+const instances = channelInstances(channels, {
+  kinds,
+  resources: { projects: projectsCollection },
+});
+```
+
+The other arguments are as in the snippet above. Any other key is refused with `names collection "projects", which is not in the org's resources passed to channelInstances`.
+
 Rooms run on the built-in channel kind, and that kind has to be able to wake seats, so build it with a notify block, as in `kinds: { channel: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }`. Left as the plain built-in, a template that names seats is refused, because no post would wake them.
+
+`wakeMemberSeats(seats)` wakes a member whose seat is in the `seats` list and whose kind hears channel posts, as the built-in `agent` kind does. A notify block you write yourself wakes only the members its own code wakes; `channelInstances` doesn't check that it reaches the template's seats. A seat hired after you built `wakeMemberSeats(seats)` isn't in its list and isn't woken.
 
 If your app calls `channelInstances` more than once, say once per flow, only one call needs `resources`. The first call that finds the template keeps it for the whole process, and every other call builds its channel kind with the same seats and charter. A call that finds a different template is refused.
 

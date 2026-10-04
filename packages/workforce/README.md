@@ -1485,8 +1485,9 @@ for (const seat of seats) {
 ```
 
 A reloaded seat is addressed `<orgId>.<seatId>`, so two organizations can both hold a seat called
-`support.ada`. The organization must be a single address segment — lowercase letters, digits and
-single hyphens, up to 64 characters, and no dots, since a dot is what joins the two halves.
+`support.ada`. The organization id is percent-escaped in the address: lowercase letters, digits and
+`-` stay, everything else is encoded, so `org_pentest_lab` becomes `org%5Fpentest%5Flab.<seatId>`. Use `seatAddress` and `splitSeatAddress` instead of building
+`${orgId}.` prefixes by hand.
 
 Register the seats yourself, one at a time, with each seat's `ownerPin`, and add any refusal to
 `problems`. The other seats still start.
@@ -1713,9 +1714,10 @@ const workforceAdmin = defineFlow({
 ```
 
 The organization comes from the session's principal; an `orgId` in the input is ignored. A
-session whose principal names no organization belongs to the default organization, whose id
-cannot start a seat address, so a hire there is refused before anything is written. Configure a
-`resolvePrincipal` that returns an `orgId` on the flow that mounts these.
+session whose principal names no organization belongs to the default organization, and a hire
+there lands under `%5F%5Ffsd%5Fdefault%5Forg%5F%5F.<seatId>` and reloads at the next start like any
+other. Configure a `resolvePrincipal` that returns an `orgId` on the flow that mounts these to hire
+into a real organization.
 
 ### Posting to a channel from a seat
 
@@ -2182,7 +2184,7 @@ before fire removed inventory rows is left out that way.
 | `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions, owningOrgId, ownerUserId, pendingRepair, incarnation }`. `owningOrgId`, `ownerUserId`, `pendingRepair` (set only while a `rehire` is unfinished) and `incarnation` (the hire or re-hire that wrote it) are nullable and default to `null`. `pendingRepair` is server-only; `incarnation` is published to browsers by `defineHiredRosterCollection`, beside `seatId`, `flow` and `instructions`, so a browser can join a roster row to its inventory row. The envelope is closed when parsed; the roster collections store it with unknown keys kept, so a key a newer version wrote survives this version's rewrite of the row (a re-hire). `settings` is a passthrough bag belonging to the kind's own schema. |
 | `HIRED_ROSTER_PREFIX` | The roster's storage prefix, `"workforce/roster/"`. Moving it strands every roster already written. |
 | `HIRED_ROSTER_BROWSER_PATTERN` / `HIRED_ROSTER_PRIVATE_PATTERN` | The two roster collections' patterns, `"workforce/roster/*"` and `"workforce/roster/[owner]/[seat]"`. Like the prefix, they spell stored keys. |
-| `seatAddress(orgId, seatId, ownerUserId?)` / `splitSeatAddress(orgId, address)` | Join an organization and a seat id into the address a hired seat answers on, and take the seat id back out. Org-visible is `<org>.<seatId>`. User-owned is `<org>.~<user>.<seatId>`, with the user escaped. The pin is the hire row, not the address. Throws when the organization is not one legal address segment, or when the seat id starts with `~`. |
+| `seatAddress(orgId, seatId, ownerUserId?)` / `splitSeatAddress(orgId, address)` | Join an organization and a seat id into the address a hired seat answers on, and take the seat id back out. Org-visible is `<org>.<seatId>`. User-owned is `<org>.~<user>.<seatId>`, with the user escaped. The organization is percent-escaped like the user (`seatAddress("org_pentest_lab", "helper")` is `org%5Fpentest%5Flab.helper`). The pin is the hire row, not the address. `seatAddress` throws when the organization id is empty, or when the seat id is empty or starts with `~`. `splitSeatAddress` returns `undefined` when the address isn't under that organization. Both are also exported from `@flow-state-dev/workforce/browser`. |
 | `newIncarnation()` / `tagIncarnation(seat, incarnation)` | For a host that writes roster rows itself rather than through `createSeatHireCapability`. Stamp each hire's row with `toHiredSeatRow({ ..., incarnation: newIncarnation() })` and tag the seat minted from it with the same id. A fire then removes only the inventory row carrying that id, so a replacement hired at the same address keeps its own. A row written with no incarnation can't be told from a replacement written the same way. |
 | `toHiredSeatRow(input)` / `parseHiredSeatRow(value)` | Build a row from what a hire supplied, and read a stored value back into one. `parseHiredSeatRow` returns `{ row }` or `{ problem }` — it never throws and never rewrites the stored value. |
 | `hiredRosterStorageKey(row)` | `seatId` for an org-visible row, `~<escaped user>/<seatId>` for a user-owned one. The user id is escaped, so a `/` in it stays one segment. |

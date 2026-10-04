@@ -207,9 +207,9 @@ export function hiredSeatManifest(
  * or the one reason it cannot be.
  *
  * The per-row walk every reader of stored rows needs: parse, apply the
- * owning-org fence, and build the address. The address throws when the org or
- * the seat id cannot be one (a row under `DEFAULT_ORG_ID`, a seat id starting
- * with `~`); here that throw is one row's reason, so a caller walking a roster
+ * owning-org fence, and build the address. The address throws when the seat id
+ * cannot be one (empty, or starting with `~`); here that throw is one row's
+ * reason, so a caller walking a roster
  * skips it and keeps the rest. `reloadHiredSeats` and the seats manifest
  * source both read through this, so they agree on which rows count.
  *
