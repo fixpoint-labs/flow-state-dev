@@ -428,7 +428,7 @@ const CHILDREN: Child[] = [
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab") },
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "static-names", must: /\[multi-seat-collab\] TEAMS equals the store's seats/, allowed: /\[multi-seat-collab\] TEAMS equals the store's seats/ },
   { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "optimistic-post", must: /the post is in the stored transcript/, allowed: /the post is in the stored transcript/ },
-  { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "unanswerable-asks", must: /an answer from Inbox lands in the store/, allowed: /an answer from Inbox lands in the store/ },
+  { id: "P3.2 FIX-1662 it-opens-a-lab", run: SM("it-opens-a-lab"), control: "unanswerable-asks", must: /an answer from the Stream lands in the store/, allowed: /an answer from the Stream lands in the store/ },
   { id: "P3.2 FIX-1664 it-shows-and-stops-a-task-run", run: SM("it-shows-and-stops-a-task-run") },
   { id: "P3.2 FIX-1664 it-shows-and-stops-a-task-run", run: SM("it-shows-and-stops-a-task-run"), control: "worker-session", must: /items equal the run session's/, allowed: /items equal the run session's|\blive\b/ },
   { id: "P3.2 FIX-1664 it-shows-and-stops-a-task-run", run: SM("it-shows-and-stops-a-task-run"), control: "optimistic-interrupt", must: /the request reads aborted first/, allowed: /the request reads aborted first/ },
