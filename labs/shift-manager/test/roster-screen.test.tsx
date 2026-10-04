@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
- * Roster, the sidebar and the workstream panel, drawn over one fixed snapshot
- * (V3 to V5; BR-6 to BR-20). The reader is swapped for one that hands back
+ * Roster, the sidebar, the workstream panel and Tasks, drawn over one fixed
+ * snapshot (V3 to V5; BR-6 to BR-20). The reader is swapped for one that hands back
  * the fixture, so every screen draws exactly what the snapshot holds.
  */
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -189,6 +189,80 @@ describe("Roster (V3)", () => {
     await screen.findByTestId("roster");
     expect(screen.queryAllByTestId("partial-mark")).toHaveLength(0);
     expect(screen.queryByTestId("roster-asks-failure")).toBeNull();
+  });
+});
+
+describe("Roster in design v2's form", () => {
+  it("heads its columns as v2 does and says what each group's status means", async () => {
+    await open("/roster");
+    const page = await screen.findByTestId("roster");
+    expect(within(page).getByTestId("roster-columns").textContent).toBe("WORKERSLOTSHOLDINGON CALL FOR");
+    expect(within(page).getAllByTestId("roster-group").map((g) => [g.getAttribute("data-status"), within(g).getByTestId("roster-group-sub").textContent])).toEqual([
+      ["on shift", "holding live work"],
+      ["on call", "subscribed and waiting · wakes on a trigger"],
+      ["off shift", "nothing assigned, nothing subscribed"],
+    ]);
+  });
+
+  it("tags each task and ask waiting on you WAITING, with what on one line and when on the next", async () => {
+    await open("/roster");
+    const workers = await screen.findAllByTestId("roster-worker");
+    const waits = (seatId: string) =>
+      within(workers.find((w) => w.getAttribute("data-seat-id") === seatId)!)
+        .getAllByTestId("roster-wait")
+        .map((w) => [within(w).getByTestId("roster-wait-tag").textContent, within(w).getByTestId("roster-wait-what").textContent, within(w).getByTestId("roster-wait-when").textContent]);
+    expect(waits("eng.coder")).toEqual([["WAITING", "you · E-2", "E-2 title"]]);
+    expect(waits("ops.asker")).toEqual([["WAITING", "you · approval", "Approve: ship it"]]);
+  });
+});
+
+describe("Tasks (BR-14)", () => {
+  const shown = () => attrs(screen.getAllByTestId("task-row"), "data-task-id");
+
+  it("hides queued rows until the toggle is on, and the toggle says how many it hides", async () => {
+    await open("/tasks");
+    await screen.findByTestId("tasks-table");
+    // O-1 is pending: the one queued row. Everything else open is in flight.
+    expect(shown()).toEqual(["E-1", "E-2", "E-3"]);
+    const toggle = screen.getByTestId("tasks-queued-toggle");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(within(toggle).getByTestId("tasks-queued-count").textContent).toBe("1");
+    act(() => fireEvent.click(toggle));
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(shown()).toEqual(["O-1", "E-1", "E-2", "E-3"]);
+    act(() => fireEvent.click(toggle));
+    expect(shown()).toEqual(["E-1", "E-2", "E-3"]);
+  });
+
+  it("with nothing queued the toggle says 0 and hides nothing", async () => {
+    const snapshot = lab();
+    const ops = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["ops.desk"] : undefined;
+    if (ops?.ok === true) ops.value.rows = ops.value.rows.map((r) => ({ ...r, status: "in_progress" }));
+    await open("/tasks", snapshot);
+    await screen.findByTestId("tasks-table");
+    expect(screen.getByTestId("tasks-queued-count").textContent).toBe("0");
+    expect(shown()).toEqual(["E-1", "O-1", "E-2", "E-3"]);
+  });
+
+  it("draws v2's columns in v2's order, each row's id, and TIME from the row's start for a running row only", async () => {
+    const snapshot = lab();
+    const eng = snapshot.refused === undefined && snapshot.unreachable === undefined ? snapshot.boards["eng.desk"] : undefined;
+    if (eng?.ok === true) eng.value.rows = eng.value.rows.map((r) => ({ ...r, startedAt: Date.now() - 400_000 }));
+    await open("/tasks", snapshot);
+    const table = await screen.findByTestId("tasks-table");
+    expect(within(table).getAllByRole("columnheader").slice(0, 8).map((th) => th.textContent)).toEqual(["", "ID", "TASK", "NOW", "STREAM", "WORKER", "TIME", "COST"]);
+    const cell = (id: string, testId: string) => within(screen.getAllByTestId("task-row").find((r) => r.getAttribute("data-task-id") === id)!).getByTestId(testId).textContent;
+    expect(cell("E-1", "task-row-id")).toBe("E-1");
+    expect(cell("E-1", "task-row-stream")).toBe("#eng.desk");
+    expect(cell("E-1", "task-row-worker")).toBe("coder");
+    expect(cell("E-1", "task-row-time")).toMatch(/^6m 4\ds$/);
+    // E-2 is parked: it waits on you, so its clock isn't running.
+    expect(cell("E-2", "task-row-time")).toBe("—");
+  });
+
+  it("sums up what is in flight, what waits on you, the shift and the streams", async () => {
+    await open("/tasks");
+    expect((await screen.findByTestId("tasks-summary")).textContent).toBe("3 in flight · 1 needs you · 1 on shift · 2 on call · 1 stream");
   });
 });
 

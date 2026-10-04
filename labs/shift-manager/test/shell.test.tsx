@@ -148,7 +148,8 @@ describe("empty states (BR-14, BR-28)", () => {
 
   it("Inbox and Tasks with nothing say so in a sentence", async () => {
     await openApp("/inbox");
-    expect((await screen.findByTestId("inbox-empty")).textContent).toMatch(/No seat in this Lab is waiting/);
+    // v2's sentence, with what is still going: nothing runs and nobody is on call in this Lab.
+    expect((await screen.findByTestId("inbox-empty")).textContent).toBe("Nothing needs you. 0 sessions are still running and 0 workers are on call.");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     expect((await screen.findByTestId("tasks-empty")).textContent).toMatch(/No attached board holds a row/);
   });
@@ -261,12 +262,13 @@ describe("the composer's @mentions", () => {
 
 describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
   /** An ask in the asker's session, then Inbox open on it. */
-  async function openOnAsk(options: Parameters<typeof openAskLab>[0] = {}) {
+  async function openOnAsk(options: Parameters<typeof openAskLab>[0] = {}, beforeRender?: () => void) {
     const lab = await serveLab((await openAskLab(options)).flowState);
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     await clients.actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
+    beforeRender?.();
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
     const item = await screen.findByTestId("inbox-item");
     act(() => fireEvent.click(item));
@@ -282,6 +284,9 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
 
   it("shows delivered only once the seat's session holds the line, through its door", async () => {
     const { clients } = await openOnAsk();
+    // The asker asks before doing anything, so its session holds no tool call before the ask.
+    expect((await screen.findByTestId("inbox-from-session-none")).textContent).toBe("No tool call before this ask.");
+    expect(screen.queryAllByTestId("inbox-reply-line")).toHaveLength(0);
     const input = screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
     // Hold the door's request open: nothing may read delivered while it is.
@@ -300,8 +305,33 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     await waitFor(() => expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("delivered"));
     expect(input.value).toBe("");
     expect(await userLines(clients, "s_ops_asker")).toContain("a reply line");
+    // Read back from the session, the line is drawn under the ask as the person's reply.
+    await waitFor(() => expect(screen.getAllByTestId("inbox-reply-line-text").map((el) => el.textContent)).toEqual(["a reply line"]));
+    expect(screen.getByTestId("inbox-reply-line-label").textContent).toMatch(/^You · \d\d:\d\d · sent into s_ops_asker$/);
     // The ask is untouched: a reply isn't an answer.
     expect(screen.getByTestId("inbox-detail").textContent).toMatch(/Approve/);
+  });
+
+  it("says so when the ask's session holds more than one read returns, rather than dropping later replies unseen", async () => {
+    // Every page of the session read says more remain, so the read stops at its cap.
+    await openOnAsk({}, () => {
+      const real = globalThis.fetch;
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+        const url = String(i instanceof Request ? i.url : i);
+        const response = await real(i, init);
+        // Only the whole-session read Inbox's detail makes; the asks read filters by item type.
+        if (!url.includes("/sessions/s_ops_asker/state") || url.includes("item_types")) return response;
+        const body = (await response.json()) as { pagination?: Record<string, unknown> };
+        return Response.json({ ...body, pagination: { ...body.pagination, hasMore: true, nextOffset: 200 } });
+      });
+    });
+    expect((await screen.findByTestId("inbox-session-truncated")).textContent).toMatch(/^More than shown/);
+  });
+
+  it("draws no truncation note when the session's read is whole", async () => {
+    await openOnAsk();
+    await screen.findByTestId("inbox-from-session-none");
+    expect(screen.queryByTestId("inbox-session-truncated")).toBeNull();
   });
 
   it("keeps the draft and shows the seat's own reason when its door refuses", async () => {
