@@ -21,7 +21,7 @@ task, with nobody running the board by hand; a line that files nothing starts no
 | **The real need** | "When a post files a new task, the board runs in the same delivery and the task reaches its worker. A repeated slug files nothing and runs nothing. An unshaped line still files nothing" ([FIX-1777](https://linear.app/fixpoint-labs/issue/FIX-1777)). It unblocks [FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774), where the chief of staff hands coding work over by exactly this post |
 | **Smaller, and rejected** | "The task reaches the board." It already does; that is the bug. The goal is graded on the run, not the row |
 | **Where the boundary sits** | "Starts" means the board hands the task to `eng.coder` and its run opens and settles, on whatever harness the Lab runs. A failed attempt waiting for another board run is today's behaviour on every door, and stays so ([follow-up](PLAN.md#follow-ups)) |
-| **Bigger, and not this issue's** | Any mailbox board in Workforce starting the worker that drains it when a task is filed through the mailbox's own `fileTask` ([follow-up](PLAN.md#follow-ups)). The chief of staff routing coding work ([FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774)) |
+| **Bigger, and open** | Any mailbox board in Workforce starting the worker that drains it when a task is filed through the mailbox's own `fileTask`: [O1](DECISIONS.md#o1), put to Jake. The chief of staff routing coding work ([FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774)) |
 | **Not done if** | The posted task is still *pending* until something else runs the board · a repeat post starts a second run, or starts some other waiting task · an unshaped line files or runs anything · the Inbox ask changes |
 
 ```mermaid
@@ -96,7 +96,8 @@ workstream ends in the coder's run; anything else posted starts nothing.
 1. **[D1](DECISIONS.md#d1) · A shaped post starts the coding run at once, with no approval
    first.** If wrong: a stray or mistaken post spends a paid run before anyone sees it.
 
-**Open: none.** The calls made without asking, and what was dropped, are in
+**Open: [O1](DECISIONS.md#o1)** · does a task filed through a mailbox's own `fileTask` also start
+the worker that drains that board, or does the coordinator always post? Put to Jake. The calls made without asking, and what was dropped, are in
 [DECISIONS.md](DECISIONS.md). The cases: [BUSINESS-RULES.md](BUSINESS-RULES.md).
 
 Enhancement · DevTeam Lab (`goals/devforce-lab/lab/`) + Shift Manager docs · small · 1 PR · epic

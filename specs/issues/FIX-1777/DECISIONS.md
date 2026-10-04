@@ -14,7 +14,7 @@ flowchart TD
   I --> E1["run the board only for a row the post just filed"]
   I --> E2["the change lives in the Lab's EM, not in Workforce"]
   I --> E3["tighten the board check, no new goal folder"]
-  E2 -.->|"dropped"| X2["mailbox fileTask starts the board's worker<br/>the mailbox kind does not know who drains a board"]
+  I --> O1["O1 · open · does fileTask also start the board's worker"]
 ```
 
 Solid edges are this spec's calls. Dashed edges lost, and the label says why.
@@ -54,11 +54,6 @@ It comes down to whether a hand-off finishes in one turn: a card would stop it a
 
 ## Considered and dropped
 
-- **Workforce's mailbox `fileTask` starts the board's worker.** The general version of this issue.
-  But the mailbox kind does not know which worker drains a board: that is the worker flow's own
-  board declaration. Teaching it would add a concept to Workforce for a caller nobody uses yet.
-  A [follow-up](PLAN.md#follow-ups), named so [FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774)
-  does not route through `fileTask` expecting a run.
 - **Run the board on every shaped post.** Would also restart a stuck *pending* row on a repeat
   post, but breaks the issue's "a repeated slug runs nothing" and starts unrelated waiting rows.
 - **A periodic board run.** Starts posted work late, and costs a timer for a Lab that is
@@ -66,7 +61,16 @@ It comes down to whether a hand-off finishes in one turn: a card would stop it a
 
 ## Open
 
-None.
+<a name="o1"></a>
+- **O1 · Does a task filed through a mailbox's own `fileTask` start the worker that drains that
+  board too?** Raised by the FSD Architect on [#2753](https://github.com/fixpoint-labs/flow-state-dev/pull/2753):
+  [FIX-1779](https://linear.app/fixpoint-labs/issue/FIX-1779) and FIX-1774's leg d hand work over
+  by filing on a mailbox created at run time, which has no EM post door, so with this spec as
+  drafted that filed task starts nothing and no spec owns the run. (a) Keep this change in the
+  Lab; the coordinator always posts on a workstream with a door like this one, and FIX-1779 and
+  leg d change to match. (b) Also do the general version here: a task filed on a mailbox's board,
+  by a post or by `fileTask`, starts the worker that drains that board, found from the hired
+  worker's own board declaration. Put to Jake; this spec does not settle it.
 
 <a name="settled"></a>
 ## Settled

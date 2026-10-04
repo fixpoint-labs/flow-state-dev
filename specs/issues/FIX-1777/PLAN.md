@@ -83,9 +83,7 @@ None of its own. The premises rest on the FIX-1774 POC, findings 3 and 4
 
 ## Follow-ups
 
-- **Workforce's `fileTask` on a mailbox board starts nothing.** A row filed through a mailbox's own
-  `fileTask` waits for whichever worker drains that board. Making it start that worker needs the
-  mailbox to know who drains its board. File it if a caller needs it; FIX-1774 posts instead.
+- **Workforce's `fileTask` on a mailbox board starts nothing.** Open as [O1](DECISIONS.md#o1); if Jake picks (b), it joins this issue as a second PR stacked on this one.
 - **A failed attempt waits for the next board run, on every door.** Nothing retries it on its own.
   Worth an issue once real-harness posts are common.
 

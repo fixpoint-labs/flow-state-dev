@@ -33,8 +33,8 @@
 
 - The feature workstream's post door starting the run it files (BR-1 to BR-9).
 - Not owned: the chief of staff posting coding work ([FIX-1774](https://linear.app/fixpoint-labs/issue/FIX-1774));
-  Workforce's `fileTask` starting a board's worker, and failed attempts retrying on their own
-  ([follow-ups](PLAN.md#follow-ups)).
+  failed attempts retrying on their own ([follow-ups](PLAN.md#follow-ups)). Workforce's `fileTask`
+  starting a board's worker is open ([O1](DECISIONS.md#o1)).
 
 ## Acceptance
 
