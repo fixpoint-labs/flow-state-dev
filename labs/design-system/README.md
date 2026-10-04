@@ -17,7 +17,7 @@ It also sets two values no FSD token covers: `--sidebar`, the app's navigation c
 `--inspector`, its right-hand panel. Both are a step darker than the page. An app that doesn't
 use them can ignore them.
 
-Yellow (`attention`) means only that a person must act, and corners are square.
+Yellow (`attention`) means only that a person must act. Corners are square.
 
 Fonts come with it: Space Grotesk for the interface and headings, IBM Plex Mono for labels
 and ids. The stylesheet imports their Latin faces from the `@fontsource` packages, so your bundler

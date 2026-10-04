@@ -71,7 +71,7 @@ spells its sandbox its own way. None of it reaches the manager.
 
 **What the manager never does.** It does not read anything vendor-specific off the handle, and it does not tell the harness what model to use, what tools to allow, or how to sandbox itself. Those are yours, written inside the factory.
 
-The three feeds are declared in `@flow-state-dev/core`, not here, which is what lets a harness and a manager agree on one spelling. Any block that takes them and returns a conforming run handle is one this manager can drive. [Coding agents](/docs/tools/coding-agents) is the contract in full, including why a resolver is handed the block's context and never the prompt.
+The three feeds are declared in `@flow-state-dev/core`. Any block that takes them and returns a conforming run handle is one this manager can drive. [Coding agents](/docs/tools/coding-agents) covers the contract in full.
 
 ## What a phase is
 
@@ -142,7 +142,7 @@ What happens depends on where the task is:
 | The task is | Your message |
 |---|---|
 | Running | Stops the attempt and continues the session with your message. The action answers `continuing` |
-| Running, but its harness hasn't opened its coding session yet | Held for up to a minute while the attempt starts. If the attempt picks your message up as it starts, it works on it straight away; if the harness opens its session first, it's handled as Running. Either way the action answers `continuing`. A harness that still hasn't opened one after a minute is refused with *this run is still starting* |
+| Running, but its harness hasn't opened its coding session yet | Held for up to a minute while the attempt starts. If the attempt picks your message up as it starts, it works on it straight away; if the harness opens its session first, it's handled as Running. Either way the action answers `continuing`. A harness that still hasn't opened one after a minute is refused with *this run is still starting*. If the attempt ends without opening one, the message is refused with *this run's harness can't continue with a message* |
 | Running, but it didn't stop in time or couldn't be restarted | Kept, and given to the next attempt. The action answers `kept` |
 | About to start an attempt | Kept, and given to that attempt. The action answers `kept` |
 | Waiting on its own question, or between attempts | Kept, and given to the next attempt. The action answers `kept` |
@@ -166,7 +166,7 @@ Each task gets its own directory, derived from who the run belongs to plus the b
 
 The board can be your own task collection or one a channel holds. A channel's board has an id like `eng.feature.work`; the manager accepts it as is and names the folder and branch with it. An id git can't use in a branch name, such as one ending in `.lock`, is refused when the manager is built. Two boards whose ids differ other than in letter case never end up in the same checkout. On a channel's board, a row's run belongs to the person who started it, and another person's drain doesn't run it. Give the draining board `runOwnerDispatcher()` and that drain leaves the row untouched, without spending one of its attempts.
 
-A **lease** keeps two attempts out of one tree: a lock file beside the checkout, taken before the tree is provisioned and released on every exit. It carries a token unique to the acquisition, so a replacement's lock is never removed by a process the replacement displaced.
+A **lease** keeps two attempts out of one tree: a lock file beside the checkout, taken before the tree is provisioned and released on every exit. A process that was displaced never removes its replacement's lock.
 
 The lease is not a mutex. Checking the lock and removing it are two steps, so a lock whose holder has died is reclaimed after a stale window rather than instantly. The manager refuses a configuration that shortens that window below the longest a live attempt can hold the lock.
 
@@ -178,9 +178,8 @@ How promptly the harness then returns is the harness's own business, and harness
 
 ## Pointing it away from your own code
 
-A coding agent editing the application that dispatched it is the one accident
-worth a guard, so `assertDistinctRepository` refuses a source repository that is
-the host's own. It needs to be told where the host lives, and it does not guess:
+`assertDistinctRepository` refuses a source repository that is the host's own.
+Tell it where the host lives:
 
 ```ts
 assertDistinctRepository("sourceRepo", sourceRepo, process.cwd());
@@ -190,9 +189,7 @@ Pass the directory your code lives in, a list if it spans several, or `[]` if
 this host has no repository of its own, such as a built artifact in a container.
 `[]` is supported; it just has to be stated.
 
-Given a location it cannot resolve to a repository, it refuses. The check only
-refuses on a *match*, so a host it couldn't identify would otherwise pass
-unchecked.
+Given a location it cannot resolve to a repository, it refuses.
 
 ## What stays with you
 
@@ -210,7 +207,8 @@ plus the pieces you need around it: `harnessManager` and its options, `PhaseSpec
 and the run-context types, `WorkspaceConfig`, the construction-time guards
 (`assertDistinctRepository`, `assertBaseRefExists`, `assertCheckoutRootUsable`,
 `assertPositiveInt`), `harnessDrainBudgetMs` and `resolveOwnership` for sizing
-your own shutdown, and the run-record and inbox collections for building a status
+your own shutdown, `runOwnerDispatcher` and `runOwnerOf` for a board kept per
+organization, and the run-record and inbox collections for building a status
 surface.
 
 `@flow-state-dev/harness-manager/checkout` is how a run gets a directory:
@@ -224,7 +222,7 @@ record instead of deriving them again.
 
 - **One host's storage.** Checkouts and their leases are on a local filesystem, so a retry inherits the last attempt's work because that work is on disk. On a multi-host deployment the recorded checkout names nothing on the machine that picks the retry up.
 - **No retention policy.** Run records and question rows grow without bound. Fine for a board driving a few tasks; a long-lived one needs pruning, which is not built.
-- **A harness that can't resume can't be sent a message.** A run on Claude Code's cloud dispatch, which never names a coding session, is refused with *this run's harness can't continue with a message*.
+- **A harness that can't resume can't be sent a message.** A run whose harness never confirms a coding session is refused with *this run's harness can't continue with a message*.
 - **Git worktrees specifically.** The checkout is cut with `git worktree add`. A different strategy, such as a fresh clone per run, can't be plugged in.
 
 ## Related pages

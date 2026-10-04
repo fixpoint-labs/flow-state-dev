@@ -227,9 +227,9 @@ A project has four tabs:
 - **Workstreams** lists the workstreams the project holds.
 - **Brief** is the project's brief.
 
-No project has no room and no brief, and says so.
+**No project** has no room and no brief, and says so.
 
-Every read of the room is a small recorded request on your talk session, so the room reads only at set times: when you open it, when the window gets focus, when you come back to the tab, and after you post. Each of those starts a short run of reads, about a second apart while lines are arriving and further apart as it goes quiet. After about 45 quiet seconds the room stops reading. That is how the seats' answers to your post show up. A room left open and idle doesn't fetch anything new. Other members' lines appear the next time you open the room, focus the window, come back to the tab, or post.
+The room reads only at set times: when you open it, when the window gets focus, when you come back to the tab, and after you post. Each of those starts a short run of reads, about a second apart while lines are arriving and further apart as it goes quiet. After about 45 quiet seconds the room stops reading. That is how the seats' answers to your post show up. A room left open and idle doesn't fetch anything new. Other members' lines appear the next time you open the room, focus the window, come back to the tab, or post.
 
 ## A task
 

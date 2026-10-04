@@ -59,8 +59,7 @@ taskBoard({ collection: work, dispatcher: runOwnerDispatcher(), /* ... */ });
 The manager builds each run's checkout folder and git branch from the board's id, used as is. A
 channel's board id contains dots, which the manager accepts. It refuses, when you build it, an id
 git can't use as a branch name, such as one ending in `.lock`; a channel can't name a board
-`lock`. Two boards whose ids differ other than in letter case never share a checkout. Board ids
-that worked before keep the same folders and branches, so an upgrade moves nobody's work.
+`lock`. Two boards whose ids differ other than in letter case never share a checkout.
 
 The board is kept per organization, so everyone in the organization sees its rows. A row's
 coding run belongs to the person who started it: a drain by anyone else in the organization is
@@ -84,7 +83,7 @@ The manager calls your factory once, with three feeds:
 | `resume` | Which session this attempt continues, or `null` for a fresh one. |
 | `onSession` | Called by the harness when it names its session, so the manager records it. |
 
-They are the harness contract's own signatures, declared in `@flow-state-dev/core`. Each is handed the block's context and nothing else, never the run's prompt: the prompt is set by a caller (or a model calling the harness as a tool), and these three decide where a run writes and what it continues.
+They are the harness contract's own signatures, declared in `@flow-state-dev/core`. Each is handed the block's context, not the run's prompt.
 
 Everything else about the agent (model, tools, permissions, sandbox) you write inside the factory. Pointing the same manager at another harness is one line, and the manager is unchanged:
 
@@ -104,7 +103,7 @@ harness: ({ cwd, resume, onSession }) =>
 
 Any block that takes the three feeds and returns a run handle conforming to `@flow-state-dev/core`'s harness contract is one this manager can drive.
 
-The vendor options differ because they are the factory's business, not the manager's. `detached: true` is not decoration in the Claude Code example: the harness becomes a child block of a gated task entry, and the claim gate refuses an entry that keeps session state anywhere beneath it. Get it wrong and your flow fails to build, naming the entry. Codex and Cursor keep no session state, so neither needs an equivalent.
+Claude Code needs `detached: true`. Leave it out and your flow fails to build, naming the entry. Codex and Cursor need no equivalent.
 
 ## What a phase supplies
 
@@ -139,7 +138,7 @@ A capability claiming one of the manager's own accessors (`runs`, `inbox`, `turn
 
 A run that needs a decision writes a question and parks. Answer it, and the next attempt **continues the same coding session** rather than starting over told what was answered.
 
-The recorded session is the one the harness *confirmed* it was in. `onSession` is its only writer, every attempt clears it first, and the manager never writes back an id it merely sent. So a session the agent has lost is asked for once, and the attempt after that starts fresh.
+The recorded session is the one the harness *confirmed* it was in. If the agent has lost that session, the attempt that asked for it ends without one and the next attempt starts fresh.
 
 ## Talking to a run
 
@@ -181,7 +180,7 @@ Neither bounds what the run *spawned*. A command the agent's process started can
 
 **`@flow-state-dev/harness-manager/checkout`** is how a run gets a directory: `provisionCheckout`, `acquireCheckout`, `branchFor`, `checkoutPathFor` and the path grammar. It is outside the versioned contract, so a host should not import from it. Everything in it is specific to git worktrees. Adopt `harnessManager({ harness })` and let it own the checkout.
 
-The run record's writes (`openRunRow`, `writeRunRow`) and the inbox's `withdrawEarlierQuestions` are on neither: they write through the attempt fence, and calling one from outside a claimed attempt either gets refused or corrupts a ledger the board is the authority on. Read with `readRunRow` and the collections.
+The run record's writes (`openRunRow`, `writeRunRow`) and the inbox's `withdrawEarlierQuestions` aren't exported. Read with `readRunRow` and the collections.
 
 ## Telling the guard where you live
 
@@ -208,7 +207,7 @@ from `/`. Given a location it cannot resolve, it refuses and names the option.
 - **One host's storage.** Checkouts and leases live on a local filesystem, so a retry inherits the last attempt's work because that work is on disk. On a multi-host deployment the recorded checkout names nothing on the machine that picks the retry up.
 - **The lease is not a mutex.** Checking the lock and removing it are two steps. A dead holder's lock is reclaimed after a stale window rather than instantly, and the manager refuses a configuration that shortens that window below the longest a live attempt could legitimately hold it. Each acquisition carries its own token, so a displaced process never removes its replacement's lock. The token gives no stronger cross-process exclusion than that.
 - **No retention policy.** Run records and question rows grow without bound.
-- **A harness that can't resume can't take a message.** The door refuses a run whose harness never confirmed a coding session, such as `claude-code/cli-remote`.
+- **A harness that can't resume can't take a message.** The door refuses a run whose harness never confirmed a coding session, with *this run's harness can't continue with a message*.
 - **Git worktrees specifically**, as above.
 
 ## Running tests
