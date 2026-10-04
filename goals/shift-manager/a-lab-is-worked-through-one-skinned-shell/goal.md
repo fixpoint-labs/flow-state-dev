@@ -15,6 +15,7 @@
 - **b0, the pentest config from the README.** An isolated writer that sees only Shift Manager's README and the pentest tree (minus its config) writes a config to scratch. Every step it had to guess is a failure, and so is a semantic difference from the committed config (flows, org, seats, workstreams, the page's user and bearer), booted side by side.
 - **b, the pentest Lab.** The a3 reach on the pentest tree; the composer's post is in the channel's stored transcript when it is drawn, and drawn once after a reload; `labs/shift-manager` is unchanged and names no pentest seat, team or channel. A Lab with no resolver opens under `DEFAULT_ORG_ID`, and on both Labs the switcher names the store's org.
 - **c, the theme fence.** On a build with only the theme import removed, `--shift day` then `--shift night`: the computed colour, background, border and font of every message, reasoning, tool, code block and ask card, and of the devtool page the trace link opens, match no value the Shift Manager theme declares. Each part renders at least once per pass. FIX-1655's static check over `packages/**` finds none.
+- **d, the v2 look (FIX-1737).** `goals/shift-manager/it-draws-v2s-look` passes on the same commit, by subprocess. Its controls `drift`, `unclassified` and `missing` each fail at exactly the legs its goal.md names (drift at surface and type, the other two at totality) and nowhere else. It builds its own copy and runs DevTeam on a fresh store of its own.
 - **J3.** In a fresh host, `fsdev ui add tool approval` from the commit's registry gives byte-identical copies; with the docs' token block applied as written, changing `--success` repaints both.
 - **J4.** Every surface in the epic's ownership table opens by its address on a fresh load and shows rows or its named empty state; none blank, none refused.
 - **Part 3.** Every child's goal check with its controls, the goal labs the set touched, the design-system and registry tests, `pnpm typecheck` and `pnpm test`.
@@ -24,9 +25,9 @@
 
 **Model:** leg a's harness is Claude Code, through `AI_GATEWAY_API_KEY` or `ANTHROPIC_API_KEY`; only a4's answer rests on it. b0's writer is the `claude` CLI. Legs b and c and both journeys are model-free.
 
-**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/run.mts`. `GOAL_PART=a,b0,b,c,controls,part2,part3,part4` (the default) picks the parts. For a rerun, `GOAL_CONTROLS` picks the controls, `GOAL_CONTROL_LEGS` the legs a control runs, and `GOAL_CHILDREN` (a regex on the label) part 3's entries.
+**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/run.mts`. `GOAL_PART=a,b0,b,c,d,controls,part2,part3,part4` (the default) picks the parts. For a rerun, `GOAL_CONTROLS` picks the controls, `GOAL_CONTROL_LEGS` the legs a control runs, and `GOAL_CHILDREN` (a regex on the label) part 3's entries.
 
-**Controls:** each runs legs a, b and c on its own build or server start.
+**Controls:** each runs legs a, b and c on its own build or server start. Leg d's controls are the look check's own, run inside leg d. Every server start that opens DevTeam gets a fresh store in its own scratch directory, never the checkout's `labs/shift-manager/.fsdev/devteam.sqlite`.
 
 - **today's main** (the commit before Shift Manager's first merge): Shift Manager is absent, so a and b must fail; c's static half over that commit's `packages/` stays green.
 - **hardcoded-accent** (scratch patch on the tool card's copy): must fail c at the tool card.

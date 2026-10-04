@@ -154,7 +154,8 @@ export async function startShiftManager(
   const child = spawn(TSX, args, {
     cwd: workDir,
     // GOAL_CONTROL is this script's, never the Lab's.
-    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", SHIFT_MANAGER_SHIFT: "", ...(options.env ?? {}) }),
+    // DevTeam keeps a SQLite store; each start gets a fresh one in its own work dir, never the checkout's.
+    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", SHIFT_MANAGER_SHIFT: "", DEVTEAM_STORE: join(workDir, "devteam.sqlite"), ...(options.env ?? {}) }),
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout!.on("data", (d) => (log += String(d)));

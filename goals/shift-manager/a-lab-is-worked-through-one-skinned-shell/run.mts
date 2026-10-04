@@ -8,9 +8,10 @@
  *
  *   part 1   legs a (DevForce, real model on a4), b0 (the pentest config
  *            written from Shift Manager's README by an isolated writer), b
- *            (pentest, keyless, plus every Lab opening under an org) and c
+ *            (pentest, keyless, plus every Lab opening under an org), c
  *            (no theme, `--shift day` then `--shift night`, plus the static
- *            fence over packages/)
+ *            fence over packages/) and d (FIX-1737's v2 look, its goal check
+ *            and its controls, by subprocess)
  *   controls each on its own build or start; each must fail its own leg at
  *            its own signal and leave the rest green
  *   part 2   J3 (FSD UI reused in a fresh app) and J4 (a sibling's surfaces
@@ -22,7 +23,7 @@
  * Every verdict is printed as `VERDICT <id>: …` with the commit it ran on.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/a-lab-is-worked-through-one-skinned-shell/run.mts
- * Parts:    GOAL_PART=a,b0,b,c,controls,part2,part3,part4 (default: all, in that order)
+ * Parts:    GOAL_PART=a,b0,b,c,d,controls,part2,part3,part4 (default: all, in that order)
  * Controls: GOAL_CONTROLS=hardcoded-accent,… (default: all of them)
  * Needs:    a model key (leg a, and the real-model child checks), a signed-in
  *           Claude Code (a4's harness, and b0's writer through the `claude`
@@ -42,7 +43,7 @@ import { SHIFT_MANAGER, buildPages, injected, labApi, open, readStore, readTree,
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("shift-manager-closure");
-const PARTS = (process.env.GOAL_PART ?? "a,b0,b,c,controls,part2,part3,part4").split(",").map((s) => s.trim());
+const PARTS = (process.env.GOAL_PART ?? "a,b0,b,c,d,controls,part2,part3,part4").split(",").map((s) => s.trim());
 const git = (...args: string[]) => execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" }).trim();
 
 const COMMIT = git("rev-parse", "HEAD");
@@ -525,6 +526,38 @@ async function part3(): Promise<void> {
   }
 }
 
+// ---- d: FIX-1737's v2 look, by subprocess -------------------------------------------
+
+const V2_LOOK = SM("it-draws-v2s-look");
+/** Each of the look check's controls, and the legs it must fail at (its `legs failing:` line), nothing else. */
+const V2_LOOK_CONTROLS: Array<{ control: string; legs: string[] }> = [
+  { control: "drift", legs: ["surface", "type"] },
+  { control: "unclassified", legs: ["totality"] },
+  { control: "missing", legs: ["totality"] },
+];
+const legsFailing = (out: string) => (/legs failing: ([^\n]*)/.exec(out.slice(out.lastIndexOf("FAIL —")))?.[1] ?? "").split(",").map((l) => l.trim()).filter(Boolean).sort();
+
+/**
+ * d. The v2 look on this commit: `it-draws-v2s-look` passes, then each of its
+ * controls fails at exactly the legs its goal.md names. Its own scratch,
+ * build and DevTeam store are the child's, fresh per subprocess.
+ */
+async function legD(): Promise<void> {
+  const tsx = join(REPO_ROOT, "node_modules", ".bin", "tsx");
+  const own = await runLogged("d it-draws-v2s-look", tsx, [V2_LOOK], { GOAL_CONTROL: undefined });
+  const bullets = failBullets(own.out);
+  verdict("leg d (it-draws-v2s-look)", own.code === 0, own.code === 0 ? `PASS — ${verdictLine(own.out).slice(7, 400)}` : `FAIL (${bullets.length})`, [...bullets.slice(0, 12).map((b) => `✗ [d] ${b}`), `log: ${own.log}`]);
+  for (const { control, legs } of V2_LOOK_CONTROLS) {
+    const { code, out, log } = await runLogged(`d it-draws-v2s-look GOAL_CONTROL=${control}`, tsx, [V2_LOOK], { GOAL_CONTROL: control });
+    const red = legsFailing(out);
+    const ok = code !== 0 && JSON.stringify(red) === JSON.stringify([...legs].sort());
+    verdict(`control d:${control}`, ok, ok ? `FAIL (expected) at ${legs.join(" + ")} only` : `WRONG: exit ${code}, legs failing [${red.join(", ")}], expected [${legs.join(", ")}]`, [
+      ...failBullets(out).slice(1, 9).map((b) => `✗ ${b}`),
+      `log: ${log}`,
+    ]);
+  }
+}
+
 // ---- the run ---------------------------------------------------------------------
 
 let PAGES: Built | undefined;
@@ -554,6 +587,7 @@ await runGoal(async () => {
     if (want("b0")) await leg("b0", ["b0"], () => b0(report));
     if (want("b")) await leg("leg b", ["b"], () => legB(ctx(PAGES!.pages)));
     if (want("c")) await leg("leg c", ["c"], () => legC(ctx(noTheme!.pages)));
+    if (want("d")) await legD();
     if (want("part2")) {
       await leg("J3", ["J3"], () => j3(SCRATCH, browser, report));
       await leg("J4", ["J4"], () => j4(SCRATCH, PAGES!.pages, browser, report));
