@@ -15,6 +15,8 @@ type Item = { requestId: string; role?: string; type: string; reason?: string; s
 /** Clients whose door request ends `status`, and whose session holds `items`, paged by offset and limit. */
 function stubClients(options: {
   status: string;
+  /** Statuses for the polls after the first, in order; the last repeats. Default: `status` throughout. */
+  later?: string[];
   items?: Item[];
   failure?: string;
   sendFails?: boolean;
@@ -27,6 +29,7 @@ function stubClients(options: {
 }): { clients: LabClients; sent: unknown[] } {
   const sent: unknown[] = [];
   const items = options.items ?? [];
+  let polls = 0;
   const clients = {
     actions: (flowId: string) => ({
       sendAction: async (action: string, input: unknown, opts: unknown) => {
@@ -34,7 +37,12 @@ function stubClients(options: {
         sent.push({ flowId, action, input, opts });
         return { request: { id: "req_door" } };
       },
-      getRequestStatus: async () => ({ status: options.status }),
+      getRequestStatus: async () => {
+        const later = options.later ?? [];
+        const status = polls === 0 || later.length === 0 ? options.status : later[Math.min(polls - 1, later.length - 1)];
+        polls += 1;
+        return { status };
+      },
     }),
     sessions: {
       getSessionState: async (_id: string, read: { offset?: number; limit?: number; itemTypes?: string[] } = {}) => {
@@ -139,6 +147,23 @@ describe("sendTurn", () => {
         await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped });
       });
     }
+
+    // A resume marks the request running before it writes its resume item: the ask still
+    // reads as pending, but the turn is no longer stopped on it.
+    it("resumed after the read but before its resume item lands: the recheck says running, so plain delivered", async () => {
+      const { clients } = stubClients({ status: "suspended", later: ["in_progress"], items: [line, ask("s1")] });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: null });
+    });
+
+    // Inbox pages every suspension item; so does this, or an older pending ask is missed.
+    it("a pending ask older than a page of later suspension events: still in Inbox", async () => {
+      const others = Array.from({ length: 250 }, (_, i) => [
+        { requestId: `req_${i}`, type: "suspension", reason: "human_approval", suspensionId: `o${i}` },
+        { requestId: `req_${i}`, type: "suspension_resume", suspensionId: `o${i}` },
+      ]).flat();
+      const { clients } = stubClients({ status: "suspended", items: [line, ask("s1"), ...others] });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "ask" });
+    });
 
     it("a failed read of the suspensions is still delivered, as a wait that points nowhere", async () => {
       const { clients } = stubClients({ status: "suspended", items: [line, ask("s1")], suspensionsFail: true });

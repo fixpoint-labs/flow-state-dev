@@ -31,8 +31,7 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { LabClients } from "./connection";
-import { deriveSuspensions } from "@flow-state-dev/react";
-import { describeFailure, PERSON_REASONS } from "./reads";
+import { describeFailure, PERSON_REASONS, readPendingSuspensions } from "./reads";
 
 /**
  * Why a delivered line's request stopped short of finishing: on a person's ask
@@ -109,9 +108,9 @@ async function sessionHoldsLine(clients: LabClients, sessionId: string, requestI
 }
 
 /**
- * What a suspended request is still stopped on, by the derivation Inbox lists
- * asks with (`deriveSuspensions`), over the session's newest suspension and
- * resume items. Only this request's still-pending suspensions count:
+ * What a suspended request is still stopped on, from the read Inbox lists asks
+ * from ({@link readPendingSuspensions}). Only this request's still-pending
+ * suspensions count:
  *
  * - one whose reason is a person's ask: `ask`.
  * - any other pending one, such as a stop on something else after an ask
@@ -119,21 +118,33 @@ async function sessionHoldsLine(clients: LabClients, sessionId: string, requestI
  * - none, because it was resumed between the status poll and this read: `null`,
  *   plain delivered.
  *
+ * A resume marks the request running before it writes its resume item, so a
+ * suspension can still read as pending after the resume won. The status is
+ * polled once more after an `ask` or `wait`, and a request no longer
+ * suspended is `null`.
+ *
  * The line is delivered whatever this says. A read that fails is `wait`: the
  * poll saw the request suspended, and `wait` points nowhere it might not be.
  */
-async function stopOf(clients: LabClients, sessionId: string, requestId: string): Promise<TurnStop> {
-  const read = (offset: number) =>
-    clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["suspension", "suspension_resume"], offset, limit: ITEM_PAGE });
+async function stopOf(
+  clients: LabClients,
+  actions: ReturnType<LabClients["actions"]>,
+  sessionId: string,
+  requestId: string,
+): Promise<TurnStop> {
+  let stop: "ask" | "wait" | null;
   try {
-    let page = await read(0);
-    const total = page.pagination?.total ?? 0;
-    if (total > ITEM_PAGE) page = await read(total - ITEM_PAGE);
-    const mine = deriveSuspensions((page.items ?? []) as OutputItem[]).pending.filter((view) => view.item.requestId === requestId);
-    if (mine.some((view) => PERSON_REASONS.has(view.item.reason))) return "ask";
-    return mine.length > 0 ? "wait" : null;
+    const mine = (await readPendingSuspensions(clients, sessionId)).filter((view) => view.item.requestId === requestId);
+    stop = mine.some((view) => PERSON_REASONS.has(view.item.reason)) ? "ask" : mine.length > 0 ? "wait" : null;
   } catch {
     return "wait";
+  }
+  if (stop === null) return null;
+  try {
+    return (await actions.getRequestStatus(requestId)).status === "suspended" ? stop : null;
+  } catch {
+    // The pending read just answered; a failed recheck doesn't undo it.
+    return stop;
   }
 }
 
@@ -187,5 +198,5 @@ export async function sendTurn(
     if (error instanceof ClientCallFailed) throw unconfirmed(`Couldn't read back whether the message arrived: ${error.message}.`);
     throw error;
   }
-  return { requestId, stopped: suspended ? await stopOf(clients, target.sessionId, requestId) : null };
+  return { requestId, stopped: suspended ? await stopOf(clients, actions, target.sessionId, requestId) : null };
 }
