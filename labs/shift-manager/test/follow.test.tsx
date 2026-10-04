@@ -13,9 +13,20 @@ const VIEW = 100;
 const LINE = 40;
 
 /** A feed of `lines` lines, sized as a browser would: each line 40px in a 100px view. */
-function Feed({ lines, startAtEnd, onFollow }: { lines: number; startAtEnd?: boolean; onFollow?: (follow: () => void) => void }) {
+function Feed({
+  lines,
+  startAtEnd,
+  onFollow,
+  onStay,
+}: {
+  lines: number;
+  startAtEnd?: boolean;
+  onFollow?: (follow: () => void) => void;
+  onStay?: (stay: () => void) => void;
+}) {
   const feed = useFollowLatest({ startAtEnd });
   onFollow?.(feed.follow);
+  onStay?.(feed.stay);
   return (
     <div
       data-testid="feed"
@@ -85,5 +96,17 @@ describe("following a conversation's latest turn", () => {
     rerender(<Feed lines={9} startAtEnd={false} onFollow={(f) => (follow = f)} />);
     await settle();
     expect(feed.scrollTop).toBe(9 * LINE - VIEW);
+  });
+
+  it("stays put when history is loaded above a feed that fit, rather than jumping past it", async () => {
+    let stay!: () => void;
+    const { rerender } = render(<Feed lines={2} onStay={(f) => (stay = f)} />);
+    await settle();
+    const feed = screen.getByTestId("feed");
+    expect(feed.scrollTop).toBe(0);
+    act(() => stay());
+    rerender(<Feed lines={6} onStay={(f) => (stay = f)} />);
+    await settle();
+    expect(feed.scrollTop).toBe(0);
   });
 });

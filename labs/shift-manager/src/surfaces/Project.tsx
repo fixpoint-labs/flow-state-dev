@@ -382,6 +382,7 @@ export function RoomView({
   /** Read the page before the lines shown. */
   const loadEarlier = async () => {
     if (floor === undefined || floor === 0 || earlier.reading) return;
+    feed.stay();
     setEarlier({ reading: true });
     try {
       const read = await readRoomEarlier(page, floor);

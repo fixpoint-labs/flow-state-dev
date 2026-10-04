@@ -78,13 +78,14 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
 
   const loadOlder = useCallback(async () => {
     if (transcript === undefined || transcript.offset === 0) return;
+    feed.stay();
     try {
       const page = await readTranscriptPage(clients, workstream.id, transcript.offset);
       setTranscript((t) => (t === undefined ? t : { lines: mergeLines(page.lines, t.lines), offset: page.offset }));
     } catch (error) {
       setFailure(describeFailure(error));
     }
-  }, [clients, transcript, workstream.id]);
+  }, [clients, transcript, workstream.id, feed.stay]);
 
   /** After a kept post, read the newest page too, so the line shows even when the stream is down. */
   const afterPost = useCallback(async () => {

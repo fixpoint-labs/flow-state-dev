@@ -5,6 +5,7 @@
  * end: a line sent, a reply read back, a streamed item growing. Once they
  * scroll up to read history it stays where they put it, and it follows again
  * when they scroll back to the end, or when they send a line ({@link follow}).
+ * History loaded above the feed ({@link stay}) never moves it to the end.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -17,8 +18,9 @@ const AT_END_SLACK = 32;
  * @param options.startAtEnd open at the end, following (the default); `false`
  * opens where the element starts, and follows once the person reaches the end
  * or {@link follow} is called.
- * @returns `ref`, to attach to the scrolling element, and `follow`, which
- * jumps to the end and follows from there.
+ * @returns `ref`, to attach to the scrolling element; `follow`, which jumps
+ * to the end and follows from there; and `stay`, which stops following, for a
+ * caller about to load earlier history above what is shown.
  */
 export function useFollowLatest(options: { startAtEnd?: boolean } = {}) {
   const [node, setNode] = useState<HTMLElement | null>(null);
@@ -62,5 +64,9 @@ export function useFollowLatest(options: { startAtEnd?: boolean } = {}) {
     if (node !== null) node.scrollTop = node.scrollHeight;
   }, [node]);
 
-  return { ref: setNode, follow };
+  const stay = useCallback(() => {
+    following.current = false;
+  }, []);
+
+  return { ref: setNode, follow, stay };
 }
