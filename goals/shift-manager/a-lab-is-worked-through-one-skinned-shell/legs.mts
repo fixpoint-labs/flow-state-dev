@@ -222,12 +222,58 @@ export async function walkSurfaces(
     if ((await page.getByTestId(back).getAttribute("aria-pressed")) !== "true") reach(`the switch does not mark ${back} once clicked back`);
   }
 
-  // The project level: four tabs, each its named empty state.
-  await page.getByTestId("projects-heading").click();
-  for (const tab of ["stream", "board", "workstreams", "brief"]) {
-    await page.locator(`[role=tab][data-tab=${tab}]`).click();
-    if (!(await tabSelected(page, tab))) reach(`the project's ${tab} tab is not selected`);
-    if (!(await visible(page, `project-${tab}-empty`))) reach(`the project's ${tab} tab shows no named empty state`);
+  // The project level: No project, then each of the store's projects, in four
+  // tabs. A tab draws the store's content, or its named empty state when the
+  // store holds none: No project has no room and no brief.
+  const inProject = new Set(store.projects.flatMap((p) => p.workstreams));
+  const levels = [
+    { id: "unassigned", nav: "projects-heading", room: false, brief: null, workstreams: store.channels.map((c) => c.id).filter((id) => !inProject.has(id)) },
+    ...store.projects.map((p) => ({ id: p.id, nav: `nav-project-${p.id}`, room: true, brief: p.brief, workstreams: p.workstreams })),
+  ];
+  const holdsBoard = new Set(tree.channels.filter((c) => c.boardRefs.length > 0).map((c) => c.id));
+  for (const level of levels) {
+    const where = level.id === "unassigned" ? "No project" : `project ${level.id}`;
+    await page.getByTestId(level.nav).click();
+    if (!(await page.locator(`[data-testid=project][data-project-id="${level.id}"]`).waitFor({ timeout: 10_000 }).then(() => true, () => false))) {
+      reach(`${where} does not open`);
+      continue;
+    }
+    for (const tab of ["stream", "board", "workstreams", "brief"]) {
+      await page.locator(`[role=tab][data-tab=${tab}]`).click();
+      if (!(await tabSelected(page, tab))) reach(`${where}'s ${tab} tab is not selected`);
+      if (tab === "stream") {
+        // A project's room as this person reaches it: read, or Join, or members only. No project has none.
+        const named = level.room ? "[data-testid=stream], [data-testid=project-stream-join], [data-testid=project-stream-members-only]" : "[data-testid=project-stream-none]";
+        if (!(await page.locator(named).first().waitFor({ timeout: 10_000 }).then(() => true, () => false))) reach(`${where}'s Stream shows ${level.room ? "neither its room nor a named state" : "no named empty state"}`);
+      } else if (tab === "board") {
+        const lanesWanted = level.workstreams.filter((id) => holdsBoard.has(id));
+        if (lanesWanted.length === 0) {
+          if (!(await visible(page, "project-board-none"))) reach(`${where} holds no board and its Board shows no named empty state`);
+        } else {
+          await page.getByTestId("project-lane").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
+          const lanes = await attr(page, "project-lane", "data-channel-id");
+          if (!same(lanes, lanesWanted)) reach(`${where}'s Board lanes: ${diff(lanesWanted, lanes)}`);
+          for (const id of lanesWanted) {
+            const cards = (await page.locator(`[data-testid=project-lane][data-channel-id="${id}"] [data-testid=board-card]`).evaluateAll((els) => els.map((e) => `${e.getAttribute("data-board-ref")}/${e.getAttribute("data-task-id")}`))) as string[];
+            const want = (store.rows[id] ?? []).map((r) => `${r.ref}/${r.id}`);
+            if (!same(cards, want)) reach(`${where}'s ${id} lane: ${diff(want, cards)}`);
+          }
+        }
+      } else if (tab === "workstreams") {
+        if (level.workstreams.length === 0) {
+          if (!(await visible(page, "project-workstreams-none"))) reach(`${where} lists no workstream and says nothing`);
+        } else {
+          await page.getByTestId("project-workstream").first().waitFor({ timeout: 10_000 }).catch(() => undefined);
+          const listed = await attr(page, "project-workstream", "data-channel-id");
+          if (!same(listed, level.workstreams)) reach(`${where}'s Workstreams: ${diff(level.workstreams, listed)}`);
+        }
+      } else if (level.brief === null) {
+        if (!(await visible(page, "project-brief-none"))) reach(`${where} has no brief and its Brief shows no named empty state`);
+      } else {
+        const shown = ((await page.getByTestId("project-brief").textContent({ timeout: 10_000 }).catch(() => null)) ?? "").trim();
+        if (shown !== level.brief.trim()) reach(`${where}'s Brief reads "${shown.slice(0, 80)}", the row's is "${level.brief.slice(0, 80)}"`);
+      }
+    }
   }
 
   // Each workstream: four tabs, the right panel, the board, and the task level from a card.

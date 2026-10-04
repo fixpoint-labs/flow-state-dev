@@ -254,11 +254,15 @@ export async function j4(scratch: string, pages: string, browser: Browser, repor
     if (row === undefined) return fail("DevForce filed no row after its ask was approved");
     const ch = tree.channels[0]!.id;
     const task = `/tasks/${encodeURIComponent(row.ref)}/${encodeURIComponent(row.id)}`;
-    const addresses: Array<{ path: string; surface: string; owner: string }> = [
+    const addresses: Array<{ path: string; surface: string | string[]; owner: string }> = [
       { path: "/cos", surface: "cos", owner: "Chief of Staff (FIX-1719's seat; FIX-1722's view)" },
       { path: "/roster", surface: "roster", owner: "TEAMS, workers, shift status (Workforce; FIX-1723)" },
       { path: `/roster?team=${tree.teams[0]}`, surface: "roster", owner: "a team's workers (Workforce; FIX-1723)" },
-      ...["stream", "board", "workstreams", "brief"].map((tab) => ({ path: `/p/unassigned/${tab}`, surface: `project-${tab}-empty`, owner: "projects (FIX-1650)" })),
+      // No project: no room and no brief, by name; its Board and Workstreams draw the workstreams no project lists, or say there are none.
+      { path: "/p/unassigned/stream", surface: "project-stream-none", owner: "No project's room (FIX-1718)" },
+      { path: "/p/unassigned/board", surface: ["project-board", "project-board-none"], owner: "No project's board (FIX-1718)" },
+      { path: "/p/unassigned/workstreams", surface: ["project-workstreams", "project-workstreams-none"], owner: "No project's workstreams (FIX-1718)" },
+      { path: "/p/unassigned/brief", surface: "project-brief-none", owner: "No project's brief (FIX-1718)" },
       { path: `/w/${encodeURIComponent(ch)}/stream`, surface: "workstream", owner: "a workstream (FIX-1650)" },
       ...["board", "brief", "results"].map((tab) => ({ path: `/w/${encodeURIComponent(ch)}/${tab}`, surface: "workstream", owner: `a workstream's ${tab} (FIX-1651)` })),
       { path: "/inbox", surface: "inbox", owner: "Inbox (FIX-1652)" },
@@ -272,7 +276,8 @@ export async function j4(scratch: string, pages: string, browser: Browser, repor
       page.on("pageerror", (e) => errors.push(e.message));
       try {
         await open(page, served.origin, address.path);
-        if (!(await page.getByTestId(address.surface).first().waitFor({ timeout: 15_000 }).then(() => true, () => false))) {
+        const surface = [address.surface].flat().map((id) => `[data-testid=${id}]`).join(", ");
+        if (!(await page.locator(surface).first().waitFor({ timeout: 15_000 }).then(() => true, () => false))) {
           fail(`${address.path} (${address.owner}) does not open its surface on a fresh load`);
           continue;
         }

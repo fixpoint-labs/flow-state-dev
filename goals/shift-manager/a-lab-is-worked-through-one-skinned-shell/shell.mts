@@ -282,6 +282,8 @@ export type Store = {
   asks: StoredAsk[];
   /** The organizations the person's sessions are bound to. */
   orgs: string[];
+  /** The organization's projects; none when no flow declares the collection. */
+  projects: Array<{ id: string; title: string; brief: string | null; workstreams: string[] }>;
 };
 
 /** Suspension reasons that are a person being asked something. */
@@ -300,6 +302,17 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
     channelsRef === undefined
       ? []
       : (await api.collection(host, channelsRef)).map((r) => ({ id: String(r.id), kind: String(r.kind), members: Array.isArray(r.members) ? (r.members as string[]) : [] }));
+
+  const projectsRef = refOf("projects/*");
+  const projects =
+    projectsRef === undefined
+      ? []
+      : (await api.collection(host, projectsRef)).map((r) => ({
+          id: String(r.id),
+          title: String(r.title),
+          brief: typeof r.brief === "string" ? r.brief : null,
+          workstreams: Array.isArray(r.workstreams) ? (r.workstreams as string[]) : [],
+        }));
 
   const rows: Store["rows"] = {};
   for (const channel of tree.channels) {
@@ -333,7 +346,7 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
       }
     }
   }
-  return { seats, channels, rows, asks, orgs };
+  return { seats, channels, rows, asks, orgs, projects };
 }
 
 /** Whether a session holds a resume for `suspensionId`. */
