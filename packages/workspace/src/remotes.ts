@@ -51,9 +51,13 @@ export function allowedProtocols(allow: readonly string[]): string {
 /**
  * The remote as a person may be shown it: any userinfo removed, so a refusal
  * that names the remote never prints a credential.
+ *
+ * The userinfo runs to the LAST `@` before the path, as a URL parser reads
+ * it — a credential may itself hold an `@`, and stopping at the first one
+ * would print the rest of it.
  */
 export function redactRemote(remote: string): string {
-  return remote.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, "$1");
+  return remote.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#]*@/i, "$1");
 }
 
 /** Judge `remote` against `allow`. Pure: starts nothing, reads nothing. */
@@ -90,7 +94,12 @@ export function checkRemote(remote: string, allow: readonly string[]): AllowedRe
     if (scheme === "file") {
       if (!allow.includes("file")) return notAllowed("file:// remotes are off unless the host lists \"file\"");
       if (url.hostname !== "" && url.hostname !== "localhost") return invalid("a file:// remote names no host");
-      const path = decodeURIComponent(url.pathname);
+      let path: string;
+      try {
+        path = decodeURIComponent(url.pathname);
+      } catch {
+        return invalid("its path holds a malformed %-escape");
+      }
       return { url: remote, scheme: "file", cloneKey: cloneKeyFor("file", path) };
     }
     if (scheme !== "https" && scheme !== "ssh") {
@@ -100,7 +109,13 @@ export function checkRemote(remote: string, allow: readonly string[]): AllowedRe
     const host = url.hostname.toLowerCase();
     if (host === "" || host.startsWith("-")) return invalid("its host is missing or starts with \"-\"");
     if (!allow.some((entry) => entry.toLowerCase() === host)) return notAllowed(`"${host}" is not a listed host`);
-    return { url: remote, scheme, cloneKey: cloneKeyFor(host, repositoryPath(url.pathname)) };
+    // A non-default port is another server, which can hold an unrelated
+    // repository at the same path. The URL parser already drops `:443` from
+    // https; `:22` is ssh's default and is dropped here, so both spellings of
+    // the default stay one clone with the scp-like form.
+    const port = scheme === "ssh" && url.port === "22" ? "" : url.port;
+    const authority = port === "" ? host : `${host}:${port}`;
+    return { url: remote, scheme, cloneKey: cloneKeyFor(authority, repositoryPath(url.pathname)) };
   }
 
   // Git's scp-like form, `[user@]host:path`, is ssh — but only when the colon
@@ -131,8 +146,8 @@ function repositoryPath(path: string): string {
  * A readable, directory-safe clone name with a hash of the identity on the
  * end, so two identities that sanitize alike still get two clones.
  */
-function cloneKeyFor(host: string, path: string): string {
-  const identity = `${host}/${path}`;
+function cloneKeyFor(authority: string, path: string): string {
+  const identity = `${authority}/${path}`;
   const readable = identity.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+/, "").slice(0, 80);
   const hash = createHash("sha256").update(identity).digest("hex").slice(0, 12);
   return `${readable}-${hash}`;
