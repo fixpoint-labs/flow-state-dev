@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 330" role="img" aria-label="What changes. Today four routes can add a task to a mailbox task list: a post door, fileTask, a board tool, or a worker's own board. The task waits in pending until someone runs the list by hand, and only DevTeam's Approve does. After: any add to the list makes the mailbox run the list in a request of its own, as the person who filed it, and hand the task to the worker it names or the list's first worker. The filer gets an answer at once."
+<svg viewBox="0 0 940 330" role="img" aria-label="What changes. Today four routes can add a task to a mailbox task list: a post door, fileTask, a board tool, or a worker's own board. The task waits in pending until someone runs the list by hand, and only DevTeam's Approve does. After: any add to the list makes the mailbox run the list in a request of its own, as the person who filed it, and hand the task to the worker it names or the one worker the mailbox names for the list. The filer gets an answer at once."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;

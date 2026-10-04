@@ -64,6 +64,19 @@ the board and drain it. After, the mailbox does that:
   });
 ```
 
+**The mailbox names who works its list.** Declaring the list's ledger no longer counts; the
+mailbox's file says it, as `worksTaskList` does for a list made at run time (FIX-1779):
+
+```diff
+  # teams/eng/mailboxes/feature/MAILBOX.md
+  members: [eng.em, eng.coder, eng.reviewer, chief-of-staff]
+  boards: [work]
++ workedBy: { work: [eng.coder] }
+```
+
+A task with no assignee goes to the list's one worker. With none, or several, it waits and the
+filing's answer says why.
+
 **DevTeam's EM files and stops.** Approve and the post door both just file; the list runs itself.
 
 ```diff
@@ -78,7 +91,7 @@ the board and drain it. After, the mailbox does that:
 flowchart LR
   R["any route · post door, fileTask, board tool, own board"] -->|"adds a task"| T["mailbox task list"]
   T -->|"add seen · hand-off to its own request"| W["run the list · as the filer"]
-  W -->|"FIX-1778 lookup · or the list's default worker"| K["the worker · its run"]
+  W -->|"FIX-1778 lookup · or the one worker the mailbox names"| K["the worker · its run"]
 ```
 
 The filer gets their answer as soon as the task is stored. The run happens in a separate request,

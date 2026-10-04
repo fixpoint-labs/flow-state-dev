@@ -9,10 +9,17 @@
 | BR-1 | A task is added to a mailbox's task list by a post door, `fileTask`, the board action, a worker's board tool, or a worker's own board | The list runs in a request of its own, and the task goes to the worker it's for, with nobody running the list by hand | Goal leg a (four routes) · leg c (DevTeam post) |
 | BR-2 | The filer is a coordinator mid-turn | Its filing returns as soon as the task is stored. The turn does not wait for the run | Goal leg a (call returns before the task completes) |
 | BR-3 | The task names a worker (assignee) | It goes to that worker, through FIX-1778's lookup; a board alias wins over the lookup | FIX-1778's checks; leg a's assigned route |
-| BR-4 | The task names no worker | It goes to the list's first worker from `taskListWorkers` (FIX-1779) | Leg a's unassigned route |
+| BR-4 | The task names no worker, and exactly one worker works the list (BR-18) | It goes to that worker | Leg a's unassigned route |
 | BR-5 | No worker works the list, or the named worker doesn't exist | The task is filed and waits, and the filing's answer says why. Nothing errors in the filer's turn | Workforce unit test |
 | BR-6 | A filing adds nothing (the task already existed, or the write was an update) | Nothing runs | Workforce unit test; DevTeam board check, repeat post |
 | BR-7 | The list is a worker's private board, not a mailbox's | As today: nothing runs on add | Workforce unit test (negative) |
+
+## Who works a list
+
+| | When | Then | Proved by |
+|---|---|---|---|
+| BR-18 | Deciding who works a mailbox's list | The workers the mailbox names for it: `workedBy:` in its `MAILBOX.md`, plus those subscribed with `worksTaskList` at run time (FIX-1779). Being a member, or declaring the list's ledger, counts for nothing | Workforce unit test: a member that declares the ledger and isn't named is not handed a task |
+| BR-19 | The task names no worker and more than one works the list | The task is filed and waits, and the filing's answer says to assign it. No order picks one | Workforce unit test |
 
 ## Whose run it is
 
@@ -41,9 +48,9 @@
 
 ## What this issue owns
 
-- BR-1, BR-2, BR-5 to BR-17: the start on add, ownership at filing, and DevTeam's doors moving to the one rule.
-- Not owned: resolving an assignee to a worker (FIX-1778, BR-3); a run-time mailbox, its list and
-  `taskListWorkers` (FIX-1779, BR-4); retries on their own and telling the coordinator a task
+- BR-1, BR-2, BR-4 to BR-19: the start on add, ownership at filing, and DevTeam's doors moving to the one rule.
+- Not owned: resolving an assignee to a worker (FIX-1778, BR-3); a run-time mailbox, its list,
+  `worksTaskList`, and the `taskListWorkers` read that joins both halves of BR-18 (FIX-1779); retries on their own and telling the coordinator a task
   settled (FIX-1780).
 
 ## Acceptance

@@ -16,8 +16,19 @@ claims rows declares the same board and drains it:" and its `actions: { drain: �
 > The mailbox keeps the list and hands its tasks out. When a task is added, whichever way it got
 > there (`fileTask`, a board tool, or a worker adding to its own list), the mailbox runs the list
 > in a request of its own and gives the task to the worker it's for: the worker it names, or the
-> list's first worker if it names none. Whoever filed the task gets their answer straight away;
+> list's one worker if it names none. Whoever filed the task gets their answer straight away;
 > they don't wait for the work.
+>
+> The mailbox says who works each list. In its `MAILBOX.md`:
+>
+> ```yaml
+> boards: [work]
+> workedBy: { work: [eng.coder] }
+> ```
+>
+> A worker added at run time with `worksTaskList: true` works the list too. Being a member, or
+> reading the list, doesn't make a worker one of its workers. If a task names no worker and the
+> list has more than one, the task waits until someone assigns it, and `fileTask` says so.
 >
 > A worker on a list needs only a task door. It doesn't declare the list or run it:
 >
@@ -42,7 +53,8 @@ Replace "The mailbox owns the ledger and runs nothing. A seat that claims rows r
 declaration with `mailboxBoard`, declares it as a resource, and drains it" with:
 
 > The mailbox owns the list and hands each added task to its worker, in a request of its own and
-> as whoever filed it. A worker on the list needs only a task door.
+> as whoever filed it. `workedBy:` in `MAILBOX.md` names a list's workers. A worker on the list
+> needs only a task door.
 
 ## 3 · Update `labs/shift-manager/README.md` — the `devteam` bullet under *Team profiles*
 

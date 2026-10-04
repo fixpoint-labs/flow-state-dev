@@ -64,6 +64,12 @@ It comes down to whether a hand-off finishes in one turn: a card would stop it a
   their own drains. Approve used to drain on every approval, even for a task that already existed;
   under this rule only an add starts anything.
 - **A task that already existed starts nothing.** Nothing was added, so nothing is seen.
+- **Who works a list is named by the mailbox, never inferred.** `workedBy:` in its `MAILBOX.md`,
+  or `worksTaskList` when a worker is subscribed at run time (FIX-1779), one meaning on both
+  sides. A worker that only declares the ledger, to read it or file on it, is not handed tasks
+  (the FSD Architect, on #2753).
+- **More than one worker and no assignee: the task waits and the answer says to assign it.** An
+  order would quietly pick who spends the run; the coordinator assigns by name anyway (FIX-1778).
 - **A list with no worker for a task.** The task is filed and waits, and the filing's answer says
   no worker works it. Same as hire's unattended-board warning, now at the moment it matters.
 
@@ -75,7 +81,10 @@ It comes down to whether a hand-off finishes in one turn: a card would stop it a
   own board, which are how a worker adds follow-up tasks.
 - **A periodic run of every list.** Starts work late and costs a timer in an event-driven system.
 - **Infer the worker from who declares the ledger.** A declaring worker may only read it or only
-  receive from it (DevTeam's coder does both), so declaring proves nothing.
+  file on it (DevTeam's EM files, its coder works), so declaring proves nothing. The mailbox names
+  its list's workers instead.
+- **Pick the first of several workers by a stated order.** Works, but which worker pays for a run
+  turns on file order nobody reads as a choice.
 
 ## Open
 
@@ -99,3 +108,6 @@ None.
 - **Re-scope to the general case** — Jake asked for the coordinator's whole job, not one flow, and
   the FSD Architect showed FIX-1779's run-time lists would start nothing. Now: any add to any
   mailbox's list starts the worker it's for, as the filer; two stacked PRs on FIX-1778's routing.
+- **Who works a list** — the FSD Architect showed the default worker still came from declaring the
+  ledger, through FIX-1779's read. Now the mailbox names its list's workers, and several with no
+  assignee waits.

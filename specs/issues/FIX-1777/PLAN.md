@@ -11,10 +11,11 @@ Directional. Shape and sequence are fixed; names and local structure are the imp
 | S1 | `packages/orchestration` (`defineTaskCollection`) | Pass a collection's `reactTo` through to the resource declaration, so a task list can be watched for adds. No behaviour change for a collection that sets none | BR-1 |
 | S2 | `packages/orchestration` (the task ledger's add) | Record the filer on a new task from the request's resolved identity, beside the task's own fields, never from input. A claim with an owner policy reads it | BR-8–BR-10 |
 | S3 | `packages/workforce` (the mailbox's task-list ledger) | Bind `reactTo.created` on the one ledger every route writes: today the per-list declaration `mailboxBoard` mints; after FIX-1779, the mailbox kind's single collection. On an add, hand off a "run this list" request to the mailbox's own session, rescued so the add never fails | BR-1, BR-2, BR-6, BR-7, BR-11 |
-| S4 | `packages/workforce` (the mailbox kind) | An internal entry that runs one pass over the named list, as the filer: claims only that filer's tasks (and unowned legacy ones), and hands each to its worker through FIX-1778's routing, with `taskListWorkers(ctx, mailboxId, list)[0]` for an unassigned task. Takes the app's claim policy (DevTeam passes `runOwnerDispatcher`) | BR-3–BR-5, BR-9, BR-13, BR-17 |
+| S4 | `packages/workforce` (the mailbox kind) | An internal entry that runs one pass over the named list, as the filer: claims only that filer's tasks (and unowned legacy ones), and hands each to its worker through FIX-1778's routing, and an unassigned task to the one worker `taskListWorkers(ctx, mailboxId, list)` returns; none or several, and it waits (BR-5, BR-19). Takes the app's claim policy (DevTeam passes `runOwnerDispatcher`) | BR-3–BR-5, BR-9, BR-13, BR-17, BR-19 |
 | S5 | `packages/workforce` (`fileTask` and the board tools' answer) | Say when no worker works the list, or the named one doesn't exist, in the filing's answer | BR-5 |
 | S6 | `packages/workforce` (hire) | The unattended-board warning reads `taskListWorkers` instead of "who declares the ledger" | BR-5 |
-| S7 | `goals/devforce-lab/lab/` | The EM files on Approve and on post and drains nowhere; its `coordinatorBoard` is dropped for the mailbox's run. The coder keeps its task door. Header comments say so | BR-15–BR-17 |
+| S11 | `packages/workforce` (the `MAILBOX.md` binder) | Read an optional `workedBy:` map, list name to worker addresses, beside `boards:`; refuse a name that isn't a declared list or a member. `taskListWorkers` (FIX-1779) returns these plus run-time `worksTaskList` workers, and nothing for declaring the ledger | BR-18 |
+| S7 | `goals/devforce-lab/lab/` | `eng/mailboxes/feature/MAILBOX.md` gains `workedBy: { work: [eng.coder] }`. The EM files on Approve and on post and drains nowhere; its `coordinatorBoard` is dropped for the mailbox's run. The coder keeps its task door. Header comments say so | BR-15–BR-17 |
 | S8 | `goals/workforce-conventions/a-filed-task-starts-its-worker/` (new) | Legs a and b, the `no-wake` control | goal |
 | S9 | `goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/` and the other checks that drain by hand | Remove the hand drains; add leg c | goal |
 | S10 | Docs, per [DOCS.md](DOCS.md) | Mailboxes page, Workforce README, Shift Manager README and overview | — |
@@ -26,14 +27,14 @@ EM's two drains and its coordinator board; the hand drains in the checks that fi
 
 ```mermaid
 flowchart LR
-  F["FIX-1778 · routing by worker name"] --> P1["PR 1 · S1 to S6 · packages"]
+  F["FIX-1778 · routing by worker name"] --> P1["PR 1 · S1 to S6, S11 · packages"]
   P1 --> P2["PR 2 · S7 to S10 · DevTeam, checks, docs"]
   P1 -.->|"no dependency"| X["FIX-1779 · run-time lists use the same ledger"]
 ```
 
 | PR | Deliverables | Depends on |
 |---|---|---|
-| PR 1 | S1–S6, with Workforce and orchestration unit tests for BR-5–BR-11 | FIX-1778's routing (stacked on its PR if still open) |
+| PR 1 | S1–S6 and S11, with Workforce and orchestration unit tests for BR-5–BR-11 | FIX-1778's routing (stacked on its PR if still open) |
 | PR 2 | S7–S10, the goal checks with their control | PR 1, as a GitHub stack |
 
 If FIX-1779's single collection lands first, S3 binds there; if after, FIX-1779 moves the binding
@@ -44,14 +45,15 @@ with the ledger. Either way the goal check's four routes prove it.
 | ID | What | Pass |
 |---|---|---|
 | VG | `a-filed-task-starts-its-worker` legs a and b, then `GOAL_CONTROL=no-wake`; the DevTeam board check with leg c | Green on the branch; red under `no-wake` (tasks *pending*); red against `origin/main` |
-| V1 | Workforce and orchestration unit tests for BR-5, BR-6, BR-7, BR-10, BR-11 | Green; each red with S3 removed |
+| V1 | Workforce and orchestration unit tests for BR-5, BR-6, BR-7, BR-10, BR-11, BR-18, BR-19 | Green; each red with S3 removed |
 | V2 | `it-waits-for-a-person-before-it-files`, `it-wakes-the-seat-a-file-declared`, `it-ships-an-artifact-a-person-can-open`, `goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds`, `a-mailbox-holds-the-work-a-seat-drains` (each with its hand drain removed) | Green |
 | V3 | `pnpm typecheck`, `pnpm --filter @flow-state-dev/workforce test`, `… orchestration test`, `… harness-manager test`, `… shift-manager test` | Green |
 
 ## Pinned
 
 - The control's name: `GOAL_CONTROL=no-wake`.
-- The read: `taskListWorkers(ctx, mailboxId, list)` (FIX-1779); the default worker is its first entry.
+- The read: `taskListWorkers(ctx, mailboxId, list)` (FIX-1779); an unassigned task goes to its only entry, and waits when it has none or several.
+- The file field: `workedBy:` in `MAILBOX.md`, a map from list name to workers, the file twin of FIX-1779's run-time `worksTaskList`.
 - The new check's folder: `goals/workforce-conventions/a-filed-task-starts-its-worker/`.
 
 ## Guardrails
@@ -74,7 +76,8 @@ on a task added to a mailbox's list (any writer):
   hand off "run list L" to the mailbox, as the filer          // own request
 run list L, as P:
   for each claimable task filed by P (or unowned):
-    worker = assignee ? lookup(assignee) : taskListWorkers(L)[0]
+    workers = taskListWorkers(L)          // MAILBOX.md workedBy + run-time worksTaskList
+    worker = assignee ? lookup(assignee) : (workers.length == 1 ? workers[0] : wait)
     hand the task to worker                                    // FIX-1778's hand-off
 ```
 
@@ -107,3 +110,7 @@ Recorded from round 1 on [#2753](https://github.com/fixpoint-labs/flow-state-dev
 - cursor[bot]: "consider a shipped negative control." (The `no-wake` control ships.)
 - Codex: "Put failure reporting on an observable request … an accepted task dispatch returns before the child runs." (BR-11 now records the failure on the run's own request, not the filer's.)
 - Codex: "Bind each new row to its poster before draining." (Folded: D-level, BR-8–BR-10, S2.)
+
+Round 2, FSD Architect on #2753 (checked ff8d1ff6):
+
+- "for every file-declared list, the default worker *is* the declaration inference this spec dropped … say what a file worker must do to count as working a list … and what happens when more than one worker qualifies." (Folded: BR-18, BR-19, S11. A list's workers are named by the mailbox, `workedBy:` in its file or `worksTaskList` at run time; several and no assignee waits.)
