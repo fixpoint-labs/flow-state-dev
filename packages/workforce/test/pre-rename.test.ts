@@ -275,6 +275,30 @@ describe("what marks a store as written before the rename (BR-17)", () => {
     expect(marks.sessions).toEqual([{ id: "eng.digest", why: expect.stringContaining(`"${OLD.postComponent}"`) }]);
   });
 
+  it("marks a custom-kind mailbox whose old line is older than every request since, however many there are", async () => {
+    const stores = createInMemoryStores();
+    await session(stores, "eng.digest", "digest");
+    await postedLine(stores, "eng.digest", "digest", OLD.postComponent);
+    // Reads and board actions after the last old post carry no items. More of
+    // them than any page a reader might stop at.
+    for (let i = 1; i <= 260; i += 1) {
+      const id = `req_read_${i}`;
+      await stores.request.set(
+        id,
+        {
+          id, flowKind: "digest", flowId: "digest", actionName: "read", userId: "u_42", sessionId: "eng.digest", orgId: ORG,
+          source: "http", status: "completed", startedAtMs: now + i, state: {}, lineageId: `lin_${id}`, version: 0,
+          createdAt: now + i, updatedAt: now + i, journal: [],
+        } as never,
+        "absent",
+      );
+    }
+
+    const marks = await findPreRenameMarks(stores, { mailboxIds: ["eng.digest"], orgIds: [ORG] });
+
+    expect(marks.sessions).toEqual([{ id: "eng.digest", why: expect.stringContaining(`"${OLD.postComponent}"`) }]);
+  });
+
   it("marks an organization by an inventory row filed under the old key", async () => {
     const stores = createInMemoryStores();
     await stores.resourceState.set("org", ORG, `${OLD.inventoryPrefix}eng.digest`, { id: "eng.digest" } as never, "any" as never);

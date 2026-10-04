@@ -85,7 +85,7 @@ import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { RUN_STAMP, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../lab/host.mts";
+import { boardMailboxOf, LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../lab/host.mts";
 import { PHASE } from "../lab/phase.mts";
 import { createNotifyLog, type NotifyLog } from "../lab/notify.mts";
 import { ACCEPTANCE_MODULE, runAcceptance } from "../lab/acceptance.mts";
@@ -112,8 +112,6 @@ const ASSIGNED_SEAT = "eng.coder";
 const COORDINATOR_SEAT = "eng.em";
 /** Declared on the mailbox, hired into the same kind as the coder, and never given work. */
 const REVIEWER_SEAT = "eng.reviewer";
-/** Every member `MAILBOX.md` declares, in the order the fan-out walks them. */
-const DECLARED_MEMBERS = [COORDINATOR_SEAT, ASSIGNED_SEAT, REVIEWER_SEAT];
 
 /** The feature, and the line an operator posts to ask for it. */
 const ISSUE = "greeting-module";
@@ -743,9 +741,8 @@ await runGoal(async () => {
     coderSeatId: ASSIGNED_SEAT,
     runTimeoutMs: RUN_TIMEOUT_MS,
     logger: silentLogger,
-    // Only the EM is addressed. The coder and the reviewer are declared members
-    // of the mailbox and are true no-ops in the fan-out — recorded and skipped,
-    // never dispatched to.
+    // Only the EM is addressed. Every other declared member of the mailbox is a
+    // true no-op in the fan-out — recorded and skipped, never dispatched to.
     mailboxes: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log: notifyLog },
     harness: ({ cwd, resume, onSession }) =>
       sequencer({
@@ -829,10 +826,12 @@ await runGoal(async () => {
     }
     if (failures.length > 0) return { failures, evidence: "" };
 
-    // BR-8's positive half: exactly the EM was addressed, and the other two
-    // declared members were seen and skipped. Not an absence — a record.
+    // BR-8's positive half: exactly the EM was addressed, and every other
+    // declared member was seen and skipped. Not an absence — a record.
     const skipped = [...notifyLog.skipped].sort();
-    const expectedSkips = DECLARED_MEMBERS.filter((m) => m !== COORDINATOR_SEAT).sort();
+    // Every member the board's `MAILBOX.md` declares, read off the tree the lab opened.
+    const declaredMembers = (boardMailboxOf(lab.roster).declared.members as string[] | undefined) ?? [];
+    const expectedSkips = declaredMembers.filter((m) => m !== COORDINATOR_SEAT).sort();
     if (notifyLog.addressed.join(",") !== COORDINATOR_SEAT) {
       failures.push(
         `the fan-out addressed [${notifyLog.addressed.join(", ")}]; wanted only ${COORDINATOR_SEAT}`,

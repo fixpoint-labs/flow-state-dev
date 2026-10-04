@@ -107,6 +107,7 @@ export interface PreRenameStoreView {
       sessionId: string;
       withItems: true;
       limit: number;
+      offset: number;
     }): Promise<ReadonlyArray<{ items?: ReadonlyArray<unknown> }>>;
   };
   resourceState: {
@@ -123,11 +124,11 @@ export interface PreRenameMarks {
 }
 
 /**
- * How many of a mailbox's latest requests are read for old items. A store from
- * before the rename holds nothing else, so its latest requests carry them as
- * surely as its first ones.
+ * How many requests one page of a mailbox's history reads. Every page is read:
+ * a mailbox's last old line can sit behind any number of reads and board
+ * actions, which carry no items.
  */
-const RECENT_REQUESTS = 50;
+const PAGE = 200;
 
 const OLD_COMPONENTS = new Set<string>([PRE_RENAME_NAMES.postComponent, PRE_RENAME_NAMES.routeComponent]);
 
@@ -138,7 +139,8 @@ const OLD_COMPONENTS = new Set<string>([PRE_RENAME_NAMES.postComponent, PRE_RENA
  * rename, so a session on one says nothing by its kind. Three marks:
  *
  * - any session on the old built-in kind, whatever its id;
- * - a mailbox in `scope.mailboxIds` whose transcript holds an old item;
+ * - a mailbox in `scope.mailboxIds` whose transcript holds an old item, read
+ *   across its whole request history;
  * - an organization in `scope.orgIds` holding an inventory row under the old key.
  *
  * @param store The store to read, typically a host's store registry.
@@ -156,11 +158,7 @@ export async function findPreRenameMarks(
   const marked = new Set(sessions.map((session) => session.id));
   for (const id of scope.mailboxIds) {
     if (marked.has(id)) continue;
-    const requests = await store.request.list({ sessionId: id, withItems: true, limit: RECENT_REQUESTS });
-    const old = requests
-      .flatMap((request) => request.items ?? [])
-      .map((item) => (item as { component?: unknown }).component)
-      .find((component): component is string => typeof component === "string" && OLD_COMPONENTS.has(component));
+    const old = await oldComponentIn(store, id);
     if (old !== undefined) sessions.push({ id, why: `its transcript holds "${old}" items` });
   }
 
@@ -171,6 +169,19 @@ export async function findPreRenameMarks(
   }
 
   return { sessions, organizations };
+}
+
+/** The first old item component in a mailbox's whole request history, page by page. */
+async function oldComponentIn(store: PreRenameStoreView, sessionId: string): Promise<string | undefined> {
+  for (let offset = 0; ; offset += PAGE) {
+    const requests = await store.request.list({ sessionId, withItems: true, limit: PAGE, offset });
+    const old = requests
+      .flatMap((request) => request.items ?? [])
+      .map((item) => (item as { component?: unknown }).component)
+      .find((component): component is string => typeof component === "string" && OLD_COMPONENTS.has(component));
+    if (old !== undefined) return old;
+    if (requests.length < PAGE) return undefined;
+  }
 }
 
 /**

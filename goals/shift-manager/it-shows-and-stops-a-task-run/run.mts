@@ -293,6 +293,9 @@ async function reach(page: Page, origin: string, tree: Tree, row: Row) {
     await page.locator(`[data-testid=board-card][data-task-id="${row.id}"]`).click();
   } else {
     await page.getByTestId("tasks-table").waitFor({ timeout: 20_000 });
+    // Tasks hides queued rows until Queued is on; a person looking for any open row turns it on.
+    const queued = page.getByTestId("tasks-queued-toggle");
+    if ((await queued.getAttribute("aria-pressed")) !== "true") await queued.click();
     await page.locator(`[data-testid=task-row][data-task-id="${row.id}"]`).click();
   }
   await page.locator(`[data-testid=task-frame][data-task-id="${row.id}"]`).waitFor({ timeout: 10_000 });
