@@ -2,61 +2,53 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs**
 
-Three updates to pages that exist. No new page and no sidebar change: the behaviour belongs to
-the chief of staff and the DevTeam profile, which already have homes. Write "worker", never
-"seat", in every sentence added; leave the rest of each page's wording alone.
+Three updates to pages that exist. No new page and no sidebar change. Write "worker", never
+"seat", in every sentence added; leave the rest of each page's wording alone. Tool names are
+placeholders until FIX-1778 and FIX-1779 pin them.
 
 ## 1 · Update `apps/docs/docs/workforce/chief-of-staff.md` — new section after *Adding one*
 
-> ## Handing it coding work
+> ## Getting a request done
 >
-> A chief of staff that knows where coding work goes can take a request like "build me a
-> hello-world page" and start it, instead of hiring someone for it. Tell it in its `WORKER.md`
-> which worker does the coding, which workstream that worker takes its tasks from, and how a
-> line on that workstream has to look. `discover` lists your workers and mailboxes, but it doesn't
-> say which board a worker works or what a workstream files from, so the file has to.
+> Ask a chief of staff for work, "build me a hello-world page", and it gets that work to a
+> worker who will do it. It looks for a worker who already does that kind of work and creates a
+> task for them. If nobody fits, it hires one and gives the task to the new hire. And if no
+> mailbox in your project can hold the task, it sets one up with a task list, adds the worker,
+> and files the task there.
+>
+> Tell it how in its `WORKER.md`:
 >
 > ```md title="workforce/org/workers/chief-of-staff/WORKER.md (excerpt)"
-> **Get coding work done.** When the person asks for code to be written, hand
-> it to the worker who already does coding: `eng.coder` runs every task filed
-> on `eng.feature`. Do not hire for it.
+> **Get the person's request done.** When the person asks for work, get it
+> assigned to a worker who will do it, in this turn.
 >
-> - Post one line on `eng.feature` with `post-to-mailbox`, shaped
->   `<short-slug>: <what to build>`. The EM files it and the coder starts.
-> - If the person left choices to you, pick plain defaults and put them in
->   the line. Do not ask about them.
+> 1. Find a worker who does this kind of work (`discover`). If one fits,
+>    create the task for that worker.
+> 2. If none fits, hire one of a kind you may hire, then create the task for
+>    the worker you hired. Hire once.
+> 3. If no mailbox in the person's project can hold the task, set one up
+>    there with a task list, subscribe the worker, then create the task on it.
 > ```
 >
-> The chief of staff has to be a member of that workstream for the post to land.
->
-> Don't tell it to hire a worker for a task. A worker it hires isn't on any workstream, and no
-> board hands it tasks, so nothing would start. Hiring is for changing who works here, when the
-> person asks for that.
-
-**Voice watch:** the page already says "seat" throughout; don't reword it here, and don't add the
-word. Introduce *workstream* as the page's readers know it from [Projects](../workforce/projects.md).
+> Give it the tools those steps name in `tools:`. It hires once per request: asking again
+> doesn't hire a second worker or create a second task. When nothing it can do would start the
+> work, it tells you what is missing.
 
 ## 2 · Update `labs/shift-manager/README.md` — the `devteam` bullet under *Team profiles*
 
 After "The EM answers every line posted in a project's room.", add:
 
-> Ask the chief of staff for something to be built and it posts the request on the feature
-> workstream as `slug: what to build`, with any choices you left open filled in, and the coder
-> starts on it. It doesn't hire anyone for that. Ask for coding work in a project that has no
-> workstream the coder works from, Platform for one, and it tells you so and starts nothing.
-
-And in *What a coding run is handed*, the sentence "When you approve a feature in Inbox, or post
-`slug: what to build` on a workstream, …" stays as it is: it becomes true.
+> Ask the chief of staff for something to be built and it creates a task for the coder, with any
+> choices you left open filled in, and the coder starts on it. Ask for work in a project with no
+> mailbox for it, Platform for one, and it sets one up there first.
 
 ## 3 · Update `apps/docs/docs/shift-manager/overview.md` — the `devteam` paragraph
 
 After "Two projects exist from the start, Storefront and Platform.", add:
 
-> Ask the chief of staff on Shift Coordinator to build something and it hands the request to the
-> coder through Storefront's feature workstream, and the run shows up under Tasks. Platform has no
-> workstream yet, so coding work asked for there gets an explanation instead of a run.
+> Ask the chief of staff on Shift Coordinator to build something and it hands the task to a
+> worker who can do it, hiring one if it has to, and the run shows up under Tasks.
 
 ## Not changed
 
-- The Workforce `hire` and `post-to-mailbox` reference: neither tool changes.
-- `goals/devforce-lab/lab/README.md` is a check's notes, updated in the PR (S3), not site docs.
+- The Workforce reference for the new verbs: FIX-1778 and FIX-1779 document their own tools.

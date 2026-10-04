@@ -2,81 +2,63 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
-Two calls shape what a person sees. Both narrow Jake's issue text to what the DevTeam Lab can
-actually do today, so both are on the sign-off.
+Nothing here needs a sign-off. The shape (assign first, hire when nothing fits, set up a mailbox
+when nothing can hold the task) is Jake's, from his comment on this spec. What follows are the
+calls that fill it in.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-1774"] --> D1["D1 · never hire on a coding ask here"]
-  D1 -.->|"rejected"| X1["hire one, then hand the task to it<br/>no path reaches a hired worker"]
-  I --> D2["D2 · a project with no coding workstream gets the gap, plainly"]
-  D2 -.->|"rejected"| X2["run it on Storefront's workstream<br/>the task lands on a project nobody named"]
-  I --> E1["post door runs the board after a new row"]
+  I["FIX-1774"] --> S["split · verbs in three sibling issues, behaviour here"]
+  I --> E1["assign before hire, hire before a new mailbox"]
   I --> E2["defaults picked and named, never asked"]
-  I --> E3["hand-off names written in the chief of staff's file"]
+  I --> E3["one task per ask, one hire at most"]
+  I --> E4["reads projects each turn"]
+  S -.->|"rejected"| X1["one PR with the verbs and the behaviour"]
+  I -.->|"rejected"| X2["never hire, say the gap · first draft"]
 ```
 
-Solid edges are this spec's calls. Dashed edges lost, and the label says why.
-
-<a name="d1"></a>
-## D1 · On a coding ask the chief of staff never hires in this Lab; with no coding worker, it says so
-
-| | |
-|---|---|
-| **Instead of** | Jake's literal bullet: hire when no suitable worker exists, then hand the task to the hire |
-| **Because** | A hire cannot be given the work. A hired worker is on no workstream, the feature mailbox wakes only the EM, and the board hands rows only to the coder the tree declares ([POC finding 2](poc/the-dogfood-turn/README.md)). So "hire, then hand over" is exactly the hire-and-stop bullet 4 forbids. DevTeam already has `eng.coder`, so the case is moot here; the rule is for a Lab without one |
-| **Locks in** | A coding ask is never a reason to hire until a hired worker can join a workstream. An explicit request to hire still hires |
-
-![D1: never hire on a coding ask, chosen, beside hire then hand over. Decides it: whether a hire can be given the work. Price: a Lab with no coder gets a refusal, not a specialist](figures/d1-no-hire.svg)
-
-It comes down to whether a hire can be given the work: today it can't, so a hire starts nothing.
-
-<a name="d2"></a>
-## D2 · A project with no coding workstream gets "not yet, and here is why", not a task elsewhere
-
-| | |
-|---|---|
-| **Instead of** | Posting the ask on `eng.feature` anyway and telling the person the task landed on Storefront |
-| **Because** | Jake: "the coordinator's next step is the task *on that project*". A task on Storefront is not on Platform, and once [FIX-1762](https://linear.app/fixpoint-labs/issue/FIX-1762) lands it would run in Storefront's repository. A workstream belongs to one project at most, so the chief of staff can't borrow `eng.feature` either. Saying the gap is bullet 4 |
-| **Locks in** | Until a project can take coding work of its own ([FIX-1763](https://linear.app/fixpoint-labs/issue/FIX-1763)), asking for code in Platform or a new project gets a sentence, not a run. An ask that names no project goes to `eng.feature` and the reply names Storefront |
-
-![D2: say the gap, chosen, beside run it on Storefront's workstream. Decides it: which project the task lands on. Price: no run for that project yet](figures/d2-say-the-gap.svg)
-
-It comes down to which project the task lands on: elsewhere is the wrong project's code.
+Solid edges are this spec's calls. Dashed edges lost.
 
 ## Decided, not asked
 
-- **The post door runs the board after it files a new row.** The Shift Manager README already
-  says a posted `slug: what to build` is picked up by the coder; today it isn't
-  ([POC finding 3](poc/the-dogfood-turn/README.md)). Same shape as the Inbox ask's approve branch.
-  A repeated slug files nothing and runs nothing new. The run belongs to whoever posted.
-- **Waived choices get plain defaults, named in the line.** Vite, React and TypeScript, plain CSS,
-  for a React ask. The person sees them in the reply and can change them by asking.
-- **The hand-off names are written in the chief of staff's file.** `discover` lists workers and
-  mailboxes but not which board a worker drains or the line shape a workstream files from, so the
-  file states `eng.coder`, `eng.feature` and the `slug: what` shape. The file is the Lab's own,
-  beside the folders it names.
-- **The chief of staff reads the projects each turn.** It needs which project holds which
-  workstream for BR-4 and BR-5, and today it can only write projects. A read from the stored rows,
-  not a list in its file, because projects are the app's data and change at run time.
-- **"With Claude Code" picks no harness.** Which harness a run uses is the Lab operator's
-  setting. The chief of staff neither hires a worker named for a harness nor claims one.
-- **The reply after a hand-off names the task, not a run result.** `post-to-mailbox` reports a
-  hand-off, not the row, so the chief of staff says where to follow it. It does not claim the run
-  succeeded.
+- **The verbs live in three sibling issues; this one is behaviour.** Assigning a task to a named
+  worker ([FIX-1778](https://linear.app/fixpoint-labs/issue/FIX-1778)) and setting up a mailbox
+  ([FIX-1779](https://linear.app/fixpoint-labs/issue/FIX-1779)) are Workforce capabilities any
+  coordinator can use, each with its own design and its own reversal of a documented rule. A post
+  that starts its worker ([FIX-1777](https://linear.app/fixpoint-labs/issue/FIX-1777)) is a Lab fix
+  people hit without a coordinator. Folding them in would make one PR carry three designs.
+- **Assign before hire, hire before a new mailbox.** Jake's order. A hire is a lasting change to
+  who works here, and a mailbox a lasting change to where work lives; the cheapest change that
+  gets the work done goes first.
+- **"Fits" is the worker's kind and its file**, as `discover` returns them. The chief of staff
+  judges the fit; the check grades the outcome (no hire while the coder exists).
+- **One task per ask, one hire at most.** "Just do it" again changes nothing. A hire that didn't
+  start is a missing floor to report, never a reason to hire its twin (the Architect's fence).
+- **A task, not a post.** The chief of staff creates the task for the worker rather than posting
+  a line for another worker to file, because Jake asked it to prioritize assigning tasks and a
+  post leaves the outcome to someone else. Posting stays a way for people to file work
+  (FIX-1777).
+- **Waived choices get plain defaults, named in the task and the reply.** Vite, React,
+  TypeScript, plain CSS for a React ask.
+- **The chief of staff reads the projects each turn**, from the stored rows, because projects
+  are the app's data and change at run time. Its file names no project.
+- **"With Claude Code" picks no harness.** Which harness a run uses is the Lab operator's setting.
+- **The reply names where the task is, not a run result.** The chief of staff does not claim the
+  run succeeded.
 
 ## Considered and dropped
 
-- **A tool that files a row on a board for a named worker.** A new dispatch verb next to routing
-  that already exists. The Architect's fence invent-kills it, and the post door is that path.
-- **Teaching `discover` to return a mailbox's charter and boards**, so the chief of staff learns
-  the hand-off from the tree. Right direction, but a Workforce change for one caller. A
-  [follow-up](PLAN.md#follow-ups).
-- **Making `hire` refuse a kind no board or mailbox can reach.** `hire` already warns, and the
-  model ignored it. Refusing is a Workforce policy change wider than this issue.
-- **Instructions only.** The POC showed a correct post still starts nothing.
+- **Never hire for a coding ask; say the gap instead.** The first draft, because in this Lab a hire
+  can't be given work today. Jake rejected it: the coordinator should hire and assign. FIX-1778
+  makes that possible.
+- **Run the ask on another project's mailbox** when the named one has none. The task would land
+  on a project nobody named. FIX-1779 lets the chief of staff set one up instead.
+- **A routing skill or a dispatch tool in this issue.** The verbs come from FIX-1778 and FIX-1779,
+  which are Workforce's; nothing is invented here.
+- **Instructions only, on today's tools.** The POC showed hires can't be given work and a post
+  starts nothing.
 
 ## Open
 
@@ -85,16 +67,16 @@ None.
 <a name="settled"></a>
 ## Settled
 
-- **Hired workers have no way in** (the Architect's hunch). Confirmed by the POC: inventory and
-  host wiring show no mailbox address and no board hand-off for any hired worker.
-- **A shaped post files a row and nothing runs it.** Confirmed: `{"filed":true}` and no claim.
-- **Running the board after the file starts the coder.** Confirmed with a local, uncommitted
-  change: claim, hand-off, `harness-manager` prompt carrying the task.
+- **Hired workers have no way in today.** Confirmed by the POC: no mailbox address and no board
+  hand-off for any hired worker. FIX-1778 and FIX-1779 own that.
+- **A shaped post files a task and nothing runs it.** Confirmed. FIX-1777 owns it.
+- **Running the board after filing starts the coder.** Confirmed with a local, uncommitted change.
 
 ## How it got here
 
-- **Draft** — The dogfood failure is two gaps, not one: the chief of staff was never told how to
-  hand off coding work, and the hand-off it should use files a task nobody runs. One PR fixes
-  both in the DevTeam Lab, with no package change.
-- **Round 1** — Codex found the chief of staff can't read projects, so it could not name Storefront
-  or the Platform gap without guessing. Added a read of the stored projects (S6).
+- **Draft** — Two gaps: the chief of staff wasn't told how to hand off coding work, and the
+  hand-off it should use files a task nobody runs. Never hire; post on `eng.feature`.
+- **Round 1** — Codex found the chief of staff can't read projects. Added the project read.
+- **Round 2** — Jake: break it into parts; the coordinator should hire, assign, and set up a
+  mailbox when needed. The verbs split into FIX-1777, FIX-1778 and FIX-1779; this spec became
+  the coordinator's behaviour, built after them.
