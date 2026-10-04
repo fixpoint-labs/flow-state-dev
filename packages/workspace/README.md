@@ -174,6 +174,88 @@ Nested prefixes work. A collection at `artifacts/drafts` inside one at `artifact
 
 A read-only mount is hydrated and then left alone. Its paths aren't written back and aren't reported as orphans — the projection knows who owns them, and the answer is "not us".
 
+### Scoping a mount to one key prefix
+
+When one collection holds files for several owners, keyed `<owner>/…`, give the mount a `scope` so a place only ever sees and writes one owner's keys:
+
+```ts
+{
+  prefix: "workspace",
+  scope: "sandbox",            // only keys under sandbox/…
+  collection: files,
+  collectionId: collectionIdFor(files, principal),
+  writable: true,
+}
+```
+
+The collection's `sandbox/notes.md` appears in the place at `workspace/notes.md`, and a write there lands back at `sandbox/notes.md`. Every list, read, write and delete goes through the scope, and the listing is filtered by the collection itself, so other owners' rows are never read at all. A scope is a key prefix like `"a"` or `"a/b"`: no leading or trailing `/`, and no `.` or `..` segment.
+
+## Workspace hosts and run sources
+
+A **run source** says where a run's files come from: a git repository and the branch to cut from, or a set of files kept in a collection. A **workspace host** turns that answer into a directory a worker can edit, saves the work back, and lets the directory go when the run is done. Harness workers and tool workers use the same host.
+
+```ts
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
+
+const host = localWorkspaceHost({
+  root: "/var/fsd/runs",
+  remotes: { allow: ["github.com"] },   // list "file" to allow file:// remotes
+  source: mySource,                      // (ctx) => an answer, below
+});
+```
+
+A source is a function of the block context, and answers one of three ways:
+
+```ts
+{ kind: "repo", repo: "https://github.com/acme/storefront.git" }            // a fresh branch of a repository
+{ kind: "repo", repo, baseRef: "release", projectId: "storefront", files }   // ...with kept files beside it
+{ kind: "files", projectId: "sandbox", files }                               // no repository: the kept files are the work
+{ kind: "refused", reason: "not-a-member", message: "..." }                  // no files for this run, and why
+```
+
+`files` is `{ collection, collectionId }`, and `projectId` is the key prefix inside that collection. The host never reads it as anything else.
+
+A run then goes through four calls:
+
+```ts
+const answer = await host.source(ctx);
+const place = await host.provision(answer, { place: [tenant, user, runId], branch: `fsd/${runId}` });
+// the worker runs with place.cwd as its working directory
+const report = await host.save(place);   // a FlushReport, as above
+await host.release(place);
+```
+
+### What a place looks like
+
+```
+<root>/.clones/<repository>.git     one clone per remote, shared by every run
+<root>/<place…>/
+    checkout/     a git worktree on the run's branch
+    project/      the kept files, next to the checkout
+    workspace/    the kept files as the working directory, when there is no repository
+```
+
+For a repository, the host keeps one clone of each remote under `root` and gives every run its own branch in `checkout/`. `https://github.com/acme/x`, `https://github.com/acme/x.git` and `git@github.com:acme/x.git` share one clone. Before it cuts a new branch, the host fetches and reads the remote's default branch again, so a renamed `main` is followed. `place.repo` says which clone, branch, base branch and commit the run got. Record the remote and base on your run, and log the clone path so whoever runs the host can find it.
+
+A checkout that already exists is handed back exactly as it was left. The host doesn't fetch, reset or rebase it, so a retry finds its uncommitted work. A checkout it can't explain, such as one on a different branch or with no `.git`, is refused and left alone.
+
+Kept files go in `project/` next to the checkout, never inside it, so `git status` never sees them. With no repository they go in `workspace/`, which is also the run's working directory. Either way they're hydrated from one key prefix of the collection and flushed back by `save`, with the same conflict reporting as any projection. The first run in an empty prefix starts from an empty directory. A retry in the same process gets the same live directory back, unsaved edits included. A directory the process didn't fill itself, after a restart or because it was deleted, is rebuilt from the collection. The collection is the record, so anything a run never saved is gone.
+
+`checkpoint` and `restore` exist on the host and do nothing yet. They mark where keeping uncommitted repository work across a lost machine will plug in.
+
+### Which remotes a host reaches
+
+`remotes.allow` lists hosts, reached over `https` or `ssh`. Add `"file"` to permit `file://` remotes, which are refused otherwise. Every remote is checked before any git process starts, and the host refuses, with a `WorkspaceRefusedError`:
+
+| `reason` | When |
+| --- | --- |
+| `invalid-remote` | The value starts with `-`, uses a transport helper like `ext::`, has a host starting with `-`, carries a password or an `https` login, or is a bare path rather than a URL |
+| `remote-not-allowed` | Its host isn't listed, it's `file://` and `"file"` isn't listed, or its scheme isn't `https`, `ssh` or `file` |
+| `remote-unreadable` | The host is allowed but git couldn't read it, or it has no branch to cut from |
+| anything else | The source answered `refused`, with that reason |
+
+Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` before every remote, and without a terminal prompt. A refusal names the remote without its credential. None of these clears on a retry, so fail the run with the reason.
+
 ## API
 
 | Export | What it is |
@@ -188,6 +270,9 @@ A read-only mount is hydrated and then left alone. Its paths aren't written back
 | `principalFromContext(ctx)` | The scoping identity, read off a block's execution context. |
 | `collectionIdFor(collection, principal)` | A `Mount.collectionId` for a scoped door. |
 | `unscopedCollectionId(collection)` | A `Mount.collectionId` for a door with no principal. |
+| `localWorkspaceHost({ root, remotes, source })` | A workspace host on this machine. Returns `{ root, source, provision, save, checkpoint, restore, release }`. |
+| `WorkspaceRefusedError` | What `provision` rejects with when it won't make a place. Carries `reason`. |
+| `RunSource`, `RunSourceAnswer` | The run-source function type and its three answers. |
 
 `ownedPaths()` returns the paths the projection currently holds a baseline for — what it would write to, and what it would delete.
 
