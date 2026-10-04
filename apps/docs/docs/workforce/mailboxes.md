@@ -9,7 +9,7 @@ description: "A mailbox is one addressable conversation that several agents and 
 
 Several agents working one topic. Each of them reads what the others said. Posting hands nobody the work, and the conversation needs somewhere to live that outlasts whoever spoke last. When the talk does produce work somebody has to take and finish, the mailbox can hold a board for it.
 
-That is a mailbox: one address, one conversation, any number of writers. It is not a room you join and leave, and it is not a list of everything waiting for you. The framework ships the flow that runs mailboxes, and each mailbox you open is a named session on it.
+That is a mailbox: one address, one conversation, any number of writers. The framework ships the flow that runs mailboxes, and each mailbox you open is a named session on it.
 
 A mailbox can also be [routed](#routing-a-mailbox). A post someone sends then goes to the one member whose job fits it, and that member answers in the mailbox. A support desk works that way: the printer question goes to the devices specialist, and nobody else hears it.
 
@@ -19,9 +19,7 @@ A mailbox can also be [routed](#routing-a-mailbox). A post someone sends then go
 
 Each mailbox is a session on a mailbox kind, the built-in `mailbox` unless its file names another. Look at what sits inside the session (members, charter and transcript) and what sits outside it (a member's seat, the board's rows, the inventory row). A post's `author` is checked against the members in the session. The inventory's list is only for finding which mailboxes a seat is in.
 
-A mailbox is a session, not a new type beside flows and collections. A hundred mailboxes on the built-in kind are a hundred named sessions on one registered instance.
-
-If you use Shift Manager, two of its words sit next to this one. A **workstream** is a team's mailbox together with the boards it holds. **Inbox** is the list of approvals and questions seats are waiting on you for. Neither is a second kind of mailbox.
+If you use Shift Manager: a **workstream** there is a team's mailbox together with the boards it holds. Its **Inbox** is not a mailbox. It is the list of approvals and questions seats are waiting on you for.
 
 :::tip When a mailbox, and when something else
 
@@ -884,24 +882,36 @@ On that kind of deployment, a post from a client is written to the mailbox, but 
 Mailboxes used to be called channels, everywhere: the record file, the folder, the kind, the items in a transcript, and the exports. The old names are not read.
 
 - **Files.** Rename `teams/<team>/channels/<name>/CHANNEL.md` to `teams/<team>/mailboxes/<name>/MAILBOX.md`, and `workforce/flows/channels/` to `workforce/flows/mailboxes/`. An old record file or folder comes back from `readMailboxesDirectory` as a `pre-rename-record` error, one per file, and an old kinds folder makes `fsdev gen` refuse to run, naming it. Nothing under an old name is skipped in silence.
-- **Code.** Every `channel` export has a `mailbox` name: `channelFlow` is `mailboxFlow`, `openChannels` is `openMailboxes`, `ChannelManifest` is `MailboxManifest`. A transcript line is a `mailbox-post` item, and a seat's tool is `post-to-mailbox`. A kind of your own can't be called `channel`: `mailboxInstances` refuses that key in `kinds`.
-- **Stored data.** A store written before the rename does not open. `openMailboxes` refuses a mailbox id held by a session on the old kind, and names it as a store to reset. To find every mark before you open anything, check the store at boot:
+- **Code.** Every `channel` export has a `mailbox` name: `channelFlow` is `mailboxFlow`, `openChannels` is `openMailboxes`, `readChannelsDirectory` is `readMailboxesDirectory`, `ChannelManifest` is `MailboxManifest`. A kind of your own can't be called `channel`: `mailboxInstances` refuses that key in `kinds`.
+- **Strings you wrote yourself.** These are plain strings, so nothing renames them for you:
+
+  | Where | Old | New |
+  |-------|-----|-----|
+  | The built-in kind, as a `flowKind` or in `/api/flows/<kind>/…` | `"channel"` | `"mailbox"` |
+  | A transcript line's item `component` | `channel-post` | `mailbox-post` |
+  | A route decision's item `component` | `channel-route` | `mailbox-route` |
+  | A seat's `tools:` in `WORKER.md` | `post-to-channel` | `post-to-mailbox` |
+  | A seat's `discover:` in `WORKER.md` | `channels` | `mailboxes` |
+  | `createWorkforceCapability`'s `roster` and `inventory` keys | `channels` | `mailboxes` |
+  | The inventory collection's key prefix | `inventory/channels/` | `inventory/mailboxes/` |
+
+- **Stored data.** Sessions, transcripts and inventory rows written before the rename are not read. `openMailboxes` refuses a mailbox id held by a session on the old kind, and names that session as a store to reset. To list everything left from before the rename before you open anything, check the store at boot:
 
 ```ts
 import { describePreRenameMarks, findPreRenameMarks, openMailboxes } from "@flow-state-dev/workforce";
 
-const marks = await findPreRenameMarks(stores, {          // your server's store registry
-  mailboxIds: mailboxes.map((mailbox) => mailbox.id),
-  orgIds: ["acme"],
+const leftovers = await findPreRenameMarks(stores, {      // your server's store registry
+  mailboxIds: mailboxes.map((mailbox) => mailbox.id),       // mailboxes whose transcripts are checked
+  orgIds: ["acme"],                                         // organizations whose inventory is checked
 });
-if (marks.sessions.length > 0 || marks.organizations.length > 0) {
-  throw new Error(`This store was ${describePreRenameMarks(marks)}. Start from an empty store.`);
+if (leftovers.sessions.length > 0 || leftovers.organizations.length > 0) {
+  throw new Error(`This store was ${describePreRenameMarks(leftovers)}. Start from an empty store.`);
 }
 
 await openMailboxes(mailboxes, { client: sessionClient, userId: "u_42" });
 ```
 
-`findPreRenameMarks` only reads. It reports any session on the old kind, any listed mailbox whose recent transcript holds old items, and any organization holding inventory rows under the old key. Start from an empty store: old conversations, and the inventory rows that listed old channels, are not carried over.
+`findPreRenameMarks` only reads. It returns `{ sessions, organizations }`: every session on the old kind and every listed mailbox whose recent transcript holds old items, each with the reason, and every listed organization holding inventory rows under the old key. Both lists are empty for a store written after the rename. Start from an empty store: old conversations, and the inventory rows that listed old channels, are not carried over.
 
 ## What mailboxes do not do yet
 
