@@ -124,7 +124,7 @@ These sit beside Orchestration on Core and don't use a task board.
 
 ![Each Shift Manager screen beside what it reads. A Lab is a FlowState loaded from one fsdev config. The Shift Coordinator is a person's session with the Lab's chief of staff worker. Inbox lists asks, which are suspended runs in workers' sessions waiting on a person. Tasks lists tasks on every mailbox board. Roster lists the workers in the inventory, with on shift, on call and off shift worked out from their tasks and asks. A workstream view shows a mailbox and its boards. A project view shows a project row and its room.](./glossary/shift-manager.svg)
 
-[Shift Manager](https://github.com/fixpoint-labs/flow-state-dev/tree/main/labs/shift-manager) is a browser app in this repository, not a published package. It stores nothing of its own: every screen is a read of the Lab it serves.
+[Shift Manager](./shift-manager/overview.md) is a browser app in this repository, not a published package. It stores nothing of its own: every screen is a read of the Lab it serves.
 
 | Term | Where | What it is | Built from |
 |---|---|---|---|

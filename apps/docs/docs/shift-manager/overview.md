@@ -8,7 +8,7 @@ description: "The browser app you run a Workforce team through. Point it at a La
 
 Shift Manager is the browser app you run a [Workforce](../workforce/overview.md) team through. A team is served as a **Lab**: one `fsdev.config.mts` that default-exports a `FlowState` holding the team's workers and mailboxes. You point Shift Manager at that config, or open a team profile it ships, and it shows what the Lab holds.
 
-It knows nothing about any particular Lab. Every name on screen is read from the Lab while it runs.
+It knows nothing about any particular Lab. Every name on screen is read from the Lab while it runs. The [glossary](../glossary.md#shift-manager-screens-over-a-workforce) lists its terms and what each screen reads.
 
 It is research software. Several screens are placeholders that say what will fill them. It lives in this repository under `labs/shift-manager` and isn't published to npm, so you run it from a checkout.
 
