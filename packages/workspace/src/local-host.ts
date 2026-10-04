@@ -54,7 +54,7 @@ import { acquireLock, releaseLock } from "./lock";
 import { assertScope, createProjection, type Projection } from "./projection";
 import { allowedProtocols, checkRemote, redactRemote, type AllowedRemote } from "./remotes";
 import type { RunFiles, RunSource, RunSourceAnswer } from "./run-source";
-import type { FlushReport } from "./types";
+import type { FlushReport, Place } from "./types";
 import { gitAnsweredNo, provisionWorktree, type IgnoredDirectory } from "./worktree";
 
 /** The directory names inside a place. People and agents read them. */
@@ -147,6 +147,9 @@ export interface PlaceRequest {
    * A checkout whose repository tracks the caller's files there, or does not
    * ignore the directory, is refused before it is handed over, and one this
    * call made is removed again.
+   *
+   * For a run with no repository, the same directory inside `workspace/` is
+   * left out of the kept files: `save` never writes it to the collection.
    */
   ignored?: IgnoredDirectory;
 }
@@ -304,7 +307,13 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
    * were never saved by this process, and a projection that adopted them would
    * read every file as new and could resurrect one another run deleted.
    */
-  function provisionFiles(dir: string, name: string, projectId: string, files: RunFiles): Promise<Projection> {
+  function provisionFiles(
+    dir: string,
+    name: string,
+    projectId: string,
+    files: RunFiles,
+    ignored?: IgnoredDirectory,
+  ): Promise<Projection> {
     const filesDir = join(dir, name);
     const existing = live.get(filesDir);
     if (existing !== undefined && existsSync(filesDir)) return existing;
@@ -313,7 +322,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       rmSync(filesDir, { recursive: true, force: true });
       mkdirSync(filesDir, { recursive: true });
       const projection = createProjection({
-        place: createHostPlace(dir),
+        place: leavingOut(createHostPlace(dir), ignored && `${name}/${ignored.dir.split(sep).join("/")}/`),
         mounts: [
           {
             prefix: name,
@@ -501,7 +510,9 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     if (answer.kind === "files") {
       assertScope(answer.projectId);
       const filesDir = join(dir, WORKSPACE_DIR);
-      await locked(join(dir, LOCK_SUFFIX), () => provisionFiles(dir, WORKSPACE_DIR, answer.projectId, answer.files));
+      await locked(join(dir, LOCK_SUFFIX), () =>
+        provisionFiles(dir, WORKSPACE_DIR, answer.projectId, answer.files, request.ignored),
+      );
       return { kind: "files", dir, cwd: filesDir, filesDir };
     }
 
@@ -597,4 +608,17 @@ function isPlainBranch(branch: string): boolean {
     /^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(branch) &&
     !/\.\.|\/\/|\/\.|\.lock$|\.lock\/|\/$|\.$/.test(branch)
   );
+}
+
+/**
+ * `place`, with every path under `hidden` left out of its listing, so a flush
+ * never sees those files and never saves them. Reads and writes pass through.
+ */
+function leavingOut(place: Place, hidden: string | undefined): Place {
+  if (hidden === undefined) return place;
+  return {
+    read: (path) => place.read(path),
+    write: (path, content) => place.write(path, content),
+    list: async (prefixes) => (await place.list(prefixes)).filter((path) => !path.startsWith(hidden)),
+  };
 }

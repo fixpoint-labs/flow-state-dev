@@ -260,7 +260,7 @@ The run's branch is cut from `baseRef` (or `HEAD`) and stays in that repository.
 
 ### Keeping a directory out of git
 
-A caller that writes its own files inside the checkout can name that directory in the place request: `ignored: { dir, rule, why }`. Before the checkout is handed over, the host checks that the repository ignores `dir` and doesn't already track files under it. If either check fails, it refuses with a message that names `rule` as the line to add to `.gitignore`, and removes a checkout it had only just made.
+A caller that writes its own files inside the checkout can name that directory in the place request: `ignored: { dir, rule, why }`. Before the checkout is handed over, the host checks that the repository ignores `dir` and doesn't already track files under it. If either check fails, it refuses with a message that names `rule` as the line to add to `.gitignore`, and removes a checkout it had only just made. In a run with no repository, `save` leaves `dir` inside `workspace/` out of the kept files.
 
 One provision, every git command in it included, is held to `provisionTimeoutMs` (ten minutes by default). `host.locate(answer, { place })` says where `provision` would put a place, without making anything, for a caller that has to name the working directory first.
 

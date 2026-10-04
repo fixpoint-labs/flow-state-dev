@@ -62,6 +62,22 @@ describe("a run with no repository works in workspace/", () => {
     expect(collection.contents()).toEqual({ "sandbox/index.html": "<h1>hi</h1>" });
   });
 
+  it("never saves a directory the caller asked to keep out", async () => {
+    // The caller's own files (a question for a person, say) sit in the
+    // working directory because that is where the worker can write, but
+    // they are not the project's work.
+    const h = host();
+    const ignored = { dir: join(".fsdev", "ask"), rule: ".fsdev/ask/", why: "the caller's own files" };
+    const place = await h.provision(files("sandbox"), { place: ["run-1"], ignored });
+
+    writeFileSync(join(place.cwd, "index.html"), "<h1>hi</h1>");
+    mkdirSync(join(place.cwd, ".fsdev", "ask"), { recursive: true });
+    writeFileSync(join(place.cwd, ".fsdev", "ask", "1.md"), "Which option?");
+    await h.save(place);
+
+    expect(collection.contents()).toEqual({ "sandbox/index.html": "<h1>hi</h1>" });
+  });
+
   it("starts the next run from what the last one saved, nested paths included", async () => {
     const h = host();
     const first = await h.provision(files("sandbox"), { place: ["run-1"] });
