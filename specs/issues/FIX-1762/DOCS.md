@@ -2,8 +2,9 @@
 
 [Spec](SPEC.md) · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · **Docs** · [Evolution](EVOLUTION.md)
 
-No new page. Two existing pages and two package READMEs grow a section each. Watch for:
-em-dashes, sentences that open with "This", and introducing *checkout* and *remote* on first use.
+No new page. Three existing pages or READMEs grow a section, and one README gets a new one. Watch
+for em-dashes, sentences that open with "This", and introducing *checkout*, *remote* and
+*workspace host* on first use. Don't say "seat"; say worker.
 
 ## UPDATE · `apps/docs/docs/workforce/projects.md` · "The row" table
 
@@ -13,90 +14,93 @@ Add one row after `workstreams`:
 
 ## CREATE section · `apps/docs/docs/workforce/projects.md` · after "One project per workstream"
 
-> ## A project's repository
+> ## A project's code and files
 >
 > A project can name the repository its code lives in. It's a remote, the address you'd pass to
-> `git clone`, not a folder on some machine. A project with no repository is still a project:
-> a launch plan or a hiring push doesn't need one.
->
-> Set it when you create the project, or later:
+> `git clone`, not a folder on some machine. Set it when you create the project, or later:
 >
 > ```ts
 > await createProject({ id: "storefront", title: "Storefront", repository: "https://github.com/acme/storefront.git" });
-> await setRepository({ projectId: "storefront", repository: "git@github.com:acme/storefront-v2.git" });
 > await setRepository({ projectId: "storefront", repository: null });
 > ```
 >
-> Only members can change it. When the chief of staff sets it for you, it asks you to approve
-> the change in Inbox first, the same way it asks before a fire. A bare path like
-> `/home/me/storefront` is refused, and so is an address carrying a token or password (an SSH login like `git@` is fine): the row is
-> visible to the whole organization, so credentials stay in the host's own git setup.
+> Only members can change it. When the chief of staff sets it for you, it asks you to approve the
+> change in Inbox first. A bare path is refused, and so is an address carrying a token or
+> password; an SSH login like `git@github.com:acme/storefront.git` is fine.
 >
-> When a coding run picks up work from one of the project's workstreams, it works in a fresh
-> branch of that repository, as long as the host running the Lab allows that remote. Nobody
-> names a folder. The harness manager's README, under
-> "Running a project's work", shows how a host wires it.
+> When a coding worker picks up work from one of the project's workstreams, it works in a fresh
+> branch of that repository, as long as the host running the Lab allows that remote. Nobody names
+> a folder. Changing the repository applies to new work; work already started stays on the
+> repository it began with.
 >
-> If the project names no repository, a coding row filed there is refused before any agent runs,
-> and the error says which project to fix. Changing the repository applies to new rows. A row
-> that already started stays on its old checkout and is refused on its next attempt, naming
-> both repositories, so nothing it did is overwritten.
+> ### Projects without a repository
+>
+> A project with no repository still runs coding work. The first run starts from an empty set of
+> files, and everything it writes is saved to the project. The next run starts from what the last
+> one left. If two runs change the same file, the change is merged; a real conflict is reported
+> on the run instead of overwriting anyone's work.
 >
 > ### The project's own files
 >
-> A project also keeps files that aren't code: notes, memory, anything that belongs to the
-> project rather than to a branch. They live in the organization's `project-files` collection,
-> under the project's id, and only the project's members can read them.
->
-> A coding run gets a directory for these files beside its checkout, never inside it, so
-> nothing there shows up in `git status`. The run's files in that directory aren't saved to the
-> collection yet; a host that wants them kept can do it in the manager's after-run hook.
+> Notes, memory and anything a worker keeps live in the organization's `project-files` collection,
+> under the project's id. Only the project's members can read them. In a project with a
+> repository, a coding run finds them in `project/`, next to its checkout and never inside it, so
+> they never show up in `git status`. Whatever the run leaves there is saved back.
 
-## UPDATE · `packages/harness-manager/README.md` · new section after "Running a mailbox's board"
+## UPDATE · `packages/workspace/README.md` · new section "Workspace hosts and run sources"
+
+> ## Workspace hosts and run sources
+>
+> A **run source** says where a run's files come from: a git repository and the ref to branch
+> from, or a set of files kept in a collection. A **workspace host** turns that into a place a
+> worker can edit, saves the work back, and frees the place when it's done. Harness workers and
+> tool workers use the same host.
+>
+> ```ts
+> import { localWorkspaceHost } from "@flow-state-dev/workspace";
+>
+> const host = localWorkspaceHost({
+>   root: "/var/fsd/runs",
+>   remotes: { allow: ["github.com"] },   // list "file" to allow file:// remotes
+>   source: mySource,                      // (ctx) => { kind: "repo", repo, baseRef } | { kind: "files", projectId } | a refusal
+> });
+> ```
+>
+> For a repository, the host keeps one clone per remote under `root` and cuts each run a fresh
+> branch in `checkout/`. It only reaches remotes listed in `remotes.allow`. For a set of files,
+> it fills `workspace/` from the collection, scoped to one key prefix, and saves changes back.
+>
+> A mount can be scoped to a key prefix so a place only ever sees and writes `<prefix>/…`.
+
+## UPDATE · `packages/harness-manager/README.md` · Quick start and new "Running a project's work"
 
 > ## Running a project's work
 >
-> A fixed `sourceRepo` sends every run to one repository. When the repository depends on the
-> work, give the manager a run source instead. It's called at each attempt, with the block's
-> context and nothing else, and answers with the remote to work in or a reason to refuse:
+> Hand the manager a workspace host instead of a fixed repository, and each run gets its files
+> from whatever the host's source says:
 >
 > ```ts
+> import { localWorkspaceHost } from "@flow-state-dev/workspace";
 > import { projectWorkspace } from "@flow-state-dev/workforce";
 >
 > harnessManager({
 >   boardCollectionId: work.id,
 >   boardCollection: work,
->   workspace: {
->     root,
->     remotes: { allow: ["github.com"] },
->     ...projectWorkspace({ board: work }),
->   },
+>   workspace: localWorkspaceHost({ root, remotes: { allow: ["github.com"] }, source: projectWorkspace({ board: work }) }),
 >   // ...
 > });
 > ```
 >
-> The manager only reaches remotes listed in `remotes.allow`. `file://` is off unless you list
-> `file`. Anything else is refused at the attempt, before git runs, naming the remote.
->
-> It keeps one clone per remote under `root`, made the first time a run needs it. Before cutting
-> a new branch it fetches, and it branches from the remote's default branch. A retry continues
-> its existing checkout and never fetches, resets or rebases. Access is the host's own git
-> credentials; a remote the host can't read fails the attempt before the harness runs.
->
-> Each run also gets a directory beside its checkout, outside the worktree, named in the
-> prompt context. Pass `before` and `after` hooks to fill it and keep what the run left there;
-> `after` runs whether the harness succeeded or failed.
->
-> A fixed `sourceRepo` still works as before.
+> The manager saves the run's files at the end of each turn, when the run asks a question, and
+> when the harness fails. A fixed `sourceRepo` still works as before.
 
 ## UPDATE · `packages/workforce/README.md` · Projects section
 
 > `createProject` takes an optional `repository`, and `setRepository` changes it (members only).
-> `projectWorkspace({ board })` gives a harness manager the repository of the project that holds
-> that board's workstream. See the docs site's Projects page.
+> `projectWorkspace({ board })` is a run source: the repository of the project that holds that
+> board's workstream, or the project's files when it has no repository.
 
 ## Publication ownership
 
-PR B publishes the Workforce page and README after V5 passes; PR C publishes the harness-manager
-section after the goal check passes. No overlap with FIX-1650's shared narrative: the projects
-page is FIX-1718's, and this adds a section without rewriting its existing ones.
+Each section publishes with the PR that ships it (PLAN → Docs). The projects page is FIX-1718's;
+this adds a section without rewriting its existing ones.

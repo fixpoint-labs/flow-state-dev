@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="D2, who may point a project at a repository. Chosen: any member directly, the chief of staff only after a person approves in Inbox, and both only inside the remotes the host&#x27;s operator allows. Instead of: the chief of staff sets it on its own, the way it hires. It comes down to the first row: a prompt-injected or mistaken chief of staff could point the next coding run at code nobody chose, and the chosen option puts a person in front of that, while the alternative lets it land. The price: one approval click for each repository the chief of staff sets. Inside the operator&#x27;s allowed remotes both are the same. Locks in: every chief-of-staff repository change waits on a person, and the operator keeps the allowed list. Flips if: repository changes turn out to be frequent and routine."
+<svg viewBox="0 0 940 420" role="img" aria-label="D2, decided by Jake on 2026-10-04: where the run source and the workspace host live. Chosen: in the shared workspace layer, which harness workers and tool workers both call, with harness-manager as the first caller. Instead of: inside harness-manager only. It comes down to the first row: a tool worker, where FSD does the editing with bash and file tools, can get a repository worktree and project files from the same code, while the alternative leaves tool workers without them or with a second copy. The price: harness-manager gains a dependency on the workspace package now. Core and engine are unchanged either way. Locks in: every worker kind provisions, saves and releases its files through one host. Flips if: tool workers never edit repositories."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -34,62 +34,62 @@
   <rect class="bg" x="0" y="0" width="940" height="420"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
-    <text class="t-q" x="32" y="52">Who may point a project&#x27;s coding runs at a repository?</text>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL · DECIDED BY JAKE</text>
+    <text class="t-q" x="32" y="52">Where do the run source and the workspace host live?</text>
   </g>
   <g id="options">
     <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
-    <text class="t-h c-code" x="228" y="112">Members; the chief of staff asks first</text>
+    <text class="t-h c-code" x="228" y="112">The shared workspace layer</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">The chief of staff sets it on its own</text>
+    <text class="t-h c-lost" x="592" y="112">Inside harness-manager only</text>
   </g>
   <g id="row-0">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">A WRONG OR</text>
-    <text class="t-lbl" x="32" y="169">INJECTED ASK</text>
+    <text class="t-lbl" x="32" y="156">A TOOL WORKER</text>
+    <text class="t-lbl" x="32" y="169">NEEDS A REPO</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">A person sees it first</text>
-    <text class="t-s" x="248" y="179">an Inbox approval, as a fire does</text>
+    <text class="t-b" x="248" y="161">Same host, same rules</text>
+    <text class="t-s" x="248" y="179">bash and file tools call it too</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">The next run uses that code</text>
-    <text class="t-s" x="612" y="179">nobody chose it</text>
+    <text class="t-b" x="612" y="161">None, or a second copy</text>
+    <text class="t-s" x="612" y="179">two places to keep in step</text>
   </g>
   <g id="row-1">
-    <text class="t-lbl" x="32" y="222">COST PER</text>
-    <text class="t-lbl" x="32" y="235">CHANGE</text>
+    <text class="t-lbl" x="32" y="222">NEW PACKAGE</text>
+    <text class="t-lbl" x="32" y="235">EDGES</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">One approval click</text>
-    <text class="t-s" x="248" y="241">for each repo the chief of staff sets</text>
+    <text class="t-b" x="248" y="223">harness-manager uses workspace</text>
+    <text class="t-s" x="248" y="241">one more dependency, now</text>
     <text class="mark plus" x="592" y="224">+</text>
     <text class="t-b" x="612" y="223">None</text>
-    <text class="t-s" x="612" y="241">it lands at once, like a hire</text>
+    <text class="t-s" x="612" y="241">it stays self-contained</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="282">OUTSIDE THE HOST&#x27;S</text>
-    <text class="t-lbl" x="32" y="295">ALLOWED REMOTES</text>
+    <text class="t-lbl" x="32" y="282">CORE AND</text>
+    <text class="t-lbl" x="32" y="295">ENGINE</text>
     <text class="mark tie" x="228" y="284">=</text>
-    <text class="t-b" x="248" y="283">Refused before any run</text>
-    <text class="t-s" x="248" y="301">the operator list bounds both</text>
+    <text class="t-b" x="248" y="283">Unchanged</text>
+    <text class="t-s" x="248" y="301">no new noun in layer 1</text>
     <text class="mark tie" x="592" y="284">=</text>
-    <text class="t-b" x="612" y="283">Refused before any run</text>
+    <text class="t-b" x="612" y="283">Unchanged</text>
     <text class="t-s" x="612" y="301">the same</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">A chief-of-staff repository change waits on a person</text>
-    <text class="t-s" x="32" y="389">and the operator keeps the allowed-remotes list</text>
+    <text class="t-b" x="32" y="371">Every worker kind goes through one host</text>
+    <text class="t-s" x="32" y="389">provision, save, restore, release</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">Repository changes become frequent and routine</text>
-    <text class="t-s" x="494" y="389">then it lands at once, as a hire does</text>
+    <text class="t-b" x="494" y="371">Tool workers never edit repositories</text>
+    <text class="t-s" x="494" y="389">then the host could stay in harness-manager</text>
   </g>
 </svg>

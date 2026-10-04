@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today, on the left: the Lab's operator wires one repository at boot, and runs for project Storefront and project Platform both cut their checkouts from it, whichever code the project is about. After, on the right: each project row records a remote or none. A run for Storefront follows its workstream to the project, takes the remote, and the host, if its operator allows that remote, keeps one clone of it and cuts the run's checkout from it. Beside the checkout, never inside it, the run gets a directory of its own for the project's files; the project's members-only files collection is separate, and nothing is copied between them in this slice. Platform records no repository, so its coding row is refused by name."
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today, on the left: the Lab's operator wires one repository at boot and every project's runs cut their checkouts from it. After, on the right: Storefront records a remote; if the operator allows it, the host keeps one clone and cuts the run's checkout from it. Beside the checkout, never inside it, project/ is hydrated from the project's members-only files collection and synced back after the run, scoped to that project's keys. Platform has no repository, so its coding runs work in workspace/, hydrated from its files and synced back."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -50,9 +50,9 @@
     <rect class="n-new" x="396" y="56" width="220" height="50" rx="5"/>
     <text class="t-b" x="410" y="78">Storefront</text>
     <text class="t-s" x="410" y="96">repository: github.com/acme/…</text>
-    <rect class="n-gone" x="636" y="56" width="268" height="50" rx="5"/>
-    <text class="t-b" x="650" y="78">Platform · repository: null</text>
-    <text class="t-g" x="650" y="96">a coding row here is refused, by name</text>
+    <rect class="n-new" x="636" y="56" width="268" height="50" rx="5"/>
+    <text class="t-b" x="650" y="78">Platform · no repository</text>
+    <text class="t-s" x="650" y="96">runs on its files: workspace/, synced back</text>
     <rect class="n-acc" x="396" y="140" width="220" height="50" rx="5"/>
     <text class="t-b" x="410" y="162">The host's clone</text>
     <text class="t-s" x="410" y="179">allowed remotes only · one each</text>
@@ -62,12 +62,13 @@
     <text class="t-s" x="410" y="289">a new branch of the clone</text>
     <text class="t-s" x="410" y="303">nobody named a folder</text>
     <path class="wire-n" d="M506 190 L506 250"/>
+    <path class="wire-n" d="M780 190 L780 250"/>
     <line class="wall" x1="636" y1="236" x2="636" y2="326"/>
-    <text class="t-g" x="642" y="232">never copied either way</text>
+    <text class="t-g" x="642" y="232">never inside each other</text>
     <rect class="n-new" x="656" y="250" width="248" height="62" rx="5"/>
-    <text class="t-b" x="670" y="272">Project files, beside it</text>
-    <text class="t-s" x="670" y="289">outside the worktree, never inside</text>
-    <text class="t-s" x="670" y="303">nothing copied in or out yet</text>
+    <text class="t-b" x="670" y="272">project/, beside it</text>
+    <text class="t-s" x="670" y="289">hydrated before, synced back after</text>
+    <text class="t-s" x="670" y="303">this project's keys only</text>
     <rect class="n-in" x="656" y="140" width="248" height="50" rx="5"/>
     <text class="t-b" x="670" y="162">The project's files collection</text>
     <text class="t-s" x="670" y="179">members only · per project</text>

@@ -1,4 +1,4 @@
-<svg viewBox="0 0 940 420" role="img" aria-label="Open fork, recommendation not yet approved: how far the project&#x27;s own files go in this slice. Recommended: the boundary only, meaning a members-only collection per project, and a directory beside each checkout that is never inside it, with a generic before-and-after hook on the run; nothing is copied in or saved back yet. Instead of: lay the files out before each run and save them back after, now. It comes down to the first row: the save needs new sync code in a package that has none and a per-project filter that does not exist today, while the boundary needs neither. The price: an agent can&#x27;t yet keep a note that outlives the run, so the issue&#x27;s third item ships smaller. Both keep the files out of the checkout. Locks in: the save is a follow-up the first agent that writes project memory pays for. Flips if: a coding agent needs project memory this cycle."
+<svg viewBox="0 0 940 420" role="img" aria-label="D1, decided by Jake on 2026-10-04: what a coding row does in a project with no repository. Chosen: it runs on the project&#x27;s files, starting empty, hydrated from the project&#x27;s files collection and synced back. Instead of: refuse the row by name. It comes down to the first row: with no repository there is nothing to check into, so without a sync the work is lost, while refusing means a project without code can never have coding work. The price: the files collection becomes the record for code too, merged per file with conflicts reported. Both keep one project&#x27;s files away from another&#x27;s. Locks in: a no-repository project&#x27;s code lives in FSD&#x27;s store until someone adds a repository. Flips if: projects without a repository never get coding rows."
      xmlns="http://www.w3.org/2000/svg">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
@@ -34,62 +34,62 @@
   <rect class="bg" x="0" y="0" width="940" height="420"/>
   <g id="the-call">
     <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
-    <text class="t-lbl" x="32" y="32">D3 · OPEN · RECOMMENDED, NOT YET APPROVED</text>
-    <text class="t-q" x="32" y="52">How far do the project&#x27;s own files go in this slice?</text>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL · DECIDED BY JAKE</text>
+    <text class="t-q" x="32" y="52">A coding row arrives for a project with no repository. What happens?</text>
   </g>
   <g id="options">
-    <rect class="chosen" style="stroke-dasharray:5 4" x="212" y="76" width="348" height="46" rx="5"/>
-    <text class="t-tag c-code" x="228" y="93">RECOMMENDED</text>
-    <text class="t-h c-code" x="228" y="112">Boundary only</text>
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Run it on the project&#x27;s files</text>
     <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
     <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
-    <text class="t-h c-lost" x="592" y="112">Lay out and save back, now</text>
+    <text class="t-h c-lost" x="592" y="112">Refuse it, by name</text>
   </g>
   <g id="row-0">
     <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
     <rect class="bar" x="16" y="134" width="4" height="62"/>
-    <text class="t-lbl" x="32" y="156">NEW CODE AND</text>
-    <text class="t-lbl" x="32" y="169">NEW RISK</text>
+    <text class="t-lbl" x="32" y="156">HOW IS THE</text>
+    <text class="t-lbl" x="32" y="169">WORK KEPT</text>
     <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
     <text class="mark plus" x="228" y="162">+</text>
-    <text class="t-b" x="248" y="161">A place and a rule</text>
-    <text class="t-s" x="248" y="179">no sync code, no cross-project read</text>
+    <text class="t-b" x="248" y="161">Synced back to the project</text>
+    <text class="t-s" x="248" y="179">a second run sees it</text>
     <text class="mark minus" x="592" y="162">−</text>
-    <text class="t-b" x="612" y="161">New sync in harness-manager</text>
-    <text class="t-s" x="612" y="179">plus a per-project filter that is not built</text>
+    <text class="t-b" x="612" y="161">There is no work</text>
+    <text class="t-s" x="612" y="179">a code-free project can never code</text>
   </g>
   <g id="row-1">
-    <text class="t-lbl" x="32" y="222">CAN AN AGENT</text>
-    <text class="t-lbl" x="32" y="235">KEEP A NOTE</text>
+    <text class="t-lbl" x="32" y="222">WHERE CODE</text>
+    <text class="t-lbl" x="32" y="235">LIVES</text>
     <text class="mark minus" x="228" y="224">−</text>
-    <text class="t-b" x="248" y="223">Not past the run yet</text>
-    <text class="t-s" x="248" y="241">the third item ships smaller</text>
+    <text class="t-b" x="248" y="223">In FSD&#x27;s files collection</text>
+    <text class="t-s" x="248" y="241">merged per file, conflicts reported</text>
     <text class="mark plus" x="592" y="224">+</text>
-    <text class="t-b" x="612" y="223">Yes, saved to the project</text>
-    <text class="t-s" x="612" y="241">the goal check proves it</text>
+    <text class="t-b" x="612" y="223">Only in git</text>
+    <text class="t-s" x="612" y="241">one record for code</text>
     <line class="row" x1="16" y1="256" x2="924" y2="256"/>
   </g>
   <g id="row-2">
-    <text class="t-lbl" x="32" y="282">OUT OF THE</text>
-    <text class="t-lbl" x="32" y="295">CHECKOUT</text>
+    <text class="t-lbl" x="32" y="282">ANOTHER PROJECT&#x27;S</text>
+    <text class="t-lbl" x="32" y="295">FILES</text>
     <text class="mark tie" x="228" y="284">=</text>
-    <text class="t-b" x="248" y="283">Never inside it</text>
-    <text class="t-s" x="248" y="301">a directory of its own</text>
+    <text class="t-b" x="248" y="283">Never visible</text>
+    <text class="t-s" x="248" y="301">keys and members checked</text>
     <text class="mark tie" x="592" y="284">=</text>
-    <text class="t-b" x="612" y="283">Never inside it</text>
+    <text class="t-b" x="612" y="283">Never visible</text>
     <text class="t-s" x="612" y="301">the same</text>
     <line class="row" x1="16" y1="314" x2="924" y2="314"/>
   </g>
   <g id="locks-in">
     <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="32" y="351">LOCKS IN</text>
-    <text class="t-b" x="32" y="371">Saving files back is a follow-up</text>
-    <text class="t-s" x="32" y="389">the first agent that writes project memory pays for it</text>
+    <text class="t-b" x="32" y="371">A no-repo project&#x27;s code lives in FSD&#x27;s store</text>
+    <text class="t-s" x="32" y="389">until someone adds a repository</text>
   </g>
   <g id="flips-if">
     <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
     <text class="t-lbl" x="494" y="351">FLIPS IF</text>
-    <text class="t-b" x="494" y="371">A coding agent needs project memory this cycle</text>
-    <text class="t-s" x="494" y="389">then build the save now, with the filter</text>
+    <text class="t-b" x="494" y="371">No-repo projects never get coding rows</text>
+    <text class="t-s" x="494" y="389">then refusing is simpler</text>
   </g>
 </svg>

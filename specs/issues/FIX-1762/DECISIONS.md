@@ -2,122 +2,126 @@
 
 [Spec](SPEC.md) · **Decisions** · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
 
-What was considered, what was chosen, why, and what each choice locks in. Two decisions and one
-open fork are the sign-off surface. Everything else here is context for them.
+What was decided, by whom, why, and what each choice locks in. Jake made the three carded calls
+on 2026-10-04 from the design page ([EVOLUTION.md](EVOLUTION.md)); they shape slice 1 most.
 
 ## The tree
 
 ```mermaid
 flowchart TD
-  I["FIX-1762"] --> D1["D1 · no repository means the coding row is refused by name"]
-  D1 -.->|"rejected"| X1["fall back to the Lab's default repository<br/>work lands in the wrong code silently"]
-  I --> D2["D2 · members set it · the chief of staff asks first<br/>only allowed remotes"]
-  D2 -.->|"rejected"| X2["the chief of staff sets it unasked<br/>a wrong or injected ask re-points the next run"]
-  I --> D3["D3 · open · recommended boundary only"]
-  D3 -.->|"recommended against"| X3["lay out and save back now<br/>new sync code and a cross-project read"]
+  I["FIX-1762 · slice 1"] --> D1["D1 · no repository means the run works on the project's files"]
+  D1 -.->|"replaced"| X1["refuse the row by name<br/>a code-free project could never code"]
+  I --> D2["D2 · run source and workspace host in the shared layer"]
+  D2 -.->|"rejected"| X2["inside harness-manager only<br/>tool workers left out"]
+  I --> D3["D3 · project files synced back now, per project"]
+  D3 -.->|"rejected"| X3["boundary only<br/>work in a no-repo project is lost"]
 ```
 
-Solid edges are what you're signing. Dashed edges lost, and the label says why. D3 is still open.
-
-<a name="open"></a>
-## Open · D3 · Does a run's project-files directory get saved back to the project in this slice?
-
-**Plain terms.** The issue's third item says a project's own files (memory, notes an agent keeps)
-live with the project, never in the checkout. We can ship the *place and the rule* now: a
-members-only collection per project, and a directory beside each checkout that is never inside
-it. Or we can also copy those files in before each run and save them back after.
-
-**The trade-off.** Saving back needs sync code harness-manager does not have today (it has no
-dependency on the workspace package and no lay-out or save step), and the existing sync binds a
-whole collection, so a run in one project could read or write another project's files unless we
-build a per-project filter first. The boundary needs neither. The price is that an agent's notes
-do not outlive the run yet, so item 3 ships smaller than the issue's words.
-
-**My recommendation: boundary only.** The manager gets a generic directory beside the checkout and
-a before/after hook a host can fill; Workforce declares the collection, keyed by project. The save
-comes with the first agent that writes project memory.
-
-**What would change my mind:** a coding agent that needs project memory this cycle.
-
-**What being wrong costs:** notes an agent writes during a run are lost when the run ends, until
-the follow-up lands. Nothing is lost from the code, and nothing built here is thrown away.
-
-![Open, D3: boundary only, recommended, beside lay out and save back now. Decides it: new sync code and a cross-project read the save needs. Price: an agent's note does not outlive the run yet](figures/open-project-files.svg)
-
-It comes down to new sync code and a per-project filter that don't exist yet; the boundary needs neither.
+Solid edges are what Jake signed. Dashed edges lost, and the label says why.
 
 <a name="d1"></a>
-## D1 · A coding row in a project with no repository is refused, by name, before any agent runs
+## D1 · A project with no repository runs coding rows on its files, starting empty and synced back
 
 | | |
 |---|---|
-| **Instead of** | Falling back to a default repository the Lab's operator wired at boot |
-| **Because** | A fallback makes "no repository" mean "some repository": a person who forgot to set it gets work in code that is not theirs, and nothing on screen says so. A refusal names the project and the fix. Tenet 7: the loud failure is the honest one |
-| **Locks in** | A Lab that runs every project against one repository says so on each project. A Lab that keeps a fixed `sourceRepo` and does not use project resolution is unaffected |
+| **Instead of** | Refusing the row by name (this PR's first draft) |
+| **Because** | Jake: "If a project has no repo, then it means we are starting with a clean slate of files … otherwise there is nothing to check into and how do we retain data?" With no git, the sync is the save. The bash tools already work this way, so the machinery exists |
+| **Locks in** | The `project-files/<projectId>` collection is the record for a no-repository project's code as well as its notes, merged per file with conflicts reported, never overwritten. Adding a repository later leaves those files where they are; seeding a repository from them is not in these slices |
 
-![D1 · What happens to a coding row whose project names no repository: refuse by name, chosen, beside fall back to the Lab default. Decides it: a person who forgot to set one. Price: one call per project for a single-repo Lab](figures/d1-no-repository.svg)
+![D1, decided by Jake: run it on the project's files, chosen, beside refuse it by name. Decides it: how the work is kept. Price: code lives in FSD's files collection](figures/d1-files-source.svg)
 
-It comes down to a person who forgot: the fallback runs their feature in someone else's code.
-
-**What would change my mind:** a Lab that genuinely wants one repository for many projects. Then
-a Lab-level default the project overrides is cheap to add.
+It comes down to how the work is kept: with no repository and no sync, there is nothing.
 
 <a name="d2"></a>
-## D2 · Members set the repository directly; the chief of staff asks a person in Inbox first; both only within the operator's allowed remotes
+## D2 · The run source and the workspace host live in the shared workspace layer; harness-manager is the first caller
 
 | | |
 |---|---|
-| **Instead of** | The chief of staff setting it on its own, the way it hires |
-| **Because** | A repository decides what code the next coding run executes with the host's credentials. A mistaken or prompt-injected chief of staff could point it at code nobody chose. The chief of staff's fire already asks through the same `human_approval` pause; a repository change is at least as hard to undo once a run has used it. A member typing it themselves is already the person deciding |
-| **Locks in** | Every repository the chief of staff sets, at create or later, waits on a click in Inbox. The host's git only ever reaches remotes the operator listed: a scheme and host allowlist, `file://` off unless listed, a value starting with `-` refused, the clone run with `--` and git's protocol list limited to the allowed schemes. Access is the host's own git credentials; a private repository it can't read fails at the first run, named |
+| **Instead of** | Both inside harness-manager, as earlier drafts had it |
+| **Because** | A tool worker, where FSD runs the model loop and edits through bash and file tools, needs the same repository worktree and project files a harness worker does ([EVOLUTION.md → harness vs tool](EVOLUTION.md#harness-worker-and-tool-worker)). One host for both means one set of rules. Slice 1 is the cheapest time to put it there |
+| **Locks in** | Every worker kind provisions, saves, restores and releases through one host interface; harness-manager depends on `@flow-state-dev/workspace`. The workspace layer knows sources, branches and places, never projects; Workforce fills the source |
 
-![D2 · Who may point a project at a repository: members directly and the chief of staff after approval, chosen, beside the chief of staff on its own. Decides it: a wrong or injected ask. Price: one approval click per chief-of-staff change](figures/d2-who-sets.svg)
+![D2, decided by Jake: the shared workspace layer, chosen, beside inside harness-manager only. Decides it: a tool worker that needs a repository. Price: one more package edge now](figures/d2-shared-layer.svg)
 
-It comes down to a wrong or injected ask: unasked, the next run executes code nobody chose.
+It comes down to a tool worker that needs a repository: in harness-manager it gets none.
 
-**What would change my mind:** repository changes turning out frequent and routine; then it lands
-at once, as a hire does, still inside the operator's list.
+<a name="d3"></a>
+## D3 · Project files are synced back in this slice, scoped to one project
+
+| | |
+|---|---|
+| **Instead of** | Boundary only: a directory with nothing saved (round 1's recommendation) |
+| **Because** | D1 makes the save the only record for a no-repository project, and an agent's notes in a repository project would otherwise vanish. The existing projection does the three-way flush; what it lacks is a scope to one project's keys, which this slice adds |
+| **Locks in** | Every run hydrates before and syncs back after: a tool worker after each write, a harness at turn end and when parked. The scope and a membership check are on every hydrate and flush |
+
+![D3, decided by Jake: hydrate then sync back, chosen, beside boundary only. Decides it: a project with no repository. Price: a key-scoped projection and a sync around every run](figures/d3-sync-back.svg)
+
+It comes down to a project with no repository: without the save, every run starts from nothing.
+
+<a name="decided-by-jake-2026-10-04"></a>
+## Decided by Jake, 2026-10-04
+
+"I confirm all of your recommendations in the your calls section. Lets get all of this added to
+the PR." From the design page, besides D1–D3:
+
+- **FSD guarantees uncommitted repository work** until it is pushed: a `worktree-overlay/<runId>`
+  collection plus a git bundle for unpushed commits. A provider's snapshot is only a fast-resume
+  cache. Built in slice 2, [FIX-1766](https://linear.app/fixpoint-labs/issue/FIX-1766).
+- **The overlay lives in an FSD collection**, not a hidden git ref on the customer's repository:
+  no push rights needed from the first minute, nothing left on their git host.
+- **FIX-1762 stays slice 1.** Slices 2–4 are filed under epic FIX-1763:
+  [FIX-1766](https://linear.app/fixpoint-labs/issue/FIX-1766) checkpoint and restore (with the
+  Lost and Restoring states, and provisioning state on the run record),
+  [FIX-1767](https://linear.app/fixpoint-labs/issue/FIX-1767) a Vercel sandbox host,
+  [FIX-1768](https://linear.app/fixpoint-labs/issue/FIX-1768) push and retire.
+- **A repository is not a projected resource**: a projected collection serves read-only records;
+  a repository is a remote with its own history, branches and push. The project holds a reference;
+  the checkout is the projection.
+
+## Round 1 calls that still stand
+
+- **Who sets a repository.** Members directly; the chief of staff pauses for a person's approval in
+  Inbox (`human_approval`), as before a fire.
+- **The operator's remote allowlist**: schemes and hosts; `file://` off unless listed; a value
+  starting with `-` refused; git run with `--` and `GIT_ALLOW_PROTOCOL` limited to the list.
+- **The value**: a remote string or `null`. A bare path and a credential (userinfo on http(s), or a
+  password) are refused; SSH login names (`git@host:path`, `ssh://git@host/path`) are fine.
+- **One clone per remote** under the host's root, fetched with the default-branch record refreshed
+  before each new branch, never on retry.
+- **Per-project isolation**: keys `project-files/<projectId>/…`, every hydrate and flush filtered at
+  the source to the run's project, and the run's owner checked against the row's `members`.
 
 ## Decided, not asked
 
-- **The repository is a remote, stored as a string on the project row**; `null` means none. A
-  bare filesystem path, a value starting with `-`, and a credential (userinfo on `http(s)`, or a
-  password anywhere) are refused at the write; an SSH login name like `git@` is fine. Whether a remote is *allowed* is the host's call, checked at the run.
-- **The host keeps one clone per remote**, under the folder checkouts already live in, and cuts
-  each run's branch from it, off the remote's default branch. Nobody maps a remote to a folder:
-  that would be the path-per-repository the issue rules out.
-- **One provisioning path.** Every attempt resolves `{ repo, baseRef }` before provisioning; a
-  fixed `sourceRepo` is a resolver that always returns it. No "one of two" mode.
-- **The clone is fetched only before cutting a new branch**, never on a retry.
-- **A row already started keeps its checkout.** If its project's repository changed since, the
-  next attempt is refused, naming both, and nothing in the checkout is touched.
-- **Project files are isolated by key**: `project-files/<projectId>/…`, read only through a
-  Workforce accessor that checks the row's `members`. No browser read. With the boundary-only
-  answer to D3, no run reads the collection at all; a later save must filter at the source to the
-  run's project (BP-033), never mount the whole collection.
-- **The resolution lives in Workforce, the mechanism in harness-manager**, which never imports
-  Workforce or says "project".
-- **PR plan: three PRs**, shape in [PLAN.md](PLAN.md#pr-plan). An engineering call.
+- **The run source answers** `{ kind: "repo", repo, baseRef }`, `{ kind: "files", projectId }` or a
+  refusal. The workspace layer treats `projectId` as an opaque scope key into the collection the
+  source declares.
+- **A row keeps the remote it started on**, recorded on its run record at first provision; a
+  repository change applies to new rows. (Replaces round 1's "refuse on retry".)
+- **A workstream in no project is still refused**, naming it: there is no project to keep files in.
+- **The base stays where the row started**; rebasing is a separate, explicit step.
+- **Tool workers adopt the host when one needs a repository.** In slice 1 the bash tool keeps its
+  own projection; the shared host is ready for it.
+- **PR plan: four PRs as a GitHub stack**, shape in [PLAN.md](PLAN.md#pr-plan). An engineering call.
 
 ## Considered and dropped
 
 | Alternative | Why not |
 |---|---|
-| Store a local checkout path on the project | The issue rules it out: the row is org-wide and outlives any one machine |
-| An operator's map of remote → local clone | A path per repository per machine, stale when a project switches |
-| A repository on the workstream (mailbox) | A workstream is declared in a file; the repository is runtime data a person changes |
-| A repository on the board row (task) | Caller-writable input deciding where a run writes is the hazard BP-031 names |
-| Copy project files into the checkout under a dot-folder | Gets committed or lost with the branch; the issue forbids it |
-| A new `Project` or `Repository` type in core | Layer 1 stays free of Workforce concepts ([FIX-1650 ER-10](../../epics/FIX-1650/BUSINESS-RULES.md#what-no-child-may-do)) |
+| Refuse coding rows in a no-repository project | Replaced by D1 |
+| Boundary only for project files | Replaced by D3 |
+| A local checkout path on the project, or an operator's map of remote to folder | A path someone names; the issue rules it out |
+| A hidden git ref for uncommitted work | Needs push rights early and leaves refs on the customer's repo |
+| Rely on the sandbox provider's snapshot | Not crash-safe, one region, one provider ([EVOLUTION.md](EVOLUTION.md#holding-uncommitted-work)) |
+| A `Project` or `Repository` type in core | Layer 1 stays free of Workforce concepts |
 
 ## How it got here
 
-- **Draft** — framed as "the work ignores which code a project is about"; the repository rides on
-  the existing project row, resolved through the workstream's claim; harness-manager gains a
-  per-run source and a clone cache; project files laid beside the checkout through the existing
-  projection. Three PRs.
-- **Review round 1** — added the operator's remote allowlist and made a chief-of-staff repository
-  change ask in Inbox (D2 replaced the clone-vs-map card, which became an engineering call),
-  because a model-writable remote could point the host's git anywhere; reopened D3 with a
-  boundary-only recommendation, because harness-manager has no sync step today and the existing
-  sync can't isolate one project's files; one provisioning path instead of two modes.
+- **Draft** — repository on the project row, resolved through the workstream's claim; per-run
+  source and clone cache in harness-manager; project files beside the checkout. Three PRs.
+- **Review round 1** — added the remote allowlist and the chief of staff's Inbox approval; reopened
+  D3 recommending boundary only; one provisioning path.
+- **Owner direction, 2026-10-04** — Jake confirmed the design page's calls: a no-repository project
+  runs on its files (D1), the run source and workspace host move to the shared layer (D2), project
+  files sync back in slice 1 (D3), and slices 2–4 are filed as FIX-1766–1768. Because a project
+  with no repository otherwise had no way to keep work, and tool workers need the same machinery.
