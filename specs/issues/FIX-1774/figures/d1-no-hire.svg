@@ -1,0 +1,95 @@
+<svg viewBox="0 0 940 420" role="img" aria-label="D1: what the chief of staff does on a coding ask when it might hire. Chosen: never hire for it; use the existing coder, or say no coding worker exists. Instead of: hire one, then hand the task to it. It comes down to the first row: a hired worker is on no workstream and no board hands it a row, so a hire starts nothing. The price: a Lab with no coder gets a plain refusal rather than a new specialist. Both still hire when a person asks for a hire by name. Locks in: a coding ask is never a reason to hire until a hired worker can join a workstream. Flips if: a hire can join a workstream at hire time."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="420"/>
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">A coding ask arrives. Should the chief of staff hire a worker for it?</text>
+  </g>
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Never hire for a coding ask</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Hire one, then hand it the task</text>
+  </g>
+  <g id="row-0">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">CAN A HIRE</text>
+    <text class="t-lbl" x="32" y="169">GET THE WORK</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">No dead hire</text>
+    <text class="t-s" x="248" y="179">the existing coder runs it</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">No: nothing reaches it</text>
+    <text class="t-s" x="612" y="179">on no workstream, no board</text>
+  </g>
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="222">A LAB WITH</text>
+    <text class="t-lbl" x="32" y="235">NO CODER</text>
+    <text class="mark minus" x="228" y="224">−</text>
+    <text class="t-b" x="248" y="223">A plain refusal</text>
+    <text class="t-s" x="248" y="241">no specialist appears</text>
+    <text class="mark minus" x="592" y="224">−</text>
+    <text class="t-b" x="612" y="223">A hire that never runs</text>
+    <text class="t-s" x="612" y="241">the dogfood transcript</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="282">ASKED TO HIRE</text>
+    <text class="t-lbl" x="32" y="295">BY NAME</text>
+    <text class="mark tie" x="228" y="284">=</text>
+    <text class="t-b" x="248" y="283">Hires</text>
+    <text class="t-s" x="248" y="301">as today</text>
+    <text class="mark tie" x="592" y="284">=</text>
+    <text class="t-b" x="612" y="283">Hires</text>
+    <text class="t-s" x="612" y="301">as today</text>
+    <line class="row" x1="16" y1="314" x2="924" y2="314"/>
+  </g>
+  <g id="locks-in">
+    <rect class="foot" x="16" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="351">LOCKS IN</text>
+    <text class="t-b" x="32" y="371">A coding ask is never a reason to hire</text>
+    <text class="t-s" x="32" y="389">until a hired worker can join a workstream</text>
+  </g>
+  <g id="flips-if">
+    <rect class="foot" x="478" y="330" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="351">FLIPS IF</text>
+    <text class="t-b" x="494" y="371">A hire can join a workstream</text>
+    <text class="t-s" x="494" y="389">then hire-and-hand-over works</text>
+  </g>
+</svg>
