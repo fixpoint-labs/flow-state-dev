@@ -33,11 +33,11 @@
  * the seam is here so that slice adds behaviour rather than a method.
  */
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, renameSync, rmSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 import { createHostPlace } from "./host-place";
-import { createProjection, type Projection } from "./projection";
+import { assertScope, createProjection, type Projection } from "./projection";
 import { allowedProtocols, checkRemote, redactRemote, type AllowedRemote } from "./remotes";
 import type { RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import type { FlushReport } from "./types";
@@ -319,7 +319,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
 
     // A checkout already here is the last attempt's work. It is handed back
     // as it is, or refused — never fetched, reset or rebased.
-    if (existsSync(checkout)) {
+    const handBack = async (): Promise<NonNullable<WorkspacePlace["repo"]>> => {
       if (!existsSync(join(checkout, ".git"))) {
         throw new Error(
           `the checkout at ${checkout} has no .git, so it is not one this host made. It may ` +
@@ -333,17 +333,23 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
             `use it, and nothing here resets a tree — restore the branch or remove the checkout.`,
         );
       }
-      const common = resolve(checkout, await git(checkout, ["rev-parse", "--git-common-dir"]));
-      if (common !== clone) {
+      // Compared as real paths: git answers with one, and a root under a
+      // symlinked directory would otherwise never match.
+      const common = realpathSync(resolve(checkout, await git(checkout, ["rev-parse", "--git-common-dir"])));
+      if (!existsSync(clone) || common !== realpathSync(clone)) {
         throw new Error(
           `the checkout at ${checkout} is not a worktree of the clone of "${shown}". Refusing ` +
             `to hand it to a run that expects that repository; it may hold work, so it is kept.`,
         );
       }
       return { remote: remote.url, clone, branch, created: false };
-    }
+    };
+    if (existsSync(checkout)) return await handBack();
 
     return await serially(remote.cloneKey, async () => {
+      // Another provision of this same place may have finished while this
+      // one waited its turn.
+      if (existsSync(checkout)) return await handBack();
       const made = await ensureClone(remote, clone);
       // Bookkeeping for a worktree whose directory was removed, which would
       // otherwise make `worktree add` refuse the path. Not a reset: it
@@ -379,11 +385,15 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     const dir = placeDir(request.place);
 
     if (answer.kind === "files") {
+      assertScope(answer.projectId);
       const filesDir = join(dir, WORKSPACE_DIR);
       await provisionFiles(dir, WORKSPACE_DIR, answer.projectId, answer.files);
       return { kind: "files", dir, cwd: filesDir, filesDir };
     }
 
+    // The key prefix is checked before anything is made, so a bad one never
+    // leaves a checkout behind with no kept files beside it.
+    if (answer.projectId !== undefined) assertScope(answer.projectId);
     if ((answer.projectId === undefined) !== (answer.files === undefined)) {
       throw new Error(
         "a repository source names its kept files with both projectId and files, or neither — " +

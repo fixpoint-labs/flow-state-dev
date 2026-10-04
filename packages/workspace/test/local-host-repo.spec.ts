@@ -227,6 +227,28 @@ describe("a retry keeps its checkout and never fetches", () => {
     expect(gitCommands()).not.toContain("ls-remote");
   });
 
+  it("gives two provisions of one place, at once, the one checkout", async () => {
+    const h = host();
+    const [a, b] = await Promise.all([
+      h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" }),
+      h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" }),
+    ]);
+
+    expect(a.cwd).toBe(b.cwd);
+    expect([a.repo?.created, b.repo?.created].sort()).toEqual([false, true]);
+  });
+
+  it("refuses a checkout cut from another remote, and keeps it", async () => {
+    const h = host();
+    const first = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
+    const other = createRemote("marker B");
+
+    await expect(
+      h.provision({ kind: "repo", repo: other.url }, { place: ["run-1"], branch: "fsd/run-1" }),
+    ).rejects.toThrow(/not a worktree of the clone/);
+    expect(readFileSync(join(first.cwd, "marker.txt"), "utf8")).toBe("marker A");
+  });
+
   it("refuses a checkout that is on another branch rather than resetting it", async () => {
     const h = host();
     const first = await h.provision({ kind: "repo", repo: remote.url }, { place: ["run-1"], branch: "fsd/run-1" });
@@ -272,6 +294,18 @@ describe("project/ sits beside the checkout, never inside it", () => {
     expect(collection.contents()["storefront/note.md"]).toBe("remember this");
     expect(Object.keys(collection.contents()).some((k) => k.endsWith("code.ts"))).toBe(false);
     expect(git(place.cwd, "status", "--porcelain")).toBe("?? code.ts");
+  });
+
+  it("refuses a key prefix that could reach outside itself, before anything is made", async () => {
+    const { collection } = withFiles();
+    await expect(
+      host().provision(
+        { kind: "repo", repo: remote.url, projectId: "../other", files: { collection, collectionId: "project-files" } },
+        { place: ["run-1"], branch: "fsd/run-1" },
+      ),
+    ).rejects.toThrow(/scope/);
+    expect(spawned).not.toHaveBeenCalled();
+    expect(existsSync(join(root, "run-1"))).toBe(false);
   });
 
   it("refuses kept files without the key prefix they live under", async () => {

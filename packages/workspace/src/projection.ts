@@ -488,7 +488,7 @@ export function createProjection({
  * walks up, an empty segment or a stray `/` spells a different key than the
  * one compared against.
  */
-function assertScope(scope: string): void {
+export function assertScope(scope: string): void {
   const segments = scope.split("/");
   if (scope === "" || segments.some((s) => s === "" || s === "." || s === ".." || s.includes("\\"))) {
     throw new Error(
