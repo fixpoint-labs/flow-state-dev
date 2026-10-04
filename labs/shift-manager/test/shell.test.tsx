@@ -547,6 +547,34 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(items.filter((item) => item.type === "suspension")).toHaveLength(1);
   });
 
+  // Which stop it was only picks the words: a stop the send couldn't classify still reads the
+  // Lab again, so a real ask is never kept out of Inbox.
+  it("lists the ask a gated line raised even when the send couldn't read what it stopped on", async () => {
+    await openCos("/", { chiefOfStaff: true });
+    expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
+    const real = globalThis.fetch;
+    let failing = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+      const url = String(i instanceof Request ? i.url : i);
+      // Both of the send's own reads of the conversation's suspensions fail, so it can't tell
+      // what the turn stopped on; the refresh after it reads normally.
+      if (failing > 0 && /\/sessions\/cos_[^/]+\/state/.test(url) && url.includes("item_types=suspension")) {
+        failing -= 1;
+        return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
+      }
+      return real(i, init);
+    });
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
+    failing = 2;
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    const status = screen.getByTestId("cos-composer-status");
+    await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    expect(status.textContent).toMatch(/Delivered\..*waiting/);
+    expect(screen.queryByTestId("cos-composer-retry")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("cos-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
+  });
+
   it("keeps a refused first line's conversation, so the next line goes into the same session (BR-15)", async () => {
     const { clients } = await openCos("/", { chiefOfStaff: true });
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;

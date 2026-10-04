@@ -108,24 +108,40 @@ async function sessionHoldsLine(clients: LabClients, sessionId: string, requestI
 }
 
 /**
- * What a suspended request is still stopped on, from the read Inbox lists asks
- * from ({@link readPendingSuspensions}). Only this request's still-pending
- * suspensions count:
+ * This request's still-pending suspensions, from the read Inbox lists asks
+ * from ({@link readPendingSuspensions}): what they stop on, and which
+ * suspensions they are. `undefined` when the read fails.
+ */
+async function pendingStop(
+  clients: LabClients,
+  sessionId: string,
+  requestId: string,
+): Promise<{ stop: TurnStop; ids: string } | undefined> {
+  try {
+    const mine = (await readPendingSuspensions(clients, sessionId)).filter((view) => view.item.requestId === requestId);
+    const stop = mine.some((view) => PERSON_REASONS.has(view.item.reason)) ? "ask" : mine.length > 0 ? "wait" : null;
+    return { stop, ids: mine.map((view) => view.item.suspensionId).sort().join(",") };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * What a suspended request is still stopped on. Only this request's
+ * still-pending suspensions count: one whose reason is a person's ask is
+ * `ask`; any other pending one is `wait`; none (resumed since the poll) is
+ * `null`, plain delivered.
  *
- * - one whose reason is a person's ask: `ask`.
- * - any other pending one, such as a stop on something else after an ask
- *   that was answered: `wait`.
- * - none, because it was resumed between the status poll and this read: `null`,
- *   plain delivered.
+ * The label only picks the composer's words: callers read the Lab again on
+ * any non-null stop, so a stop read wrong never keeps an ask out of Inbox.
  *
- * A read that fails is a `wait` candidate: the poll saw the request suspended,
- * and `wait` points nowhere it might not be.
- *
- * Every `ask` or `wait` then goes through one status recheck before it is
- * returned. A resume marks the request running before it writes its resume
- * item, so a suspension can still read as pending after the resume won; a
- * request no longer suspended is `null`. A recheck that fails returns the
- * candidate. The line is delivered whatever this says.
+ * A stop is bound to the suspensions it was read from. A resume marks the
+ * request running before it writes its resume item, and a resumed request can
+ * suspend again under the same id, so after the first read the status is
+ * polled once more (not suspended: `null`) and the pending suspensions are
+ * read again. The same suspensions keep the first answer; different ones are
+ * classified from the second read. Whatever can't be read is `wait`, which
+ * still refreshes. The line is delivered whatever this says.
  */
 async function stopOf(
   clients: LabClients,
@@ -133,22 +149,18 @@ async function stopOf(
   sessionId: string,
   requestId: string,
 ): Promise<TurnStop> {
-  // The candidate: what the pending read says, or `wait` when it can't be read.
-  let candidate: TurnStop;
+  const first = await pendingStop(clients, sessionId, requestId);
+  if (first?.stop === null) return null;
   try {
-    const mine = (await readPendingSuspensions(clients, sessionId)).filter((view) => view.item.requestId === requestId);
-    candidate = mine.some((view) => PERSON_REASONS.has(view.item.reason)) ? "ask" : mine.length > 0 ? "wait" : null;
+    if ((await actions.getRequestStatus(requestId)).status !== "suspended") return null;
   } catch {
-    candidate = "wait";
+    return first?.stop ?? "wait";
   }
-  if (candidate === null) return null;
-  // The one exit for a stop: it holds only while the request is still suspended.
-  try {
-    return (await actions.getRequestStatus(requestId)).status === "suspended" ? candidate : null;
-  } catch {
-    // A recheck that fails doesn't undo what was read.
-    return candidate;
-  }
+  const now = await pendingStop(clients, sessionId, requestId);
+  if (now === undefined) return first?.stop ?? "wait";
+  if (first !== undefined && now.ids === first.ids) return first.stop;
+  // Suspended, but on suspensions the first read didn't see: what is pending now decides.
+  return now.stop ?? "wait";
 }
 
 /** The door's own reason for a failed request, in its words. */

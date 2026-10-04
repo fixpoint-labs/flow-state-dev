@@ -116,8 +116,8 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
           if (door === null) throw new TurnNotDelivered("refused", `${seat.id} ${gaps.turn.noDoor}`);
           const sent = await sendTurn(clients, { sessionId: link.sessionId, flowId, door }, message);
           setReceipts((held) => [...held, { id: held.length, row }]);
-          // The ask it raised is new: read the Lab again so this Stream and Inbox list it.
-          if (sent.stopped === "ask") void refresh();
+          // It stopped, maybe on a new ask: read the Lab again so this Stream and Inbox list whatever it raised.
+          if (sent.stopped !== null) void refresh();
           return sent;
         },
       };

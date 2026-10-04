@@ -231,8 +231,8 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string }) {
       blocked={blocked}
       send={async (message) => {
         const sent = await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message);
-        // The ask it raised is new: read the Lab again so Inbox, where the composer points, lists it.
-        if (sent.stopped === "ask") void refresh();
+        // It stopped, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
+        if (sent.stopped !== null) void refresh();
         return sent;
       }}
       extra={

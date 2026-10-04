@@ -26,10 +26,13 @@ function stubClients(options: {
   stateAnswers?: unknown;
   /** Only the read of suspension items rejects; the line's read-back still answers. */
   suspensionsFail?: boolean;
+  /** What the session holds for every read of suspension items after the first. */
+  itemsLater?: Item[];
 }): { clients: LabClients; sent: unknown[] } {
   const sent: unknown[] = [];
   const items = options.items ?? [];
   let polls = 0;
+  let suspensionReads = 0;
   const clients = {
     actions: (flowId: string) => ({
       sendAction: async (action: string, input: unknown, opts: unknown) => {
@@ -51,7 +54,10 @@ function stubClients(options: {
         if (options.suspensionsFail === true && read.itemTypes?.includes("suspension") === true) {
           throw new ClientHttpError("Request failed (503)", { status: 503, body: null });
         }
-        const typed = items.filter((item) => read.itemTypes === undefined || read.itemTypes.includes(item.type));
+        const suspensions = read.itemTypes?.includes("suspension") === true;
+        const held = suspensions && suspensionReads > 0 && options.itemsLater !== undefined ? options.itemsLater : items;
+        if (suspensions) suspensionReads += 1;
+        const typed = held.filter((item) => read.itemTypes === undefined || read.itemTypes.includes(item.type));
         const offset = read.offset ?? 0;
         const limit = read.limit ?? 50;
         const page = typed.slice(offset, offset + limit);
@@ -162,6 +168,26 @@ describe("sendTurn", () => {
         { requestId: `req_${i}`, type: "suspension_resume", suspensionId: `o${i}` },
       ]).flat();
       const { clients } = stubClients({ status: "suspended", items: [line, ask("s1"), ...others] });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "ask" });
+    });
+
+    // suspended → resumed → suspended again on another reason, all under one request id: the
+    // stop reported is the one pending now, not the one first read.
+    it("re-suspended on a different reason between the read and the recheck: the newer stop is reported", async () => {
+      const { clients } = stubClients({
+        status: "suspended",
+        items: [line, ask("s1")],
+        itemsLater: [line, ask("s1"), resume("s1"), ask("s2", "external_event")],
+      });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "wait" });
+    });
+
+    it("re-suspended on a person's ask after a wait was read: the ask is reported", async () => {
+      const { clients } = stubClients({
+        status: "suspended",
+        items: [line, ask("s1", "external_event")],
+        itemsLater: [line, ask("s1", "external_event"), resume("s1"), ask("s2")],
+      });
       await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", stopped: "ask" });
     });
 

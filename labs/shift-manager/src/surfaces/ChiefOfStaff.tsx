@@ -309,8 +309,8 @@ function Talk({
         try {
           const sent = await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId: target }, message);
           setOpened(target);
-          // The ask it raised is new: read the Lab again so Inbox, where the composer points, lists it.
-          if (sent.stopped === "ask") void refresh();
+          // It stopped, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
+          if (sent.stopped !== null) void refresh();
           return sent;
         } catch (error) {
           // The Lab may have opened the session before the line failed. The
