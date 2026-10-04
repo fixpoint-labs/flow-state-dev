@@ -12,14 +12,6 @@
  * root. A segment reaches these readers from an argument as well as from a
  * walk, and `..` in one would read a folder the caller never configured — the
  * same escape the walk's symlink refusal exists to stop.
- *
- * This module is on the `@flow-state-dev/workforce/browser` graph (through
- * `roster/address.ts`), so it must stay free of Node built-ins. Its one import
- * is the `@flow-state-dev/core/helpers` barrel, which is pure today — but that
- * is a property of the whole barrel, not of the one helper taken from it. The
- * guarantee is `test/browser-subpath-safe.test.ts`, which walks this graph
- * into workspace packages and fails on any Node built-in it reaches; do not
- * rely on this comment instead.
  */
 import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
 
@@ -63,17 +55,6 @@ const RESERVED_SEGMENTS = new Set(["_meta"]);
  * `Package` is a folder under a `packages/` slot. Its name is what a worker's
  * `packages:` line takes it by and half of the address its blocks are
  * registered under, so it obeys the rule every other name does.
- *
- * `Org` is the one label that names **nothing on disk**. It is the leading
- * segment of a runtime-hired seat's address (`<org>.<seatId>`), and it is
- * here rather than in a rule of its own because the `.` exclusion below is
- * precisely what that address needs: org `acme` with seat `support.ada` and
- * org `acme.support` with seat `ada` both spell `acme.support.ada`, so
- * admitting a dotted org would make the join non-injective and one seat would
- * silently answer at the other's address. Sharing the rule does mean an org
- * inherits two constraints it has no need of — the reserved folder name and
- * the Windows device names — which costs a handful of unusable org ids and
- * buys one rule instead of two that can drift.
  */
 export type SegmentLabel =
   | "Team"
@@ -82,7 +63,6 @@ export type SegmentLabel =
   | "Document"
   | "Kind"
   | "Block"
-  | "Org"
   | "Package";
 
 /**
@@ -93,11 +73,7 @@ const FILE_LABELS: ReadonlySet<SegmentLabel> = new Set<SegmentLabel>(["Document"
 
 /** Validate one path segment against the naming rules. Throws on a break. */
 export function validateSegment(segment: string, label: SegmentLabel): void {
-  // `Org` names nothing on disk, so neither "file" nor "folder" is true of it.
-  const what =
-    label === "Org"
-      ? "Organization id"
-      : `${label} ${FILE_LABELS.has(label) ? "file" : "folder"} name`;
+  const what = `${label} ${FILE_LABELS.has(label) ? "file" : "folder"} name`;
 
   if (segment.length > MAX_SEGMENT_LENGTH) {
     throw new Error(`${what} "${segment}" exceeds ${MAX_SEGMENT_LENGTH} characters`);
@@ -107,9 +83,7 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
   }
   if (!SEGMENT_PATTERN.test(segment)) {
     const identity =
-      label === "Org"
-        ? `it becomes the leading segment of a hired seat's address, which is joined with a "."`
-        : label === "Document"
+      label === "Document"
         ? `it becomes part of the document's ref, which is joined with a "/"`
         : label === "Channel"
           ? `it becomes part of the channel's identity, which is joined with a "."`

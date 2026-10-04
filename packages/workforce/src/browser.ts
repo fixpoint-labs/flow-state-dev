@@ -17,7 +17,7 @@ export {
   HIRED_ROSTER_RESOURCE,
   SEAT_INVENTORY_RESOURCE
 } from "./seat-hire-keys";
-export { splitSeatAddress } from "./roster/address";
+export { seatAddress, splitSeatAddress } from "./roster/address";
 export { isHiredSeatRow, listedSeatRows } from "./inventory/listed-seats";
 export {
   CHANNEL_POST_COMPONENT,

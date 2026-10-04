@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "@flow-state-dev/client";
+import { seatAddress } from "@flow-state-dev/workforce/browser";
 import { chiefOfStaffOf, shiftSummary, streamCounts, type LoadedSnapshot } from "../src/lib/derive";
 import { conversationSession, currentConversation, newConversationId } from "../src/lib/cos";
 import { parseRoute, pathFor, type Route } from "../src/lib/routes";
@@ -46,9 +47,10 @@ describe("which seat is the chief of staff (V2, D2)", () => {
   it("finds an org seat and a team's seat by the name after the org's address", () => {
     expect(chiefOfStaffOf([seat("chief-of-staff"), seat("ops.asker")], ORG)).toEqual({ kind: "one", seat: seat("chief-of-staff") });
     expect(chiefOfStaffOf([seat("desk.chief-of-staff"), seat("desk.asker")], ORG)).toEqual({ kind: "one", seat: seat("desk.chief-of-staff") });
-    // An Ops-hired seat's address is `<org>.<seatId>`.
-    expect(chiefOfStaffOf([seat(`${ORG}.chief-of-staff`)], ORG)).toEqual({ kind: "one", seat: seat(`${ORG}.chief-of-staff`) });
-    expect(chiefOfStaffOf([seat(`${ORG}.desk.chief-of-staff`)], ORG).kind).toBe("one");
+    // An Ops-hired seat's address is `seatAddress(org, seatId)`: `org_1` is escaped to `org%5F1`.
+    const hired = seatAddress(ORG, "chief-of-staff");
+    expect(chiefOfStaffOf([seat(hired)], ORG)).toEqual({ kind: "one", seat: seat(hired) });
+    expect(chiefOfStaffOf([seat(seatAddress(ORG, "desk.chief-of-staff"))], ORG).kind).toBe("one");
   });
 
   it("is several, and no guess, when two seats carry the name", () => {

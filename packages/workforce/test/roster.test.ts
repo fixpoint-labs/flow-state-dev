@@ -12,9 +12,8 @@
  *        shadow back over the column.
  *   V3 — give `settings` a closed shape instead of a passthrough record: the
  *        unknown-key assertion fails and a seat comes back on defaults.
- *   V4 — drop `validateSegment(orgId, "Org")` from `seatAddress`: both hires
- *        succeed and mint the SAME address, so the second silently rebinds
- *        the first.
+ *   V4 — pass the org into `seatAddress` unescaped: both hires succeed and
+ *        mint the SAME address, so the second silently rebinds the first.
  *   V5 — hire the roster in one `hireWorkforce` call instead of per row: the
  *        stale row's throw takes the good row with it, so `seats` is empty
  *        and `problems` never names anything. This is the degrade path
@@ -41,6 +40,7 @@ import {
   parseHiredSeatRow,
   reloadHiredSeats,
   seatAddress,
+  splitSeatAddress,
   toHiredSeatRow,
   type HiredRosterStores,
 } from "../src/roster";
@@ -210,20 +210,41 @@ describe("V3 · a row round-trips to a record and back", () => {
 
 describe("V4 · the org segment is what makes the address unambiguous", () => {
   it("cannot let org `acme` + `support.ada` and org `acme.support` + `ada` coexist", () => {
-    // Both would spell `acme.support.ada`. Exactly one of them is addressable,
-    // and it is refused at the segment check rather than discovered later by
-    // whichever hire happened to land second.
+    // Both would spell `acme.support.ada` if the org went in as written. The
+    // org is escaped like the user segment, so its dot can't reach the
+    // address and the two land apart. Pass the org through raw and the second
+    // expectation fails: both hires mint one address and the second silently
+    // rebinds the first.
     expect(seatAddress("acme", "support.ada")).toBe("acme.support.ada");
+    expect(seatAddress("acme.support", "ada")).toBe("acme%2Esupport.ada");
     expect(seatAddress("acme", "research", "alice")).toBe("acme.~alice.research");
     expect(seatAddress("acme", "research", "alice@acme.com")).toBe("acme.~alice%40acme%2Ecom.research");
     expect(() => seatAddress("acme", "~research", "alice")).toThrow(/starts with "~"/);
-    expect(() => seatAddress("acme.support", "ada")).toThrow(/Organization id/);
-    expect(() => seatAddress("acme.support", "ada")).toThrow(/"\."/);
   });
 
-  it("refuses an empty and an over-long org id", () => {
-    expect(() => seatAddress("", "support.ada")).toThrow();
-    expect(() => seatAddress("a".repeat(65), "support.ada")).toThrow(/64/);
+  it("addresses any org the principal carries, and splits back under it alone", () => {
+    expect(seatAddress("org_pentest_lab", "helper")).toBe("org%5Fpentest%5Flab.helper");
+    expect(seatAddress(DEFAULT_ORG_ID, "lead")).toBe("%5F%5Ffsd%5Fdefault%5Forg%5F%5F.lead");
+    expect(splitSeatAddress("org_pentest_lab", "org%5Fpentest%5Flab.helper")).toBe("helper");
+    expect(splitSeatAddress("acme.support", "acme%2Esupport.ada")).toBe("ada");
+    // An org never reads another's address, even one its raw spelling prefixes.
+    expect(splitSeatAddress("acme", "acme%2Esupport.ada")).toBeUndefined();
+    expect(splitSeatAddress("acme.support", "acme.support.ada")).toBeUndefined();
+  });
+
+  it("refuses an org id with a lone surrogate, which would share U+FFFD's address", () => {
+    // The escape goes through UTF-8, where a lone surrogate becomes U+FFFD.
+    // Admit it and these two orgs would answer on one address.
+    expect(seatAddress("�", "ada")).toBe("%EF%BF%BD.ada");
+    expect(() => seatAddress("\uD800", "ada")).toThrow(/not a usable organization id/);
+    expect(() => seatAddress("acme\uDC00", "ada")).toThrow(/not a usable organization id/);
+    // A well-formed pair is an ordinary character.
+    expect(seatAddress("😀", "ada")).toBe("%F0%9F%98%80.ada");
+  });
+
+  it("refuses an empty org id", () => {
+    expect(() => seatAddress("", "support.ada")).toThrow(/organization id must not be empty/);
+    expect(splitSeatAddress("", ".ada")).toBeUndefined();
   });
 
   it("refuses an empty seat id", () => {
@@ -314,13 +335,12 @@ describe("V5 · a boot reload skips what it cannot use and serves the rest", () 
     expect(seats[1]!.config).toMatchObject({ desk: "bravo-front" });
   });
 
-  it("skips a row it cannot address, and still serves every other org", async () => {
-    // An app with no principal resolver runs as DEFAULT_ORG_ID, so a runtime
-    // hire there leaves a row in a cell whose id is not a legal address
-    // segment. That row can never become a seat, but it must cost only
-    // itself: the boot still has to hand back acme's team, and the row has to
-    // be named rather than dropped. A seat id carrying the user-owned `~`
-    // marker is the same failure one segment later.
+  it("serves the default org's rows, and skips only a row it cannot address", async () => {
+    // An app with no principal resolver runs as DEFAULT_ORG_ID, and a runtime
+    // hire there comes back at boot like any other org's. A seat id carrying
+    // the user-owned `~` marker can never become a seat, but it must cost only
+    // itself: the boot still hands back every other row, and names this one
+    // rather than dropping it.
     const stores = storeHolding({
       acme: {
         "support.ada": { seatId: "support.ada", flow: "desk-clerk", settings: {} },
@@ -342,14 +362,10 @@ describe("V5 · a boot reload skips what it cannot use and serves the rest", () 
       kinds,
     });
 
-    expect(seats.map((seat) => seat.id)).toEqual(["acme.support.ada"]);
-    expect(problems).toHaveLength(2);
-    const tilde = problems.find((problem) => problem.includes('organization "acme"'));
-    const defaultOrg = problems.find((problem) => problem.includes(DEFAULT_ORG_ID));
-    expect(tilde).toContain('organization "acme", row "workforce/roster/~support.bo"');
-    expect(tilde).toContain('starts with "~"');
-    expect(defaultOrg).toContain(`organization "${DEFAULT_ORG_ID}", row "workforce/roster/lead"`);
-    expect(defaultOrg).toContain("Organization id");
+    expect(seats.map((seat) => seat.id)).toEqual([seatAddress(DEFAULT_ORG_ID, "lead"), "acme.support.ada"]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('organization "acme", row "workforce/roster/~support.bo"');
+    expect(problems[0]).toContain('starts with "~"');
   });
 
   it("still refuses a row stamped for another org, even when that org is not addressable", async () => {
