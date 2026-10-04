@@ -1,6 +1,8 @@
 ---
 "@flow-state-dev/workforce": patch
-"@flow-state-dev/core": patch
+"@flow-state-dev/core": minor
+"@flow-state-dev/engine": minor
+"@flow-state-dev/node": patch
 ---
 
-`seatAddress` now accepts any well-formed organization id, including `__fsd_default_org__` and ids like `org_acme`, by percent-escaping it the way the user segment already is (ids of lowercase letters, digits and `-` keep their existing addresses), and `@flow-state-dev/workforce/browser` also exports `seatAddress`. `isValidOrgId` now refuses an id containing a lone UTF-16 surrogate (FIX-1757).
+`seatAddress` accepts any well-formed organization id by percent-escaping it (ids of lowercase letters, digits and `-` keep their addresses), and `isValidOrgId` now refuses an id containing a lone UTF-16 surrogate. Route segments are decoded exactly once on every host, so a flow kind carrying a literal `%XX` resolves on Next and Vercel as on Node: `parseFlowRoute` takes decoded segments, and the new `decodePathSegments` builds them from a raw URL path.

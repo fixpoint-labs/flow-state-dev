@@ -816,7 +816,7 @@ const { resources } = splitResourceModules(resourceModules);
 const instances = channelInstances(channels, { kinds, resources });
 ```
 
-An app that doesn't run `fsdev gen` imports the file's default export and passes it under the collection's name, `projects`, the basename of `projects.ts`:
+An app that doesn't run `fsdev gen` imports the file's default export and passes it in `resources` under a key of its choosing. `fsdev gen` uses `projects`, the basename of `projects.ts`, and so does this example:
 
 ```ts
 import projectsCollection from "./workforce/org/resources/projects";
@@ -828,7 +828,7 @@ const instances = channelInstances(channels, {
 });
 ```
 
-The other arguments are as in the snippet above. Any other key is refused with `names collection "projects", which is not in the org's resources passed to channelInstances`.
+The other arguments are as in the snippet above. If you declare the template in a `CHANNEL.md` instead (below), its `mintFor:` must name the key you passed the collection under (`projects` here).
 
 Rooms run on the built-in channel kind, and that kind has to be able to wake seats, so build it with a notify block, as in `kinds: { channel: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }`. Left as the plain built-in, a template that names seats is refused, because no post would wake them.
 

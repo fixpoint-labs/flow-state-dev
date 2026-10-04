@@ -708,7 +708,8 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom lo
 **Registry/routes:**
 - `createFlowRegistry` — Register flow instances
 - `createFlowApiRouter` — Generate HTTP route handlers from a registry
-- `parseFlowRoute` — Parse incoming request paths
+- `parseFlowRoute` — Parse an incoming method and decoded path segments
+- `decodePathSegments` — Turn a raw, still-encoded URL path into those decoded segments
 
 **Cross-flow schema validation:**
 

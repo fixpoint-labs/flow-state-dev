@@ -53,6 +53,13 @@ export type ParsedFlowRoute =
  * Empty / whitespace-only segments are dropped so request paths that come
  * in as `["", "sessions", "abc"]` from a Next.js catch-all match the same
  * way as `["sessions", "abc"]`.
+ *
+ * `path` holds **decoded** segments, the shape a framework catch-all (Next's
+ * `params.path`) hands over: each URL segment percent-decoded exactly once.
+ * The segments are re-encoded before matching and the matcher decodes once,
+ * so each segment reaches the route as given: a literal `%5F` or `/` inside
+ * one stays in it. A host that only has the raw URL decodes it with
+ * {@link decodePathSegments} first.
  */
 export function parseFlowRoute(
   method: string,
@@ -61,6 +68,26 @@ export function parseFlowRoute(
   const segments = (Array.isArray(path) ? path : [])
     .map((segment) => segment.trim())
     .filter((segment) => segment.length > 0);
-  const pathname = segments.length === 0 ? "/" : `/${segments.join("/")}`;
+  const pathname =
+    segments.length === 0 ? "/" : `/${segments.map(encodeURIComponent).join("/")}`;
   return matchFlowRoute(method, pathname);
+}
+
+/**
+ * Splits a raw, still-encoded URL path (the part beneath the mount prefix)
+ * into the decoded segments {@link parseFlowRoute} takes: split on `/` first,
+ * then decode each segment once, so an encoded `%2F` stays inside its
+ * segment. A segment that is not valid percent-encoding is kept as written.
+ */
+export function decodePathSegments(rawPath: string): string[] {
+  return rawPath
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+    });
 }

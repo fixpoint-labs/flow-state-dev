@@ -5,7 +5,11 @@
  * compilation tests for the `:param` and trailing-`*` shapes.
  */
 import { describe, expect, it } from "vitest";
-import { parseFlowRoute, type ParsedFlowRoute } from "../src/routes/parseFlowRoute";
+import {
+  decodePathSegments,
+  parseFlowRoute,
+  type ParsedFlowRoute
+} from "../src/routes/parseFlowRoute";
 import {
   compileTransportPattern,
   matchTransportRoute
@@ -377,5 +381,45 @@ describe("compileTransportPattern", () => {
   it("returns null when the pattern does not match", () => {
     const matcher = compileTransportPattern("/api/flows/:kind/mcp");
     expect(matchTransportRoute(matcher, "/wrong/path")).toBeNull();
+  });
+});
+
+describe("parseFlowRoute — segments arrive decoded, and are decoded no further", () => {
+  it("keeps a literal percent escape inside a flow kind", () => {
+    // Next hands `params.path` decoded once; an escaped seat address still
+    // carries `%5F` after that decode, and must resolve as written.
+    expect(parseFlowRoute("POST", ["org%5Fpentest%5Flab.helper", "actions", "run"])).toEqual({
+      kind: "execute_action",
+      flowKind: "org%5Fpentest%5Flab.helper",
+      actionName: "run"
+    });
+  });
+
+  it("keeps a decoded slash inside its segment", () => {
+    expect(parseFlowRoute("GET", ["sessions", "a/b"])).toEqual({
+      kind: "get_session",
+      sessionId: "a/b"
+    });
+  });
+});
+
+describe("decodePathSegments — the raw-URL host's half of the contract", () => {
+  it("decodes each segment once, after splitting", () => {
+    expect(decodePathSegments("org%255Fpentest%255Flab.helper/actions/run")).toEqual([
+      "org%5Fpentest%5Flab.helper",
+      "actions",
+      "run"
+    ]);
+    expect(decodePathSegments("sessions/a%2Fb")).toEqual(["sessions", "a/b"]);
+  });
+
+  it("keeps a segment that is not valid percent-encoding as written", () => {
+    expect(decodePathSegments("sessions/100%")).toEqual(["sessions", "100%"]);
+  });
+
+  it("round-trips through parseFlowRoute to the kind the client encoded", () => {
+    const kind = "acme.~alice%40acme%2Ecom.helper";
+    const raw = `${encodeURIComponent(kind)}/actions/run`;
+    expect(parseFlowRoute("POST", decodePathSegments(raw))).toMatchObject({ flowKind: kind });
   });
 });
