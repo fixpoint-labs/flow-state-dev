@@ -29,7 +29,8 @@
  *                     `--team` is required, and one process opens one team.
  *   --port <n>        default 4300; 0 picks a free port
  *   --host <host>     default 127.0.0.1
- *   --assets <dir>    serve a different build of Shift Manager's pages (default: this package's dist/)
+ *   --assets <dir>    serve a different build of Shift Manager's pages (default: this package's dist/,
+ *                     built first when it is missing or older than its source)
  *   --devtool <url>   use a devtool running elsewhere for a task's trace link,
  *                     instead of the one this process serves (below)
  *   --devtool-assets <dir>
@@ -51,11 +52,20 @@
  * the devtool's pages not built, Shift Manager still starts, says so, and leaves the
  * link off. `--devtool <url>` replaces it with a devtool you run yourself.
  *
+ * A stale build. A page built before a change to its source reads what the
+ * source used to say, which after a rename means keys the Lab no longer
+ * publishes: the page then shows empty screens as if the Lab had no data. So
+ * the default build is checked against the source files it records
+ * (`scripts/build-inputs.mjs`) and rebuilt when any changed. The shipped
+ * devtool build is checked the same way, and only warned about: rebuilding it
+ * builds its workspace dependencies too.
+ *
  * Either way the address reaches the page the same way: Shift Manager's pages are
  * copied to a temp directory with it written into index.html, once the Lab has
  * loaded, and the copy is removed when the process stops. The build itself is
  * untouched. A forced shift's scheme reaches the page in that same copy.
  */
+import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
@@ -64,9 +74,16 @@ import { parseArgs } from "node:util";
 import { getAssetPath } from "@flow-state-dev/devtool";
 import { declaredDevtoolConfig, loadFsdevConfig } from "@flow-state-dev/fsdev";
 import { assertNetworkBindIsAuthenticated, isLoopbackHost, serve, type ServeHandle } from "@flow-state-dev/node";
+import { staleBuildInputs } from "../../../scripts/build-inputs.mjs";
+
+/** This package's directory. */
+const PACKAGE = fileURLToPath(new URL("..", import.meta.url));
+
+/** The repository root, which build-inputs records are relative to. */
+const REPO = fileURLToPath(new URL("../../..", import.meta.url));
 
 /** Shift Manager's own build output. */
-const DEFAULT_ASSETS = fileURLToPath(new URL("../dist", import.meta.url));
+const DEFAULT_ASSETS = join(PACKAGE, "dist");
 
 /** The shift profiles `--shift` picks from, one `<name>.json` each. */
 const PROFILES = fileURLToPath(new URL("../profiles", import.meta.url));
@@ -137,6 +154,16 @@ const port = /^\d+$/.test(values.port!) ? Number(values.port) : NaN;
 if (!Number.isInteger(port) || port > 65535) fail(`Invalid port: ${values.port}`);
 
 const built = values.assets === undefined ? DEFAULT_ASSETS : from(values.assets);
+if (values.assets === undefined) {
+  const stale = existsSync(resolve(built, "index.html"))
+    ? staleBuildInputs(built, REPO)
+    : "it isn't built";
+  if (stale !== undefined) {
+    process.stderr.write(`Building Shift Manager's pages first: ${stale}.\n`);
+    const build = spawnSync("pnpm", ["run", "build"], { cwd: PACKAGE, stdio: ["ignore", "inherit", "inherit"] });
+    if (build.status !== 0) fail(`Shift Manager's pages failed to build. Run: pnpm --filter @flow-state-dev/shift-manager build`);
+  }
+}
 if (!existsSync(resolve(built, "index.html"))) {
   fail(`Shift Manager's pages are not built at ${built}. Run: pnpm --filter @flow-state-dev/shift-manager build`);
 }
@@ -203,7 +230,14 @@ function devtoolPages(): string | undefined {
     return dir;
   }
   try {
-    return getAssetPath();
+    const dir = getAssetPath();
+    const stale = staleBuildInputs(dir, REPO);
+    if (stale !== undefined) {
+      process.stderr.write(
+        `The devtool's pages may be older than its source (${stale}), so Open trace may show an out-of-date devtool. Run: pnpm --filter @flow-state-dev/devtool build:assets\n`,
+      );
+    }
+    return dir;
   } catch (error) {
     process.stderr.write(
       `Shift Manager is serving no devtool, so Open trace is off: ${error instanceof Error ? error.message : String(error)}\n`,

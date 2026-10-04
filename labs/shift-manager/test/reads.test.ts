@@ -258,6 +258,8 @@ describe("one read per resource (V3, BR-11)", () => {
     const snapshot = loaded(await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read());
     if (snapshot.inventory.ok) throw new Error("the inventory loaded");
     expect(snapshot.inventory.failure.message).toMatch(/No inventory to read/);
+    // A page built before a key rename lands here too; the message says so.
+    expect(snapshot.inventory.failure.message).toMatch(/older build than the Lab/);
     expect(snapshot.orgId).toBe(DEFAULT_ORG_ID);
   });
 });

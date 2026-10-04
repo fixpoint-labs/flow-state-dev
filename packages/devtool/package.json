@@ -42,7 +42,8 @@
     "dist",
     "dist-client",
     "!dist/**/*.map",
-    "!dist-client/**/*.map"
+    "!dist-client/**/*.map",
+    "!dist-client/build-inputs.json"
   ],
   "publishConfig": {
     "access": "public",
