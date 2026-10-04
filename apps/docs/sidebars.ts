@@ -230,6 +230,7 @@ const sidebars: SidebarsConfig = {
       label: "Workforce",
       items: [
         "workforce/overview",
+        "workforce/glossary",
         "workforce/workers-on-disk",
         "workforce/built-in-worker",
         "workforce/channels",
