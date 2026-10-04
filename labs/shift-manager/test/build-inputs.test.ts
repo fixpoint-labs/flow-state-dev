@@ -17,7 +17,7 @@ let repo: string;
 afterEach(() => rmSync(repo, { recursive: true, force: true }));
 
 /** A two-file app in a fresh "repository", built into `app/dist`. */
-async function builtApp(): Promise<{ dist: string; keys: string }> {
+async function builtApp(options: { editDuringBuild?: boolean } = {}): Promise<{ dist: string; keys: string; config: string }> {
   repo = mkdtempSync(join(tmpdir(), "build-inputs-"));
   const app = join(repo, "app");
   mkdirSync(join(app, "src"), { recursive: true });
@@ -26,9 +26,19 @@ async function builtApp(): Promise<{ dist: string; keys: string }> {
   writeFileSync(keys, 'export const MAILBOXES = "inventory/mailboxes/*";\n');
   writeFileSync(join(app, "src/main.ts"), 'import { MAILBOXES } from "./keys";\ndocument.title = MAILBOXES;\n');
   writeFileSync(join(app, "index.html"), '<!doctype html><script type="module" src="/src/main.ts"></script>\n');
+  // A config file of its own, so the record has one to vouch for.
+  const config = join(app, "vite.config.mjs");
+  writeFileSync(config, "export default {};\n");
   const dist = join(app, "dist");
-  await build({ root: app, logLevel: "silent", configFile: false, plugins: [recordBuildInputs({ repoRoot: repo })] });
-  return { dist, keys };
+  // Someone saving keys.ts after Vite has read it: the bundle has the old key.
+  const editor = {
+    name: "edit-during-build",
+    transform(_code: string, id: string) {
+      if (options.editDuringBuild === true && id === keys) writeFileSync(keys, 'export const MAILBOXES = "inventory/edited/*";\n');
+    },
+  };
+  await build({ root: app, logLevel: "silent", configFile: config, plugins: [editor, recordBuildInputs({ repoRoot: repo })] });
+  return { dist, keys, config };
 }
 
 describe("a page build's record of its source", () => {
@@ -49,6 +59,17 @@ describe("a page build's record of its source", () => {
     expect(staleBuildInputs(dist, repo)).toBeUndefined();
     unlinkSync(keys);
     expect(staleBuildInputs(dist, repo)).toBe("app/src/keys.ts is gone since it was built");
+  });
+
+  it("names the Vite config when it changed, since it shapes the output from outside the module graph", async () => {
+    const { dist, config } = await builtApp();
+    writeFileSync(config, 'export default { base: "/elsewhere/" };\n');
+    expect(staleBuildInputs(dist, repo)).toBe("app/vite.config.mjs changed since it was built");
+  });
+
+  it("writes no record when a source file changed while the build ran, so that build counts as stale", async () => {
+    const { dist } = await builtApp({ editDuringBuild: true });
+    expect(staleBuildInputs(dist, repo)).toMatch(/no build-inputs\.json/);
   });
 
   it("counts a build with no record as stale, since nothing says what it was built from", async () => {

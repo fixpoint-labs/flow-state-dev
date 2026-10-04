@@ -18,8 +18,9 @@
  * alone is not detected.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** The record's file name inside a build's output directory. */
 export const BUILD_INPUTS_FILE = "build-inputs.json";
@@ -32,30 +33,47 @@ const hashOf = (file) => createHash("sha256").update(readFileSync(file)).digest(
  * hashes in `<outDir>/build-inputs.json`. Paths are relative to `repoRoot`, so
  * the record still holds when the build is copied elsewhere in the checkout.
  *
+ * The Vite config and this file are recorded too: they shape the output but
+ * are loaded outside the module graph. A source file edited while the build
+ * ran may be in the bundle as it was, so then no record is written and the
+ * build counts as stale.
+ *
  * @param {{ repoRoot: string }} options
  */
 export function recordBuildInputs({ repoRoot }) {
   /** @type {string} */
   let outDir;
+  /** Files loaded outside the module graph that still shape the output. */
+  const configFiles = [fileURLToPath(import.meta.url)];
+  let startedAt = 0;
   return {
     name: "record-build-inputs",
     apply: /** @type {const} */ ("build"),
-    /** @param {{ root: string, build: { outDir: string } }} config */
+    /** @param {{ root: string, configFile?: string, build: { outDir: string } }} config */
     configResolved(config) {
       outDir = resolve(config.root, config.build.outDir);
+      if (config.configFile !== undefined) configFiles.push(config.configFile);
+    },
+    buildStart() {
+      startedAt = Date.now();
     },
     /** @this {{ getModuleIds(): IterableIterator<string> }} */
     writeBundle() {
+      const record = join(outDir, BUILD_INPUTS_FILE);
       /** @type {Record<string, string>} */
       const inputs = {};
-      for (const id of this.getModuleIds()) {
+      for (const id of [...this.getModuleIds(), ...configFiles]) {
         const file = id.split("?")[0];
         if (!isAbsolute(file) || file.includes(`${sep}node_modules${sep}`) || !existsSync(file)) continue;
         const path = relative(repoRoot, file);
         if (path.startsWith("..")) continue;
+        if (statSync(file).mtimeMs >= startedAt) {
+          rmSync(record, { force: true });
+          return;
+        }
         inputs[path.split(sep).join("/")] = hashOf(file);
       }
-      writeFileSync(join(outDir, BUILD_INPUTS_FILE), `${JSON.stringify({ inputs }, null, 2)}\n`);
+      writeFileSync(record, `${JSON.stringify({ inputs }, null, 2)}\n`);
     },
   };
 }
