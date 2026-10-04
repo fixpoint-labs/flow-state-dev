@@ -109,9 +109,9 @@ The ask listing over many mailboxes. Approvals and questions waiting on you. Nev
 
 The shared place for one project. Members of that project read and post there. It is not a mailbox. Anyone in the org can see the project exists; only members read the room.
 
-### Workstream — redundant, confusing
+### Workstream — keep, confusing
 
-Today: a channel plus the boards it holds, grouped by a project. After mailbox/room, it is a second word for "mailbox that holds a board" or "work under a project." Candidate to kill.
+A mailbox plus the boards it holds, under a project. The in-flight channel → mailbox rename keeps this word: mailbox is the conversation, workstream is that conversation and its boards. Collides with mailbox and room. Killing it would put boards inside a mailbox.
 
 ### Project — keep
 
@@ -181,7 +181,7 @@ Flag on a transcript line: it arrived through that worker's own `seatPost` or it
 
 ### wakeMemberSeats — code-only
 
-Notify block that wakes each mailbox member whose hired worker declares `onChannelPost`, once per post. Skips the wake when `seatAuthored` is set. The name still says seat.
+Notify block for a mailbox post. On an unrouted post it wakes each member whose hired worker declares `onChannelPost`, once. On a routed post it wakes only the chosen member. Skips the wake when `seatAuthored` is set. The name still says seat.
 
 ### onChannelPost — code-only
 
