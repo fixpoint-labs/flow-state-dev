@@ -1,13 +1,12 @@
 ---
 title: Glossary
-sidebar_position: 1.5
 sidebar_label: Glossary
 description: Vocabulary review — what each workforce word means in this repo today, and which ones are overloaded, dead, or only code identifiers.
 ---
 
 # Glossary
 
-These words overlap. This page records what each one means in this repo today, so a review can kill the bloated ones. It is a review, not a how-to. Nothing here renames an identifier or changes behavior.
+This page is for a vocabulary review, not a how-to. How-tos stay on the other Workforce pages. These words overlap. This page records what each one means in this repo today, so a review can kill the bloated ones. Nothing here renames an identifier or changes behavior.
 
 Each entry is the word, what it means now, and a flag when the word is doing two jobs, already dropped, dead, or only a code name. How-to pages and package READMEs still say **seat** and **channel**. Treat that as drift, not a second definition.
 
@@ -136,7 +135,7 @@ Shift Manager sidebar row for organization-level workers (the chief of staff and
 
 ### Lab — keep, confusing
 
-A served workforce: seats and channels from one `fsdev.config`. Shift Manager opens a Lab. Not an org, not a team, not a project.
+A served workforce from one `fsdev.config`. Shift Manager opens a Lab. Today's chrome still says seats and channels; that is the same drift as the rest of the site. Not an org, not a team, not a project.
 
 ### Roster — overloaded
 
