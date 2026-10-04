@@ -26,8 +26,9 @@
  * its row (BR-14); one that reports a clean finish and commits does (BR-13).
  */
 
-import { readdirSync } from "node:fs";
-import { basename } from "node:path";
+import { createHash } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { ASK_MARKER_DIR, assertBaseRefExists } from "@flow-state-dev/harness-manager";
 import type {
   CompletionRunContext,
@@ -208,6 +209,40 @@ function leftFiles(workspacePath: string): boolean {
 }
 
 /**
+ * What each files run's `workspace/` held when its harness started, by path.
+ *
+ * A run with no repository starts on the files earlier runs saved, so "it left
+ * files" alone is true of a run that did nothing. Recorded by
+ * {@link noteStartingFiles}, compared in the done-condition.
+ */
+const startingFiles = new Map<string, string>();
+
+/**
+ * Record what a run's `workspace/` holds as its harness starts. Wrap the
+ * harness slot's `cwd` feed with it; a checkout of a repository is ignored,
+ * since its done-condition reads git.
+ */
+export function noteStartingFiles(cwd: string): void {
+  if (basename(cwd) === "workspace") startingFiles.set(cwd, filesFingerprint(cwd));
+}
+
+/** Every file under `dir` but the manager's question directory, as sorted path and content hash. */
+function filesFingerprint(dir: string): string {
+  const askRoot = ASK_MARKER_DIR.split(/[\\/]/)[0];
+  const lines: string[] = [];
+  const walk = (rel: string): void => {
+    for (const entry of readdirSync(join(dir, rel), { withFileTypes: true })) {
+      const path = rel === "" ? entry.name : `${rel}/${entry.name}`;
+      if (rel === "" && entry.name === askRoot) continue;
+      if (entry.isDirectory()) walk(path);
+      else lines.push(`${path} ${createHash("sha256").update(readFileSync(join(dir, path))).digest("hex")}`);
+    }
+  };
+  walk("");
+  return lines.sort().join("\n");
+}
+
+/**
  * Is there a commit on this run's branch that the base ref does not have?
  *
  * `rev-list --count <base>..HEAD` inside the run's own checkout. Reading HEAD
@@ -292,8 +327,14 @@ export function defineImplementPhase(options: ImplementPhaseOptions = {}): Phase
       if ("host" in validated) {
         // A host names the places it makes: `workspace/` for a run with no
         // repository, a checkout of the project's remote otherwise.
-        if (basename(context.workspacePath) === "workspace") return leftFiles(context.workspacePath);
-        if (!(await hasUnpushedCommit(context.workspacePath))) return false;
+        if (basename(context.workspacePath) === "workspace") {
+          // Files the run changed, not files an earlier run saved.
+          if (!leftFiles(context.workspacePath)) return false;
+          const before = startingFiles.get(context.workspacePath);
+          if (before !== undefined && before === filesFingerprint(context.workspacePath)) return false;
+        } else if (!(await hasUnpushedCommit(context.workspacePath))) {
+          return false;
+        }
       } else if (!(await hasNewCommit(context.workspacePath, validated.baseRef))) {
         return false;
       }

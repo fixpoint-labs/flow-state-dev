@@ -107,7 +107,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { FeatureLedger } from "./board.mts";
 import { INSPECT_ENTRY, SEAT_FACTS_COMPONENT } from "./seat-config.mts";
-import { defineImplementPhase } from "./phase.mts";
+import { defineImplementPhase, noteStartingFiles } from "./phase.mts";
 import { CODER_KIND, defineCoderWorkerFlow } from "./workforce/flows/workers/coder.mts";
 import {
   DRAIN_ENTRY,
@@ -750,7 +750,16 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const coderKind = defineCoderWorkerFlow({
     ledger,
     ...(emRecords[0] === undefined ? {} : { coordinatorSeatId: emRecords[0].id }),
-    harness: options.harness,
+    // What a files run starts on, kept so its done-condition asks for a change.
+    harness: (feeds) =>
+      options.harness({
+        ...feeds,
+        cwd: async (ctx) => {
+          const cwd = await feeds.cwd(ctx);
+          noteStartingFiles(cwd);
+          return cwd;
+        },
+      }),
     workspace: workspaceHost ?? (options.workspace as WorkspaceConfig),
     // The mailbox's charter and members, resolved once here so the prompt
     // builder stays a function of the run and these options. Not the whole
