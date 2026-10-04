@@ -4,7 +4,10 @@
  * The `project-files` collection has no browser read, so this is how a person
  * reads them. It checks the session's owner against the row's `members` first
  * (`membership-gate.ts`), then lists only `project-files/<projectId>/…`,
- * filtered at the source (BP-033), never the whole collection.
+ * filtered at the source (BP-033), never the whole collection. It returns each
+ * file's path and size, never its body: a handler's output is logged as the
+ * tool result, so a body here would land whole in the session log and the
+ * model's context.
  */
 
 import { handler } from "@flow-state-dev/core";
@@ -28,13 +31,15 @@ export const readProjectFilesInputSchema = z.object({ projectId: z.string().min(
 /** @see readProjectFilesInputSchema */
 export type ReadProjectFilesInput = z.infer<typeof readProjectFilesInputSchema>;
 
-/** What reading a project's files returns: each file's path under the project, and its body. */
+/** What reading a project's files returns: each file's path under the project, and its size in UTF-8 bytes. */
 export const readProjectFilesOutputSchema = z.object({
-  files: z.array(z.object({ path: z.string(), content: z.string() }))
+  files: z.array(z.object({ path: z.string(), size: z.number().int().nonnegative() }))
 });
 
 /** @see readProjectFilesOutputSchema */
 export type ReadProjectFilesOutput = z.infer<typeof readProjectFilesOutputSchema>;
+
+const utf8 = new TextEncoder();
 
 /** The collection's storage prefix, stripped from a ref's `path`. */
 const COLLECTION_PREFIX = `${PROJECT_FILES_RESOURCE}/`;
@@ -64,7 +69,7 @@ export const readProjectFiles = handler({
     for (const ref of await files.list(prefix)) {
       const content = await ref.readContent();
       if (content === null) continue;
-      out.push({ path: ref.path.slice(COLLECTION_PREFIX.length + prefix.length), content });
+      out.push({ path: ref.path.slice(COLLECTION_PREFIX.length + prefix.length), size: utf8.encode(content).length });
     }
     return { files: out };
   }

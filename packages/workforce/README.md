@@ -2047,7 +2047,8 @@ defineFlow({ kind: "lab", actions: { ...projects.actions } });
   repeat the value. `git@host:org/repo` and `ssh://git@host/org/repo` are accepted. Stored rows
   aren't re-parsed on read: treat a missing `repository` as `null`, or read through
   `projectRowSchema.parse`.
-- **`readProjectFiles { projectId }`** returns `{ files: [{ path, content }] }`, the files the
+- **`readProjectFiles { projectId }`** returns `{ files: [{ path, size }] }` (size in UTF-8 bytes,
+  never the body, since the output is logged as the tool result), the files the
   project keeps in the org's `project-files` collection (`defineProjectFilesCollection()`), at
   `project-files/<projectId>/<path>`. Members only. The collection is org-scoped, shared, lazy, and
   has no browser read.

@@ -187,20 +187,22 @@ Stored rows aren't re-parsed when they're read, so a row saved without a `reposi
 
 Notes, memory and anything else kept for a project live in the organization's `project-files` collection, under the project's id: `project-files/<projectId>/<path>`. Declare it with `defineProjectFilesCollection()`. Like `defineProjectsCollection()`, every call returns the same declaration. It's org-scoped, shared across flows, and loaded only when read.
 
-Only the project's members can read the files, with `readProjectFiles`:
+Only the project's members can list the files, with `readProjectFiles`:
 
 ```ts
 // input
 { projectId: "storefront" }
 
-// output: each file's path under the project, and its body
+// output: each file's path under the project, and its size in bytes
 {
   files: [
-    { path: "notes.md", content: "# Notes" },
-    { path: "src/index.ts", content: "export {};" },
+    { path: "notes.md", size: 7 },
+    { path: "src/index.ts", size: 10 },
   ],
 }
 ```
+
+It lists paths and sizes, not file contents. A block's output is recorded in the session log and can reach a model's context, so a listing stays small however large the files are.
 
 It returns that project's files, never another project's. A non-member is refused with `not-a-member`, and an unknown id with `no-such-project`. The collection has no browser read: a request for it through the collection route gets a 403.
 

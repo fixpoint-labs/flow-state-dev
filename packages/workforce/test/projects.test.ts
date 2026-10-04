@@ -866,12 +866,24 @@ describe("a project's files", () => {
 
     const bobLab = await h.openSession("bob", "lab");
     const read = await h.ok("bob", "lab", bobLab, "readProjectFiles", { projectId: "apollo" });
+    // Path and UTF-8 byte size only: the output is logged as the tool result, so a body never rides in it.
     expect([...read.files].sort((a: { path: string }, b: { path: string }) => a.path.localeCompare(b.path))).toEqual([
-      { path: "notes.md", content: "# Notes" },
-      { path: "src/index.ts", content: "export {};" }
+      { path: "notes.md", size: 7 },
+      { path: "src/index.ts", size: 10 }
     ]);
+    expect(JSON.stringify(read)).not.toContain("# Notes");
     expect((await h.ok("alice", "lab", lab, "readProjectFiles", { projectId: "apollo2" })).files).toEqual([
-      { path: "plan.md", content: "not apollo's" }
+      { path: "plan.md", size: 12 }
+    ]);
+  });
+
+  it("counts a file's size in UTF-8 bytes, not characters", async () => {
+    const h = await boot();
+    await apollo(h);
+    const lab = await h.openSession("alice", "lab");
+    await h.ok("alice", "lab", lab, "seedProjectFile", { key: "apollo/café.md", content: "café" });
+    expect((await h.ok("alice", "lab", lab, "readProjectFiles", { projectId: "apollo" })).files).toEqual([
+      { path: "café.md", size: 5 }
     ]);
   });
 
