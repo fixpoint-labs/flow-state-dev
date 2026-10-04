@@ -8,7 +8,7 @@
 
 **Signal:** each failure is tagged with its leg or part.
 
-- **a1, the Inbox journey.** The EM seat's ask is in Inbox with its kind and workstream. The detail pane's card says what the workstream's stream card says. Approve leaves the resume stored and the ask gone from Inbox.
+- **a1, the Inbox journey.** The EM seat's ask is in Inbox with its kind and its workstreams. An ask with no workstream session belongs to every channel the store lists its seat in, because FIX-1662's BR-18 draws its card on each of those Streams (decided for this closure, 2026-10-04); an ask a channel post started belongs to that channel. Inbox names exactly that set, and on each of those Streams the card says what the detail pane says (its question heading and its card). Approve leaves the resume stored and the ask gone from Inbox.
 - **a2, the task journey.** From Tasks, then from the workstream's Board: the task's Session tab draws only items the run session holds, the inspector's trace link is the in-process devtool's `?session=<id>`, and following it opens that session.
 - **a3, reach.** Chief of Staff, the org switcher, Jump to, Inbox against the store's asks, Tasks in its three groupings, Roster for all teams and for each team row in TEAMS, PROJECTS, the Day/Night switch, the project level's four tabs, each workstream's four tabs, panel and Board against the store's rows, and the task frame's four tabs and panel slot. Every empty one names what will be there.
 - **a4, the `@worker` turn** (the one step on the real model). While the coder's task runs, `@coder <token>` in the workstream composer is in the running task session as a person's turn before the composer reads delivered, and the next attempt answers in that session. Never retried.
