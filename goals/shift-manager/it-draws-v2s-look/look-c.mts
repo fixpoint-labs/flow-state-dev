@@ -25,7 +25,7 @@ const feed = (store: { channels: Record<string, { lines: number; asks: number }>
 
 export const SLICE_C_ROWS: Row[] = [
   // A workstream's header (W1).
-  { id: "workstream #", audit: "W1", v2: { line: 215, has: "font:500 15px 'IBM Plex Mono'" }, select: "[data-testid=workstream-header] > [data-look=title-hash]", on: WORKSTREAM, min: 1, want: { family: "mono", size: 15 } },
+  { id: "workstream title #", audit: "W1", v2: { line: 215, has: "font:500 15px 'IBM Plex Mono'" }, select: "[data-testid=workstream-header] > [data-look=title-hash]", on: WORKSTREAM, min: 1, want: { family: "mono", size: 15 } },
   {
     id: "WORKSTREAM tag",
     audit: "W1",
@@ -47,7 +47,7 @@ export const SLICE_C_ROWS: Row[] = [
     select: "[data-testid=feed-ask] [data-look=needs-tag]",
     on: ["workstream"],
     min: ({ store }) => feed(store).asks,
-    want: { family: "mono", size: 10, weight: 600, tracking: 0.12, highlighter: true },
+    want: { family: "mono", size: 10, weight: 600, tracking: 0.12, highlight: true },
   },
   { id: "ask in inbox", audit: "W11", v2: { line: 290, has: "font:500 12px 'IBM Plex Mono'" }, select: "[data-testid=feed-ask-inbox]", on: ["workstream"], min: ({ store }) => feed(store).asks, want: { family: "mono", size: 12 } },
 
@@ -86,7 +86,7 @@ export const SLICE_C_ROWS: Row[] = [
     select: "[data-testid=session-ask] > [data-look=ask-kind]",
     on: ["task"],
     min: 0,
-    want: { family: "mono", size: 9.5, weight: 600, tracking: 0.12, highlighter: true },
+    want: { family: "mono", size: 9.5, weight: 600, tracking: 0.12, highlight: true },
   },
   {
     id: "needs banner",
@@ -96,7 +96,7 @@ export const SLICE_C_ROWS: Row[] = [
     on: ["task"],
     at: [1600],
     min: 0,
-    want: { family: "mono", size: 11.5, border: { width: 1, colour: "foreground" }, highlighter: true },
+    want: { family: "mono", size: 11.5, border: { width: 1, colour: "foreground" }, highlight: true },
   },
   { id: "needs banner text", audit: "T13", v2: { line: 463, has: "font:500 11.5px 'IBM Plex Mono'" }, select: "[data-testid=inspector-needs] > span", on: ["task"], at: [1600], min: 0, want: { family: "mono", size: 11.5 } },
 

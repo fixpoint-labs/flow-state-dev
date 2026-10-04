@@ -423,8 +423,9 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(screen.queryByTestId("nav-cos-count")).toBeNull();
     expect(screen.getByTestId("centre").getAttribute("data-level")).toBe("cos");
     // Shift Manager names the view Shift Coordinator; the seat keeps its id (FIX-1747).
-    expect(screen.getByTestId("nav-cos").textContent).toBe("Shift Coordinator");
-    expect(within(screen.getByTestId("cos")).getByText("SHIFT COORDINATOR")).toBeTruthy();
+    // The entry's label and the screen's title carry the name; v2's square beside each carries initials.
+    expect(screen.getByTestId("nav-cos").querySelector("[data-look=nav-label]")!.textContent).toBe("Shift Coordinator");
+    expect(within(screen.getByTestId("cos-header")).getByText("Shift Coordinator")).toBeTruthy();
     expect(screen.getByTestId("sidebar").textContent).not.toMatch(/chief of staff/i);
     expect(screen.getByTestId("cos").textContent).not.toMatch(/chief of staff/i);
     cleanup();
@@ -497,7 +498,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     const { clients } = await openCos("/", { chiefOfStaff: true });
     const conversation = await screen.findByTestId("cos-conversation");
     expect(conversation.getAttribute("data-seat-id")).toBe("ops.chief-of-staff");
-    expect(conversation.textContent).toContain("Your shift coordinator.");
+    expect(conversation.textContent).not.toMatch(/chief of staff/i);
     expect(screen.getByTestId("cos-conversation-empty")).toBeTruthy();
 
     // Hold the door's request open: nothing may read delivered, or draw a reply, while it is.

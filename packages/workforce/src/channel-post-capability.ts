@@ -16,12 +16,14 @@
  * record id, the name a channel's `members:` lists. The tool declares it as
  * the flow config it requires, so a seat whose settings carry none is refused
  * by name before the model is offered the tool, never posted as the request's
- * principal: a post with no author skips the channel's member check and wakes
- * every member.
+ * principal. The line's `author` is that `seatId`: the roster check and the
+ * name on the line. It is not what withholds member wakes. The post goes
+ * through the channel's `seatPost` action, and that action is what marks
+ * the line a seat's. A dispatched `post` does not.
  *
  * ## One gate
  *
- * The line is written by the built-in channel kind's own `post`, or for a
+ * The line is written by the built-in channel kind's `seatPost`, or for a
  * routed post's answer its `answer`, which checks the line as `post` does:
  * membership against the channel as opened. The tool checks nothing of its
  * own. A dispatch into another session starts a request there and returns, so
@@ -55,7 +57,7 @@
 import { defineCapability, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
 import { z } from "zod";
-import { CHANNEL_ANSWER_ACTION, CHANNEL_KIND } from "./channel/channel-flow";
+import { CHANNEL_ANSWER_ACTION, CHANNEL_KIND, CHANNEL_SEAT_POST_ACTION } from "./channel/channel-flow";
 import { SEAT_ID_KEY } from "./manifest";
 
 /** The capability name a worker file spells under `capabilities:`. */
@@ -126,7 +128,7 @@ type PostAsSeatInput = z.infer<typeof postAsSeatInputSchema>;
 const postAsSeat = dispatcher({
   name: "post-to-channel-dispatch",
   flowKind: CHANNEL_KIND,
-  action: "post",
+  action: CHANNEL_SEAT_POST_ACTION,
   inputSchema: postAsSeatInputSchema,
   session: { id: (input: PostAsSeatInput) => input.channel },
   payload: (input: PostAsSeatInput) => ({ body: input.body, author: input.author }),

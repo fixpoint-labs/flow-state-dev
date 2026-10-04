@@ -38,7 +38,9 @@ import {
   channelFlow,
   channelPostCapability,
   defineAgentWorkerFlow,
+  defineChannelFlow,
   hireWorkforce,
+  wakeMemberSeats,
   workerConfigSchema,
   type WorkerManifest,
 } from "../src/index";
@@ -174,9 +176,57 @@ describe("post-to-channel", () => {
           author: "support.otto",
           principal: USER_ID,
           authorVerified: false,
+          seatAuthored: true,
           body: "Refunds post on Fridays.",
         }),
       ]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("wakes no co-member when the seat posts through the tool, and still wakes them on a public claim of that seat", async () => {
+    const [otto, iris] = hireWorkforce([seat("support.otto"), seat("support.iris", undefined)], { kinds: { agent } });
+    const channel = defineChannelFlow({ notify: wakeMemberSeats([otto!, iris!]) })();
+    const state = createFlowState({
+      flows: { [CHANNEL_KIND]: channel, [otto!.id]: otto!, [iris!.id]: iris! },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: createMockModelResolver({ generators: { "agent-answer": scriptedAgent() }, policy: "allow" }),
+    });
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, "support.desk", ["support.otto", "support.iris"]);
+
+      const turn = await say(runtime, otto!, postTurn({ channel: "support.desk", body: "from the seat" }));
+      expect(turn.error).toBeUndefined();
+      await channelRequests(runtime, "support.desk", 2);
+      expect(await runtime.stores.session.list({ flowId: iris!.id, parentage: "all" })).toEqual([]);
+
+      const claimed = await runAction({
+        orgId: DEFAULT_ORG_ID,
+        flow: channel,
+        actionName: "post",
+        input: { body: "claimed as otto", author: "support.otto" },
+        userId: USER_ID,
+        sessionId: "support.desk",
+        stores: runtime.stores,
+        runtimeConfig: { ...runtime.runtimeConfig },
+      });
+      expect(claimed.error).toBeUndefined();
+      await channelRequests(runtime, "support.desk", 4);
+      let text = "";
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const irisRuns = await runtime.stores.session.list({ flowId: iris!.id, parentage: "all" });
+        const heard =
+          irisRuns.length === 0
+            ? []
+            : await runtime.stores.request.list({ sessionId: irisRuns[0]!.id, withItems: true });
+        text = JSON.stringify(heard);
+        if (text.includes("claimed as otto") && heard.every((request) => request.status !== "in_progress")) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(text).toContain("claimed as otto");
+      expect(text).not.toContain("from the seat");
     } finally {
       await state.dispose();
     }
