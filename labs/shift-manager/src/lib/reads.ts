@@ -305,17 +305,6 @@ const PROJECT_PATTERNS = { projects: "projects/*" } as const;
 /** The organization's hired roster, by its published key pattern. */
 const ROSTER_PATTERN = HIRED_ROSTER_BROWSER_PATTERN;
 
-/**
- * Whether the snapshot reads the organization's resource at `path`, a storage
- * path such as `projects/launch`: a row of the inventory, the projects or the
- * hired roster. A write to one leaves the snapshot stale until it is read again.
- */
-export function snapshotReads(path: string): boolean {
-  return [INVENTORY_PATTERNS.seats, INVENTORY_PATTERNS.mailboxes, PROJECT_PATTERNS.projects, ROSTER_PATTERN].some((pattern) =>
-    path.startsWith(pattern.slice(0, -1)),
-  );
-}
-
 /** Rows per collection page: the collection route's maximum. */
 const PAGE_SIZE = 200;
 /** A guard against a server that pages forever; the shipped panel readers use the same bound. */

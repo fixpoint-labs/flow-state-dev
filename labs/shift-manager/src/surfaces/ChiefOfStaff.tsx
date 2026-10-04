@@ -33,9 +33,9 @@ import { currentConversation, newConversationId, readConversation, sendToChiefOf
 import { chiefOfStaffOf, seatStates, shiftSummary, streamCounts, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
-import { describeFailure, snapshotReads, type Failure, type Seat } from "../lib/reads";
+import { describeFailure, type Failure, type Seat } from "../lib/reads";
 import { navigate } from "../lib/routes";
-import { orgWritesOf, RunReadError, type SessionItems } from "../lib/run";
+import { RunReadError, type SessionItems } from "../lib/run";
 import { chiefOfStaffSuggestions, clockTime } from "../lib/shell";
 import { startChiefOfStaffWork, useChiefOfStaffWorking } from "../lib/working";
 import type { Gaps } from "../gaps";
@@ -309,14 +309,9 @@ function Talk({
         try {
           const sent = await sendToChiefOfStaff(clients, { seatId: seat.id, door: seat.door!, sessionId: target }, message);
           setOpened(target);
-          // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
-          if (sent.suspended) void refresh();
-          // It finished: read the Lab again only if it wrote what the snapshot holds, such as
-          // a project it created. A log that can't be read in time may hold any write.
-          else
-            void orgWritesOf(clients, { flowId: seat.id, requestId: sent.requestId }).then((wrote) => {
-              if (wrote === undefined || wrote.some(snapshotReads)) void refresh();
-            });
+          // Read the Lab again either way. Stopped short, it may have raised an ask Inbox should
+          // list; finished, it may have changed the organization, such as a project it created.
+          void refresh();
           return sent;
         } catch (error) {
           // The Lab may have opened the session before the line failed. The

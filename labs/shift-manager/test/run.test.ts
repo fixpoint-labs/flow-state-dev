@@ -14,7 +14,6 @@ import {
   followRequest,
   interruptRun,
   mergeItems,
-  orgWritesOf,
   readRecordedWork,
   readRunStatus,
   readSessionItems,
@@ -52,33 +51,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await lab?.stopHeldRuns();
   await served?.handle.close();
-});
-
-describe("what a finished request wrote (orgWritesOf)", () => {
-  /** Clients whose only route is the request's stream, answering with `body`. */
-  const streaming = (body: ReadableStream<Uint8Array>) =>
-    ({ baseUrl: "http://lab.test", fetcher: async () => new Response(body, { headers: { "content-type": "text/event-stream" } }) }) as unknown as LabClients;
-  const frame = (seq: number, item: Record<string, unknown>) =>
-    `id: r1:${seq}\ndata: ${JSON.stringify({ stream: "request", type: "item.done", requestId: "r1", sequence_number: seq, item: { id: `i${seq}`, requestId: "r1", status: "completed", ...item } })}\n\n`;
-
-  it("names the org-scope paths the request's log holds, and nothing it wrote elsewhere", async () => {
-    const text =
-      frame(1, { type: "resource_change", scope: "org", resourcePath: "projects/launch", changeType: "created" }) +
-      frame(2, { type: "resource_change", scope: "session", resourcePath: "notes", changeType: "updated" });
-    const body = new ReadableStream<Uint8Array>({
-      start(c) {
-        c.enqueue(new TextEncoder().encode(text));
-        c.close();
-      },
-    });
-    expect(await orgWritesOf(streaming(body), { flowId: "cos", requestId: "r1" })).toEqual(["projects/launch"]);
-  });
-
-  // A log that never ends can't say what was written: the caller reads the Lab again.
-  it("gives up as unknown when the log doesn't end in time", async () => {
-    const body = new ReadableStream<Uint8Array>({ start() {} });
-    expect(await orgWritesOf(streaming(body), { flowId: "cos", requestId: "r1" }, { timeoutMs: 50 })).toBeUndefined();
-  });
 });
 
 describe("finding the run (V1, D1)", () => {

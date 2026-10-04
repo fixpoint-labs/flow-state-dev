@@ -14,7 +14,6 @@ import {
   DISPATCHED_RUN_UNANSWERABLE,
   REOPENED_SOURCES,
   roomSessionId,
-  snapshotReads,
   UNOWNED_SESSION_UNANSWERABLE,
   type LabSnapshot,
 } from "../src/lib/reads";
@@ -65,18 +64,6 @@ function countRequests() {
   });
   return seen;
 }
-
-describe("what the snapshot reads, by storage path", () => {
-  it("holds the inventory, the projects and the hired roster, and nothing else the org stores", () => {
-    for (const path of ["inventory/seats/ops.asker", "inventory/mailboxes/ops.desk", "projects/launch", "workforce/roster/ops.asker"]) {
-      expect(snapshotReads(path), path).toBe(true);
-    }
-    // A project's workstream claim is written with it, but the snapshot doesn't read claims.
-    for (const path of ["workstream-claims/ops.desk", "projectsx/launch", "memory/notes"]) {
-      expect(snapshotReads(path), path).toBe(false);
-    }
-  });
-});
 
 describe("the refusal (V2, BR-3)", () => {
   it("stops at the first read when the Lab refuses it for want of a verified organization", async () => {

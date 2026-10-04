@@ -264,7 +264,7 @@ Each worker shows its team and kind, how many slots it has in use (one square pe
 
 The same status appears in the sidebar and in a workstream's panel, so a worker reads the same everywhere. If the Lab's asks didn't load, each of those places marks its status *partial*: a worker waiting on you only through an ask would read off shift.
 
-Roster is read with the rest of the screen, when Shift Manager starts, on Retry, after you answer an ask, and after a chief of staff's turn changes the workers, mailboxes or projects (a hire, or a project it starts for you). It says when it was read. It doesn't refresh on its own.
+Roster is read with the rest of the screen, when Shift Manager starts, on Retry, after you answer an ask, and after each message the chief of staff takes (so a hire, or a project it starts for you, shows up at once). It says when it was read. It doesn't refresh on its own.
 
 Slots count what a worker holds now. Nothing in a Lab limits how many tasks a worker takes, so Roster shows no capacity and no free slots.
 
