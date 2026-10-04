@@ -221,7 +221,15 @@ It returns the seat id and the address the seat answers on:
 A hire runs in this order:
 
 1. It refuses a kind that isn't in `kinds`, or that `allowKinds` leaves out, and names the kinds it can hire. It refuses an address `kindAt` reports as already served, an address a seat declared in a worker file has an inventory row at, and a seat id `kindAt` reports a declared seat under: `"chief-of-staff" is the id of a seat this app declares (kind "agent"). Hire under another id.` With `refuseRosterAdmin: true`, it also refuses settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`.
-2. It mints the seat, which runs the kind's settings schema.
+2. It mints the seat, which runs the kind's settings schema. If the schema refuses the seat, nothing is written and the hire fails with a message that quotes the kind's own refusal. For a kind `coder` whose schema requires `document: z.string().min(1)`, hired as `coder-2` in organization `acme` with no settings, the message is below. The kind's own refusal is quoted after `refused it:`.
+
+   ```text
+   "acme.coder-2" was not hired, and nothing was written. Kind "coder" refused it: hireWorkforce refused 1 of 1 worker; nothing was hired:
+     - worker "acme.coder-2" — Flow "coder" instance "acme.coder-2" has an invalid config bag: "document": Required.
+   If that names a setting, call hire again with it in `settings`.
+   ```
+
+   The same call with `settings: { "document": "teams/eng/feature-brief" }` hires the seat. For the `seat-hire` tools a model calls, this message is the tool's result, so the model can correct the call and try again in the same turn.
 3. It writes the roster row with `create()`. A second hire of the same seat id fails here with `Resource instance "workforce/roster/support.ada" already exists`, including two hires arriving at once.
 4. It calls your `register`. If that throws, the row from step 3 is deleted and the error is passed on.
 5. It writes an inventory row at `inventory/seats/<address>`, replacing only a row left by an earlier hire at that address, and only while its own roster row is still there. If this write fails, the seat is hired and answering but has no inventory row. If the seat is fired or hired again while this hire is finishing, the hire stops and takes back only what is still its own.

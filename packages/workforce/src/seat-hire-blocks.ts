@@ -47,7 +47,7 @@ import {
   SEAT_HIRE_CAPABILITY,
 } from "./seat-hire-keys";
 import { seatDoorOf } from "./seat-door";
-import { hireWorkforce, unattendedBoardWarnings, type HireOptions } from "./hire";
+import { hireWorkforce, KindRefusedHireError, unattendedBoardWarnings, type HireOptions } from "./hire";
 import { checkHiredSeatRow } from "./roster/check";
 import { HIRED_ROSTER_PREFIX, type HiredSeatRow } from "./roster/collections";
 import { hiredSeatOwnerPinFromRosterOwner, registerHiredSeat } from "./roster/register-hired-seat";
@@ -133,7 +133,13 @@ const hireInput = z
   .object({
     seatId: z.string().min(1),
     flow: z.string().min(1),
-    settings: z.record(z.unknown()).default({}),
+    settings: z
+      .record(z.unknown())
+      .default({})
+      .describe(
+        "The kind's own settings. Some kinds require one or more, such as the document a seat " +
+          "reads; your instructions name them and their values. The built-in `agent` kind needs none."
+      ),
     instructions: z.string().optional(),
     /**
      * Accepted so a body that names an org is not an extra-key refusal, and
@@ -729,7 +735,22 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       owningOrgId: orgId,
       incarnation,
     });
-    return { orgId, address, row, incarnation, seat: mint(orgId, row, address) };
+    // The kind's own refusal (typed at its source by `hireWorkforce`) writes
+    // nothing and the caller can correct it, so say so: a model reading only
+    // the boot-time sentence takes it as final. A framework refusal or any
+    // other mint fault keeps its own message.
+    let seat: FlowInstance;
+    try {
+      seat = mint(orgId, row, address);
+    } catch (error) {
+      if (!(error instanceof KindRefusedHireError)) throw error;
+      throw new Error(
+        `"${address}" was not hired, and nothing was written. Kind "${input.flow}" refused it: ` +
+          `${error.message}\n` +
+          `If that names a setting, call hire again with it in \`settings\`.`
+      );
+    }
+    return { orgId, address, row, incarnation, seat };
   };
 
   const hireVerb: SeatHireVerb<HireInput, HireOutput> = {
@@ -1070,8 +1091,9 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
   const hire = handler({
     name: "hire",
     description:
-      "Mint a seat of a kind this app already registered. Names the kind and a " +
-      "seat id. Does not invent a kind, and does not attach boards.",
+      "Mint a seat of a kind this app already registered. Names the kind, a seat id, and in " +
+      "`settings` whatever that kind requires: a kind refuses a hire missing a required setting, " +
+      "naming it. Does not invent a kind, and does not attach boards.",
     inputSchema: hireInput,
     outputSchema: hireOutput,
     execute: hireVerb.run,

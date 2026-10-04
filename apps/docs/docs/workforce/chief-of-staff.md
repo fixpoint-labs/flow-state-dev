@@ -34,6 +34,8 @@ To add a seat, call `hire`. It lands at once. To remove one, call `fire`.
 The person approves every fire before it happens; if they deny it, say so
 and don't try again unless they ask.
 
+To hire a `coder`, pass `settings: { "document": "teams/eng/feature-brief" }`.
+
 You can't fire yourself or any seat declared in the organization's files.
 Those change when someone edits their folder.
 ```
@@ -53,12 +55,13 @@ import {
   type HireOptions,
 } from "@flow-state-dev/workforce";
 
+import { coderFlow } from "./flows/coder";
 import { deskClerkFlow } from "./flows/desk-clerk";
 import { instanceAt, kindAt, registerSeat, releaseSeat } from "./registry-access";
 import { roster } from "./roster";
 
 // Typed as the whole map, so the `agent` entry can be added below.
-export const kinds: NonNullable<HireOptions["kinds"]> = { "desk-clerk": deskClerkFlow };
+export const kinds: NonNullable<HireOptions["kinds"]> = { "desk-clerk": deskClerkFlow, coder: coderFlow };
 
 const seatHire = createSeatHireCapability({
   kinds,
@@ -66,7 +69,7 @@ const seatHire = createSeatHireCapability({
   unregister: releaseSeat,
   kindAt,
   instanceAt,
-  allowKinds: ["desk-clerk", "agent"],
+  allowKinds: ["desk-clerk", "coder", "agent"],
   askBefore: ["fire"],
   refuseRosterAdmin: true,
 });
@@ -91,6 +94,10 @@ kinds.agent = defineAgentWorkerFlow({
 `registry-access.ts` is the module from [Reaching the `FlowState`](./durable-hire.md#reaching-the-flowstate), with two more exports, both read from `(await flowState.getRuntime()).registry` once the app is up. `kindAt(address)` returns the kind of the flow registered at that address; the hire tools use it to refuse a declared seat by name. `instanceAt(address)` returns the flow instance registered at that address, or `undefined`. The hire tools use it to tell a seat they minted apart from another seat at the same address, so a re-hire interrupted by a restart completes, and `fire` releases only its own seat.
 
 `createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. The small `mailbox-inventory` capability declares the mailbox inventory as a resource on the kind, and passing its key, `mailboxInventory` here, as `inventory.mailboxes` lets `discover` answer who is in a mailbox too. `mailboxPostCapability` adds `post-to-mailbox`, so the chief of staff can answer in a mailbox it is a member of. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
+
+`hire` asks the model for a kind, a seat id, and `settings`, but doesn't say which kinds require which settings. The chief of staff learns that from its `WORKER.md` body, so name each required setting and its value there, as the example file does for a `coder`. A hire missing a required setting is refused with the setting named and nothing written, so the model can call `hire` again with it.
+
+In the snippet above, `coderFlow` requires a `document` setting through its `configSchema`: `workerConfigSchema().extend({ document: z.string().min(1) })`.
 
 Installing the tools on a kind doesn't hand them to every seat of it. A seat holds `hire` or `fire` only when its own `tools:` names it, so keep those names in the chief of staff's file and no other. `refuseRosterAdmin: true` keeps them out of the seats the chief of staff hires, too. Leave it off and a hire may name them like any other tool.
 
