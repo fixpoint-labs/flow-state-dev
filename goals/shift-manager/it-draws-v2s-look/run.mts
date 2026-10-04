@@ -102,7 +102,9 @@ const LABS = {
     tree: repoPath("goals", "devforce-lab", "lab", "workforce"),
     // Long enough that the filed row is still running while the sweep reads it, short
     // enough to finish inside the scripted run's 60s limit.
-    env: { DEVFORCE_LAB_STEP_MS: "11000" },
+    // DevTeam on a fresh store each run, for a profile whose store outlives the process:
+    // a row an earlier run left errored in the checkout's store would break this one.
+    env: { DEVFORCE_LAB_STEP_MS: "11000", DEVTEAM_STORE: join(SCRATCH, `devteam-${RUN_STAMP}.sqlite`) },
   },
   desk: { config: join(HERE, "lab", "fsdev.config.mts"), tree: join(HERE, "lab", "workforce"), env: {} },
 } as const;

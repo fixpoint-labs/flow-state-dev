@@ -30,7 +30,7 @@ Which regions are graded whole grows with each slice's screens: Chief of Staff's
 
 **Model:** n/a (the desk's chief of staff is a scripted mock; DevTeam's runs are scripted).
 
-**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-draws-v2s-look/run.mts` (`GOAL_SHOTS=<dir>` saves one screenshot per screen state).
+**Run:** `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/shift-manager/it-draws-v2s-look/run.mts` (`GOAL_SHOTS=<dir>` saves one screenshot per screen state). DevTeam runs on a fresh `DEVTEAM_STORE` in the run's scratch directory, never the checkout's `labs/shift-manager/.fsdev/devteam.sqlite`.
 
 **Controls** (scratch patches to the copy, never the checkout):
 - `GOAL_CONTROL=drift`: the sidebar's team row is rounded, and its Roster count and Tasks' ID cells are set in the sans (Inbox's and Tasks' sidebar counts are drawn by their own marks since slice B). Must FAIL at **surface** on that row and **type** on that count and those cells, in both shifts, at both widths, and nowhere else.
