@@ -14,7 +14,7 @@ Directional. Shape and sequence are fixed; names and local structure are the imp
 | S4 | `packages/workforce` (the mailbox kind) | An internal entry that runs one pass over the named list, as the filer: claims only that filer's tasks (and unowned legacy ones), and hands each to its worker through FIX-1778's routing, and an unassigned task to the one worker `taskListWorkers(ctx, mailboxId, list)` returns; none or several, and it waits (BR-5, BR-19). Takes the app's claim policy (DevTeam passes `runOwnerDispatcher`) | BR-3–BR-5, BR-9, BR-13, BR-17, BR-19 |
 | S5 | `packages/workforce` (`fileTask` and the board tools' answer) | Say when no worker works the list, or the named one doesn't exist, in the filing's answer | BR-5 |
 | S6 | `packages/workforce` (hire) | The unattended-board warning reads `taskListWorkers` instead of "who declares the ledger" | BR-5 |
-| S11 | `packages/workforce` (the `MAILBOX.md` binder) | Read an optional `workedBy:` map, list name to worker addresses, beside `boards:`; refuse a name that isn't a declared list or a member. `taskListWorkers` (FIX-1779) returns these plus run-time `worksTaskList` workers, and nothing for declaring the ledger | BR-18 |
+| S11 | `packages/workforce` (the `MAILBOX.md` binder) | Read an optional `workedBy:` map, list name to worker addresses, beside `boards:`; refuse a name that isn't a declared list or a member. `taskListWorkers` (FIX-1779) returns these plus run-time `worksTaskList` workers, minus FIX-1779's recorded removals (applied to the file term too), and nothing for declaring the ledger | BR-18 |
 | S7 | `goals/devforce-lab/lab/` | `eng/mailboxes/feature/MAILBOX.md` gains `workedBy: { work: [eng.coder] }`. The EM files on Approve and on post and drains nowhere; its `coordinatorBoard` is dropped for the mailbox's run. The coder keeps its task door. Header comments say so | BR-15–BR-17 |
 | S8 | `goals/workforce-conventions/a-filed-task-starts-its-worker/` (new) | Legs a and b, the `no-wake` control | goal |
 | S9 | `goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/` and the other checks that drain by hand | Remove the hand drains; add leg c | goal |
@@ -29,7 +29,7 @@ EM's two drains and its coordinator board; the hand drains in the checks that fi
 flowchart LR
   F["FIX-1778 · routing by worker name"] --> P1["PR 1 · S1 to S6, S11 · packages"]
   P1 --> P2["PR 2 · S7 to S10 · DevTeam, checks, docs"]
-  P1 -.->|"no dependency"| X["FIX-1779 · run-time lists use the same ledger"]
+  X["FIX-1779 · taskListWorkers"] --> P1
 ```
 
 | PR | Deliverables | Depends on |
@@ -39,7 +39,8 @@ flowchart LR
 
 **Order with FIX-1779 for who works a list.** FIX-1779 lands `taskListWorkers` first, returning
 run-time `worksTaskList` workers only, never the declarers. This issue's PR 1 then adds S11's
-`workedBy:` file field and adds it to that read. PR 1 needs the read, so if FIX-1779 hasn't merged
+`workedBy:` file field to that read and applies FIX-1779's recorded removals to it, so a worker the
+file names stops getting tasks once a coordinator unsubscribes it. PR 1 needs the read, so if FIX-1779 hasn't merged
 when PR 1 opens, PR 1 stacks on it as well as on FIX-1778.
 
 If FIX-1779's single collection lands first, S3 binds there; if after, FIX-1779 moves the binding
