@@ -19,8 +19,6 @@ A mailbox can also be [routed](#routing-a-mailbox). A post someone sends then go
 
 Each mailbox is a session on a mailbox kind, the built-in `mailbox` unless its file names another. Look at what sits inside the session (members, charter and transcript) and what sits outside it (a member's seat, the board's rows, the inventory row). A post's `author` is checked against the members in the session. The inventory's list is only for finding which mailboxes a seat is in.
 
-If you use Shift Manager: a **workstream** there is a team's mailbox together with the boards it holds. Its **Inbox** is not a mailbox. It is the list of approvals and questions seats are waiting on you for.
-
 :::tip When a mailbox, and when something else
 
 1. **One-shot, "go do this" → a dispatch** into that flow's own session. Nothing about it wants a shared transcript.
@@ -796,6 +794,8 @@ The rows themselves are [task substrate](../orchestration/task-substrate.md) row
 ## A room per project
 
 A [project](./projects.md) has one room, a conversation its members share. A room isn't a mailbox you declare. It's built from a **template**: the seats that answer in it and the charter they work under. Every project's room shares one template.
+
+The room runs on the same mailbox kind, but no session is the room: each member talks through their own session, and the lines are kept as organization data. [A room or a mailbox](./projects.md#a-room-or-a-mailbox) compares the two in one picture.
 
 The default template is declared once for the organization, beside the projects collection in `workforce/org/resources/projects.ts`:
 
