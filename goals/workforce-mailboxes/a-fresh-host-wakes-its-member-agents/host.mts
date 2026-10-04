@@ -1,18 +1,18 @@
 /**
- * A fresh app with a channel of agents, as a new app would write it.
+ * A fresh app with a mailbox of agents, as a new app would write it.
  *
  * Everything here comes from the published packages and the team's files: no
  * kitchen-sink code, and no dispatcher or router of the app's own. The wake is
- * one call, `wakeMemberSeats(seats)`, in the built-in channel kind's notify
+ * one call, `wakeMemberSeats(seats)`, in the built-in mailbox kind's notify
  * slot. The goal check reads this file's source to hold it to that.
  *
  * The app has one kind of its own, `note`, whose seats take notes when asked
- * and declare no `onChannelPost`, so a post runs nothing on them. Every other
+ * and declare no `onMailboxPost`, so a post runs nothing on them. Every other
  * seat is the built-in `agent` kind, answered by a scripted model so the check
  * needs no key.
  *
  * `adaptNotify` is the goal check's seam for its controls, and nothing else:
- * given the wake this app builds, it returns the block the channel runs, or
+ * given the wake this app builds, it returns the block the mailbox runs, or
  * `undefined` for no notify block at all. An app passes nothing.
  */
 import { createSessionClient } from "@flow-state-dev/client";
@@ -21,18 +21,18 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, type FlowState } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
 import {
-  channelInstances,
-  defineChannelFlow,
+  mailboxInstances,
+  defineMailboxFlow,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   wakeMemberSeats,
   workerConfigSchema,
-  type ChannelManifest
+  type MailboxManifest
 } from "@flow-state-dev/workforce";
-import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
+import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 
-/** The user the channels are opened under, and who posts to them. */
-export const CHANNEL_OWNER = "u_fresh_host";
+/** The user the mailboxes are opened under, and who posts to them. */
+export const MAILBOX_OWNER = "u_fresh_host";
 
 /** What an agent seat answers with, whatever it heard. */
 export const REPLY_MARKER = "[reply:fresh-host]";
@@ -50,13 +50,13 @@ export interface FreshHost {
   state: FlowState;
   router: Awaited<ReturnType<FlowState["getRouter"]>>;
   seats: FlowInstance[];
-  channels: ChannelManifest[];
-  /** The built channel kind, so a check can post on the internal seat entry. */
-  channel: FlowInstance;
+  mailboxes: MailboxManifest[];
+  /** The built mailbox kind, so a check can post on the internal seat entry. */
+  mailbox: FlowInstance;
 }
 
 /**
- * Read the team's files, hire its seats, build its channels with the wake in
+ * Read the team's files, hire its seats, build its mailboxes with the wake in
  * the notify slot, and open them.
  *
  * @param tree The workforce root to read.
@@ -67,22 +67,22 @@ export async function startFreshHost(
   adaptNotify?: (wake: BlockDefinition<any, any>) => BlockDefinition<any, any> | undefined
 ): Promise<FreshHost> {
   const { workers, errors } = await readWorkforce(tree);
-  const { channels, errors: channelErrors } = await readChannelsDirectory(tree);
-  if (errors.length > 0 || channelErrors.length > 0) {
-    throw new Error(`the tree did not load: ${[...errors, ...channelErrors].map((e) => e.path).join(", ")}`);
+  const { mailboxes, errors: mailboxErrors } = await readMailboxesDirectory(tree);
+  if (errors.length > 0 || mailboxErrors.length > 0) {
+    throw new Error(`the tree did not load: ${[...errors, ...mailboxErrors].map((e) => e.path).join(", ")}`);
   }
 
-  // Hire first: the wake reaches these seats, never a channel's stored members.
+  // Hire first: the wake reaches these seats, never a mailbox's stored members.
   const seats = hireWorkforce(workers, { kinds: { note: note as never } });
   const wake = wakeMemberSeats(seats);
   const notify = adaptNotify === undefined ? wake : adaptNotify(wake);
-  const channelFlows = channelInstances(channels, {
-    kinds: { channel: notify === undefined ? defineChannelFlow() : defineChannelFlow({ notify }) }
+  const mailboxFlows = mailboxInstances(mailboxes, {
+    kinds: { mailbox: notify === undefined ? defineMailboxFlow() : defineMailboxFlow({ notify }) }
   });
 
   const state = createFlowState({
     flows: {
-      ...Object.fromEntries(channelFlows.map((flow) => [flow.kind, flow])),
+      ...Object.fromEntries(mailboxFlows.map((flow) => [flow.kind, flow])),
       ...Object.fromEntries(seats.map((seat) => [seat.id, seat]))
     },
     stores: { default: { primary: inMemoryStores() } },
@@ -111,7 +111,7 @@ export async function startFreshHost(
       return await router[method](new Request(url, init), { params: { path } });
     }
   });
-  await openChannels(channels, { client: sessions, userId: CHANNEL_OWNER });
+  await openMailboxes(mailboxes, { client: sessions, userId: MAILBOX_OWNER });
 
-  return { state, router, seats, channels, channel: channelFlows[0]! };
+  return { state, router, seats, mailboxes, mailbox: mailboxFlows[0]! };
 }

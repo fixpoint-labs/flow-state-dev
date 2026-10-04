@@ -6,7 +6,7 @@
  * buy it?" is asking about the laptop. The seat can only answer that if the
  * model is handed the first turn along with the second. What it must never be
  * handed is another conversation's turns: a seat talks in one conversation per
- * channel and one per direct conversation, and a channel's seat that repeats
+ * mailbox and one per direct conversation, and a mailbox's seat that repeats
  * what a person told it in private is a leak, not memory.
  *
  * What is graded is what the model was sent, read off the scripted model's
@@ -18,7 +18,7 @@
  * prompt and the new message only), and so do the positive halves of the
  * second. The second's negative halves pass on that red state because nothing
  * is sent at all, so their blast radius was taken separately: with the direct
- * conversation moved onto the seat's channel conversation, both go red and the
+ * conversation moved onto the seat's mailbox conversation, both go red and the
  * other two checks stay green.
  */
 import { describe, expect, it } from "vitest";
@@ -27,12 +27,12 @@ import type { FlowInstance } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { FlowStateRuntime } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { channelNotifyInputSchema, wakeMemberSeats, type ChannelNotifyInput } from "../src/index";
+import { mailboxNotifyInputSchema, wakeMemberSeats, type MailboxNotifyInput } from "../src/index";
 import { hireWorkforce } from "../src/hire";
 
 const USER_ID = "u_person";
 const SEAT = "support.devices";
-const CHANNEL = "support.desk";
+const MAILBOX = "support.desk";
 
 type Sent = { role: string; text: string };
 
@@ -60,8 +60,8 @@ function turnOf(messages: unknown): string | undefined {
 /**
  * One seat on an in-process host, with a scripted model that answers the
  * laptop question by name and everything else with "noted", and a stand-in
- * for a channel's notify step built from the real `wakeMemberSeats`, so a
- * post reaches the seat in the conversation a real channel would use.
+ * for a mailbox's notify step built from the real `wakeMemberSeats`, so a
+ * post reaches the seat in the conversation a real mailbox would use.
  */
 function boot() {
   const [seat] = hireWorkforce([{ id: SEAT, declared: {}, body: "You answer device questions." }]);
@@ -72,16 +72,16 @@ function boot() {
       { when: () => true, then: { text: "noted" } }
     ]
   });
-  const channel = defineFlow({
-    kind: "channel-notify-stand-in",
-    actions: { deliver: { inputSchema: channelNotifyInputSchema, block: wakeMemberSeats([seat!]) } }
-  })({ id: "channel-notify-stand-in" });
+  const mailbox = defineFlow({
+    kind: "mailbox-notify-stand-in",
+    actions: { deliver: { inputSchema: mailboxNotifyInputSchema, block: wakeMemberSeats([seat!]) } }
+  })({ id: "mailbox-notify-stand-in" });
   const state = createFlowState({
-    flows: { [seat!.id]: seat!, [channel.id]: channel },
+    flows: { [seat!.id]: seat!, [mailbox.id]: mailbox },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({ generators: { "agent-answer": answer }, policy: "allow" })
   });
-  return { seat: seat!, channel, state, answer };
+  return { seat: seat!, mailbox, state, answer };
 }
 
 /** One direct turn with the seat, in the conversation named `sessionId`. */
@@ -99,16 +99,16 @@ async function say(runtime: FlowStateRuntime, seat: FlowInstance, sessionId: str
   expect(result.error).toBeUndefined();
 }
 
-/** One channel post delivered to the seat; resolves once the seat has answered it. */
-async function post(runtime: FlowStateRuntime, channel: FlowInstance, postId: string, body: string) {
-  const delivery: ChannelNotifyInput = { channelId: CHANNEL, member: SEAT, postId, body, principal: "devuser" };
+/** One mailbox post delivered to the seat; resolves once the seat has answered it. */
+async function post(runtime: FlowStateRuntime, mailbox: FlowInstance, postId: string, body: string) {
+  const delivery: MailboxNotifyInput = { mailboxId: MAILBOX, member: SEAT, postId, body, principal: "devuser" };
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
-    flow: channel,
+    flow: mailbox,
     actionName: "deliver",
     input: delivery,
     userId: USER_ID,
-    sessionId: CHANNEL,
+    sessionId: MAILBOX,
     stores: runtime.stores,
     runtimeConfig: { ...runtime.runtimeConfig }
   });
@@ -144,16 +144,16 @@ describe("an agent seat's conversation", () => {
     }
   });
 
-  it("keeps a seat's channel conversation and its direct conversation apart", async () => {
-    const { seat, channel, state, answer } = boot();
+  it("keeps a seat's mailbox conversation and its direct conversation apart", async () => {
+    const { seat, mailbox, state, answer } = boot();
     try {
       const runtime = await state.getRuntime();
       // Interleaved, so each conversation's second turn runs after the other
       // conversation already holds something it could leak.
       await say(runtime, seat, "direct-talk", "My badge number is 4417.");
-      await post(runtime, channel, "p_1", "The printer on floor 3 is jammed.");
+      await post(runtime, mailbox, "p_1", "The printer on floor 3 is jammed.");
       await say(runtime, seat, "direct-talk", "What is my badge number?");
-      await post(runtime, channel, "p_2", "Any update?");
+      await post(runtime, mailbox, "p_2", "Any update?");
 
       const callFor = (turn: string) => {
         const call = answer.calls.find((c) => turnOf(c.input) === turn);
@@ -161,14 +161,14 @@ describe("an agent seat's conversation", () => {
         return conversation(call!.input).map((m) => m.text).join("\n");
       };
       const directSecond = callFor("What is my badge number?");
-      const channelSecond = callFor("devuser in support.desk: Any update?");
+      const mailboxesecond = callFor("devuser in support.desk: Any update?");
 
       // Each conversation remembers its own earlier turn...
       expect(directSecond).toContain("My badge number is 4417.");
-      expect(channelSecond).toContain("The printer on floor 3 is jammed.");
+      expect(mailboxesecond).toContain("The printer on floor 3 is jammed.");
       // ...and never hears the other one's.
       expect(directSecond).not.toContain("printer");
-      expect(channelSecond).not.toContain("badge");
+      expect(mailboxesecond).not.toContain("badge");
     } finally {
       await state.dispose();
     }

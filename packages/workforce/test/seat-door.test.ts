@@ -87,12 +87,12 @@ describe("a seat's door (BR-1, BR-2)", () => {
     });
     const sent: unknown[] = [];
     await openInventory(
-      { seats, channels: [] },
+      { seats, mailboxes: [] },
       {
         run: async (request) => void sent.push(request.input),
         userId: "u",
         orgId: "org",
-        seatWriter: { flowKind: "channel" },
+        seatWriter: { flowKind: "mailbox" },
       },
     );
     expect(sent).toEqual([
@@ -117,12 +117,12 @@ describe("a seat's origin on its inventory row", () => {
     );
     const sent: Array<{ seats: Array<{ id: string; hired: boolean | null }> }> = [];
     await openInventory(
-      { seats, channels: [] },
+      { seats, mailboxes: [] },
       {
         run: async (request) => void sent.push(request.input as (typeof sent)[number]),
         userId: "u",
         orgId: "org",
-        seatWriter: { flowKind: "channel" },
+        seatWriter: { flowKind: "mailbox" },
       },
     );
     expect(sent[0]!.seats.map((row) => [row.id, row.hired])).toEqual([
@@ -137,12 +137,12 @@ describe("a seat's origin on its inventory row", () => {
     if (!checked.ok) throw new Error(checked.detail);
     const sent: Array<{ seats: Array<{ id: string; incarnation: string | null }> }> = [];
     await openInventory(
-      { seats: [checked.seat], channels: [] },
+      { seats: [checked.seat], mailboxes: [] },
       {
         run: async (request) => void sent.push(request.input as (typeof sent)[number]),
         userId: "u",
         orgId: "org",
-        seatWriter: { flowKind: "channel" },
+        seatWriter: { flowKind: "mailbox" },
       },
     );
     expect(sent[0]!.seats.map((seat) => [seat.id, seat.incarnation])).toEqual([["org.~u1.research", "i-9"]]);

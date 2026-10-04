@@ -20,20 +20,20 @@
  *   answer  the seat's own `answer` action is offered on the row with the
  *           task id filled; after it runs the ledger row has left `parked`
  *           and the row on screen says so
- *   tool    on the channel's session, a board task tool run from a row
+ *   tool    on the mailbox's session, a board task tool run from a row
  *           changes the ledger and the row
  *   refuse  the same tool on the now-settled row shows the refusal on the
  *           row, and the ledger is unchanged
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/devtool-workforce-visibility/works-a-task-from-its-row/run.mts
- * Controls: GOAL_CONTROL=channel-actions-off (must FAIL at tool and refuse only)
+ * Controls: GOAL_CONTROL=mailbox-actions-off (must FAIL at tool and refuse only)
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Locator, Page } from "playwright";
 import { SERVER_ONLY_TASK_FIELDS, taskToolSuffix } from "@flow-state-dev/orchestration";
-import { CHANNEL_KIND } from "@flow-state-dev/workforce";
+import { MAILBOX_KIND } from "@flow-state-dev/workforce";
 import { REPO_ROOT, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { readLabTree } from "../../multi-seat-collab/lab/host.mts";
@@ -53,7 +53,7 @@ const SHOTS = goalTmpDir("works-a-task-from-its-row");
 
 /** The legs each control must redden, and only those. */
 const EXPECTED: Record<string, readonly string[]> = {
-  "channel-actions-off": ["tool", "refuse"],
+  "mailbox-actions-off": ["tool", "refuse"],
 };
 
 /** The window the whole check runs at: a laptop, where the reason used to fall off screen. */
@@ -539,33 +539,33 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
       }
     }
 
-    // ---- tool: a board task tool, from a row on the channel's session --------
-    // The row is filed through the channel's own `fileTask`, which every
-    // channel with a board has whether or not it opted in to task actions, so
-    // the channel's Tasks tab has it in both runs. Filed after the answer,
+    // ---- tool: a board task tool, from a row on the mailbox's session --------
+    // The row is filed through the mailbox's own `fileTask`, which every
+    // mailbox with a board has whether or not it opted in to task actions, so
+    // the mailbox's Tasks tab has it in both runs. Filed after the answer,
     // whose drain would otherwise take it.
-    const channelSession = tree.channel.id;
-    const spare = await lab.act(CHANNEL_KIND, channelSession, "fileTask", {
+    const mailboxesession = tree.mailbox.id;
+    const spare = await lab.act(MAILBOX_KIND, mailboxesession, "fileTask", {
       board: tree.boardName,
       goal: fixture.spare.goal,
     });
     const spareId = (actionOutputOf(String(spare.requestId), spare.items) as { taskId?: string } | undefined)?.taskId;
     if (spare.status !== "completed" || spareId === undefined) {
-      throw new Error(`filing the spare row on the channel ended ${spare.status ?? spare.refusal}`);
+      throw new Error(`filing the spare row on the mailbox ended ${spare.status ?? spare.refusal}`);
     }
-    await openSession(page, CHANNEL_KIND, CHANNEL_KIND, channelSession);
+    await openSession(page, MAILBOX_KIND, MAILBOX_KIND, mailboxesession);
     await openTasksTab(page);
     let settled: Record<string, unknown> | undefined;
     let toolRowOpen = false;
     if ((await readCollapsed(page, spareId)) === undefined) {
-      fail("tool", `the channel's session never showed row ${spareId}, found by its task id`);
+      fail("tool", `the mailbox's session never showed row ${spareId}, found by its task id`);
     } else if (!(await openRow(page, spareId))) {
       fail("tool", `row ${spareId} does not open, so it offers no actions`);
     } else {
       toolRowOpen = true;
       const offered = await offeredActions(page, spareId);
       if (!offered.includes(tool)) {
-        fail("tool", `the channel's row offers [${offered.join(", ")}], not the board's "${tool}"`);
+        fail("tool", `the mailbox's row offers [${offered.join(", ")}], not the board's "${tool}"`);
       } else {
         const ran = await runFromRow(page, spareId, tool, { reason: fixture.cancelReason });
         await page.screenshot({ path: join(SHOTS, "tool.png") });
@@ -580,7 +580,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
           } else if ((await readCollapsed(page, spareId, (read) => read.status === "cancelled", SETTLE_MS)) === undefined) {
             fail("tool", `the ledger row is cancelled; the row on screen still reads "${(await readCollapsed(page, spareId))?.status}"`);
           } else {
-            evidence.push(`tool: "${tool}" run from the channel's row; ledger and row both "cancelled"`);
+            evidence.push(`tool: "${tool}" run from the mailbox's row; ledger and row both "cancelled"`);
           }
         }
       }
@@ -588,12 +588,12 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
 
     // ---- refuse: the same tool on the row it just settled --------------------
     if (!toolRowOpen) {
-      notes.push("refuse not graded: the channel's row never opened, which is the tool leg's failure");
+      notes.push("refuse not graded: the mailbox's row never opened, which is the tool leg's failure");
     } else {
       const before = JSON.stringify((await lab.rows()).find((row) => row.id === spareId));
       const offered = await offeredActions(page, spareId);
       if (!offered.includes(tool)) {
-        fail("refuse", `the channel's row offers [${offered.join(", ")}], so "${tool}" cannot be tried on it`);
+        fail("refuse", `the mailbox's row offers [${offered.join(", ")}], so "${tool}" cannot be tried on it`);
       } else if (settled === undefined) {
         fail("refuse", `the row never settled, so there is no settled row to refuse on`);
       } else {

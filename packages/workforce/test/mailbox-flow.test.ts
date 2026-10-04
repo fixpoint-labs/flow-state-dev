@@ -1,5 +1,5 @@
 /**
- * The channel kind: one registered instance, one named session per channel.
+ * The mailbox kind: one registered instance, one named session per mailbox.
  *
  * Sequence step 1 of the spec — the kind with no fan-out. Every behaviour here
  * runs against a real host, because the facts under test (which session a post
@@ -11,22 +11,22 @@ import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { FlowStateRuntime, StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
-import { channelFlow, CHANNEL_KIND } from "../src/index";
-import { postedLines } from "./channel-post-lines";
+import { mailboxFlow, MAILBOX_KIND } from "../src/index";
+import { postedLines } from "./mailbox-post-lines";
 
-const USER_ID = "u_channel";
+const USER_ID = "u_mailbox";
 
 function host() {
-  const instance = channelFlow();
+  const instance = mailboxFlow();
   const state = createFlowState({
-    flows: { [CHANNEL_KIND]: instance },
+    flows: { [MAILBOX_KIND]: instance },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({})
   });
   return { instance, state };
 }
 
-/** Seed a bound channel the way `openChannels` does: state written at create. */
+/** Seed a bound mailbox the way `openMailboxes` does: state written at create. */
 async function bind(
   stores: StoreRegistry,
   sessionId: string,
@@ -39,8 +39,8 @@ async function bind(
     sessionId,
     {
       id: sessionId,
-      flowKind: CHANNEL_KIND,
-      flowId: CHANNEL_KIND,
+      flowKind: MAILBOX_KIND,
+      flowId: MAILBOX_KIND,
       userId: USER_ID,
       orgId: DEFAULT_ORG_ID,
       description,
@@ -55,11 +55,11 @@ async function bind(
   );
 }
 
-describe("the channel kind", () => {
+describe("the mailbox kind", () => {
   it("registers as one singleton instance addressed by its kind", () => {
-    const instance = channelFlow();
-    expect(instance.kind).toBe(CHANNEL_KIND);
-    expect(instance.id).toBe(CHANNEL_KIND);
+    const instance = mailboxFlow();
+    expect(instance.kind).toBe(MAILBOX_KIND);
+    expect(instance.id).toBe(MAILBOX_KIND);
     expect(instance.cardinality).toBe("singleton");
   });
 
@@ -165,7 +165,7 @@ describe("the channel kind", () => {
     }
   });
 
-  it("keeps two channels' transcripts apart on the one instance", async () => {
+  it("keeps two mailboxes' transcripts apart on the one instance", async () => {
     const { instance, state } = host();
     try {
       const runtime = await state.getRuntime();
@@ -206,7 +206,7 @@ describe("the channel kind", () => {
     }
   });
 
-  it("reads back the transcript with the channel's members and description, and no session items", async () => {
+  it("reads back the transcript with the mailbox's members and description, and no session items", async () => {
     const { instance, state } = host();
     try {
       const runtime = await state.getRuntime();

@@ -121,7 +121,7 @@ const { discover } = discoveryTools(
         workers: [
           { id: fixture.fileSeatId, declared: { description: fixture.fileSeatPurpose }, body: "" },
         ],
-        channels: [],
+        mailboxes: [],
       },
       inventory: { seats: SEATS },
       hiredRoster: ROSTER,

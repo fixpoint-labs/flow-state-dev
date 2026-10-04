@@ -1,6 +1,6 @@
 /**
  * The Inventory tab (ER-Devtool checklist row 5): the organization's
- * registered seats, channels and memberships, read from one session.
+ * registered seats, mailboxes and memberships, read from one session.
  *
  * The transport is a stubbed `fetch` behind the REAL `DevToolProvider`, not a
  * mocked hook, because half of what is under test is the request: a tab that
@@ -14,11 +14,11 @@
  * - V3a: `createDevToolResourceClient` built with no `fetcher` (a bare
  *   resource client) → `the manifest request carries the token: expected null
  *   to be 'Bearer tok-inventory'`.
- * - V3b: an undeclared collection read as a loaded, empty one → `the channels
+ * - V3b: an undeclared collection read as a loaded, empty one → `the mailboxes
  *   section of a seat-only flow: expected 'loaded' to be 'not-installed'`; and
  *   the absent text swapped for the empty text → `expected 'Registered
- *   channelsNo channels regist…' to contain 'Not installed on this flow.'`.
- * - BR-12: the channels heading changed to *Open channels* → `words the tab
+ *   mailboxesNo mailboxes regist…' to contain 'Not installed on this flow.'`.
+ * - BR-12: the mailboxes heading changed to *Open mailboxes* → `words the tab
  *   must not use: expected [ 'Open' ] to deeply equal []`. The first cut of
  *   this scan read `textContent` and stayed GREEN under that mutation, because
  *   it glues "eng.queue" onto "Open" and the word boundary never fires.
@@ -29,7 +29,7 @@
  *   stubs' own backstops stop the loop, so the red state cannot hang the suite.
  * - BR-9/BR-10: a failed read returned as an empty one → the 403 and the
  *   later-page cases fail with `expected 'loaded' to be 'failed'`, the 404 case
- *   with `expected 'Registered channels0No channels regis…' to contain '(404)'`.
+ *   with `expected 'Registered mailboxes0No mailboxes regis…' to contain '(404)'`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -46,7 +46,7 @@ const SESSION = "eng.queue";
 const TOKEN = "tok-inventory";
 
 /** Refs a flow gave the collections. Deliberately not the patterns: the tab must read them off the manifest. */
-const REFS = { seats: "orgSeats", channels: "orgChannels", memberships: "orgMembers" };
+const REFS = { seats: "orgSeats", mailboxes: "orgMailboxes", memberships: "orgMembers" };
 
 type ManifestEntry = { ref: string; kind: "collection"; scope: "org"; pattern: string; hasClientData: boolean; client: { state: { read: boolean } } };
 
@@ -56,7 +56,7 @@ function collection(ref: string, pattern: string, read = true): ManifestEntry {
 
 const ALL_THREE = [
   collection(REFS.seats, "inventory/seats/*"),
-  collection(REFS.channels, "inventory/channels/*"),
+  collection(REFS.mailboxes, "inventory/mailboxes/*"),
   collection(REFS.memberships, "inventory/members/**"),
 ];
 
@@ -84,7 +84,7 @@ function serve(server: Server) {
 
       if (url.includes(`/api/flows/sessions/${encodeURIComponent(SESSION)}/manifest`)) {
         if (!Array.isArray(server.manifest)) return json(server.manifest.status, { error: "no" });
-        return json(200, { flowKind: "channel", resources: server.manifest });
+        return json(200, { flowKind: "mailbox", resources: server.manifest });
       }
       const read = /\/api\/flows\/sessions\/[^/]+\/resources\/([^/?]+)\?(.*)$/.exec(url);
       if (read !== null) {
@@ -140,12 +140,12 @@ async function openPanel(): Promise<HTMLElement> {
   return document.querySelector<HTMLElement>("[data-inventory-view]")!;
 }
 
-function section(name: "seats" | "channels" | "memberships"): HTMLElement {
+function section(name: "seats" | "mailboxes" | "memberships"): HTMLElement {
   return document.querySelector<HTMLElement>(`[data-inventory-section="${name}"]`)!;
 }
 
 /** The cells of the row whose first cell reads `id`, keyed by column heading. */
-function rowById(sectionName: "seats" | "channels" | "memberships", id: string): Record<string, string> | undefined {
+function rowById(sectionName: "seats" | "mailboxes" | "memberships", id: string): Record<string, string> | undefined {
   const table = section(sectionName).querySelector("table");
   if (table === null) return undefined;
   const headers = [...table.querySelectorAll("thead th")].map((th) => (th.textContent ?? "").trim());
@@ -161,29 +161,29 @@ const SEATS = [
   { id: "eng.planner", kind: "planner" },
   { id: "eng.builder", kind: "worker" },
 ];
-const CHANNEL = {
+const MAILBOX = {
   id: "eng.queue",
-  kind: "channel",
+  kind: "mailbox",
   members: ["eng.planner", "eng.builder"],
   openedAt: "2026-09-24T10:00:00.000Z",
 };
 const MEMBERSHIPS = [
-  { seatId: "eng.planner", channelId: "eng.queue" },
-  { seatId: "eng.builder", channelId: "eng.queue" },
+  { seatId: "eng.planner", mailboxId: "eng.queue" },
+  { seatId: "eng.builder", mailboxId: "eng.queue" },
 ];
 
-const EMPTY_TEXT = /No (seats|channels|memberships) registered/;
+const EMPTY_TEXT = /No (seats|mailboxes|memberships) registered/;
 const ABSENT_TEXT = "Not installed on this flow.";
 
-describe("V3 · the Inventory tab on a channel's session", () => {
+describe("V3 · the Inventory tab on a mailbox's session", () => {
   beforeEach(() =>
     serve({
       manifest: ALL_THREE,
-      pages: { [REFS.seats]: [{ items: SEATS }], [REFS.channels]: [{ items: [CHANNEL] }], [REFS.memberships]: [{ items: MEMBERSHIPS }] },
+      pages: { [REFS.seats]: [{ items: SEATS }], [REFS.mailboxes]: [{ items: [MAILBOX] }], [REFS.memberships]: [{ items: MEMBERSHIPS }] },
     }),
   );
 
-  it("appears, and shows every seat with its kind and channels, and the channel with its members (BR-7, BR-8)", async () => {
+  it("appears, and shows every seat with its kind and mailboxes, and the mailbox with its members (BR-7, BR-8)", async () => {
     renderWorkspace();
     const panel = await openPanel();
 
@@ -191,14 +191,14 @@ describe("V3 · the Inventory tab on a channel's session", () => {
       const row = rowById("seats", seat.id);
       expect(row, `seat ${seat.id} has a row`).toBeDefined();
       expect(row!.Kind).toBe(seat.kind);
-      expect(row!.Channels).toBe("eng.queue");
+      expect(row!.Mailboxes).toBe("eng.queue");
     }
-    const channel = rowById("channels", "eng.queue");
-    expect(channel, "the channel has a row").toBeDefined();
-    expect(channel!.Kind).toBe("channel");
-    expect(channel!.Members).toBe("eng.planner, eng.builder");
-    expect(channel!.Registered).toBe(CHANNEL.openedAt);
-    expect(rowById("memberships", "eng.builder")?.Channel).toBe("eng.queue");
+    const mailbox = rowById("mailboxes", "eng.queue");
+    expect(mailbox, "the mailbox has a row").toBeDefined();
+    expect(mailbox!.Kind).toBe("mailbox");
+    expect(mailbox!.Members).toBe("eng.planner, eng.builder");
+    expect(mailbox!.Registered).toBe(MAILBOX.openedAt);
+    expect(rowById("memberships", "eng.builder")?.Mailbox).toBe("eng.queue");
 
     // Nothing is inside an expander.
     expect(panel.querySelectorAll("details").length).toBe(0);
@@ -229,7 +229,7 @@ describe("V3 · the Inventory tab on a channel's session", () => {
         // A key outside the named fields, carrying an org id, as a server that
         // over-shared might send it. The view renders named fields only.
         [REFS.seats]: [{ items: [{ ...SEATS[0], orgId: "org_secret_acme" }] }],
-        [REFS.channels]: [{ items: [CHANNEL] }],
+        [REFS.mailboxes]: [{ items: [MAILBOX] }],
         [REFS.memberships]: [{ items: MEMBERSHIPS }],
       },
     });
@@ -242,35 +242,35 @@ describe("V3 · the Inventory tab on a channel's session", () => {
     expect(panel.querySelectorAll("select").length).toBe(0);
   });
 
-  it("shows each collection's own answer when a channel's members and the membership rows disagree (BR-13)", async () => {
+  it("shows each collection's own answer when a mailbox's members and the membership rows disagree (BR-13)", async () => {
     serve({
       manifest: ALL_THREE,
       pages: {
         [REFS.seats]: [{ items: SEATS }],
-        [REFS.channels]: [{ items: [CHANNEL] }],
-        // Only the planner has a membership row; the channel row names both.
+        [REFS.mailboxes]: [{ items: [MAILBOX] }],
+        // Only the planner has a membership row; the mailbox row names both.
         [REFS.memberships]: [{ items: [MEMBERSHIPS[0]] }],
       },
     });
     renderWorkspace();
     await openPanel();
-    expect(rowById("channels", "eng.queue")!.Members).toBe("eng.planner, eng.builder");
-    expect(rowById("seats", "eng.builder")!.Channels).toBe("none");
-    expect(rowById("seats", "eng.planner")!.Channels).toBe("eng.queue");
+    expect(rowById("mailboxes", "eng.queue")!.Members).toBe("eng.planner, eng.builder");
+    expect(rowById("seats", "eng.builder")!.Mailboxes).toBe("none");
+    expect(rowById("seats", "eng.planner")!.Mailboxes).toBe("eng.queue");
   });
 
-  it("reads a channel row that predates members and openedAt as none and unknown (BR-14)", async () => {
+  it("reads a mailbox row that predates members and openedAt as none and unknown (BR-14)", async () => {
     serve({
       manifest: ALL_THREE,
       pages: {
         [REFS.seats]: [{ items: SEATS }],
-        [REFS.channels]: [{ items: [{ id: "eng.legacy", kind: "channel" }] }],
+        [REFS.mailboxes]: [{ items: [{ id: "eng.legacy", kind: "mailbox" }] }],
         [REFS.memberships]: [{ items: [] }],
       },
     });
     renderWorkspace();
     await openPanel();
-    const legacy = rowById("channels", "eng.legacy");
+    const legacy = rowById("mailboxes", "eng.legacy");
     expect(legacy, "the legacy row rendered").toBeDefined();
     expect(legacy!.Members).toBe("none");
     expect(legacy!.Registered).toBe("unknown");
@@ -283,7 +283,7 @@ describe("V3 · reading every page, and failing out loud (BR-9, BR-10, BR-11)", 
       manifest: ALL_THREE,
       pages: {
         [REFS.seats]: [{ items: [SEATS[0]], nextCursor: "page-1" }, { items: [SEATS[1]] }],
-        [REFS.channels]: [{ items: [CHANNEL] }],
+        [REFS.mailboxes]: [{ items: [MAILBOX] }],
         [REFS.memberships]: [{ items: MEMBERSHIPS }],
       },
     });
@@ -299,7 +299,7 @@ describe("V3 · reading every page, and failing out loud (BR-9, BR-10, BR-11)", 
       manifest: ALL_THREE,
       pages: {
         [REFS.seats]: [{ items: [SEATS[0]], nextCursor: "page-1" }, { status: 500, error: "store unavailable" }],
-        [REFS.channels]: [{ items: [CHANNEL] }],
+        [REFS.mailboxes]: [{ items: [MAILBOX] }],
         [REFS.memberships]: [{ items: MEMBERSHIPS }],
       },
     });
@@ -318,7 +318,7 @@ describe("V3 · reading every page, and failing out loud (BR-9, BR-10, BR-11)", 
       manifest: ALL_THREE,
       pages: {
         [REFS.seats]: [{ status: 403, error: `State read not permitted for "${REFS.seats}"` }],
-        [REFS.channels]: [{ items: [] }],
+        [REFS.mailboxes]: [{ items: [] }],
         [REFS.memberships]: [{ items: [] }],
       },
     });
@@ -340,28 +340,28 @@ describe("V3 · reading every page, and failing out loud (BR-9, BR-10, BR-11)", 
       manifest: ALL_THREE,
       pages: {
         [REFS.seats]: [{ items: SEATS }],
-        [REFS.channels]: [{ status: 404, error: `Unknown resource "${REFS.channels}"` }],
+        [REFS.mailboxes]: [{ status: 404, error: `Unknown resource "${REFS.mailboxes}"` }],
         [REFS.memberships]: [{ items: MEMBERSHIPS }],
       },
     });
     renderWorkspace();
     await openPanel();
-    const channels = section("channels");
-    expect(channels.textContent).toContain("(404)");
-    expect(channels.textContent).toContain("not found");
-    expect(channels.textContent).not.toMatch(EMPTY_TEXT);
+    const mailboxes = section("mailboxes");
+    expect(mailboxes.textContent).toContain("(404)");
+    expect(mailboxes.textContent).toContain("not found");
+    expect(mailboxes.textContent).not.toMatch(EMPTY_TEXT);
   });
 
   it("states an empty organization, and says how rows get there (BR-11)", async () => {
     serve({
       manifest: ALL_THREE,
-      pages: { [REFS.seats]: [{ items: [] }], [REFS.channels]: [{ items: [] }], [REFS.memberships]: [{ items: [] }] },
+      pages: { [REFS.seats]: [{ items: [] }], [REFS.mailboxes]: [{ items: [] }], [REFS.memberships]: [{ items: [] }] },
     });
     renderWorkspace();
     const panel = await openPanel();
     expect(panel.textContent).toContain("Nothing is registered in this organization yet");
     expect(panel.textContent).toContain("openInventory");
-    for (const name of ["seats", "channels", "memberships"] as const) {
+    for (const name of ["seats", "mailboxes", "memberships"] as const) {
       expect(section(name).dataset.inventoryStatus).toBe("loaded");
       expect(section(name).textContent).toMatch(EMPTY_TEXT);
     }
@@ -413,7 +413,7 @@ describe("V3 · a cursor that never ends is a failed read, not a hang (BR-9, BR-
       pages: {
         // Page 0 points at page 0 again: the same cursor, forever.
         [REFS.seats]: [{ items: [SEATS[0]], nextCursor: "page-0" }],
-        [REFS.channels]: [{ items: [CHANNEL] }],
+        [REFS.mailboxes]: [{ items: [MAILBOX] }],
         [REFS.memberships]: [{ items: MEMBERSHIPS }],
       },
     });
@@ -448,7 +448,7 @@ describe("V3a · every request carries the bearer token (BR-25)", () => {
       manifest: ALL_THREE,
       pages: {
         [REFS.seats]: [{ items: [SEATS[0]], nextCursor: "page-1" }, { items: [SEATS[1]] }],
-        [REFS.channels]: [{ items: [CHANNEL] }],
+        [REFS.mailboxes]: [{ items: [MAILBOX] }],
         [REFS.memberships]: [{ items: MEMBERSHIPS }],
       },
     });
@@ -484,7 +484,7 @@ describe("V3b · a seat-only flow, the shape the hire tools install (BR-7, BR-8,
     expect(rowById("seats", "eng.planner")?.Kind).toBe("planner");
     expect(rowById("seats", "eng.builder")?.Kind).toBe("worker");
 
-    for (const name of ["channels", "memberships"] as const) {
+    for (const name of ["mailboxes", "memberships"] as const) {
       expect(section(name).dataset.inventoryStatus, `the ${name} section of a seat-only flow`).toBe("not-installed");
       expect(section(name).textContent).toContain(ABSENT_TEXT);
       expect(section(name).textContent).not.toMatch(EMPTY_TEXT);

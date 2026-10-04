@@ -1,25 +1,25 @@
 /**
- * Goal check: a person's post to a channel that declares `routing:` runs
+ * Goal check: a person's post to a mailbox that declares `routing:` runs
  * exactly one specialist, the one its purpose and the recent lines point to;
  * that specialist answers with the recent lines in view, and its answer lands
- * in the channel as its own line whatever the model does with its tools. A
- * channel without the line behaves as before.
+ * in the mailbox as its own line whatever the model does with its tools. A
+ * mailbox without the line behaves as before.
  *
  * Real path, scripted models, out of CI. See goal.md for the contract.
  *
  * The host is `host.mts`, an app built from the published packages and the
  * fixture tree alone. It is served in-process, and everything graded is read
  * back through its own router (each seat's conversations, dispatch runs
- * included, and the channel's lines), plus the route model's own calls. Legs:
+ * included, and the mailbox's lines), plus the route model's own calls. Legs:
  *
  *   import     `routeByPurpose` resolves from `@flow-state-dev/workforce`.
  *   source     the host imports only `@flow-state-dev/*`, calls
  *              `routeByPurpose`, and builds no dispatcher or router; the
- *              routed channel's file declares `routing:`.
+ *              routed mailbox's file declares `routing:`.
  *   one        a device, an account and a framework post each reach their
  *              specialist, and nobody else.
  *   lands      each of those, and the unclear post, gets exactly one line in
- *              the channel, by the seat that answered it.
+ *              the mailbox, by the seat that answered it.
  *   followup   a follow-up after the account answer reaches the account
  *              specialist, by an evaluation that saw that answer's line.
  *   held       a post sent while the specialist has not answered yet goes to
@@ -28,12 +28,12 @@
  *              never sent the post naming "it", from that post's line; its
  *              stored conversation keeps only its own posts and answers.
  *   fallback   a post the evaluation cannot place goes to the fallback alone.
- *   unrouted   a post to the channel with no `routing:` wakes every agent.
+ *   unrouted   a post to the mailbox with no `routing:` wakes every agent.
  *
  * With GOAL_LIVE=1 a live leg runs after them, on real models: the route on
  * the host's own evaluation model string, the answers on a small chat model.
  *
- * Run:      pnpm --dir goals exec tsx workforce-channels/a-routed-post-gets-one-answer/run.mts
+ * Run:      pnpm --dir goals exec tsx workforce-mailboxes/a-routed-post-gets-one-answer/run.mts
  * Controls: GOAL_CONTROL=no-route       (the routing line stripped from the file)
  *           GOAL_CONTROL=no-landing     (the agent kind replaced by one that hears posts and never lands)
  *           GOAL_CONTROL=no-transcript  (the recent lines hidden from the route's evaluation)
@@ -48,12 +48,12 @@ import { z } from "zod";
 import { createModelResolver, defineFlow, generator, type BlockDefinition } from "@flow-state-dev/core";
 import type { EvaluationModel, ModelResolver } from "@flow-state-dev/core/types";
 import {
-  channelNotifyInputSchema,
+  mailboxNotifyInputSchema,
   workerConfigSchema,
-  type ChannelManifest,
-  type ChannelNotifyInput
+  type MailboxManifest,
+  type MailboxNotifyInput
 } from "@flow-state-dev/workforce";
-import { readChannelsDirectory } from "@flow-state-dev/workforce/loader";
+import { readMailboxesDirectory } from "@flow-state-dev/workforce/loader";
 import { gatewayModel, runGoal } from "../../lib/index.mts";
 import type { HostSeams, RoutedHost } from "./host.mts";
 
@@ -78,8 +78,8 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
 }
 
-/** A seat's turn as a routed or unrouted post is heard: `<writer> in <channel>: <body>`. */
-const heard = (post: ChannelNotifyInput) => `${post.author ?? post.principal} in ${post.channelId}: ${post.body}`;
+/** A seat's turn as a routed or unrouted post is heard: `<writer> in <mailbox>: <body>`. */
+const heard = (post: MailboxNotifyInput) => `${post.author ?? post.principal} in ${post.mailboxId}: ${post.body}`;
 
 /**
  * `no-landing`'s kind: hears posts and answers through `agent-answer`, with
@@ -89,14 +89,14 @@ const heard = (post: ChannelNotifyInput) => `${post.author ?? post.principal} in
 function quietAgentKind() {
   const answer = generator({
     name: "agent-answer",
-    inputSchema: channelNotifyInputSchema,
+    inputSchema: mailboxNotifyInputSchema,
     model: "scripted/answer",
-    prompt: (_post: ChannelNotifyInput, ctx) => (ctx.flow.config as { instructions?: string }).instructions ?? "",
+    prompt: (_post: MailboxNotifyInput, ctx) => (ctx.flow.config as { instructions?: string }).instructions ?? "",
     context: [
-      (post: ChannelNotifyInput) =>
+      (post: MailboxNotifyInput) =>
         post.recent === undefined || post.recent.length === 0
           ? undefined
-          : ["Recent lines in the channel, oldest first:", ...post.recent.map((l) => `- ${l.author ?? l.principal}: ${l.body}`)].join("\n")
+          : ["Recent lines in the mailbox, oldest first:", ...post.recent.map((l) => `- ${l.author ?? l.principal}: ${l.body}`)].join("\n")
     ],
     user: heard
   });
@@ -106,7 +106,7 @@ function quietAgentKind() {
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     actions: { run: { inputSchema: z.object({ message: z.string() }), block: run } },
-    internal: { actions: { onChannelPost: { inputSchema: channelNotifyInputSchema, block: answer, userMessage: heard } } }
+    internal: { actions: { onMailboxPost: { inputSchema: mailboxNotifyInputSchema, block: answer, userMessage: heard } } }
   } as never);
 }
 
@@ -115,8 +115,8 @@ function controlSeams(): HostSeams {
   switch (CONTROL) {
     case "no-route":
       return {
-        adaptChannels: (channels: ChannelManifest[]) =>
-          channels.map(({ declared: { routing: _routing, ...declared }, ...rest }) => ({ ...rest, declared }))
+        adaptMailboxes: (mailboxes: MailboxManifest[]) =>
+          mailboxes.map(({ declared: { routing: _routing, ...declared }, ...rest }) => ({ ...rest, declared }))
       };
     case "no-landing":
       return { kinds: { agent: quietAgentKind() } };
@@ -134,7 +134,7 @@ function controlSeams(): HostSeams {
     case "no-context":
       return {
         adaptNotify: (wake: BlockDefinition<any, any>) =>
-          wake.connectInput(({ recent: _recent, ...post }: ChannelNotifyInput) => post)
+          wake.connectInput(({ recent: _recent, ...post }: MailboxNotifyInput) => post)
       };
     default:
       return {};
@@ -158,16 +158,16 @@ function reader(app: RoutedHost, owner: string) {
     return { status: res.status, text: await res.text() };
   };
   return {
-    post: async (channelId: string, body: string) => {
-      const res = await call("POST", ["channel", "actions", "post"], { userId: owner, sessionId: channelId, input: { body } });
+    post: async (mailboxId: string, body: string) => {
+      const res = await call("POST", ["mailbox", "actions", "post"], { userId: owner, sessionId: mailboxId, input: { body } });
       if (res.status !== 200) throw new Error(`post "${body}" refused: ${res.status} ${res.text.slice(0, 300)}`);
     },
-    /** A seat's conversations of one channel: the kept messages of each. */
-    conversationsOf: async (seat: string, channelId: string): Promise<Message[][]> => {
+    /** A seat's conversations of one mailbox: the kept messages of each. */
+    conversationsOf: async (seat: string, mailboxId: string): Promise<Message[][]> => {
       const listed = await call("GET", ["sessions"], undefined, `?flowId=${encodeURIComponent(seat)}&userId=${owner}&include=dispatch-runs&limit=100`);
       const rows = (JSON.parse(listed.text) as { sessions?: Array<{ id: string; parentSessionId?: string | null }> }).sessions ?? [];
       const out: Message[][] = [];
-      for (const row of rows.filter((r) => r.parentSessionId === channelId)) {
+      for (const row of rows.filter((r) => r.parentSessionId === mailboxId)) {
         const state = await call("GET", ["sessions", row.id, "state"], undefined, "?include_items=true&item_types=message&limit=1000");
         const items = (JSON.parse(state.text) as { items?: Array<{ role?: string; transient?: boolean; content?: Array<{ text?: string }> }> }).items ?? [];
         out.push(
@@ -178,11 +178,11 @@ function reader(app: RoutedHost, owner: string) {
       }
       return out;
     },
-    /** The channel's lines, as its `channel-post` items carry them, oldest first. */
-    linesOf: async (channelId: string): Promise<Line[]> => {
-      const state = await call("GET", ["sessions", channelId, "state"], undefined, "?include_items=true&item_types=component&limit=1000");
+    /** The mailbox's lines, as its `mailbox-post` items carry them, oldest first. */
+    linesOf: async (mailboxId: string): Promise<Line[]> => {
+      const state = await call("GET", ["sessions", mailboxId, "state"], undefined, "?include_items=true&item_types=component&limit=1000");
       const items = (JSON.parse(state.text) as { items?: Array<{ component?: string; data?: Line }> }).items ?? [];
-      return items.filter((item) => item.component === "channel-post").map((item) => item.data!);
+      return items.filter((item) => item.component === "mailbox-post").map((item) => item.data!);
     }
   };
 }
@@ -206,18 +206,18 @@ async function quiet(app: RoutedHost, ms: number): Promise<void> {
 
 /** The scripted legs. */
 async function scriptedLegs(fail: (leg: string, line: string) => void, evidence: string[]): Promise<void> {
-  const { channels } = await readChannelsDirectory(TREE);
-  const help = channels.find((c) => c.declared.routing !== undefined);
-  const lounge = channels.find((c) => c.declared.routing === undefined);
-  if (help === undefined || lounge === undefined) throw new Error("the fixture needs one routed and one unrouted channel");
+  const { mailboxes } = await readMailboxesDirectory(TREE);
+  const help = mailboxes.find((c) => c.declared.routing !== undefined);
+  const lounge = mailboxes.find((c) => c.declared.routing === undefined);
+  if (help === undefined || lounge === undefined) throw new Error("the fixture needs one routed and one unrouted mailbox");
   const members = help.declared.members as string[];
   const fallback = (help.declared.routing as { fallback: string }).fallback;
   const [s1, s2, s3] = members.filter((m) => m !== fallback);
-  if (s3 === undefined) throw new Error(`the routed channel needs three specialists beside its fallback; read ${members.join(", ")}`);
+  if (s3 === undefined) throw new Error(`the routed mailbox needs three specialists beside its fallback; read ${members.join(", ")}`);
 
-  const { startRoutedHost, CHANNEL_OWNER, REPLY_MARKER } = await import("./host.mts");
+  const { startRoutedHost, MAILBOX_OWNER, REPLY_MARKER } = await import("./host.mts");
   const app = await startRoutedHost(TREE, controlSeams());
-  const io = reader(app, CHANNEL_OWNER);
+  const io = reader(app, MAILBOX_OWNER);
   const run = randomUUID().replace(/-/g, "").slice(0, 10);
   const tok = (n: number) => `tok-${run}p${n}`;
   const item = `item-${run}`;
@@ -233,10 +233,10 @@ async function scriptedLegs(fail: (leg: string, line: string) => void, evidence:
     lounge: `${tok(9)} Morning, all.`
   };
 
-  const heardBy = async (channelId: string, token: string) => {
+  const heardBy = async (mailboxId: string, token: string) => {
     const out: string[] = [];
     for (const seat of members) {
-      const turns = (await io.conversationsOf(seat, channelId)).flat().filter((m) => m.role === "user" && m.text.includes(token));
+      const turns = (await io.conversationsOf(seat, mailboxId)).flat().filter((m) => m.role === "user" && m.text.includes(token));
       if (turns.length > 0) out.push(seat);
     }
     return out;
@@ -282,7 +282,7 @@ async function scriptedLegs(fail: (leg: string, line: string) => void, evidence:
     // ---- held: sent before the specialist answered, so no evaluation --------
     {
       const unanswered = lines.filter((l) => l.author !== undefined && l.body.includes(tok(6)));
-      if (unanswered.length > 0) fail("held", `${tok(6)} was answered in the channel, so ${tok(7)} was not sent before an answer: ${JSON.stringify(unanswered)}`);
+      if (unanswered.length > 0) fail("held", `${tok(6)} was answered in the mailbox, so ${tok(7)} was not sent before an answer: ${JSON.stringify(unanswered)}`);
       const who = await heardBy(help.id, tok(7));
       const calls = callsFor(tok(7));
       if (who.length !== 1 || who[0] !== s1) fail("held", `${tok(7)} was heard by [${who.join(", ")}] (want [${s1}])`);
@@ -298,7 +298,7 @@ async function scriptedLegs(fail: (leg: string, line: string) => void, evidence:
         ok = false;
         fail("context", `${fallback}'s answer to ${tok(8)} does not name ${item}: ${JSON.stringify(answer)}`);
       }
-      // The post that named "it", as the channel holds it: in no message the seat kept.
+      // The post that named "it", as the mailbox holds it: in no message the seat kept.
       const named = lines.find((l) => l.author === undefined && l.body.includes(tok(6)))?.body ?? posts.unanswered;
       const conversation = (await io.conversationsOf(fallback, help.id)).flat();
       if (conversation.some((m) => m.text.includes(named))) {
@@ -356,15 +356,15 @@ async function liveLeg(fail: (leg: string, line: string) => void, evidence: stri
     intents: { chat: [answerModel] }
   });
 
-  const { channels } = await readChannelsDirectory(TREE);
-  const help = channels.find((c) => c.declared.routing !== undefined)!;
+  const { mailboxes } = await readMailboxesDirectory(TREE);
+  const help = mailboxes.find((c) => c.declared.routing !== undefined)!;
   const members = help.declared.members as string[];
   const fallback = (help.declared.routing as { fallback: string }).fallback;
   const [devices, accounts, framework] = members.filter((m) => m !== fallback);
 
-  const { startRoutedHost, CHANNEL_OWNER } = await import("./host.mts");
+  const { startRoutedHost, MAILBOX_OWNER } = await import("./host.mts");
   const app = await startRoutedHost(TREE, { live: { modelResolver } });
-  const io = reader(app, CHANNEL_OWNER);
+  const io = reader(app, MAILBOX_OWNER);
   const posts: Array<{ body: string; want?: string }> = [
     { body: "Hi, my laptop won't join the office wifi since this morning.", want: devices },
     { body: "It sees it. It fails right after the password.", want: devices },
@@ -419,8 +419,8 @@ await runGoal(async () => {
   if (foreign.length > 0) fail("source", `host.mts imports from outside @flow-state-dev/*: ${foreign.join(", ")}`);
   if (builds.test(host)) fail("source", `host.mts builds its own ${builds.exec(host)![1]}`);
   if (!/routeByPurpose\s*\(/.test(host)) fail("source", "host.mts never calls routeByPurpose");
-  const routed = (await readChannelsDirectory(TREE)).channels.filter((c) => c.declared.routing !== undefined);
-  if (routed.length !== 1) fail("source", `the tree declares routing: on ${routed.length} channels (want 1)`);
+  const routed = (await readMailboxesDirectory(TREE)).mailboxes.filter((c) => c.declared.routing !== undefined);
+  if (routed.length !== 1) fail("source", `the tree declares routing: on ${routed.length} mailboxes (want 1)`);
   if (!failures.some((f) => f.startsWith("[source]"))) {
     evidence.push(`host.mts imports only ${[...new Set(imports)].join(", ")}, calls routeByPurpose, and builds no dispatcher or router`);
   }

@@ -2,7 +2,7 @@
  * Registration and binding — the two phases, and the closed door in front of
  * them.
  *
- * `channelInstances` is build time and synchronous; `openChannels` needs a
+ * `mailboxInstances` is build time and synchronous; `openMailboxes` needs a
  * running host. They are separate because those are two different moments, not
  * because the work divides neatly.
  *
@@ -16,15 +16,15 @@ import { describe, expect, it, vi } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
-  CHANNEL_KIND,
-  channelInstances,
-  defineChannelFlow,
-  openChannels,
-  type ChannelManifest
+  MAILBOX_KIND,
+  mailboxInstances,
+  defineMailboxFlow,
+  openMailboxes,
+  type MailboxManifest
 } from "../src/index";
-import { kindOf } from "../src/channel/channel-binder";
+import { kindOf } from "../src/mailbox/mailbox-binder";
 
-/** The principal every channel in these tests is opened for. */
+/** The principal every mailbox in these tests is opened for. */
 const OWNER = "u_42";
 
 /** What the fake session store holds: a session's identity as well as its state. */
@@ -41,7 +41,7 @@ function record(
   id: string,
   declared: Record<string, unknown> = {},
   body = "Say what you finished."
-): ChannelManifest {
+): MailboxManifest {
   return { id, declared, body };
 }
 
@@ -70,42 +70,42 @@ function customKind(kind: string) {
   });
 }
 
-describe("channelInstances", () => {
+describe("mailboxInstances", () => {
   it("seeds the built-in, so a roster that names no kind yields exactly one instance", () => {
-    const instances = channelInstances([
+    const instances = mailboxInstances([
       record("engineering.standup", { members: ["engineering.lead"] }),
       record("engineering.triage", { members: ["engineering.lead"] })
     ]);
 
     expect(instances).toHaveLength(1);
-    expect(instances[0]?.id).toBe(CHANNEL_KIND);
-    expect(instances[0]?.kind).toBe(CHANNEL_KIND);
+    expect(instances[0]?.id).toBe(MAILBOX_KIND);
+    expect(instances[0]?.kind).toBe(MAILBOX_KIND);
     expect(instances[0]?.cardinality).toBe("singleton");
   });
 
   it("gives two records naming one custom kind a single shared instance", () => {
-    const instances = channelInstances(
+    const instances = mailboxInstances(
       [
-        record("eng.a", { flow: "my-channel" }),
-        record("eng.b", { flow: "my-channel" })
+        record("eng.a", { flow: "my-mailbox" }),
+        record("eng.b", { flow: "my-mailbox" })
       ],
-      { kinds: { "my-channel": customKind("my-channel") } }
+      { kinds: { "my-mailbox": customKind("my-mailbox") } }
     );
 
-    expect(instances.map((i) => i.id)).toEqual(["my-channel"]);
+    expect(instances.map((i) => i.id)).toEqual(["my-mailbox"]);
   });
 
   it("yields one instance per distinct kind, the built-in included", () => {
-    const instances = channelInstances(
-      [record("eng.a"), record("eng.b", { flow: "my-channel" })],
-      { kinds: { "my-channel": customKind("my-channel") } }
+    const instances = mailboxInstances(
+      [record("eng.a"), record("eng.b", { flow: "my-mailbox" })],
+      { kinds: { "my-mailbox": customKind("my-mailbox") } }
     );
 
-    expect(instances.map((i) => i.id).sort()).toEqual(["channel", "my-channel"]);
+    expect(instances.map((i) => i.id).sort()).toEqual(["mailbox", "my-mailbox"]);
   });
 
   it("lets a caller replace the built-in wholesale under its own key", () => {
-    const replacement = defineChannelFlow({
+    const replacement = defineMailboxFlow({
       notify: handler({
         name: "notify",
         inputSchema: z.unknown(),
@@ -113,35 +113,35 @@ describe("channelInstances", () => {
         execute: () => ({})
       })
     });
-    const instances = channelInstances([record("eng.a")], { kinds: { channel: replacement } });
+    const instances = mailboxInstances([record("eng.a")], { kinds: { mailbox: replacement } });
 
     expect(instances).toHaveLength(1);
     expect(instances[0]?.internal?.actions.onPosted).toBeDefined();
   });
 
   it("refuses a named-but-unregistered kind by name, never falling back to the built-in", () => {
-    expect(() => channelInstances([record("eng.a", { flow: "nope" })])).toThrow(/"nope"/);
-    expect(() => channelInstances([record("eng.a", { flow: "nope" })])).toThrow(
-      /not passed to channelInstances/
+    expect(() => mailboxInstances([record("eng.a", { flow: "nope" })])).toThrow(/"nope"/);
+    expect(() => mailboxInstances([record("eng.a", { flow: "nope" })])).toThrow(
+      /not passed to mailboxInstances/
     );
   });
 
   it("refuses a factory filed under a key that is not its own kind", () => {
     expect(() =>
-      channelInstances([record("eng.a", { flow: "mine" })], {
+      mailboxInstances([record("eng.a", { flow: "mine" })], {
         kinds: { mine: customKind("actually-other") }
       })
-    ).toThrow(/run a different channel's graph/);
+    ).toThrow(/run a different mailbox's graph/);
   });
 
-  it("refuses a duplicate id: a channel's id is its session id", () => {
-    expect(() => channelInstances([record("eng.a"), record("eng.a")])).toThrow(/declared twice/);
+  it("refuses a duplicate id: a mailbox's id is its session id", () => {
+    expect(() => mailboxInstances([record("eng.a"), record("eng.a")])).toThrow(/declared twice/);
   });
 
   it("names every bad record in one run rather than the first", () => {
     let message = "";
     try {
-      channelInstances([
+      mailboxInstances([
         record("eng.b", { flow: "nope" }),
         record("eng.a", { system: true }),
         record("eng.c", { colour: "blue" })
@@ -156,43 +156,43 @@ describe("channelInstances", () => {
   });
 });
 
-describe("what a channel record may declare (the closed key list)", () => {
-  it("refuses a frontmatter `id:` — a channel's id is its identity, not a setting", () => {
-    expect(() => channelInstances([record("eng.a", { id: "somewhere.else" })])).toThrow(/`id:`/);
+describe("what a mailbox record may declare (the closed key list)", () => {
+  it("refuses a frontmatter `id:` — a mailbox's id is its identity, not a setting", () => {
+    expect(() => mailboxInstances([record("eng.a", { id: "somewhere.else" })])).toThrow(/`id:`/);
   });
 
   it("consumes and strips `flow:` rather than refusing it", () => {
-    expect(() => channelInstances([record("eng.a", { flow: CHANNEL_KIND })])).not.toThrow();
+    expect(() => mailboxInstances([record("eng.a", { flow: MAILBOX_KIND })])).not.toThrow();
   });
 
   it("refuses `instructions:` alongside a body — two sources, no precedence rule", () => {
     expect(() =>
-      channelInstances([record("eng.a", { instructions: "from frontmatter" }, "from the body")])
+      mailboxInstances([record("eng.a", { instructions: "from frontmatter" }, "from the body")])
     ).toThrow(/two sources/);
   });
 
   it("refuses `system:`", () => {
-    expect(() => channelInstances([record("eng.a", { system: true })])).toThrow(/`system:`/);
+    expect(() => mailboxInstances([record("eng.a", { system: true })])).toThrow(/`system:`/);
   });
 
   it("refuses a key the kind never declared", () => {
-    expect(() => channelInstances([record("eng.a", { colour: "blue" })])).toThrow(/`colour`/);
+    expect(() => mailboxInstances([record("eng.a", { colour: "blue" })])).toThrow(/`colour`/);
   });
 
   it("refuses a `members:` that is not a list of names", () => {
-    expect(() => channelInstances([record("eng.a", { members: "engineering.lead" })])).toThrow(
+    expect(() => mailboxInstances([record("eng.a", { members: "engineering.lead" })])).toThrow(
       /members/
     );
   });
 });
 
-describe("openChannels", () => {
+describe("openMailboxes", () => {
   /**
-   * The session substrate as `openChannels` meets it: create refuses a taken id
+   * The session substrate as `openMailboxes` meets it: create refuses a taken id
    * with a 409, and a read carries the occupant's identity as well as its
    * state, because a session id is unique per principal and not per flow.
    * `mintEmpty` is what the action path's create-or-get leaves behind — a
-   * session that exists carrying no channel data at all.
+   * session that exists carrying no mailbox data at all.
    *
    * @param config  `retakeOnDelete`: how many times something takes the id back
    *                the moment the binder releases it, which is the race a
@@ -231,8 +231,8 @@ describe("openChannels", () => {
     /** What a post or read on an id nobody opened leaves behind. */
     const mintEmpty = (id: string, occupant: Partial<Occupant> = {}): void => {
       sessions.set(id, {
-        flowKind: CHANNEL_KIND,
-        flowId: CHANNEL_KIND,
+        flowKind: MAILBOX_KIND,
+        flowId: MAILBOX_KIND,
         userId: OWNER,
         state: {},
         ...occupant
@@ -244,7 +244,7 @@ describe("openChannels", () => {
       sessions.delete(sessionId);
       // The race a second 409 reports: something takes the id back between the
       // release and the create. An EMPTY session, because the retaker that
-      // matters is the action path — the one that leaves the channel unbound.
+      // matters is the action path — the one that leaves the mailbox unbound.
       if (retakes > 0) {
         retakes -= 1;
         mintEmpty(sessionId);
@@ -263,10 +263,10 @@ describe("openChannels", () => {
     };
   }
 
-  it("opens one named session per record, carrying that channel's members and charter", async () => {
+  it("opens one named session per record, carrying that mailbox's members and charter", async () => {
     const { client, created } = sessionClient();
 
-    await openChannels(
+    await openMailboxes(
       [
         record(
           "engineering.standup",
@@ -279,7 +279,7 @@ describe("openChannels", () => {
 
     expect(created).toHaveLength(1);
     expect(created[0]).toMatchObject({
-      flowKind: CHANNEL_KIND,
+      flowKind: MAILBOX_KIND,
       sessionId: "engineering.standup",
       userId: OWNER,
       description: "Daily status.",
@@ -294,39 +294,39 @@ describe("openChannels", () => {
   it("sends no org key at all — the organization is the server's to decide", async () => {
     // The binder used to take an `orgId` and hand it to `createSession`, which
     // is browser-side organization selection wearing a server-side coat: the
-    // value came from whoever called `openChannels`. FIX-1442 removes it. What
-    // the channel is opened under is now decided where every other identity
-    // is — at principal resolution — and `channel-org-identity.test.ts` drives
+    // value came from whoever called `openMailboxes`. FIX-1442 removes it. What
+    // the mailbox is opened under is now decided where every other identity
+    // is — at principal resolution — and `mailbox-org-identity.test.ts` drives
     // the real route to show the session still comes out bound to one.
     const { client, created } = sessionClient();
 
-    await openChannels([record("engineering.standup")], { client, userId: OWNER });
+    await openMailboxes([record("engineering.standup")], { client, userId: OWNER });
 
     expect(created[0]).not.toHaveProperty("orgId");
   });
 
-  it("opens a custom kind's channel on that kind's own instance", async () => {
+  it("opens a custom kind's mailbox on that kind's own instance", async () => {
     const { client, created } = sessionClient();
-    await openChannels([record("eng.a", { flow: "my-channel" })], { client, userId: OWNER });
-    expect(created[0]).toMatchObject({ flowKind: "my-channel", sessionId: "eng.a" });
+    await openMailboxes([record("eng.a", { flow: "my-mailbox" })], { client, userId: OWNER });
+    expect(created[0]).toMatchObject({ flowKind: "my-mailbox", sessionId: "eng.a" });
   });
 
-  it("leaves a genuinely bound channel alone, so re-running over an unchanged roster changes nothing", async () => {
+  it("leaves a genuinely bound mailbox alone, so re-running over an unchanged roster changes nothing", async () => {
     const { client, created, deleted } = sessionClient();
     const roster = [record("engineering.standup", { members: ["a"] })];
 
-    await openChannels(roster, { client, userId: OWNER });
-    await expect(openChannels(roster, { client, userId: OWNER })).resolves.toBeUndefined();
+    await openMailboxes(roster, { client, userId: OWNER });
+    await expect(openMailboxes(roster, { client, userId: OWNER })).resolves.toBeUndefined();
 
     expect(client.createSession).toHaveBeenCalledTimes(2);
     expect(created).toHaveLength(1);
-    // The second run reads the session, finds a bound channel, and stops. An
-    // open channel is never torn down, which is what keeps re-opening from
+    // The second run reads the session, finds a bound mailbox, and stops. An
+    // open mailbox is never torn down, which is what keeps re-opening from
     // becoming a migration.
     expect(deleted).toEqual([]);
   });
 
-  it("adopts a session the action path minted first, so one premature post cannot poison a channel", async () => {
+  it("adopts a session the action path minted first, so one premature post cannot poison a mailbox", async () => {
     const { client, stateOf, mintEmpty } = sessionClient();
     const roster = [
       record("engineering.standup", { members: ["engineering.lead"] }, "Post what you finished.")
@@ -337,11 +337,11 @@ describe("openChannels", () => {
     // create-or-get, so that mints an empty session — and the id is now taken.
     mintEmpty("engineering.standup");
 
-    await openChannels(roster, { client, userId: OWNER });
+    await openMailboxes(roster, { client, userId: OWNER });
 
     // Bound, not skipped. Without adoption the 409 is swallowed, `members` and
     // `instructions` are never written, and every later post is refused
-    // `channel-not-bound` with no way back through the public API.
+    // `mailbox-not-bound` with no way back through the public API.
     expect(stateOf("engineering.standup")).toEqual({
       members: ["engineering.lead"],
       instructions: "Post what you finished.",
@@ -349,15 +349,15 @@ describe("openChannels", () => {
     });
   });
 
-  it("stays idempotent from a poisoned start: adopting once, then leaving the channel alone", async () => {
+  it("stays idempotent from a poisoned start: adopting once, then leaving the mailbox alone", async () => {
     const { client, deleted, stateOf, mintEmpty } = sessionClient();
     const roster = [record("engineering.standup", { members: ["engineering.lead"] })];
 
     mintEmpty("engineering.standup");
-    await openChannels(roster, { client, userId: OWNER });
-    await openChannels(roster, { client, userId: OWNER });
+    await openMailboxes(roster, { client, userId: OWNER });
+    await openMailboxes(roster, { client, userId: OWNER });
 
-    // One adoption, and the second run recognises the channel it just bound.
+    // One adoption, and the second run recognises the mailbox it just bound.
     expect(deleted).toEqual(["engineering.standup"]);
     expect(stateOf("engineering.standup")).toMatchObject({
       members: ["engineering.lead"]
@@ -366,9 +366,9 @@ describe("openChannels", () => {
 
   /**
    * The failure mode that makes this a refusal rather than a repair: a session
-   * id is unique per PRINCIPAL, not per flow. A channel whose id collides with
+   * id is unique per PRINCIPAL, not per flow. A mailbox whose id collides with
    * an ordinary session of another flow under the same user fails the boundness
-   * test for the obvious reason — it is not a channel — and answering that with
+   * test for the obvious reason — it is not a mailbox — and answering that with
    * a delete takes that session's content and resource state with it, at
    * startup, silently.
    */
@@ -381,8 +381,8 @@ describe("openChannels", () => {
     });
 
     await expect(
-      openChannels([record("engineering.standup")], { client, userId: OWNER })
-    ).rejects.toThrow(/"support-inbox" session, not a "channel" one/);
+      openMailboxes([record("engineering.standup")], { client, userId: OWNER })
+    ).rejects.toThrow(/"support-inbox" session, not a "mailbox" one/);
 
     // The whole point: the other flow's session is still there.
     expect(deleted).toEqual([]);
@@ -392,7 +392,7 @@ describe("openChannels", () => {
   /**
    * The upgrade case, and the reason the org is not just left behind quietly.
    *
-   * An app that hits the org gap already has its channels open, bound to no
+   * An app that hits the org gap already has its mailboxes open, bound to no
    * org. Passing an `orgId` afterwards cannot move them — a session's org is
    * fixed at creation — so reporting success here would send the app away
    * believing it had fixed the thing it just upgraded to fix, to find out at
@@ -400,12 +400,12 @@ describe("openChannels", () => {
    */
 
 
-  it("stays a no-op when the open channel is already in the org asked for", async () => {
+  it("stays a no-op when the open mailbox is already in the org asked for", async () => {
     const { client, created, deleted } = sessionClient();
     const roster = [record("engineering.standup", { members: ["a"] })];
 
-    await openChannels(roster, { client, userId: OWNER, orgId: "org_acme" });
-    await openChannels(roster, { client, userId: OWNER, orgId: "org_acme" });
+    await openMailboxes(roster, { client, userId: OWNER, orgId: "org_acme" });
+    await openMailboxes(roster, { client, userId: OWNER, orgId: "org_acme" });
 
     expect(created).toHaveLength(1);
     expect(deleted).toEqual([]);
@@ -414,12 +414,12 @@ describe("openChannels", () => {
   // A run that names no org states no opinion about one, so it is not the
   // mismatch above: this is the ordinary idempotent re-run, from a caller that
   // simply does not pass the option.
-  it("leaves an org-bound channel alone for a run that asks for no org", async () => {
+  it("leaves an org-bound mailbox alone for a run that asks for no org", async () => {
     const { client, created, deleted } = sessionClient();
     const roster = [record("engineering.standup", { members: ["a"] })];
 
-    await openChannels(roster, { client, userId: OWNER, orgId: "org_acme" });
-    await openChannels(roster, { client, userId: OWNER });
+    await openMailboxes(roster, { client, userId: OWNER, orgId: "org_acme" });
+    await openMailboxes(roster, { client, userId: OWNER });
 
     expect(created).toHaveLength(1);
     expect(deleted).toEqual([]);
@@ -430,24 +430,24 @@ describe("openChannels", () => {
     mintEmpty("engineering.standup", { userId: "u_somebody_else" });
 
     await expect(
-      openChannels([record("engineering.standup")], { client, userId: OWNER })
+      openMailboxes([record("engineering.standup")], { client, userId: OWNER })
     ).rejects.toThrow(/belonging to "u_somebody_else"/);
     expect(deleted).toEqual([]);
   });
 
   /**
-   * The adopt path's licence is that the occupant "holds no channel data". A
+   * The adopt path's licence is that the occupant "holds no mailbox data". A
    * session of this kind carrying state the schema cannot read is not that: it
    * is data this binder cannot read, and deleting it is the same loss under a
    * different name.
    */
-  it("refuses this kind's own session carrying state it cannot read as a channel", async () => {
+  it("refuses this kind's own session carrying state it cannot read as a mailbox", async () => {
     const { client, deleted, stateOf, mintEmpty } = sessionClient();
     mintEmpty("engineering.standup", { state: { members: [42], instructions: "x" } });
 
     await expect(
-      openChannels([record("engineering.standup")], { client, userId: OWNER })
-    ).rejects.toThrow(/not a readable channel/);
+      openMailboxes([record("engineering.standup")], { client, userId: OWNER })
+    ).rejects.toThrow(/not a readable mailbox/);
 
     expect(deleted).toEqual([]);
     expect(stateOf("engineering.standup")).toEqual({ members: [42], instructions: "x" });
@@ -455,31 +455,31 @@ describe("openChannels", () => {
 
   /**
    * A second 409 says the id was retaken between the read and the create — it
-   * does NOT say a channel is open there. The retaker may be the action path
-   * again, so treating it as "someone else opened it" is how `openChannels`
-   * resolves over a channel that is still unbound.
+   * does NOT say a mailbox is open there. The retaker may be the action path
+   * again, so treating it as "someone else opened it" is how `openMailboxes`
+   * resolves over a mailbox that is still unbound.
    */
   it("answers a retaken id on boundness again rather than assuming someone opened it", async () => {
     const { client, deleted, stateOf, mintEmpty } = sessionClient({ retakeOnDelete: 1 });
     mintEmpty("engineering.standup");
 
-    await openChannels([record("engineering.standup", { members: ["engineering.lead"] })], {
+    await openMailboxes([record("engineering.standup", { members: ["engineering.lead"] })], {
       client,
       userId: OWNER
     });
 
-    // Two rounds: the first lost the id, the second won it. And the channel is
+    // Two rounds: the first lost the id, the second won it. And the mailbox is
     // BOUND at the end, which is the only thing that makes resolving honest.
     expect(deleted).toEqual(["engineering.standup", "engineering.standup"]);
     expect(stateOf("engineering.standup")).toMatchObject({ members: ["engineering.lead"] });
   });
 
-  it("refuses a channel whose id keeps being retaken rather than resolving over an unbound one", async () => {
+  it("refuses a mailbox whose id keeps being retaken rather than resolving over an unbound one", async () => {
     const { client, deleted, mintEmpty } = sessionClient({ retakeOnDelete: 10 });
     mintEmpty("engineering.standup");
 
     await expect(
-      openChannels([record("engineering.standup")], { client, userId: OWNER })
+      openMailboxes([record("engineering.standup")], { client, userId: OWNER })
     ).rejects.toThrow(/taken again by an unbound session on each of 3 attempts/);
 
     // Bounded: three rounds, not a loop.
@@ -491,32 +491,32 @@ describe("openChannels", () => {
       createSession: vi.fn(async () => {
         throw Object.assign(new Error("Request failed (500)"), { status: 500 });
       }),
-      getSession: vi.fn(async () => ({ flowKind: CHANNEL_KIND, userId: OWNER, state: {} })),
+      getSession: vi.fn(async () => ({ flowKind: MAILBOX_KIND, userId: OWNER, state: {} })),
       deleteSession: vi.fn(async () => {})
     };
     await expect(
-      openChannels([record("engineering.standup")], { client, userId: OWNER })
+      openMailboxes([record("engineering.standup")], { client, userId: OWNER })
     ).rejects.toThrow(/500/);
   });
 });
 
 /**
- * The channel door's reading of `flow:`, one row per shape a value can take —
- * through `channelInstances` (the build path) and through `kindOf` directly
- * (the reader `openChannels` and the inventory writer share).
+ * The mailbox door's reading of `flow:`, one row per shape a value can take —
+ * through `mailboxInstances` (the build path) and through `kindOf` directly
+ * (the reader `openMailboxes` and the inventory writer share).
  *
  * Characterization: every row is what the door does today, and the worker
  * door's twin table in `hire.test.ts` runs the same values. The two doors share
  * one rule for "absent, blank, or not a string", so a change to that rule turns
- * rows red on both tables at once. The channel door words every refusal the
+ * rows red on both tables at once. The mailbox door words every refusal the
  * same way; the worker door words them differently, on purpose.
  */
-describe("the channel door reads `flow:` (one row per value)", () => {
+describe("the mailbox door reads `flow:` (one row per value)", () => {
   const NOT_A_KIND = "declares a `flow:` that is not a kind name";
 
-  it("opens a record with no `flow` key on the built-in `channel` kind", () => {
-    expect(kindOf({})).toEqual({ kind: CHANNEL_KIND });
-    expect(channelInstances([record("eng.a")]).map((i) => i.kind)).toEqual([CHANNEL_KIND]);
+  it("opens a record with no `flow` key on the built-in `mailbox` kind", () => {
+    expect(kindOf({})).toEqual({ kind: MAILBOX_KIND });
+    expect(mailboxInstances([record("eng.a")]).map((i) => i.kind)).toEqual([MAILBOX_KIND]);
   });
 
   it.each([
@@ -528,23 +528,23 @@ describe("the channel door reads `flow:` (one row per value)", () => {
     ["an object", {}]
   ])("refuses %s as not a kind name", (_label, value) => {
     expect(kindOf({ flow: value })).toEqual({ problem: NOT_A_KIND });
-    expect(() => channelInstances([record("eng.a", { flow: value })])).toThrow(NOT_A_KIND);
+    expect(() => mailboxInstances([record("eng.a", { flow: value })])).toThrow(NOT_A_KIND);
   });
 
   it("selects the kind a `flow:` names when that kind was passed", () => {
-    expect(kindOf({ flow: "my-channel" })).toEqual({ kind: "my-channel" });
-    const instances = channelInstances([record("eng.a", { flow: "my-channel" })], {
-      kinds: { "my-channel": customKind("my-channel") }
+    expect(kindOf({ flow: "my-mailbox" })).toEqual({ kind: "my-mailbox" });
+    const instances = mailboxInstances([record("eng.a", { flow: "my-mailbox" })], {
+      kinds: { "my-mailbox": customKind("my-mailbox") }
     });
-    expect(instances.map((i) => i.kind)).toEqual(["my-channel"]);
+    expect(instances.map((i) => i.kind)).toEqual(["my-mailbox"]);
   });
 
   it("does not trim a named kind: a padded name is a kind that was not passed", () => {
-    expect(kindOf({ flow: " my-channel " })).toEqual({ kind: " my-channel " });
+    expect(kindOf({ flow: " my-mailbox " })).toEqual({ kind: " my-mailbox " });
     expect(() =>
-      channelInstances([record("eng.a", { flow: " my-channel " })], {
-        kinds: { "my-channel": customKind("my-channel") }
+      mailboxInstances([record("eng.a", { flow: " my-mailbox " })], {
+        kinds: { "my-mailbox": customKind("my-mailbox") }
       })
-    ).toThrow(/" my-channel ".*not passed to channelInstances/s);
+    ).toThrow(/" my-mailbox ".*not passed to mailboxInstances/s);
   });
 });

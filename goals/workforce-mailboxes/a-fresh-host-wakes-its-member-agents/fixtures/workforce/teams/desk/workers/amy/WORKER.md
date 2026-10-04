@@ -1,5 +1,5 @@
 ---
-description: Answers what the front channel asks.
+description: Answers what the front mailbox asks.
 ---
 
-Answer what the channel asks, in one line.
+Answer what the mailbox asks, in one line.

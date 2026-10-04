@@ -1,5 +1,5 @@
 /**
- * The manager on a board a channel holds — an organization-scoped ledger whose
+ * The manager on a board a mailbox holds — an organization-scoped ledger whose
  * id carries dots.
  *
  * Driven end to end, in process: a real `createFlowState`, a real task board
@@ -41,9 +41,9 @@ import {
 import { harnessTaskId } from "../src/workspace";
 import { seedRepo } from "./fixtures";
 
-/** A board a channel holds: `<channel id>.<board name>`, as the workforce mints it. */
-const CHANNEL_BOARD_ID = "eng.feature.work";
-const ORG_ID = "org_channel_board";
+/** A board a mailbox holds: `<mailbox id>.<board name>`, as the workforce mints it. */
+const MAILBOX_BOARD_ID = "eng.feature.work";
+const ORG_ID = "org_mailbox_board";
 const ALICE = "alice";
 const BOB = "bob";
 const ISSUE = "FIX-1";
@@ -106,21 +106,21 @@ function scriptedHarness(script: Array<"finished" | "failed">, seen: SeenRun[]) 
  * board's same-flow hand-off — the conductor lab's shape, on an org ledger.
  */
 function host(options: { script: Array<"finished" | "failed">; gate: boolean }) {
-  const dir = mkdtempSync(join(tmpdir(), "harness-manager-channel-board-"));
+  const dir = mkdtempSync(join(tmpdir(), "harness-manager-mailbox-board-"));
   dirs.push(dir);
   const sourceRepo = join(dir, "repo");
   mkdirSync(sourceRepo, { recursive: true });
   seedRepo(sourceRepo);
 
   const ledger = defineTaskCollection({
-    id: CHANNEL_BOARD_ID,
+    id: MAILBOX_BOARD_ID,
     scope: "org" as const,
     stateSchema: harnessTaskInputSchema,
   });
   const seen: SeenRun[] = [];
   const branches: string[] = [];
   const manager = harnessManager({
-    boardCollectionId: CHANNEL_BOARD_ID,
+    boardCollectionId: MAILBOX_BOARD_ID,
     boardCollection: ledger,
     tenant: undefined,
     phase: {
@@ -137,22 +137,22 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     harness: scriptedHarness(options.script, seen),
   });
   const board = taskBoard({
-    name: "channel-board",
-    boardId: "channel-board",
+    name: "mailbox-board",
+    boardId: "mailbox-board",
     collection: ledger,
     concurrency: 1,
     ...(options.gate ? { dispatcher: runOwnerDispatcher() } : {}),
     workers: {
-      coder: dispatcher({ name: "channel-board-hand-off", action: "work", session: "per-task" }),
+      coder: dispatcher({ name: "mailbox-board-hand-off", action: "work", session: "per-task" }),
     },
   });
   const seed = handler({
-    name: "channel-board-seed",
+    name: "mailbox-board-seed",
     inputSchema: z.object({}),
     outputSchema: z.object({ id: z.string() }),
     uses: [board.capability],
     execute: async (_input, ctx) => {
-      const tasks = (ctx as { cap: Record<string, any> }).cap["channel-board"];
+      const tasks = (ctx as { cap: Record<string, any> }).cap["mailbox-board"];
       if ((await tasks.getTask(TASK_ID)) === undefined) {
         await tasks.addTask({
           id: TASK_ID,
@@ -166,12 +166,12 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     },
   });
   const flow = defineFlow({
-    kind: "channel-board-host",
+    kind: "mailbox-board-host",
     actions: { seed: { block: seed }, drain: { block: board.drain } },
     task: { actions: { work: { block: manager } } },
-  } as never)({ id: "channel-board-host" } as never);
+  } as never)({ id: "mailbox-board-host" } as never);
   const state = createFlowState({
-    flows: { "channel-board-host": flow },
+    flows: { "mailbox-board-host": flow },
     stores: { test: { primary: inMemoryStores() } },
     defaultProfile: "test",
     dispatchDrainTimeoutMs: 60_000,
@@ -201,7 +201,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     const record = await runtime.stores.resourceState.get(
       "org",
       ORG_ID,
-      `${CHANNEL_BOARD_ID}/${TASK_ID}`,
+      `${MAILBOX_BOARD_ID}/${TASK_ID}`,
     );
     return record?.state as Task;
   };
@@ -229,7 +229,7 @@ function host(options: { script: Array<"finished" | "failed">; gate: boolean }) 
     const record = await runtime.stores.resourceState.get(
       "user",
       userId,
-      `runs/${runTopic(CHANNEL_BOARD_ID, ISSUE, PHASE)}`,
+      `runs/${runTopic(MAILBOX_BOARD_ID, ISSUE, PHASE)}`,
     );
     return record?.state as { attempt?: number; outcome?: string; sessionId?: string | null } | undefined;
   };
@@ -243,7 +243,7 @@ function messageOf(error: unknown): string {
   return `${String(e?.message ?? "")} ${String(e?.cause?.message ?? "")} ${JSON.stringify(error)}`;
 }
 
-describe("a row on a channel's board", () => {
+describe("a row on a mailbox's board", () => {
   it("runs through the manager to completed, on an organization-scoped ledger", async () => {
     const lab = host({ script: ["finished"], gate: true });
     expect((await lab.act(ALICE, "seed")).error).toBeUndefined();
@@ -257,7 +257,7 @@ describe("a row on a channel's board", () => {
     // The checkout the harness ran in carries the board's id as is — no
     // translation of the dots.
     expect(lab.seen).toHaveLength(1);
-    expect(lab.seen[0]!.cwd).toContain(`/${CHANNEL_BOARD_ID}/`);
+    expect(lab.seen[0]!.cwd).toContain(`/${MAILBOX_BOARD_ID}/`);
   }, 60_000);
 });
 

@@ -1,21 +1,21 @@
 /**
  * Goal check: a person posts to `support.help`, and the specialist the route
- * picks, `support.devices`, answers in that channel under its own name through
- * its `post-to-channel` tool. The line is still there after a reload, and
+ * picks, `support.devices`, answers in that mailbox under its own name through
+ * its `post-to-mailbox` tool. The line is still there after a reload, and
  * wakes nobody.
  *
  * Real path, scripted model, out of CI. See goal.md for the contract.
  *
  * One real browser against the app's PRODUCTION build (built here, never
- * assumed), on its scripted model, keyless. Two posts from the channel's
+ * assumed), on its scripted model, keyless. Two posts from the mailbox's
  * panel, each naming the specialist in `[route:<member>]` and carrying a fresh
  * token, then one reload. Three legs, graded per post:
  *
- *   line        the channel shows exactly one line carrying the post's token
+ *   line        the mailbox shows exactly one line carrying the post's token
  *               and the line marker: the specialist's answer, kept by the
- *               channel.
+ *               mailbox.
  *   author      that line is labelled `support.devices`.
- *   woken-once  `support.devices` lists one run of the channel, holding the
+ *   woken-once  `support.devices` lists one run of the mailbox, holding the
  *               token in exactly one turn: the person's post. The members the
  *               route passed over hold no run with the token. A second turn,
  *               or another member's run, is the specialist's line waking a seat.
@@ -23,7 +23,7 @@
  * Everything graded is read off the page after a reload, so only what the
  * server kept can pass.
  *
- * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/agent-replies-in-the-channel/run.mts
+ * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/agent-replies-in-the-mailbox/run.mts
  * Controls: GOAL_CONTROL=no-author-filter     (must FAIL at woken-once, and nothing else)
  *           GOAL_CONTROL=post-without-author  (must FAIL at author and woken-once, and nothing else)
  */
@@ -51,7 +51,7 @@ interface Seat {
 
 interface Fixture {
   port: number;
-  channel: Seat;
+  mailbox: Seat;
   replier: Seat;
   /** The members the route passes over. */
   others: Seat[];
@@ -78,20 +78,20 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
   throw new Error(`unknown GOAL_CONTROL "${CONTROL}"; known: ${Object.keys(EXPECTED).join(", ")}`);
 }
 
-/** Open the channel's panel. */
-async function openChannel(page: Page, origin: string): Promise<void> {
+/** Open the mailbox's panel. */
+async function openMailbox(page: Page, origin: string): Promise<void> {
   await openShell(page, origin);
-  await open(page, fixture.channel.kind);
-  await row(page, fixture.channel.id).click();
-  await panel(page).getByTestId("channel-transcript").waitFor({ timeout: 15_000 });
+  await open(page, fixture.mailbox.kind);
+  await row(page, fixture.mailbox.id).click();
+  await panel(page).getByTestId("mailbox-transcript").waitFor({ timeout: 15_000 });
 }
 
-/** Post a line from the channel's panel, and wait until it shows. */
+/** Post a line from the mailbox's panel, and wait until it shows. */
 async function post(page: Page, line: string): Promise<void> {
-  await panel(page).getByLabel("Post to this channel").fill(line);
+  await panel(page).getByLabel("Post to this mailbox").fill(line);
   await panel(page).getByRole("button", { name: "Send" }).click();
   await readUntil(
-    () => panel(page).getByTestId("channel-line").filter({ hasText: line }).count(),
+    () => panel(page).getByTestId("mailbox-line").filter({ hasText: line }).count(),
     (n) => n > 0,
     10_000,
   );
@@ -103,9 +103,9 @@ async function post(page: Page, line: string): Promise<void> {
  * on the page below.
  */
 async function settle(page: Page, origin: string, token: string): Promise<void> {
-  const channelHolds = async () => {
+  const mailboxHolds = async () => {
     const res = await page.request.get(
-      `${origin}/api/flows/sessions/${fixture.channel.id}/state?include_items=true&item_types=component&limit=1000`,
+      `${origin}/api/flows/sessions/${fixture.mailbox.id}/state?include_items=true&item_types=component&limit=1000`,
     );
     const text = await res.text();
     return text.includes(fixture.lineMarker) && text.includes(token);
@@ -120,15 +120,15 @@ async function settle(page: Page, origin: string, token: string): Promise<void> 
     return false;
   };
   await readUntil(
-    async () => (await channelHolds()) && (await answered(fixture.replier.id)),
+    async () => (await mailboxHolds()) && (await answered(fixture.replier.id)),
     (done) => done,
     20_000,
   );
   await page.waitForTimeout(1_500);
 }
 
-/** A seat's runs of the channel, each read as drawn. The page is already reloaded. */
-async function channelRunsOf(page: Page, origin: string, seat: Seat): Promise<Array<Array<{ role: string; text: string }>>> {
+/** A seat's runs of the mailbox, each read as drawn. The page is already reloaded. */
+async function mailboxRunsOf(page: Page, origin: string, seat: Seat): Promise<Array<Array<{ role: string; text: string }>>> {
   await openShell(page, origin);
   await open(page, seat.kind);
   await open(page, seat.id);
@@ -139,7 +139,7 @@ async function channelRunsOf(page: Page, origin: string, seat: Seat): Promise<Ar
     (n) => n > 0,
     10_000,
   );
-  const runs = leaf.locator(`[data-dispatch-run-of="${fixture.channel.id}"]`);
+  const runs = leaf.locator(`[data-dispatch-run-of="${fixture.mailbox.id}"]`);
   const ids = await runs.evaluateAll((buttons) => buttons.map((b) => b.getAttribute("data-session-id") ?? ""));
   const out: Array<Array<{ role: string; text: string }>> = [];
   for (const id of ids) {
@@ -172,22 +172,22 @@ await runGoal(async () => {
     const origin = server.origin;
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
-    await openChannel(page, origin);
+    await openMailbox(page, origin);
     for (const [i, line] of lines.entries()) {
       await post(page, line);
       await settle(page, origin, tokens[i]!);
     }
 
-    // ---- after one reload, the channel as drawn ------------------------------
+    // ---- after one reload, the mailbox as drawn ------------------------------
     await page.reload();
-    await openChannel(page, origin);
+    await openMailbox(page, origin);
     const drawn = await readUntil(
       () =>
         panel(page)
-          .getByTestId("channel-line")
+          .getByTestId("mailbox-line")
           .evaluateAll((els) =>
             els.map((el) => ({
-              label: el.querySelector('[data-testid="channel-line-label"]')?.textContent ?? "",
+              label: el.querySelector('[data-testid="mailbox-line-label"]')?.textContent ?? "",
               text: el.textContent ?? "",
             })),
           ),
@@ -197,20 +197,20 @@ await runGoal(async () => {
     for (const token of tokens) {
       const replies = drawn.filter((l) => l.text.includes(token) && l.text.includes(fixture.lineMarker));
       if (replies.length !== 1) {
-        fail("line", `after the reload, ${fixture.channel.id} shows ${replies.length} lines carrying ${token} and ${fixture.lineMarker} (want 1)`);
+        fail("line", `after the reload, ${fixture.mailbox.id} shows ${replies.length} lines carrying ${token} and ${fixture.lineMarker} (want 1)`);
         continue;
       }
       if (replies[0]!.label !== fixture.replier.id) {
         fail("author", `the reply line for ${token} is labelled "${replies[0]!.label}", not ${fixture.replier.id}`);
         continue;
       }
-      evidence.push(`${fixture.channel.id}: one line for ${token}, labelled ${replies[0]!.label}: ${JSON.stringify(replies[0]!.text)}`);
+      evidence.push(`${fixture.mailbox.id}: one line for ${token}, labelled ${replies[0]!.label}: ${JSON.stringify(replies[0]!.text)}`);
     }
 
     // ---- the specialist heard each post once, and nobody heard its line ----
-    const runs = await channelRunsOf(page, origin, fixture.replier);
+    const runs = await mailboxRunsOf(page, origin, fixture.replier);
     if (runs.length !== 1) {
-      fail("woken-once", `${fixture.replier.id} lists ${runs.length} runs of ${fixture.channel.id} (want 1)`);
+      fail("woken-once", `${fixture.replier.id} lists ${runs.length} runs of ${fixture.mailbox.id} (want 1)`);
     } else {
       let once = true;
       for (const token of tokens) {
@@ -223,15 +223,15 @@ await runGoal(async () => {
           );
         }
       }
-      if (once) evidence.push(`${fixture.replier.id}: one run of ${fixture.channel.id}, each token heard once, in the person's post`);
+      if (once) evidence.push(`${fixture.replier.id}: one run of ${fixture.mailbox.id}, each token heard once, in the person's post`);
     }
     for (const seat of fixture.others) {
-      const theirs = await channelRunsOf(page, origin, seat);
+      const theirs = await mailboxRunsOf(page, origin, seat);
       const holding = theirs.filter((ms) => ms.some((m) => tokens.some((t) => m.text.includes(t))));
       if (holding.length > 0) {
-        fail("woken-once", `${seat.id} holds ${holding.length} run(s) of ${fixture.channel.id} with a post's token: the specialist's line woke it`);
+        fail("woken-once", `${seat.id} holds ${holding.length} run(s) of ${fixture.mailbox.id} with a post's token: the specialist's line woke it`);
       } else {
-        evidence.push(`${seat.id}: none of its ${theirs.length} runs of ${fixture.channel.id} holds either token`);
+        evidence.push(`${seat.id}: none of its ${theirs.length} runs of ${fixture.mailbox.id} holds either token`);
       }
     }
   } finally {

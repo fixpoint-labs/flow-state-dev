@@ -9,7 +9,7 @@
  *     /inbox[/<suspensionId>]
  *     /tasks[?by=state|worker|stream]
  *     /tasks/<boardRef>/<taskId>/<session|diff|checks|brief>
- *     /w/<channelId>/<stream|board|brief|results>
+ *     /w/<mailboxId>/<stream|board|brief|results>
  *     /p/<projectId>/<stream|board|workstreams|brief>
  *     /r/<sessionId>/<resourceRef>   a declared document, read-only
  *     /roster[?team=<teamId>]        every worker, or one team's (pinned, FIX-1723)
@@ -38,7 +38,7 @@ export type Route =
   | { level: "inbox"; suspensionId: string | null }
   | { level: "tasks"; by: TaskGrouping }
   | { level: "task"; boardRef: string; taskId: string; tab: TaskTab }
-  | { level: "workstream"; channelId: string; tab: WorkstreamTab }
+  | { level: "workstream"; mailboxId: string; tab: WorkstreamTab }
   | { level: "project"; projectId: string; tab: ProjectTab }
   | { level: "resource"; sessionId: string; ref: string }
   /** `team: null` is All. */
@@ -58,7 +58,7 @@ export function parseRoute(pathname: string, search = ""): Route {
   if (head === "tasks") {
     return { level: "tasks", by: oneOf(TASK_GROUPINGS, new URLSearchParams(search).get("by") ?? undefined, "state") };
   }
-  if (head === "w" && a !== undefined) return { level: "workstream", channelId: a, tab: oneOf(WORKSTREAM_TABS, b, "stream") };
+  if (head === "w" && a !== undefined) return { level: "workstream", mailboxId: a, tab: oneOf(WORKSTREAM_TABS, b, "stream") };
   if (head === "p" && a !== undefined) return { level: "project", projectId: a, tab: oneOf(PROJECT_TABS, b, "stream") };
   if (head === "r" && a !== undefined && b !== undefined) return { level: "resource", sessionId: a, ref: b };
   if (head === "roster") return { level: "roster", team: new URLSearchParams(search).get("team") || null };
@@ -79,7 +79,7 @@ export function pathFor(route: Route): string {
     case "task":
       return `/tasks/${e(route.boardRef)}/${e(route.taskId)}/${route.tab}`;
     case "workstream":
-      return `/w/${e(route.channelId)}/${route.tab}`;
+      return `/w/${e(route.mailboxId)}/${route.tab}`;
     case "project":
       return `/p/${e(route.projectId)}/${route.tab}`;
     case "resource":

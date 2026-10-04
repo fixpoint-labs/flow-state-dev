@@ -11,10 +11,10 @@
  *
  * ## What the tree contributes and the code does not
  *
- * The channel's id, the board's local name, the desk keys, which seat answers
+ * The mailbox's id, the board's local name, the desk keys, which seat answers
  * for which desk, and which seat runs which kind all come off files at run
  * time. The ledger id is never written anywhere — the framework mints it from
- * where the channel folder sits, which is why leg 0 greps the whole lab for it.
+ * where the mailbox folder sits, which is why leg 0 greps the whole lab for it.
  *
  * **The oracle and the implementation are two different sources**, and that is
  * the whole of leg (c). The host holds a seat -> desk map, which is what routes;
@@ -42,7 +42,7 @@
  *   across named seats, through the door FIX-1385 ships for models. It needs a
  *   real model credential.
  * - **`scripted` — NOT the exit gate.** The four rows are filed through the
- *   channel's own `fileTask` action, spread across the desks the tree declares,
+ *   mailbox's own `fileTask` action, spread across the desks the tree declares,
  *   and every other leg runs unchanged. It proves the *routing and queue* half
  *   — more rows than seats, each reaching the seat its own file answers for,
  *   the extra one waiting rather than being re-routed — and proves **nothing**
@@ -229,7 +229,7 @@ await runGoal(async () => {
     // ---- a. the rows are filed -------------------------------------------
     // On the gate's path the coordinator decides and files through the eight
     // tools its kind composes. On the scripted path the same four pieces are
-    // filed through the channel's own door, spread 2/1/1 across the desks the
+    // filed through the mailbox's own door, spread 2/1/1 across the desks the
     // TREE declares — so the queue below still has more rows than seats, and
     // every later leg grades exactly what it grades on the gate's path.
     if (FILER === "model") {
@@ -256,7 +256,7 @@ await runGoal(async () => {
               { goal: WORK[3], assignee: desks[2] },
             ];
       for (const filing of filings) {
-        const result = await lab.fileThroughChannel({ board: lab.boardName, ...filing });
+        const result = await lab.fileThroughMailbox({ board: lab.boardName, ...filing });
         if (result.error !== undefined) {
           note(`could not file ${JSON.stringify(filing.goal)}: ${result.error}`);
         }
@@ -423,7 +423,7 @@ await runGoal(async () => {
     // worker, so this is admitted at a drain, missed by the router, and refused
     // naming the row. Loud rather than quiet — a row nobody can claim would
     // simply sit there.
-    const orphan = await lab.fileThroughChannel({
+    const orphan = await lab.fileThroughMailbox({
       board: lab.boardName,
       goal: "a piece of work for nobody in particular",
       maxAttempts: 1,
@@ -509,14 +509,14 @@ await runGoal(async () => {
           `filed ${rowsAfterFiling.length} rows for ${WORK.length} pieces of work through the ` +
           `eight task tools its kind composes, naming a desk on each.`
         : `**NOT THE EXIT GATE — GOAL_FILER=scripted.** No model ran and no task tool was ` +
-          `called: the ${rowsAfterFiling.length} rows were filed through the channel's own ` +
+          `called: the ${rowsAfterFiling.length} rows were filed through the mailbox's own ` +
           `\`fileTask\` door, spread across the desks the tree declares. What follows is the ` +
           `ROUTING half of ER-20 and says nothing about a coordinator choosing, or about the ` +
           `capability door FIX-1385 ships for models.`;
 
     evidence =
-      `one tree at ${LAB_TREE}${FILER === "model" ? `, on ${model}` : ""}: the channel ` +
-      `"${lab.channelId}" declares board "${lab.boardName}" and the framework minted ` +
+      `one tree at ${LAB_TREE}${FILER === "model" ? `, on ${model}` : ""}: the mailbox ` +
+      `"${lab.mailboxId}" declares board "${lab.boardName}" and the framework minted ` +
       `"${lab.boardId}", which appears in no file. ${filedBy} ` +
       `${doubled.map(([desk, n]) => `"${desk}" got ${n}`).join(", ")}, so ` +
       `one row could not start until a seat freed. Every row ran on the seat whose OWN FILE ` +

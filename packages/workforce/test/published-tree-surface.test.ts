@@ -49,7 +49,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WorkforceCodeError, discoverWorkforceCode } from "../src/codegen/discover";
-import { readChannelsDirectory } from "../src/loader/read-channels-directory";
+import { readMailboxesDirectory } from "../src/loader/read-mailboxes-directory";
 import { readPackagesDirectory } from "../src/loader/read-packages-directory";
 import {
   readReferencesDirectory,
@@ -70,8 +70,8 @@ interface Readout {
   documents: string[];
   /** Reference refs that loaded, from the `references/` slot. Its own field, not merged into `documents`: the two slots go to different install halves, and a shape accounted for by the wrong one is a shape nobody reads. */
   references: string[];
-  /** Channel ids that loaded. */
-  channels: string[];
+  /** Mailbox ids that loaded. */
+  mailboxes: string[];
   /** Ids of teams whose `TEAM.md` loaded. */
   teams: string[];
   /** Resource-module refs the codegen walk found. */
@@ -211,7 +211,7 @@ const RESERVED = new Set([
   // A third slot added later arrives here on its own.
   ...DOCUMENT_SLOTS,
   "skills",
-  "channels",
+  "mailboxes",
   "flows",
   "blocks",
   "packages",
@@ -232,7 +232,7 @@ const RESERVED = new Set([
  */
 const SLOT_PLACEHOLDER = "<slot>";
 /** Filenames the convention fixes, which stay literal in a shape. */
-const FIXED_LEAVES = new Set(["WORKER.md", "CHANNEL.md", "SKILL.md", "PACKAGE.md"]);
+const FIXED_LEAVES = new Set(["WORKER.md", "MAILBOX.md", "SKILL.md", "PACKAGE.md"]);
 
 /**
  * A published path token, reduced to the shape it is an instance of.
@@ -291,7 +291,7 @@ function toShape(token: string): string | undefined {
       if (parent === "teams") return "<team>";
       if (parent === "workers") return "<worker>";
       if (parent === "skills") return "<skill>";
-      if (parent === "channels") return "<channel>";
+      if (parent === "mailboxes") return "<mailbox>";
       if (parent === "packages") return "<package>";
       return segment;
     })
@@ -436,7 +436,7 @@ async function writeFile(root: string, at: string, contents: string): Promise<vo
   await fs.writeFile(target, contents);
 }
 
-/** A `WORKER.md`, `CHANNEL.md`, `SKILL.md` or document with the minimum each requires. */
+/** A `WORKER.md`, `MAILBOX.md`, `SKILL.md` or document with the minimum each requires. */
 const doc = (description: string, body = "Body.\n"): string =>
   `---\ndescription: ${description}\n---\n\n${body}`;
 
@@ -481,16 +481,16 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       out.teams.includes("alpha") || out.reported.includes("teams/alpha/TEAM.md"),
   },
   {
-    shape: "teams/<team>/channels/<channel>/CHANNEL.md",
+    shape: "teams/<team>/mailboxes/<mailbox>/MAILBOX.md",
     publishedIn: {
       file: "apps/docs/docs/workforce/channels.md",
-      quote: "`teams/engineering/channels/standup/` becomes `engineering.standup`",
+      quote: "`teams/engineering/mailboxes/standup/` becomes `engineering.standup`",
     },
     write: (root) =>
-      writeFile(root, "teams/alpha/channels/standup/CHANNEL.md", doc("A standup.")),
+      writeFile(root, "teams/alpha/mailboxes/standup/MAILBOX.md", doc("A standup.")),
     accountedFor: (out) =>
-      out.channels.includes("alpha.standup") ||
-      out.reported.includes("teams/alpha/channels/standup"),
+      out.mailboxes.includes("alpha.standup") ||
+      out.reported.includes("teams/alpha/mailboxes/standup"),
   },
   {
     shape: "org/references/<name>.md",
@@ -703,15 +703,15 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       out.reported.includes("flows/workers/request-triage.ts"),
   },
   {
-    shape: "flows/channels/<kind>.ts",
+    shape: "flows/mailboxes/<kind>.ts",
     publishedIn: {
       file: "apps/docs/docs/workforce/code-on-disk.md",
-      quote: "standup.ts              ← a channel kind",
+      quote: "standup.ts              ← a mailbox kind",
     },
-    write: (root) => writeFile(root, "flows/channels/standup.ts", "export default {};\n"),
+    write: (root) => writeFile(root, "flows/mailboxes/standup.ts", "export default {};\n"),
     accountedFor: (out) =>
-      out.code.includes("channel:standup") ||
-      out.reported.includes("flows/channels/standup.ts"),
+      out.code.includes("mailbox:standup") ||
+      out.reported.includes("flows/mailboxes/standup.ts"),
   },
   {
     shape: "blocks/<name>.ts",
@@ -914,8 +914,8 @@ async function readEverything(root: string): Promise<Readout> {
   const references = await readReferencesDirectory(root);
   for (const error of references.errors) reported.push(error.path);
 
-  const channels = await readChannelsDirectory(root);
-  for (const error of channels.errors) reported.push(error.path);
+  const mailboxes = await readMailboxesDirectory(root);
+  for (const error of mailboxes.errors) reported.push(error.path);
 
   // The seat the fixture's team shapes hang off. Read directly rather than
   // through `readWorkforce`'s join so a shape stays observable even when the
@@ -969,7 +969,7 @@ async function readEverything(root: string): Promise<Readout> {
     workers: workforce.workers.map((worker) => worker.id),
     documents: resources.documents.map((document) => document.ref),
     references: references.documents.map((reference) => reference.ref),
-    channels: channels.channels.map((channel) => channel.id),
+    mailboxes: mailboxes.mailboxes.map((mailbox) => mailbox.id),
     teams: workforce.teams.map((team) => team.id),
     resourceModules,
     seatBlocks,

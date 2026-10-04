@@ -31,7 +31,7 @@ export const KITCHEN_SINK_MODELS = [
  * evaluator, and a chat model named here is refused when the call resolves.
  * Being an evaluation model it is also untouched by the dev override that
  * forces every generator onto the cheap model. Test mode scripts the call by
- * its block name, `channel-route`, and never reaches this model.
+ * its block name, `mailbox-route`, and never reaches this model.
  */
 export const ROUTE_MODEL = "vercel/typesafe-ai/jev";
 

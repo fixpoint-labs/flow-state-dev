@@ -1,33 +1,33 @@
 /**
- * Channel boards — the ledger a channel holds, and the one place its identity
+ * Mailbox boards — the ledger a mailbox holds, and the one place its identity
  * is minted.
  *
- * A `CHANNEL.md` declares `boards: [work]`: a plain local name, exactly as
+ * A `MAILBOX.md` declares `boards: [work]`: a plain local name, exactly as
  * `members:` is a plain list of names. The ledger's real identity is minted
- * here from the channel's own id — `<channelId>.<name>`, so `eng.feature`'s
+ * here from the mailbox's own id — `<mailboxId>.<name>`, so `eng.feature`'s
  * `work` board is `eng.feature.work` — and no file ever writes it. That is the
  * whole of decision 1, and two things follow from it that the rest of this
  * module exists to keep true:
  *
- * 1. **A caller cannot reach another channel's rows.** The id is minted from
+ * 1. **A caller cannot reach another mailbox's rows.** The id is minted from
  *    the SESSION's own identity plus a local name, never from the payload, so
- *    naming a board another channel declared resolves this channel's id and
+ *    naming a board another mailbox declared resolves this mailbox's id and
  *    misses (BP-031).
  * 2. **A minted id is unique across a roster** (the binder refuses a collision),
  *    which is what makes it safe to key a process-wide declaration registry on.
  *
- * **One declaration object per minted id, always through {@link channelBoard}.**
+ * **One declaration object per minted id, always through {@link mailboxBoard}.**
  * Two separate `defineTaskCollection` calls sharing an id share rows and NOT
  * policy: the handed-off board's assignee freeze is a `WeakSet` on the
  * declaration object, so a second declaration is a routing key that can still
- * be changed after a row was handed off. The channel's own actions and the
+ * be changed after a row was handed off. The mailbox's own actions and the
  * seat's board must therefore pass one value, which the memo below guarantees
  * inside one process. Across processes it does not reach, and
  * `define-task-collection.ts` parks that on the resource contract.
  *
- * A board name carries no dot. A dot is how a channel id is joined to a board
+ * A board name carries no dot. A dot is how a mailbox id is joined to a board
  * name, so a name containing one could mint an id belonging to a different
- * channel — `eng` declaring `feature.work` would address `eng.feature`'s
+ * mailbox — `eng` declaring `feature.work` would address `eng.feature`'s
  * `work`. Refused by name rather than deduplicated later.
  */
 
@@ -49,50 +49,50 @@ import {
 
 /**
  * The frontmatter key. **Pinned** — an author types it, and it joins the
- * closed list of keys a `CHANNEL.md` may declare.
+ * closed list of keys a `MAILBOX.md` may declare.
  */
-export const CHANNEL_BOARDS_KEY = "boards";
+export const MAILBOX_BOARDS_KEY = "boards";
 
 /**
- * The one canonical declaration of one channel board.
+ * The one canonical declaration of one mailbox board.
  *
  * A `DefinedTaskCollection` — pass it to `taskBoard({ collection })` and to a
  * flow's `resources` map — carrying its minted `id` so a caller declares one
  * thing rather than repeating a string:
  *
  * ```ts
- * const work = channelBoard("eng.feature", "work");
+ * const work = mailboxBoard("eng.feature", "work");
  * defineFlow({ kind: "coder", resources: { [work.id]: work }, ... });
  * ```
  */
-export type ChannelBoardCollection = DefinedTaskCollection & {
-  /** The minted ledger id, `<channelId>.<boardName>`. */
+export type MailboxBoardCollection = DefinedTaskCollection & {
+  /** The minted ledger id, `<mailboxId>.<boardName>`. */
   readonly id: string;
 };
 
 /**
- * Mint a board's ledger id from its channel's id and its local name.
+ * Mint a board's ledger id from its mailbox's id and its local name.
  *
  * **Pinned**, and the only spelling: a seat types this id to reach the same
- * rows, so the join is public surface. Dot-joined because a channel id already
+ * rows, so the join is public surface. Dot-joined because a mailbox id already
  * is, and because a collection id may carry no path separator.
  */
-export function channelBoardId(channelId: string, boardName: string): string {
-  return `${channelId}.${boardName}`;
+export function mailboxBoardId(mailboxId: string, boardName: string): string {
+  return `${mailboxId}.${boardName}`;
 }
 
 /** The rule, written once, so every door refuses a bad name in the same words. */
 const BOARD_NAME_RULE =
   "a board name is a plain local name — not empty, no whitespace, no `.`, `/`, `*`, `[` or " +
   "`]`, not `lock` in any case, and not a JavaScript prototype member. The ledger's id is " +
-  "minted `<channelId>.<name>`, so a name carrying a `.` would address another channel's " +
+  "minted `<mailboxId>.<name>`, so a name carrying a `.` would address another mailbox's " +
   "board, and `lock` would mint an id ending in `.lock`, which no git branch may carry — a " +
   "board a coding run works has to name one.";
 
 /**
- * Board names reserved in any case. `lock` mints `<channelId>.lock`, and git
+ * Board names reserved in any case. `lock` mints `<mailboxId>.lock`, and git
  * refuses a ref component ending in `.lock`, so a coding run on that board
- * could never cut its branch. Refused here so every board a channel can hold
+ * could never cut its branch. Refused here so every board a mailbox can hold
  * is one a coding run can work.
  */
 const RESERVED_NAMES = new Set(["lock"]);
@@ -106,7 +106,7 @@ const UNSAFE_NAMES = new Set(["__proto__", "prototype", "constructor"]);
  * Names no subject — the caller supplies what it can name, exactly as the
  * manifest module's refusal wordings do.
  */
-export function channelBoardNameProblem(name: unknown): string | undefined {
+export function mailboxBoardNameProblem(name: unknown): string | undefined {
   if (typeof name !== "string" || name.length === 0) {
     return `is not a name. ${BOARD_NAME_RULE}`;
   }
@@ -126,23 +126,23 @@ export function channelBoardNameProblem(name: unknown): string | undefined {
  * The process-wide declaration registry — one object per minted id.
  *
  * Keyed by the id rather than by object identity, which is what D1 buys: the
- * channel's own actions and a seat's {@link channelBoard} call reach the same
+ * mailbox's own actions and a seat's {@link mailboxBoard} call reach the same
  * object without either passing the other a reference, so the assignee freeze
  * — a `WeakSet` keyed on this object — is read the same way on both sides.
  *
  * **The boundary is the process, and within one roster that is exact**: the id
- * is minted from where the channel sits and the binder refuses a collision, so
+ * is minted from where the mailbox sits and the binder refuses a collision, so
  * two boards of one roster never share an entry. What it does NOT separate is
  * two independent applications in one process whose rosters both declare the
- * same channel id and board name. They get one declaration object, and because
+ * same mailbox id and board name. They get one declaration object, and because
  * the freeze is one-way and keyed on it, one app building a handed-off board
  * makes the other's board decline reassignment with `immutable-assignee`.
  *
  * Nothing here can tell those two apart: the id is everything the call site
- * has, and `channelBoard` is a module-scope declaration made before any
+ * has, and `mailboxBoard` is a module-scope declaration made before any
  * runtime exists. A memo keyed on anything weaker would break the coupling
  * above, which is the case that actually happens, where two applications
- * sharing a channel id is not.
+ * sharing a mailbox id is not.
  *
  * **Scoping the memo is the wrong lever anyway, and the next reader should not
  * spend the same afternoon on it.** What leaks is not this map but the freeze,
@@ -158,11 +158,11 @@ export function channelBoardNameProblem(name: unknown): string | undefined {
  * one — is a change to how the task board records handoff, not to what this
  * map is keyed on.
  */
-const ledgers = new Map<string, ChannelBoardCollection>();
+const ledgers = new Map<string, MailboxBoardCollection>();
 
 /**
  * The fields a board row is published to a **browser** with — an allowlist, on
- * the same terms and for the same reason as `channelBoardRowSchema`, which is
+ * the same terms and for the same reason as `mailboxBoardRowSchema`, which is
  * the model-facing sibling of this list.
  *
  * Naming what goes out rather than what stays in is what makes a later `Task`
@@ -181,15 +181,15 @@ const ledgers = new Map<string, ChannelBoardCollection>();
  * that carry arbitrary worker payloads — so a browser, which is a wider
  * audience than one model's context, does not receive them. That relationship
  * is asserted rather than described: `cross-org-collection-read.test.ts` fails
- * if this list ever stops being a subset of `channelBoardRowSchema`'s, which is
+ * if this list ever stops being a subset of `mailboxBoardRowSchema`'s, which is
  * what would happen if a claim coordinate were added here alone.
  *
- * It cannot simply re-use `channelBoardRowSchema` because that lives in
- * `channel-flow.ts`, which imports this module — the dependency runs that way
+ * It cannot simply re-use `mailboxBoardRowSchema` because that lives in
+ * `mailbox-flow.ts`, which imports this module — the dependency runs that way
  * round, so the shared list would have to move rather than be imported, and
  * moving it would change what the model-facing action publishes.
  */
-export const CHANNEL_BOARD_CLIENT_FIELDS = [
+export const MAILBOX_BOARD_CLIENT_FIELDS = [
   "id",
   "title",
   "goal",
@@ -211,15 +211,15 @@ export const CHANNEL_BOARD_CLIENT_FIELDS = [
 /**
  * The canonical declaration for one already-minted board id.
  *
- * Internal: the binder holds minted ids, and everybody else holds a channel id
- * and a name. Public callers use {@link channelBoard}.
+ * Internal: the binder holds minted ids, and everybody else holds a mailbox id
+ * and a name. Public callers use {@link mailboxBoard}.
  */
-export function channelBoardLedger(id: string): ChannelBoardCollection {
+export function mailboxBoardLedger(id: string): MailboxBoardCollection {
   const existing = ledgers.get(id);
   if (existing !== undefined) return existing;
 
   // `org` scope, derived and never declared: file-declared documents already
-  // install at org scope, and a channel session is opened with an org for that
+  // install at org scope, and a mailbox session is opened with an org for that
   // reason. `defineTaskCollection` asserts the id is a usable collection id, so
   // the second half of the name rule is enforced by the layer that owns it.
   // `client.state.read` is set HERE rather than through `defineTaskCollection`,
@@ -234,49 +234,49 @@ export function channelBoardLedger(id: string): ChannelBoardCollection {
   // fails if that stops being true.
   //
   // `expose` rather than the identity default (BP-015) — see
-  // {@link CHANNEL_BOARD_CLIENT_FIELDS} for what goes out and why.
+  // {@link MAILBOX_BOARD_CLIENT_FIELDS} for what goes out and why.
   const collection = Object.assign(defineTaskCollection({ id, scope: "org" as const }), {
     id,
-    client: { state: { read: true }, expose: CHANNEL_BOARD_CLIENT_FIELDS }
-  }) as ChannelBoardCollection;
+    client: { state: { read: true }, expose: MAILBOX_BOARD_CLIENT_FIELDS }
+  }) as MailboxBoardCollection;
   ledgers.set(id, collection);
   return collection;
 }
 
 /**
- * The seat-side helper: the same ledger a channel holds, from the channel's id
+ * The seat-side helper: the same ledger a mailbox holds, from the mailbox's id
  * and the board's local name.
  *
  * A seat declares one thing rather than a minted string, and it resolves
- * through the same memo the channel's own actions do — so a freeze the seat's
- * board sets is read by the channel's writes.
+ * through the same memo the mailbox's own actions do — so a freeze the seat's
+ * board sets is read by the mailbox's writes.
  *
- * @param channelId  The channel's id, as the tree minted it (`eng.feature`).
- * @param boardName  The local name the `CHANNEL.md` declared.
+ * @param mailboxId  The mailbox's id, as the tree minted it (`eng.feature`).
+ * @param boardName  The local name the `MAILBOX.md` declared.
  * @returns The one declaration for that board. Declare it as a flow resource
  *   under its own `id`, and pass it to `taskBoard({ collection })`.
  * @throws If the board name is not a plain local name.
  */
-export function channelBoard(channelId: string, boardName: string): ChannelBoardCollection {
-  const problem = channelBoardNameProblem(boardName);
+export function mailboxBoard(mailboxId: string, boardName: string): MailboxBoardCollection {
+  const problem = mailboxBoardNameProblem(boardName);
   if (problem !== undefined) {
-    throw new Error(`channelBoard("${channelId}", "${String(boardName)}") — the board name ${problem}`);
+    throw new Error(`mailboxBoard("${mailboxId}", "${String(boardName)}") — the board name ${problem}`);
   }
-  return channelBoardLedger(channelBoardId(channelId, boardName));
+  return mailboxBoardLedger(mailboxBoardId(mailboxId, boardName));
 }
 
 /**
- * Which board names one channel holds, out of a roster's minted ids.
+ * Which board names one mailbox holds, out of a roster's minted ids.
  *
- * A board id is its channel's id and a dot and a name that carries no dot, so
+ * A board id is its mailbox's id and a dot and a name that carries no dot, so
  * the split is exact rather than a guess: `eng.feature.work` belongs to
  * `eng.feature` and never to `eng`.
  */
-export function channelBoardNamesFor(
-  channelId: string,
+export function mailboxBoardNamesFor(
+  mailboxId: string,
   boardIds: readonly string[]
 ): string[] {
-  const prefix = `${channelId}.`;
+  const prefix = `${mailboxId}.`;
   return boardIds
     .filter((id) => id.startsWith(prefix) && !id.slice(prefix.length).includes("."))
     .map((id) => id.slice(prefix.length))
@@ -284,15 +284,15 @@ export function channelBoardNamesFor(
 }
 
 /**
- * Resolve one channel board's live ledger inside a running block, or
+ * Resolve one mailbox board's live ledger inside a running block, or
  * `undefined` when the flow this block runs in does not declare it.
  *
  * The frozen-assignee policy is read HERE, at resolution, off the shared
  * declaration — never captured when a board was constructed. That is what makes
- * the channel's writes and the seat's board agree: a boolean captured per call
+ * the mailbox's writes and the seat's board agree: a boolean captured per call
  * site guards only that call site.
  */
-export async function resolveChannelBoard<TInput = unknown, TOutput = unknown>(
+export async function resolveMailboxBoard<TInput = unknown, TOutput = unknown>(
   ctx: BlockContext,
   boardId: string
 ): Promise<TaskCollectionRef<TInput, TOutput> | undefined> {
@@ -303,20 +303,20 @@ export async function resolveChannelBoard<TInput = unknown, TOutput = unknown>(
     backing: "resource",
     collectionId: boardId,
     collection,
-    immutableAssignee: hasFrozenLedgerAssignee(channelBoardLedger(boardId))
+    immutableAssignee: hasFrozenLedgerAssignee(mailboxBoardLedger(boardId))
   });
 }
 
-function resolveFor(board: ChannelBoardCollection): TaskCollectionResolver {
-  return async (ctx) => resolveChannelBoard(ctx, board.id);
+function resolveFor(board: MailboxBoardCollection): TaskCollectionResolver {
+  return async (ctx) => resolveMailboxBoard(ctx, board.id);
 }
 
 /**
- * The model's door onto a channel board: the eight `taskTools` handlers, over
+ * The model's door onto a mailbox board: the eight `taskTools` handlers, over
  * this board's ledger.
  *
- * Composed by the **seat's** kind (`uses: [channelBoardTaskTools(work)]`), not
- * by the channel — a channel has no generator, and D2 keeps execution on the
+ * Composed by the **seat's** kind (`uses: [mailboxBoardTaskTools(work)]`), not
+ * by the mailbox — a mailbox has no generator, and D2 keeps execution on the
  * seat's side of the fence. The seat's flow must also declare the board as a
  * resource (`resources: { [work.id]: work }`), which is what this resolver
  * reads.
@@ -328,19 +328,19 @@ function resolveFor(board: ChannelBoardCollection): TaskCollectionResolver {
  * alongside `addTask`. Narrowing the set means a different capability, not a
  * shorter `tools:` line.
  *
- * It also cannot be a block colocated in a seat's own folder: a channel board
+ * It also cannot be a block colocated in a seat's own folder: a mailbox board
  * is an org-scoped resource, and a seat-folder block declaring one is refused
  * by name at hire.
  *
- * @param board The declaration {@link channelBoard} handed back.
+ * @param board The declaration {@link mailboxBoard} handed back.
  * @returns The capability to list in a seat kind's `uses`.
  */
-export function channelBoardTaskTools(board: ChannelBoardCollection) {
+export function mailboxBoardTaskTools(board: MailboxBoardCollection) {
   return defineCapability({
     // Per board, not per kind. A seat holding two boards composes this twice,
     // and a shared name collides at build — `defineCapability` refuses two
     // declarations under one name.
-    name: `channelBoardTasks:${board.id}`,
+    name: `mailboxBoardTasks:${board.id}`,
     // Declared here, with the tools, rather than left for the consuming flow
     // to remember: a block holding the eight handlers and not the ledger they
     // reach answers every call `no_delegation_board`, which is a working tool
@@ -358,9 +358,9 @@ export function channelBoardTaskTools(board: ChannelBoardCollection) {
         // generator asserts its tool names are unique, and the eight are fixed
         // strings. Two boards on one seat would collide on every one of them.
         // The id is the qualifier because it is unique across the roster by
-        // construction, where a local name is not: two channels may both
+        // construction, where a local name is not: two mailboxes may both
         // declare `triage`. `taskToolSuffix` is orchestration's one rule for
-        // it, shared with the channel's own board actions.
+        // it, shared with the mailbox's own board actions.
         controlTools: buildTaskToolsList(resolveFor(board), undefined, taskToolSuffix(board.id))
       },
       default: ["tools"]

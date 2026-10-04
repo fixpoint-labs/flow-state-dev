@@ -1,7 +1,7 @@
 /**
- * Goal check: a person who opens kitchen-sink finds one support channel and
+ * Goal check: a person who opens kitchen-sink finds one support mailbox and
  * four specialists named for what they handle. A question gets one
- * specialist's answer in the channel; a case that needs a person is filed onto
+ * specialist's answer in the mailbox; a case that needs a person is filed onto
  * `escalations` and the specialist says so.
  *
  * Real path, scripted model, out of CI. See goal.md for the contract.
@@ -9,13 +9,13 @@
  * Three legs, in one real browser against the app's PRODUCTION build (built
  * here, never assumed), on its scripted model, keyless:
  *
- *   roster  the rail lists one channel and the four specialists, each of the
- *           one seat kind and with its description; no other channel, seat or
+ *   roster  the rail lists one mailbox and the four specialists, each of the
+ *           one seat kind and with its description; no other mailbox, seat or
  *           kind, and no "Hire another" anywhere.
  *   answer  post a question routed to the seat, with a fresh token; after a
- *           reload the channel shows one line under the seat's name answering
+ *           reload the mailbox shows one line under the seat's name answering
  *           it, carrying the answer marker and not the token.
- *   file    post a case that needs a person; after a reload the channel shows
+ *   file    post a case that needs a person; after a reload the mailbox shows
  *           one line under the seat's name saying it filed (`file:line`), and
  *           the team panel's board shows exactly one row carrying the token
  *           (`file:row`).
@@ -56,7 +56,7 @@ interface Specialist {
 
 interface Fixture {
   port: number;
-  channel: { kind: string; id: string; board: string };
+  mailbox: { kind: string; id: string; board: string };
   seatKind: string;
   specialists: Specialist[];
   seat: string;
@@ -69,7 +69,7 @@ const fixture = loadFixture<Fixture>(import.meta.url);
 const SEAT = process.env.GOAL_SEAT ?? fixture.seat;
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 const LIVE = process.env.GOAL_LIVE === "1";
-const CHANNEL = fixture.channel.id;
+const MAILBOX = fixture.mailbox.id;
 
 /**
  * The assertions each control must redden, and only those. `answer`, `roster`
@@ -96,28 +96,28 @@ if (!fixture.specialists.some((s) => s.id === SEAT)) {
 
 type Drawn = Array<{ label: string; text: string }>;
 
-/** Open the channel's panel. */
-async function openChannel(page: Page, origin: string): Promise<void> {
+/** Open the mailbox's panel. */
+async function openMailbox(page: Page, origin: string): Promise<void> {
   await openShellAt(page, origin);
-  await open(page, fixture.channel.kind);
-  await row(page, CHANNEL).click();
-  await panel(page).getByTestId("channel-transcript").waitFor({ timeout: 15_000 });
+  await open(page, fixture.mailbox.kind);
+  await row(page, MAILBOX).click();
+  await panel(page).getByTestId("mailbox-transcript").waitFor({ timeout: 15_000 });
 }
 
-/** Post a line from the channel's panel, and wait until it shows. */
+/** Post a line from the mailbox's panel, and wait until it shows. */
 async function post(page: Page, line: string): Promise<void> {
-  await panel(page).getByLabel("Post to this channel").fill(line);
+  await panel(page).getByLabel("Post to this mailbox").fill(line);
   await panel(page).getByRole("button", { name: "Send" }).click();
-  await readUntil(() => panel(page).getByTestId("channel-line").filter({ hasText: line }).count(), (n) => n > 0, 10_000);
+  await readUntil(() => panel(page).getByTestId("mailbox-line").filter({ hasText: line }).count(), (n) => n > 0, 10_000);
 }
 
 type Line = { author?: string; body: string };
 
-/** The channel's lines as the server keeps them. Not graded: used only to wait. */
+/** The mailbox's lines as the server keeps them. Not graded: used only to wait. */
 async function keptLines(page: Page, origin: string): Promise<Line[]> {
-  const res = await page.request.get(`${origin}/api/flows/sessions/${CHANNEL}/state?include_items=true&item_types=component&limit=1000`);
+  const res = await page.request.get(`${origin}/api/flows/sessions/${MAILBOX}/state?include_items=true&item_types=component&limit=1000`);
   const items = ((await res.json()) as { items?: Array<{ component?: string; data?: Line }> }).items ?? [];
-  return items.filter((item) => item.component === "channel-post").map((item) => item.data!);
+  return items.filter((item) => item.component === "mailbox-post").map((item) => item.data!);
 }
 
 /** Wait until a seat's line follows the person's line carrying `mark`, or the time is up. Not graded. */
@@ -133,7 +133,7 @@ async function waitAnswered(page: Page, origin: string, mark: string, ms: number
 }
 
 /**
- * Reload, reopen the channel, and read it as drawn.
+ * Reload, reopen the mailbox, and read it as drawn.
  *
  * The transcript mounts before its lines load, so this waits until the
  * person's lines carrying `marks` are drawn: every grade counts from them.
@@ -142,14 +142,14 @@ async function waitAnswered(page: Page, origin: string, mark: string, ms: number
  */
 async function drawnAfterReload(page: Page, origin: string, marks: string[]): Promise<Drawn> {
   await page.reload();
-  await openChannel(page, origin);
+  await openMailbox(page, origin);
   return await readUntil(
     () =>
       panel(page)
-        .getByTestId("channel-line")
+        .getByTestId("mailbox-line")
         .evaluateAll((els) =>
           els.map((el) => ({
-            label: el.querySelector('[data-testid="channel-line-label"]')?.textContent ?? "",
+            label: el.querySelector('[data-testid="mailbox-line-label"]')?.textContent ?? "",
             text: el.textContent ?? "",
           })),
         ),
@@ -167,10 +167,10 @@ function answersTo(drawn: Drawn, mark: string): Drawn | undefined {
   return next === -1 ? rest : rest.slice(0, next);
 }
 
-/** The rows the team panel draws on the channel's board: each row's text. */
+/** The rows the team panel draws on the mailbox's board: each row's text. */
 const boardRows = (page: Page) =>
   page
-    .getByTestId(`board-${CHANNEL}.${fixture.channel.board}`)
+    .getByTestId(`board-${MAILBOX}.${fixture.mailbox.board}`)
     .locator("li[data-task-id]")
     .evaluateAll((rows) => rows.map((r) => r.textContent ?? ""));
 
@@ -190,19 +190,19 @@ type Fail = (leg: string, line: string) => void;
 /** roster: the rail as drawn. */
 async function gradeRoster(page: Page, origin: string, fail: Fail, evidence: string[]): Promise<void> {
   await openShellAt(page, origin);
-  const channelKinds = await sectionKinds(page, "Channels");
-  if (JSON.stringify(channelKinds) !== JSON.stringify([fixture.channel.kind])) {
-    fail("roster", `the rail's Channels section lists the kinds ${JSON.stringify(channelKinds)} (want ["${fixture.channel.kind}"])`);
+  const mailboxKinds = await sectionKinds(page, "Mailboxes");
+  if (JSON.stringify(mailboxKinds) !== JSON.stringify([fixture.mailbox.kind])) {
+    fail("roster", `the rail's Mailboxes section lists the kinds ${JSON.stringify(mailboxKinds)} (want ["${fixture.mailbox.kind}"])`);
   }
-  const channels: string[] = [];
-  for (const kind of channelKinds) {
+  const mailboxes: string[] = [];
+  for (const kind of mailboxKinds) {
     await open(page, kind);
     const leaf = rail(page).locator(`ul[data-leaf="${kind}"]`);
     await readUntil(() => leaf.locator("[data-session-id]").count(), (n) => n > 0, 10_000);
-    channels.push(...(await leaf.locator("[data-session-id]").evaluateAll((bs) => bs.map((b) => b.getAttribute("data-session-id") ?? ""))));
+    mailboxes.push(...(await leaf.locator("[data-session-id]").evaluateAll((bs) => bs.map((b) => b.getAttribute("data-session-id") ?? ""))));
   }
-  if (JSON.stringify(channels) !== JSON.stringify([CHANNEL])) {
-    fail("roster", `the rail lists the channels ${JSON.stringify(channels)} (want ["${CHANNEL}"])`);
+  if (JSON.stringify(mailboxes) !== JSON.stringify([MAILBOX])) {
+    fail("roster", `the rail lists the mailboxes ${JSON.stringify(mailboxes)} (want ["${MAILBOX}"])`);
   }
 
   const seatKinds = await sectionKinds(page, "Seats");
@@ -239,8 +239,8 @@ async function gradeRoster(page: Page, origin: string, fail: Fail, evidence: str
   }
   const hireButtons = await page.getByRole("button", { name: "Hire another" }).count();
   if (hireButtons > 0) fail("roster", `the page draws ${hireButtons} "Hire another" button(s) (want none)`);
-  if (described.length === fixture.specialists.length && hireButtons === 0 && channels.length === 1) {
-    evidence.push(`roster: the rail lists ${JSON.stringify(channels)} under "${channelKinds.join(",")}" and four "${fixture.seatKind}" seats, ${described.join("; ")}; no "Hire another"`);
+  if (described.length === fixture.specialists.length && hireButtons === 0 && mailboxes.length === 1) {
+    evidence.push(`roster: the rail lists ${JSON.stringify(mailboxes)} under "${mailboxKinds.join(",")}" and four "${fixture.seatKind}" seats, ${described.join("; ")}; no "Hire another"`);
   }
 }
 
@@ -275,22 +275,22 @@ await runGoal(async () => {
 
     // ---- roster ------------------------------------------------------------
     await gradeRoster(page, origin, fail, evidence);
-    // Every other leg posts to the channel the roster names. Without that
+    // Every other leg posts to the mailbox the roster names. Without that
     // roster there is nothing to post to, so the verdict is the roster's.
     if (failures.length > 0) return { failures, evidence: evidence.join("; ") };
 
     // ---- answer and file: two posts, one reload -----------------------------
     const answerToken = `answer-token-a${run}`;
     const fileToken = `case-token-f${run}`;
-    await openChannel(page, origin);
+    await openMailbox(page, origin);
     await post(page, `[route:${SEAT}] ${fixture.answer.marker} ${answerToken} where is my refund?`);
     await waitAnswered(page, origin, answerToken, 15_000);
     await post(page, `[route:${SEAT}] ${fixture.file.marker} ${fileToken} the charger caught fire and the desk smells of smoke`);
     await waitAnswered(page, origin, fileToken, 15_000);
-    // The row is written by the channel's own request, a moment after the
+    // The row is written by the mailbox's own request, a moment after the
     // dispatch. Let it land before the reload; nothing here is graded.
     await readUntil(
-      async () => (await page.request.get(`${origin}/api/flows/sessions/${CHANNEL}/resources/${CHANNEL}.${fixture.channel.board}`)).text(),
+      async () => (await page.request.get(`${origin}/api/flows/sessions/${MAILBOX}/resources/${MAILBOX}.${fixture.mailbox.board}`)).text(),
       (body) => body.includes(fileToken),
       10_000,
     );
@@ -304,7 +304,7 @@ await runGoal(async () => {
     } else if (answered.line!.text.includes(answerToken)) {
       fail("answer", `${SEAT}'s line hands the post back: ${JSON.stringify(answered.line!.text)}`);
     } else {
-      evidence.push(`answer: after a reload, ${CHANNEL} shows one line answering ${answerToken}, by ${SEAT}: ${JSON.stringify(answered.line!.text)}`);
+      evidence.push(`answer: after a reload, ${MAILBOX} shows one line answering ${answerToken}, by ${SEAT}: ${JSON.stringify(answered.line!.text)}`);
     }
 
     const filed = oneLineBySeat(drawn, fileToken);
@@ -317,9 +317,9 @@ await runGoal(async () => {
     const rows = await readUntil(() => boardRows(page), (rs) => rs.some((r) => r.includes(fileToken)), 10_000);
     const mine = rows.filter((r) => r.includes(fileToken));
     if (mine.length !== 1) {
-      fail("file:row", `after the reload, the team panel's ${fixture.channel.board} board holds ${mine.length} rows carrying ${fileToken} (want 1); it shows ${rows.length} rows`);
+      fail("file:row", `after the reload, the team panel's ${fixture.mailbox.board} board holds ${mine.length} rows carrying ${fileToken} (want 1); it shows ${rows.length} rows`);
     } else {
-      evidence.push(`file: after a reload, the team panel's ${fixture.channel.board} board shows ${JSON.stringify(mine[0])}`);
+      evidence.push(`file: after a reload, the team panel's ${fixture.mailbox.board} board shows ${JSON.stringify(mine[0])}`);
     }
 
     // ---- live: real models file what needs a person, and only that ---------
@@ -331,11 +331,11 @@ await runGoal(async () => {
         ...fixture.live.needsAPerson.map((text) => ({ text, files: true })),
         ...fixture.live.answerable.map((text) => ({ text, files: false })),
       ];
-      await openChannel(page, live.origin);
+      await openMailbox(page, live.origin);
       let before = (await boardRows(page)).length;
       for (const [i, { text, files }] of posts.entries()) {
         const mark = `(ref live-token-${i}${run})`;
-        await openChannel(page, live.origin);
+        await openMailbox(page, live.origin);
         await post(page, `${text} ${mark}`);
         await waitAnswered(page, live.origin, mark, 120_000);
         // Let a filing's row land before the reload; not graded.
@@ -346,7 +346,7 @@ await runGoal(async () => {
         const who = answers.map((l) => l.label).join(", ") || "nobody";
         if (answers.length !== 1) fail("live", `post ${i + 1} has ${answers.length} answer line(s) (want 1): ${JSON.stringify(answers)}`);
         if (after - before !== (files ? 1 : 0)) {
-          fail("live", `post ${i + 1} (${files ? "needs a person" : "answerable"}) added ${after - before} row(s) to ${fixture.channel.board} (want ${files ? 1 : 0}); answered by ${who}: ${JSON.stringify(answers[0]?.text ?? "")}`);
+          fail("live", `post ${i + 1} (${files ? "needs a person" : "answerable"}) added ${after - before} row(s) to ${fixture.mailbox.board} (want ${files ? 1 : 0}); answered by ${who}: ${JSON.stringify(answers[0]?.text ?? "")}`);
         } else {
           evidence.push(`live ${i + 1}: ${files ? "filed" : "not filed"}, answered by ${who}: ${JSON.stringify(answers[0]?.text ?? "")}`);
         }
@@ -360,12 +360,12 @@ await runGoal(async () => {
   }
 
   // The boot still warns that escalations is unattended, as the only such board.
-  const unattended = [...(server?.log() ?? "").matchAll(/channel "([^"]+)" holds board "([^"]+)"/g)].map((m) => `${m[1]}.${m[2]}`);
+  const unattended = [...(server?.log() ?? "").matchAll(/mailbox "([^"]+)" holds board "([^"]+)"/g)].map((m) => `${m[1]}.${m[2]}`);
   const unique = [...new Set(unattended)];
-  if (JSON.stringify(unique) !== JSON.stringify([`${CHANNEL}.${fixture.channel.board}`])) {
-    fail("warning", `the boot warns these boards are unattended: ${JSON.stringify(unique)} (want only ${CHANNEL}.${fixture.channel.board})`);
+  if (JSON.stringify(unique) !== JSON.stringify([`${MAILBOX}.${fixture.mailbox.board}`])) {
+    fail("warning", `the boot warns these boards are unattended: ${JSON.stringify(unique)} (want only ${MAILBOX}.${fixture.mailbox.board})`);
   } else {
-    evidence.push(`the boot warns that ${CHANNEL}.${fixture.channel.board} is unattended, and no other board`);
+    evidence.push(`the boot warns that ${MAILBOX}.${fixture.mailbox.board} is unattended, and no other board`);
   }
 
   // A control must redden each assertion it names, and only those.

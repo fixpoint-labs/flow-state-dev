@@ -1,87 +1,87 @@
 /**
- * The channel floor: the built-in kind, the two-phase binder that turns channel
+ * The mailbox floor: the built-in kind, the two-phase binder that turns mailbox
  * records into one registered instance per kind and one named session per
- * channel, and the boards a channel holds.
+ * mailbox, and the boards a mailbox holds.
  *
- * A board is a task ledger a `CHANNEL.md` declares by local name and the
- * framework mints an id for. The channel HOLDS it — files rows onto it and
+ * A board is a task ledger a `MAILBOX.md` declares by local name and the
+ * framework mints an id for. The mailbox HOLDS it — files rows onto it and
  * reads it — and never runs it; draining stays on the seat's side, which is
- * what `channelBoard` and `channelBoardTaskTools` are for.
+ * what `mailboxBoard` and `mailboxBoardTaskTools` are for.
  *
- * No `node:fs` here — reading a `CHANNEL.md` off disk is the `./loader`
+ * No `node:fs` here — reading a `MAILBOX.md` off disk is the `./loader`
  * subpath's job. Not browser-safe, though: the boards reach the orchestration
  * task board and `node:async_hooks`. What a page needs of a post lives in
- * `./channel-post-line.ts`, re-exported from `../browser.ts`.
+ * `./mailbox-post-line.ts`, re-exported from `../browser.ts`.
  */
 
-export { emitChannelPostLine, readChannelPostLines } from "./channel-items";
+export { emitMailboxPostLine, readMailboxPostLines } from "./mailbox-items";
 
 export {
-  CHANNEL_KIND,
-  CHANNEL_SEAT_POST_ACTION,
-  CHANNEL_POST_COMPONENT,
-  ChannelPostRefusedError,
-  INVENTORY_REGISTER_CHANNEL,
+  MAILBOX_KIND,
+  MAILBOX_SEAT_POST_ACTION,
+  MAILBOX_POST_COMPONENT,
+  MailboxPostRefusedError,
+  INVENTORY_REGISTER_MAILBOX,
   INVENTORY_REGISTER_SEATS,
-  INVENTORY_RETIRE_CHANNELS,
-  inventoryChannelRegisteredSchema,
+  INVENTORY_RETIRE_MAILBOXES,
+  inventoryMailboxRegisteredSchema,
   inventorySeatsRegisteredSchema,
   inventoryWriterActions,
-  channelFileTaskInputSchema,
-  channelFileTaskOutputSchema,
-  channelFlow,
-  channelNotifyInputSchema,
-  channelPostInputSchema,
-  channelBoardRowSchema,
-  channelReadBoardInputSchema,
-  channelReadBoardOutputSchema,
-  channelReadOutputSchema,
-  channelSessionStateSchema,
-  channelTranscriptLineSchema,
-  defineChannelFlow,
-  type ChannelFileTaskInput,
-  type ChannelFileTaskOutput,
-  type ChannelFlowFactory,
-  type ChannelNotifyInput,
-  type ChannelPostInput,
-  type ChannelReadBoardOutput,
-  type ChannelReadOutput,
-  type ChannelRefusalReason,
-  type ChannelSessionState,
-  type ChannelTranscriptLine,
-  type DefineChannelFlowOptions
-} from "./channel-flow";
+  mailboxFileTaskInputSchema,
+  mailboxFileTaskOutputSchema,
+  mailboxFlow,
+  mailboxNotifyInputSchema,
+  mailboxPostInputSchema,
+  mailboxBoardRowSchema,
+  mailboxReadBoardInputSchema,
+  mailboxReadBoardOutputSchema,
+  mailboxReadOutputSchema,
+  mailboxesessionStateSchema,
+  mailboxTranscriptLineSchema,
+  defineMailboxFlow,
+  type MailboxFileTaskInput,
+  type MailboxFileTaskOutput,
+  type MailboxFlowFactory,
+  type MailboxNotifyInput,
+  type MailboxPostInput,
+  type MailboxReadBoardOutput,
+  type MailboxReadOutput,
+  type MailboxRefusalReason,
+  type MailboxesessionState,
+  type MailboxTranscriptLine,
+  type DefineMailboxFlowOptions
+} from "./mailbox-flow";
 
 export { wakeMemberSeats, type WakeMemberSeatsOptions } from "./wake-member-seats";
 
 export { routeByPurpose, type RouteByPurposeOptions } from "./route-by-purpose";
 
 export {
-  CHANNEL_ROUTE_COMPONENT,
-  CHANNEL_ROUTE_EVALUATOR,
-  channelRouteRecordSchema,
-  type ChannelRoute,
-  type ChannelRouteRecord,
-  type ChannelRouting
-} from "./channel-route";
+  MAILBOX_ROUTE_COMPONENT,
+  MAILBOX_ROUTE_EVALUATOR,
+  mailboxRouteRecordSchema,
+  type MailboxRoute,
+  type MailboxRouteRecord,
+  type MailboxRouting
+} from "./mailbox-route";
 
 export {
-  channelBoardIds,
-  channelInstances,
-  openChannels,
-  type ChannelInstancesOptions,
-  type ChannelKind,
-  type OpenChannelsOptions
-} from "./channel-binder";
+  mailboxBoardIds,
+  mailboxInstances,
+  openMailboxes,
+  type MailboxInstancesOptions,
+  type MailboxKind,
+  type OpenMailboxesOptions
+} from "./mailbox-binder";
 
 export {
-  channelBoard,
-  channelBoardTaskTools,
-  type ChannelBoardCollection
-} from "./channel-board";
+  mailboxBoard,
+  mailboxBoardTaskTools,
+  type MailboxBoardCollection
+} from "./mailbox-board";
 
 export {
   REFUSED_SYSTEM_KEY,
   REFUSED_SYSTEM_KEY_MESSAGE,
-  type ChannelManifest
+  type MailboxManifest
 } from "../manifest";

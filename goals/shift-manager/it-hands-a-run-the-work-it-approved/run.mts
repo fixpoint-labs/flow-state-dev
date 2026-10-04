@@ -3,7 +3,7 @@
  * person approved.
  *
  * The DevTeam tree, opened through `openLab` the way the `devteam` profile
- * opens it: the EM seat's ask raised at boot, the feature channel's door on
+ * opens it: the EM seat's ask raised at boot, the feature mailbox's door on
  * and its members addressed. A person approves the pending ask the way Shift
  * Manager's Inbox does (the engine's resume route, with the lab's verified
  * bearer), or posts `slug: what to build` on the workstream. What is graded is
@@ -18,10 +18,10 @@
  *                     opens on the approved goal, carries the charter and the
  *                     coder seat's own tokens, names its checkout and branch,
  *                     and carries none of the coordinator's tokens nor the
- *                     line posted on the channel before the approval
+ *                     line posted on the mailbox before the approval
  *   a2  BR-1        — a second held-out feature, filed by a post: its run's
  *                     prompt carries that goal and not the first one
- *   a3  BR-4        — the coder removed from the channel's `members` on a tree
+ *   a3  BR-4        — the coder removed from the mailbox's `members` on a tree
  *                     copy: the prompt carries the goal and no charter
  *   a4  BR-6        — with acceptance required, the run's terms say the
  *                     acceptance check decides; without, they do not
@@ -150,7 +150,7 @@ async function open(
     workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
     coderSeatId: fixture.assignedSeat,
     logger: silentLogger,
-    channels: {
+    mailboxes: {
       addresses: { [fixture.coordinatorSeat]: fixture.coordinatorSeat },
       log: createNotifyLog(),
     },
@@ -252,7 +252,7 @@ await runGoal(async () => {
       const { lab } = await open("handed-a1", stub.slot, fixture.approved);
       try {
         const chatter = await lab.post!(fixture.chatter);
-        if (chatter.error !== undefined) note("a1", `the channel refused a line — ${chatter.error}`);
+        if (chatter.error !== undefined) note("a1", `the mailbox refused a line — ${chatter.error}`);
         const refused = await approve(lab);
         if (refused !== undefined) note("a1", refused);
         await runsReach(seen, 1);
@@ -262,20 +262,20 @@ await runGoal(async () => {
         } else {
           const prompt = run.prompt;
           gradeTask("a1", prompt, fixture.approved.goal, "approved", note);
-          if (!prompt.includes(CHARTER_TOKEN)) note("a1", "the prompt does not carry the shared channel's charter");
+          if (!prompt.includes(CHARTER_TOKEN)) note("a1", "the prompt does not carry the shared mailbox's charter");
           for (const token of Object.keys(fixture.seatTokens)) {
             if (!prompt.includes(token)) note("a1", `the prompt lost the coder seat's own ${token}`);
           }
           for (const token of Object.keys(fixture.coordinatorTokens)) {
             if (prompt.includes(token)) note("a1", `the prompt carries the coordinator seat's ${token}`);
           }
-          if (prompt.includes(fixture.chatter)) note("a1", "the prompt carries a line posted on the channel");
+          if (prompt.includes(fixture.chatter)) note("a1", "the prompt carries a line posted on the mailbox");
           const terms = termsOf(prompt, run.cwd);
           if (terms === "") note("a1", `the prompt does not name the run's checkout ${run.cwd}`);
           else if (!terms.includes(run.branch)) note("a1", `the run's terms do not name its branch ${run.branch}`);
           else if (/acceptance/i.test(terms)) note("a1", "without acceptance required, the terms still name an acceptance check");
           evidence.push(
-            `Approve: the prompt opened on the approved goal, carried the charter and the coder's ${Object.keys(fixture.seatTokens).length} tokens, named checkout and branch, and carried no coordinator token or channel line`,
+            `Approve: the prompt opened on the approved goal, carried the charter and the coder's ${Object.keys(fixture.seatTokens).length} tokens, named checkout and branch, and carried no coordinator token or mailbox line`,
           );
         }
 
@@ -295,20 +295,20 @@ await runGoal(async () => {
       }
     }
 
-    // a3: the coder is not a member of the channel holding the task.
+    // a3: the coder is not a member of the mailbox holding the task.
     {
       const root = mkdtempSync(join(tmpdir(), "devteam-tree-no-coder-member-"));
       cpSync(LAB_TREE, root, { recursive: true });
       const charterFile = join(root, fixture.charterToken[CHARTER_TOKEN]!);
       const before = readFileSync(charterFile, "utf8");
       const after = before.replace(new RegExp(`\\s*${fixture.assignedSeat.replace(".", "\\.")},?`), "");
-      if (after === before) note("a3", "could not remove the coder from the channel's members");
+      if (after === before) note("a3", "could not remove the coder from the mailbox's members");
       writeFileSync(charterFile, after);
       const seen: SeenRun[] = [];
       const stub = stubFor(seen);
       const { lab } = await open("handed-a3", stub.slot, fixture.approved, { root });
       try {
-        const members = (lab.roster.channels.find((c) => c.id === lab.channelId)?.declared.members as string[] | undefined) ?? [];
+        const members = (lab.roster.mailboxes.find((c) => c.id === lab.mailboxId)?.declared.members as string[] | undefined) ?? [];
         if (members.includes(fixture.assignedSeat)) note("a3", "the tree copy still lists the coder as a member");
         const refused = await approve(lab);
         if (refused !== undefined) note("a3", refused);

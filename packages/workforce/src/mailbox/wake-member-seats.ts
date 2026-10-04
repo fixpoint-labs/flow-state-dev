@@ -1,13 +1,13 @@
 /**
- * `wakeMemberSeats`: the notify block that wakes a channel's agent members.
+ * `wakeMemberSeats`: the notify block that wakes a mailbox's agent members.
  *
- * A channel runs its notify block once per declared member per post, and the
+ * A mailbox runs its notify block once per declared member per post, and the
  * block decides what that member gets. This one decides it from the seats the
  * host hired, and from nothing else:
  *
  * - **A member wakes** when the post is not a seat's and the member's hired
- *   seat declares the internal `onChannelPost` entry. The seat runs that entry
- *   in one conversation per channel, keyed `channel:<channelId>`, so the next
+ *   seat declares the internal `onMailboxPost` entry. The seat runs that entry
+ *   in one conversation per mailbox, keyed `mailbox:<mailboxId>`, so the next
  *   post it hears lands in the same conversation.
  * - **Nothing runs** for a member that would have woken, when the post is a
  *   seat's (`seatAuthored`). That bit is set by the seat post action and the
@@ -16,13 +16,13 @@
  *   seats that wake each other answer each other forever, and there is no
  *   option to turn the seat rule off.
  * - **The fallback runs** for every other member: one whose seat declares no
- *   `onChannelPost`, or who has no seat among those passed. Silent unless the
+ *   `onMailboxPost`, or who has no seat among those passed. Silent unless the
  *   host passes one.
  *
  * Which seat can hear a post is read off the seat itself, so there is no list
  * of kinds to keep in step. A kind says it can hear a post where it says how.
  *
- * The addresses are the seats passed in, never a channel's stored members: a
+ * The addresses are the seats passed in, never a mailbox's stored members: a
  * dispatch target read out of stored data is refused by the substrate, and a
  * stored list is caller-reachable input on a delivery path (BP-031). A member
  * is matched on its seat's logical id (the `seatId` setting the hire stamps),
@@ -37,10 +37,10 @@ import { dispatcher, handler, router, type RouterConfig } from "@flow-state-dev/
 import type { BlockContext, BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { SEAT_ID_KEY } from "../manifest";
-import { channelNotifyInputSchema, type ChannelNotifyInput } from "./channel-flow";
+import { mailboxNotifyInputSchema, type MailboxNotifyInput } from "./mailbox-flow";
 
-/** The internal entry a seat's kind declares to hear a channel's posts. */
-const CHANNEL_POST_ENTRY = "onChannelPost";
+/** The internal entry a seat's kind declares to hear a mailbox's posts. */
+const MAILBOX_POST_ENTRY = "onMailboxPost";
 
 /** Options for {@link wakeMemberSeats}. */
 export interface WakeMemberSeatsOptions {
@@ -55,24 +55,24 @@ export interface WakeMemberSeatsOptions {
 /** What a member gets when nothing is delivered to it. */
 const silent = handler({
   name: "wake-member-seats-silent",
-  inputSchema: channelNotifyInputSchema,
+  inputSchema: mailboxNotifyInputSchema,
   outputSchema: z.object({}),
   execute: () => ({})
 });
 
-/** Whether a hired seat's kind declares the channel-post entry. */
+/** Whether a hired seat's kind declares the mailbox-post entry. */
 function hearsPosts(seat: FlowInstance): boolean {
-  return Object.prototype.hasOwnProperty.call(seat.internal?.actions ?? {}, CHANNEL_POST_ENTRY);
+  return Object.prototype.hasOwnProperty.call(seat.internal?.actions ?? {}, MAILBOX_POST_ENTRY);
 }
 
-/** The logical id a channel's `members:` names this seat by. */
+/** The logical id a mailbox's `members:` names this seat by. */
 function seatIdOf(seat: FlowInstance): string {
   const seatId = (seat.config as Record<string, unknown> | undefined)?.[SEAT_ID_KEY];
   return typeof seatId === "string" && seatId.length > 0 ? seatId : seat.id;
 }
 
 /**
- * The seats that can hear a post, grouped by the logical id a channel's
+ * The seats that can hear a post, grouped by the logical id a mailbox's
  * `members:` names them by. The wake's test of who can be woken, shared with
  * `routeByPurpose` so a route never offers a member the wake would not run.
  * Not re-exported from the package root.
@@ -105,18 +105,18 @@ export function reachableSeat(group: readonly FlowInstance[], ctx: BlockContext)
 
 /**
  * The notify block that wakes each member whose hired seat declares the
- * internal `onChannelPost` entry, once per post, and never on a post the
- * channel marked `seatAuthored` (a seat's own dispatch, not a claimed `author`).
+ * internal `onMailboxPost` entry, once per post, and never on a post the
+ * mailbox marked `seatAuthored` (a seat's own dispatch, not a claimed `author`).
  *
  * @param seats The seats `hireWorkforce` returned. Hire before you build
- *   channels: a seat not passed here is never woken.
+ *   mailboxes: a seat not passed here is never woken.
  * @param options `fallback`, for the members the wake does not run.
- * @returns The block `defineChannelFlow({ notify })` runs once per member per post.
+ * @returns The block `defineMailboxFlow({ notify })` runs once per member per post.
  */
 export function wakeMemberSeats(
   seats: readonly FlowInstance[],
   options: WakeMemberSeatsOptions = {}
-): BlockDefinition<typeof channelNotifyInputSchema, any> {
+): BlockDefinition<typeof mailboxNotifyInputSchema, any> {
   const fallback = options.fallback ?? silent;
 
   // One dispatcher per seat that can hear a post, grouped by logical id.
@@ -128,10 +128,10 @@ export function wakeMemberSeats(
       dispatcher({
         name: `wake-${seat.id}`,
         flowKind: seat.id,
-        action: CHANNEL_POST_ENTRY,
-        inputSchema: channelNotifyInputSchema,
-        // One conversation per seat per channel, adopted on every post after the first.
-        session: { key: (post: ChannelNotifyInput) => `channel:${post.channelId}` }
+        action: MAILBOX_POST_ENTRY,
+        inputSchema: mailboxNotifyInputSchema,
+        // One conversation per seat per mailbox, adopted on every post after the first.
+        session: { key: (post: MailboxNotifyInput) => `mailbox:${post.mailboxId}` }
       })
     );
   }
@@ -150,9 +150,9 @@ export function wakeMemberSeats(
 
   return router({
     name: "wake-member-seats",
-    inputSchema: channelNotifyInputSchema,
+    inputSchema: mailboxNotifyInputSchema,
     routes,
-    execute: (post: ChannelNotifyInput, ctx: BlockContext) => {
+    execute: (post: MailboxNotifyInput, ctx: BlockContext) => {
       // A member this caller cannot wake gets the fallback, including on a
       // seat's post. The seat mark then withholds the wake, and a claimed
       // `author` never does.
@@ -162,8 +162,8 @@ export function wakeMemberSeats(
       if (post.seatAuthored === true) return silent;
       return wake;
     }
-  } as unknown as RouterConfig<typeof channelNotifyInputSchema, any, ChannelNotifyInput>) as BlockDefinition<
-    typeof channelNotifyInputSchema,
+  } as unknown as RouterConfig<typeof mailboxNotifyInputSchema, any, MailboxNotifyInput>) as BlockDefinition<
+    typeof mailboxNotifyInputSchema,
     any
   >;
 }

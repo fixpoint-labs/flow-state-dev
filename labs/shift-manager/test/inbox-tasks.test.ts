@@ -58,7 +58,7 @@ describe("FROM THE SESSION and the replies (BR-18, I17, I18)", () => {
 
 const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRow => ({
   boardRef: "eng.feature.work",
-  channelId: extra.channelId ?? "eng.feature",
+  mailboxId: extra.mailboxId ?? "eng.feature",
   id,
   title: id,
   goal: null,
@@ -77,13 +77,13 @@ const row = (id: string, status: string, extra: Partial<BoardRow> = {}): BoardRo
 });
 
 function snapshot(rows: BoardRow[], asks: Ask[] = [], seats: Seat[] = []): LoadedSnapshot {
-  const byChannel = new Map<string, BoardRow[]>();
-  for (const r of rows) byChannel.set(r.channelId, [...(byChannel.get(r.channelId) ?? []), r]);
+  const byMailbox = new Map<string, BoardRow[]>();
+  for (const r of rows) byMailbox.set(r.mailboxId, [...(byMailbox.get(r.mailboxId) ?? []), r]);
   return {
     orgId: "org",
     readAt: 0,
     inventory: { ok: true, value: { seats, workstreams: [], declared: {} } },
-    boards: Object.fromEntries([...byChannel].map(([id, rs]) => [id, { ok: true, value: { refs: [rs[0]!.boardRef], rows: rs } }])),
+    boards: Object.fromEntries([...byMailbox].map(([id, rs]) => [id, { ok: true, value: { refs: [rs[0]!.boardRef], rows: rs } }])),
     asks: { ok: true, value: asks },
   } as unknown as LoadedSnapshot;
 }
@@ -113,9 +113,9 @@ describe("Tasks (BR-14, K1, K4, K8)", () => {
     const s = snapshot(
       [
         row("A", "in_progress", { assignee: "eng.coder" }),
-        row("B", "parked", { channelId: "ops.desk" }),
+        row("B", "parked", { mailboxId: "ops.desk" }),
         row("C", "pending"),
-        row("D", "completed", { channelId: "ops.other" }),
+        row("D", "completed", { mailboxId: "ops.other" }),
       ],
       asks,
       seats,

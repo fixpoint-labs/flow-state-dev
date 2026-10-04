@@ -6,10 +6,10 @@
 
 **Input:** two Labs, each served by Shift Manager's start script.
 
-- The fixture desk (`lab/`): one team, `desk`, with a seat that asks a person (the turn goal's `asker` kind) and a seat named `chief-of-staff` on the built-in `agent` kind with a real model, in one channel with one board. The check raises two approvals through the asker's own action route before the page opens, so the Lab reopens them when they are answered.
-- The same desk with no chief of staff (`lab-no-cos/`): the `asker` seat alone in its channel, for **no CoS**. DevTeam declares a chief of staff since FIX-1719, so it can no longer stand in for a Lab without one.
+- The fixture desk (`lab/`): one team, `desk`, with a seat that asks a person (the turn goal's `asker` kind) and a seat named `chief-of-staff` on the built-in `agent` kind with a real model, in one mailbox with one board. The check raises two approvals through the asker's own action route before the page opens, so the Lab reopens them when they are answered.
+- The same desk with no chief of staff (`lab-no-cos/`): the `asker` seat alone in its mailbox, for **no CoS**. DevTeam declares a chief of staff since FIX-1719, so it can no longer stand in for a Lab without one.
 
-The seat, channel and board names are read from the tree at run time. Tokens are fresh per run.
+The seat, mailbox and board names are read from the tree at run time. Tokens are fresh per run.
 
 **Signal:** each failure is tagged `[<lab>] <leg>`.
 

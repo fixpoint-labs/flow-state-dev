@@ -24,8 +24,8 @@ workforce/
   flows/
     workers/
       request-triage.ts       ← a worker kind
-    channels/
-      standup.ts              ← a channel kind
+    mailboxes/
+      standup.ts              ← a mailbox kind
   blocks/
     triage.ts                 ← a block any worker may name
   teams/
@@ -133,7 +133,7 @@ The generator reads the tree. It never opens the files it finds, so what it can 
 
 - A basename that breaks [the tree's name rule](./workers-on-disk.md#names-in-the-tree), including one Windows reserves for a device. The basename is the name the file registers under — a kind, a block, or a document [ref](./documents-on-disk.md#a-documents-ref).
 - A directory inside one of the code folders. Refused by name rather than skipped, so a folder you meant as a kind cannot be passed over in silence.
-- One basename in both `flows/workers/` and `flows/channels/`.
+- One basename in both `flows/workers/` and `flows/mailboxes/`.
 - A `.md` and a `.ts` of one name in one `resources/` folder, which would claim one [ref](./documents-on-disk.md#a-documents-ref) twice.
 - A `blocks/` folder at a level no worker reads — beside `org/`, or beside an org-level worker. The refusal names the three places one may sit.
 - A `tools/` folder, anywhere in the tree. There is one folder name for code that can be called, and it is `blocks/`.

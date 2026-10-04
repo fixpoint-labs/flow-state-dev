@@ -1,6 +1,6 @@
 /**
- * Row 5 of the checklist: the organization's registered seats, channels and
- * memberships, read with nothing expanded from a channel's session in the
+ * Row 5 of the checklist: the organization's registered seats, mailboxes and
+ * memberships, read with nothing expanded from a mailbox's session in the
  * shipped DevTool, with the debug endpoints off. See goal.md for the contract.
  *
  * The hire is `multi-seat-collab`'s, served by its own config, which opens the
@@ -17,7 +17,7 @@
  *  3. The positive record: the store holds exactly the rows the TREE implies
  *     for the lab's organization, and a second boot over the same database
  *     changes none of them. Nothing on screen is judged until this holds.
- *  4. The screen: the channel's session, then the Inventory tab, rows read by
+ *  4. The screen: the mailbox's session, then the Inventory tab, rows read by
  *     id inside the tab with nothing expanded, graded against the store.
  *  5. Each graded cell is in view on both axes.
  *  6. The network: the rows came through the production collection read, no
@@ -28,14 +28,14 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Browser, Page } from "playwright";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
-import { CHANNEL_KIND } from "@flow-state-dev/workforce";
+import { MAILBOX_KIND } from "@flow-state-dev/workforce";
 import { LAB_DB_PATH, LAB_ORG_ID, type LabTree } from "../../multi-seat-collab/lab/host.mts";
 import { serveLab, type ServedLab } from "../../multi-seat-collab/lab/run-scenario.mts";
 
 /** The three published key patterns, by the tab's section names. */
 const PATTERNS = {
   seats: "inventory/seats/*",
-  channels: "inventory/channels/*",
+  mailboxes: "inventory/mailboxes/*",
   memberships: "inventory/members/**",
 } as const;
 type Section = keyof typeof PATTERNS;
@@ -66,14 +66,14 @@ async function readStore(dbFile: string, orgId: string): Promise<Stored> {
   }
 }
 
-/** The rows the tree implies: every hired seat, the one channel, and one membership per declared member. */
+/** The rows the tree implies: every hired seat, the one mailbox, and one membership per declared member. */
 function expectedFromTree(tree: LabTree): { keys: string[]; seatKinds: Map<string, string>; members: string[] } {
   const seatKinds = new Map(tree.roster.workers.map((worker) => [worker.id, String(worker.declared.flow)]));
-  const members = (tree.channel.declared.members as string[] | undefined) ?? [];
+  const members = (tree.mailbox.declared.members as string[] | undefined) ?? [];
   const keys = [
     ...[...seatKinds.keys()].map((id) => `inventory/seats/${id}`),
-    `inventory/channels/${tree.channel.id}`,
-    ...members.map((seat) => `inventory/members/${seat}/${tree.channel.id}`),
+    `inventory/mailboxes/${tree.mailbox.id}`,
+    ...members.map((seat) => `inventory/members/${seat}/${tree.mailbox.id}`),
   ].sort();
   return { keys, seatKinds, members };
 }
@@ -95,11 +95,11 @@ function judgeStore(tree: LabTree, stored: Stored): string | undefined {
     const row = stored[`inventory/seats/${id}`]!;
     if (row.id !== id || row.kind !== kind) return `seat row ${id} holds ${JSON.stringify(row)}; the tree hired it as "${kind}"`;
   }
-  const channel = stored[`inventory/channels/${tree.channel.id}`]!;
-  if (JSON.stringify(channel.members) !== JSON.stringify(expected.members)) {
-    return `channel row ${tree.channel.id} names members ${JSON.stringify(channel.members)}; the channel was opened with ${JSON.stringify(expected.members)}`;
+  const mailbox = stored[`inventory/mailboxes/${tree.mailbox.id}`]!;
+  if (JSON.stringify(mailbox.members) !== JSON.stringify(expected.members)) {
+    return `mailbox row ${tree.mailbox.id} names members ${JSON.stringify(mailbox.members)}; the mailbox was opened with ${JSON.stringify(expected.members)}`;
   }
-  if (typeof channel.openedAt !== "string") return `channel row ${tree.channel.id} carries no registration time`;
+  if (typeof mailbox.openedAt !== "string") return `mailbox row ${tree.mailbox.id} carries no registration time`;
   return undefined;
 }
 
@@ -216,10 +216,10 @@ export async function gradeRow5(options: {
   const foreign = {
     org: `org-foreign-${randomUUID().slice(0, 8)}`,
     seat: `foreign-${randomUUID().slice(0, 8)}.seat`,
-    channel: `foreign-${randomUUID().slice(0, 8)}.room`,
+    mailbox: `foreign-${randomUUID().slice(0, 8)}.room`,
   };
-  const treeIds = [...tree.roster.workers.map((w) => w.id), tree.channel.id];
-  if (treeIds.some((id) => id === foreign.seat || id === foreign.channel)) {
+  const treeIds = [...tree.roster.workers.map((w) => w.id), tree.mailbox.id];
+  if (treeIds.some((id) => id === foreign.seat || id === foreign.mailbox)) {
     throw new Error("a planted foreign id collides with the tree");
   }
   {
@@ -229,8 +229,8 @@ export async function gradeRow5(options: {
       await stores.resourceState.set(
         "org",
         foreign.org,
-        `inventory/channels/${foreign.channel}`,
-        { id: foreign.channel, kind: "channel", members: [foreign.seat], openedAt: new Date().toISOString() },
+        `inventory/mailboxes/${foreign.mailbox}`,
+        { id: foreign.mailbox, kind: "mailbox", members: [foreign.seat], openedAt: new Date().toISOString() },
         "any",
       );
     } finally {
@@ -238,7 +238,7 @@ export async function gradeRow5(options: {
     }
   }
   const planted = Object.keys(await readStore(dbFile, foreign.org)).sort();
-  if (JSON.stringify(planted) !== JSON.stringify([`inventory/channels/${foreign.channel}`, `inventory/seats/${foreign.seat}`])) {
+  if (JSON.stringify(planted) !== JSON.stringify([`inventory/mailboxes/${foreign.mailbox}`, `inventory/seats/${foreign.seat}`])) {
     throw new Error(`the foreign rows did not store: ${JSON.stringify(planted)}`);
   }
 
@@ -257,7 +257,7 @@ export async function gradeRow5(options: {
     // server saying the public map has no such action — not any error — and
     // the store must not move.
     const fabricated = await fetch(
-      `${served.origin}/api/flows/${CHANNEL_KIND}/inventory-binder/actions/registerSeatsInInventory`,
+      `${served.origin}/api/flows/${MAILBOX_KIND}/inventory-binder/actions/registerSeatsInInventory`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -296,11 +296,11 @@ export async function gradeRow5(options: {
         .filter(([key]) => key.startsWith(prefix))
         .map(([, row]) => row);
     const storedSeats = under("inventory/seats/");
-    const storedChannels = under("inventory/channels/");
+    const storedMailboxes = under("inventory/mailboxes/");
     const storedMemberships = under("inventory/members/");
 
-    // The refs, off the channel session's manifest — never hard-coded.
-    const manifest = (await (await fetch(`${served.origin}/api/flows/sessions/${encodeURIComponent(tree.channel.id)}/manifest`)).json()) as {
+    // The refs, off the mailbox session's manifest — never hard-coded.
+    const manifest = (await (await fetch(`${served.origin}/api/flows/sessions/${encodeURIComponent(tree.mailbox.id)}/manifest`)).json()) as {
       resources: Array<{ ref: string; pattern?: string }>;
     };
     const refs = Object.fromEntries(
@@ -315,12 +315,12 @@ export async function gradeRow5(options: {
     );
     try {
       await page.goto(served.origin, { waitUntil: "networkidle" });
-      await openSession(page, CHANNEL_KIND, tree.channel.id);
+      await openSession(page, MAILBOX_KIND, tree.mailbox.id);
       const tab = page.getByRole("tab", { name: "Inventory" });
       try {
         await tab.waitFor({ timeout: 10_000 });
       } catch {
-        fail("step 4", `the channel's session ${tree.channel.id} shows no Inventory tab (tabs: ${(await page.getByRole("tab").allTextContents()).join(", ")})`);
+        fail("step 4", `the mailbox's session ${tree.mailbox.id} shows no Inventory tab (tabs: ${(await page.getByRole("tab").allTextContents()).join(", ")})`);
       }
       let screen: ScreenRead | undefined;
       if ((await tab.count()) > 0) {
@@ -338,9 +338,9 @@ export async function gradeRow5(options: {
       if (screen !== undefined) {
         if (screen.openExpanders !== 0) fail("step 4", `${screen.openExpanders} expander(s) were open when the tab was read`);
         const seats = screen.sections.seats;
-        const channels = screen.sections.channels;
+        const mailboxes = screen.sections.mailboxes;
         const memberships = screen.sections.memberships;
-        for (const [name, section] of Object.entries({ seats, channels, memberships })) {
+        for (const [name, section] of Object.entries({ seats, mailboxes, memberships })) {
           if (section?.status !== "loaded") {
             fail("step 4", `the ${name} section reads "${section?.status ?? "missing"}", not loaded: ${JSON.stringify(section?.text ?? "")}`);
           }
@@ -348,44 +348,44 @@ export async function gradeRow5(options: {
         const rowById = (section: ScreenRead["sections"][string] | undefined, key: string, id: string) =>
           section?.rows.find((row) => row.cells[key] === id);
 
-        // Seats: each with its kind and the channels its membership rows name.
+        // Seats: each with its kind and the mailboxes its membership rows name.
         if (seats?.status === "loaded") {
           if (seats.rows.length !== storedSeats.length) {
             fail("step 4", `the tab lists ${seats.rows.length} seat(s); the store holds ${storedSeats.length}`);
           }
           for (const seat of storedSeats) {
             const row = rowById(seats, "Id", String(seat.id));
-            const channelsOfSeat = storedMemberships.filter((m) => m.seatId === seat.id).map((m) => String(m.channelId));
-            const wantChannels = channelsOfSeat.length === 0 ? "none" : channelsOfSeat.join(", ");
+            const mailboxesOfSeat = storedMemberships.filter((m) => m.seatId === seat.id).map((m) => String(m.mailboxId));
+            const wantMailboxes = mailboxesOfSeat.length === 0 ? "none" : mailboxesOfSeat.join(", ");
             if (row === undefined) fail("step 4", `seat ${seat.id} has no row in the tab`);
             else if (row.cells.Kind !== seat.kind) fail("step 4", `seat ${seat.id}'s Kind cell reads ${JSON.stringify(row.cells.Kind)}; the store holds "${seat.kind}"`);
-            else if (row.cells.Channels !== wantChannels) fail("step 4", `seat ${seat.id}'s Channels cell reads ${JSON.stringify(row.cells.Channels)}; its membership rows name "${wantChannels}"`);
+            else if (row.cells.Mailboxes !== wantMailboxes) fail("step 4", `seat ${seat.id}'s Mailboxes cell reads ${JSON.stringify(row.cells.Mailboxes)}; its membership rows name "${wantMailboxes}"`);
           }
         }
-        // Channels: each with its kind, its members and its registration time.
-        if (channels?.status === "loaded") {
-          if (channels.rows.length !== storedChannels.length) {
-            fail("step 4", `the tab lists ${channels.rows.length} channel(s); the store holds ${storedChannels.length}`);
+        // Mailboxes: each with its kind, its members and its registration time.
+        if (mailboxes?.status === "loaded") {
+          if (mailboxes.rows.length !== storedMailboxes.length) {
+            fail("step 4", `the tab lists ${mailboxes.rows.length} mailbox(s); the store holds ${storedMailboxes.length}`);
           }
-          for (const channel of storedChannels) {
-            const row = rowById(channels, "Id", String(channel.id));
-            const members = (channel.members as string[]).join(", ");
-            if (row === undefined) fail("step 4", `channel ${channel.id} has no row in the tab`);
-            else if (row.cells.Members !== members) fail("step 4", `channel ${channel.id}'s Members cell reads ${JSON.stringify(row.cells.Members)}; the store holds "${members}"`);
-            else if (row.cells.Kind !== channel.kind) fail("step 4", `channel ${channel.id}'s Kind cell reads ${JSON.stringify(row.cells.Kind)}; the store holds "${channel.kind}"`);
-            else if (row.cells.Registered !== channel.openedAt) fail("step 4", `channel ${channel.id}'s Registered cell reads ${JSON.stringify(row.cells.Registered)}; the store holds "${channel.openedAt}"`);
+          for (const mailbox of storedMailboxes) {
+            const row = rowById(mailboxes, "Id", String(mailbox.id));
+            const members = (mailbox.members as string[]).join(", ");
+            if (row === undefined) fail("step 4", `mailbox ${mailbox.id} has no row in the tab`);
+            else if (row.cells.Members !== members) fail("step 4", `mailbox ${mailbox.id}'s Members cell reads ${JSON.stringify(row.cells.Members)}; the store holds "${members}"`);
+            else if (row.cells.Kind !== mailbox.kind) fail("step 4", `mailbox ${mailbox.id}'s Kind cell reads ${JSON.stringify(row.cells.Kind)}; the store holds "${mailbox.kind}"`);
+            else if (row.cells.Registered !== mailbox.openedAt) fail("step 4", `mailbox ${mailbox.id}'s Registered cell reads ${JSON.stringify(row.cells.Registered)}; the store holds "${mailbox.openedAt}"`);
           }
         }
         if (memberships?.status === "loaded" && memberships.rows.length !== storedMemberships.length) {
           fail("step 4", `the tab lists ${memberships.rows.length} membership(s); the store holds ${storedMemberships.length}`);
         }
         // Another organization's rows, planted and stored, appear nowhere.
-        for (const id of [foreign.seat, foreign.channel, foreign.org]) {
+        for (const id of [foreign.seat, foreign.mailbox, foreign.org]) {
           if (screen.html.includes(id)) fail("step 4", `another organization's "${id}" is on the page`);
         }
 
         // ---- step 5: every graded cell is in view on both axes -----------
-        for (const [name, section] of Object.entries({ seats, channels, memberships })) {
+        for (const [name, section] of Object.entries({ seats, mailboxes, memberships })) {
           for (const row of section?.rows ?? []) {
             const id = Object.values(row.cells)[0];
             if (row.minVisibleHeight < Math.min(MIN_VISIBLE_HEIGHT, row.minCellHeight)) {
@@ -400,7 +400,7 @@ export async function gradeRow5(options: {
       // ---- step 6: the production read, and not the debug one ------------
       const inventoryReads = network.filter((entry) => {
         const path = new URL(entry.url).pathname;
-        return path.startsWith(`/api/flows/sessions/${encodeURIComponent(tree.channel.id)}/resources/`);
+        return path.startsWith(`/api/flows/sessions/${encodeURIComponent(tree.mailbox.id)}/resources/`);
       });
       for (const name of SECTIONS) {
         if (screen?.sections[name]?.status !== "loaded" && screen !== undefined) continue;
@@ -432,10 +432,10 @@ export async function gradeRow5(options: {
           failures,
           notes,
           evidence:
-            `row 5 read on the multi-seat-collab hire with the debug endpoints off: the channel's session ${tree.channel.id}, ` +
+            `row 5 read on the multi-seat-collab hire with the debug endpoints off: the mailbox's session ${tree.mailbox.id}, ` +
             `opened from the navigator, showed ${screen.sections.seats!.rows.length} registered seat(s) ` +
-            `(${screen.sections.seats!.rows.map((r) => `${r.cells.Id} ${r.cells.Kind} in ${r.cells.Channels}`).join("; ")}), ` +
-            `the channel ${tree.channel.id} with members ${screen.sections.channels!.rows[0]?.cells.Members}, and ` +
+            `(${screen.sections.seats!.rows.map((r) => `${r.cells.Id} ${r.cells.Kind} in ${r.cells.Mailboxes}`).join("; ")}), ` +
+            `the mailbox ${tree.mailbox.id} with members ${screen.sections.mailboxes!.rows[0]?.cells.Members}, and ` +
             `${screen.sections.memberships!.rows.length} membership(s), exactly as the store holds them, nothing expanded; ` +
             `another organization's rows were stored and appeared nowhere; a second boot changed nothing`,
         };

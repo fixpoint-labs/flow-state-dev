@@ -297,7 +297,7 @@ export interface ManagerOptions {
    * The board's ledger collection id — the fence reads the live claim from it,
    * and every run's checkout folder, branch and run record are derived from it.
    *
-   * Used as is: a channel's board (`eng.feature.work`) is accepted with its
+   * Used as is: a mailbox's board (`eng.feature.work`) is accepted with its
    * dots. Checked when the manager is built, so an id a git branch cannot carry
    * (a `.lock` ending, a doubled or trailing dot, a separator) is refused here
    * rather than after a row has been claimed.

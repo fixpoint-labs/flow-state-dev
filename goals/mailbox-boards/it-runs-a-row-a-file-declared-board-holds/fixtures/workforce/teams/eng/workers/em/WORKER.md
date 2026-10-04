@@ -1,5 +1,5 @@
 ---
-description: Files the team's work onto the channel's board.
+description: Files the team's work onto the mailbox's board.
 flow: em
 ---
 

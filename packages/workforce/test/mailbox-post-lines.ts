@@ -1,6 +1,6 @@
 /**
- * Test helper: the lines a channel's posts left behind, read the way a client
- * reads them — the session's `channel-post` component items, in post order.
+ * Test helper: the lines a mailbox's posts left behind, read the way a client
+ * reads them — the session's `mailbox-post` component items, in post order.
  *
  * A post's line is its item, not a copy in session state, so a test that asks
  * "did the post land" reads this rather than `state.transcript`. Reads the
@@ -9,7 +9,7 @@
  */
 import type { StoreRegistry } from "@flow-state-dev/engine";
 
-/** One line as a `channel-post` item carries it. */
+/** One line as a `mailbox-post` item carries it. */
 export type PostedLine = {
   id: string;
   at: number;
@@ -21,10 +21,10 @@ export type PostedLine = {
 };
 
 /**
- * Every `channel-post` item on a session, oldest first.
+ * Every `mailbox-post` item on a session, oldest first.
  *
  * @param stores The host's stores.
- * @param sessionId The channel's session id.
+ * @param sessionId The mailbox's session id.
  * @returns The item data, one per post that landed.
  */
 export async function postedLines(stores: StoreRegistry, sessionId: string): Promise<PostedLine[]> {
@@ -34,13 +34,13 @@ export async function postedLines(stores: StoreRegistry, sessionId: string): Pro
     .flatMap((request) => request.items ?? [])
     .filter(
       (item) =>
-        item.type === "component" && (item as { component?: string }).component === "channel-post"
+        item.type === "component" && (item as { component?: string }).component === "mailbox-post"
     )
     .map((item) => (item as unknown as { data: PostedLine }).data);
 }
 
 /**
- * Refuse the event write of the first `channel-post` line whose body contains
+ * Refuse the event write of the first `mailbox-post` line whose body contains
  * `marker`, as a store that failed that one write would: the line's emission
  * rejects and the request that posted it fails, while the request's own
  * record, written as it fails, still keeps the line as an item.
@@ -56,7 +56,7 @@ export function failLineWrite(stores: StoreRegistry, marker: string): void {
   stores.request.persistEvents = (requestId, events) => {
     const isLine = (event: (typeof events)[number]) => {
       const item = (event as { item?: { component?: string; data?: { body?: string } } }).item;
-      return event.type === "item.added" && item?.component === "channel-post" && (item.data?.body ?? "").includes(marker);
+      return event.type === "item.added" && item?.component === "mailbox-post" && (item.data?.body ?? "").includes(marker);
     };
     if (armed && events.some(isLine)) {
       armed = false;

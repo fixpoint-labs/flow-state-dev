@@ -1,8 +1,8 @@
 /**
- * Posting to a channel the way the page does, through the app's real config.
+ * Posting to a mailbox the way the page does, through the app's real config.
  *
  * The page posts with `{ body }` and no `author`, because the person at it is
- * not a member. What it then shows is the channel's `channel-post` items, read
+ * not a member. What it then shows is the mailbox's `mailbox-post` items, read
  * from the session like any conversation. This case holds what that promises
  * on this app's own wiring: the line lands once, it names the server's
  * principal, and a specialist answers it.
@@ -12,11 +12,11 @@
  *
  *   V3 A post with no author lands on `support.help` once, labelled with the
  *      server's principal (`devuser`). It names no specialist, so the scripted
- *      route's call fails and `support.general`, the channel's fallback,
+ *      route's call fails and `support.general`, the mailbox's fallback,
  *      answers it under its own name (FIX-1611 BR-5). (The built-in kind's own
- *      red is `packages/workforce`'s `channel-post-items.test.ts`.)
+ *      red is `packages/workforce`'s `mailbox-post-items.test.ts`.)
  *
- * V4, the `digest` kind's post, left with the kind: this app has no channel
+ * V4, the `digest` kind's post, left with the kind: this app has no mailbox
  * kind of its own.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -55,7 +55,7 @@ async function call(router: Router, method: "GET" | "POST", segments: string[], 
   return { status: res.status, text: await res.text() };
 }
 
-/** Post the way the page's composer does: the channel's own action, body only. */
+/** Post the way the page's composer does: the mailbox's own action, body only. */
 async function post(router: Router, flowId: string, sessionId: string, body: string) {
   const res = await call(router, "POST", [flowId, "actions", "post"], { userId: "devuser", sessionId, input: { body } });
   expect(res.status, res.text).toBe(200);
@@ -64,12 +64,12 @@ async function post(router: Router, flowId: string, sessionId: string, body: str
 
 type Line = { id: string; body: string; principal?: string; author?: string };
 
-/** The channel's lines as the page reads them: its session's `channel-post` items. */
+/** The mailbox's lines as the page reads them: its session's `mailbox-post` items. */
 async function linesOf(router: Router, sessionId: string): Promise<Line[]> {
   const res = await call(router, "GET", ["sessions", sessionId, "state"], undefined, "?include_items=true&item_types=component&limit=1000");
   expect(res.status, res.text).toBe(200);
   const items = (JSON.parse(res.text) as { items?: Array<{ component?: string; data?: Line }> }).items ?? [];
-  return items.filter((item) => item.component === "channel-post").map((item) => item.data!);
+  return items.filter((item) => item.component === "mailbox-post").map((item) => item.data!);
 }
 
 /** Wait for the post's separate fan-out request to finish. */
@@ -81,12 +81,12 @@ async function until(predicate: () => Promise<boolean>, label: string): Promise<
   throw new Error(`timed out waiting for ${label}`);
 }
 
-describe("V3 · a post from the page, on the app's own channel", () => {
+describe("V3 · a post from the page, on the app's own mailbox", () => {
   it("lands on support.help once, as devuser, and the fallback specialist answers it", async () => {
     const router = await bootApp();
     const text = `same line ${Date.now()}`;
 
-    await post(router, "channel", "support.help", text);
+    await post(router, "mailbox", "support.help", text);
 
     const mine = (await linesOf(router, "support.help")).filter((line) => line.body === text);
     expect(mine).toHaveLength(1);

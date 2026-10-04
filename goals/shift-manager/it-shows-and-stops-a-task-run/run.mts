@@ -7,7 +7,7 @@
  *
  * Shift Manager is built with Vite into a scratch directory and served by its own
  * start script over the run-lab's `fsdev.config.mts`, devtool included: a
- * channel-attached board whose rows hand off to scripted runs that narrate a
+ * mailbox-attached board whose rows hand off to scripted runs that narrate a
  * step a second and hold until aborted. Chromium reaches each row by clicking,
  * from Tasks or from a board card. What the page draws is graded against the
  * tree on disk and the store, read by this script through the Lab's routes and
@@ -89,17 +89,17 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 // ---- the tree on disk ----------------------------------------------------------
 
-type Tree = { channelId: string; boardRef: string; drainerId: string; members: string[] };
+type Tree = { mailboxId: string; boardRef: string; drainerId: string; members: string[] };
 
 async function readTree(): Promise<Tree> {
   const roster = await readDeclaredRoster(TREE);
   if (roster.problems.length > 0) throw new Error(`the tree did not load: ${roster.problems.map((p) => p.path).join(", ")}`);
-  const channel = roster.channels.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
-  if (channel === undefined) throw new Error("the tree declares no channel holding a board");
-  const members = (channel.declared.members as string[] | undefined) ?? [];
+  const mailbox = roster.mailboxes.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
+  if (mailbox === undefined) throw new Error("the tree declares no mailbox holding a board");
+  const members = (mailbox.declared.members as string[] | undefined) ?? [];
   const drainer = roster.workers.find((w) => members.includes(w.id) && w.declared.flow !== undefined && w.declared.handoff === undefined);
-  if (drainer === undefined) throw new Error("the tree's channel has no member that drains its board");
-  return { channelId: channel.id, boardRef: `${channel.id}.${(channel.declared.boards as string[])[0]}`, drainerId: drainer.id, members };
+  if (drainer === undefined) throw new Error("the tree's mailbox has no member that drains its board");
+  return { mailboxId: mailbox.id, boardRef: `${mailbox.id}.${(mailbox.declared.boards as string[])[0]}`, drainerId: drainer.id, members };
 }
 
 // ---- building Shift Manager --------------------------------------------------------
@@ -193,7 +193,7 @@ function labApi(origin: string) {
   };
   const enc = encodeURIComponent;
   const rows = async (tree: Tree): Promise<Row[]> => {
-    const body = await get(`/sessions/${enc(tree.channelId)}/resources/${enc(tree.boardRef)}?limit=200`);
+    const body = await get(`/sessions/${enc(tree.mailboxId)}/resources/${enc(tree.boardRef)}?limit=200`);
     return ((body.items ?? []) as Array<{ clientData?: Record<string, any> }>).map(({ clientData: r = {} }) => ({
       id: String(r.id),
       status: String(r.status),
@@ -288,7 +288,7 @@ async function reach(page: Page, origin: string, tree: Tree, row: Row) {
   await page.goto(`${origin}/tasks`);
   await page.getByTestId("shell").waitFor({ timeout: 20_000 });
   if (row.status === "completed" || row.status === "cancelled") {
-    await page.getByTestId(`nav-workstream-${tree.channelId}`).click();
+    await page.getByTestId(`nav-workstream-${tree.mailboxId}`).click();
     await page.locator("[role=tab][data-tab=board]").click();
     await page.locator(`[data-testid=board-card][data-task-id="${row.id}"]`).click();
   } else {

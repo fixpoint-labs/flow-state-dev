@@ -1,5 +1,5 @@
 /**
- * The unattended-board warning: a channel holds a ledger nobody drains.
+ * The unattended-board warning: a mailbox holds a ledger nobody drains.
  *
  * A warning and never a refusal, because the evidence is incomplete by
  * construction — a seat may legitimately live in another process, where this
@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { channelBoard, hireWorkforce, workerConfigSchema } from "../src/index";
+import { mailboxBoard, hireWorkforce, workerConfigSchema } from "../src/index";
 import type { WorkerManifest } from "../src/manifest";
 
 const noop = handler({
@@ -19,14 +19,14 @@ const noop = handler({
   execute: (input) => input
 });
 
-/** A seat kind declaring one channel board as a flow resource — an attended board. */
+/** A seat kind declaring one mailbox board as a flow resource — an attended board. */
 function seatKindHolding(boardIds: string[]) {
   return defineFlow({
     kind: "coder",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
     resources: Object.fromEntries(
-      boardIds.map((id) => [id, channelBoard(...(id.split(/\.(?=[^.]+$)/) as [string, string]))])
+      boardIds.map((id) => [id, mailboxBoard(...(id.split(/\.(?=[^.]+$)/) as [string, string]))])
     ),
     actions: { run: { block: noop } }
   });
@@ -36,25 +36,25 @@ function seat(id: string): WorkerManifest {
   return { id, declared: { flow: "coder" }, body: "Do the work." };
 }
 
-describe("a channel folder that was renamed", () => {
+describe("a mailbox folder that was renamed", () => {
   it("re-keys its boards and warns, because the seat still declares the old id", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      // The channel moved from `eng.feature` to `eng.renamed`. A board id is a
-      // storage key derived from where the channel folder sits, so the board
+      // The mailbox moved from `eng.feature` to `eng.renamed`. A board id is a
+      // storage key derived from where the mailbox folder sits, so the board
       // moved with it and the rows filed under the old id are still sitting at
       // the old key. Nothing migrates them and nothing refuses (BR-23) — the
       // seat below is the one that did not move.
       hireWorkforce([seat("eng.coder")], {
         kinds: { coder: seatKindHolding(["eng.feature.triage"]) as never },
-        channelBoards: ["eng.renamed.triage"]
+        mailboxBoards: ["eng.renamed.triage"]
       });
 
       const said = warn.mock.calls.map((call) => String(call[0])).join("\n");
       // The warning is the whole of what makes the stranding visible: it names
-      // the board the RENAMED channel now holds, which nothing drains.
+      // the board the RENAMED mailbox now holds, which nothing drains.
       expect(said).toContain("eng.renamed.triage");
-      expect(said).toMatch(/channel "eng\.renamed"/);
+      expect(said).toMatch(/mailbox "eng\.renamed"/);
       // And it does not claim the seat's old board is fine — that id is simply
       // not on the roster any more, so nothing reports on it at all. This is
       // the line that says the old rows are unreachable rather than migrated.
@@ -65,13 +65,13 @@ describe("a channel folder that was renamed", () => {
   });
 });
 
-describe("a channel board nobody declared", () => {
-  it("warns at hire, names the channel and the id, and still hires", () => {
+describe("a mailbox board nobody declared", () => {
+  it("warns at hire, names the mailbox and the id, and still hires", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const seats = hireWorkforce([seat("eng.coder")], {
         kinds: { coder: seatKindHolding(["eng.feature.triage"]) as never },
-        channelBoards: ["eng.feature.triage", "eng.feature.review"]
+        mailboxBoards: ["eng.feature.triage", "eng.feature.review"]
       });
 
       // The hire succeeded — this is not a refusal, and a roster that boots
@@ -80,10 +80,10 @@ describe("a channel board nobody declared", () => {
 
       const said = warn.mock.calls.map((call) => String(call[0])).join("\n");
       expect(said).toContain("eng.feature.review");
-      // The CHANNEL, said as a channel. A bare `toContain("eng.feature")`
+      // The MAILBOX, said as a mailbox. A bare `toContain("eng.feature")`
       // cannot fail once the line above has passed, since the board id
-      // contains the channel id — so it asserted nothing.
-      expect(said).toMatch(/channel "eng\.feature"/);
+      // contains the mailbox id — so it asserted nothing.
+      expect(said).toMatch(/mailbox "eng\.feature"/);
       // The attended one is NOT named. Without this, a check that warned about
       // every board would pass the assertion above and tell an operator
       // nothing.
@@ -98,7 +98,7 @@ describe("a channel board nobody declared", () => {
     try {
       hireWorkforce([seat("eng.coder")], {
         kinds: { coder: seatKindHolding(["eng.feature.triage"]) as never },
-        channelBoards: ["eng.feature.triage"]
+        mailboxBoards: ["eng.feature.triage"]
       });
       expect(warn).not.toHaveBeenCalled();
     } finally {

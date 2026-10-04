@@ -5,11 +5,11 @@
  * Two doors, both durable, both ending in the framework's stock
  * `human_approval` suspension:
  *
- * - `onChannelPost` — the internal entry `wakeMemberSeats` dispatches a
- *   channel's post to, with `session: { key }`. So an ask raised here lives in
+ * - `onMailboxPost` — the internal entry `wakeMemberSeats` dispatches a
+ *   mailbox's post to, with `session: { key }`. So an ask raised here lives in
  *   a dispatch-run session, which is what Shift Manager's listing has to ask for.
  * - `ask` — a public action a test calls directly, for a seat that sits in no
- *   channel.
+ *   mailbox.
  *
  * And a door, `message`: a person's line into the seat's session, which the
  * engine writes as a user item before the block runs. It says it heard, as an
@@ -26,7 +26,7 @@ import { z } from "zod";
 export const ASKER_KIND = "asker";
 
 const postSchema = z
-  .object({ member: z.string(), channelId: z.string(), body: z.string() })
+  .object({ member: z.string(), mailboxId: z.string(), body: z.string() })
   .passthrough();
 
 const askSchema = z.object({ what: z.string().min(1) });
@@ -75,7 +75,7 @@ const fromPost = handler({
   execute: (input) => ({ what: input.body }),
 });
 
-const onChannelPost = sequencer({ name: "asker-on-post", inputSchema: postSchema }).step(fromPost).step(gate);
+const onMailboxPost = sequencer({ name: "asker-on-post", inputSchema: postSchema }).step(fromPost).step(gate);
 const ask = sequencer({ name: "asker-ask", inputSchema: askSchema }).step(gate);
 
 /**
@@ -101,7 +101,7 @@ export function defineAskerFlow(resources: Record<string, unknown> = {}) {
     },
     internal: {
       actions: {
-        onChannelPost: { block: onChannelPost, durable: true },
+        onMailboxPost: { block: onMailboxPost, durable: true },
       },
     },
   } as never);

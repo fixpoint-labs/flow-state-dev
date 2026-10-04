@@ -2,7 +2,7 @@
 
 **Issue:** FIX-1496
 
-**Outcome:** Somebody posts one line into a channel a Markdown file declared. A coordinator seat
+**Outcome:** Somebody posts one line into a mailbox a Markdown file declared. A coordinator seat
 reads the post and files one row. A working seat the row names wakes in a checkout of its own, runs
 a real coding agent from a prompt built out of its own files, and leaves its work at an address that
 still resolves when the run is over — work that satisfies an acceptance check the brief named before
@@ -22,7 +22,7 @@ convention file and in none of the lab's own code, before the run starts.
 
 **Signal:**
 
-1. Before anybody posts, the board carries no row. After one post, the line is in the channel's
+1. Before anybody posts, the board carries no row. After one post, the line is in the mailbox's
    transcript, the fan-out addressed the EM seat and recorded the other two declared members as
    skipped, and exactly one row exists.
 2. The board's dispatch record names the coder seat and never the reviewer seat, by `flowId`.
@@ -96,7 +96,7 @@ seeded with the actual product is exactly the shape the rule is about.
 branch, no dispatch" is equally true of a lab that never started. That happened once, on a run where
 the post entry was declared in the wrong action map, and both controls reported green.
 
-`work-reaches-the-reviewer` grades the **board** dispatch, never the notify delivery. A channel
+`work-reaches-the-reviewer` grades the **board** dispatch, never the notify delivery. A mailbox
 notification to a declared member is expected and is a different dispatch kind; a control that
 counted any dispatch to the reviewer would go red on correct behaviour.
 
@@ -115,7 +115,7 @@ carries no `goal.md`, so the sweep walks past it; it is spelled `run.mts` so the
 
 ## What this establishes, and what it does not
 
-It establishes that a hired Workforce can take a request through a channel and hand back a work
+It establishes that a hired Workforce can take a request through a mailbox and hand back a work
 product a person can open and judge. It does **not** establish that the product is *good* — only
 that it satisfies the acceptance condition its requester wrote down, which is the strongest claim a
 machine can make here and is deliberately weaker than a human review. It does not establish anything
@@ -165,5 +165,5 @@ refused (401) and the same read with an org lands. The sibling gate is PASS at `
 own verdict log, which re-proves BR-10 and BR-17. **Re-run on `origin/main` at `95049473f`,
 2026-09-24: PASS**, all legs green, including *"an org-less read is refused at the transport door
 while the same read with an org lands"*. The paragraph above is kept as history.
-| 2026-09-30 | a1b122eb1 | n/a | PASS | Local leg. Row read back in a fresh process from the organization's storage under the channel's board id; the transcript count reads channel-post items. The published branch carries `eng.feature.work`. |
+| 2026-09-30 | a1b122eb1 | n/a | PASS | Local leg. Row read back in a fresh process from the organization's storage under the mailbox's board id; the transcript count reads mailbox-post items. The published branch carries `eng.feature.work`. |
 | 2026-10-01 | a25134ebd+wip (FIX-1691/1692) | Claude Code (Agent SDK) | PASS | Local leg. 19 lab TypeScript files classified, `harness.mts` among them. |

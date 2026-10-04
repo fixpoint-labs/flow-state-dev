@@ -7,7 +7,7 @@
     "issue": "audit-log-filter",
     "goal": "Let the audit log be filtered by date range, token POSTED-GOAL-6A2E4."
   },
-  "chatter": "Heads-up from standup, nobody file this: CHANNEL-CHATTER-9B7D5.",
+  "chatter": "Heads-up from standup, nobody file this: MAILBOX-CHATTER-9B7D5.",
   "realRun": {
     "issue": "release-note-file",
     "goal": "Create a file named RELEASE-NOTE.txt at the repository root whose only line is SHIPPED-TOKEN-4C8E1, and commit it.",
@@ -27,7 +27,7 @@
     "HANDBOOK-DOC-D5A02": "org/resources/engineering-handbook.md"
   },
   "charterToken": {
-    "FEATURE-CHARTER-0A8D6": "teams/eng/channels/feature/CHANNEL.md"
+    "FEATURE-CHARTER-0A8D6": "teams/eng/mailboxes/feature/MAILBOX.md"
   },
   "wait": { "timeoutMs": 60000, "pollMs": 100 }
 }

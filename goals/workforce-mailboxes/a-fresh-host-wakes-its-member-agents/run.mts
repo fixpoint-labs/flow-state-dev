@@ -11,10 +11,10 @@
  * conversations, dispatch runs included. Legs:
  *
  *   import     `wakeMemberSeats` resolves from `@flow-state-dev/workforce`.
- *   woken      each agent member holds one conversation of the channel, both
+ *   woken      each agent member holds one conversation of the mailbox, both
  *              person posts heard once in it, each with a reply under it.
  *   seat-post  a post an agent member wrote is heard by no seat.
- *   other      the member whose kind declares no `onChannelPost` holds nothing.
+ *   other      the member whose kind declares no `onMailboxPost` holds nothing.
  *   source     the host imports only `@flow-state-dev/*` and builds no
  *              dispatcher or router; kitchen-sink's notify module calls the
  *              helper and builds neither, and its kind map has no wake column.
@@ -22,7 +22,7 @@
  * Who is an agent member is read off the tree (a worker with no `flow:`), so
  * renamed folders grade the same way.
  *
- * Run:      pnpm tsx goals/workforce-channels/a-fresh-host-wakes-its-member-agents/run.mts
+ * Run:      pnpm tsx goals/workforce-mailboxes/a-fresh-host-wakes-its-member-agents/run.mts
  * Controls: GOAL_CONTROL=no-wake           (no notify block: must FAIL at woken, and nothing else)
  *           GOAL_CONTROL=no-author-filter  (seat mark stripped before the helper: must FAIL at seat-post, and nothing else)
  */
@@ -31,8 +31,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_ORG_ID, type BlockDefinition } from "@flow-state-dev/core";
 import { runAction } from "@flow-state-dev/engine";
-import type { ChannelNotifyInput } from "@flow-state-dev/workforce";
-import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
+import type { MailboxNotifyInput } from "@flow-state-dev/workforce";
+import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 import { KITCHEN_SINK, runGoal } from "../../lib/index.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
@@ -54,7 +54,7 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
 function adaptNotify(wake: BlockDefinition<any, any>): BlockDefinition<any, any> | undefined {
   if (CONTROL === "no-wake") return undefined;
   if (CONTROL === "no-author-filter") {
-    return wake.connectInput(({ seatAuthored: _seatAuthored, ...post }: ChannelNotifyInput) => post);
+    return wake.connectInput(({ seatAuthored: _seatAuthored, ...post }: MailboxNotifyInput) => post);
   }
   return wake;
 }
@@ -83,9 +83,9 @@ await runGoal(async () => {
   if (foreign.length > 0) fail("source", `host.mts imports from outside @flow-state-dev/*: ${foreign.join(", ")}`);
   if (builds.test(host)) fail("source", `host.mts builds its own ${builds.exec(host)![1]}`);
   if (!/wakeMemberSeats\s*\(/.test(host)) fail("source", "host.mts never calls wakeMemberSeats");
-  const notifyModule = readFileSync(`${KITCHEN_SINK}/workforce/channel-notify.ts`, "utf8");
-  if (builds.test(notifyModule)) fail("source", `kitchen-sink's channel-notify.ts builds its own ${builds.exec(notifyModule)![1]}`);
-  if (!/wakeMemberSeats\s*\(/.test(notifyModule)) fail("source", "kitchen-sink's channel-notify.ts never calls wakeMemberSeats");
+  const notifyModule = readFileSync(`${KITCHEN_SINK}/workforce/mailbox-notify.ts`, "utf8");
+  if (builds.test(notifyModule)) fail("source", `kitchen-sink's mailbox-notify.ts builds its own ${builds.exec(notifyModule)![1]}`);
+  if (!/wakeMemberSeats\s*\(/.test(notifyModule)) fail("source", "kitchen-sink's mailbox-notify.ts never calls wakeMemberSeats");
   const shell = readFileSync(`${KITCHEN_SINK}/lib/workforce-shell.ts`, "utf8");
   const asks = /export const SEAT_ASKS = \{([\s\S]*?)\} as const/.exec(shell)?.[1];
   if (asks === undefined) fail("source", "kitchen-sink's lib/workforce-shell.ts has no SEAT_ASKS to read");
@@ -96,16 +96,16 @@ await runGoal(async () => {
 
   // ---- the tree: who should hear a post ------------------------------------
   const { workers } = await readWorkforce(TREE);
-  const { channels } = await readChannelsDirectory(TREE);
-  const channel = channels[0]!;
-  const members = channel.declared.members as string[];
+  const { mailboxes } = await readMailboxesDirectory(TREE);
+  const mailbox = mailboxes[0]!;
+  const members = mailbox.declared.members as string[];
   const agents = members.filter((id) => !Object.hasOwn(workers.find((w) => w.id === id)?.declared ?? {}, "flow"));
   const others = members.filter((id) => !agents.includes(id));
   if (agents.length < 2 || others.length < 1) {
     throw new Error(`the fixture needs two agent members and one other; read ${agents.join(", ")} / ${others.join(", ")}`);
   }
 
-  const { startFreshHost, CHANNEL_OWNER, REPLY_MARKER } = await import("./host.mts");
+  const { startFreshHost, MAILBOX_OWNER, REPLY_MARKER } = await import("./host.mts");
   const app = await startFreshHost(TREE, adaptNotify);
   const call = async (method: "GET" | "POST", segments: string[], body?: unknown, query = "") => {
     const res = await app.router[method](
@@ -120,11 +120,11 @@ await runGoal(async () => {
   };
   const post = async (body: string, author?: string) => {
     const input = author === undefined ? { body } : { body, author };
-    const res = await call("POST", [String(channel.declared.flow ?? "channel"), "actions", "post"], { userId: CHANNEL_OWNER, sessionId: channel.id, input });
+    const res = await call("POST", [String(mailbox.declared.flow ?? "mailbox"), "actions", "post"], { userId: MAILBOX_OWNER, sessionId: mailbox.id, input });
     if (res.status !== 200) throw new Error(`post "${body}" refused: ${res.status} ${res.text.slice(0, 300)}`);
   };
   const conversationsOf = async (seat: string): Promise<Conversation[]> => {
-    const listed = await call("GET", ["sessions"], undefined, `?flowId=${encodeURIComponent(seat)}&userId=${CHANNEL_OWNER}&include=dispatch-runs&limit=100`);
+    const listed = await call("GET", ["sessions"], undefined, `?flowId=${encodeURIComponent(seat)}&userId=${MAILBOX_OWNER}&include=dispatch-runs&limit=100`);
     const rows = (JSON.parse(listed.text) as { sessions?: Array<{ id: string; parentSessionId?: string | null }> }).sessions ?? [];
     const out: Conversation[] = [];
     for (const row of rows) {
@@ -168,11 +168,11 @@ await runGoal(async () => {
     const seatPost = await runAction({
       source: "internal",
       orgId: DEFAULT_ORG_ID,
-      flow: app.channel,
+      flow: app.mailbox,
       actionName: "seatPost",
       input: { body: `${seatToken} I looked; it is empty.`, author: agents[0] },
-      userId: CHANNEL_OWNER,
-      sessionId: channel.id,
+      userId: MAILBOX_OWNER,
+      sessionId: mailbox.id,
       stores: runtime.stores,
       runtimeConfig: { ...runtime.runtimeConfig },
     });
@@ -182,9 +182,9 @@ await runGoal(async () => {
 
     // ---- woken: one conversation each, both posts heard once, a reply to each
     for (const seat of agents) {
-      const runs = (await conversationsOf(seat)).filter((c) => c.parentSessionId === channel.id);
+      const runs = (await conversationsOf(seat)).filter((c) => c.parentSessionId === mailbox.id);
       if (runs.length !== 1) {
-        fail("woken", `${seat} holds ${runs.length} conversations of ${channel.id} (want 1)`);
+        fail("woken", `${seat} holds ${runs.length} conversations of ${mailbox.id} (want 1)`);
         continue;
       }
       const messages = runs[0]!.messages;
@@ -197,7 +197,7 @@ await runGoal(async () => {
           fail("woken", `${seat} heard ${token} in ${at.length} turns (want 1, with a reply under it): ${JSON.stringify(messages.map((m) => `${m.role}: ${m.text}`))}`);
         }
       }
-      if (ok) evidence.push(`${seat}: one conversation of ${channel.id}, each person's post heard once and answered ("${messages.find((m) => m.role === "user")!.text}")`);
+      if (ok) evidence.push(`${seat}: one conversation of ${mailbox.id}, each person's post heard once and answered ("${messages.find((m) => m.role === "user")!.text}")`);
     }
 
     // ---- seat-post: the agent's own post is heard by nobody ------------------

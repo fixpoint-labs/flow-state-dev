@@ -1,5 +1,5 @@
 ---
-description: Files work onto the channel's board.
+description: Files work onto the mailbox's board.
 flow: planner
 ---
 

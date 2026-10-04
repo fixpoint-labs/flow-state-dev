@@ -1,6 +1,6 @@
 # agent-discovery › it routes a task by asking who is around
 
-**Issue:** FIX-817 (the scoped discovery door; PR-2 adds the skills, seats and channels domains and the seat's `discover:` key)
+**Issue:** FIX-817 (the scoped discovery door; PR-2 adds the skills, seats and mailboxes domains and the seat's `discover:` key)
 
 **Outcome:** An orchestrator seat is handed a task and a workforce it did not author. Its system prompt names nobody — no roster, no seat ids, no descriptions. It calls one tool, reads back a short list of what is in scope for it right now, and assigns the task to the seat whose stated purpose answers it. This is the thing the whole issue exists for: before it, a planner either had the roster pasted into its prompt at boot or could not plan at all.
 

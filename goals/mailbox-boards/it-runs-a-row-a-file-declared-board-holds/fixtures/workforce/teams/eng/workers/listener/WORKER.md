@@ -1,5 +1,5 @@
 ---
-description: Reads the feature channel and answers what it hears there.
+description: Reads the feature mailbox and answers what it hears there.
 ---
 
-Answer posts in the feature channel. You file nothing and claim nothing.
+Answer posts in the feature mailbox. You file nothing and claim nothing.

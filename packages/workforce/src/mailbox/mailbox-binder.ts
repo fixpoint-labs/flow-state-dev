@@ -1,26 +1,26 @@
 /**
- * The channel binder, in two phases because they happen at two times.
+ * The mailbox binder, in two phases because they happen at two times.
  *
- * `channelInstances` is build time and synchronous: it returns the instances to
- * register, one per DISTINCT kind, with the built-in seeded under `"channel"`
- * unless the caller passed their own. `openChannels` is runtime: it opens one
- * named session per record, at the record's own id, carrying that channel's
+ * `mailboxInstances` is build time and synchronous: it returns the instances to
+ * register, one per DISTINCT kind, with the built-in seeded under `"mailbox"`
+ * unless the caller passed their own. `openMailboxes` is runtime: it opens one
+ * named session per record, at the record's own id, carrying that mailbox's
  * members and charter.
  *
- * Nothing is minted per record. A hundred channel files are a hundred sessions
+ * Nothing is minted per record. A hundred mailbox files are a hundred sessions
  * on one instance, and the word `mint` is avoided here for that reason.
  *
- * **The two are paired: every roster `openChannels` opens must be one
- * `channelInstances` already validated.** `validate` is reached only from
- * `channelInstances`, so a caller that runs `openChannels` alone over a
+ * **The two are paired: every roster `openMailboxes` opens must be one
+ * `mailboxInstances` already validated.** `validate` is reached only from
+ * `mailboxInstances`, so a caller that runs `openMailboxes` alone over a
  * hand-built roster gets no refusal at all — most visibly, a record carrying
  * BOTH a body and a frontmatter `instructions:` silently takes the body
  * (`stateFor`'s precedence) where `validate` would have refused it as two
  * sources for one setting.
  *
- * **Why the whole closed key list lives here.** Under an instance-per-channel
- * shape the flow's own `configSchema` refused an undeclared `CHANNEL.md` key
- * for free. It cannot now: per-channel facts are session state, and the session
+ * **Why the whole closed key list lives here.** Under an instance-per-mailbox
+ * shape the flow's own `configSchema` refused an undeclared `MAILBOX.md` key
+ * for free. It cannot now: per-mailbox facts are session state, and the session
  * route parses caller state against `stateSchema` but falls back to the
  * caller's RAW state on a parse failure — validation happens at
  * action-execution time, not at session create. So the route is not a
@@ -34,24 +34,24 @@ import {
   INSTRUCTIONS_KEY,
   REFUSED_SYSTEM_KEY,
   REFUSED_SYSTEM_KEY_MESSAGE,
-  type ChannelManifest
+  type MailboxManifest
 } from "../manifest";
 import {
-  CHANNEL_KIND,
-  boundChannel,
-  channelFlow,
-  defineChannelFlow,
+  MAILBOX_KIND,
+  boundMailbox,
+  mailboxFlow,
+  defineMailboxFlow,
   holdsBoards,
   routeOf,
   wakesSeats,
-  type ChannelSessionState
-} from "./channel-flow";
+  type MailboxesessionState
+} from "./mailbox-flow";
 import {
-  CHANNEL_BOARDS_KEY,
-  channelBoardId,
-  channelBoardNameProblem
-} from "./channel-board";
-import type { ChannelRouting } from "./channel-route";
+  MAILBOX_BOARDS_KEY,
+  mailboxBoardId,
+  mailboxBoardNameProblem
+} from "./mailbox-board";
+import type { MailboxRouting } from "./mailbox-route";
 import { PROJECTS_COLLECTION } from "../projects/collections";
 import {
   orgTalkTemplateOf,
@@ -62,38 +62,38 @@ import {
   type TalkTemplateFacts
 } from "../projects/talk-template";
 
-/** The `CHANNEL.md` key that routes a channel, and its one subkey. */
+/** The `MAILBOX.md` key that routes a mailbox, and its one subkey. */
 const ROUTING_KEY = "routing";
 const FALLBACK_KEY = "fallback";
 
-/** The `CHANNEL.md` key that exposes a channel's boards' task tools as actions. */
+/** The `MAILBOX.md` key that exposes a mailbox's boards' task tools as actions. */
 const BOARD_ACTIONS_KEY = "boardActions";
 
-/** The `CHANNEL.md` key that marks the file a project talk template, not a channel. */
+/** The `MAILBOX.md` key that marks the file a project talk template, not a mailbox. */
 const MINT_FOR_KEY = "mintFor";
 
 /**
- * Every key a `CHANNEL.md` may declare. Closed, and checked by name.
+ * Every key a `MAILBOX.md` may declare. Closed, and checked by name.
  *
  * `flow` is consumed and stripped — it selects the kind and never reaches
- * state. The other four are the channel's own facts. Anything else refuses,
+ * state. The other four are the mailbox's own facts. Anything else refuses,
  * including `id`, which is the record's identity rather than a setting.
  *
  * `boards` is the fifth member: a list of plain local names, read exactly as
  * `members` is. It never carries an id — the ledger's identity is minted from
- * where the channel sits.
+ * where the mailbox sits.
  *
  * `routing` is the sixth: a mapping with one subkey, `fallback:`, the member
  * who takes a post the route cannot place. Like `boards`, it is built onto the
- * kind at every boot and never written into the channel's session.
+ * kind at every boot and never written into the mailbox's session.
  *
- * `boardActions` is the seventh: `true` exposes each of the channel's boards'
- * eight task tools as channel actions. Boolean only, off by default, and built
+ * `boardActions` is the seventh: `true` exposes each of the mailbox's boards'
+ * eight task tools as mailbox actions. Boolean only, off by default, and built
  * onto the kind the same way.
  *
  * `mintFor` is the eighth and the newest: it names a collection in the org's
  * resource map, and makes the file that collection's project talk template
- * rather than a channel. A template is never opened and never registered; its
+ * rather than a mailbox. A template is never opened and never registered; its
  * `members:` are the seats a post in a project's room wakes and its body is
  * the room's charter, built onto the kind at every boot.
  */
@@ -101,7 +101,7 @@ const DECLARABLE_KEYS = [
   "flow",
   "description",
   "members",
-  CHANNEL_BOARDS_KEY,
+  MAILBOX_BOARDS_KEY,
   INSTRUCTIONS_KEY,
   ROUTING_KEY,
   BOARD_ACTIONS_KEY,
@@ -109,18 +109,18 @@ const DECLARABLE_KEYS = [
 ] as const;
 
 /**
- * Is this record a project talk template (`mintFor:`) rather than a channel?
+ * Is this record a project talk template (`mintFor:`) rather than a mailbox?
  * A template is never opened and never registered in the inventory, so
- * `openChannels` and `openInventory` pass it over. Not re-exported from the
+ * `openMailboxes` and `openInventory` pass it over. Not re-exported from the
  * package root.
  */
-export function isTalkTemplate(manifest: ChannelManifest): boolean {
+export function isTalkTemplate(manifest: MailboxManifest): boolean {
   return Object.hasOwn(manifest.declared, MINT_FOR_KEY);
 }
 
 /**
  * Why a template file is not one, or `undefined`. A template is the shape of a
- * project's room, not a channel: it holds no board (a board per project is
+ * project's room, not a mailbox: it holds no board (a board per project is
  * still an open question), routes no post (every seat it names hears every
  * post), and its `members:` are seat ids.
  */
@@ -129,11 +129,11 @@ function templateFileProblem(declared: Record<string, unknown>): string | undefi
   if (typeof target !== "string" || target.trim().length === 0) {
     return `declares a \`${MINT_FOR_KEY}:\` that is not a collection name. Name the collection whose rows this template mints a room for, as \`${MINT_FOR_KEY}: projects\`.`;
   }
-  const notHeld = ["flow", CHANNEL_BOARDS_KEY, ROUTING_KEY, BOARD_ACTIONS_KEY].filter((key) => Object.hasOwn(declared, key));
+  const notHeld = ["flow", MAILBOX_BOARDS_KEY, ROUTING_KEY, BOARD_ACTIONS_KEY].filter((key) => Object.hasOwn(declared, key));
   if (notHeld.length > 0) {
     return (
       `declares \`${MINT_FOR_KEY}:\` and ${notHeld.map((key) => `\`${key}:\``).join(", ")}. A talk template is ` +
-      `not a channel: it holds no board, routes no post, and runs on the built-in channel kind. ` +
+      `not a mailbox: it holds no board, routes no post, and runs on the built-in mailbox kind. ` +
       `Drop ${notHeld.length === 1 ? "that line" : "those lines"}.`
     );
   }
@@ -155,7 +155,7 @@ type DeclaredTemplate = {
 };
 
 /**
- * A channel kind: a flow factory carrying the same identity contract the
+ * A mailbox kind: a flow factory carrying the same identity contract the
  * built-in does — `cardinality: "singleton"`, so `flow.id === flow.kind`.
  *
  * Typed loosely on purpose. A kind's blocks and state shape are its own; what
@@ -163,29 +163,29 @@ type DeclaredTemplate = {
  * instance, and asserting more would restate a guarantee the flow registry
  * makes at registration.
  */
-export type ChannelKind = { kind: string } & (() => FlowInstance);
+export type MailboxKind = { kind: string } & (() => FlowInstance);
 
-export interface ChannelInstancesOptions {
+export interface MailboxInstancesOptions {
   /**
-   * The channel kinds this app registers, by kind name. **The whole
+   * The mailbox kinds this app registers, by kind name. **The whole
    * registration surface, and the rare escape hatch** — an app registers
-   * nothing to use channels, because the built-in is seeded under `"channel"`
+   * nothing to use mailboxes, because the built-in is seeded under `"mailbox"`
    * when this map does not carry that key.
    *
    * Pass a kind here only when the workflow graph genuinely diverges. A record
    * whose `flow:` names a key that is not here refuses; it never falls back to
    * the built-in.
    */
-  kinds?: Record<string, ChannelKind>;
+  kinds?: Record<string, MailboxKind>;
 
   /**
    * Build the **built-in** kind carrying the live inventory's writer half, so
-   * every channel it opens can publish its own row.
+   * every mailbox it opens can publish its own row.
    *
    * Off by default: with this absent nothing is declared and nothing is
-   * written, and channels behave exactly as they did before the inventory
+   * written, and mailboxes behave exactly as they did before the inventory
    * existed. Turning it on here is half the wiring — `openInventory` is what
-   * actually runs the write, after `openChannels`.
+   * actually runs the write, after `openMailboxes`.
    *
    * It reaches the built-in only. A kind passed under `kinds` is the caller's
    * to build, and it carries the writer by spreading
@@ -200,7 +200,7 @@ export interface ChannelInstancesOptions {
    * `splitResourceModules(resourceModules)`, or the app's own map. Where the
    * project talk templates are read from. The org-level default rides on the
    * projects collection itself (`defineProjectsCollection({ talk })`), and a
-   * `CHANNEL.md`'s `mintFor:` names a collection by its ref here.
+   * `MAILBOX.md`'s `mintFor:` names a collection by its ref here.
    *
    * Absent, no org-level template is read, and a `mintFor:` names no
    * collection, so it is refused.
@@ -208,18 +208,18 @@ export interface ChannelInstancesOptions {
    * **The first call that finds a projects template registers it for the
    * process** and sets `reactTo.created` on the one projects declaration, so
    * creating a row in a flow turn mints the creator's talk session on the
-   * built-in channel kind. Every later call builds its channel kind from that
+   * built-in mailbox kind. Every later call builds its mailbox kind from that
    * registration, whether or not it passes `resources`, so its talk sessions
    * hold the same seats and charter. A later call that finds a different
-   * template throws, and every call's channel kind must be able to wake the
+   * template throws, and every call's mailbox kind must be able to wake the
    * template's seats.
    */
   resources?: Readonly<Record<string, unknown>>;
 }
 
-export interface OpenChannelsOptions {
+export interface OpenMailboxesOptions {
   /**
-   * The session API. `createSession` carries the whole of a channel's state,
+   * The session API. `createSession` carries the whole of a mailbox's state,
    * because it is the only route that accepts caller-supplied `state` at
    * create; the other two exist only to answer a 409.
    *
@@ -236,7 +236,7 @@ export interface OpenChannelsOptions {
     }) => Promise<unknown>;
     /**
      * Reads the session sitting behind a taken id, so a 409 can be answered on
-     * WHO holds the id and whether a channel is open there, rather than on
+     * WHO holds the id and whether a mailbox is open there, rather than on
      * whether a session exists.
      *
      * `state` is the session's raw state — the same thing the post fence reads.
@@ -255,17 +255,17 @@ export interface OpenChannelsOptions {
     /**
      * Releases an id held by this kind's own EMPTY session, because create is
      * the only route that writes session state. Never called on a bound
-     * channel, on another flow's session, on another principal's, or on one
+     * mailbox, on another flow's session, on another principal's, or on one
      * carrying state this binder cannot read.
      */
     deleteSession: (sessionId: string) => Promise<void>;
   };
   /**
-   * The user every channel session is bound to.
+   * The user every mailbox session is bound to.
    *
-   * Required, and not an oversight: a session belongs to ONE user, so a channel
+   * Required, and not an oversight: a session belongs to ONE user, so a mailbox
    * has one too. It is also the reason the `principal` on every line of a given
-   * transcript is the same value — see `channel-flow.ts`'s header.
+   * transcript is the same value — see `mailbox-flow.ts`'s header.
    */
   userId: string;
 }
@@ -292,10 +292,10 @@ function isAlreadyOpen(error: unknown): boolean {
  * module-level `const`, so an app that never turns the inventory on never
  * builds it.
  */
-let inventoryChannelFlowMemo: ReturnType<typeof defineChannelFlow> | undefined;
-function inventoryChannelFlow(): ReturnType<typeof defineChannelFlow> {
-  inventoryChannelFlowMemo ??= defineChannelFlow({ inventory: true });
-  return inventoryChannelFlowMemo;
+let inventoryMailboxFlowMemo: ReturnType<typeof defineMailboxFlow> | undefined;
+function inventoryMailboxFlow(): ReturnType<typeof defineMailboxFlow> {
+  inventoryMailboxFlowMemo ??= defineMailboxFlow({ inventory: true });
+  return inventoryMailboxFlowMemo;
 }
 
 /**
@@ -312,21 +312,21 @@ export function orderedById<T extends { id: string }>(records: readonly T[]): T[
  * What a record's `flow:` selects, refusing rather than guessing.
  *
  * An omitted key selects the built-in — decision 1, and the reason the first
- * file in `channels/` carries no `flow:` line. A key that IS present and names
+ * file in `mailboxes/` carries no `flow:` line. A key that IS present and names
  * nothing registered is a misconfiguration and says so; it never falls back.
  *
- * Exported for the inventory binder, which addresses each channel's session on
- * the kind that opened it and must read the record the same way `openChannels`
- * did. A second derivation is a second answer to "which flow is this channel
+ * Exported for the inventory binder, which addresses each mailbox's session on
+ * the kind that opened it and must read the record the same way `openMailboxes`
+ * did. A second derivation is a second answer to "which flow is this mailbox
  * on", and the two would diverge silently. Not re-exported from the package
  * root.
  *
  * The rule itself — absent, blank, or not a string — is `readDeclaredFlow`,
- * shared with the worker door. This adapter supplies the channel default and
- * words both refusal cases the one way the channel door always has.
+ * shared with the worker door. This adapter supplies the mailbox default and
+ * words both refusal cases the one way the mailbox door always has.
  */
 export function kindOf(declared: Record<string, unknown>): { kind: string } | { problem: string } {
-  const read = readDeclaredFlow(declared, CHANNEL_KIND);
+  const read = readDeclaredFlow(declared, MAILBOX_KIND);
   if ("kind" in read) return read;
   return { problem: "declares a `flow:` that is not a kind name" };
 }
@@ -340,10 +340,10 @@ export function kindOf(declared: Record<string, unknown>): { kind: string } | { 
  * then what they wrote that nobody registered.
  */
 function validate(
-  manifest: ChannelManifest,
-  kinds: Record<string, ChannelKind>,
+  manifest: MailboxManifest,
+  kinds: Record<string, MailboxKind>,
   available: string
-): { kind: string; routing?: ChannelRouting } | { problem: string } {
+): { kind: string; routing?: MailboxRouting } | { problem: string } {
   const declared = manifest.declared;
 
   // Refused by its own name, and before the closed-list check, so an author
@@ -355,8 +355,8 @@ function validate(
   if (Object.hasOwn(declared, "id")) {
     return {
       problem:
-        "declares `id:` in its frontmatter. A channel's id is its identity — and literally its " +
-        "session id — and comes from where the channel is declared, never from a setting."
+        "declares `id:` in its frontmatter. A mailbox's id is its identity — and literally its " +
+        "session id — and comes from where the mailbox is declared, never from a setting."
     };
   }
 
@@ -366,8 +366,8 @@ function validate(
   if (undeclared.length > 0) {
     return {
       problem:
-        `declares ${undeclared.map((k) => `\`${k}\``).join(", ")}, which a channel does not ` +
-        `declare. A channel declares: ${DECLARABLE_KEYS.map((k) => `\`${k}\``).join(", ")}.`
+        `declares ${undeclared.map((k) => `\`${k}\``).join(", ")}, which a mailbox does not ` +
+        `declare. A mailbox declares: ${DECLARABLE_KEYS.map((k) => `\`${k}\``).join(", ")}.`
     };
   }
 
@@ -377,7 +377,7 @@ function validate(
     return {
       problem:
         `declares \`${INSTRUCTIONS_KEY}:\` in its frontmatter and carries a body — two sources ` +
-        `for one setting, and there is no precedence rule. Remove one: a channel's charter is ` +
+        `for one setting, and there is no precedence rule. Remove one: a mailbox's charter is ` +
         `its body.`
     };
   }
@@ -401,18 +401,18 @@ function validate(
 
   // Shape first, then each name. A `boards:` that is not a list is one problem
   // with the file, not one problem per entry.
-  if (Object.hasOwn(declared, CHANNEL_BOARDS_KEY)) {
-    const boards = declared[CHANNEL_BOARDS_KEY];
+  if (Object.hasOwn(declared, MAILBOX_BOARDS_KEY)) {
+    const boards = declared[MAILBOX_BOARDS_KEY];
     if (!isListOfNames(boards)) {
       return {
         problem:
           "declares a `boards:` that is not a list of plain names. A board entry is a local " +
-          "name, as a member is — the ledger's id is minted from this channel's id, so no file " +
+          "name, as a member is — the ledger's id is minted from this mailbox's id, so no file " +
           "writes one."
       };
     }
     for (const name of boards) {
-      const problem = channelBoardNameProblem(name);
+      const problem = mailboxBoardNameProblem(name);
       if (problem !== undefined) {
         return { problem: `declares board "${name}", and the board name ${problem}` };
       }
@@ -427,7 +427,7 @@ function validate(
     return {
       problem:
         `declares a \`${BOARD_ACTIONS_KEY}:\` that is not \`true\` or \`false\`. It turns on the ` +
-        `channel's board task actions, so it is read as a switch and nothing else.`
+        `mailbox's board task actions, so it is read as a switch and nothing else.`
     };
   }
 
@@ -443,19 +443,19 @@ function validate(
   if (factory === undefined) {
     return {
       problem:
-        `names channel kind "${selected.kind}", which was not passed to channelInstances. ` +
+        `names mailbox kind "${selected.kind}", which was not passed to mailboxInstances. ` +
         `Kinds passed: ${available}`
     };
   }
 
   // A kind filed under someone else's name. Nothing downstream would notice —
-  // the instance registers under the other kind's address and this channel's
+  // the instance registers under the other kind's address and this mailbox's
   // sessions run that kind's graph.
   if (factory.kind !== selected.kind) {
     return {
       problem:
-        `declares channel kind "${selected.kind}", but the flow passed under that key is kind ` +
-        `"${String(factory.kind)}" — this channel would run a different channel's graph. ` +
+        `declares mailbox kind "${selected.kind}", but the flow passed under that key is kind ` +
+        `"${String(factory.kind)}" — this mailbox would run a different mailbox's graph. ` +
         `Pass each kind under its own name.`
     };
   }
@@ -468,10 +468,10 @@ function validate(
   if (boardNamesOf(declared).length > 0 && !holdsBoards(factory)) {
     return {
       problem:
-        `declares \`${CHANNEL_BOARDS_KEY}:\` and runs on channel kind "${selected.kind}", which ` +
-        `is not a kind \`defineChannelFlow\` built. Boards are the built-in channel kind's: a ` +
+        `declares \`${MAILBOX_BOARDS_KEY}:\` and runs on mailbox kind "${selected.kind}", which ` +
+        `is not a kind \`defineMailboxFlow\` built. Boards are the built-in mailbox kind's: a ` +
         `custom kind is zero-arg, so there is no way to hand it the ledgers this roster minted. ` +
-        `Drop the \`flow:\` line to hold a board, or drop the \`${CHANNEL_BOARDS_KEY}:\` line to ` +
+        `Drop the \`flow:\` line to hold a board, or drop the \`${MAILBOX_BOARDS_KEY}:\` line to ` +
         `keep the custom kind.`
     };
   }
@@ -484,8 +484,8 @@ function validate(
   if (route === undefined) {
     return {
       problem:
-        `declares \`${ROUTING_KEY}:\` and runs on channel kind "${selected.kind}", which was built ` +
-        `without a route. Build the kind with \`defineChannelFlow({ notify, route: ` +
+        `declares \`${ROUTING_KEY}:\` and runs on mailbox kind "${selected.kind}", which was built ` +
+        `without a route. Build the kind with \`defineMailboxFlow({ notify, route: ` +
         `routeByPurpose(seats, { model }) })\`, or drop the \`${ROUTING_KEY}:\` line.`
     };
   }
@@ -514,7 +514,7 @@ function validate(
  * The record's `routing:`, read and shape-checked: `undefined` when it
  * declares none, the setting when it is well formed, or why it is not.
  */
-function routingOf(declared: Record<string, unknown>): ChannelRouting | { problem: string } | undefined {
+function routingOf(declared: Record<string, unknown>): MailboxRouting | { problem: string } | undefined {
   if (!Object.hasOwn(declared, ROUTING_KEY)) return undefined;
   const routing = declared[ROUTING_KEY];
   if (typeof routing !== "object" || routing === null || Array.isArray(routing)) {
@@ -548,38 +548,38 @@ function routingOf(declared: Record<string, unknown>): ChannelRouting | { proble
  * The board names one record declared, or none.
  *
  * Reads only a well-formed list — `validate` refuses a malformed one first, and
- * this is also reached from {@link channelBoardIds}, where a caller may be
+ * this is also reached from {@link mailboxBoardIds}, where a caller may be
  * holding a roster nobody validated. A shape this cannot read is *no boards*
  * here, never a guess at what was meant.
  */
 function boardNamesOf(declared: Record<string, unknown>): string[] {
-  const boards = declared[CHANNEL_BOARDS_KEY];
+  const boards = declared[MAILBOX_BOARDS_KEY];
   if (!isListOfNames(boards)) return [];
-  return boards.filter((name) => channelBoardNameProblem(name) === undefined);
+  return boards.filter((name) => mailboxBoardNameProblem(name) === undefined);
 }
 
 /**
- * Every ledger id a roster's channels mint, sorted and deduplicated.
+ * Every ledger id a roster's mailboxes mint, sorted and deduplicated.
  *
  * The one place a roster becomes a list of ids, so the binder and the
  * hire-time unattended-board check read the same answer rather than each
- * joining channel ids to board names themselves.
+ * joining mailbox ids to board names themselves.
  *
  * **Reads only well-formed entries.** A `boards:` this cannot read, or a name
  * that breaks the rules, counts as NO board here rather than as a guess at
- * what was meant — `channelInstances` is what refuses those, and it may not
+ * what was meant — `mailboxInstances` is what refuses those, and it may not
  * have run yet. So on an unvalidated roster this returns the ids of the
- * channels that would bind and silently omits the ones that would not. Call it
- * on a roster you also pass to `channelInstances`, or the set is a subset.
+ * mailboxes that would bind and silently omits the ones that would not. Call it
+ * on a roster you also pass to `mailboxInstances`, or the set is a subset.
  *
- * @param manifests The roster — the same records `channelInstances` registers.
- * @returns The minted ids, `<channelId>.<boardName>`, in a stable order.
+ * @param manifests The roster — the same records `mailboxInstances` registers.
+ * @returns The minted ids, `<mailboxId>.<boardName>`, in a stable order.
  */
-export function channelBoardIds(manifests: readonly ChannelManifest[]): string[] {
+export function mailboxBoardIds(manifests: readonly MailboxManifest[]): string[] {
   const ids = new Set<string>();
   for (const manifest of manifests) {
     for (const name of boardNamesOf(manifest.declared)) {
-      ids.add(channelBoardId(manifest.id, name));
+      ids.add(mailboxBoardId(manifest.id, name));
     }
   }
   return [...ids].sort();
@@ -590,33 +590,33 @@ function isListOfNames(value: unknown): value is string[] {
 }
 
 /**
- * Turn channel records into the flow instances to register — one per DISTINCT
+ * Turn mailbox records into the flow instances to register — one per DISTINCT
  * kind, never one per record.
  *
- * The built-in is seeded, so an app that registers nothing still gets channels:
- * a record with no `flow:` runs on `"channel"`. Every problem is a startup
+ * The built-in is seeded, so an app that registers nothing still gets mailboxes:
+ * a record with no `flow:` runs on `"mailbox"`. Every problem is a startup
  * misconfiguration, so every problem throws — but they are collected first, so
  * one run names all of them. Nothing is returned partially.
  *
  * @param manifests The roster — from a loader, or hand-built.
- * @param options   `kinds`: extra or replacement channel kinds, by kind name.
+ * @param options   `kinds`: extra or replacement mailbox kinds, by kind name.
  * @returns One `FlowInstance` per distinct kind, ordered by id. Register these.
- * @throws If any record cannot be bound; the message names every bad channel.
+ * @throws If any record cannot be bound; the message names every bad mailbox.
  */
-export function channelInstances(
-  manifests: readonly ChannelManifest[],
-  options: ChannelInstancesOptions = {}
+export function mailboxInstances(
+  manifests: readonly MailboxManifest[],
+  options: MailboxInstancesOptions = {}
 ): FlowInstance[] {
   // The seed: the built-in fills the map only where the caller left the key
-  // free, so `kinds: { channel: mine }` replaces it wholesale. With the
+  // free, so `kinds: { mailbox: mine }` replaces it wholesale. With the
   // inventory asked for, the seed is the same built-in rebuilt holding the
   // writer — a second factory rather than a flag read at run time, because the
   // collections have to be DECLARED on the flow and a declaration cannot be
   // made per request.
-  const kinds: Record<string, ChannelKind> = {
-    [CHANNEL_KIND]: (options.inventory === true
-      ? inventoryChannelFlow()
-      : channelFlow) as unknown as ChannelKind,
+  const kinds: Record<string, MailboxKind> = {
+    [MAILBOX_KIND]: (options.inventory === true
+      ? inventoryMailboxFlow()
+      : mailboxFlow) as unknown as MailboxKind,
     ...(options.kinds ?? {})
   };
   const available = Object.keys(kinds)
@@ -627,13 +627,13 @@ export function channelInstances(
   const problems: string[] = [];
   const seen = new Set<string>();
   const selected = new Set<string>();
-  /** Ledger id → the channel that minted it. A collision names both. */
+  /** Ledger id → the mailbox that minted it. A collision names both. */
   const minted = new Map<string, string>();
   /** The minted ids each selected kind must be built holding. */
   const boardsByKind = new Map<string, string[]>();
-  /** Each selected kind's routed channels: channel id → its `routing:`. */
-  const routingByKind = new Map<string, Record<string, ChannelRouting>>();
-  /** Each selected kind's channels that declared `boardActions: true`. */
+  /** Each selected kind's routed mailboxes: mailbox id → its `routing:`. */
+  const routingByKind = new Map<string, Record<string, MailboxRouting>>();
+  /** Each selected kind's mailboxes that declared `boardActions: true`. */
   const boardActionsByKind = new Map<string, string[]>();
   /** Every project talk template, from either site, checked. */
   const templates: DeclaredTemplate[] = [];
@@ -662,14 +662,14 @@ export function channelInstances(
 
   for (const manifest of ordered) {
     const refuse = (reason: string): void => {
-      problems.push(`channel "${manifest.id}" — ${reason}`);
+      problems.push(`mailbox "${manifest.id}" — ${reason}`);
     };
 
     // Caught here as well as at the registry so it reads as a ROSTER problem,
     // reported alongside the others. An id is an address, and here it is
     // literally a session id.
     if (seen.has(manifest.id)) {
-      refuse("declared twice in this roster; a channel's id is its session id and must be unique");
+      refuse("declared twice in this roster; a mailbox's id is its session id and must be unique");
       continue;
     }
     seen.add(manifest.id);
@@ -680,8 +680,8 @@ export function channelInstances(
       continue;
     }
 
-    // A template is the shape of a project's room, not a channel: it adds its
-    // template, and nothing a channel adds.
+    // A template is the shape of a project's room, not a mailbox: it adds its
+    // template, and nothing a mailbox adds.
     if (isTalkTemplate(manifest)) {
       const ref = manifest.declared[MINT_FOR_KEY] as string;
       const declared = templateFrom(
@@ -690,7 +690,7 @@ export function channelInstances(
           seats: isListOfNames(manifest.declared.members) ? manifest.declared.members : [],
           charter: stateFor(manifest).instructions
         },
-        `channel "${manifest.id}"`,
+        `mailbox "${manifest.id}"`,
         options.resources
       );
       if ("problem" in declared) refuse(declared.problem);
@@ -708,25 +708,25 @@ export function channelInstances(
 
     // Minted here rather than in `validate`, because uniqueness is a fact
     // about the ROSTER and not about one record. An id is a storage key: two
-    // channels minting one is two teams' work in a single ledger, which reads
+    // mailboxes minting one is two teams' work in a single ledger, which reads
     // as rows appearing from nowhere rather than as a misconfiguration.
     for (const name of boardNamesOf(manifest.declared)) {
-      const id = channelBoardId(manifest.id, name);
+      const id = mailboxBoardId(manifest.id, name);
       const owner = minted.get(id);
       if (owner !== undefined) {
         // The two arms are not equally reachable, and saying so beats leaving a
-        // reader to assume both fire. A channel id is unique across the roster
+        // reader to assume both fire. A mailbox id is unique across the roster
         // (refused above) and a board name carries no dot, so two DIFFERENT
-        // channels cannot mint one id from any roster this package can build.
-        // The second arm covers a hand-built `ChannelManifest`, whose ids are
+        // mailboxes cannot mint one id from any roster this package can build.
+        // The second arm covers a hand-built `MailboxManifest`, whose ids are
         // caller-supplied and which this module cannot constrain — it is a
         // guard on an input it does not own, not dead code.
         refuse(
           owner === manifest.id
-            ? `declares board "${name}" twice; a channel's board names are its ledger ids and ` +
+            ? `declares board "${name}" twice; a mailbox's board names are its ledger ids and ` +
                 `must be unique (minted "${id}")`
             : `declares board "${name}", which mints ledger id "${id}" — already minted by ` +
-                `channel "${owner}". An id is a storage key, and a duplicate is two teams' work ` +
+                `mailbox "${owner}". An id is a storage key, and a duplicate is two teams' work ` +
                 `in one ledger`
         );
         continue;
@@ -753,7 +753,7 @@ export function channelInstances(
   }
 
   // The template this call builds on: the one it found, or the one an earlier
-  // call registered for the process. Either way, this call's channel kind
+  // call registered for the process. Either way, this call's mailbox kind
   // runs the talk sessions, so it must be able to hold and wake it.
   const found = templates.find((template) => template.collection === PROJECTS_COLLECTION);
   // A template found here that differs from the one an earlier call
@@ -773,27 +773,27 @@ export function channelInstances(
   }
 
   if (problems.length > 0) {
-    // Worded as before when every declaration is a channel file.
+    // Worded as before when every declaration is a mailbox file.
     const declarations = ordered.length + orgDeclarations;
-    const noun = orgDeclarations > 0 ? "declarations" : `channel${ordered.length === 1 ? "" : "s"}`;
+    const noun = orgDeclarations > 0 ? "declarations" : `mailbox${ordered.length === 1 ? "" : "s"}`;
     throw new Error(
-      `channelInstances refused ${problems.length} of ${declarations} ` +
+      `mailboxInstances refused ${problems.length} of ${declarations} ` +
         `${noun}; nothing was registered:\n  - ${problems.join("\n  - ")}`
     );
   }
 
   // The template found here is registered for the process, with the reaction
   // that mints a creator's talk session (`talk-template.ts`); a different one
-  // already registered throws. The channel kind is then built holding the
-  // registered template, and registered even when no channel runs on it: its
+  // already registered throws. The mailbox kind is then built holding the
+  // registered template, and registered even when no mailbox runs on it: its
   // talk sessions do. A call that finds no template still builds from the
-  // registration, so every channel kind in the process holds the same one.
+  // registration, so every mailbox kind in the process holds the same one.
   if (found !== undefined) {
     const templateIds = ordered.filter(isTalkTemplate).map((manifest) => manifest.id);
-    registerTalkTemplate(PROJECTS_COLLECTION, { site: found.site, facts: found.facts }, CHANNEL_KIND, templateIds);
+    registerTalkTemplate(PROJECTS_COLLECTION, { site: found.site, facts: found.facts }, MAILBOX_KIND, templateIds);
   }
   const template = registeredTalkTemplate(PROJECTS_COLLECTION);
-  if (template !== undefined) selected.add(CHANNEL_KIND);
+  if (template !== undefined) selected.add(MAILBOX_KIND);
 
   return [...selected].sort().map((kind) => {
     const factory = kinds[kind]!;
@@ -805,7 +805,7 @@ export function channelInstances(
     // this package built gets here holding any.
     if (!holdsBoards(factory)) return factory();
     const boardActions = boardActionsByKind.get(kind);
-    const facts = kind === CHANNEL_KIND ? template?.facts : undefined;
+    const facts = kind === MAILBOX_KIND ? template?.facts : undefined;
     const withBoards = boards === undefined ? factory : factory.withBoards(boards);
     const withRouting = routing === undefined ? withBoards : withBoards.withRouting(routing);
     const withBoardActions = boardActions === undefined ? withRouting : withRouting.withBoardActions(boardActions);
@@ -827,7 +827,7 @@ function templateFrom(
   if (collection === undefined) {
     return {
       problem:
-        `names collection "${declared.ref}", which is not in the org's resources passed to channelInstances. ` +
+        `names collection "${declared.ref}", which is not in the org's resources passed to mailboxInstances. ` +
         `Declare it in \`org/resources/${declared.ref}.ts\` and pass the org's resource map as \`resources\`.`
     };
   }
@@ -847,46 +847,46 @@ function templateFrom(
 }
 
 /**
- * Why this call's channel kind cannot run talk sessions on `facts`, or
- * `undefined`. Talk sessions run on the built-in kind (`"channel"`), so what
- * sits under that key must be a kind {@link defineChannelFlow} built (the
+ * Why this call's mailbox kind cannot run talk sessions on `facts`, or
+ * `undefined`. Talk sessions run on the built-in kind (`"mailbox"`), so what
+ * sits under that key must be a kind {@link defineMailboxFlow} built (the
  * template is built onto it, as `boards:` is), of that kind, and able to wake
  * the template's seats.
  */
-function talkKindProblem(kinds: Record<string, ChannelKind>, facts: TalkTemplateFacts): string | undefined {
-  const factory = kinds[CHANNEL_KIND]!;
-  if (factory.kind !== CHANNEL_KIND) {
+function talkKindProblem(kinds: Record<string, MailboxKind>, facts: TalkTemplateFacts): string | undefined {
+  const factory = kinds[MAILBOX_KIND]!;
+  if (factory.kind !== MAILBOX_KIND) {
     return (
-      `talk sessions run on kind "${CHANNEL_KIND}", but the flow passed under that key is kind ` +
-      `"${String(factory.kind)}" — they would run a different channel's graph.`
+      `talk sessions run on kind "${MAILBOX_KIND}", but the flow passed under that key is kind ` +
+      `"${String(factory.kind)}" — they would run a different mailbox's graph.`
     );
   }
   if (!holdsBoards(factory)) {
     return (
-      `talk sessions run on kind "${CHANNEL_KIND}", and the flow passed under that key is not one ` +
-      `\`defineChannelFlow\` built. A custom kind is zero-arg, so there is no way to hand it the template's ` +
+      `talk sessions run on kind "${MAILBOX_KIND}", and the flow passed under that key is not one ` +
+      `\`defineMailboxFlow\` built. A custom kind is zero-arg, so there is no way to hand it the template's ` +
       `seats and charter.`
     );
   }
   if (facts.seats.length > 0 && !wakesSeats(factory)) {
     return (
-      `names seats, but talk sessions run on kind "${CHANNEL_KIND}", which was built with no \`notify\` ` +
+      `names seats, but talk sessions run on kind "${MAILBOX_KIND}", which was built with no \`notify\` ` +
       `block, so a post would wake none of them. Pass it built with one, as ` +
-      `\`kinds: { channel: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }\`.`
+      `\`kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats) }) }\`.`
     );
   }
   return undefined;
 }
 
 /**
- * The channel facts written into a channel's session at open.
+ * The mailbox facts written into a mailbox's session at open.
  *
  * Built from named keys only, which is why an undeclared key cannot reach
  * state even though the session route would not refuse one: there is nowhere
  * for it to go. `resourceId` is a talk session's alone, and a declared
- * channel's state carries no such key.
+ * mailbox's state carries no such key.
  */
-function stateFor(manifest: ChannelManifest): Omit<ChannelSessionState, "resourceId"> {
+function stateFor(manifest: MailboxManifest): Omit<MailboxesessionState, "resourceId"> {
   const declared = manifest.declared;
   const charter =
     manifest.body.trim().length > 0
@@ -902,10 +902,10 @@ function stateFor(manifest: ChannelManifest): Omit<ChannelSessionState, "resourc
 }
 
 /**
- * Who holds this id, and is a channel open in it?
+ * Who holds this id, and is a mailbox open in it?
  *
- * Boundness is still the fence's own `boundChannel`, so the binder reads "is a
- * channel open here" exactly as the post path does. But boundness alone cannot
+ * Boundness is still the fence's own `boundMailbox`, so the binder reads "is a
+ * mailbox open here" exactly as the post path does. But boundness alone cannot
  * answer what to DO, and answering on it alone is how a session gets deleted:
  * a session id is unique per principal, not per flow, so an id that fails the
  * boundness test may be an ordinary session belonging to another flow entirely —
@@ -913,25 +913,25 @@ function stateFor(manifest: ChannelManifest): Omit<ChannelSessionState, "resourc
  *
  * Three answers, because only one of the three is safe to tear down:
  *
- * - `"open"` — this kind's own bound channel, for this principal. Left exactly
- *   as it is, unless this run asked for an org the channel is not in, which is
+ * - `"open"` — this kind's own bound mailbox, for this principal. Left exactly
+ *   as it is, unless this run asked for an org the mailbox is not in, which is
  *   a `problem`: re-opening cannot move it.
  * - `"empty"` — this kind's own session for this principal carrying no state at
  *   all, which is precisely what the action path's create-or-get leaves behind.
  *   The only case the id is released in.
  * - a `problem` — anything else: another flow's session, another principal's,
- *   or one carrying state this binder cannot read as a channel. A collision is
+ *   or one carrying state this binder cannot read as a mailbox. A collision is
  *   an operator error worth failing loudly on, and state that will not parse is
  *   data rather than an empty slot. Neither is repaired by deleting it.
  */
-type ChannelOccupant = { status: "open" | "empty" } | { problem: string };
+type MailboxOccupant = { status: "open" | "empty" } | { problem: string };
 
 async function occupantOf(
-  client: OpenChannelsOptions["client"],
+  client: OpenMailboxesOptions["client"],
   sessionId: string,
   kind: string,
   userId: string
-): Promise<ChannelOccupant> {
+): Promise<MailboxOccupant> {
   const session = await client.getSession(sessionId);
 
   if (session.flowKind !== kind) {
@@ -939,7 +939,7 @@ async function occupantOf(
       problem:
         `the id is held by a "${session.flowKind}" session, not a "${kind}" one. A session id is ` +
         `unique per principal rather than per flow, so this is an id collision with somebody ` +
-        `else's session — rename the channel rather than have its binder delete that session.`
+        `else's session — rename the mailbox rather than have its binder delete that session.`
     };
   }
 
@@ -949,7 +949,7 @@ async function occupantOf(
     return {
       problem:
         `the id is held by a session owned by flow instance "${session.flowId}" rather than by ` +
-        `"${kind}". A channel kind is a singleton, so its instance address is its kind.`
+        `"${kind}". A mailbox kind is a singleton, so its instance address is its kind.`
     };
   }
 
@@ -957,13 +957,13 @@ async function occupantOf(
     return {
       problem:
         `the id is held by a session belonging to "${session.userId}", not to "${userId}". ` +
-        `A channel belongs to one user, and this one would be opened over somebody else's.`
+        `A mailbox belongs to one user, and this one would be opened over somebody else's.`
     };
   }
 
   const state = session.state;
-  if (state !== undefined && boundChannel(state) !== undefined) {
-    // The binder used to compare the open channel's org against one this run
+  if (state !== undefined && boundMailbox(state) !== undefined) {
+    // The binder used to compare the open mailbox's org against one this run
     // asked for. It no longer asks for one (FIX-1442): the organization is the
     // server's to decide from the verified principal, and re-opening is a
     // server-side create that the session route admits or refuses on that
@@ -977,82 +977,82 @@ async function occupantOf(
 
   return {
     problem:
-      `the id is held by a "${kind}" session carrying state that is not a readable channel ` +
+      `the id is held by a "${kind}" session carrying state that is not a readable mailbox ` +
       `(keys: ${Object.keys(state).map((key) => `\`${key}\``).join(", ")}). It is not the empty ` +
       `session a premature post leaves, so it is not this binder's to delete.`
   };
 }
 
 /**
- * How many times a 409 is answered before the channel is refused.
+ * How many times a 409 is answered before the mailbox is refused.
  *
  * Bounded rather than a retry loop: each round costs a read, and a repair that
- * has lost the id three times is a channel something else keeps taking, which
+ * has lost the id three times is a mailbox something else keeps taking, which
  * is worth a startup failure rather than a fourth attempt.
  */
 const REPAIR_ATTEMPTS = 3;
 
 /**
  * Open one named session per record, on that record's kind, carrying the
- * channel's members, charter and description.
+ * mailbox's members, charter and description.
  *
  * Uses the session route rather than the action path, because that route is the
  * only one that accepts caller-supplied `state` at create. The action path is
- * create-or-get and creates with EMPTY state — an unbound channel, which the
+ * create-or-get and creates with EMPTY state — an unbound mailbox, which the
  * post block refuses.
  *
- * **A 409 says the id is taken, not that a channel is open there**, so it is
+ * **A 409 says the id is taken, not that a mailbox is open there**, so it is
  * answered by reading the session and branching on boundness:
  *
- * - **A bound channel** is left exactly as it is. That is what keeps re-running
+ * - **A bound mailbox** is left exactly as it is. That is what keeps re-running
  *   over an unchanged roster a no-op — and, for the same reason, an edited
- *   `members:`, charter or `description:` does not reach a channel that is
+ *   `members:`, charter or `description:` does not reach a mailbox that is
  *   already open — {@link stateFor} writes the first two into session state at
  *   create and `description` is a session field set there, and this branch
  *   returns before any of them is looked at again. Re-opening is not a
  *   migration. `boards:` is NOT one of them: the board list is built onto the
  *   kind from the roster on every bind and never written to the session, so it
- *   does reach a channel that is already open. The one case not silently left
- *   behind is an open channel this principal cannot reach: the same reasoning
- *   makes that unfixable here, so it refuses rather than reporting the channel
+ *   does reach a mailbox that is already open. The one case not silently left
+ *   behind is an open mailbox this principal cannot reach: the same reasoning
+ *   makes that unfixable here, so it refuses rather than reporting the mailbox
  *   opened.
  * - **This kind's own empty session** — one the action path minted when
  *   something posted to or read the id before this ran — is adopted: the id is
- *   released and re-created carrying the channel's state. Such a session holds
- *   no channel data, and writing that state is precisely what opening a channel
- *   means. Without this, one premature post leaves the channel unbound
+ *   released and re-created carrying the mailbox's state. Such a session holds
+ *   no mailbox data, and writing that state is precisely what opening a mailbox
+ *   means. Without this, one premature post leaves the mailbox unbound
  *   permanently: every later run 409s too, and no public route writes state
  *   into a session that already exists.
  * - **Anything else holding the id** is refused by name rather than repaired —
  *   see {@link occupantOf}.
  *
  * A repair that 409s again is answered the same way, not assumed to be another
- * binder's open channel: the racer may be the action path, which would leave
- * this resolving over a channel that is still unbound. So it re-reads and goes
+ * binder's open mailbox: the racer may be the action path, which would leave
+ * this resolving over a mailbox that is still unbound. So it re-reads and goes
  * round, up to {@link REPAIR_ATTEMPTS} times, then refuses.
  *
- * @param manifests The roster — the same records `channelInstances` registered.
- * @param options   `client`: the session API. `userId`: who every channel session belongs to.
+ * @param manifests The roster — the same records `mailboxInstances` registered.
+ * @param options   `client`: the session API. `userId`: who every mailbox session belongs to.
  *                  The organization is the server's, from the verified principal.
- * @throws On any failure that is not a 409, and on a 409 this cannot answer, with the channel named.
+ * @throws On any failure that is not a 409, and on a 409 this cannot answer, with the mailbox named.
  */
-export async function openChannels(
-  manifests: readonly ChannelManifest[],
-  options: OpenChannelsOptions
+export async function openMailboxes(
+  manifests: readonly MailboxManifest[],
+  options: OpenMailboxesOptions
 ): Promise<void> {
-  // A board is org-scoped storage, and a channel that held one used to be
-  // refused here when `openChannels` was given no `orgId` — there was nowhere
+  // A board is org-scoped storage, and a mailbox that held one used to be
+  // refused here when `openMailboxes` was given no `orgId` — there was nowhere
   // to keep its rows. That precondition is gone (FIX-1442): the session the
   // server creates always carries an organization, so a board always has an
   // address. The binder no longer takes an `orgId` at all, and never did have
   // the authority to choose one.
 
-  // A talk template is the shape of a project's room, never a channel, so it
+  // A talk template is the shape of a project's room, never a mailbox, so it
   // is never opened.
   for (const manifest of orderedById(manifests.filter((record) => !isTalkTemplate(record)))) {
     const selected = kindOf(manifest.declared);
     if ("problem" in selected) {
-      throw new Error(`channel "${manifest.id}" — ${selected.problem}`);
+      throw new Error(`mailbox "${manifest.id}" — ${selected.problem}`);
     }
 
     const declaredDescription = manifest.declared.description;
@@ -1067,7 +1067,7 @@ export async function openChannels(
     };
 
     const failed = (error: unknown): Error =>
-      new Error(`channel "${manifest.id}" could not be opened — ${messageOf(error)}`, {
+      new Error(`mailbox "${manifest.id}" could not be opened — ${messageOf(error)}`, {
         cause: error
       });
 
@@ -1078,7 +1078,7 @@ export async function openChannels(
 
       let settled = false;
       for (let attempt = 0; attempt < REPAIR_ATTEMPTS && !settled; attempt += 1) {
-        let occupant: ChannelOccupant;
+        let occupant: MailboxOccupant;
         try {
           occupant = await occupantOf(
             options.client,
@@ -1092,7 +1092,7 @@ export async function openChannels(
 
         if ("problem" in occupant) throw failed(new Error(occupant.problem));
         if (occupant.status === "open") {
-          // A bound channel — theirs or a previous run's — is left exactly as
+          // A bound mailbox — theirs or a previous run's — is left exactly as
           // it is, which is where an unraced 409 lands too.
           settled = true;
           break;
@@ -1106,7 +1106,7 @@ export async function openChannels(
           // A second 409: the id was retaken between the read and the create.
           // The retaker may be the action path rather than another binder, so
           // the next round asks who holds it now — swallowing this is how a
-          // channel is left unbound with `openChannels` reporting success.
+          // mailbox is left unbound with `openMailboxes` reporting success.
           if (!isAlreadyOpen(repairError)) throw failed(repairError);
         }
       }
@@ -1115,7 +1115,7 @@ export async function openChannels(
         throw failed(
           new Error(
             `the id was taken again by an unbound session on each of ${REPAIR_ATTEMPTS} attempts ` +
-              `to open it. Something is racing this binder for the channel's session id.`
+              `to open it. Something is racing this binder for the mailbox's session id.`
           )
         );
       }

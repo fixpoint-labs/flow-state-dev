@@ -1,16 +1,16 @@
 /**
- * A specialist routed a post answers in the channel through its post tool,
+ * A specialist routed a post answers in the mailbox through its post tool,
  * under its own name, once, and its line wakes nobody, on this app's own
  * wiring: the real config, the hired roster, and the scripted model and route.
  *
- * The line is read the way the page reads it (the channel's `channel-post`
+ * The line is read the way the page reads it (the mailbox's `mailbox-post`
  * items), and the seats' conversations the way the rail lists them (dispatch
  * runs included), after the answers settle.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1594/PLAN.md`, V2 and V3),
  * re-pointed onto the routed roster by FIX-1611 (BR-6):
- *   BR-2   a post carrying `[scenario:reply-in-channel]`, routed to
- *          `support.devices`, wakes it, and its scripted `post-to-channel`
+ *   BR-2   a post carrying `[scenario:reply-in-mailbox]`, routed to
+ *          `support.devices`, wakes it, and its scripted `post-to-mailbox`
  *          call lands one line in `support.help` authored `support.devices`.
  *          The tool's line is the answer, so no second line lands (FIX-1610
  *          BR-10).
@@ -21,7 +21,7 @@
  *
  * These run on the default wiring only. The controls' red states
  * (`GOAL_CONTROL=no-author-filter`, `GOAL_CONTROL=post-without-author`) are
- * graded in `goals/kitchen-sink-talk/agent-replies-in-the-channel/run.mts` and
+ * graded in `goals/kitchen-sink-talk/agent-replies-in-the-mailbox/run.mts` and
  * the talk Playwright case, not here.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -33,10 +33,10 @@ vi.setConfig({ testTimeout: 60_000 });
 type Router = Awaited<ReturnType<FlowState["getRouter"]>>;
 
 const USER = "devuser";
-const CHANNEL = "support.help";
+const MAILBOX = "support.help";
 const SEAT = "support.devices";
 const OTHERS = ["support.accounts", "support.fsd", "support.general"];
-const LINE_MARKER = "[reply:in-channel]";
+const LINE_MARKER = "[reply:in-mailbox]";
 
 afterEach(async () => {
   const hmr = globalThis as { __fsdFlowstate?: FlowState };
@@ -69,12 +69,12 @@ async function call(router: Router, method: "GET" | "POST", segments: string[], 
 
 type Line = { author?: string; principal?: string; authorVerified: boolean; body: string };
 
-/** The channel's lines as the page reads them: its session's `channel-post` items. */
+/** The mailbox's lines as the page reads them: its session's `mailbox-post` items. */
 async function linesOf(router: Router, sessionId: string): Promise<Line[]> {
   const res = await call(router, "GET", ["sessions", sessionId, "state"], undefined, "?include_items=true&item_types=component&limit=1000");
   expect(res.status, res.text).toBe(200);
   const items = (JSON.parse(res.text) as { items?: Array<{ component?: string; data?: Line }> }).items ?? [];
-  return items.filter((item) => item.component === "channel-post").map((item) => item.data!);
+  return items.filter((item) => item.component === "mailbox-post").map((item) => item.data!);
 }
 
 type Item = {
@@ -112,28 +112,28 @@ async function until(predicate: () => Promise<boolean>, label: string, tries = 4
 const token = () => `reply-token-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 /** The post each case sends, routed to the specialist. */
-const postBody = (mark: string) => `[route:${SEAT}] [scenario:reply-in-channel] ${mark} when do refunds post?`;
+const postBody = (mark: string) => `[route:${SEAT}] [scenario:reply-in-mailbox] ${mark} when do refunds post?`;
 
 /** Post as the page does, wait for the specialist's line and answer, and give a wrongly woken seat time to run. */
 async function postAndSettle(router: Router, mark: string): Promise<void> {
-  const res = await call(router, "POST", ["channel", "actions", "post"], {
+  const res = await call(router, "POST", ["mailbox", "actions", "post"], {
     userId: USER,
-    sessionId: CHANNEL,
+    sessionId: MAILBOX,
     input: { body: postBody(mark) },
   });
   expect(res.status, res.text).toBe(200);
-  await until(async () => (await linesOf(router, CHANNEL)).some((l) => l.body.includes(LINE_MARKER) && l.body.includes(mark)), "the specialist's line");
+  await until(async () => (await linesOf(router, MAILBOX)).some((l) => l.body.includes(LINE_MARKER) && l.body.includes(mark)), "the specialist's line");
   await until(async () => (await conversationsHolding(router, SEAT, mark)).length > 0, `${SEAT}'s answer`);
   await new Promise((resolve) => setTimeout(resolve, 750));
 }
 
-describe("V2 · a woken agent seat answers in the channel, under its own name", () => {
+describe("V2 · a woken agent seat answers in the mailbox, under its own name", () => {
   it("lands one line in support.help as support.devices, and keeps only the tool call in its conversation", async () => {
     const router = await bootApp();
     const mark = token();
     await postAndSettle(router, mark);
 
-    const lines = await linesOf(router, CHANNEL);
+    const lines = await linesOf(router, MAILBOX);
     const at = lines.findIndex((l) => l.author === undefined && l.body.includes(mark));
     // One line after the person's: the tool's. The routed turn's reply does not land a second.
     expect(lines.slice(at + 1)).toHaveLength(1);
@@ -142,10 +142,10 @@ describe("V2 · a woken agent seat answers in the channel, under its own name", 
     expect(reply).toMatchObject({ author: SEAT, principal: USER });
 
     const [seat] = await conversationsHolding(router, SEAT, mark);
-    const calls = seat!.filter((i) => i.type === "tool_output" && i.toolCall?.name === "post-to-channel");
+    const calls = seat!.filter((i) => i.type === "tool_output" && i.toolCall?.name === "post-to-mailbox");
     expect(calls).toHaveLength(1);
-    expect(JSON.parse(calls[0]!.toolCall!.arguments!)).toMatchObject({ channel: CHANNEL });
-    // The line itself is the channel's; the seat's conversation holds no copy of it.
+    expect(JSON.parse(calls[0]!.toolCall!.arguments!)).toMatchObject({ mailbox: MAILBOX });
+    // The line itself is the mailbox's; the seat's conversation holds no copy of it.
     expect(keptMessages(seat!).map(textOf).filter((t) => t.includes(reply!.body))).toEqual([]);
   });
 });
@@ -161,7 +161,7 @@ describe("V3 · a seat's line wakes nobody", () => {
       .filter((m) => m.role === "user" && textOf(m).includes(mark))
       .map(textOf);
     expect(heard, `${SEAT}'s turns carrying the token`).toEqual([
-      expect.stringContaining(`${USER} in ${CHANNEL}: ${postBody(mark)}`),
+      expect.stringContaining(`${USER} in ${MAILBOX}: ${postBody(mark)}`),
     ]);
     for (const other of OTHERS) {
       expect(await conversationsHolding(router, other, mark), `${other}'s conversations carrying the token`).toEqual([]);

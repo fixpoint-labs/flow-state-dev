@@ -3,7 +3,7 @@
  * post's queue hold.
  *
  * The split is the point. The post entry is `concurrency: "queue"` keyed on the
- * session, so two posts on one channel serialise into its transcript — but the
+ * session, so two posts on one mailbox serialise into its transcript — but the
  * held work is the append only. Fan-out runs as its own request
  * (`concurrency: "allow"`), so delivery latency never counts against the next
  * poster's 30s queue-wait budget. Past that budget a waiting post is dropped
@@ -22,20 +22,20 @@ import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  CHANNEL_KIND,
-  channelFlow,
-  channelNotifyInputSchema,
-  defineChannelFlow,
-  type ChannelNotifyInput
+  MAILBOX_KIND,
+  mailboxFlow,
+  mailboxNotifyInputSchema,
+  defineMailboxFlow,
+  type MailboxNotifyInput
 } from "../src/index";
-import { postedLines } from "./channel-post-lines";
+import { postedLines } from "./mailbox-post-lines";
 
 const USER_ID = "u_fanout";
 
 function hostWith(notify?: ReturnType<typeof handler>) {
-  const instance = (notify === undefined ? channelFlow : defineChannelFlow({ notify }))();
+  const instance = (notify === undefined ? mailboxFlow : defineMailboxFlow({ notify }))();
   const state = createFlowState({
-    flows: { [CHANNEL_KIND]: instance },
+    flows: { [MAILBOX_KIND]: instance },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({})
   });
@@ -48,8 +48,8 @@ async function bind(stores: StoreRegistry, sessionId: string, members: string[])
     sessionId,
     {
       id: sessionId,
-      flowKind: CHANNEL_KIND,
-      flowId: CHANNEL_KIND,
+      flowKind: MAILBOX_KIND,
+      flowId: MAILBOX_KIND,
       userId: USER_ID,
       orgId: DEFAULT_ORG_ID,
       state: { members, instructions: "Charter.", transcript: [] },
@@ -90,7 +90,7 @@ function gate(): { wait: Promise<void>; open: () => void } {
   return { wait, open };
 }
 
-/** Has the channel's fan-out request reached a terminal status? */
+/** Has the mailbox's fan-out request reached a terminal status? */
 async function fanOutFinished(stores: StoreRegistry, sessionId: string): Promise<boolean> {
   const requests = await stores.request.list({ sessionId });
   const fanOuts = requests.filter((request) => request.actionName === "onPosted");
@@ -110,9 +110,9 @@ describe("the fan-out slot", () => {
     const delivered: string[] = [];
     const notify = handler({
       name: "test-notify",
-      inputSchema: channelNotifyInputSchema,
+      inputSchema: mailboxNotifyInputSchema,
       outputSchema: z.object({}),
-      execute: (input: ChannelNotifyInput) => {
+      execute: (input: MailboxNotifyInput) => {
         delivered.push(`${input.member}:${input.body}`);
         return {};
       }
@@ -147,7 +147,7 @@ describe("the fan-out slot", () => {
   it("keeps a slow notify off the next post's path, and both posts still land", async () => {
     const notify = handler({
       name: "slow-notify",
-      inputSchema: channelNotifyInputSchema,
+      inputSchema: mailboxNotifyInputSchema,
       outputSchema: z.object({}),
       execute: async () => {
         await new Promise((resolve) => setTimeout(resolve, 400));
@@ -190,9 +190,9 @@ describe("the fan-out slot", () => {
     const attempted: string[] = [];
     const notify = handler({
       name: "refusing-notify",
-      inputSchema: channelNotifyInputSchema,
+      inputSchema: mailboxNotifyInputSchema,
       outputSchema: z.object({}),
-      execute: (input: ChannelNotifyInput) => {
+      execute: (input: MailboxNotifyInput) => {
         attempted.push(input.member);
         if (input.member === "engineering.analyst") {
           throw new Error("no address for engineering.analyst");
@@ -225,7 +225,7 @@ describe("the fan-out slot", () => {
         "the fan-out request to finish"
       );
       expect(await transcriptLength(runtime.stores, "engineering.standup")).toBe(1);
-      // The rule the next test proves the cost of: a channel writes nothing to
+      // The rule the next test proves the cost of: a mailbox writes nothing to
       // its session record that is not a state delta. The journal is the record,
       // not the state, and it is written whole and without a compare-and-swap.
       expect(await journalLength(runtime.stores, "engineering.standup")).toBe(0);
@@ -259,7 +259,7 @@ describe("the fan-out slot", () => {
     let deliveries = 0;
     const notify = handler({
       name: "held-notify",
-      inputSchema: channelNotifyInputSchema,
+      inputSchema: mailboxNotifyInputSchema,
       outputSchema: z.object({}),
       execute: async () => {
         deliveries += 1;

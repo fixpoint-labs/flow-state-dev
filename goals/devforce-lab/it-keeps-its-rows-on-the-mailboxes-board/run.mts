@@ -1,20 +1,20 @@
 /**
- * Goal check — the DevForce feature channel carries the board its rows sit on.
+ * Goal check — the DevForce feature mailbox carries the board its rows sit on.
  *
- * A line posted on the feature channel ends as one completed row, and that row
- * is read back where Shift Manager reads a workstream: through the channel's own
+ * A line posted on the feature mailbox ends as one completed row, and that row
+ * is read back where Shift Manager reads a workstream: through the mailbox's own
  * `read` and `readBoard`, through the HTTP door a browser uses, and from the
  * organization's storage under the id the framework minted. Nothing here reads
  * the drain's report, the run record or the EM's output — all three are green
- * while the row sits on a ledger the channel does not hold.
+ * while the row sits on a ledger the mailbox does not hold.
  *
  * Model-free: the lab's scripted harness commits and finishes, as in the
  * contract gate. What is graded is where the row lives, not how the work went.
  *
  * Legs:
  *
- *   0  BR-1        — the channel's file names the board; no file writes its minted id
- *   a  BR-2        — the channel lists exactly the boards its file declares
+ *   0  BR-1        — the mailbox's file names the board; no file writes its minted id
+ *   a  BR-2        — the mailbox lists exactly the boards its file declares
  *   b  BR-3 BR-4   — its board holds exactly the filed row, completed, assignee coder
  *   c  BR-7 BR-8   — the browser's door returns that row under the lab's bearer, only
  *                    client fields; with no verified organization it is refused
@@ -22,11 +22,11 @@
  *   e  BR-11       — hiring named no board as unattended
  *
  * Control: `GOAL_CONTROL=kind-ledger` builds the two kinds on a user-scoped
- * ledger of their own, as they were before the board moved onto the channel.
- * The run still completes; the check must FAIL naming the channel's board
+ * ledger of their own, as they were before the board moved onto the mailbox.
+ * The run still completes; the check must FAIL naming the mailbox's board
  * returning no rows. `GOAL_CONTROL=list` prints it.
  *
- * Run: pnpm tsx goals/devforce-lab/it-keeps-its-rows-on-the-channels-board/run.mts
+ * Run: pnpm tsx goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/run.mts
  */
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -52,7 +52,7 @@ if (CONTROL === "list") {
 
 /** The seat the board's `coder` assignee is addressed to — the app's address map. */
 const ASSIGNED_SEAT = "eng.coder";
-/** The seat a channel post is delivered to. */
+/** The seat a mailbox post is delivered to. */
 const COORDINATOR_SEAT = "eng.em";
 
 const ISSUE = "greeting-module";
@@ -97,7 +97,7 @@ const commitWork = (run: StubRun): void => {
 
 /**
  * The control's ledger: user-scoped, under the id the kinds used before the
- * board moved onto the channel. Built here, never in the lab.
+ * board moved onto the mailbox. Built here, never in the lab.
  */
 function kindLedger(): NonNullable<OpenLabOptions["ledger"]> {
   const id = joinIdentity("devforce-tasks", tenantSegment(undefined), "feature");
@@ -131,13 +131,13 @@ await runGoal(async () => {
 
   // ---- (0) BR-1, read off the tree before anything is built ---------------
   const roster = await readDeclaredRoster(LAB_TREE);
-  const channel = roster.channels.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
-  const declared = (channel?.declared.boards as string[] | undefined) ?? [];
-  if (channel === undefined) {
-    return { failures: ["no channel in the tree holds a board"], evidence: "" };
+  const mailbox = roster.mailboxes.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
+  const declared = (mailbox?.declared.boards as string[] | undefined) ?? [];
+  if (mailbox === undefined) {
+    return { failures: ["no mailbox in the tree holds a board"], evidence: "" };
   }
 
-  const dirs = createScratchRepo("channel-board");
+  const dirs = createScratchRepo("mailbox-board");
   const stub = harnessStub({ duringRun: commitWork });
   const warnings: string[] = [];
   const warn = console.warn;
@@ -152,7 +152,7 @@ await runGoal(async () => {
       workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
       coderSeatId: ASSIGNED_SEAT,
       logger: silentLogger,
-      channels: {
+      mailboxes: {
         addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT },
         log: createNotifyLog(),
       },
@@ -165,13 +165,13 @@ await runGoal(async () => {
   try {
     const board = lab.board;
     if (declared.length === 0) {
-      note(`the channel lists no board: "${channel.id}"'s file declares none`);
+      note(`the mailbox lists no board: "${mailbox.id}"'s file declares none`);
       return { failures, evidence: "" };
     }
     if (declared.length !== 1 || declared[0] !== board.name) {
-      note(`the channel's file declares [${declared.join(", ")}]; the lab resolved "${board.name}"`);
+      note(`the mailbox's file declares [${declared.join(", ")}]; the lab resolved "${board.name}"`);
     }
-    // The minted id is the channel's id, a dot, and the local name — and no
+    // The minted id is the mailbox's id, a dot, and the local name — and no
     // file in the tree or the lab's code pins it. Pinning is a value: a quoted
     // string that is exactly the id, or the id standing alone after `:`, `=`,
     // `[` or `,` (a YAML key, an assignment, a list entry). Prose and comments
@@ -187,7 +187,7 @@ await runGoal(async () => {
       .map(([path]) => path);
     if (writers.length > 0) note(`the board's minted id "${board.id}" is written in ${writers.join(", ")}`);
     evidence.push(
-      `"${channel.id}"'s file declares boards [${declared.join(", ")}], minted "${board.id}", which no ` +
+      `"${mailbox.id}"'s file declares boards [${declared.join(", ")}], minted "${board.id}", which no ` +
         `file in the tree or the lab's code writes`,
     );
 
@@ -198,29 +198,29 @@ await runGoal(async () => {
       return { failures, evidence: "" };
     }
 
-    // ---- (a) BR-2: the channel lists exactly its declared boards ---------
-    const read = await lab.channelAct!("read", {});
+    // ---- (a) BR-2: the mailbox lists exactly its declared boards ---------
+    const read = await lab.mailboxAct!("read", {});
     const listed = (read.output as { boards?: string[] } | undefined)?.boards ?? [];
     if (read.error !== undefined || listed.join(",") !== declared.join(",")) {
       note(
-        `the channel lists [${listed.join(", ")}]${read.error === undefined ? "" : ` (${read.error})`}; ` +
+        `the mailbox lists [${listed.join(", ")}]${read.error === undefined ? "" : ` (${read.error})`}; ` +
           `its file declares [${declared.join(", ")}]`,
       );
     }
 
-    // ---- (b) BR-3, BR-4: the channel's board holds the filed row ---------
-    const readBoard = await lab.channelAct!("readBoard", { board: board.name });
+    // ---- (b) BR-3, BR-4: the mailbox's board holds the filed row ---------
+    const readBoard = await lab.mailboxAct!("readBoard", { board: board.name });
     const tasks = (readBoard.output as { tasks?: Task[] } | undefined)?.tasks ?? [];
     if (readBoard.error !== undefined) {
-      note(`reading the channel's board was refused — ${readBoard.error}`);
+      note(`reading the mailbox's board was refused — ${readBoard.error}`);
     } else if (tasks.length === 0) {
-      note(`the channel's board returned no rows`);
+      note(`the mailbox's board returned no rows`);
     } else if (tasks.length !== 1 || tasks[0]!.id !== TASK_ID) {
-      note(`the channel's board returned [${tasks.map((t) => t.id).join(", ")}]; wanted exactly ${TASK_ID}`);
+      note(`the mailbox's board returned [${tasks.map((t) => t.id).join(", ")}]; wanted exactly ${TASK_ID}`);
     } else {
       const row = tasks[0]!;
-      if (row.status !== "completed") note(`the channel's board shows the row "${row.status}"; the run completed it`);
-      if (row.assignee !== "coder") note(`the channel's board shows the row assigned "${row.assignee}"`);
+      if (row.status !== "completed") note(`the mailbox's board shows the row "${row.status}"; the run completed it`);
+      if (row.assignee !== "coder") note(`the mailbox's board shows the row assigned "${row.assignee}"`);
     }
 
     // ---- (c) BR-7, BR-8: the browser's door ------------------------------
@@ -263,11 +263,11 @@ await runGoal(async () => {
 
     // ---- (e) BR-11 --------------------------------------------------------
     const unattended = warnings.filter((line) => line.includes(board.id));
-    if (unattended.length > 0) note(`hiring warned about the channel's board: ${unattended.join(" | ")}`);
+    if (unattended.length > 0) note(`hiring warned about the mailbox's board: ${unattended.join(" | ")}`);
 
     if (failures.length === 0) {
       evidence.push(
-        `a post on "${channel.id}" ended as one completed row ${TASK_ID}; the channel lists ` +
+        `a post on "${mailbox.id}" ended as one completed row ${TASK_ID}; the mailbox lists ` +
           `[${listed.join(", ")}] and its "${board.name}" board returns exactly that row, assignee coder; ` +
           `the browser's door returns it under the lab's bearer with only client fields ` +
           `(${Object.keys(doorRows[0]!).sort().join(", ")}) and answers ${orgless.status} with no ` +

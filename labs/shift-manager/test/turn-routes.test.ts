@@ -19,13 +19,13 @@ const seat = (id: string, door: string | null = "message"): Seat => ({
 
 const roster: Roster = {
   seats: [seat("eng.coder"), seat("eng.em", null), seat("ops.coder")],
-  workstreams: [{ id: "eng.feature", kind: "channel", members: ["eng.coder", "eng.em"] }],
+  workstreams: [{ id: "eng.feature", kind: "mailbox", members: ["eng.coder", "eng.em"] }],
 };
 const feature = roster.workstreams[0]!;
 
 const row = (id: string, status: string, run: boolean, assignee = "eng.coder"): BoardRow => ({
   boardRef: "eng.feature.work",
-  channelId: "eng.feature",
+  mailboxId: "eng.feature",
   id,
   title: `task ${id}`,
   goal: null,
@@ -51,7 +51,7 @@ describe("an @name in a workstream (BR-19)", () => {
   });
 
   it("offers each member by a name that reaches it: short when unique, the full id when two members share it", () => {
-    const both = { id: "mixed", kind: "channel", members: ["eng.coder", "ops.coder", "eng.em"] };
+    const both = { id: "mixed", kind: "mailbox", members: ["eng.coder", "ops.coder", "eng.em"] };
     const mixed: Roster = { ...roster, workstreams: [both] };
     // Two coders: `@coder` reaches neither, so each is offered by its id, which does.
     for (const s of [mixed.seats[0]!, mixed.seats[2]!]) {

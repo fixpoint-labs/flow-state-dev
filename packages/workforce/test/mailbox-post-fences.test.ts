@@ -1,17 +1,17 @@
 /**
  * The three fences on the post path (spec decision 3).
  *
- * The sharpest one is `channel-not-bound`. The shared instance answers for
+ * The sharpest one is `mailbox-not-bound`. The shared instance answers for
  * EVERY session id and the action path is create-or-get, so a caller naming an
- * id nobody opened gets a new, empty session on the channel instance rather
- * than a refusal — "any caller mints a channel's durable home by naming it",
+ * id nobody opened gets a new, empty session on the mailbox instance rather
+ * than a refusal — "any caller mints a mailbox's durable home by naming it",
  * which is the branch the spec rejected. The refusal has to come from the post
  * block, because no absent instance does that work any more.
  *
  * The third fence — a post must address `{ id }`, never `{ key }` — is not
  * testable as a refusal and is deliberately not tested as one: a key-derived
  * child id is hashed with the parent session and lineage, so a `{ key }` post
- * simply lands somewhere that is not the channel. That is documented, not
+ * simply lands somewhere that is not the mailbox. That is documented, not
  * detected.
  */
 import { describe, expect, it } from "vitest";
@@ -21,24 +21,24 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import type { FlowDispatcher, StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { channelFlow, CHANNEL_KIND, openChannels, type ChannelManifest } from "../src/index";
-import { postedLines } from "./channel-post-lines";
+import { mailboxFlow, MAILBOX_KIND, openMailboxes, type MailboxManifest } from "../src/index";
+import { postedLines } from "./mailbox-post-lines";
 
 const USER_ID = "u_fences";
 const POSTER = "poster";
 
-/** A flow whose only action posts into a channel by session id, from another flow. */
+/** A flow whose only action posts into a mailbox by session id, from another flow. */
 const posterFlow = defineFlow({
   kind: POSTER,
   actions: {
     say: {
       block: dispatcher({
-        name: "post-to-channel",
-        flowKind: CHANNEL_KIND,
+        name: "post-to-mailbox",
+        flowKind: MAILBOX_KIND,
         action: "post",
-        inputSchema: z.object({ channelId: z.string(), body: z.string() }),
-        session: { id: (input: { channelId: string; body: string }) => input.channelId },
-        payload: (input: { channelId: string; body: string }) => ({ body: input.body })
+        inputSchema: z.object({ mailboxId: z.string(), body: z.string() }),
+        session: { id: (input: { mailboxId: string; body: string }) => input.mailboxId },
+        payload: (input: { mailboxId: string; body: string }) => ({ body: input.body })
       })
     }
   }
@@ -55,15 +55,15 @@ const externalDispatcher: FlowDispatcher = {
 } as unknown as FlowDispatcher;
 
 function host(options: { external?: boolean } = {}) {
-  const channel = channelFlow();
+  const mailbox = mailboxFlow();
   const poster = posterFlow();
   const state = createFlowState({
-    flows: { [CHANNEL_KIND]: channel, [POSTER]: poster },
+    flows: { [MAILBOX_KIND]: mailbox, [POSTER]: poster },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({}),
     ...(options.external === true ? { dispatcher: externalDispatcher } : {})
   });
-  return { channel, poster, state };
+  return { mailbox, poster, state };
 }
 
 async function bind(stores: StoreRegistry, sessionId: string, members: string[]): Promise<void> {
@@ -72,8 +72,8 @@ async function bind(stores: StoreRegistry, sessionId: string, members: string[])
     sessionId,
     {
       id: sessionId,
-      flowKind: CHANNEL_KIND,
-      flowId: CHANNEL_KIND,
+      flowKind: MAILBOX_KIND,
+      flowId: MAILBOX_KIND,
       userId: USER_ID,
       orgId: DEFAULT_ORG_ID,
       state: { members, instructions: "Charter.", transcript: [] },
@@ -88,7 +88,7 @@ async function bind(stores: StoreRegistry, sessionId: string, members: string[])
 }
 
 /**
- * `openChannels`'s session API over this test's own stores.
+ * `openMailboxes`'s session API over this test's own stores.
  *
  * Create refuses a taken id with a 409, which is the whole of what the real
  * `POST /sessions` contributes here, and nothing else writes session state.
@@ -163,27 +163,27 @@ async function until(predicate: () => boolean | Promise<boolean>, label: string)
 
 describe("the post path's fences", () => {
   it("refuses a post into a session nobody opened, writes nothing, and leaves it inert", async () => {
-    const { channel, state } = host();
+    const { mailbox, state } = host();
     try {
       const runtime = await state.getRuntime();
 
       const result = await runAction({
     orgId: DEFAULT_ORG_ID,
-        flow: channel,
+        flow: mailbox,
         actionName: "post",
         input: { body: "who is listening?" },
         userId: USER_ID,
-        sessionId: "not-a-channel",
+        sessionId: "not-a-mailbox",
         stores: runtime.stores,
         runtimeConfig: { ...runtime.runtimeConfig }
       });
 
       expect(result.error).toBeDefined();
-      expect(String(result.error)).toContain("channel-not-bound");
+      expect(String(result.error)).toContain("mailbox-not-bound");
 
       // The action path created the record — that is the hazard, not a bug —
-      // and it stays an empty session rather than becoming a channel.
-      const record = await runtime.stores.session.get("not-a-channel");
+      // and it stays an empty session rather than becoming a mailbox.
+      const record = await runtime.stores.session.get("not-a-mailbox");
       expect(record).toBeDefined();
       expect(record?.state).toEqual({});
     } finally {
@@ -196,11 +196,11 @@ describe("the post path's fences", () => {
    * breaks the pair: a post lands FIRST, taking the id, and only then does the
    * roster open. Proving each half separately in one run is what missed it.
    */
-  it("repairs a channel a premature post poisoned, in the order that breaks it", async () => {
-    const { channel, state } = host();
+  it("repairs a mailbox a premature post poisoned, in the order that breaks it", async () => {
+    const { mailbox, state } = host();
     try {
       const runtime = await state.getRuntime();
-      const roster: ChannelManifest[] = [
+      const roster: MailboxManifest[] = [
         {
           id: "engineering.standup",
           declared: { members: ["engineering.lead"] },
@@ -209,11 +209,11 @@ describe("the post path's fences", () => {
       ];
 
       // 1. The premature post. Refused, as it should be — but the action path
-      //    is create-or-get, so the channel's id is now taken by an empty
-      //    session that no `CHANNEL.md` ever asked for.
+      //    is create-or-get, so the mailbox's id is now taken by an empty
+      //    session that no `MAILBOX.md` ever asked for.
       const premature = await runAction({
     orgId: DEFAULT_ORG_ID,
-        flow: channel,
+        flow: mailbox,
         actionName: "post",
         input: { body: "anyone home?" },
         userId: USER_ID,
@@ -221,17 +221,17 @@ describe("the post path's fences", () => {
         stores: runtime.stores,
         runtimeConfig: { ...runtime.runtimeConfig }
       });
-      expect(String(premature.error)).toContain("channel-not-bound");
+      expect(String(premature.error)).toContain("mailbox-not-bound");
 
       // 2. The roster opens, meets a 409, and must look before it skips.
-      await openChannels(roster, { client: sessionApi(runtime.stores), userId: USER_ID });
+      await openMailboxes(roster, { client: sessionApi(runtime.stores), userId: USER_ID });
 
       // 3. The same post, now landing. Swallow the 409 instead and this stays
-      //    `channel-not-bound` forever: every later run 409s too, so there is
+      //    `mailbox-not-bound` forever: every later run 409s too, so there is
       //    no way back through the public API.
       const after = await runAction({
     orgId: DEFAULT_ORG_ID,
-        flow: channel,
+        flow: mailbox,
         actionName: "post",
         input: { body: "anyone home?", author: "engineering.lead" },
         userId: USER_ID,
@@ -250,11 +250,11 @@ describe("the post path's fences", () => {
    * Boundness is answered against the whole declared schema, not by checking
    * that two keys are present. `{ members: [42], instructions: "x" }` passes a
    * presence check — and would then be admitted by the post path, skipped by
-   * `openChannels` as already open, and fail its declared schemas on every
-   * later read. A state the schema cannot parse is not a channel.
+   * `openMailboxes` as already open, and fail its declared schemas on every
+   * later read. A state the schema cannot parse is not a mailbox.
    */
-  it("refuses a post into a session whose state is shaped like a channel but does not parse", async () => {
-    const { channel, state } = host();
+  it("refuses a post into a session whose state is shaped like a mailbox but does not parse", async () => {
+    const { mailbox, state } = host();
     try {
       const runtime = await state.getRuntime();
       const now = Date.now();
@@ -262,8 +262,8 @@ describe("the post path's fences", () => {
         "engineering.standup",
         {
           id: "engineering.standup",
-          flowKind: CHANNEL_KIND,
-          flowId: CHANNEL_KIND,
+          flowKind: MAILBOX_KIND,
+          flowId: MAILBOX_KIND,
           userId: USER_ID,
           orgId: DEFAULT_ORG_ID,
           state: { members: [42], instructions: "x" },
@@ -278,9 +278,9 @@ describe("the post path's fences", () => {
 
       const result = await runAction({
     orgId: DEFAULT_ORG_ID,
-        flow: channel,
+        flow: mailbox,
         actionName: "post",
-        input: { body: "into a channel that is not one" },
+        input: { body: "into a mailbox that is not one" },
         userId: USER_ID,
         sessionId: "engineering.standup",
         stores: runtime.stores,
@@ -288,7 +288,7 @@ describe("the post path's fences", () => {
       });
 
       expect(result.error).toBeDefined();
-      expect(String(result.error)).toContain("channel-not-bound");
+      expect(String(result.error)).toContain("mailbox-not-bound");
       expect(await transcriptOf(runtime.stores, "engineering.standup")).toEqual([]);
     } finally {
       await state.dispose();
@@ -296,21 +296,21 @@ describe("the post path's fences", () => {
   });
 
   it("refuses a read of a session nobody opened", async () => {
-    const { channel, state } = host();
+    const { mailbox, state } = host();
     try {
       const runtime = await state.getRuntime();
       const result = await runAction({
     orgId: DEFAULT_ORG_ID,
-        flow: channel,
+        flow: mailbox,
         actionName: "read",
         input: {},
         userId: USER_ID,
-        sessionId: "not-a-channel",
+        sessionId: "not-a-mailbox",
         stores: runtime.stores,
         runtimeConfig: { ...runtime.runtimeConfig }
       });
       expect(result.error).toBeDefined();
-      expect(String(result.error)).toContain("channel-not-bound");
+      expect(String(result.error)).toContain("mailbox-not-bound");
     } finally {
       await state.dispose();
     }
@@ -326,7 +326,7 @@ describe("the post path's fences", () => {
     orgId: DEFAULT_ORG_ID,
         flow: poster,
         actionName: "say",
-        input: { channelId: "engineering.standup", body: "from another flow" },
+        input: { mailboxId: "engineering.standup", body: "from another flow" },
         userId: USER_ID,
         sessionId: "s_poster",
         stores: runtime.stores,
@@ -336,7 +336,7 @@ describe("the post path's fences", () => {
       expect(result.error).toBeUndefined();
       await until(
         async () => (await transcriptOf(runtime.stores, "engineering.standup")).length === 1,
-        "the dispatched post to land in the channel's transcript"
+        "the dispatched post to land in the mailbox's transcript"
       );
     } finally {
       await state.dispose();
@@ -344,7 +344,7 @@ describe("the post path's fences", () => {
   });
 
   it("refuses a flow-to-flow post by name past an external dispatcher, while a client post still lands", async () => {
-    const { channel, poster, state } = host({ external: true });
+    const { mailbox, poster, state } = host({ external: true });
     try {
       const runtime = await state.getRuntime();
       await bind(runtime.stores, "engineering.standup", ["engineering.lead"]);
@@ -353,7 +353,7 @@ describe("the post path's fences", () => {
     orgId: DEFAULT_ORG_ID,
         flow: poster,
         actionName: "say",
-        input: { channelId: "engineering.standup", body: "from another flow" },
+        input: { mailboxId: "engineering.standup", body: "from another flow" },
         userId: USER_ID,
         sessionId: "s_poster",
         stores: runtime.stores,
@@ -367,7 +367,7 @@ describe("the post path's fences", () => {
       // The public action door is unaffected: only the dispatch door closes.
       const direct = await runAction({
     orgId: DEFAULT_ORG_ID,
-        flow: channel,
+        flow: mailbox,
         actionName: "post",
         input: { body: "a client post" },
         userId: USER_ID,

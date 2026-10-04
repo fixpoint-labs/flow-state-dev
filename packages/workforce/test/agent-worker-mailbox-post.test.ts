@@ -1,18 +1,18 @@
 /**
- * A channel post reaches an agent seat through the kind's internal
- * `onChannelPost` entry.
+ * A mailbox post reaches an agent seat through the kind's internal
+ * `onMailboxPost` entry.
  *
- * A channel's notify block is handed one delivery per member per post, and a
+ * A mailbox's notify block is handed one delivery per member per post, and a
  * dispatch resolves only a flow's internal entries. So the kind carries one
  * that takes the delivery as it is handed over and runs the seat's ordinary
- * answer on it, with the post as the seat's turn: `<writer> in <channel>:
+ * answer on it, with the post as the seat's turn: `<writer> in <mailbox>:
  * <body>`. The writer is the post's `author`, else its `principal`.
  *
  * Checks, by the spec's ids (`specs/issues/FIX-1590/PLAN.md`, V1):
  *   BR-7  a dispatch to the entry runs the seat's answer, and the model is
  *         handed the heard turn;
  *   BR-8  the heard turn is kept as the seat's user message, ahead of the reply;
- *   BR-9  a second post keyed on the same channel lands in the same
+ *   BR-9  a second post keyed on the same mailbox lands in the same
  *         conversation;
  *   BR-13 the same name on the public action route runs nothing.
  *
@@ -24,25 +24,25 @@ import { DEFAULT_ORG_ID, defineFlow, dispatcher } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { FlowStateRuntime } from "@flow-state-dev/engine";
 import { createMockModelResolver, mockGenerator } from "@flow-state-dev/testing";
-import { channelNotifyInputSchema, type ChannelNotifyInput } from "../src/index";
+import { mailboxNotifyInputSchema, type MailboxNotifyInput } from "../src/index";
 import { hireWorkforce } from "../src/hire";
 
-const USER_ID = "u_channel";
-const CHANNEL_SESSION = "support.desk";
+const USER_ID = "u_mailbox";
+const MAILBOX_SESSION = "support.desk";
 
-/** A stand-in for a channel's fan-out: one dispatcher to the seat's receiver, keyed on the channel. */
+/** A stand-in for a mailbox's fan-out: one dispatcher to the seat's receiver, keyed on the mailbox. */
 function wakeFlow(seatId: string) {
   return defineFlow({
     kind: "wake-test",
     actions: {
       deliver: {
-        inputSchema: channelNotifyInputSchema,
+        inputSchema: mailboxNotifyInputSchema,
         block: dispatcher({
           name: "wake-seat",
           flowKind: seatId,
-          action: "onChannelPost",
-          inputSchema: channelNotifyInputSchema,
-          session: { key: (post: ChannelNotifyInput) => `channel:${post.channelId}` }
+          action: "onMailboxPost",
+          inputSchema: mailboxNotifyInputSchema,
+          session: { key: (post: MailboxNotifyInput) => `mailbox:${post.mailboxId}` }
         })
       }
     }
@@ -77,9 +77,9 @@ function boot() {
   return { seat: seat!, sender, state, heard };
 }
 
-function post(overrides: Partial<ChannelNotifyInput> = {}): ChannelNotifyInput {
+function post(overrides: Partial<MailboxNotifyInput> = {}): MailboxNotifyInput {
   return {
-    channelId: CHANNEL_SESSION,
+    mailboxId: MAILBOX_SESSION,
     member: "support.otto",
     postId: "p_1",
     body: "can someone look at the refund queue?",
@@ -88,14 +88,14 @@ function post(overrides: Partial<ChannelNotifyInput> = {}): ChannelNotifyInput {
   };
 }
 
-async function deliver(runtime: FlowStateRuntime, sender: ReturnType<typeof wakeFlow>, input: ChannelNotifyInput) {
+async function deliver(runtime: FlowStateRuntime, sender: ReturnType<typeof wakeFlow>, input: MailboxNotifyInput) {
   const result = await runAction({
     orgId: DEFAULT_ORG_ID,
     flow: sender,
     actionName: "deliver",
     input,
     userId: USER_ID,
-    sessionId: CHANNEL_SESSION,
+    sessionId: MAILBOX_SESSION,
     stores: runtime.stores,
     runtimeConfig: { ...runtime.runtimeConfig }
   });
@@ -126,12 +126,12 @@ function messagesOf(request: { items?: unknown[] }) {
     });
 }
 
-describe("the agent kind's channel receiver", () => {
-  it("is declared as an internal entry taking the channel's delivery, and nowhere public", () => {
+describe("the agent kind's mailbox receiver", () => {
+  it("is declared as an internal entry taking the mailbox's delivery, and nowhere public", () => {
     const { seat } = boot();
-    const entry = seat.internal?.actions.onChannelPost;
-    expect(entry, "the agent kind declares no internal onChannelPost").toBeDefined();
-    expect(entry!.inputSchema).toBe(channelNotifyInputSchema);
+    const entry = seat.internal?.actions.onMailboxPost;
+    expect(entry, "the agent kind declares no internal onMailboxPost").toBeDefined();
+    expect(entry!.inputSchema).toBe(mailboxNotifyInputSchema);
     // Default concurrency: a queued request expires after the engine's wait,
     // which would drop a post that arrives behind a slow answer (BR-10).
     expect(entry!.concurrency).toBeUndefined();
@@ -154,10 +154,10 @@ describe("the agent kind's channel receiver", () => {
       // The model was handed the heard turn, not the raw delivery.
       expect(heard.some((input) => input.includes(turn))).toBe(true);
 
-      // The run is a child of the channel's session, on the seat's own flow.
+      // The run is a child of the mailbox's session, on the seat's own flow.
       const child = await runtime.stores.session.get(handle.sessionId);
       expect(child?.flowKind).toBe("agent");
-      expect(child?.parentSessionId).toBe(CHANNEL_SESSION);
+      expect(child?.parentSessionId).toBe(MAILBOX_SESSION);
     } finally {
       await state.dispose();
     }
@@ -175,7 +175,7 @@ describe("the agent kind's channel receiver", () => {
     }
   });
 
-  it("lands a second post on the same channel in the same conversation", async () => {
+  it("lands a second post on the same mailbox in the same conversation", async () => {
     const { sender, state } = boot();
     try {
       const runtime = await state.getRuntime();
@@ -201,7 +201,7 @@ describe("the agent kind's channel receiver", () => {
     const { seat, state, heard } = boot();
     try {
       const router = await state.getRouter();
-      const segments = [seat.id, "actions", "onChannelPost"];
+      const segments = [seat.id, "actions", "onMailboxPost"];
       const res = await router.POST(
         new Request(`http://localhost/api/flows/${segments.map(encodeURIComponent).join("/")}`, {
           method: "POST",
@@ -214,7 +214,7 @@ describe("the agent kind's channel receiver", () => {
       // an action the flow does not define there.
       const text = await res.text();
       expect(res.status, text).toBeGreaterThanOrEqual(400);
-      expect(text).toContain('does not define action \\"onChannelPost\\"');
+      expect(text).toContain('does not define action \\"onMailboxPost\\"');
       expect(heard).toEqual([]);
     } finally {
       await state.dispose();

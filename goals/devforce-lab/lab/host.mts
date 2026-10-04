@@ -4,26 +4,26 @@
  * and the same wiring, and differ by one block.
  *
  * What `openLab` does, in order, and nothing else: read the tree, resolve the
- * feature channel's board, build the two kinds on it, hire, register, open the
- * declared channels when asked (and their organization's inventory, when that
+ * feature mailbox's board, build the two kinds on it, hire, register, open the
+ * declared mailboxes when asked (and their organization's inventory, when that
  * is asked too), hand back the handles. Every convention file it
  * reads is found by walking from one root; no file is named in this code.
  *
- * **The board belongs to the channel.** The feature channel's `CHANNEL.md`
+ * **The board belongs to the mailbox.** The feature mailbox's `MAILBOX.md`
  * names it (`boards: [work]`), the framework mints its id from where the
- * channel sits, and this host resolves it with `channelBoard(channel.id,
+ * mailbox sits, and this host resolves it with `mailboxBoard(mailbox.id,
  * boardName)` — both read off the tree, the way
  * `goals/multi-seat-collab/lab/host.mts` does. Both kinds are handed that one
  * ledger, so a row the EM files and the coder's run settles is the row the
- * channel serves. It is kept per organization, so it exists whether or not the
- * channel is opened.
+ * mailbox serves. It is kept per organization, so it exists whether or not the
+ * mailbox is opened.
  *
  * Five pieces here are the lab's rather than the framework's, each because the
  * framework has no opinion at that spot:
  *
  * 1. **The board's two declarations** (`board.mts`): the EM's, which hands a
  *    row across flows, and the coder's, which the cross-flow claim gate
- *    requires. The ledger under both is the channel's.
+ *    requires. The ledger under both is the mailbox's.
  * 2. **The assignee → seat address.** A board's `workers` keys are assignees,
  *    not Workforce seats; which seat an assignee reaches is a dispatcher's
  *    `flowKind`, and it is a static instance id rather than a lookup. The
@@ -31,7 +31,7 @@
  *    wrong seat and watch the negative claim go red.
  * 3. **The harness slot**, handed to the `coder` kind. The one expression that
  *    differs between this lab's two checks.
- * 4. **The channel's address map** (`notify.mts`), and whether a channel is
+ * 4. **The mailbox's address map** (`notify.mts`), and whether a mailbox is
  *    opened at all. The framework keeps the member walk and runs a notify block
  *    once per declared member; which member resolves to which seat is the app's,
  *    because the dispatch seam refuses a target read out of stored data.
@@ -59,29 +59,29 @@ import { defineCapability, sequencer } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
   AGENT_KIND,
-  CHANNEL_KIND,
-  channelBoard,
-  channelBoardIds,
-  channelInstances,
-  channelPostCapability,
+  MAILBOX_KIND,
+  mailboxBoard,
+  mailboxBoardIds,
+  mailboxInstances,
+  mailboxPostCapability,
   createSeatHireCapability,
   createWorkforceCapability,
   defineAgentWorkerFlow,
-  defineChannelFlow,
+  defineMailboxFlow,
   HIRED_ROSTER_RESOURCE,
   hireWorkforce,
   createProjectInputSchema,
   createProjectOutputSchema,
   defineProjectBlocks,
-  projectWritesChannelInventory,
+  projectWritesMailboxInventory,
   mergeSeatFlows,
-  openChannels,
+  openMailboxes,
   openInventory,
   reloadHiredSeats,
   resourcesFromDocs,
   SEAT_INVENTORY_RESOURCE,
   splitResourceModules,
-  type ChannelTranscriptLine,
+  type MailboxTranscriptLine,
   type CreateProjectInput,
   type CreateProjectOutput,
   type HireOptions,
@@ -238,18 +238,18 @@ async function loadTree(root: string): Promise<DeclaredRoster> {
 }
 
 /**
- * The one channel in the tree that holds a board: the one the EM files onto
+ * The one mailbox in the tree that holds a board: the one the EM files onto
  * and the coder's runs settle. Refuses a tree where none does, or several do.
  *
- * @throws Naming how many channels hold a board.
+ * @throws Naming how many mailboxes hold a board.
  */
-export function boardChannelOf(roster: Pick<DeclaredRoster, "channels">): DeclaredRoster["channels"][number] {
-  const holding = roster.channels.filter(
-    (channel) => ((channel.declared.boards as string[] | undefined) ?? []).length > 0,
+export function boardMailboxOf(roster: Pick<DeclaredRoster, "mailboxes">): DeclaredRoster["mailboxes"][number] {
+  const holding = roster.mailboxes.filter(
+    (mailbox) => ((mailbox.declared.boards as string[] | undefined) ?? []).length > 0,
   );
   if (holding.length !== 1) {
     throw new Error(
-      `the tree has ${holding.length} channel(s) holding a board` +
+      `the tree has ${holding.length} mailbox(s) holding a board` +
         `${holding.length === 0 ? "" : ` (${holding.map((c) => c.id).join(", ")})`}; this lab runs one`,
     );
   }
@@ -274,14 +274,14 @@ function chiefOfStaffProjectTools(blocks: ProjectBlocks) {
       description:
         "Create a project for the person you are talking to. They own it and are always a member. " +
         "`id` is a short lowercase slug; `members` adds the user ids they name; `workstreams` takes " +
-        "full channel ids (`team.channel`), each in at most one project.",
+        "full mailbox ids (`team.mailbox`), each in at most one project.",
       inputSchema: createProjectInputSchema,
       outputSchema: createProjectOutputSchema,
     }).step(blocks.createProject),
     setWorkstreams: sequencer({
       name: "setWorkstreams",
       description:
-        "Replace a project's workstreams with this list of full channel ids. Only the project's " +
+        "Replace a project's workstreams with this list of full mailbox ids. Only the project's " +
         "members may; a workstream belongs to at most one project.",
       inputSchema: setWorkstreamsInputSchema,
       outputSchema: setWorkstreamsOutputSchema,
@@ -330,19 +330,19 @@ export interface OpenLabOptions {
   /** Silence the engine's own logging. */
   logger?: unknown;
   /**
-   * Open the channels the tree declares, and address the fan-out.
+   * Open the mailboxes the tree declares, and address the fan-out.
    *
    * **Absent means absent**, and that is the shape the two existing checks
-   * keep: no channel instance is registered, `openChannels` is not called, and
-   * the lab behaves exactly as it did before the channel door existed. An
+   * keep: no mailbox instance is registered, `openMailboxes` is not called, and
+   * the lab behaves exactly as it did before the mailbox door existed. An
    * entry that is only there to do nothing is worse than none — which is how
-   * `defineChannelFlow`'s own notify slot works, and the reason this is an
+   * `defineMailboxFlow`'s own notify slot works, and the reason this is an
    * option rather than a widening of every check that imports `openLab`.
    *
    * `addresses` is member id → hired seat instance id. A declared member absent
    * from it is recorded in `log.skipped` and never dispatched to.
    */
-  channels?: {
+  mailboxes?: {
     addresses: Record<string, string>;
     log: NotifyLog;
   };
@@ -357,7 +357,7 @@ export interface OpenLabOptions {
    * Raise the EM seat's ask on open: one pending approval, in the EM seat's
    * own session, naming this feature (`ask.mts`).
    *
-   * **Absent means absent**, as with `channels`: no request and no store write
+   * **Absent means absent**, as with `mailboxes`: no request and no store write
    * for it (durable execution stays on when a seat holds `fire` or `rehire`).
    * Present turns durable execution on, because the answer arrives later
    * through the engine's resume route, and open fails, naming the step, if the
@@ -365,11 +365,11 @@ export interface OpenLabOptions {
    */
   ask?: AskFeature;
   /**
-   * Open the organization's seat and channel inventory after the channels, the
-   * collections Shift Manager's TEAMS and PROJECTS read. Needs `channels`: the
-   * inventory's writer is the channel kind, built with `inventory: true`.
+   * Open the organization's seat and mailbox inventory after the mailboxes, the
+   * collections Shift Manager's TEAMS and PROJECTS read. Needs `mailboxes`: the
+   * inventory's writer is the mailbox kind, built with `inventory: true`.
    *
-   * **Absent means absent**: the channel kind is built without the writer and
+   * **Absent means absent**: the mailbox kind is built without the writer and
    * nothing is registered, as the other checks have always run.
    */
   inventory?: boolean;
@@ -387,8 +387,8 @@ export interface OpenLabOptions {
    * second open on a surviving store creates and mints nothing new. Each
    * creator's talk session is bound in the same turn.
    *
-   * Needs `channels`: a project's room runs on the channel kind, and its
-   * workstreams must be channels the inventory registers, so `inventory` too.
+   * Needs `mailboxes`: a project's room runs on the mailbox kind, and its
+   * workstreams must be mailboxes the inventory registers, so `inventory` too.
    * **Absent means absent**: nothing is created, as the other checks run.
    */
   projects?: readonly CreateProjectInput[];
@@ -411,12 +411,12 @@ export interface OpenLabOptions {
    */
   documentOverrides?: Record<string, string>;
   /**
-   * Build the two kinds on this ledger instead of the channel's.
+   * Build the two kinds on this ledger instead of the mailbox's.
    *
    * The goal check's `kind-ledger` control: the kinds keep a ledger of their
-   * own, as they did before the board moved onto the channel. The run still
+   * own, as they did before the board moved onto the mailbox. The run still
    * completes; only where its row lives moves, which is the red state of "the
-   * channel's board holds the row". The channel still declares its board, and
+   * mailbox's board holds the row". The mailbox still declares its board, and
    * {@link Lab.board} still names it.
    */
   ledger?: FeatureLedger;
@@ -452,9 +452,9 @@ export interface SeatSkill {
 export interface Lab {
   roster: DeclaredRoster;
   /**
-   * The feature channel's board, as the tree declares it: its local `name`
-   * (from `CHANNEL.md`) and the `id` the framework minted from where the
-   * channel sits. Read off the tree, so no check spells either.
+   * The feature mailbox's board, as the tree declares it: its local `name`
+   * (from `MAILBOX.md`) and the `id` the framework minted from where the
+   * mailbox sits. Read off the tree, so no check spells either.
    */
   board: { name: string; id: string };
   /** The hired seats, by id. */
@@ -484,33 +484,33 @@ export interface Lab {
    */
   rows(): Promise<Record<string, Task>>;
   /**
-   * The channel that holds the tree's board, once `channels` was asked for.
-   * The tree's other channels are opened too, and hold no board.
+   * The mailbox that holds the tree's board, once `mailboxes` was asked for.
+   * The tree's other mailboxes are opened too, and hold no board.
    *
-   * The id is minted from where `CHANNEL.md` sits, never named in this code.
+   * The id is minted from where `MAILBOX.md` sits, never named in this code.
    */
-  channelId?: string;
+  mailboxId?: string;
   /**
-   * Post one line on that channel, as an operator would.
+   * Post one line on that mailbox, as an operator would.
    *
-   * The whole of the channel leg's front door: nothing else in this lab files a
-   * row when `channels` is on. Absent when no channel was opened.
+   * The whole of the mailbox leg's front door: nothing else in this lab files a
+   * row when `mailboxes` is on. Absent when no mailbox was opened.
    */
   post?(body: string): Promise<{ output?: unknown; error?: string }>;
-  /** Read the channel's transcript back. Absent when no channel was opened. */
-  transcript?(): Promise<ChannelTranscriptLine[]>;
+  /** Read the mailbox's transcript back. Absent when no mailbox was opened. */
+  transcript?(): Promise<MailboxTranscriptLine[]>;
   /**
-   * Run one of the channel's own actions (`read`, `readBoard`) — the reads
-   * Shift Manager makes of a workstream. Absent when no channel was opened.
+   * Run one of the mailbox's own actions (`read`, `readBoard`) — the reads
+   * Shift Manager makes of a workstream. Absent when no mailbox was opened.
    */
-  channelAct?(actionName: string, input: unknown): Promise<{ output?: unknown; error?: string }>;
+  mailboxAct?(actionName: string, input: unknown): Promise<{ output?: unknown; error?: string }>;
   /**
-   * Read the channel's board through the HTTP door a browser uses — the
-   * collection read route, on the channel's session.
+   * Read the mailbox's board through the HTTP door a browser uses — the
+   * collection read route, on the mailbox's session.
    *
    * `"bearer"` carries the lab's verified bearer; `"org-less"` carries no
-   * credential and is refused before anything is read. Absent when no channel
-   * was opened, since the door reads through the channel's session.
+   * credential and is refused before anything is read. Absent when no mailbox
+   * was opened, since the door reads through the mailbox's session.
    */
   readBoardAtDoor?(
     door: "org-less" | "bearer",
@@ -582,21 +582,21 @@ export interface Lab {
 export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const roster = await loadTree(options.root ?? LAB_TREE);
 
-  // **The board, read off the tree.** One channel holds a board, and it holds
+  // **The board, read off the tree.** One mailbox holds a board, and it holds
   // one: the lab's wiring hands one ledger to both kinds, so a tree that grew
   // a second board would be a different lab, and is refused by what it has
-  // rather than resolved by guessing which one was meant. Channels that hold
+  // rather than resolved by guessing which one was meant. Mailboxes that hold
   // no board are workstreams like any other; they are opened, registered and
   // grouped into projects, and file nothing.
-  const channel = boardChannelOf(roster);
-  const declaredBoards = channel.declared.boards as string[] | undefined;
+  const mailbox = boardMailboxOf(roster);
+  const declaredBoards = mailbox.declared.boards as string[] | undefined;
   if (declaredBoards?.length !== 1) {
     throw new Error(
-      `channel "${channel.id}" declares ${declaredBoards?.length ?? 0} board(s); this lab runs one`,
+      `mailbox "${mailbox.id}" declares ${declaredBoards?.length ?? 0} board(s); this lab runs one`,
     );
   }
   const boardName = declaredBoards[0]!;
-  const board = channelBoard(channel.id, boardName);
+  const board = mailboxBoard(mailbox.id, boardName);
   const ledger: FeatureLedger = options.ledger ?? { id: board.id, collection: board };
 
   // The documents, as the L1 resource map a flow installs. Org-scoped, which is
@@ -645,17 +645,17 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     ...(emRecords[0] === undefined ? {} : { coordinatorSeatId: emRecords[0].id }),
     harness: options.harness,
     workspace: options.workspace,
-    // The channel's charter and members, resolved once here so the prompt
+    // The mailbox's charter and members, resolved once here so the prompt
     // builder stays a function of the run and these options. Not the whole
-    // manifest: the charter is the only channel content a run is handed.
+    // manifest: the charter is the only mailbox content a run is handed.
     // Known limit: this is a snapshot, so a charter edited while the lab is
     // open does not reach later prompts. A real host should read it per run.
     phase: defineImplementPhase({
       requireAcceptance: options.requireAcceptance === true,
-      channel: {
-        id: channel.id,
-        charter: channel.body,
-        members: (channel.declared.members as string[] | undefined) ?? [],
+      mailbox: {
+        id: mailbox.id,
+        charter: mailbox.body,
+        members: (mailbox.declared.members as string[] | undefined) ?? [],
       },
       ...(options.dropTask === true ? { dropTask: true } : {}),
     }),
@@ -687,7 +687,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // finishes, and fire releases only the seat its row minted.
     instanceAt: (id) => registrar?.registry.get(id),
     allowKinds: [CODER_KIND, AGENT_KIND],
-    channelBoards: channelBoardIds(roster.channels),
+    mailboxBoards: mailboxBoardIds(roster.mailboxes),
     askBefore: [...ASKS_BEFORE],
     // Roster admin stays with the chief of staff: a hired seat can't be given it.
     refuseRosterAdmin: true,
@@ -702,17 +702,17 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // only the chief of staff's line names them.
     catalog: options.withoutProjectTools === true ? {} : projectTools,
     uses: [
-      // The channel inventory, which the discovery door reads beside the seats
+      // The mailbox inventory, which the discovery door reads beside the seats
       // the hire capability mounts. Declared with the project writes' own
       // object, because the project tools read it too and a flow takes one
       // declaration per storage key.
-      defineCapability({ name: "lab-channel-inventory", resources: { channelInventory: projectWritesChannelInventory } }),
+      defineCapability({ name: "lab-mailbox-inventory", resources: { mailboxInventory: projectWritesMailboxInventory } }),
       createWorkforceCapability({
-        roster: { workers: roster.workers, channels: roster.channels },
-        inventory: { seats: SEAT_INVENTORY_RESOURCE, channels: "channelInventory" },
+        roster: { workers: roster.workers, mailboxes: roster.mailboxes },
+        inventory: { seats: SEAT_INVENTORY_RESOURCE, mailboxes: "mailboxInventory" },
         hiredRoster: HIRED_ROSTER_RESOURCE,
       }),
-      channelPostCapability,
+      mailboxPostCapability,
       seatHire,
     ],
   }) as never;
@@ -724,36 +724,36 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   // would be named in hire's unattended-board warning.
   const hired = hireWorkforce(workers, {
     kinds,
-    channelBoards: channelBoardIds(roster.channels),
+    mailboxBoards: mailboxBoardIds(roster.mailboxes),
   });
   const seats: Record<string, FlowInstance> = Object.fromEntries(
     hired.map((seat) => [seat.id, seat]),
   );
 
-  // The channel instances, when the caller asked for a channel door. One
+  // The mailbox instances, when the caller asked for a mailbox door. One
   // instance per DISTINCT kind, never one per record — the binder's contract,
   // composed rather than restated. The built-in kind is replaced wholesale with
   // one carrying this lab's notify slot, because a slot cannot be added to a
   // kind after it is built.
-  if (options.inventory === true && options.channels === undefined) {
-    throw new Error("openLab: `inventory` needs `channels`, whose kind writes the inventory");
+  if (options.inventory === true && options.mailboxes === undefined) {
+    throw new Error("openLab: `inventory` needs `mailboxes`, whose kind writes the inventory");
   }
-  const channelKind =
-    options.channels === undefined
+  const mailboxKind =
+    options.mailboxes === undefined
       ? undefined
-      : defineChannelFlow({
-          notify: labNotify(options.channels) as never,
+      : defineMailboxFlow({
+          notify: labNotify(options.mailboxes) as never,
           ...(options.inventory === true ? { inventory: true } : {}),
         });
   // The org's resource modules: where the projects collection and its talk
   // template are declared. The binder reads the template off them, builds its
-  // seats and charter onto the channel kind, and installs the mint on create.
-  const orgResources = channelKind === undefined ? {} : await loadResourceModules(options.root ?? LAB_TREE);
+  // seats and charter onto the mailbox kind, and installs the mint on create.
+  const orgResources = mailboxKind === undefined ? {} : await loadResourceModules(options.root ?? LAB_TREE);
   const instances =
-    channelKind === undefined
+    mailboxKind === undefined
       ? []
-      : channelInstances(roster.channels, {
-          kinds: { [CHANNEL_KIND]: channelKind as never },
+      : mailboxInstances(roster.mailboxes, {
+          kinds: { [MAILBOX_KIND]: mailboxKind as never },
           resources: orgResources,
         });
 
@@ -775,7 +775,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   if (writeLatency !== undefined) console.error(`[devforce-lab] holding checked store writes up to ${writeLatency}ms`);
 
   // One record for the Lab's own flows and its seats. An org seat's id is its
-  // bare folder name, so a folder named like one of the Lab's flows (`channel`,
+  // bare folder name, so a folder named like one of the Lab's flows (`mailbox`,
   // `projects`) would take that flow's key; `mergeSeatFlows` refuses it, by name.
   const flows: Record<string, unknown> = mergeSeatFlows(
     {
@@ -839,12 +839,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const sessionFor = seatSessionId;
 
   /**
-   * The session client `openChannels` is handed.
+   * The session client `openMailboxes` is handed.
    *
    * Direct store writes rather than the HTTP router: the route is
    * fire-and-forget and this needs the session to exist before the next line.
    *
-   * **`openChannels` takes no `orgId`, and no wrapper is written here.** Its
+   * **`openMailboxes` takes no `orgId`, and no wrapper is written here.** Its
    * declared `createSession` has no such field and never did — the binder gave
    * up the authority to choose an organization, and the server-created session
    * carries one from the verified principal instead (FIX-1442). This stand-in
@@ -905,11 +905,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     },
   };
 
-  if (channelKind !== undefined) {
-    await openChannels(roster.channels, { client: sessionClient, userId: LAB_USER_ID });
+  if (mailboxKind !== undefined) {
+    await openMailboxes(roster.mailboxes, { client: sessionClient, userId: LAB_USER_ID });
   }
 
-  // The inventory, in-process, under the lab's organization, once the channel
+  // The inventory, in-process, under the lab's organization, once the mailbox
   // sessions it registers from exist. A problem fails the open, naming it.
   if (options.inventory === true) {
     const run = async (request: InventoryActionRequest): Promise<unknown> => {
@@ -932,8 +932,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     // serving again now, and this is what lists it. Each row carries the
     // incarnation of the roster row it was minted from.
     const opened = await openInventory(
-      { seats: [...hired, ...reloaded], channels: roster.channels },
-      { run, seatWriter: { flowKind: CHANNEL_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
+      { seats: [...hired, ...reloaded], mailboxes: roster.mailboxes },
+      { run, seatWriter: { flowKind: MAILBOX_KIND }, userId: LAB_USER_ID, orgId: LAB_ORG_ID },
     );
     if (opened.problems.length > 0) {
       await state.dispose();
@@ -966,13 +966,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     }
   }
 
-  const channelInstance = instances.find((instance) => instance.kind === CHANNEL_KIND);
-  /** The channel holding the board. Its id is its session id. */
-  const channelId = channel.id;
+  const mailboxInstance = instances.find((instance) => instance.kind === MAILBOX_KIND);
+  /** The mailbox holding the board. Its id is its session id. */
+  const mailboxId = mailbox.id;
 
   /**
    * Where the kinds' ledger keeps its rows: the organization for the
-   * channel's board, the user for a ledger a control built of its own.
+   * mailbox's board, the user for a ledger a control built of its own.
    */
   const ledgerScope = ledger.collection.scope === "org" ? "org" : "user";
   const ledgerScopeId = ledgerScope === "org" ? LAB_ORG_ID : LAB_USER_ID;
@@ -1085,24 +1085,24 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     file: (seatId, input) => act(seatId, FILE_ENTRY, input),
     drain: (seatId) => act(seatId, DRAIN_ENTRY, {}),
 
-    ...(channelInstance === undefined || channelId === undefined
+    ...(mailboxInstance === undefined || mailboxId === undefined
       ? {}
       : {
-          channelId,
-          post: (body: string) => actOn(channelInstance, channelId, "post", { body }),
-          transcript: async (): Promise<ChannelTranscriptLine[]> => {
-            const result = await actOn(channelInstance, channelId, "read", {});
+          mailboxId,
+          post: (body: string) => actOn(mailboxInstance, mailboxId, "post", { body }),
+          transcript: async (): Promise<MailboxTranscriptLine[]> => {
+            const result = await actOn(mailboxInstance, mailboxId, "read", {});
             if (result.error !== undefined) {
-              throw new Error(`reading the channel was refused — ${result.error}`);
+              throw new Error(`reading the mailbox was refused — ${result.error}`);
             }
-            return (result.output as { transcript: ChannelTranscriptLine[] }).transcript;
+            return (result.output as { transcript: MailboxTranscriptLine[] }).transcript;
           },
-          channelAct: (actionName: string, input: unknown) =>
-            actOn(channelInstance, channelId, actionName, input),
+          mailboxAct: (actionName: string, input: unknown) =>
+            actOn(mailboxInstance, mailboxId, actionName, input),
           readBoardAtDoor: async (door: "org-less" | "bearer") => {
-            // The collection read route, on the channel's own session, under
+            // The collection read route, on the mailbox's own session, under
             // the board's minted id — the read a board panel makes.
-            const segments = ["sessions", channelId, "resources", board.id];
+            const segments = ["sessions", mailboxId, "resources", board.id];
             const response = await (router as any).GET(
               new Request(`http://lab/api/flows/${segments.join("/")}`, {
                 method: "GET",

@@ -1,6 +1,6 @@
 /**
- * `routeByPurpose`: the route a channel kind takes, so a person's post to a
- * channel that declares `routing:` reaches one member, picked by what it is
+ * `routeByPurpose`: the route a mailbox kind takes, so a person's post to a
+ * mailbox that declares `routing:` reaches one member, picked by what it is
  * about.
  *
  * One resolution, in this order, and one record of it:
@@ -9,14 +9,14 @@
  *    by the evaluator or the fallback, and that member has posted no line
  *    since: this post goes there too, with no model call. A post that was
  *    itself held, or whose route is not recorded yet, holds nothing.
- * 2. **One evaluator call** (block name `channel-route`): which member should
- *    answer? It reads the channel's last lines and the post, and chooses among
- *    the channel's members whose seat hears posts and this caller can reach
+ * 2. **One evaluator call** (block name `mailbox-route`): which member should
+ *    answer? It reads the mailbox's last lines and the post, and chooses among
+ *    the mailbox's members whose seat hears posts and this caller can reach
  *    (the wake's own test), each described by its `WORKER.md` `description:`.
  *    A seat with no description (a runtime hire has none) is not a choice; it
  *    can still be the fallback, and be held.
  * 3. **The fallback.** The call failed, or answered with something that is not
- *    an option: the channel's `routing: fallback:` member takes the post. If the
+ *    an option: the mailbox's `routing: fallback:` member takes the post. If the
  *    caller cannot reach the fallback's seat either, nobody does.
  *
  * Only the evaluator call's own failure reaches the fallback; any other error
@@ -24,13 +24,13 @@
  * committed: one that lands before the ledger takes the route makes no later
  * write and wakes nobody, and one that lands before the route records
  * anything leaves no trace. Once the ledger has it, the member is woken.
- * Every route is recorded as one `channel-route` item on the channel's
+ * Every route is recorded as one `mailbox-route` item on the mailbox's
  * session, never as a line.
  *
- * The lines and the member on the person's last post come from the channel's
- * route ledger (`channel-route.ts`), read as the post was kept, and never from
+ * The lines and the member on the person's last post come from the mailbox's
+ * route ledger (`mailbox-route.ts`), read as the post was kept, and never from
  * the session's items: those reach back only as far as the request's history
- * window, which a busy channel's reads and fan-outs use up.
+ * window, which a busy mailbox's reads and fan-outs use up.
  *
  * The evaluation's state is `{ recent, post }`: `recent` the lines before the
  * post, oldest first, and `post` the post, each as `{ from, text }` where
@@ -42,20 +42,20 @@ import { choice, evaluator, handler, sequencer } from "@flow-state-dev/core";
 import type { EvaluationModel, FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { seatDescription } from "../seat-description";
-import { boundChannel } from "./channel-flow";
-import { emitChannelRouteRecord } from "./channel-items";
+import { boundMailbox } from "./mailbox-flow";
+import { emitMailboxRouteRecord } from "./mailbox-items";
 import {
-  CHANNEL_ROUTE_EVALUATOR,
+  MAILBOX_ROUTE_EVALUATOR,
   recordRoute,
   ROUTE_BLOCK,
   ROUTE_LEDGER_STATE,
   routeDecisionSchema,
   routeLedgerStateSchema,
   routeRequestSchema,
-  type ChannelRoute,
-  type ChannelRouteRecord,
+  type MailboxRoute,
+  type MailboxRouteRecord,
   type RouteDecision
-} from "./channel-route";
+} from "./mailbox-route";
 import { hearingSeatsById, reachableSeat } from "./wake-member-seats";
 
 /** Options for {@link routeByPurpose}. */
@@ -108,15 +108,15 @@ function said(line: { author?: string; principal: string; body: string }) {
 }
 
 /**
- * Build a channel kind's route from the seats the host hired.
+ * Build a mailbox kind's route from the seats the host hired.
  *
  * @param seats The seats `hireWorkforce` returned, the same ones passed to
  *   `wakeMemberSeats`. Only those that hear posts can be routed to.
  * @param options `model`: the evaluation model the one call runs on. Required;
  *   the package names no default.
- * @returns The route, for `defineChannelFlow({ route })`.
+ * @returns The route, for `defineMailboxFlow({ route })`.
  */
-export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByPurposeOptions): ChannelRoute {
+export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByPurposeOptions): MailboxRoute {
   if (options?.model === undefined) {
     throw new Error(
       "routeByPurpose needs a `model`: the evaluation model the route's one call runs on. " +
@@ -127,7 +127,7 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
 
   /** The members this caller can route to, the options, and whether the post's holder is one of them. */
   const readCase = handler({
-    name: "channel-route-case",
+    name: "mailbox-route-case",
     inputSchema: routeRequestSchema,
     outputSchema: routeCaseSchema,
     execute: (request, ctx): RouteCase => {
@@ -136,7 +136,7 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
       // seat hired at runtime has none to pick by.
       const reachable: string[] = [];
       const options: Record<string, string> = {};
-      for (const member of boundChannel(ctx.session.state)?.members ?? []) {
+      for (const member of boundMailbox(ctx.session.state)?.members ?? []) {
         const seat = reachableSeat(hearing.get(member) ?? [], ctx);
         if (seat === undefined) continue;
         reachable.push(member);
@@ -154,7 +154,7 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
   });
 
   const evaluate = evaluator({
-    name: CHANNEL_ROUTE_EVALUATOR,
+    name: MAILBOX_ROUTE_EVALUATOR,
     model: options.model,
     inputSchema: routeCaseSchema,
     state: (routeCase: RouteCase) => ({ recent: routeCase.recent.map(said), post: said(routeCase.post) }),
@@ -167,7 +167,7 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
    * nothing is placed, recorded, noted in the ledger or woken.
    */
   const evaluationFailed = handler({
-    name: "channel-route-evaluation-failed",
+    name: "mailbox-route-evaluation-failed",
     inputSchema: z.unknown(),
     outputSchema: failedEvaluationSchema,
     execute: (error: unknown, ctx) => {
@@ -178,7 +178,7 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
 
   /**
    * Place the post, from the case and what the call (if any) answered, and
-   * record it: as the channel's `channel-route` item, then in the ledger the
+   * record it: as the mailbox's `mailbox-route` item, then in the ledger the
    * next post's case is read from. The item first, so a ledger that could not
    * take the route fails the delivery with nobody left holding the next post.
    *
@@ -189,21 +189,21 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
    * member is woken: a cancel that lands later is too late.
    */
   const settle = handler({
-    name: "channel-route-settle",
+    name: "mailbox-route-settle",
     inputSchema: z.unknown(),
     outputSchema: routeDecisionSchema,
     sessionStateSchema: routeLedgerStateSchema,
     execute: async (answer: unknown, ctx): Promise<RouteDecision> => {
       const routeCase = routeCaseSchema.parse(ctx.parent?.input);
       const placed = place(routeCase, answer);
-      const record: ChannelRouteRecord = {
+      const record: MailboxRouteRecord = {
         postId: routeCase.post.postId,
         by: placed.by,
         ...(placed.member === undefined ? {} : { member: placed.member }),
         ...(placed.reason === undefined ? {} : { reason: placed.reason })
       };
       ctx.signal.throwIfAborted();
-      await emitChannelRouteRecord(ctx, record);
+      await emitMailboxRouteRecord(ctx, record);
       ctx.signal.throwIfAborted();
       await ctx.session.atomicState((state) => {
         const ledger = recordRoute(state[ROUTE_LEDGER_STATE], record);
@@ -218,7 +218,7 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
     }
   });
 
-  const decide = sequencer({ name: "channel-route-decide", inputSchema: routeCaseSchema })
+  const decide = sequencer({ name: "mailbox-route-decide", inputSchema: routeCaseSchema })
     .stepIf(
       (routeCase: RouteCase) => routeCase.held === undefined && Object.keys(routeCase.options).length > 0,
       evaluate.rescue([{ block: evaluationFailed }])
@@ -226,7 +226,7 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
     .step(settle);
 
   const resolve = sequencer({
-    name: "channel-route-resolve",
+    name: "mailbox-route-resolve",
     inputSchema: routeRequestSchema,
     outputSchema: routeDecisionSchema
   })
@@ -240,13 +240,13 @@ export function routeByPurpose(seats: readonly FlowInstance[], options: RouteByP
 function place(
   routeCase: RouteCase,
   answer: unknown
-): { by: ChannelRouteRecord["by"]; member?: string; reason?: string } {
+): { by: MailboxRouteRecord["by"]; member?: string; reason?: string } {
   if (routeCase.held !== undefined) return { by: "held", member: routeCase.held };
 
   const outcome = evaluationOutcome(answer);
   let reason: string;
   if (routeCase.reachable.length === 0) {
-    reason = "no member of the channel has a seat this caller can reach that hears posts";
+    reason = "no member of the mailbox has a seat this caller can reach that hears posts";
   } else if (Object.keys(routeCase.options).length === 0) {
     reason = "no member this caller can reach has a description to route by";
   } else if ("failed" in outcome) {

@@ -194,7 +194,7 @@ async function readWorkerSlots(
     // that could not be read is an author's typo, and a file declaring what
     // the framework imposes is an author's misunderstanding. Checked here
     // rather than inside the parse so the two stay tellable apart by control
-    // flow, the way the channels and resources readers keep them apart.
+    // flow, the way the mailboxes and resources readers keep them apart.
     const refused = refusedDeclaration(loaded.declared, workerName);
     if (refused !== undefined) {
       errors.push({ path: step.path, error: refused, kind: "refused-declaration" });

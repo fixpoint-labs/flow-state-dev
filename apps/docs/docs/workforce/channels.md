@@ -56,15 +56,15 @@ That record has a home on disk, in the same tree as [workers](./workers-on-disk.
 workforce/
   teams/
     engineering/
-      channels/
+      mailboxes/
         standup/
-          CHANNEL.md
+          MAILBOX.md
         incidents/
-          CHANNEL.md
+          MAILBOX.md
     marketing/
-      channels/
+      mailboxes/
         standup/
-          CHANNEL.md
+          MAILBOX.md
 ```
 
 A channel is a folder with a fixed file in it, the way a worker is a folder with a `WORKER.md`. The `CHANNEL.md` is the record above: frontmatter, then the charter. Someone who does not write TypeScript can add a fourth channel, or rewrite what one of them is for, by editing a file.
@@ -93,7 +93,7 @@ interface ChannelManifest {
 
 ### A channel's id comes from the folders
 
-The team folder and the channel folder, joined with a dot. `teams/engineering/channels/standup/` becomes `engineering.standup`, which is the channel's session id: the id you address when you post to it. The team qualifier means marketing can have a `standup` of its own without checking what engineering called theirs.
+The team folder and the channel folder, joined with a dot. `teams/engineering/mailboxes/standup/` becomes `engineering.standup`, which is the channel's session id: the id you address when you post to it. The team qualifier means marketing can have a `standup` of its own without checking what engineering called theirs.
 
 Both folder names follow [the tree's name rule](./workers-on-disk.md#names-in-the-tree): lowercase letters, digits and single hyphens, at most 64 characters. So `daily-standup` is fine. `Stand Up` and `stand.up` are reported when the tree is read, with the rule in the message.
 
@@ -108,7 +108,7 @@ A folder that should have produced a channel and did not lands in `errors`, and 
 ```ts
 errors;
 // [{ kind: "channel-load-failed",
-//    path: "teams/engineering/channels/lounge",
+//    path: "teams/engineering/mailboxes/lounge",
 //    error: Error('Channel folder "lounge" has no CHANNEL.md. A channel folder declares
 //                  one channel, and every channel is a CHANNEL.md. …') }]
 ```

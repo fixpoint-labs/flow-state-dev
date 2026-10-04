@@ -28,7 +28,7 @@
  * wrong one.
  *
  * Nothing under `flows/` is read as a convention file — the loader walks
- * `workers/`, `skills/`, `resources/` and `channels/` under a team and ignores
+ * `workers/`, `skills/`, `resources/` and `mailboxes/` under a team and ignores
  * the rest, which is why the code side can sit inside the tree.
  */
 
@@ -40,7 +40,7 @@ import type {
   TaskDispatcher,
   TaskWorkerInput,
 } from "@flow-state-dev/orchestration/tasks";
-import { workerConfigSchema, type ChannelBoardCollection } from "@flow-state-dev/workforce";
+import { workerConfigSchema, type MailboxBoardCollection } from "@flow-state-dev/workforce";
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
 import { pieceInputSchema } from "../piece.mts";
@@ -132,8 +132,8 @@ function deskDispatcher(routes: Readonly<Record<string, string>>): TaskDispatche
 }
 
 export interface WorkerFlowOptions {
-  /** The channel's own ledger — the one `CHANNEL.md` declared by name. */
-  board: ChannelBoardCollection;
+  /** The mailbox's own ledger — the one `MAILBOX.md` declared by name. */
+  board: MailboxBoardCollection;
   /**
    * Desk key -> seat id: **the routing under test**, and the app's.
    *
@@ -265,7 +265,7 @@ export function defineWorkerFlow(options: WorkerFlowOptions) {
     actions: {
       [DRAIN_ENTRY]: {
         block: board.drain,
-        description: "Work this seat's share of the channel's board.",
+        description: "Work this seat's share of the mailbox's board.",
       },
       // The person's door. An ordinary action on an ordinary session, so it
       // carries the request's own principal and nothing derives a second one.

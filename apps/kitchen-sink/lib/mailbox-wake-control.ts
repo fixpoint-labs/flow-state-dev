@@ -1,5 +1,5 @@
 /**
- * The goal checks' controls for the channel wake (`GOAL_CONTROL`).
+ * The goal checks' controls for the mailbox wake (`GOAL_CONTROL`).
  *
  * - `name-only-notify` puts back the notify block every member got before the
  *   wake existed: a name-only line, and no seat runs. The goal
@@ -19,13 +19,13 @@
  * block does not import from `test/`.
  */
 import { handler, type BlockDefinition } from "@flow-state-dev/core";
-import { channelNotifyInputSchema, type ChannelNotifyInput } from "@flow-state-dev/workforce";
+import { mailboxNotifyInputSchema, type MailboxNotifyInput } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 import { goalControl } from "./goal-control";
 
-/** The channel-wake control in force, or `undefined` when none is. */
-function channelWakeControl(): "name-only-notify" | "no-author-filter" | undefined {
+/** The mailbox-wake control in force, or `undefined` when none is. */
+function mailboxWakeControl(): "name-only-notify" | "no-author-filter" | undefined {
   const control = goalControl();
   return control === "name-only-notify" || control === "no-author-filter" ? control : undefined;
 }
@@ -36,11 +36,11 @@ function channelWakeControl(): "name-only-notify" | "no-author-filter" | undefin
  */
 const nameOnly = handler({
   name: "kitchen-sink-notify-member",
-  inputSchema: channelNotifyInputSchema,
+  inputSchema: mailboxNotifyInputSchema,
   outputSchema: z.object({ notified: z.string() }),
-  execute: (input: ChannelNotifyInput, ctx) => {
+  execute: (input: MailboxNotifyInput, ctx) => {
     if (input.author !== undefined && input.member === input.author) return { notified: "" };
-    ctx.emit.message(`[${input.channelId}] → ${input.member}: ${input.body}`, { transient: true });
+    ctx.emit.message(`[${input.mailboxId}] → ${input.member}: ${input.body}`, { transient: true });
     return { notified: input.member };
   },
 });
@@ -50,11 +50,11 @@ const nameOnly = handler({
  * none is, the name-only stand-in in its place under `name-only-notify`, and
  * `wake` fed deliveries with the seat mark dropped under `no-author-filter`.
  */
-export function withChannelWakeControl(wake: BlockDefinition<any, any>): BlockDefinition<any, any> {
-  const control = channelWakeControl();
+export function withMailboxWakeControl(wake: BlockDefinition<any, any>): BlockDefinition<any, any> {
+  const control = mailboxWakeControl();
   if (control === "name-only-notify") return nameOnly;
   if (control === "no-author-filter") {
-    return wake.connectInput(({ seatAuthored: _seatAuthored, ...post }: ChannelNotifyInput) => post);
+    return wake.connectInput(({ seatAuthored: _seatAuthored, ...post }: MailboxNotifyInput) => post);
   }
   return wake;
 }

@@ -1,16 +1,16 @@
 /**
- * A workstream's Stream (S7, BR-18 to BR-21): its channel's transcript, one
+ * A workstream's Stream (S7, BR-18 to BR-21): its mailbox's transcript, one
  * live stream for that session, older lines paged in; the pending asks of the
- * channel's member seats in the same feed, each at the time it was raised; and
- * a composer that posts through the channel's own `post` action.
+ * mailbox's member seats in the same feed, each at the time it was raised; and
+ * a composer that posts through the mailbox's own `post` action.
  *
- * A line is drawn only once the channel holds it: a post keeps its draft
+ * A line is drawn only once the mailbox holds it: a post keeps its draft
  * until the request settles, then the line arrives from the stream or the
  * read after it. A refused post keeps the draft and says why.
  *
  * A line that starts with `@` and a member's name goes to that worker instead
  * (BR-19, BR-20): into its task's run on this workstream's boards, through
- * the one send path, and nothing is posted to the channel. Several tasks and
+ * the one send path, and nothing is posted to the mailbox. Several tasks and
  * the composer asks which; none and Send is off, saying so. A delivered line
  * leaves a receipt in the stream, linking to the task's Session, until the
  * page reloads.
@@ -21,7 +21,7 @@
  */
 import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { createSessionSSEClient } from "@flow-state-dev/client";
-import type { ChannelTranscriptLine } from "@flow-state-dev/workforce/browser";
+import type { MailboxTranscriptLine } from "@flow-state-dev/workforce/browser";
 import { AskCard } from "../components/AskCard";
 import { SectionFailure } from "../components/ui";
 import { addressedSeat, asksFor, doorOf, liveWorkers, mentionOf, messageableRows, rosterOf, type LoadedSnapshot } from "../lib/derive";
@@ -34,7 +34,7 @@ import { ComposerShell, TurnSendStatus, useTurnSend } from "../components/TurnCo
 import { lineLabel, lineOf, mergeLines, postLine, readTranscriptPage } from "../lib/transcript";
 import type { Gaps } from "../gaps";
 
-type Transcript = { lines: ChannelTranscriptLine[]; offset: number };
+type Transcript = { lines: MailboxTranscriptLine[]; offset: number };
 
 export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream; snapshot: LoadedSnapshot; gaps: Gaps }) {
   const { clients, refresh } = useLab();
@@ -170,8 +170,8 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
         addressing={addressing}
         mentions={liveWorkers(snapshot, workstream).map((seat) => mentionOf(rosterOf(snapshot), workstream, seat))}
         send={(body) => {
-          // A channel row written before it recorded its kind names no flow to post through.
-          if (workstream.kind === null) throw new Error("This channel's inventory row names no flow kind, so there is no post action to send through.");
+          // A mailbox row written before it recorded its kind names no flow to post through.
+          if (workstream.kind === null) throw new Error("This mailbox's inventory row names no flow kind, so there is no post action to send through.");
           return postLine(clients, { id: workstream.id, kind: workstream.kind }, body);
         }}
         onKept={afterPost}
@@ -180,14 +180,14 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
   );
 }
 
-/** One entry in the feed: a line the channel kept, or a member's ask still waiting on the person. */
-type FeedEntry = { at: number; line: ChannelTranscriptLine } | { at: number; ask: Ask };
+/** One entry in the feed: a line the mailbox kept, or a member's ask still waiting on the person. */
+type FeedEntry = { at: number; line: MailboxTranscriptLine } | { at: number; ask: Ask };
 
 /**
  * The feed as design v2 draws it (v2:225-232): lines and pending asks in time
  * order, under a divider per day, TODAY for today's.
  */
-function feedOf(lines: readonly ChannelTranscriptLine[], asks: readonly Ask[], now: number): Array<{ label: string; entries: FeedEntry[] }> {
+function feedOf(lines: readonly MailboxTranscriptLine[], asks: readonly Ask[], now: number): Array<{ label: string; entries: FeedEntry[] }> {
   const entries: FeedEntry[] = [...lines.map((line) => ({ at: line.at, line })), ...asks.map((ask) => ({ at: ask.since, ask }))].sort((a, b) => a.at - b.at);
   const today = new Date(now).toDateString();
   const days: Array<{ label: string; entries: FeedEntry[] }> = [];
@@ -206,7 +206,7 @@ function feedOf(lines: readonly ChannelTranscriptLine[], asks: readonly Ask[], n
  * project's draw lines with this one list; a workstream's also passes its
  * members' pending asks, each placed at the time it was raised.
  */
-export function TranscriptLines({ lines, asks = [] }: { lines: readonly ChannelTranscriptLine[]; asks?: readonly Ask[] }) {
+export function TranscriptLines({ lines, asks = [] }: { lines: readonly MailboxTranscriptLine[]; asks?: readonly Ask[] }) {
   return (
     <>
       {feedOf(lines, asks, Date.now()).map((day) => (
@@ -273,14 +273,14 @@ export type Addressing =
   | { blocked: string }
   | { blocked: null; rows: BoardRow[]; send: (row: BoardRow, message: string) => Promise<void> };
 
-/** `@name rest` → the name and the line, or `undefined` for a line to the channel. */
+/** `@name rest` → the name and the line, or `undefined` for a line to the mailbox. */
 function parseAddress(draft: string): { name: string; message: string } | undefined {
   const match = /^\s*@(\S*)\s*([\s\S]*)$/.exec(draft);
   return match === null ? undefined : { name: match[1]!, message: match[2]!.trim() };
 }
 
 /**
- * The composer: posts to the whole channel, keeps its draft until the channel
+ * The composer: posts to the whole mailbox, keeps its draft until the mailbox
  * keeps the line. A line to `@name` goes to that worker's task instead, with
  * the send state every turn composer shares ({@link useTurnSend}): delivered
  * only once the run's session holds it (BR-4). Exported for its tests.

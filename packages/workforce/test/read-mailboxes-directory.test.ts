@@ -1,33 +1,33 @@
 /**
- * Specs for the channels convention loader: a folder with a `CHANNEL.md` in a
- * team's `channels/` slot becomes one neutral channel record.
+ * Specs for the mailboxes convention loader: a folder with a `MAILBOX.md` in a
+ * team's `mailboxes/` slot becomes one neutral mailbox record.
  *
  * Same discipline as the worker and resources readers' specs — every tree is a
  * real temp directory read through the real function, because the behaviours
  * under test (what a symlink does, what an unreadable folder does) are
  * filesystem behaviours. BP-035: each failing case sits in the same tree as a
- * healthy channel, so a spec proves isolation and not just that the bad path
+ * healthy mailbox, so a spec proves isolation and not just that the bad path
  * errors.
  *
  * What these specs are FOR, beyond "the function works":
  *
- * - A channel id is not a label. It becomes the flow instance id the binder
+ * - A mailbox id is not a label. It becomes the flow instance id the binder
  *   registers and literally the session id the transcript lives in, so a spec
  *   that pins the minted id is pinning where an app's messages are stored.
  * - `errors` is collected rather than thrown because the caller owns boot
- *   policy. That only helps if a bad channel costs the app exactly that
- *   channel, which is why every failure spec keeps a healthy one beside it.
- * - `system:` is refused because a channel is a system channel by virtue of
+ *   policy. That only helps if a bad mailbox costs the app exactly that
+ *   mailbox, which is why every failure spec keeps a healthy one beside it.
+ * - `system:` is refused because a mailbox is a system mailbox by virtue of
  *   where it was declared. A file that could type it could mint an undeletable
- *   channel, so the refusal is a permissions rule wearing a parser's clothes.
+ *   mailbox, so the refusal is a permissions rule wearing a parser's clothes.
  */
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fsp from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readChannelsDirectory, readWorkforceDirectory } from "../src/loader";
-import { CHANNEL_KIND, channelInstances } from "../src/index";
+import { readMailboxesDirectory, readWorkforceDirectory } from "../src/loader";
+import { MAILBOX_KIND, mailboxInstances } from "../src/index";
 
 const roots: string[] = [];
 
@@ -40,7 +40,7 @@ afterEach(() => {
 
 /** A tree written from `{ "relative/path": contents }`. Directories are implied. */
 function tree(files: Record<string, string>): string {
-  const root = mkdtempSync(join(tmpdir(), "fsd-channels-"));
+  const root = mkdtempSync(join(tmpdir(), "fsd-mailboxes-"));
   roots.push(root);
   for (const [rel, contents] of Object.entries(files)) {
     const full = join(root, rel);
@@ -59,77 +59,77 @@ function dir(root: string, rel: string): string {
 
 const STANDUP = `---
 description: Where the engineering team posts daily status.
-flow: channel
+flow: mailbox
 members: [engineering.lead, engineering.analyst]
 ---
 
 Post what you finished, what you're on, and what's blocking you.
 `;
 
-/** A healthy channel that must survive every failure spec in the same tree. */
-const HEALTHY = { "teams/engineering/channels/standup/CHANNEL.md": STANDUP };
+/** A healthy mailbox that must survive every failure spec in the same tree. */
+const HEALTHY = { "teams/engineering/mailboxes/standup/MAILBOX.md": STANDUP };
 
-describe("readChannelsDirectory", () => {
-  it("turns a team's channel folder into a record carrying what the file declared", async () => {
-    const { channels, errors } = await readChannelsDirectory(tree(HEALTHY));
+describe("readMailboxesDirectory", () => {
+  it("turns a team's mailbox folder into a record carrying what the file declared", async () => {
+    const { mailboxes, errors } = await readMailboxesDirectory(tree(HEALTHY));
 
     expect(errors).toEqual([]);
-    expect(channels).toHaveLength(1);
+    expect(mailboxes).toHaveLength(1);
     // Team-qualified and dot-joined: this string is the flow instance id and
     // the session id, not a display name.
-    expect(channels[0]!.id).toBe("engineering.standup");
+    expect(mailboxes[0]!.id).toBe("engineering.standup");
     // Verbatim, `flow:` included — the reader does not resolve a kind, and a
     // key nobody has claimed yet still has to arrive unchanged.
-    expect(channels[0]!.declared).toEqual({
+    expect(mailboxes[0]!.declared).toEqual({
       description: "Where the engineering team posts daily status.",
-      flow: "channel",
+      flow: "mailbox",
       members: ["engineering.lead", "engineering.analyst"],
     });
-    expect(channels[0]!.body).toBe(
+    expect(mailboxes[0]!.body).toBe(
       "Post what you finished, what you're on, and what's blocking you.\n",
     );
   });
 
-  it("qualifies every channel by its team, so two teams can each have a standup", async () => {
-    const { channels, errors } = await readChannelsDirectory(
+  it("qualifies every mailbox by its team, so two teams can each have a standup", async () => {
+    const { mailboxes, errors } = await readMailboxesDirectory(
       tree({
         ...HEALTHY,
-        "teams/engineering/channels/incidents/CHANNEL.md": STANDUP,
-        "teams/marketing/channels/standup/CHANNEL.md": STANDUP,
+        "teams/engineering/mailboxes/incidents/MAILBOX.md": STANDUP,
+        "teams/marketing/mailboxes/standup/MAILBOX.md": STANDUP,
       }),
     );
 
     expect(errors).toEqual([]);
-    expect(channels.map((c) => c.id).sort()).toEqual([
+    expect(mailboxes.map((c) => c.id).sort()).toEqual([
       "engineering.incidents",
       "engineering.standup",
       "marketing.standup",
     ]);
   });
 
-  it("reads a tree with no channels as empty rather than as broken", async () => {
-    // Three shapes of "this app declares no channels in files", none of which
-    // is a mistake: no `teams/` at all, a team with no `channels/` folder, and
-    // an empty `channels/` folder.
-    const noTeams = await readChannelsDirectory(tree({ "README.md": "not a tree" }));
-    expect(noTeams).toEqual({ channels: [], errors: [] });
+  it("reads a tree with no mailboxes as empty rather than as broken", async () => {
+    // Three shapes of "this app declares no mailboxes in files", none of which
+    // is a mistake: no `teams/` at all, a team with no `mailboxes/` folder, and
+    // an empty `mailboxes/` folder.
+    const noTeams = await readMailboxesDirectory(tree({ "README.md": "not a tree" }));
+    expect(noTeams).toEqual({ mailboxes: [], errors: [] });
 
-    const noSlot = await readChannelsDirectory(
+    const noSlot = await readMailboxesDirectory(
       tree({ "teams/engineering/workers/lead/WORKER.md": "---\ndescription: Leads.\n---\n" }),
     );
-    expect(noSlot).toEqual({ channels: [], errors: [] });
+    expect(noSlot).toEqual({ mailboxes: [], errors: [] });
 
     const emptyRoot = tree({ "README.md": "not a tree" });
-    dir(emptyRoot, "teams/engineering/channels");
-    expect(await readChannelsDirectory(emptyRoot)).toEqual({ channels: [], errors: [] });
+    dir(emptyRoot, "teams/engineering/mailboxes");
+    expect(await readMailboxesDirectory(emptyRoot)).toEqual({ mailboxes: [], errors: [] });
   });
 
   it("throws only when the root itself cannot be read", async () => {
-    // The root is a wiring mistake, not a channel-shaped one: there is no
-    // per-channel path to report it under, and returning empty would boot an
-    // app with no channels and nothing said.
+    // The root is a wiring mistake, not a mailbox-shaped one: there is no
+    // per-mailbox path to report it under, and returning empty would boot an
+    // app with no mailboxes and nothing said.
     await expect(
-      readChannelsDirectory(join(tmpdir(), "fsd-channels-absent-root")),
+      readMailboxesDirectory(join(tmpdir(), "fsd-mailboxes-absent-root")),
     ).rejects.toThrow(/Failed to read/);
   });
 
@@ -138,156 +138,156 @@ describe("readChannelsDirectory", () => {
     // structural folder is classified first, so `teams -> /outside` is refused;
     // a root that is itself a link has to be refused the same way, or the whole
     // tree comes from somewhere the caller never configured.
-    const root = tree({ "real/teams/engineering/channels/standup/CHANNEL.md": STANDUP });
+    const root = tree({ "real/teams/engineering/mailboxes/standup/MAILBOX.md": STANDUP });
     symlinkSync(join(root, "real"), join(root, "linked"));
 
     // Control: the tree behind the link loads perfectly, so the refusal below
     // is the symlink and not a broken fixture.
-    const direct = await readChannelsDirectory(join(root, "real"));
-    expect(direct.channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+    const direct = await readMailboxesDirectory(join(root, "real"));
+    expect(direct.mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
 
-    await expect(readChannelsDirectory(join(root, "linked"))).rejects.toThrow(/Symlinked/);
+    await expect(readMailboxesDirectory(join(root, "linked"))).rejects.toThrow(/Symlinked/);
   });
 
-  // R1 — the worker reader's error contract, on the channels path. Each case
-  // shares a tree with the healthy channel, which must still load: that is the
+  // R1 — the worker reader's error contract, on the mailboxes path. Each case
+  // shares a tree with the healthy mailbox, which must still load: that is the
   // whole promise of collecting errors instead of throwing.
   describe("honours the worker reader's error contract", () => {
-    it("reports a channel folder with no CHANNEL.md, naming the route out", async () => {
-      const root = tree({ ...HEALTHY, "teams/engineering/channels/lounge/README.md": "hi" });
-      const { channels, errors } = await readChannelsDirectory(root);
+    it("reports a mailbox folder with no MAILBOX.md, naming the route out", async () => {
+      const root = tree({ ...HEALTHY, "teams/engineering/mailboxes/lounge/README.md": "hi" });
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
-      expect(errors[0]!.path).toBe("teams/engineering/channels/lounge");
-      expect(errors[0]!.kind).toBe("channel-load-failed");
-      // An author standing here needs the route, not just the wall: a channel
+      expect(errors[0]!.path).toBe("teams/engineering/mailboxes/lounge");
+      expect(errors[0]!.kind).toBe("mailbox-load-failed");
+      // An author standing here needs the route, not just the wall: a mailbox
       // that behaves differently is a different flow kind, not a different
       // filename.
-      expect(errors[0]!.error.message).toMatch(/has no CHANNEL\.md/);
-      expect(errors[0]!.error.message).toMatch(/channelInstances/);
+      expect(errors[0]!.error.message).toMatch(/has no MAILBOX\.md/);
+      expect(errors[0]!.error.message).toMatch(/mailboxInstances/);
     });
 
-    it("reports a CHANNEL.md with no frontmatter", async () => {
+    it("reports a MAILBOX.md with no frontmatter", async () => {
       const root = tree({
         ...HEALTHY,
-        "teams/engineering/channels/lounge/CHANNEL.md": "# Just a body\n",
+        "teams/engineering/mailboxes/lounge/MAILBOX.md": "# Just a body\n",
       });
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
-      expect(errors[0]!.path).toBe("teams/engineering/channels/lounge");
-      expect(errors[0]!.kind).toBe("channel-load-failed");
+      expect(errors[0]!.path).toBe("teams/engineering/mailboxes/lounge");
+      expect(errors[0]!.kind).toBe("mailbox-load-failed");
       expect(errors[0]!.error.message).toMatch(/no frontmatter/);
     });
 
     it("reports a `description` that is missing or empty", async () => {
       const root = tree({
         ...HEALTHY,
-        "teams/engineering/channels/lounge/CHANNEL.md": "---\nflow: channel\n---\n\nbody\n",
-        "teams/marketing/channels/blank/CHANNEL.md": '---\ndescription: "   "\n---\n\nbody\n',
+        "teams/engineering/mailboxes/lounge/MAILBOX.md": "---\nflow: mailbox\n---\n\nbody\n",
+        "teams/marketing/mailboxes/blank/MAILBOX.md": '---\ndescription: "   "\n---\n\nbody\n',
       });
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors.map((e) => e.path).sort()).toEqual([
-        "teams/engineering/channels/lounge",
-        "teams/marketing/channels/blank",
+        "teams/engineering/mailboxes/lounge",
+        "teams/marketing/mailboxes/blank",
       ]);
       for (const entry of errors) {
-        expect(entry.kind).toBe("channel-load-failed");
+        expect(entry.kind).toBe("mailbox-load-failed");
         expect(entry.error.message).toMatch(/non-empty `description`/);
       }
     });
 
-    it("reports a channel folder name that breaks the segment rules, in channel terms", async () => {
-      const root = tree({ ...HEALTHY, "teams/engineering/channels/Stand Up/CHANNEL.md": STANDUP });
-      const { channels, errors } = await readChannelsDirectory(root);
+    it("reports a mailbox folder name that breaks the segment rules, in mailbox terms", async () => {
+      const root = tree({ ...HEALTHY, "teams/engineering/mailboxes/Stand Up/MAILBOX.md": STANDUP });
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
-      expect(errors[0]!.path).toBe("teams/engineering/channels/Stand Up");
-      expect(errors[0]!.kind).toBe("channel-load-failed");
+      expect(errors[0]!.path).toBe("teams/engineering/mailboxes/Stand Up");
+      expect(errors[0]!.kind).toBe("mailbox-load-failed");
       expect(errors[0]!.error.message).toMatch(/lowercase letters, digits, and single hyphens/);
-      // The label the validator is called with, pinned: a channel folder told
+      // The label the validator is called with, pinned: a mailbox folder told
       // it is a bad "Worker folder name" sends the author looking in the wrong
-      // slot, and the reason the rule exists is the channel's own id.
-      expect(errors[0]!.error.message).toMatch(/^Channel folder name/);
-      expect(errors[0]!.error.message).toMatch(/channel's identity/);
+      // slot, and the reason the rule exists is the mailbox's own id.
+      expect(errors[0]!.error.message).toMatch(/^Mailbox folder name/);
+      expect(errors[0]!.error.message).toMatch(/mailbox's identity/);
     });
 
     it("reports a team folder name that breaks the segment rules", async () => {
-      const root = tree({ ...HEALTHY, "teams/Engineering/channels/standup/CHANNEL.md": STANDUP });
-      const { channels, errors } = await readChannelsDirectory(root);
+      const root = tree({ ...HEALTHY, "teams/Engineering/mailboxes/standup/MAILBOX.md": STANDUP });
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
-      expect(errors[0]!.path).toBe("teams/Engineering/channels/standup");
-      expect(errors[0]!.kind).toBe("channel-load-failed");
+      expect(errors[0]!.path).toBe("teams/Engineering/mailboxes/standup");
+      expect(errors[0]!.kind).toBe("mailbox-load-failed");
       expect(errors[0]!.error.message).toMatch(/lowercase letters, digits, and single hyphens/);
     });
 
-    it("refuses a symlinked channel folder without following it", async () => {
-      const root = tree({ ...HEALTHY, "outside/CHANNEL.md": STANDUP });
-      symlinkSync(join(root, "outside"), join(root, "teams/engineering/channels/linked"));
+    it("refuses a symlinked mailbox folder without following it", async () => {
+      const root = tree({ ...HEALTHY, "outside/MAILBOX.md": STANDUP });
+      symlinkSync(join(root, "outside"), join(root, "teams/engineering/mailboxes/linked"));
 
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
-      expect(errors[0]!.path).toBe("teams/engineering/channels/linked");
-      expect(errors[0]!.kind).toBe("channel-load-failed");
+      expect(errors[0]!.path).toBe("teams/engineering/mailboxes/linked");
+      expect(errors[0]!.kind).toBe("mailbox-load-failed");
       expect(errors[0]!.error.message).toMatch(/Symlinked/);
     });
 
-    it("refuses a symlinked CHANNEL.md without following it", async () => {
+    it("refuses a symlinked MAILBOX.md without following it", async () => {
       const root = tree({ ...HEALTHY, "outside/secret.md": STANDUP });
-      dir(root, "teams/engineering/channels/lounge");
+      dir(root, "teams/engineering/mailboxes/lounge");
       symlinkSync(
         join(root, "outside/secret.md"),
-        join(root, "teams/engineering/channels/lounge/CHANNEL.md"),
+        join(root, "teams/engineering/mailboxes/lounge/MAILBOX.md"),
       );
 
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
-      expect(errors[0]!.path).toBe("teams/engineering/channels/lounge");
-      expect(errors[0]!.kind).toBe("channel-load-failed");
+      expect(errors[0]!.path).toBe("teams/engineering/mailboxes/lounge");
+      expect(errors[0]!.kind).toBe("mailbox-load-failed");
       expect(errors[0]!.error.message).toMatch(/Symlinked/);
     });
 
     it("reports a symlinked `teams/` once, rather than reading the tree as empty", async () => {
-      // The one level where a refusal costs the app EVERY channel. There is no
-      // healthy channel to survive beside it — which is the point: without the
-      // report, an app with a misconfigured tree boots with zero channels and
+      // The one level where a refusal costs the app EVERY mailbox. There is no
+      // healthy mailbox to survive beside it — which is the point: without the
+      // report, an app with a misconfigured tree boots with zero mailboxes and
       // an empty `errors` for its fatal check to look at.
-      const root = tree({ "outside/teams/engineering/channels/standup/CHANNEL.md": STANDUP });
+      const root = tree({ "outside/teams/engineering/mailboxes/standup/MAILBOX.md": STANDUP });
       symlinkSync(join(root, "outside/teams"), join(root, "teams"));
 
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels).toEqual([]);
+      expect(mailboxes).toEqual([]);
       expect(errors).toHaveLength(1);
       expect(errors[0]!.path).toBe("teams");
       expect(errors[0]!.kind).toBe("unreadable-slot");
       expect(errors[0]!.error.message).toMatch(/Symlinked/);
     });
 
-    it("refuses a symlinked team folder instead of dropping its channels", async () => {
+    it("refuses a symlinked team folder instead of dropping its mailboxes", async () => {
       // One level below the `teams/` case above, and the level the shared team
       // walk has to carry the refusal at: a symlinked team reads a whole team's
-      // channels from outside the configured root.
+      // mailboxes from outside the configured root.
       const root = tree({
         ...HEALTHY,
-        "outside/marketing/channels/standup/CHANNEL.md": STANDUP,
+        "outside/marketing/mailboxes/standup/MAILBOX.md": STANDUP,
       });
       symlinkSync(join(root, "outside/marketing"), join(root, "teams/marketing"));
 
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
       expect(errors[0]!.path).toBe("teams/marketing");
       expect(errors[0]!.kind).toBe("unreadable-slot");
@@ -296,10 +296,10 @@ describe("readChannelsDirectory", () => {
       );
     });
 
-    it("reports a team folder it cannot stat rather than dropping its channels", async () => {
+    it("reports a team folder it cannot stat rather than dropping its mailboxes", async () => {
       // `absent` and `unreadable` stay apart at the team level for the reason
       // they do at the slot level: folded together, a team we cannot stat is
-      // skipped in silence and every channel under it disappears with `errors`
+      // skipped in silence and every mailbox under it disappears with `errors`
       // empty for the caller's fatal check to look at.
       //
       // Injected rather than provoked because the suite runs as root, where a
@@ -308,7 +308,7 @@ describe("readChannelsDirectory", () => {
       // the team fine, then `lstat` on it fails with EACCES.
       const root = tree({
         ...HEALTHY,
-        "teams/marketing/channels/standup/CHANNEL.md": STANDUP,
+        "teams/marketing/mailboxes/standup/MAILBOX.md": STANDUP,
       });
       const locked = join(root, "teams/marketing");
       const real = fsp.lstat.bind(fsp);
@@ -321,52 +321,52 @@ describe("readChannelsDirectory", () => {
         return real(target);
       }) as unknown as typeof fsp.lstat);
 
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
       expect(errors[0]!.path).toBe("teams/marketing");
       expect(errors[0]!.kind).toBe("unreadable-slot");
       expect(errors[0]!.error.message).toMatch(/^Team folder "marketing" could not be read: /);
     });
 
-    it("refuses a symlinked channels slot without following it", async () => {
-      const root = tree({ ...HEALTHY, "outside/standup/CHANNEL.md": STANDUP });
+    it("refuses a symlinked mailboxes slot without following it", async () => {
+      const root = tree({ ...HEALTHY, "outside/standup/MAILBOX.md": STANDUP });
       dir(root, "teams/marketing");
-      symlinkSync(join(root, "outside"), join(root, "teams/marketing/channels"));
+      symlinkSync(join(root, "outside"), join(root, "teams/marketing/mailboxes"));
 
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
-      expect(errors[0]!.path).toBe("teams/marketing/channels");
+      expect(errors[0]!.path).toBe("teams/marketing/mailboxes");
       expect(errors[0]!.kind).toBe("unreadable-slot");
       expect(errors[0]!.error.message).toMatch(/Symlinked/);
     });
 
     it("reports a structural folder that exists and cannot be listed, under its own path", async () => {
       // Only genuine absence may read as empty. Every other `readdir` failure
-      // has to stay visible, or a whole team's channels drop out with the
+      // has to stay visible, or a whole team's mailboxes drop out with the
       // caller's fatal-on-errors guard unable to see it. ENOTDIR stands in for
       // the class here because the suite runs as root, where a permission bit
       // would not deny us anything; EACCES takes the same branch.
-      const { channels, errors } = await readChannelsDirectory(
-        tree({ ...HEALTHY, "teams/marketing/channels": "not a directory\n" }),
+      const { mailboxes, errors } = await readMailboxesDirectory(
+        tree({ ...HEALTHY, "teams/marketing/mailboxes": "not a directory\n" }),
       );
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
-      expect(errors[0]!.path).toBe("teams/marketing/channels");
+      expect(errors[0]!.path).toBe("teams/marketing/mailboxes");
       expect(errors[0]!.kind).toBe("unreadable-slot");
       expect(errors[0]!.error.message).toMatch(/could not be read/i);
     });
 
-    it("reports an unreadable channel folder rather than skipping it", async () => {
+    it("reports an unreadable mailbox folder rather than skipping it", async () => {
       // `absent` and `unreadable` stay apart for exactly this case: folded
       // together, a folder we cannot stat would be skipped in silence and the
-      // channel would simply not exist.
-      const root = tree({ ...HEALTHY, "teams/engineering/channels/locked/CHANNEL.md": STANDUP });
-      const locked = join(root, "teams/engineering/channels/locked");
+      // mailbox would simply not exist.
+      const root = tree({ ...HEALTHY, "teams/engineering/mailboxes/locked/MAILBOX.md": STANDUP });
+      const locked = join(root, "teams/engineering/mailboxes/locked");
       const real = fsp.lstat.bind(fsp);
       vi.spyOn(fsp, "lstat").mockImplementation(((target: Parameters<typeof real>[0]) => {
         if (String(target) === locked) {
@@ -377,22 +377,22 @@ describe("readChannelsDirectory", () => {
         return real(target);
       }) as unknown as typeof fsp.lstat);
 
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
-      expect(errors[0]!.path).toBe("teams/engineering/channels/locked");
-      expect(errors[0]!.kind).toBe("channel-load-failed");
+      expect(errors[0]!.path).toBe("teams/engineering/mailboxes/locked");
+      expect(errors[0]!.kind).toBe("mailbox-load-failed");
       expect(errors[0]!.error.message).toMatch(/could not be read/i);
     });
 
-    it("reports an unreadable CHANNEL.md as unreadable, not as missing", async () => {
+    it("reports an unreadable MAILBOX.md as unreadable, not as missing", async () => {
       // The distinction the whole `absent`/`unreadable` split exists for, at
-      // the file level. Folded together, a CHANNEL.md we cannot stat is
+      // the file level. Folded together, a MAILBOX.md we cannot stat is
       // reported as a folder that has none — which sends the author to write a
       // file that is already sitting there.
-      const root = tree({ ...HEALTHY, "teams/engineering/channels/locked/CHANNEL.md": STANDUP });
-      const locked = join(root, "teams/engineering/channels/locked/CHANNEL.md");
+      const root = tree({ ...HEALTHY, "teams/engineering/mailboxes/locked/MAILBOX.md": STANDUP });
+      const locked = join(root, "teams/engineering/mailboxes/locked/MAILBOX.md");
       const real = fsp.lstat.bind(fsp);
       vi.spyOn(fsp, "lstat").mockImplementation(((target: Parameters<typeof real>[0]) => {
         if (String(target) === locked) {
@@ -403,14 +403,14 @@ describe("readChannelsDirectory", () => {
         return real(target);
       }) as unknown as typeof fsp.lstat);
 
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
-      expect(errors[0]!.path).toBe("teams/engineering/channels/locked");
-      expect(errors[0]!.kind).toBe("channel-load-failed");
-      expect(errors[0]!.error.message).toMatch(/CHANNEL\.md .*could not be read/i);
-      expect(errors[0]!.error.message).not.toMatch(/has no CHANNEL\.md/);
+      expect(errors[0]!.path).toBe("teams/engineering/mailboxes/locked");
+      expect(errors[0]!.kind).toBe("mailbox-load-failed");
+      expect(errors[0]!.error.message).toMatch(/MAILBOX\.md .*could not be read/i);
+      expect(errors[0]!.error.message).not.toMatch(/has no MAILBOX\.md/);
     });
 
     it("ignores editor and OS droppings, before they are read as names", async () => {
@@ -419,55 +419,55 @@ describe("readChannelsDirectory", () => {
       // `.DS_Store` reaches the segment validator and an app boots with an
       // error about a file nobody wrote.
       const root = tree({ ...HEALTHY, "teams/.DS_Store": "junk" });
-      dir(root, "teams/engineering/channels/.DS_Store");
+      dir(root, "teams/engineering/mailboxes/.DS_Store");
 
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
       expect(errors).toEqual([]);
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
     });
 
-    it("skips a file in the channels slot in silence", async () => {
+    it("skips a file in the mailboxes slot in silence", async () => {
       // The deliberate divergence from the resources reader, which reports a
-      // DIRECTORY in its slot because a resource is a file. Here a channel IS a
+      // DIRECTORY in its slot because a resource is a file. Here a mailbox IS a
       // folder, so a loose file carries no sign anyone meant it to be a
-      // channel — and reporting it would make `channels/README.md` an error.
+      // mailbox — and reporting it would make `mailboxes/README.md` an error.
       const root = tree({
         ...HEALTHY,
-        "teams/engineering/channels/README.md": "how this team's channels work\n",
-        "teams/engineering/channels/notes.txt": "scratch",
+        "teams/engineering/mailboxes/README.md": "how this team's mailboxes work\n",
+        "teams/engineering/mailboxes/notes.txt": "scratch",
       });
 
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
       expect(errors).toEqual([]);
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
     });
   });
 
   // R2 — the one error class this convention adds. `system` is derived from
-  // where a channel was declared; a file that could declare it could mint a
-  // channel the delete verb will later refuse to remove.
+  // where a mailbox was declared; a file that could declare it could mint a
+  // mailbox the delete verb will later refuse to remove.
   describe("refuses a file that declares its own `system` status", () => {
-    it("reports a CHANNEL.md declaring `system:`, naming the file and the rule", async () => {
+    it("reports a MAILBOX.md declaring `system:`, naming the file and the rule", async () => {
       const root = tree({
         ...HEALTHY,
-        "teams/engineering/channels/general/CHANNEL.md":
+        "teams/engineering/mailboxes/general/MAILBOX.md":
           "---\ndescription: Tries to make itself undeletable.\nsystem: true\n---\n\nbody\n",
       });
 
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
-      expect(errors[0]!.path).toBe("teams/engineering/channels/general");
+      expect(errors[0]!.path).toBe("teams/engineering/mailboxes/general");
       // Its own condition, not folded into the load failures: an author who
       // mistyped a folder and an author who misunderstood the model need
       // telling apart by a caller, without matching on `error.message`.
       expect(errors[0]!.kind).toBe("refused-declaration");
-      expect(errors[0]!.error.message).toContain("CHANNEL.md in \"general/\"");
-      expect(errors[0]!.error.message).toMatch(/not a setting a channel declares/);
-      expect(errors[0]!.error.message).toMatch(/Where a channel is declared is what decides it/);
+      expect(errors[0]!.error.message).toContain("MAILBOX.md in \"general/\"");
+      expect(errors[0]!.error.message).toMatch(/not a setting a mailbox declares/);
+      expect(errors[0]!.error.message).toMatch(/Where a mailbox is declared is what decides it/);
     });
 
     it("refuses `system: false` too — the key is refused, not its value", async () => {
@@ -476,13 +476,13 @@ describe("readChannelsDirectory", () => {
       // reconciler that has to guess whether the author meant it.
       const root = tree({
         ...HEALTHY,
-        "teams/engineering/channels/general/CHANNEL.md":
+        "teams/engineering/mailboxes/general/MAILBOX.md":
           "---\ndescription: Believes it can opt out.\nsystem: false\n---\n\nbody\n",
       });
 
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toHaveLength(1);
       expect(errors[0]!.kind).toBe("refused-declaration");
     });
@@ -491,16 +491,16 @@ describe("readChannelsDirectory", () => {
       // The refusal is one key by name, not a closed list: this reader's job is
       // to carry what it does not understand, so the consumer that claims a key
       // tomorrow finds it unchanged. `system` is the single exception, and the
-      // gatekeeping of what a channel may declare belongs to the binder.
+      // gatekeeping of what a mailbox may declare belongs to the binder.
       const root = tree({
-        "teams/engineering/channels/standup/CHANNEL.md":
+        "teams/engineering/mailboxes/standup/MAILBOX.md":
           "---\ndescription: Daily status.\ntopic: status\nretention: 30d\n---\n\nbody\n",
       });
 
-      const { channels, errors } = await readChannelsDirectory(root);
+      const { mailboxes, errors } = await readMailboxesDirectory(root);
 
       expect(errors).toEqual([]);
-      expect(channels[0]!.declared).toEqual({
+      expect(mailboxes[0]!.declared).toEqual({
         description: "Daily status.",
         topic: "status",
         retention: "30d",
@@ -512,17 +512,17 @@ describe("readChannelsDirectory", () => {
   // own above or in a sibling suite; these are the two places where two
   // separately-correct halves could still disagree with each other.
   describe("shares the tree with what already reads it", () => {
-    it("walks teams/ only — an org channel is invisible, not an error", async () => {
-      // The channels convention is team-scoped, and whether it should widen to
+    it("walks teams/ only — an org mailbox is invisible, not an error", async () => {
+      // The mailboxes convention is team-scoped, and whether it should widen to
       // `org/` is deliberately somebody else's open question. The shared team
-      // walk hands this reader no `org/` scope, so a planted org channel is
+      // walk hands this reader no `org/` scope, so a planted org mailbox is
       // neither loaded nor reported: silence is what leaves that question open,
       // where an error would answer it by implying the folder means something.
-      const { channels, errors } = await readChannelsDirectory(
-        tree({ ...HEALTHY, "org/channels/announce/CHANNEL.md": STANDUP }),
+      const { mailboxes, errors } = await readMailboxesDirectory(
+        tree({ ...HEALTHY, "org/mailboxes/announce/MAILBOX.md": STANDUP }),
       );
 
-      expect(channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      expect(mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
       expect(errors).toEqual([]);
     });
 
@@ -530,16 +530,16 @@ describe("readChannelsDirectory", () => {
       // Both readers walk `teams/<id>/`. A slot rule that judged a path by what
       // it looks like rather than by the slot it occupies would make each
       // reader report the other's folders as near-misses — an app with workers
-      // AND channels would boot with errors for things that are perfectly fine.
+      // AND mailboxes would boot with errors for things that are perfectly fine.
       const root = tree({
         ...HEALTHY,
         "teams/engineering/workers/lead/WORKER.md": "---\ndescription: Leads the team.\n---\n\nLead.\n",
         "teams/engineering/resources/handbook.md": "---\ndescription: How we work.\n---\n\nDoc.\n",
       });
 
-      const fromChannels = await readChannelsDirectory(root);
-      expect(fromChannels.errors).toEqual([]);
-      expect(fromChannels.channels.map((c) => c.id)).toEqual(["engineering.standup"]);
+      const fromMailboxes = await readMailboxesDirectory(root);
+      expect(fromMailboxes.errors).toEqual([]);
+      expect(fromMailboxes.mailboxes.map((c) => c.id)).toEqual(["engineering.standup"]);
 
       const fromWorkers = await readWorkforceDirectory(root);
       expect(fromWorkers.errors).toEqual([]);
@@ -553,12 +553,12 @@ describe("readChannelsDirectory", () => {
       // and the binder alone leaves exactly the gap where the two disagree —
       // a `flow:` the reader carried as something the binder cannot resolve, or
       // a key the reader passed that the binder's closed list refuses.
-      const { channels, errors } = await readChannelsDirectory(tree(HEALTHY));
+      const { mailboxes, errors } = await readMailboxesDirectory(tree(HEALTHY));
       expect(errors).toEqual([]);
 
-      const instances = channelInstances(channels);
+      const instances = mailboxInstances(mailboxes);
 
-      expect(instances.map((i) => i.id)).toEqual([CHANNEL_KIND]);
+      expect(instances.map((i) => i.id)).toEqual([MAILBOX_KIND]);
     });
   });
 });

@@ -1,6 +1,6 @@
 {
   "port": 3040,
-  "channel": { "kind": "channel", "id": "support.help" },
+  "mailbox": { "kind": "mailbox", "id": "support.help" },
   "replier": { "kind": "agent", "id": "support.devices" },
   "others": [
     { "kind": "agent", "id": "support.accounts" },
@@ -8,6 +8,6 @@
     { "kind": "agent", "id": "support.general" }
   ],
   "route": "[route:support.devices]",
-  "marker": "[scenario:reply-in-channel]",
-  "lineMarker": "[reply:in-channel]"
+  "marker": "[scenario:reply-in-mailbox]",
+  "lineMarker": "[reply:in-mailbox]"
 }

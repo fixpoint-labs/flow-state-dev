@@ -9,14 +9,14 @@
  * through the chief of staff's own turn on `openai/gpt-5.4-mini`; the approval
  * goes through the engine's resume route, as Inbox sends it. What happened is
  * read through the Lab's routes, the ones Shift Manager reads: the seat
- * inventory through the channel's session, the roster through the chief of
+ * inventory through the mailbox's session, the roster through the chief of
  * staff's, a seat's address by opening a session on it.
  *
  * Legs (each failure is tagged with its leg):
  *
  *   boot        the chief of staff is listed from the tree, on the agent kind,
  *               with a door; no other declared seat names a hire or fire tool
- *   discover    asked who is on the feature channel, it names every declared
+ *   discover    asked who is on the feature mailbox, it names every declared
  *               seat by its full id, with the kind its file declares
  *   hire        asked for a seat, it hires one at once: no ask is raised, the
  *               seat is listed, its roster row is written, its address answers
@@ -28,15 +28,15 @@
  *   answer      the resume route takes the answer and the turn completes
  *   seat gone   on Approve, and after a second restart, the seat is gone from
  *               the inventory and the roster, and its address no longer answers
- *   a seat asks a declared seat posts its own hire request into its channel,
- *               the channel hands it to the chief of staff from that seat, and
+ *   a seat asks a declared seat posts its own hire request into its mailbox,
+ *               the mailbox hands it to the chief of staff from that seat, and
  *               the hire lands: roster row, inventory row, and an address that
  *               answers (its own small host: seat-asks.mts)
  *
  * Controls:
  *
  *   deny-fire         Deny instead of Approve. Must fail at "seat gone" only.
- *   no-seat-delivery  The channel hands the seat's post to nobody. Must fail at
+ *   no-seat-delivery  The mailbox hands the seat's post to nobody. Must fail at
  *                     "a seat asks" only.
  *   hide-hired-from-discover  The hired seat's roster row, which discover reads
  *                     a hire from, is moved aside for the discover-hired turn
@@ -245,11 +245,11 @@ await runGoal(async () => {
     };
   }
 
-  // Read off the tree, never spelled here: the org, the channel and its members.
+  // Read off the tree, never spelled here: the org, the mailbox and its members.
   const tree = await readDeclaredRoster(DEVTEAM_TREE);
-  const channel = tree.channels[0];
-  if (channel === undefined) throw new Error("the DevTeam tree declares no channel");
-  const members = (channel.declared.members as string[] | undefined) ?? [];
+  const mailbox = tree.mailboxes[0];
+  if (mailbox === undefined) throw new Error("the DevTeam tree declares no mailbox");
+  const members = (mailbox.declared.members as string[] | undefined) ?? [];
   // The held-out seat: picked now, so no file in the repository can name it.
   const seat = `coder-${randomBytes(3).toString("hex")}`;
 
@@ -279,7 +279,7 @@ await runGoal(async () => {
     const problems: string[] = [];
     if (result.startStatus !== "completed") problems.push(`"${ASKER}" did not finish its job: ${result.startStatus}`);
     if (toCos.length !== 1 || !toCos[0]!.delivered) {
-      problems.push(`the channel handed "${ASKER}"'s post to the chief of staff ${toCos.filter((d) => d.delivered).length} time(s), not once`);
+      problems.push(`the mailbox handed "${ASKER}"'s post to the chief of staff ${toCos.filter((d) => d.delivered).length} time(s), not once`);
     } else if (toCos[0]!.author !== ASKER) {
       problems.push(`the post the chief of staff heard is from ${JSON.stringify(toCos[0]!.author)}, not "${ASKER}"`);
     }
@@ -293,7 +293,7 @@ await runGoal(async () => {
       for (const problem of problems) seatAskFailures.push(`a seat asks: ${problem}`);
     } else {
       evidence.push(
-        `a seat asks: "${ASKER}" posted its own request as itself, the channel handed it to the chief of staff from "${ASKER}", ` +
+        `a seat asks: "${ASKER}" posted its own request as itself, the mailbox handed it to the chief of staff from "${ASKER}", ` +
           `and "${asked}" has a roster row and an inventory row on kind agent, and ${String(result.address)} answers ${String(result.answers)}; ` +
           `the check sent the seat id to no one`,
       );
@@ -302,7 +302,7 @@ await runGoal(async () => {
 
   /** The hired seat's address, from the inventory row whose id ends with it. */
   const reads = async (api: Awaited<ReturnType<typeof labApi>>, cosSession: string) => {
-    const inventory = await api.collection(channel.id, "inventory/seats/*");
+    const inventory = await api.collection(mailbox.id, "inventory/seats/*");
     const roster = await api.collection(cosSession, "workforce/roster/*");
     const row = inventory.find((r) => typeof r.id === "string" && (r.id as string).endsWith(`.${seat}`));
     const rosterRow = roster.find((r) => r.seatId === seat);
@@ -329,7 +329,7 @@ await runGoal(async () => {
     }
     const cosSession = opened.body.session.id as string;
 
-    const inventory = await api.collection(channel.id, "inventory/seats/*");
+    const inventory = await api.collection(mailbox.id, "inventory/seats/*");
     const cos = inventory.find((r) => r.id === COS);
     if (cos === undefined) fail("boot", `no "${COS}" row in the seat inventory: ${JSON.stringify(inventory.map((r) => r.id))}`);
     else if (cos.kind !== "agent" || typeof cos.door !== "string") fail("boot", `"${COS}" is listed as ${JSON.stringify(cos)}`);
@@ -340,10 +340,10 @@ await runGoal(async () => {
     evidence.push(`boot: "${COS}" listed on kind ${String(cos?.kind)} with door ${String(cos?.door)}, and no other declared seat names hire or fire`);
 
     // discover
-    const asked = await api.say(cosSession, `Who is on the ${channel.id} channel? Look up the channel, then look up each of its seats, and list every seat's id with the worker kind it runs on, one seat per line.`);
+    const asked = await api.say(cosSession, `Who is on the ${mailbox.id} mailbox? Look up the mailbox, then look up each of its seats, and list every seat's id with the worker kind it runs on, one seat per line.`);
     const answer = await api.lastReply(cosSession);
     // Each member by its full seat id, standing alone (a bare "em" could be a
-    // guess from the channel's name, and "eng.em" inside a longer id is not that
+    // guess from the mailbox's name, and "eng.em" inside a longer id is not that
     // seat), with the kind its file declares on the same line, also exact.
     const kindOf = (id: string) => tree.workers.find((w) => w.id === id)?.declared.flow as string | undefined;
     const lines = linesOf(answer);
@@ -357,7 +357,7 @@ await runGoal(async () => {
     if (asked.status !== "completed") fail("discover", `the turn ended ${asked.status}`);
     else if (missing.length > 0) fail("discover", `the answer does not name ${missing.join(", ")} by full seat id: ${answer.slice(0, 300)}`);
     else if (wrongKind.length > 0) fail("discover", `the answer names ${wrongKind.join(", ")} without that kind: ${answer.slice(0, 300)}`);
-    else evidence.push(`discover: asked who is on ${channel.id}, the answer named ${members.map((m) => `${m} (${String(kindOf(m))})`).join(", ")}`);
+    else evidence.push(`discover: asked who is on ${mailbox.id}, the answer named ${members.map((m) => `${m} (${String(kindOf(m))})`).join(", ")}`);
 
     // hire
     const hired = await api.say(cosSession, `Please hire one more coder for the team, with the seat id "${seat}".`);

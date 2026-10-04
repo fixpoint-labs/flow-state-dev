@@ -1,9 +1,9 @@
 /**
  * Closure goal check for the epic FIX-1592 (FIX-1601): a person asks the
- * support channel a question and, without reloading, sees the one specialist
+ * support mailbox a question and, without reloading, sees the one specialist
  * whose purpose fits start work and then answer; each specialist keeps only
  * its own cases; a direct conversation remembers its own turns and stays out
- * of the channel; a case that needs a person is filed.
+ * of the mailbox; a case that needs a person is filed.
  *
  * Real path, scripted model, keyless, out of CI. See goal.md for the contract.
  *
@@ -19,13 +19,13 @@
  *        accounts, B3 unmarked for the fallback, each answered through the post
  *        tool: the right seat works, then one line each, by it, and its row
  *        clears before the next post goes; nobody else works. Each seat's
- *        conversation in the channel holds only its own posts.
+ *        conversation in the mailbox holds only its own posts.
  *   c1   "New conversation" on devices, token C1: the person's turn
  *        (`c1:turn`), a reply under it (`c1:reply`).
  *   c2   there, the recall scenario, token C2: the person's turn (`c2:turn`),
  *        and a reply naming C1 and no token from a or b (`c2:recall`). The
- *        channel shows none of it (`c2:channel`).
- *   seg  (part 4) devices' conversation in the channel holds nothing of C1.
+ *        mailbox shows none of it (`c2:mailbox`).
+ *   seg  (part 4) devices' conversation in the mailbox holds nothing of C1.
  *   e    (part 2) a needs-a-person post, token E: the specialist's line says
  *        it filed (`e:line`); the team panel's escalations list shows one
  *        row carrying E on the open page within 15 s of that line
@@ -37,7 +37,7 @@
  * must redden every assertion its row names, its own signal, and leave the
  * legs it lists wholly green.
  *
- * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/a-person-talks-to-a-seat-a-channel-and-back/run.mts
+ * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/a-person-talks-to-a-seat-a-mailbox-and-back/run.mts
  * One:      GOAL_CONTROL=<name> on the same command runs that control alone
  * Main:     GOAL_CONTROL=main, from a checkout of today's `main` with this directory copied in
  * Smoke:    GOAL_LIVE=1 with AI_GATEWAY_API_KEY: the real-model smoke, out of test mode
@@ -81,9 +81,9 @@ interface Fixture {
   port: number;
   /** How the page labels the person's own lines. */
   person: string;
-  channel: Seat & { board: string };
+  mailbox: Seat & { board: string };
   seats: Record<Role, Seat>;
-  /** The channel's `routing: fallback:`, as a role. */
+  /** The mailbox's `routing: fallback:`, as a role. */
   fallback: Role;
   /** Who part 2's case is routed to. */
   escalatesTo: Role;
@@ -113,7 +113,7 @@ const fixture = loadFixture<Fixture>(import.meta.url, CONTROL === "main" ? "toda
 const M = fixture.markers;
 const SEATS = fixture.seats;
 const ROLES = Object.keys(SEATS) as Role[];
-const CHANNEL = fixture.channel.id;
+const MAILBOX = fixture.mailbox.id;
 
 /** A post's route marker for one specialist. */
 const route = (role: Role) => M.route.replace("{seat}", SEATS[role].id);
@@ -166,7 +166,7 @@ const DROP_KEY = "goal-drop-user-message";
  * the action streams that talk to it, and the live session stream, which
  * Playwright's routing cannot filter because it never ends. What the page sees
  * when the server keeps no person turn. Scoped to leg c's conversation: a
- * seat hears a channel post as a `user` turn too.
+ * seat hears a mailbox post as a `user` turn too.
  *
  * Plain JavaScript in a string: a function handed to Playwright is compiled
  * by tsx first, which adds helpers the page does not have.
@@ -242,11 +242,11 @@ async function reload(page: Page): Promise<void> {
   await ready(page);
 }
 
-/** Show the channel's panel, from the rail, without leaving the page. */
-async function showChannel(page: Page): Promise<void> {
-  await open(page, fixture.channel.kind);
-  await row(page, CHANNEL).click();
-  await panel(page).getByTestId("channel-transcript").waitFor({ timeout: 15_000 });
+/** Show the mailbox's panel, from the rail, without leaving the page. */
+async function showMailbox(page: Page): Promise<void> {
+  await open(page, fixture.mailbox.kind);
+  await row(page, MAILBOX).click();
+  await panel(page).getByTestId("mailbox-transcript").waitFor({ timeout: 15_000 });
 }
 
 interface Line {
@@ -261,15 +261,15 @@ interface Reading {
   lines: Line[];
 }
 
-/** The channel's panel as drawn: its working rows and every line. */
-async function readChannel(page: Page): Promise<Reading> {
+/** The mailbox's panel as drawn: its working rows and every line. */
+async function readMailbox(page: Page): Promise<Reading> {
   const drawn = panel(page);
   const [working, lines] = await Promise.all([
     drawn.getByTestId("working-row").allTextContents(),
-    drawn.getByTestId("channel-line").evaluateAll((els) =>
+    drawn.getByTestId("mailbox-line").evaluateAll((els) =>
       els.map((el) => ({
-        label: el.querySelector('[data-testid="channel-line-label"]')?.textContent ?? "",
-        body: el.querySelector('[data-testid="channel-line-body"]')?.textContent ?? "",
+        label: el.querySelector('[data-testid="mailbox-line-label"]')?.textContent ?? "",
+        body: el.querySelector('[data-testid="mailbox-line-body"]')?.textContent ?? "",
       })),
     ),
   ]);
@@ -296,9 +296,9 @@ function answersTo(lines: Line[], token: string): Line[] | undefined {
   return next === -1 ? rest : rest.slice(0, next);
 }
 
-/** Post a line from the channel's panel once its composer is free. Returns when Send was pressed. */
+/** Post a line from the mailbox's panel once its composer is free. Returns when Send was pressed. */
 async function postLine(page: Page, text: string): Promise<number> {
-  const box = panel(page).getByLabel("Post to this channel");
+  const box = panel(page).getByLabel("Post to this mailbox");
   await readUntil(async () => (await box.isEnabled()) && (await box.inputValue()) === "", (free) => free, 30_000);
   await box.fill(text);
   await panel(page).getByRole("button", { name: "Send" }).click();
@@ -314,7 +314,7 @@ interface Followed {
 }
 
 /**
- * Read the channel's panel from Send until `answered`, or the time is up;
+ * Read the mailbox's panel from Send until `answered`, or the time is up;
  * then until no working row is left, for at most `clearMs`. Every reading is
  * kept, so who showed as working, and when, is graded off them.
  */
@@ -322,7 +322,7 @@ async function follow(page: Page, sentAt: number, answered: (r: Reading) => bool
   const readings: Reading[] = [];
   let lineAt: number | undefined;
   while (Date.now() < sentAt + withinMs) {
-    const r = await readChannel(page);
+    const r = await readMailbox(page);
     readings.push(r);
     if (answered(r)) {
       lineAt = r.at;
@@ -333,7 +333,7 @@ async function follow(page: Page, sentAt: number, answered: (r: Reading) => bool
   let clearedAt: number | undefined;
   if (lineAt !== undefined) {
     for (const until = Date.now() + clearMs; Date.now() < until; await sleep(100)) {
-      const r = await readChannel(page);
+      const r = await readMailbox(page);
       readings.push(r);
       if (r.working.length === 0) {
         clearedAt = r.at;
@@ -389,11 +389,11 @@ async function readConversation(page: Page, seat: Seat, sessionId: string): Prom
   return messages;
 }
 
-/** A seat's conversations in the channel (its dispatch runs of it), each read as drawn. */
+/** A seat's conversations in the mailbox (its dispatch runs of it), each read as drawn. */
 async function runsOf(page: Page, seat: Seat): Promise<Array<{ sessionId: string; messages: Message[] }>> {
   const leaf = await freshLeaf(page, seat);
   const ids = await leaf
-    .locator(`[data-dispatch-run-of="${CHANNEL}"]`)
+    .locator(`[data-dispatch-run-of="${MAILBOX}"]`)
     .evaluateAll((buttons) => buttons.map((b) => b.getAttribute("data-session-id") ?? ""));
   const out: Array<{ sessionId: string; messages: Message[] }> = [];
   for (const id of ids) out.push({ sessionId: id, messages: await readConversation(page, seat, id) });
@@ -409,10 +409,10 @@ function replyTo(messages: Message[], token: string): Message | undefined {
   return (next === -1 ? rest : rest.slice(0, next)).find((m) => m.role === "assistant");
 }
 
-/** The rows the team panel draws on the channel's board: each row's text. */
+/** The rows the team panel draws on the mailbox's board: each row's text. */
 const boardRows = (page: Page) =>
   page
-    .getByTestId(`board-${CHANNEL}.${fixture.channel.board}`)
+    .getByTestId(`board-${MAILBOX}.${fixture.mailbox.board}`)
     .locator("li[data-task-id]")
     .evaluateAll((rows) => rows.map((r) => r.textContent ?? ""));
 
@@ -436,7 +436,7 @@ interface Tokens {
 /** Leg a, ask `support`: the routed specialist works, then answers under its name, and nobody else. */
 async function legA(page: Page, t: Tokens, fail: Fail, evidence: string[]): Promise<void> {
   const seat = SEATS.devices.id;
-  await showChannel(page);
+  await showMailbox(page);
   const sentAt = await postLine(page, `${route("devices")} ${M.textAnswer} ${t.a} is my laptop covered for a cracked screen?`);
   const f = await follow(page, sentAt, (r) => (answersTo(r.lines, t.a)?.length ?? 0) > 0, fixture.lineWithinMs);
   const workingAt = f.readings.find(
@@ -463,9 +463,9 @@ async function legA(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
   }
 
   await reload(page);
-  await showChannel(page);
+  await showMailbox(page);
   const after = await readUntil(
-    () => readChannel(page),
+    () => readMailbox(page),
     (r) => postsOf(r.lines, t.a).length > 0 && (answersTo(r.lines, t.a)?.length ?? 0) > 0,
     10_000,
   );
@@ -484,14 +484,14 @@ async function legB(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
     { token: t.b[1], role: "accounts", marked: true, ask: "why was I billed twice?" },
     { token: t.b[2], role: fixture.fallback, marked: false, ask: "where do I leave feedback about the office?" },
   ];
-  await showChannel(page);
+  await showMailbox(page);
   let previous = `A (${t.a})`;
   for (const post of plan) {
     const seat = SEATS[post.role].id;
     const name = `${post.token} (${post.marked ? route(post.role) : "unmarked, the fallback"})`;
     // The last post's row is gone before this one goes. One that stays is that post's, and it is
     // kept in this post's readings, so an overlap still shows.
-    const idle = await readUntil(() => readChannel(page), (r) => r.working.length === 0, 5_000);
+    const idle = await readUntil(() => readMailbox(page), (r) => r.working.length === 0, 5_000);
     if (idle.working.length > 0) {
       fail("b:clears", `${previous}: ${JSON.stringify(idle.working)} still showed when ${post.token} was to be sent`);
     }
@@ -532,9 +532,9 @@ async function legB(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
   await gradeConversations(page, "open page", expected, every, fail, evidence);
 
   await reload(page);
-  await showChannel(page);
+  await showMailbox(page);
   const after = await readUntil(
-    () => readChannel(page),
+    () => readMailbox(page),
     (r) => plan.every((p) => repliesOf(r.lines, p.token).length > 0),
     10_000,
   );
@@ -548,7 +548,7 @@ async function legB(page: Page, t: Tokens, fail: Fail, evidence: string[]): Prom
   await gradeConversations(page, "after the reload", expected, every, fail, evidence);
 }
 
-/** Each seat's conversation in the channel holds its own posts once, each answered, and nobody else's. */
+/** Each seat's conversation in the mailbox holds its own posts once, each answered, and nobody else's. */
 async function gradeConversations(
   page: Page,
   when: string,
@@ -570,24 +570,24 @@ async function gradeConversations(
     const foreign = every.filter((token) => !mine.includes(token));
     const text = runs.flatMap((r) => r.messages).map((m) => m.text).join("\n");
     const leaked = foreign.filter((token) => text.includes(token));
-    if (leaked.length > 0) fail("b:only-its-own", `${when}: ${seat.id}'s conversation in ${CHANNEL} holds ${leaked.join(", ")}, posts it was not routed`);
+    if (leaked.length > 0) fail("b:only-its-own", `${when}: ${seat.id}'s conversation in ${MAILBOX} holds ${leaked.join(", ")}, posts it was not routed`);
     if (mine.length === 0) {
       held.push(`${seat.id} none (${runs.length} conversations)`);
       continue;
     }
     if (runs.length !== 1) {
-      fail("b:only-its-own", `${when}: ${seat.id} lists ${runs.length} conversations in ${CHANNEL} (want 1)`);
+      fail("b:only-its-own", `${when}: ${seat.id} lists ${runs.length} conversations in ${MAILBOX} (want 1)`);
       continue;
     }
     const messages = runs[0]!.messages;
     for (const token of mine) {
       const heard = messages.filter((m) => m.role === "user" && m.text.includes(token)).length;
-      if (heard !== 1) fail("b:only-its-own", `${when}: ${seat.id}'s conversation in ${CHANNEL} holds ${token} as a heard turn ${heard} times (want once)`);
+      if (heard !== 1) fail("b:only-its-own", `${when}: ${seat.id}'s conversation in ${MAILBOX} holds ${token} as a heard turn ${heard} times (want once)`);
       else if (replyTo(messages, token) === undefined) fail("b:only-its-own", `${when}: ${seat.id} heard ${token} and no reply sits under it`);
     }
     held.push(`${seat.id} ${mine.join(" ")}`);
   }
-  if (red === 0) evidence.push(`b: ${when}, each conversation in ${CHANNEL} holds: ${held.join("; ")}`);
+  if (red === 0) evidence.push(`b: ${when}, each conversation in ${MAILBOX} holds: ${held.join("; ")}`);
 }
 
 /** Leg c, direct talk, and the segmentation row of part 4. */
@@ -652,8 +652,8 @@ async function legC(page: Page, t: Tokens, dropUser: boolean, fail: Fail, eviden
   // ---- c2: recall, answered from the earlier turn and nothing else ---------
   const two = await talk(`${M.recall} ${t.c2} what did I tell you before this?`, t.c2, M.recallReply);
   gradeC2(two.messages, two.most, t, "open page", fail, evidence, `${secs(two.sentAt, two.heardAt)}${two.note}`);
-  await showChannel(page);
-  gradeChannelQuiet((await loaded(page, t)).lines, t, "open page", fail, evidence);
+  await showMailbox(page);
+  gradeMailboxQuiet((await loaded(page, t)).lines, t, "open page", fail, evidence);
 
   // ---- the reload at the leg's end ----------------------------------------
   await reload(page);
@@ -661,16 +661,16 @@ async function legC(page: Page, t: Tokens, dropUser: boolean, fail: Fail, eviden
   const kept = await readConversation(page, seat, sessionId);
   gradeC1(kept, kept.filter((m) => m.role === "user" && m.text.includes(t.c1)).length, t, "after the reload", fail, evidence, "");
   gradeC2(kept, kept.filter((m) => m.role === "user" && m.text.includes(t.c2)).length, t, "after the reload", fail, evidence, "");
-  await showChannel(page);
-  gradeChannelQuiet((await loaded(page, t)).lines, t, "after the reload", fail, evidence);
+  await showMailbox(page);
+  gradeMailboxQuiet((await loaded(page, t)).lines, t, "after the reload", fail, evidence);
 
-  // ---- seg (part 4): the channel conversation holds nothing of the direct talk
+  // ---- seg (part 4): the mailbox conversation holds nothing of the direct talk
   const runs = await runsOf(page, seat);
   const text = runs.flatMap((r) => r.messages).map((m) => m.text).join("\n");
   if (text.includes(t.c1) || text.includes(t.c2)) {
-    fail("seg", `${seat.id}'s conversation in ${CHANNEL} holds the direct talk (${[t.c1, t.c2].filter((x) => text.includes(x)).join(", ")})`);
+    fail("seg", `${seat.id}'s conversation in ${MAILBOX} holds the direct talk (${[t.c1, t.c2].filter((x) => text.includes(x)).join(", ")})`);
   } else {
-    evidence.push(`seg: ${seat.id}'s conversation in ${CHANNEL} (${runs.length} run) holds nothing of ${t.c1} or ${t.c2}`);
+    evidence.push(`seg: ${seat.id}'s conversation in ${MAILBOX} (${runs.length} run) holds nothing of ${t.c1} or ${t.c2}`);
   }
 }
 
@@ -697,31 +697,31 @@ function gradeC2(messages: Message[], most: number, t: Tokens, when: string, fai
   } else if (!reply.text.includes(t.c1)) {
     fail("c2:recall", `${when}: the recall reply ${JSON.stringify(reply.text)} does not name ${t.c1}, the conversation's earlier turn`);
   } else if (earlier.length > 0) {
-    fail("c2:recall", `${when}: the recall reply names ${earlier.join(", ")}, from the channel: ${JSON.stringify(reply.text)}`);
+    fail("c2:recall", `${when}: the recall reply names ${earlier.join(", ")}, from the mailbox: ${JSON.stringify(reply.text)}`);
   } else {
     evidence.push(`c2: ${when}, ${t.c2} is the person's turn${timing === "" ? "" : ` (${timing})`}, ${JSON.stringify(reply.text)} under it`);
   }
 }
 
 /**
- * The channel's panel once its lines have loaded: once the person's posts
+ * The mailbox's panel once its lines have loaded: once the person's posts
  * from legs a and b are drawn. Waiting only; what it shows is graded by the caller.
  */
 const loaded = (page: Page, t: Tokens) =>
-  readUntil(() => readChannel(page), (r) => [t.a, ...t.b].every((token) => postsOf(r.lines, token).length > 0), 10_000);
+  readUntil(() => readMailbox(page), (r) => [t.a, ...t.b].every((token) => postsOf(r.lines, token).length > 0), 10_000);
 
 /** `support` shows nothing of the direct talk. */
-function gradeChannelQuiet(lines: Line[], t: Tokens, when: string, fail: Fail, evidence: string[]): void {
+function gradeMailboxQuiet(lines: Line[], t: Tokens, when: string, fail: Fail, evidence: string[]): void {
   const leaks = lines.filter((l) => [t.c1, t.c2, M.talkReply, M.recallReply].some((x) => l.body.includes(x)));
-  if (leaks.length > 0) fail("c2:channel", `${when}: ${CHANNEL} shows the direct talk: ${JSON.stringify(leaks.map((l) => `${l.label}: ${l.body}`))}`);
-  else evidence.push(`c2: ${when}, ${CHANNEL} shows nothing of it (${lines.length} lines)`);
+  if (leaks.length > 0) fail("c2:mailbox", `${when}: ${MAILBOX} shows the direct talk: ${JSON.stringify(leaks.map((l) => `${l.label}: ${l.body}`))}`);
+  else evidence.push(`c2: ${when}, ${MAILBOX} shows nothing of it (${lines.length} lines)`);
 }
 
 /** Part 2, the escalation: the specialist files the case onto the board and says so. */
 async function partTwo(page: Page, origin: string, t: Tokens, fail: Fail, evidence: string[]): Promise<void> {
   const seat = SEATS[fixture.escalatesTo].id;
-  const board = fixture.channel.board;
-  await showChannel(page);
+  const board = fixture.mailbox.board;
+  await showMailbox(page);
   const rowsBefore = (await boardRows(page)).length;
   const sentAt = await postLine(
     page,
@@ -755,18 +755,18 @@ async function partTwo(page: Page, origin: string, t: Tokens, fail: Fail, eviden
   } else {
     evidence.push(`e: open page, the ${board} list shows ${JSON.stringify(openMine[0])} ${secs(rowFrom, rowAt)} after its line`);
   }
-  // The row is written by the channel's own request, a moment after the
+  // The row is written by the mailbox's own request, a moment after the
   // dispatch. Let it land before the reload; nothing here is graded.
   await readUntil(
-    async () => (await page.request.get(`${origin}/api/flows/sessions/${CHANNEL}/resources/${CHANNEL}.${board}`)).text(),
+    async () => (await page.request.get(`${origin}/api/flows/sessions/${MAILBOX}/resources/${MAILBOX}.${board}`)).text(),
     (body) => body.includes(t.e),
     10_000,
   );
 
   await reload(page);
-  await showChannel(page);
+  await showMailbox(page);
   const after = await readUntil(
-    () => readChannel(page),
+    () => readMailbox(page),
     (r) => (answersTo(r.lines, t.e)?.length ?? 0) > 0,
     10_000,
   );
@@ -866,11 +866,11 @@ async function journey(browser: Browser, control: string): Promise<Journey> {
   }
 
   // Nobody drains escalations: the boot still warns about it, and about no other board.
-  const unattended = [...new Set([...server.log().matchAll(/channel "([^"]+)" holds board "([^"]+)"/g)].map((m) => `${m[1]}.${m[2]}`))];
-  if (JSON.stringify(unattended) !== JSON.stringify([`${CHANNEL}.${fixture.channel.board}`])) {
-    fail("e:warning", `the boot warns these boards are unattended: ${JSON.stringify(unattended)} (want only ${CHANNEL}.${fixture.channel.board})`);
+  const unattended = [...new Set([...server.log().matchAll(/mailbox "([^"]+)" holds board "([^"]+)"/g)].map((m) => `${m[1]}.${m[2]}`))];
+  if (JSON.stringify(unattended) !== JSON.stringify([`${MAILBOX}.${fixture.mailbox.board}`])) {
+    fail("e:warning", `the boot warns these boards are unattended: ${JSON.stringify(unattended)} (want only ${MAILBOX}.${fixture.mailbox.board})`);
   } else {
-    evidence.push(`e: the boot still warns that ${CHANNEL}.${fixture.channel.board} is unattended, and no other board`);
+    evidence.push(`e: the boot still warns that ${MAILBOX}.${fixture.mailbox.board} is unattended, and no other board`);
   }
   // A leg that could not be walked is a finding only with its cause, and the server's output is the one place it shows.
   if (failures.some((f) => assertionOf(f).endsWith(":setup"))) {
@@ -953,12 +953,12 @@ async function smoke(browser: Browser, failures: string[], evidence: string[]): 
   try {
     await page.goto(`${server.origin}/`);
     await ready(page);
-    await showChannel(page);
+    await showMailbox(page);
     const within = `${fixture.smoke.withinMs / 1000}s`;
     for (const [i, post] of posts.entries()) {
       const want = post.want === undefined ? undefined : SEATS[post.want].id;
       // No post goes while a run is working: every answer then belongs to the post it follows.
-      const idle = await readUntil(() => readChannel(page), (r) => r.working.length === 0, fixture.smoke.withinMs);
+      const idle = await readUntil(() => readMailbox(page), (r) => r.working.length === 0, fixture.smoke.withinMs);
       if (idle.working.length > 0) {
         fail("smoke", `before post ${i + 1}: ${JSON.stringify(idle.working)} still showed after ${within}, so the smoke stops here and post ${i + 1} is not sent`);
         break;
@@ -1003,9 +1003,9 @@ async function smoke(browser: Browser, failures: string[], evidence: string[]): 
     // Only the posts that went.
     const sent = posts.slice(0, answeredBy.length);
     await reload(page);
-    await showChannel(page);
+    await showMailbox(page);
     const after = await readUntil(
-      () => readChannel(page),
+      () => readMailbox(page),
       (r) => sent.every((p) => postsOf(r.lines, p.mark).length > 0),
       15_000,
     );

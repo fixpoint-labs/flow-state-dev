@@ -2,7 +2,7 @@
  * What the post entry's queue holds, and what it deliberately does not.
  *
  * The held work is the APPEND ONLY. Fan-out is handed to a SEPARATE request —
- * the channel's own `onPosted` entry at `concurrency: "allow"` — so delivery
+ * the mailbox's own `onPosted` entry at `concurrency: "allow"` — so delivery
  * latency never counts against the next poster's queue wait. Past the engine's
  * 30s queue-wait budget a waiting post is dropped and never written, so waiting
  * behind a delivery is the wrong failure to pick.
@@ -21,18 +21,18 @@ import type { StoreRegistry } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  CHANNEL_KIND,
-  channelFlow,
-  channelNotifyInputSchema,
-  defineChannelFlow
+  MAILBOX_KIND,
+  mailboxFlow,
+  mailboxNotifyInputSchema,
+  defineMailboxFlow
 } from "../src/index";
-import { postedLines } from "./channel-post-lines";
+import { postedLines } from "./mailbox-post-lines";
 
 const USER_ID = "u_queue";
 
 const notify = handler({
   name: "notify",
-  inputSchema: channelNotifyInputSchema,
+  inputSchema: mailboxNotifyInputSchema,
   outputSchema: z.object({}),
   execute: () => ({})
 });
@@ -43,8 +43,8 @@ async function bind(stores: StoreRegistry, sessionId: string, members: string[])
     sessionId,
     {
       id: sessionId,
-      flowKind: CHANNEL_KIND,
-      flowId: CHANNEL_KIND,
+      flowKind: MAILBOX_KIND,
+      flowId: MAILBOX_KIND,
       userId: USER_ID,
       orgId: DEFAULT_ORG_ID,
       state: { members, instructions: "Charter.", transcript: [] },
@@ -68,22 +68,22 @@ async function until(predicate: () => boolean | Promise<boolean>, label: string)
 
 describe("what the post entry's queue holds", () => {
   it("declares queue on both post doors and allow on the fan-out", () => {
-    const instance = defineChannelFlow({ notify })();
+    const instance = defineMailboxFlow({ notify })();
 
     expect(instance.actions.post.concurrency).toBe("queue");
     expect(instance.internal?.actions.post?.concurrency).toBe("queue");
     // The one entry that must NOT sit behind the post queue: a delivery waiting
-    // on the channel's key would put the next poster behind every earlier
+    // on the mailbox's key would put the next poster behind every earlier
     // post's fan-out.
     expect(instance.internal?.actions.onPosted?.concurrency).toBe("allow");
     // Reading contends with nothing.
     expect(instance.actions.read.concurrency).toBeUndefined();
   });
 
-  it("hands fan-out to a second request in the channel's session, not to the post's own", async () => {
-    const instance = defineChannelFlow({ notify })();
+  it("hands fan-out to a second request in the mailbox's session, not to the post's own", async () => {
+    const instance = defineMailboxFlow({ notify })();
     const state = createFlowState({
-      flows: { [CHANNEL_KIND]: instance },
+      flows: { [MAILBOX_KIND]: instance },
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({})
     });
@@ -121,10 +121,10 @@ describe("what the post entry's queue holds", () => {
     }
   });
 
-  it("loses no post when several land on one channel at once", async () => {
-    const instance = channelFlow();
+  it("loses no post when several land on one mailbox at once", async () => {
+    const instance = mailboxFlow();
     const state = createFlowState({
-      flows: { [CHANNEL_KIND]: instance },
+      flows: { [MAILBOX_KIND]: instance },
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({})
     });

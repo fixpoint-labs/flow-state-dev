@@ -17,7 +17,7 @@
  * Lines map onto the transcript line a workstream's Stream draws, so the
  * project's Stream reuses that component.
  */
-import type { ChannelTranscriptLine } from "@flow-state-dev/workforce/browser";
+import type { MailboxTranscriptLine } from "@flow-state-dev/workforce/browser";
 import { ClientHttpError } from "@flow-state-dev/client";
 import type { LabClients } from "./connection";
 import { newSessionId } from "./ids";
@@ -367,7 +367,7 @@ export function startRoomRefresh(read: () => Promise<number>, options: RoomRefre
  * `author` the seat that answered. A room line records no time; `at` is its
  * sequence number, which orders it the same way.
  */
-export function asTranscriptLine(line: RoomLine): ChannelTranscriptLine {
+export function asTranscriptLine(line: RoomLine): MailboxTranscriptLine {
   return {
     id: `${line.projectId}/${line.seq}`,
     at: line.seq,
@@ -375,5 +375,5 @@ export function asTranscriptLine(line: RoomLine): ChannelTranscriptLine {
     ...(line.author === null ? {} : { author: line.author }),
     authorVerified: false,
     body: line.body,
-  } as ChannelTranscriptLine;
+  } as MailboxTranscriptLine;
 }

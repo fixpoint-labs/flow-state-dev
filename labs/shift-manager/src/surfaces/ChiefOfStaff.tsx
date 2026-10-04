@@ -448,10 +448,10 @@ export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot
             <li key={workstream.id}>
               <button
                 type="button"
-                onClick={() => navigate({ level: "workstream", channelId: workstream.id, tab: "stream" })}
+                onClick={() => navigate({ level: "workstream", mailboxId: workstream.id, tab: "stream" })}
                 className="flex w-full items-center justify-between gap-2 px-1 py-1 text-left text-sm hover:bg-accent/60"
                 data-testid="cos-stream"
-                data-channel-id={workstream.id}
+                data-mailbox-id={workstream.id}
               >
                 <span className="truncate">{workstream.id}</span>
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">

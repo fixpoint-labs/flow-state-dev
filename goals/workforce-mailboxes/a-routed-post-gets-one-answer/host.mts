@@ -1,20 +1,20 @@
 /**
- * A fresh app with a routed support channel, as a new app would write it.
+ * A fresh app with a routed support mailbox, as a new app would write it.
  *
  * Everything here comes from the published packages and the team's files: no
  * kitchen-sink code, and no dispatcher or router of the app's own. The wake is
- * `wakeMemberSeats(seats)` in the built-in channel kind's notify slot, and the
- * route is `routeByPurpose(seats, { model })`. A channel that declares
+ * `wakeMemberSeats(seats)` in the built-in mailbox kind's notify slot, and the
+ * route is `routeByPurpose(seats, { model })`. A mailbox that declares
  * `routing:` in its file is routed; one that doesn't wakes every agent member.
  * The goal check reads this file's source to hold it to that.
  *
  * Keyless by default: the seats answer from a scripted model, and the route's
- * one evaluation is scripted by its block name, `channel-route`. The scripts
+ * one evaluation is scripted by its block name, `mailbox-route`. The scripts
  * are the app's test doubles, and they answer from what they are handed:
  *
  * - the route: a post naming `[route:<member>]` goes to that member; a post
  *   marked `[follow-up]` goes to whoever last spoke in the lines the route
- *   read; anything else fails the call, so the channel's fallback takes it.
+ *   read; anything else fails the call, so the mailbox's fallback takes it.
  * - an answer: `[answer:none]` replies with nothing; `[answer:from-context]`
  *   names the `item-…` it finds in the recent lines it was shown; anything
  *   else acknowledges the post's `tok-…`. Every reply carries
@@ -35,18 +35,18 @@ import {
   type MockGeneratorScriptStep
 } from "@flow-state-dev/testing";
 import {
-  channelInstances,
-  defineChannelFlow,
+  mailboxInstances,
+  defineMailboxFlow,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   routeByPurpose,
   wakeMemberSeats,
-  type ChannelManifest
+  type MailboxManifest
 } from "@flow-state-dev/workforce";
-import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
+import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 
-/** The user the channels are opened under, and who posts to them. */
-export const CHANNEL_OWNER = "u_routed_host";
+/** The user the mailboxes are opened under, and who posts to them. */
+export const MAILBOX_OWNER = "u_routed_host";
 
 /** What every scripted answer carries. */
 export const REPLY_MARKER = "[reply:routed-host]";
@@ -56,11 +56,11 @@ export const ROUTE_MODEL = "vercel/typesafe-ai/jev";
 
 /** The goal check's seams. An app passes none. */
 export interface HostSeams {
-  /** The channel files as the host reads them, before anything is built. */
-  adaptChannels?: (channels: ChannelManifest[]) => ChannelManifest[];
+  /** The mailbox files as the host reads them, before anything is built. */
+  adaptMailboxes?: (mailboxes: MailboxManifest[]) => MailboxManifest[];
   /** Kinds the app registers beside the built-ins, by name. */
   kinds?: Record<string, unknown>;
-  /** The wake the channel's notify slot runs. */
+  /** The wake the mailbox's notify slot runs. */
   adaptNotify?: (wake: BlockDefinition<any, any>) => BlockDefinition<any, any>;
   /** The route's scripted evaluation model, as the resolver hands it over. */
   adaptEvaluation?: (model: EvaluationModel) => EvaluationModel;
@@ -73,7 +73,7 @@ export interface RoutedHost {
   state: FlowState;
   router: Awaited<ReturnType<FlowState["getRouter"]>>;
   seats: FlowInstance[];
-  channels: ChannelManifest[];
+  mailboxes: MailboxManifest[];
   /** Every call the scripted route evaluation received. Empty on the live leg. */
   routeCalls: MockEvaluationCall[];
 }
@@ -125,7 +125,7 @@ function scriptedAnswer(): MockGeneratorInstance {
 }
 
 /**
- * Read the team's files, hire its seats, build its channels with the wake and
+ * Read the team's files, hire its seats, build its mailboxes with the wake and
  * the route, and open them.
  *
  * @param tree The workforce root to read.
@@ -133,18 +133,18 @@ function scriptedAnswer(): MockGeneratorInstance {
  */
 export async function startRoutedHost(tree: string, seams: HostSeams = {}): Promise<RoutedHost> {
   const { workers, errors } = await readWorkforce(tree);
-  const read = await readChannelsDirectory(tree);
+  const read = await readMailboxesDirectory(tree);
   if (errors.length > 0 || read.errors.length > 0) {
     throw new Error(`the tree did not load: ${[...errors, ...read.errors].map((e) => `${e.path}: ${String(e.error)}`).join(", ")}`);
   }
-  const channels = seams.adaptChannels?.(read.channels) ?? read.channels;
+  const mailboxes = seams.adaptMailboxes?.(read.mailboxes) ?? read.mailboxes;
 
-  // Hire first: the wake and the route reach these seats, never a channel's stored members.
+  // Hire first: the wake and the route reach these seats, never a mailbox's stored members.
   const seats = hireWorkforce(workers, seams.kinds === undefined ? {} : { kinds: seams.kinds as never });
   const wake = wakeMemberSeats(seats);
-  const channelFlows = channelInstances(channels, {
+  const mailboxFlows = mailboxInstances(mailboxes, {
     kinds: {
-      channel: defineChannelFlow({
+      mailbox: defineMailboxFlow({
         notify: seams.adaptNotify?.(wake) ?? wake,
         route: routeByPurpose(seats, { model: ROUTE_MODEL })
       })
@@ -154,7 +154,7 @@ export async function startRoutedHost(tree: string, seams: HostSeams = {}): Prom
   const route = scriptedRoute();
   const state = createFlowState({
     flows: {
-      ...Object.fromEntries(channelFlows.map((flow) => [flow.kind, flow])),
+      ...Object.fromEntries(mailboxFlows.map((flow) => [flow.kind, flow])),
       ...Object.fromEntries(seats.map((seat) => [seat.id, seat]))
     },
     stores: { default: { primary: inMemoryStores() } },
@@ -162,7 +162,7 @@ export async function startRoutedHost(tree: string, seams: HostSeams = {}): Prom
       seams.live?.modelResolver ??
       createMockModelResolver({
         generators: { "agent-answer": scriptedAnswer() },
-        evaluators: { "channel-route": seams.adaptEvaluation?.(route) ?? route },
+        evaluators: { "mailbox-route": seams.adaptEvaluation?.(route) ?? route },
         policy: "allow"
       })
   } as never);
@@ -181,7 +181,7 @@ export async function startRoutedHost(tree: string, seams: HostSeams = {}): Prom
       return await router[method](new Request(url, init), { params: { path } });
     }
   });
-  await openChannels(channels, { client: sessions, userId: CHANNEL_OWNER });
+  await openMailboxes(mailboxes, { client: sessions, userId: MAILBOX_OWNER });
 
-  return { state, router, seats, channels, routeCalls: seams.live === undefined ? route.calls : [] };
+  return { state, router, seats, mailboxes, routeCalls: seams.live === undefined ? route.calls : [] };
 }

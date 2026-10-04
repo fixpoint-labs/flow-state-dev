@@ -1,5 +1,5 @@
 /**
- * The channel's own door onto a board it holds: filing a row, and reading one.
+ * The mailbox's own door onto a board it holds: filing a row, and reading one.
  *
  * Two of these matter more than the rest and are marked where they sit:
  *
@@ -15,19 +15,19 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
-import { channelInstances, type ChannelManifest } from "../src/index";
-import { postedLines } from "./channel-post-lines";
+import { mailboxInstances, type MailboxManifest } from "../src/index";
+import { postedLines } from "./mailbox-post-lines";
 
 const USER_ID = "u_boards";
-// The org the session route binds a channel to when no resolver is
+// The org the session route binds a mailbox to when no resolver is
 // configured; the harness must run its actions in the same one.
 const ORG_ID = DEFAULT_ORG_ID;
 
-function record(id: string, declared: Record<string, unknown> = {}): ChannelManifest {
+function record(id: string, declared: Record<string, unknown> = {}): MailboxManifest {
   return { id, declared: { members: ["eng.em", "eng.coder"], ...declared }, body: "Charter." };
 }
 
-/** `openChannels`'s session API over this test's own stores, org included. */
+/** `openMailboxes`'s session API over this test's own stores, org included. */
 function sessionApi(stores: StoreRegistry) {
   return {
     createSession: async (options: {
@@ -79,21 +79,21 @@ function sessionApi(stores: StoreRegistry) {
 }
 
 /**
- * Register the kind this roster produces, and open its channels.
+ * Register the kind this roster produces, and open its mailboxes.
  *
  * `adapter` is passed in by the re-bind case, which needs the SAME durable
  * storage on both sides of an edit — a fresh one would prove nothing about a
  * transcript surviving.
  */
-async function host(roster: ChannelManifest[], adapter: unknown = inMemoryStores()) {
-  const [channel] = channelInstances(roster);
+async function host(roster: MailboxManifest[], adapter: unknown = inMemoryStores()) {
+  const [mailbox] = mailboxInstances(roster);
   const state = createFlowState({
-    flows: { [channel!.kind]: channel! },
+    flows: { [mailbox!.kind]: mailbox! },
     stores: { default: { primary: adapter } }
   } as never);
   const runtime = await state.getRuntime();
-  const { openChannels } = await import("../src/index");
-  await openChannels(roster, {
+  const { openMailboxes } = await import("../src/index");
+  await openMailboxes(roster, {
     client: sessionApi(runtime.stores),
     userId: USER_ID,  });
 
@@ -109,7 +109,7 @@ async function host(roster: ChannelManifest[], adapter: unknown = inMemoryStores
   ): Promise<{ output?: unknown; error?: unknown }> => {
     try {
       return (await runAction({
-        flow: channel!,
+        flow: mailbox!,
         actionName,
         input,
         userId: USER_ID,
@@ -124,7 +124,7 @@ async function host(roster: ChannelManifest[], adapter: unknown = inMemoryStores
   };
 
   return {
-    channel: channel!,
+    mailbox: mailbox!,
     runtime,
     adapter,
     act,
@@ -155,7 +155,7 @@ async function host(roster: ChannelManifest[], adapter: unknown = inMemoryStores
   };
 }
 
-describe("filing a row onto a channel's board", () => {
+describe("filing a row onto a mailbox's board", () => {
   it("lands it pending on the minted ledger, carrying the assignee it was given", async () => {
     const lab = await host([record("eng.feature", { boards: ["triage"] })]);
     try {
@@ -184,7 +184,7 @@ describe("filing a row onto a channel's board", () => {
     }
   });
 
-  it("refuses a board this channel did not declare, and writes nothing", async () => {
+  it("refuses a board this mailbox did not declare, and writes nothing", async () => {
     const lab = await host([record("eng.feature", { boards: ["triage"] })]);
     try {
       const refused = await lab.act("eng.feature", "fileTask", {
@@ -192,11 +192,11 @@ describe("filing a row onto a channel's board", () => {
         goal: "look at it"
       });
       expect(String(refused.error)).toContain("board-not-declared");
-      // The refusal lists what the channel DOES hold, so an author is told the
+      // The refusal lists what the mailbox DOES hold, so an author is told the
       // name rather than that they were wrong.
       expect(String(refused.error)).toContain("triage");
 
-      // Nothing was created anywhere: the board this channel DOES hold is
+      // Nothing was created anywhere: the board this mailbox DOES hold is
       // still empty, so the refusal did not quietly mint a second ledger.
       const read = await lab.act("eng.feature", "readBoard", { board: "triage" });
       expect((read.output as { tasks: unknown[] }).tasks).toHaveLength(0);
@@ -206,12 +206,12 @@ describe("filing a row onto a channel's board", () => {
   });
 
   /**
-   * **BR-9, asserted on the resolved id.** Both channels declare a board
+   * **BR-9, asserted on the resolved id.** Both mailboxes declare a board
    * called `triage`. Filing into one can only ever reach that one's ledger,
    * because the id is minted from the session's own identity — there is no
-   * payload through which another channel's rows could be selected.
+   * payload through which another mailbox's rows could be selected.
    */
-  it("reaches only this channel's ledger, whatever another channel called its board", async () => {
+  it("reaches only this mailbox's ledger, whatever another mailbox called its board", async () => {
     const lab = await host([
       record("eng.feature", { boards: ["triage"] }),
       record("eng.platform", { boards: ["triage"] })
@@ -225,7 +225,7 @@ describe("filing a row onto a channel's board", () => {
 
       expect(out.boardId).toBe("eng.platform.triage");
       expect(await lab.row("eng.platform.triage", out.taskId)).toBeDefined();
-      // The other channel's ledger is untouched. This is the assertion that
+      // The other mailbox's ledger is untouched. This is the assertion that
       // would survive deleting every refusal in the module.
       expect(await lab.row("eng.feature.triage", out.taskId)).toBeUndefined();
     } finally {
@@ -233,7 +233,7 @@ describe("filing a row onto a channel's board", () => {
     }
   });
 
-  it("refuses an `author` the channel does not list, in the post path's own words", async () => {
+  it("refuses an `author` the mailbox does not list, in the post path's own words", async () => {
     const lab = await host([record("eng.feature", { boards: ["triage"] })]);
     try {
       const refused = await lab.act("eng.feature", "fileTask", {
@@ -365,7 +365,7 @@ describe("reading", () => {
     }
   });
 
-  it("projects the declared board NAMES on a channel read, and not the rows", async () => {
+  it("projects the declared board NAMES on a mailbox read, and not the rows", async () => {
     const lab = await host([record("eng.feature", { boards: ["triage", "review"] })]);
     try {
       await lab.act("eng.feature", "fileTask", { board: "triage", goal: "a row" });
@@ -374,7 +374,7 @@ describe("reading", () => {
       const out = read.output as { boards?: string[]; members: string[] };
       expect(out.boards).toEqual(["review", "triage"]);
       expect(out.members).toEqual(["eng.em", "eng.coder"]);
-      // Reading a board is a board read. A channel read that carried rows
+      // Reading a board is a board read. A mailbox read that carried rows
       // would make the transcript and the ledger one surface.
       expect(JSON.stringify(out)).not.toContain("a row");
     } finally {
@@ -382,7 +382,7 @@ describe("reading", () => {
     }
   });
 
-  it("leaves a channel that declares no board reading exactly as it did", async () => {
+  it("leaves a mailbox that declares no board reading exactly as it did", async () => {
     const lab = await host([record("eng.quiet")]);
     try {
       const posted = await lab.act("eng.quiet", "post", {
@@ -393,7 +393,7 @@ describe("reading", () => {
 
       const read = await lab.act("eng.quiet", "read", {});
       const out = read.output as Record<string, unknown>;
-      // Absent, not `[]`. A channel with no board projects the same keys it
+      // Absent, not `[]`. A mailbox with no board projects the same keys it
       // projected before boards existed.
       expect("boards" in out).toBe(false);
       expect(out.members).toEqual(["eng.em", "eng.coder"]);
@@ -404,16 +404,16 @@ describe("reading", () => {
 });
 
 /**
- * Adding `boards:` to a `CHANNEL.md` whose channel is ALREADY OPEN.
+ * Adding `boards:` to a `MAILBOX.md` whose mailbox is ALREADY OPEN.
  *
- * The transcript assertion is the one that matters: a channel's conversation
+ * The transcript assertion is the one that matters: a mailbox's conversation
  * is the only thing it cannot re-derive from its file, so an activation story
  * that rewrites session state is one line away from deleting it. Here the
  * board list is not session state at all — it is re-read from the roster the
  * kind is built from — so the transcript is not merely preserved, it is never
  * on the path.
  */
-describe("a board added to a channel that is already open", () => {
+describe("a board added to a mailbox that is already open", () => {
   it("becomes usable on the next bind, with the transcript byte-identical", async () => {
     const adapter = inMemoryStores();
     const before = await host([record("eng.feature")], adapter);
@@ -434,23 +434,23 @@ describe("a board added to a channel that is already open", () => {
       await before.dispose();
     }
 
-    // The same storage, re-bound from an edited file. `openChannels` finds the
-    // channel already open and leaves its session exactly as it is.
+    // The same storage, re-bound from an edited file. `openMailboxes` finds the
+    // mailbox already open and leaves its session exactly as it is.
     const roster = [record("eng.feature", { boards: ["triage"] })];
-    const [channel] = channelInstances(roster);
+    const [mailbox] = mailboxInstances(roster);
     const state = createFlowState({
-      flows: { [channel!.kind]: channel! },
+      flows: { [mailbox!.kind]: mailbox! },
       stores: { default: { primary: adapter } }
     } as never);
     try {
       const runtime = await state.getRuntime();
-      const { openChannels } = await import("../src/index");
-      await openChannels(roster, {
+      const { openMailboxes } = await import("../src/index");
+      await openMailboxes(roster, {
         client: sessionApi(runtime.stores),
         userId: USER_ID,      });
 
       const filed = (await runAction({
-        flow: channel!,
+        flow: mailbox!,
         actionName: "fileTask",
         input: { board: "triage", goal: "after the edit" },
         userId: USER_ID,
@@ -472,12 +472,12 @@ describe("a board added to a channel that is already open", () => {
 });
 
 /**
- * A channel's opt-in to its boards' eight task tools, as actions
+ * A mailbox's opt-in to its boards' eight task tools, as actions
  * (`boardActions: true`). Off by default: with it on, anyone who can reach
- * the channel can settle or reassign its rows, so a channel that says nothing
+ * the mailbox can settle or reassign its rows, so a mailbox that says nothing
  * keeps exactly today's public actions.
  */
-describe("a channel's board task actions", () => {
+describe("a mailbox's board task actions", () => {
   const TOOLS = [
     "addTask",
     "assignTask",
@@ -489,9 +489,9 @@ describe("a channel's board task actions", () => {
     "updateTask"
   ];
 
-  it("adds nothing to a channel that does not opt in", () => {
-    const [channel] = channelInstances([record("eng.feature", { boards: ["triage"] })]);
-    expect(Object.keys((channel as unknown as { actions: object }).actions).sort()).toEqual([
+  it("adds nothing to a mailbox that does not opt in", () => {
+    const [mailbox] = mailboxInstances([record("eng.feature", { boards: ["triage"] })]);
+    expect(Object.keys((mailbox as unknown as { actions: object }).actions).sort()).toEqual([
       "fileTask",
       "join",
       "post",
@@ -500,17 +500,17 @@ describe("a channel's board task actions", () => {
     ]);
   });
 
-  it("adds the eight tools per board, named for the board, on a channel that opts in", () => {
-    const [channel] = channelInstances([
+  it("adds the eight tools per board, named for the board, on a mailbox that opts in", () => {
+    const [mailbox] = mailboxInstances([
       record("eng.feature", { boards: ["triage", "work"], boardActions: true }),
       record("eng.platform", { boards: ["triage"] })
     ]);
-    const names = Object.keys((channel as unknown as { actions: object }).actions);
+    const names = Object.keys((mailbox as unknown as { actions: object }).actions);
     const expected = ["eng_feature_triage", "eng_feature_work"].flatMap((suffix) =>
       TOOLS.map((tool) => `${tool}_${suffix}`)
     );
     expect(names.filter((name) => name.includes("_")).sort()).toEqual(expected.sort());
-    // The channel that did not opt in gains nothing, though it shares the kind.
+    // The mailbox that did not opt in gains nothing, though it shares the kind.
     expect(names.some((name) => name.endsWith("eng_platform_triage"))).toBe(false);
   });
 
@@ -520,7 +520,7 @@ describe("a channel's board task actions", () => {
     // actions would silently replace the earlier's, and that board's rows
     // would be settled on the other ledger.
     expect(() =>
-      channelInstances([
+      mailboxInstances([
         record("eng.feature", { boards: ["work"], boardActions: true }),
         record("eng_feature", { boards: ["work"], boardActions: true })
       ])
@@ -535,7 +535,7 @@ describe("a channel's board task actions", () => {
       [record("eng.feature", { boards: ["work"], boardActions: true }), record("eng_feature", { boards: ["work"] })],
       [record("eng_feature", { boards: ["work"] }), record("eng.feature", { boards: ["work"], boardActions: true })]
     ]) {
-      expect(() => channelInstances(roster)).toThrow(
+      expect(() => mailboxInstances(roster)).toThrow(
         /eng\.feature\.work.*eng_feature\.work|eng_feature\.work.*eng\.feature\.work/
       );
     }
@@ -543,14 +543,14 @@ describe("a channel's board task actions", () => {
 
   it("refuses a value that is not true or false, by name, at bind", () => {
     expect(() =>
-      channelInstances([record("eng.feature", { boards: ["triage"], boardActions: "yes" })])
+      mailboxInstances([record("eng.feature", { boards: ["triage"], boardActions: "yes" })])
     ).toThrow(/boardActions/);
     expect(() =>
-      channelInstances([record("eng.feature", { boards: ["triage"], boardActions: false })])
+      mailboxInstances([record("eng.feature", { boards: ["triage"], boardActions: false })])
     ).not.toThrow();
   });
 
-  it("changes a row filed on this channel's board, from this channel's session", async () => {
+  it("changes a row filed on this mailbox's board, from this mailbox's session", async () => {
     const lab = await host([record("eng.feature", { boards: ["triage"], boardActions: true })]);
     try {
       const filed = await lab.act("eng.feature", "fileTask", { board: "triage", goal: "look" });
@@ -568,9 +568,9 @@ describe("a channel's board task actions", () => {
     }
   });
 
-  it("refuses one channel's board action run from another channel's session, before reading the ledger", async () => {
-    // Channels share one flow, so the action map alone does not fence them:
-    // `cancelTask_eng_feature_triage` is on the platform channel's session too.
+  it("refuses one mailbox's board action run from another mailbox's session, before reading the ledger", async () => {
+    // Mailboxes share one flow, so the action map alone does not fence them:
+    // `cancelTask_eng_feature_triage` is on the platform mailbox's session too.
     const lab = await host([
       record("eng.feature", { boards: ["triage"], boardActions: true }),
       record("eng.platform", { boards: ["triage"], boardActions: true })

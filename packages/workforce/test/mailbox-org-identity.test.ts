@@ -1,8 +1,8 @@
 /**
- * The org a channel session is opened under, driven through the real session
+ * The org a mailbox session is opened under, driven through the real session
  * route rather than a mock.
  *
- * `channel-binder.test.ts` asserts what the binder HANDS its client. That is
+ * `mailbox-binder.test.ts` asserts what the binder HANDS its client. That is
  * not the claim that matters here: an `orgId` the binder passes is only worth
  * anything if the session it opens comes out bound to that org, because that
  * binding is what every org-scoped lookup is matched against — file-declared
@@ -12,10 +12,10 @@
  * and read the session back.
  *
  * FIX-1442 supersedes the interim `orgId` parameter these tests were written
- * for. `openChannels` no longer takes one, and an app cannot choose the
- * organization its channels open under: the server binds it from the verified
+ * for. `openMailboxes` no longer takes one, and an app cannot choose the
+ * organization its mailboxes open under: the server binds it from the verified
  * principal, or — as here, with no resolver configured — from `DEFAULT_ORG_ID`.
- * So what is pinned now is that a channel is never opened WITHOUT one, on every
+ * So what is pinned now is that a mailbox is never opened WITHOUT one, on every
  * path including the repair, because "no org identity" is the state that made
  * a woken seat fail to read its own documents.
  */
@@ -23,14 +23,14 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
-import { CHANNEL_KIND, channelFlow, openChannels, type ChannelManifest } from "../src/index";
+import { MAILBOX_KIND, mailboxFlow, openMailboxes, type MailboxManifest } from "../src/index";
 
 const OWNER = "u_owner";
 
-/** The session API `openChannels` declares, wired to the real HTTP routes. */
+/** The session API `openMailboxes` declares, wired to the real HTTP routes. */
 function hostedClient() {
   const state = createFlowState({
-    flows: { [CHANNEL_KIND]: channelFlow() },
+    flows: { [MAILBOX_KIND]: mailboxFlow() },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({})
   });
@@ -77,7 +77,7 @@ function hostedClient() {
         flowId: session.flowId,
         userId: session.userId,
         // Carried because a real `SessionDetail` carries it, and the binder
-        // reads it to refuse a channel already open outside the org asked for.
+        // reads it to refuse a mailbox already open outside the org asked for.
         orgId: session.orgId,
         state: session.state
       };
@@ -98,15 +98,15 @@ function hostedClient() {
   return { client, sessionOf };
 }
 
-function record(id: string): ChannelManifest {
+function record(id: string): MailboxManifest {
   return { id, declared: { members: ["engineering.lead"] }, body: "Say what you finished." };
 }
 
-describe("openChannels org identity", () => {
-  it("opens the channel's session bound to an organization the app never named", async () => {
+describe("openMailboxes org identity", () => {
+  it("opens the mailbox's session bound to an organization the app never named", async () => {
     const { client, sessionOf } = hostedClient();
 
-    await openChannels([record("engineering.standup")], { client, userId: OWNER });
+    await openMailboxes([record("engineering.standup")], { client, userId: OWNER });
 
     // The whole point: not "the binder passed a field" but "the session the
     // seat is later woken in carries an org", which is what an org-scoped
@@ -114,40 +114,40 @@ describe("openChannels org identity", () => {
     // that org is the framework default — supplied by the server, not chosen
     // by the caller.
     expect(await sessionOf("engineering.standup")).toMatchObject({
-      flowKind: CHANNEL_KIND,
+      flowKind: MAILBOX_KIND,
       userId: OWNER,
       orgId: DEFAULT_ORG_ID
     });
   });
 
-  it("never opens a channel with no organization at all", async () => {
+  it("never opens a mailbox with no organization at all", async () => {
     // The state this whole seam exists to prevent, and the one an app used to
-    // land in by simply not passing an `orgId`: a channel whose woken seat
+    // land in by simply not passing an `orgId`: a mailbox whose woken seat
     // cannot read its own org-scoped documents. It is now unreachable rather
     // than merely discouraged — there is no input that produces it.
     const { client, sessionOf } = hostedClient();
 
-    await openChannels([record("engineering.standup")], { client, userId: OWNER });
+    await openMailboxes([record("engineering.standup")], { client, userId: OWNER });
 
     const session = await sessionOf("engineering.standup");
     expect(session.orgId).toBeDefined();
     expect(session.orgId).not.toBe("");
   });
 
-  it("opens a re-adopted channel under an organization too, so a repair does not drop it", async () => {
+  it("opens a re-adopted mailbox under an organization too, so a repair does not drop it", async () => {
     const { client, sessionOf } = hostedClient();
 
     // What a post or read on the id before the binder ran leaves behind: this
-    // kind's own session for this principal, carrying no channel state. The
+    // kind's own session for this principal, carrying no mailbox state. The
     // binder releases it and re-creates — and that second create has to carry
-    // the org as well, or a raced channel is the one that silently has none.
+    // the org as well, or a raced mailbox is the one that silently has none.
     await client.createSession({
-      flowKind: CHANNEL_KIND,
+      flowKind: MAILBOX_KIND,
       userId: OWNER,
       sessionId: "engineering.standup"
     });
 
-    await openChannels([record("engineering.standup")], { client, userId: OWNER });
+    await openMailboxes([record("engineering.standup")], { client, userId: OWNER });
 
     expect(await sessionOf("engineering.standup")).toMatchObject({ orgId: DEFAULT_ORG_ID });
   });

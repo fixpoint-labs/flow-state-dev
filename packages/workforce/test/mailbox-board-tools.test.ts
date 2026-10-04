@@ -1,15 +1,15 @@
 /**
- * The model's door onto a channel board, and the two fences around it.
+ * The model's door onto a mailbox board, and the two fences around it.
  *
  * The door is the **kind-installed capability**: a seat composes
- * `channelBoardTaskTools(board)` and holds the eight task tools over that
+ * `mailboxBoardTaskTools(board)` and holds the eight task tools over that
  * ledger. It cannot be a block in the seat's own `blocks/` folder, because a
- * channel board is an org-scoped resource and a seat-folder block declaring one
+ * mailbox board is an org-scoped resource and a seat-folder block declaring one
  * is refused by name at hire — which is what makes the capability the only
  * door rather than the recommended one.
  *
  * The sharpest case here is the freeze: a seat's board that hands off freezes
- * the ledger's assignee, and a write through the SAME id — the channel's side
+ * the ledger's assignee, and a write through the SAME id — the mailbox's side
  * of the fence — must then decline. Two `defineTaskCollection` calls sharing an
  * id would share rows and not that policy, so the negative control below uses a
  * board nobody froze and watches the same write succeed.
@@ -25,25 +25,25 @@ import { taskBoard } from "@flow-state-dev/orchestration/task-board";
 import type { TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import {
   AGENT_KIND,
-  channelBoard,
-  channelBoardTaskTools,
-  channelInstances,
+  mailboxBoard,
+  mailboxBoardTaskTools,
+  mailboxInstances,
   defineAgentWorkerFlow,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   workerConfigSchema,
-  type ChannelManifest
+  type MailboxManifest
 } from "../src/index";
 // Package-internal: the board module's joins and resolvers are not public
 // surface, so a test reaches them where they live.
-import { resolveChannelBoard } from "../src/channel/channel-board";
+import { resolveMailboxBoard } from "../src/mailbox/mailbox-board";
 
 const USER_ID = "u_tools";
-// The org the session route binds a channel to when no resolver is
+// The org the session route binds a mailbox to when no resolver is
 // configured; the harness must run its actions in the same one.
 const ORG_ID = DEFAULT_ORG_ID;
 
-function record(id: string, boards: string[]): ChannelManifest {
+function record(id: string, boards: string[]): MailboxManifest {
   return { id, declared: { members: ["eng.em", "eng.coder"], boards }, body: "Charter." };
 }
 
@@ -97,7 +97,7 @@ function sessionApi(stores: any) {
 }
 
 /**
- * One channel holding one board, and one seat whose model reaches the same
+ * One mailbox holding one board, and one seat whose model reaches the same
  * ledger through the capability.
  *
  * The seat's record declares `tools: []` — written out rather than omitted,
@@ -106,23 +106,23 @@ function sessionApi(stores: any) {
  */
 async function lab(script: Array<Record<string, unknown>>) {
   const roster = [record("eng.feature", ["triage"])];
-  const [channel] = channelInstances(roster);
-  const triage = channelBoard("eng.feature", "triage");
+  const [mailbox] = mailboxInstances(roster);
+  const triage = mailboxBoard("eng.feature", "triage");
 
   const [seat] = hireWorkforce(
     [{ id: "eng.coder", declared: { flow: AGENT_KIND, tools: [] }, body: "Coder." }],
-    { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [channelBoardTaskTools(triage)] }) } }
+    { kinds: { [AGENT_KIND]: defineAgentWorkerFlow({ uses: [mailboxBoardTaskTools(triage)] }) } }
   );
 
   const state = createFlowState({
-    flows: { [channel!.kind]: channel!, [seat!.id]: seat! },
+    flows: { [mailbox!.kind]: mailbox!, [seat!.id]: seat! },
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({
       generators: { "agent-answer": mockGenerator({ name: "agent-answer", script } as never) }
     })
   } as never);
   const runtime = await state.getRuntime();
-  await openChannels(roster, {
+  await openMailboxes(roster, {
     client: sessionApi(runtime.stores),
     userId: USER_ID,  });
 
@@ -145,8 +145,8 @@ async function lab(script: Array<Record<string, unknown>>) {
 
   return {
     triage,
-    channel: (actionName: string, input: unknown) =>
-      act(channel!, "eng.feature", actionName, input),
+    mailbox: (actionName: string, input: unknown) =>
+      act(mailbox!, "eng.feature", actionName, input),
     seat: (message: string) => act(seat!, "s_eng_coder", "run", { message }),
     row: (taskId: string) =>
       runtime.stores.resourceState
@@ -157,7 +157,7 @@ async function lab(script: Array<Record<string, unknown>>) {
 }
 
 describe("one ledger, two doors", () => {
-  it("settles through the model's tools the row the channel's own action wrote", async () => {
+  it("settles through the model's tools the row the mailbox's own action wrote", async () => {
     // The row id is MINTED — neither door lets a caller choose one — so the
     // tool call's arguments are filled in once the row exists. The mock copies
     // the script array but not the entries in it, so the object below is the
@@ -178,7 +178,7 @@ describe("one ledger, two doors", () => {
       { text: "settled" }
     ]);
     try {
-      const filed = await run.channel("fileTask", {
+      const filed = await run.mailbox("fileTask", {
         board: "triage",
         goal: "ship the reader",
         author: "eng.em"
@@ -201,7 +201,7 @@ describe("one ledger, two doors", () => {
     }
   });
 
-  it("shows on the channel's board read a row the model filed, carrying no author", async () => {
+  it("shows on the mailbox's board read a row the model filed, carrying no author", async () => {
     const run = await lab([
       {
         toolCalls: [
@@ -218,7 +218,7 @@ describe("one ledger, two doors", () => {
       const answered = await run.seat("file some work");
       expect(answered.error).toBeUndefined();
 
-      const read = await run.channel("readBoard", { board: "triage" });
+      const read = await run.mailbox("readBoard", { board: "triage" });
       const tasks = (read.output as { tasks: Array<{ goal: string; metadata?: unknown }> }).tasks;
       expect(tasks.map((task) => task.goal)).toEqual(["from the model"]);
 
@@ -235,9 +235,9 @@ describe("one ledger, two doors", () => {
 describe("a seat holding two boards", () => {
   it("composes the capability twice and reaches each ledger by its own tools", async () => {
     const roster = [record("eng.feature", ["triage", "review"])];
-    const [channel] = channelInstances(roster);
-    const triage = channelBoard("eng.feature", "triage");
-    const review = channelBoard("eng.feature", "review");
+    const [mailbox] = mailboxInstances(roster);
+    const triage = mailboxBoard("eng.feature", "triage");
+    const review = mailboxBoard("eng.feature", "review");
 
     // Two boards on one seat is an ordinary shape, not an exotic one. It is
     // also the shape a fixed capability name and eight fixed tool names make
@@ -248,14 +248,14 @@ describe("a seat holding two boards", () => {
       {
         kinds: {
           [AGENT_KIND]: defineAgentWorkerFlow({
-            uses: [channelBoardTaskTools(triage), channelBoardTaskTools(review)]
+            uses: [mailboxBoardTaskTools(triage), mailboxBoardTaskTools(review)]
           })
         }
       }
     );
 
     const state = createFlowState({
-      flows: { [channel!.kind]: channel!, [seat!.id]: seat! },
+      flows: { [mailbox!.kind]: mailbox!, [seat!.id]: seat! },
       stores: { default: { primary: inMemoryStores() } },
       modelResolver: createMockModelResolver({
         generators: {
@@ -280,7 +280,7 @@ describe("a seat holding two boards", () => {
 
     try {
       const runtime = await state.getRuntime();
-      await openChannels(roster, {
+      await openMailboxes(roster, {
         client: sessionApi(runtime.stores),
         userId: USER_ID,      });
 
@@ -304,7 +304,7 @@ describe("a seat holding two boards", () => {
 
       const act = async (actionName: string, input: unknown) =>
         (await runAction({
-          flow: channel!,
+          flow: mailbox!,
           actionName,
           input,
           userId: USER_ID,
@@ -339,7 +339,7 @@ describe("the seat's `tools:` fence", () => {
       {
         kinds: {
           [AGENT_KIND]: defineAgentWorkerFlow({
-            uses: [channelBoardTaskTools(channelBoard("eng.fenced-channel", "triage"))]
+            uses: [mailboxBoardTaskTools(mailboxBoard("eng.fenced-mailbox", "triage"))]
           })
         }
       }
@@ -347,7 +347,7 @@ describe("the seat's `tools:` fence", () => {
 
     // The ledger reached the flow through the capability alone — nothing
     // declared it beside the `uses` entry.
-    expect(Object.keys(seat!.resources ?? {})).toContain("eng.fenced-channel.triage");
+    expect(Object.keys(seat!.resources ?? {})).toContain("eng.fenced-mailbox.triage");
     expect(seat!.config.tools).toEqual([]);
   });
 });
@@ -356,15 +356,15 @@ describe("the seat's `tools:` fence", () => {
  * The freeze, which is the whole reason one declaration object per id exists.
  */
 describe("a handed-off board's assignee freeze", () => {
-  /** A flow that resolves a channel board and tries to reassign one row. */
-  function reassignerFor(channelId: string, boardName: string, withHandOff: boolean) {
-    const board = channelBoard(channelId, boardName);
+  /** A flow that resolves a mailbox board and tries to reassign one row. */
+  function reassignerFor(mailboxId: string, boardName: string, withHandOff: boolean) {
+    const board = mailboxBoard(mailboxId, boardName);
     const reassign = handler({
       name: `reassign-${boardName}-${withHandOff ? "frozen" : "free"}`,
       inputSchema: z.object({ taskId: z.string(), assignee: z.string() }),
       outputSchema: z.object({ outcome: z.string(), reason: z.string().optional() }),
       execute: async (input: { taskId: string; assignee: string }, ctx) => {
-        const ledger = await resolveChannelBoard(ctx, board.id);
+        const ledger = await resolveMailboxBoard(ctx, board.id);
         const written = (await ledger!.setAssignee(input.taskId, input.assignee)) as {
           outcome: string;
           reason?: string;
@@ -380,7 +380,7 @@ describe("a handed-off board's assignee freeze", () => {
       inputSchema: z.object({}),
       outputSchema: z.object({ taskId: z.string() }),
       execute: async (_input, ctx) => {
-        const ledger = await resolveChannelBoard(ctx, board.id);
+        const ledger = await resolveMailboxBoard(ctx, board.id);
         const task = await ledger!.addTask({ id: "row", goal: "a row", assignee: "coder" });
         return { taskId: task.id };
       }
@@ -418,8 +418,8 @@ describe("a handed-off board's assignee freeze", () => {
     } as never);
   }
 
-  async function reassignOn(channelId: string, boardName: string, withHandOff: boolean) {
-    const flow = (reassignerFor(channelId, boardName, withHandOff) as unknown as () => unknown)();
+  async function reassignOn(mailboxId: string, boardName: string, withHandOff: boolean) {
+    const flow = (reassignerFor(mailboxId, boardName, withHandOff) as unknown as () => unknown)();
     const state = createFlowState({
       flows: { [(flow as { kind: string }).kind]: flow },
       stores: { default: { primary: inMemoryStores() } }
@@ -449,7 +449,7 @@ describe("a handed-off board's assignee freeze", () => {
     }
   }
 
-  it("declines a reassignment made through the channel's own id", async () => {
+  it("declines a reassignment made through the mailbox's own id", async () => {
     // `declined:immutable-assignee` — the reason matters, because a decline
     // for any other reason would pass a bare `declined` assertion.
     expect(await reassignOn("eng.frozen", "frozen", true)).toBe(
@@ -465,9 +465,9 @@ describe("a handed-off board's assignee freeze", () => {
   });
 });
 
-describe("a channel-board tool colocated in a seat's own folder", () => {
+describe("a mailbox-board tool colocated in a seat's own folder", () => {
   it("is refused by name at hire, because the board is an org-scoped resource", () => {
-    const triage = channelBoard("eng.colocated", "triage");
+    const triage = mailboxBoard("eng.colocated", "triage");
     const colocated = handler({
       name: "file-triage",
       description: "Files a row.",

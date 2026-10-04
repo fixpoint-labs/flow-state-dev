@@ -56,7 +56,7 @@ import {
 export type TeamManifestErrorKind =
   /** `teams`, or one team folder, is a symlink or is there and could not be listed. Every team under it is missing. */
   | "unreadable-slot"
-  /** A directory sits where the file belongs — the mistake an author arriving from `workers/` or `channels/` makes. */
+  /** A directory sits where the file belongs — the mistake an author arriving from `workers/` or `mailboxes/` makes. */
   | "folder-where-file-belongs"
   /** The file did not load: a symlink, an unreadable file, no frontmatter, or a missing `description`. */
   | "team-load-failed"
@@ -147,7 +147,7 @@ export async function readTeamsDirectory(
 
     // Reported rather than skipped, and it is the loudest error here. Reading a
     // directory of that name as ABSENT would silently lose whatever an author
-    // put inside it — and an author arriving from `workers/` or `channels/`,
+    // put inside it — and an author arriving from `workers/` or `mailboxes/`,
     // where a folder IS the thing, makes exactly this mistake.
     if (entry.kind === "directory") {
       errors.push({
@@ -173,7 +173,7 @@ export async function readTeamsDirectory(
     // that could not be read is an author's typo, and a file declaring what the
     // framework derives or imposes is an author's misunderstanding. Checked
     // here rather than inside the parse so the two stay tellable apart by
-    // control flow, the way the workers, channels and resources readers keep
+    // control flow, the way the workers, mailboxes and resources readers keep
     // them apart.
     const refused = refusedTeamDeclarationMessage(loaded.declared);
     if (refused !== undefined) {

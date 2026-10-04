@@ -26,7 +26,7 @@ import { ClientHttpError } from "@flow-state-dev/client";
 /** The three published key patterns, by the section each one fills. */
 export const INVENTORY_PATTERNS = {
   seats: "inventory/seats/*",
-  channels: "inventory/channels/*",
+  mailboxes: "inventory/mailboxes/*",
   memberships: "inventory/members/**",
 } as const;
 
@@ -34,7 +34,7 @@ export const INVENTORY_PATTERNS = {
 export type InventoryCollection = keyof typeof INVENTORY_PATTERNS;
 
 /** The three, in the order the tab shows them. */
-export const INVENTORY_COLLECTIONS: readonly InventoryCollection[] = ["seats", "channels", "memberships"];
+export const INVENTORY_COLLECTIONS: readonly InventoryCollection[] = ["seats", "mailboxes", "memberships"];
 
 /** Where one collection sits on this session's flow: its ref, and whether the browser may read it. */
 export type InventoryDeclaration = { ref: string; readable: boolean };
@@ -147,10 +147,10 @@ export async function readEveryPage(
 
 /** A seat row as the tab shows it. */
 export type SeatRow = { id: string; kind: string | null };
-/** A channel row as the tab shows it. `members` is empty and `registeredAt` null on a row that predates them. */
-export type ChannelRow = { id: string; kind: string | null; members: string[]; registeredAt: string | null };
+/** A mailbox row as the tab shows it. `members` is empty and `registeredAt` null on a row that predates them. */
+export type MailboxRow = { id: string; kind: string | null; members: string[]; registeredAt: string | null };
 /** A membership row as the tab shows it. */
-export type MembershipRow = { seatId: string; channelId: string };
+export type MembershipRow = { seatId: string; mailboxId: string };
 
 function field(row: unknown, key: string): unknown {
   return typeof row === "object" && row !== null ? (row as Record<string, unknown>)[key] : undefined;
@@ -166,10 +166,10 @@ export function toSeatRow(row: unknown): SeatRow {
 }
 
 /**
- * A channel row's fields, as stored. A row written before `members` or
+ * A mailbox row's fields, as stored. A row written before `members` or
  * `openedAt` existed reads as no members and an unknown time (BP-030).
  */
-export function toChannelRow(row: unknown): ChannelRow {
+export function toMailboxRow(row: unknown): MailboxRow {
   const members = field(row, "members");
   return {
     id: text(field(row, "id")) ?? "",
@@ -181,22 +181,22 @@ export function toChannelRow(row: unknown): ChannelRow {
 
 /** A membership row's fields, as stored. */
 export function toMembershipRow(row: unknown): MembershipRow {
-  return { seatId: text(field(row, "seatId")) ?? "", channelId: text(field(row, "channelId")) ?? "" };
+  return { seatId: text(field(row, "seatId")) ?? "", mailboxId: text(field(row, "mailboxId")) ?? "" };
 }
 
 /**
- * The channels each seat's membership rows name, keyed by seat id.
+ * The mailboxes each seat's membership rows name, keyed by seat id.
  *
- * Read off the membership collection alone. A channel row's own `members` is
+ * Read off the membership collection alone. A mailbox row's own `members` is
  * never consulted, so when the two disagree the tab shows both and the
  * mismatch stays visible.
  */
-export function channelsBySeat(memberships: readonly MembershipRow[]): Map<string, string[]> {
+export function mailboxesBySeat(memberships: readonly MembershipRow[]): Map<string, string[]> {
   const bySeat = new Map<string, string[]>();
   for (const row of memberships) {
-    const channels = bySeat.get(row.seatId) ?? [];
-    channels.push(row.channelId);
-    bySeat.set(row.seatId, channels);
+    const mailboxes = bySeat.get(row.seatId) ?? [];
+    mailboxes.push(row.mailboxId);
+    bySeat.set(row.seatId, mailboxes);
   }
   return bySeat;
 }

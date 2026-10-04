@@ -1,11 +1,11 @@
 /**
  * The live inventory's two writers, on the real path: `openInventory` for the
- * seat rows, and each channel for its own.
+ * seat rows, and each mailbox for its own.
  *
  * `inventory-collections.test.ts` covers the floor these rows land on — org
  * boundary, cross-flow sharing, key shape. This file covers who writes them and
  * what they say, so every case here goes through a registered flow, a real
- * session opened by `openChannels`, and a real action run.
+ * session opened by `openMailboxes`, and a real action run.
  *
  * **Every assertion is paired with a control that would break it.** A row that
  * exists is only evidence of a writer if the same roster, in the same process,
@@ -13,7 +13,7 @@
  * identical roster with the flag down, the custom-kind case runs a third kind
  * that omits the registration, and the staleness case runs a roster that names
  * different members from the ones the session holds. The reader is a flow that
- * is not a channel and declares its own collection instances, so nothing here
+ * is not a mailbox and declares its own collection instances, so nothing here
  * is green merely because the writer read back its own objects.
  */
 import { describe, expect, it } from "vitest";
@@ -22,42 +22,42 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { z } from "zod";
 import {
-  CHANNEL_KIND,
-  INVENTORY_REGISTER_CHANNEL,
+  MAILBOX_KIND,
+  INVENTORY_REGISTER_MAILBOX,
   INVENTORY_REGISTER_SEATS,
   INVENTORY_SEAT_WRITER_SESSION,
-  channelInstances,
-  defineChannelInventoryCollection,
+  mailboxInstances,
+  defineMailboxInventoryCollection,
   defineMembershipIndexCollection,
   defineSeatInventoryCollection,
   inventoryWriterActions,
   membershipPrefix,
-  openChannels,
+  openMailboxes,
   openInventory,
-  type ChannelManifest,
+  type MailboxManifest,
   type InventoryBinding,
   type InventorySeat
 } from "../src/index";
 import { workforceManifestSources } from "../src/manifest-sources";
 import { defineProjectsCollection } from "../src/projects/collections";
 import { forgetOrgTalkTemplate, forgetTalkTemplate } from "../src/projects/talk-template";
-import { channelSessionStateSchema } from "../src/index";
+import { mailboxesessionStateSchema } from "../src/index";
 
 const USER_ID = "u_boot";
 const ORG_ID = DEFAULT_ORG_ID;
 const OTHER_ORG = "org_other";
 
-/** The kind a hand-rolled channel runs on when a case needs a second one. */
+/** The kind a hand-rolled mailbox runs on when a case needs a second one. */
 const BRIEFING_KIND = "briefing";
 /** A hand-rolled kind that deliberately does NOT carry the inventory writer. */
 const SILENT_KIND = "silent";
 
-function record(id: string, declared: Record<string, unknown> = {}): ChannelManifest {
+function record(id: string, declared: Record<string, unknown> = {}): MailboxManifest {
   return { id, declared: { members: ["eng.lead", "eng.coder"], ...declared }, body: "Charter." };
 }
 
 /**
- * The reader: a flow that is **not** a channel, declaring its own instances of
+ * The reader: a flow that is **not** a mailbox, declaring its own instances of
  * the three collections.
  *
  * Its own instances on purpose. A collection is addressed by its pattern and
@@ -66,7 +66,7 @@ function record(id: string, declared: Record<string, unknown> = {}): ChannelMani
  * claim into a measurement.
  */
 const seatsCollection = defineSeatInventoryCollection();
-const channelsCollection = defineChannelInventoryCollection();
+const mailboxesCollection = defineMailboxInventoryCollection();
 const membershipsCollection = defineMembershipIndexCollection();
 
 const readInventory = handler({
@@ -74,12 +74,12 @@ const readInventory = handler({
   inputSchema: z.object({ membershipsOf: z.string().optional() }),
   outputSchema: z.object({
     seats: z.array(z.unknown()),
-    channels: z.array(z.unknown()),
+    mailboxes: z.array(z.unknown()),
     memberships: z.array(z.unknown())
   }),
   resources: {
     seats: seatsCollection,
-    channels: channelsCollection,
+    mailboxes: mailboxesCollection,
     memberships: membershipsCollection
   },
   execute: async (input: any, ctx: any) => {
@@ -90,22 +90,22 @@ const readInventory = handler({
         : await ctx.resources.memberships.list(membershipPrefix(input.membershipsOf));
     return {
       seats: (await ctx.resources.seats.list()).map(state),
-      channels: (await ctx.resources.channels.list()).map(state),
+      mailboxes: (await ctx.resources.mailboxes.list()).map(state),
       memberships: memberships.map(state)
     };
   }
 });
 
-/** The channels the discovery door advertises for a roster, read from the org's channel rows. */
-const discoverChannels = handler({
-  name: "discover-channels",
-  inputSchema: z.object({ channels: z.array(z.unknown()) }),
+/** The mailboxes the discovery door advertises for a roster, read from the org's mailbox rows. */
+const discoverMailboxes = handler({
+  name: "discover-mailboxes",
+  inputSchema: z.object({ mailboxes: z.array(z.unknown()) }),
   outputSchema: z.object({ ids: z.array(z.string()) }),
-  resources: { channels: channelsCollection },
+  resources: { mailboxes: mailboxesCollection },
   execute: async (input: any, ctx: any) => {
     const [source] = workforceManifestSources({
-      roster: { workers: [], channels: input.channels },
-      inventory: { channels: "channels" }
+      roster: { workers: [], mailboxes: input.mailboxes },
+      inventory: { mailboxes: "mailboxes" }
     });
     return { ids: (await source!.entries(ctx)).map((entry) => entry.id) };
   }
@@ -113,15 +113,15 @@ const discoverChannels = handler({
 
 const readerFlow = defineFlow({
   kind: "inventory-reader",
-  actions: { read: { block: readInventory }, discover: { block: discoverChannels } }
+  actions: { read: { block: readInventory }, discover: { block: discoverMailboxes } }
 } as never);
 
-/** A hand-rolled channel kind, carrying the writer the way it carries the singleton contract. */
+/** A hand-rolled mailbox kind, carrying the writer the way it carries the singleton contract. */
 function briefingKind() {
   const flow = defineFlow({
     kind: BRIEFING_KIND,
     cardinality: "singleton",
-    session: { stateSchema: channelSessionStateSchema },
+    session: { stateSchema: mailboxesessionStateSchema },
     actions: { ...inventoryWriterActions(BRIEFING_KIND) }
   } as never);
   return Object.assign(() => (flow as any)(), { kind: BRIEFING_KIND });
@@ -131,7 +131,7 @@ function briefingKind() {
  * The control kind: identical to {@link briefingKind} but for the one line that
  * carries the registration.
  *
- * Its channel opens, holds members and behaves like any other — it simply has
+ * Its mailbox opens, holds members and behaves like any other — it simply has
  * nowhere for the binder's run to land. That is what makes "the row is there"
  * an assertion about the writer rather than about the roster.
  */
@@ -145,7 +145,7 @@ function silentKind() {
   const flow = defineFlow({
     kind: SILENT_KIND,
     cardinality: "singleton",
-    session: { stateSchema: channelSessionStateSchema },
+    session: { stateSchema: mailboxesessionStateSchema },
     actions: { ping: { block: noop } }
   } as never);
   return Object.assign(() => (flow as any)(), { kind: SILENT_KIND });
@@ -154,10 +154,10 @@ function silentKind() {
 type HostOptions = {
   /** Turn the writer on for the built-in kind. */
   inventory?: boolean;
-  /** Extra channel kinds, by kind name. */
+  /** Extra mailbox kinds, by kind name. */
   kinds?: Record<string, any>;
-  /** Channels `openChannels` opens. Defaults to the whole roster. */
-  open?: ChannelManifest[];
+  /** Mailboxes `openMailboxes` opens. Defaults to the whole roster. */
+  open?: MailboxManifest[];
   /** Shared storage, so a second boot reads what the first wrote. */
   adapter?: unknown;
   /** The org's resource map, for a roster carrying a project talk template. */
@@ -165,15 +165,15 @@ type HostOptions = {
 };
 
 /**
- * Register the roster's kinds plus the reader, open the channels, and hand back
+ * Register the roster's kinds plus the reader, open the mailboxes, and hand back
  * the doors a case needs.
  *
  * `openInventory` is NOT called here. Several cases need it run alone, with a
- * roster the channels were not opened from, so the binder stays the case's to
+ * roster the mailboxes were not opened from, so the binder stays the case's to
  * invoke.
  */
-async function host(roster: ChannelManifest[], options: HostOptions = {}) {
-  const instances = channelInstances(roster, {
+async function host(roster: MailboxManifest[], options: HostOptions = {}) {
+  const instances = mailboxInstances(roster, {
     ...(options.kinds === undefined ? {} : { kinds: options.kinds }),
     ...(options.inventory === undefined ? {} : { inventory: options.inventory }),
     ...(options.resources === undefined ? {} : { resources: options.resources })
@@ -188,7 +188,7 @@ async function host(roster: ChannelManifest[], options: HostOptions = {}) {
   } as never);
   const runtime = await state.getRuntime();
 
-  await openChannels(options.open ?? roster, {
+  await openMailboxes(options.open ?? roster, {
     client: sessionApi(runtime.stores),
     userId: USER_ID
   });
@@ -199,7 +199,7 @@ async function host(roster: ChannelManifest[], options: HostOptions = {}) {
    * It REJECTS on a failed run, which is the contract `openInventory`'s
    * `run` states: the engine hands a refusal back as `{ error }` rather than
    * throwing, and a door that passed that through as an ordinary value would
-   * report every channel registered while writing nothing.
+   * report every mailbox registered while writing nothing.
    */
   const run = async (request: {
     action: string;
@@ -234,7 +234,7 @@ async function host(roster: ChannelManifest[], options: HostOptions = {}) {
   return {
     runtime,
     run,
-    /** Read the inventory back through a flow that is not a channel. */
+    /** Read the inventory back through a flow that is not a mailbox. */
     read: async (opts: { orgId?: string; membershipsOf?: string } = {}) => {
       const { membershipsOf, ...rest } = opts;
       const result: any = await runAction({
@@ -249,16 +249,16 @@ async function host(roster: ChannelManifest[], options: HostOptions = {}) {
       } as never);
       return (result.output ?? result) as {
         seats: any[];
-        channels: any[];
+        mailboxes: any[];
         memberships: any[];
       };
     },
-    /** The channel ids discovery advertises for a roster. */
-    discover: async (channels: ChannelManifest[]) => {
+    /** The mailbox ids discovery advertises for a roster. */
+    discover: async (mailboxes: MailboxManifest[]) => {
       const result: any = await runAction({
         flow: reader,
         actionName: "discover",
-        input: { channels },
+        input: { mailboxes },
         userId: USER_ID,
         orgId: ORG_ID,
         stores: runtime.stores,
@@ -280,7 +280,7 @@ async function host(roster: ChannelManifest[], options: HostOptions = {}) {
     act: async (sessionId: string, actionName: string, input: unknown) => {
       try {
         return (await runAction({
-          flow: byKind[CHANNEL_KIND],
+          flow: byKind[MAILBOX_KIND],
           actionName,
           input,
           userId: USER_ID,
@@ -297,7 +297,7 @@ async function host(roster: ChannelManifest[], options: HostOptions = {}) {
   };
 }
 
-/** `openChannels`'s session API over one runtime's stores. */
+/** `openMailboxes`'s session API over one runtime's stores. */
 function sessionApi(stores: any) {
   return {
     createSession: async (options: {
@@ -320,7 +320,7 @@ function sessionApi(stores: any) {
           flowKind: options.flowKind,
           flowId: options.flowKind,
           userId: options.userId,
-          // `openChannels` no longer names an org (FIX-1442). This stand-in for
+          // `openMailboxes` no longer names an org (FIX-1442). This stand-in for
           // the session route binds what the real route binds when no resolver
           // is configured, so the rows land where the reader looks.
           orgId: options.orgId ?? DEFAULT_ORG_ID,
@@ -356,23 +356,23 @@ const SEATS: InventorySeat[] = [
   { id: "eng.coder", kind: "coder", actions: {} }
 ];
 
-/** The usual call: seats through the built-in kind, channels through their own. */
+/** The usual call: seats through the built-in kind, mailboxes through their own. */
 function bind(
   lab: Awaited<ReturnType<typeof host>>,
   options: {
     seats?: InventorySeat[];
-    channels?: ChannelManifest[];
+    mailboxes?: MailboxManifest[];
     orgId?: string | undefined;
     seatWriterKind?: string;
   } = {}
 ): Promise<InventoryBinding> {
   return openInventory(
-    { seats: options.seats ?? SEATS, channels: options.channels ?? [] },
+    { seats: options.seats ?? SEATS, mailboxes: options.mailboxes ?? [] },
     {
       run: lab.run as never,
       userId: USER_ID,
       orgId: "orgId" in options ? options.orgId : ORG_ID,
-      seatWriter: { flowKind: options.seatWriterKind ?? CHANNEL_KIND }
+      seatWriter: { flowKind: options.seatWriterKind ?? MAILBOX_KIND }
     }
   );
 }
@@ -394,13 +394,13 @@ describe("what one boot writes", () => {
     }
   });
 
-  it("gives every seat and every open channel a row, read back from a flow that is not a channel (BR-8, BR-14, BR-21)", async () => {
+  it("gives every seat and every open mailbox a row, read back from a flow that is not a mailbox (BR-8, BR-14, BR-21)", async () => {
     const roster = [record("eng.standup"), record("eng.retro", { members: ["eng.lead"] })];
     const lab = await host(roster, { inventory: true });
     try {
-      const result = await bind(lab, { channels: roster });
+      const result = await bind(lab, { mailboxes: roster });
       expect(result.problems).toEqual([]);
-      expect(result).toMatchObject({ seats: 2, channels: 2 });
+      expect(result).toMatchObject({ seats: 2, mailboxes: 2 });
 
       const rows = await lab.read();
 
@@ -414,18 +414,18 @@ describe("what one boot writes", () => {
         incarnation: null
       });
 
-      const channels = Object.fromEntries(rows.channels.map((row) => [row.id, row]));
-      expect(Object.keys(channels).sort()).toEqual(["eng.retro", "eng.standup"]);
-      expect(channels["eng.standup"]).toMatchObject({
+      const mailboxes = Object.fromEntries(rows.mailboxes.map((row) => [row.id, row]));
+      expect(Object.keys(mailboxes).sort()).toEqual(["eng.retro", "eng.standup"]);
+      expect(mailboxes["eng.standup"]).toMatchObject({
         id: "eng.standup",
-        kind: CHANNEL_KIND,
+        kind: MAILBOX_KIND,
         members: ["eng.lead", "eng.coder"]
       });
-      expect(channels["eng.retro"].members).toEqual(["eng.lead"]);
+      expect(mailboxes["eng.retro"].members).toEqual(["eng.lead"]);
       // `openedAt` is written, not left at the schema's null default — the
       // assertion is on it being a real timestamp, because a `null` here would
       // still satisfy a `toHaveProperty` check.
-      expect(Date.parse(channels["eng.standup"].openedAt)).not.toBeNaN();
+      expect(Date.parse(mailboxes["eng.standup"].openedAt)).not.toBeNaN();
     } finally {
       await lab.dispose();
     }
@@ -435,12 +435,12 @@ describe("what one boot writes", () => {
     const roster = [record("eng.standup", { members: ["eng.lead"] })];
     const lab = await host(roster, { inventory: true });
     try {
-      await bind(lab, { channels: roster, seats: [{ id: "eng.lead", kind: "agent", actions: {} }] });
+      await bind(lab, { mailboxes: roster, seats: [{ id: "eng.lead", kind: "agent", actions: {} }] });
 
       // Read out of storage rather than through the collection, because what is
       // being pinned is the key an already-persisted org would have to keep.
       expect(await lab.keys()).toEqual([
-        "inventory/channels/eng.standup",
+        "inventory/mailboxes/eng.standup",
         "inventory/members/eng.lead/eng.standup",
         "inventory/seats/eng.lead"
       ]);
@@ -456,7 +456,7 @@ describe("what one boot writes", () => {
     }
   });
 
-  it("writes the membership index from the same read as the channel row, so the two agree (BR-17, BR-20)", async () => {
+  it("writes the membership index from the same read as the mailbox row, so the two agree (BR-17, BR-20)", async () => {
     const roster = [
       record("eng.standup", { members: ["eng.lead", "eng.coder"] }),
       record("eng.retro", { members: ["eng.lead"] }),
@@ -465,28 +465,28 @@ describe("what one boot writes", () => {
     const lab = await host(roster, { inventory: true });
     try {
       await bind(lab, {
-        channels: roster,
+        mailboxes: roster,
         seats: [...SEATS, { id: "eng.leadership", kind: "agent", actions: {} }]
       });
 
       const mine = await lab.read({ membershipsOf: "eng.lead" });
-      expect(mine.memberships.map((row) => row.channelId).sort()).toEqual([
+      expect(mine.memberships.map((row) => row.mailboxId).sort()).toEqual([
         "eng.retro",
         "eng.standup"
       ]);
       // "eng.leadership" is in the roster precisely so a prefix read without the
-      // segment boundary would drag its channel in here.
-      expect(mine.memberships.map((row) => row.channelId)).not.toContain("eng.allhands");
+      // segment boundary would drag its mailbox in here.
+      expect(mine.memberships.map((row) => row.mailboxId)).not.toContain("eng.allhands");
 
       // The index is a projection, so it must say exactly what the rows say. A
       // check on the index alone would pass against an index written from some
       // other source entirely.
       const all = await lab.read();
-      const fromRows = all.channels
+      const fromRows = all.mailboxes
         .filter((row) => (row.members as string[]).includes("eng.lead"))
         .map((row) => row.id)
         .sort();
-      expect(fromRows).toEqual(mine.memberships.map((row) => row.channelId).sort());
+      expect(fromRows).toEqual(mine.memberships.map((row) => row.mailboxId).sort());
     } finally {
       await lab.dispose();
     }
@@ -494,26 +494,26 @@ describe("what one boot writes", () => {
 });
 
 describe("what the binder refuses to carry", () => {
-  it("writes the members the open channel holds, never the ones the roster names (BR-10, BR-10a)", async () => {
+  it("writes the members the open mailbox holds, never the ones the roster names (BR-10, BR-10a)", async () => {
     // Opened with one roster, registered from another. Running `openInventory`
     // ALONE is what makes this conclusive: with a whole boot in between,
-    // `openChannels` would be a second candidate writer of the row's members and
+    // `openMailboxes` would be a second candidate writer of the row's members and
     // a red result would not say which of the two carried them.
     const opened = [record("eng.standup", { members: ["eng.lead", "eng.coder"] })];
     const lab = await host(opened, { inventory: true });
     try {
       const edited = [record("eng.standup", { members: ["ops.oncall", "ops.sre"] })];
-      await bind(lab, { channels: edited, seats: [] });
+      await bind(lab, { mailboxes: edited, seats: [] });
 
       const rows = await lab.read();
       // The red state is this row holding ["ops.oncall", "ops.sre"] — exactly
       // what a binder that copied the roster's `members:` forward would write.
-      expect(rows.channels).toHaveLength(1);
-      expect(rows.channels[0].members).toEqual(["eng.lead", "eng.coder"]);
+      expect(rows.mailboxes).toHaveLength(1);
+      expect(rows.mailboxes[0].members).toEqual(["eng.lead", "eng.coder"]);
 
       // And the index follows the row, not the roster, for the same reason.
       expect(await lab.keys()).toEqual([
-        "inventory/channels/eng.standup",
+        "inventory/mailboxes/eng.standup",
         "inventory/members/eng.coder/eng.standup",
         "inventory/members/eng.lead/eng.standup"
       ]);
@@ -531,7 +531,7 @@ describe("what the binder refuses to carry", () => {
     const roster = [record("eng.standup")];
     const lab = await host(roster, { inventory: true });
     try {
-      await expect(bind(lab, { channels: roster, orgId: undefined })).rejects.toThrow(/orgId/);
+      await expect(bind(lab, { mailboxes: roster, orgId: undefined })).rejects.toThrow(/orgId/);
       expect(await lab.keys()).toEqual([]);
     } finally {
       await lab.dispose();
@@ -547,7 +547,7 @@ describe("what the binder refuses to carry", () => {
     const roster = [record("eng.standup")];
     const lab = await host(roster, { inventory: true });
     try {
-      await bind(lab, { channels: roster, orgId: DEFAULT_ORG_ID });
+      await bind(lab, { mailboxes: roster, orgId: DEFAULT_ORG_ID });
 
       expect((await lab.keys(DEFAULT_ORG_ID)).length).toBeGreaterThan(0);
       expect(await lab.keys(OTHER_ORG)).toEqual([]);
@@ -561,7 +561,7 @@ describe("what the binder refuses to carry", () => {
     try {
       await expect(
         openInventory(
-          { seats: SEATS, channels: [] },
+          { seats: SEATS, mailboxes: [] },
           { run: lab.run as never, userId: USER_ID, orgId: ORG_ID }
         )
       ).rejects.toThrow(/seatWriter/);
@@ -580,50 +580,50 @@ describe("running it twice", () => {
     const first = await host(roster, { inventory: true, adapter });
     let openedAt: string;
     try {
-      await bind(first, { channels: roster });
+      await bind(first, { mailboxes: roster });
       const keys = await first.keys();
-      expect(keys).toContain("inventory/channels/eng.retro");
-      openedAt = (await first.row("inventory/channels/eng.standup"))!.openedAt as string;
+      expect(keys).toContain("inventory/mailboxes/eng.retro");
+      openedAt = (await first.row("inventory/mailboxes/eng.standup"))!.openedAt as string;
 
       // Second run, same process, same roster: the red state is rows doubling.
-      await bind(first, { channels: roster });
+      await bind(first, { mailboxes: roster });
       expect(await first.keys()).toEqual(keys);
     } finally {
       await first.dispose();
     }
 
-    // A second boot over the SAME storage, from a roster that lost a channel and
+    // A second boot over the SAME storage, from a roster that lost a mailbox and
     // a seat. Nothing is reconciled: a binder that dropped what its roster no
-    // longer names would take a live channel's row with it.
+    // longer names would take a live mailbox's row with it.
     const shrunk = [record("eng.standup")];
     const second = await host(shrunk, { inventory: true, adapter });
     try {
       const result = await bind(second, {
-        channels: shrunk,
+        mailboxes: shrunk,
         seats: [{ id: "eng.lead", kind: "agent", actions: {} }]
       });
       expect(result.problems).toEqual([]);
 
       const rows = await second.read();
-      expect(rows.channels.map((row) => row.id).sort()).toEqual(["eng.retro", "eng.standup"]);
+      expect(rows.mailboxes.map((row) => row.id).sort()).toEqual(["eng.retro", "eng.standup"]);
       expect(rows.seats.map((row) => row.id).sort()).toEqual(["eng.coder", "eng.lead"]);
-      // The channel that was open before this boot keeps the moment it opened,
+      // The mailbox that was open before this boot keeps the moment it opened,
       // rather than being restamped by a binder that has no idea when that was.
-      expect((await second.row("inventory/channels/eng.standup"))!.openedAt).toBe(openedAt);
+      expect((await second.row("inventory/mailboxes/eng.standup"))!.openedAt).toBe(openedAt);
     } finally {
       await second.dispose();
     }
   });
 });
 
-describe("a channel that becomes a project talk template", () => {
-  it("is retired from the channel inventory at the next boot over the same storage, and discovery stops advertising it", async () => {
+describe("a mailbox that becomes a project talk template", () => {
+  it("is retired from the mailbox inventory at the next boot over the same storage, and discovery stops advertising it", async () => {
     const adapter = inMemoryStores();
     const before = [record("eng.room"), record("eng.standup")];
     const first = await host(before, { inventory: true, adapter });
     try {
-      expect((await bind(first, { channels: before })).problems).toEqual([]);
-      expect(await first.keys()).toContain("inventory/channels/eng.room");
+      expect((await bind(first, { mailboxes: before })).problems).toEqual([]);
+      expect(await first.keys()).toContain("inventory/mailboxes/eng.room");
       expect(await first.discover(before)).toEqual(["eng.room", "eng.standup"]);
     } finally {
       await first.dispose();
@@ -636,11 +636,11 @@ describe("a channel that becomes a project talk template", () => {
       // The reader alone: before this boot's binder runs, the stale row is still stored and not advertised.
       expect(await second.discover(after)).toEqual(["eng.standup"]);
 
-      expect((await bind(second, { channels: after })).problems).toEqual([]);
-      // The store: the template's channel row and its membership rows are gone; the channel's stay.
+      expect((await bind(second, { mailboxes: after })).problems).toEqual([]);
+      // The store: the template's mailbox row and its membership rows are gone; the mailbox's stay.
       const keys = await second.keys();
       expect(keys.filter((key) => key.endsWith("/eng.room"))).toEqual([]);
-      expect(keys).toContain("inventory/channels/eng.standup");
+      expect(keys).toContain("inventory/mailboxes/eng.standup");
       expect(keys).toContain("inventory/members/eng.lead/eng.standup");
       expect(await second.discover(after)).toEqual(["eng.standup"]);
     } finally {
@@ -649,13 +649,13 @@ describe("a channel that becomes a project talk template", () => {
   });
 });
 
-describe("a channel's session after its CHANNEL.md becomes a template", () => {
+describe("a mailbox's session after its MAILBOX.md becomes a template", () => {
   it("refuses post and read at the next boot, though the session survives in the store", async () => {
     const adapter = inMemoryStores();
     const before = [record("eng.room")];
     const first = await host(before, { inventory: true, adapter });
     try {
-      expect((await first.act("eng.room", "post", { body: "still a channel" })).error).toBeUndefined();
+      expect((await first.act("eng.room", "post", { body: "still a mailbox" })).error).toBeUndefined();
     } finally {
       await first.dispose();
     }
@@ -664,15 +664,15 @@ describe("a channel's session after its CHANNEL.md becomes a template", () => {
     try {
       const after = [record("eng.room", { mintFor: "projects", members: [] })];
       const second = await host(after, { inventory: true, adapter, resources: { projects }, open: [] });
-      expect((await bind(second, { channels: after, seats: [] })).problems).toEqual([]);
+      expect((await bind(second, { mailboxes: after, seats: [] })).problems).toEqual([]);
       try {
-        const posted = await second.act("eng.room", "post", { body: "no longer a channel" });
-        expect(String(posted.error)).toMatch(/channel-is-a-template/);
+        const posted = await second.act("eng.room", "post", { body: "no longer a mailbox" });
+        expect(String(posted.error)).toMatch(/mailbox-is-a-template/);
         const read = await second.act("eng.room", "read", {});
-        expect(String(read.error)).toMatch(/channel-is-a-template/);
-        // Nor can the surviving session put its channel row back.
-        const registered = await second.act("eng.room", "registerChannelInInventory", {});
-        expect(String(registered.error)).toMatch(/channel-is-a-template/);
+        expect(String(read.error)).toMatch(/mailbox-is-a-template/);
+        // Nor can the surviving session put its mailbox row back.
+        const registered = await second.act("eng.room", "registerMailboxInInventory", {});
+        expect(String(registered.error)).toMatch(/mailbox-is-a-template/);
         expect((await second.keys()).filter((key) => key.endsWith("/eng.room"))).toEqual([]);
       } finally {
         await second.dispose();
@@ -684,14 +684,14 @@ describe("a channel's session after its CHANNEL.md becomes a template", () => {
   });
 });
 
-describe("retiring a template's old channel row", () => {
-  /** A first boot registers `eng.room` as a channel; returns the shared adapter. */
+describe("retiring a template's old mailbox row", () => {
+  /** A first boot registers `eng.room` as a mailbox; returns the shared adapter. */
   async function registeredRoom() {
     const adapter = inMemoryStores();
     const before = [record("eng.room"), record("eng.standup")];
     const first = await host(before, { inventory: true, adapter });
     try {
-      expect((await bind(first, { channels: before })).problems).toEqual([]);
+      expect((await bind(first, { mailboxes: before })).problems).toEqual([]);
     } finally {
       await first.dispose();
     }
@@ -699,20 +699,20 @@ describe("retiring a template's old channel row", () => {
   }
   const after = [record("eng.room", { mintFor: "projects" }), record("eng.standup")];
 
-  it("removes a membership row the channel row does not list", async () => {
+  it("removes a membership row the mailbox row does not list", async () => {
     const adapter = await registeredRoom();
     const second = await host([record("eng.standup")], { inventory: true, adapter });
     try {
-      // A membership row an earlier registration left that the channel row no longer names.
+      // A membership row an earlier registration left that the mailbox row no longer names.
       await second.runtime.stores.resourceState.set(
         "org",
         ORG_ID,
         "inventory/members/eng.ghost/eng.room",
-        { seatId: "eng.ghost", channelId: "eng.room" } as never,
+        { seatId: "eng.ghost", mailboxId: "eng.room" } as never,
         "any"
       );
       expect(await second.keys()).toContain("inventory/members/eng.ghost/eng.room");
-      expect((await bind(second, { channels: after })).problems).toEqual([]);
+      expect((await bind(second, { mailboxes: after })).problems).toEqual([]);
       const keys = await second.keys();
       expect(keys.filter((key) => key.endsWith("/eng.room"))).toEqual([]);
       expect(keys).toContain("inventory/members/eng.lead/eng.standup");
@@ -721,21 +721,21 @@ describe("retiring a template's old channel row", () => {
     }
   });
 
-  it("removes the membership rows of an id whose channel row is already gone", async () => {
+  it("removes the membership rows of an id whose mailbox row is already gone", async () => {
     const adapter = await registeredRoom();
     const second = await host([record("eng.standup")], { inventory: true, adapter });
     try {
-      await second.runtime.stores.resourceState.delete("org", ORG_ID, "inventory/channels/eng.room", "any");
+      await second.runtime.stores.resourceState.delete("org", ORG_ID, "inventory/mailboxes/eng.room", "any");
       const left = (await second.keys()).filter((key) => key.endsWith("/eng.room"));
       expect(left).toEqual(["inventory/members/eng.coder/eng.room", "inventory/members/eng.lead/eng.room"]);
-      expect((await bind(second, { channels: after })).problems).toEqual([]);
+      expect((await bind(second, { mailboxes: after })).problems).toEqual([]);
       expect((await second.keys()).filter((key) => key.endsWith("/eng.room"))).toEqual([]);
     } finally {
       await second.dispose();
     }
   });
 
-  it("keeps the channel row until every membership row is gone, so a failed run is finished by the next", async () => {
+  it("keeps the mailbox row until every membership row is gone, so a failed run is finished by the next", async () => {
     const base = inMemoryStores() as any;
     // One membership delete fails, once.
     let failNext = true;
@@ -767,7 +767,7 @@ describe("retiring a template's old channel row", () => {
     const before = [record("eng.room")];
     const first = await host(before, { inventory: true, adapter });
     try {
-      expect((await bind(first, { channels: before })).problems).toEqual([]);
+      expect((await bind(first, { mailboxes: before })).problems).toEqual([]);
     } finally {
       await first.dispose();
     }
@@ -775,13 +775,13 @@ describe("retiring a template's old channel row", () => {
     const after = [record("eng.room", { mintFor: "projects" })];
     const second = await host([record("eng.other")], { inventory: true, adapter, open: [] });
     try {
-      const failed = await bind(second, { channels: after, seats: [] });
+      const failed = await bind(second, { mailboxes: after, seats: [] });
       expect(failed.problems).toEqual([expect.stringMatching(/could not be retired .*membership delete failed/)]);
-      // The channel row, which names the members, outlives the failure.
-      expect(await second.keys()).toContain("inventory/channels/eng.room");
+      // The mailbox row, which names the members, outlives the failure.
+      expect(await second.keys()).toContain("inventory/mailboxes/eng.room");
 
-      // The next run finishes it: no channel row, no membership row.
-      expect((await bind(second, { channels: after, seats: [] })).problems).toEqual([]);
+      // The next run finishes it: no mailbox row, no membership row.
+      expect((await bind(second, { mailboxes: after, seats: [] })).problems).toEqual([]);
       expect((await second.keys()).filter((key) => key.endsWith("/eng.room"))).toEqual([]);
     } finally {
       await second.dispose();
@@ -790,21 +790,21 @@ describe("retiring a template's old channel row", () => {
 });
 
 describe("an app that never turns the inventory on", () => {
-  it("declares nothing and writes nothing, and its channels behave as they did (BR-13)", async () => {
+  it("declares nothing and writes nothing, and its mailboxes behave as they did (BR-13)", async () => {
     const roster = [record("eng.standup")];
 
     // The control and the case are the same roster and the same code, one flag
     // apart. Without it, there is no action to run, so the binder reports the
-    // channel by name and no row exists anywhere.
+    // mailbox by name and no row exists anywhere.
     const off = await host(roster);
     try {
-      const result = await bind(off, { channels: roster });
-      expect(result.channels).toBe(0);
+      const result = await bind(off, { mailboxes: roster });
+      expect(result.mailboxes).toBe(0);
       expect(result.problems).toHaveLength(2);
       expect(result.problems.join("\n")).toContain("eng.standup");
       expect(await off.keys()).toEqual([]);
 
-      // And the channel is otherwise exactly a channel: a post lands, a read
+      // And the mailbox is otherwise exactly a mailbox: a post lands, a read
       // comes back, nothing about it changed.
       const posted = await off.act("eng.standup", "post", { body: "morning" });
       expect(posted.error).toBeUndefined();
@@ -818,7 +818,7 @@ describe("an app that never turns the inventory on", () => {
 
     const on = await host(roster, { inventory: true });
     try {
-      const result = await bind(on, { channels: roster });
+      const result = await bind(on, { mailboxes: roster });
       expect(result.problems).toEqual([]);
       expect(await on.keys()).not.toEqual([]);
     } finally {
@@ -827,7 +827,7 @@ describe("an app that never turns the inventory on", () => {
   });
 });
 
-describe("a custom channel kind", () => {
+describe("a custom mailbox kind", () => {
   it("gets rows like the built-in's, and one that cannot register is named (BR-22, BR-12)", async () => {
     const roster = [
       record("eng.standup"),
@@ -839,15 +839,15 @@ describe("a custom channel kind", () => {
       kinds: { [BRIEFING_KIND]: briefingKind(), [SILENT_KIND]: silentKind() }
     });
     try {
-      const result = await bind(lab, { channels: roster });
+      const result = await bind(lab, { mailboxes: roster });
 
       const rows = await lab.read();
-      const byId = Object.fromEntries(rows.channels.map((row) => [row.id, row]));
+      const byId = Object.fromEntries(rows.mailboxes.map((row) => [row.id, row]));
 
       // The built-in and the hand-rolled kind are both there, each carrying the
-      // kind that minted it. A write behind a `kind === "channel"` test would
+      // kind that minted it. A write behind a `kind === "mailbox"` test would
       // leave `eng.brief` out while every other assertion here still passed.
-      expect(byId["eng.standup"].kind).toBe(CHANNEL_KIND);
+      expect(byId["eng.standup"].kind).toBe(MAILBOX_KIND);
       expect(byId["eng.brief"]).toMatchObject({
         id: "eng.brief",
         kind: BRIEFING_KIND,
@@ -857,7 +857,7 @@ describe("a custom channel kind", () => {
       // The kind that carries no registration is a NAMED failure, not a silent
       // gap — and the two that could register still did.
       expect(byId["eng.quiet"]).toBeUndefined();
-      expect(result.channels).toBe(2);
+      expect(result.mailboxes).toBe(2);
       expect(result.problems).toHaveLength(1);
       expect(result.problems[0]).toContain("eng.quiet");
       expect(result.problems[0]).toContain("could not register");
@@ -867,21 +867,21 @@ describe("a custom channel kind", () => {
   });
 });
 
-describe("a channel nobody opened", () => {
+describe("a mailbox nobody opened", () => {
   it("is named rather than registered, and the open ones still are (BR-12)", async () => {
     const roster = [record("eng.standup"), record("eng.ghost")];
-    // Opened without `eng.ghost`, so its session has no channel in it.
+    // Opened without `eng.ghost`, so its session has no mailbox in it.
     const lab = await host(roster, { inventory: true, open: [record("eng.standup")] });
     try {
-      const result = await bind(lab, { channels: roster });
+      const result = await bind(lab, { mailboxes: roster });
 
-      expect(result.channels).toBe(1);
+      expect(result.mailboxes).toBe(1);
       expect(result.problems).toHaveLength(1);
       expect(result.problems[0]).toContain("eng.ghost");
-      expect(result.problems[0]).toContain("not an open channel");
+      expect(result.problems[0]).toContain("not an open mailbox");
 
       const rows = await lab.read();
-      expect(rows.channels.map((row) => row.id)).toEqual(["eng.standup"]);
+      expect(rows.mailboxes.map((row) => row.id)).toEqual(["eng.standup"]);
     } finally {
       await lab.dispose();
     }
@@ -893,18 +893,18 @@ describe("the registration action itself", () => {
     const roster = [record("eng.standup")];
     const lab = await host(roster, { inventory: true });
     try {
-      const refused = await lab.act("eng.standup", INVENTORY_REGISTER_CHANNEL, {
+      const refused = await lab.act("eng.standup", INVENTORY_REGISTER_MAILBOX, {
         members: ["ops.intruder"]
       });
       // The schema is closed, so a caller cannot even name the field. This is
       // the fence: there is no shape of input through which somebody else's
-      // membership could be published under this channel's id.
+      // membership could be published under this mailbox's id.
       expect(refused.error).toBeDefined();
       expect(await lab.keys()).toEqual([]);
 
-      const accepted = await lab.act("eng.standup", INVENTORY_REGISTER_CHANNEL, {});
+      const accepted = await lab.act("eng.standup", INVENTORY_REGISTER_MAILBOX, {});
       expect(accepted.error).toBeUndefined();
-      expect((await lab.row("inventory/channels/eng.standup"))!.members).toEqual([
+      expect((await lab.row("inventory/mailboxes/eng.standup"))!.members).toEqual([
         "eng.lead",
         "eng.coder"
       ]);
@@ -920,15 +920,15 @@ describe("the registration action itself", () => {
     const roster = [record("eng.standup", { members: ["eng.lead", "bad/id"] })];
     const lab = await host(roster, { inventory: true, open: roster });
     try {
-      const first = await lab.act("eng.standup", INVENTORY_REGISTER_CHANNEL, {});
+      const first = await lab.act("eng.standup", INVENTORY_REGISTER_MAILBOX, {});
       expect(first.error).toBeDefined();
-      // A channel row with no matching membership row would disagree with the
+      // A mailbox row with no matching membership row would disagree with the
       // index for as long as the process runs, since nothing here retries or
       // prunes. So a permanently-failing member must leave nothing behind,
-      // not a channel row committed ahead of the membership it names.
+      // not a mailbox row committed ahead of the membership it names.
       expect(await lab.keys()).toEqual([]);
 
-      const second = await lab.act("eng.standup", INVENTORY_REGISTER_CHANNEL, {});
+      const second = await lab.act("eng.standup", INVENTORY_REGISTER_MAILBOX, {});
       expect(second.error).toBeDefined();
       expect(await lab.keys()).toEqual([]);
     } finally {
@@ -942,7 +942,7 @@ describe("the registration action itself", () => {
     try {
       // `lab.act` dispatches exactly the way a caller-addressed HTTP/MCP
       // request would — no `source`, which resolves as `"http"` (public).
-      // Unlike `registerChannel`, this action's whole input is the row data,
+      // Unlike `registerMailbox`, this action's whole input is the row data,
       // so a public hit on it would let a caller write any seat it chose.
       const attempt = await lab.act(INVENTORY_SEAT_WRITER_SESSION, INVENTORY_REGISTER_SEATS, {
         seats: [{ id: "attacker.fake", kind: "agent", actions: {} }]

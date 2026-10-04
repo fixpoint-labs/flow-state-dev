@@ -40,7 +40,7 @@ import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 import workforceAdminFlow from "@/flows/workforce-admin/flow";
 import { hireKitchenSinkWorkforce, kitchenSinkKinds } from "@/workforce/hire";
-import { mergeSeatFlows, openChannels, reloadHiredSeats } from "@flow-state-dev/workforce";
+import { mergeSeatFlows, openMailboxes, reloadHiredSeats } from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
@@ -105,8 +105,8 @@ const adminFlows: Record<string, FlowInstance<any, any>> = adminCredentialConfig
   ? { workforceAdmin: workforceAdminFlow }
   : {};
 
-// One instance per channel KIND the tree selected, never one per channel — a
-// channel kind is a singleton, so its address is its kind and every channel is
+// One instance per mailbox KIND the tree selected, never one per mailbox — a
+// mailbox kind is a singleton, so its address is its kind and every mailbox is
 // a named session on it. Seats go the other way, one entry per
 // seat, because a seat kind is a `collection` and every seat is its own
 // addressable copy. Both lines follow the kind's declared cardinality; neither
@@ -115,8 +115,8 @@ const adminFlows: Record<string, FlowInstance<any, any>> = adminCredentialConfig
 // These replace the hand-registered built-in this app used to carry: only the binder hands a kind the ledgers a roster minted, so
 // an instance built by hand answers no board call however many `boards:` lines
 // the tree declares.
-const channelFlows = Object.fromEntries(
-  workforce.channelFlows.map((instance) => [instance.id, instance])
+const mailboxFlows = Object.fromEntries(
+  workforce.mailboxFlows.map((instance) => [instance.id, instance])
 );
 
 // Seats are addressed by their own ids (`support.devices`, `support.general`, …),
@@ -126,7 +126,7 @@ const channelFlows = Object.fromEntries(
 const flowstate = createFlowState({
   flows: mergeSeatFlows(
     {
-      ...channelFlows,
+      ...mailboxFlows,
       chatAgent: chatAgentFlow,
       richTextComponent: richTextComponentFlow,
       weeklyDigest: weeklyDigestFlow,
@@ -219,7 +219,7 @@ const flowstate = createFlowState({
   worker: bullmqDispatch ? bullmq : undefined,
   adapters: [createScheduledTransportAdapter()],
   // Who every caller is, for every flow that brings no resolver of its own:
-  // the assistant's flow, every seat, every channel. One organization and one
+  // the assistant's flow, every seat, every mailbox. One organization and one
   // user, both constants, read from nothing on the request
   // (`lib/kitchen-sink-principal.ts`). `workforce-admin` and `weekly-digest`
   // keep their own.
@@ -341,34 +341,34 @@ export const hiredRosterReload: { seats: string[]; problems: string[]; reportErr
 }
 
 // ---------------------------------------------------------------------------
-// The channels the tree declared, opened.
+// The mailboxes the tree declared, opened.
 //
 // After `createFlowState`, not beside the file hire above, because opening a
-// channel is a session create and there is no session route until the
+// mailbox is a session create and there is no session route until the
 // FlowState exists. Awaited at module scope for the reason the hire is: both
 // the Next route handlers and the `fsdev` CLI import this module, so finishing
-// here is what guarantees no request arrives before the channels are open.
+// here is what guarantees no request arrives before the mailboxes are open.
 //
 // Unguarded on every boot, deliberately. Opening is idempotent — an open
-// channel is left exactly as it is — and the board list is the one thing
+// mailbox is left exactly as it is — and the board list is the one thing
 // re-opening carries, so a "first boot only" flag would strand a board added
-// to a `CHANNEL.md` later.
+// to a `MAILBOX.md` later.
 // ---------------------------------------------------------------------------
 
 /**
- * Who every channel session belongs to: the app's one user.
+ * Who every mailbox session belongs to: the app's one user.
  *
- * A session belongs to one user, so a channel does too. The session route takes
+ * A session belongs to one user, so a mailbox does too. The session route takes
  * its owner from the resolved principal, which is `KITCHEN_SINK_USER_ID` for
- * every caller, so opening the channels as anyone else would make the binder
+ * every caller, so opening the mailboxes as anyone else would make the binder
  * refuse its own sessions on the next boot.
  */
-const CHANNEL_OWNER = KITCHEN_SINK_USER_ID;
+const MAILBOX_OWNER = KITCHEN_SINK_USER_ID;
 
 // The session client, over this app's own router rather than over the network:
 // the app is the server, so a loopback fetcher hands the request straight to
 // the handler the Next route would have called.
-const channelSessions = createSessionClient({
+const mailboxesessions = createSessionClient({
   fetcher: async (input, init) => {
     const router = await flowstate.getRouter();
     // The client builds `/api/flows/...`; the catch-all handler takes the
@@ -381,32 +381,32 @@ const channelSessions = createSessionClient({
       .map(decodeURIComponent);
     const method = (init?.method ?? "GET").toUpperCase();
     if (method !== "GET" && method !== "POST" && method !== "PATCH" && method !== "DELETE") {
-      throw new Error(`[workforce] the channel session client does not issue ${method}`);
+      throw new Error(`[workforce] the mailbox session client does not issue ${method}`);
     }
     return await router[method](new Request(url, init), { params: { path } });
   },
 });
 
-// A store written before this app named its organization holds its channel
+// A store written before this app named its organization holds its mailbox
 // sessions under the framework's development organization, and this app can
 // neither open nor read them. There is no upgrade path: the store is wiped and
 // the app starts fresh. So the boot stops here and says so, naming every such
-// channel, instead of failing on the first one with a bare 403 from the open
+// mailbox, instead of failing on the first one with a bare 403 from the open
 // below. It only reads: it writes, moves and deletes nothing, so two processes
 // booting over the same store at once cannot race each other here.
 {
   const stale: string[] = [];
-  for (const channel of workforce.channels) {
-    const stored = await runtime.stores.session.get(channel.id);
+  for (const mailbox of workforce.mailboxes) {
+    const stored = await runtime.stores.session.get(mailbox.id);
     // A session stored with no organization at all (BP-030) is not this app's either.
     if (stored !== undefined && stored.orgId !== KITCHEN_SINK_ORG_ID) {
-      stale.push(`"${channel.id}" (organization "${stored.orgId ?? "none"}")`);
+      stale.push(`"${mailbox.id}" (organization "${stored.orgId ?? "none"}")`);
     }
   }
   if (stale.length > 0) {
     throw new Error(
       `[workforce] this store was written before kitchen-sink ran as organization ` +
-        `"${KITCHEN_SINK_ORG_ID}", and its channels belong to another organization: ` +
+        `"${KITCHEN_SINK_ORG_ID}", and its mailboxes belong to another organization: ` +
         `${stale.join(", ")}. Earlier data is not carried over. Delete the store and restart: ` +
         `for the dev profile (STORE_TYPE=filesystem) remove .fsdev/data; for the prod profile, ` +
         `point FSD_DB_URL at an empty database.`,
@@ -414,9 +414,9 @@ const channelSessions = createSessionClient({
   }
 }
 
-await openChannels(workforce.channels, {
-  client: channelSessions,
-  userId: CHANNEL_OWNER,
+await openMailboxes(workforce.mailboxes, {
+  client: mailboxesessions,
+  userId: MAILBOX_OWNER,
 });
 
 export default flowstate;

@@ -1,7 +1,7 @@
 {
   "port": 3043,
   "person": "devuser",
-  "channel": { "kind": "channel", "id": "support.desk", "board": "escalations" },
+  "mailbox": { "kind": "mailbox", "id": "support.desk", "board": "escalations" },
   "seats": {
     "devices": { "kind": "agent", "id": "support.otto" },
     "accounts": { "kind": "agent", "id": "support.iris" },
@@ -14,8 +14,8 @@
     "route": "[route:{seat}]",
     "textAnswer": "[scenario:wake]",
     "textReply": "[reply:wake]",
-    "toolAnswer": "[scenario:reply-in-channel]",
-    "toolReply": "[reply:in-channel]",
+    "toolAnswer": "[scenario:reply-in-mailbox]",
+    "toolReply": "[reply:in-mailbox]",
     "talk": "[scenario:talk-to-seat]",
     "talkReply": "[reply:talk-to-seat]",
     "recall": "[scenario:recall]",

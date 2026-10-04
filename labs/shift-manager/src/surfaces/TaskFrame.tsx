@@ -17,7 +17,7 @@ import { asksOfTask, doorOf, rosterOf, seatFor, waited } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { navigate, TASK_TABS, type TaskTab } from "../lib/routes";
 import { sendTurn } from "../lib/send";
-import { channelOf, useTask } from "../lib/task";
+import { mailboxOf, useTask } from "../lib/task";
 import { TurnComposer } from "../components/TurnComposer";
 import type { Gaps } from "../gaps";
 import { TaskSession } from "./TaskSession";
@@ -41,7 +41,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
   }
 
   // The same resolver the inspector and Tasks use, so a name two teams share
-  // resolves to the seat in this row's channel, or to no seat at all.
+  // resolves to the seat in this row's mailbox, or to no seat at all.
   const seat = row === undefined || snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined ? undefined : seatFor(rosterOf(snapshot), row);
   const worker = row?.assignee == null ? null : (seat?.id ?? row.assignee);
 
@@ -64,7 +64,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
       <header className="px-4 pt-3">
         <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">
           TASK ·{" "}
-          <button type="button" className="hover:underline" onClick={() => navigate({ level: "workstream", channelId: channelOf(boardRef), tab: "board" })}>
+          <button type="button" className="hover:underline" onClick={() => navigate({ level: "workstream", mailboxId: mailboxOf(boardRef), tab: "board" })}>
             {boardRef}
           </button>
         </p>

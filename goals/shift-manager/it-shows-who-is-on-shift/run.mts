@@ -210,28 +210,28 @@ function seatOf(seats: string[], assignee: string): string | undefined {
 
 async function readStore(api: LabApi, userId: string): Promise<Store & { unmatched: string[] }> {
   const sessions = ((await api.get(`/sessions?userId=${encodeURIComponent(userId)}&include=dispatch-runs&limit=500`)).sessions ?? []) as Array<Record<string, any>>;
-  // The inventory, through a channel's session, by its published key patterns.
-  const channelIds: string[] = [];
+  // The inventory, through a mailbox's session, by its published key patterns.
+  const mailboxIds: string[] = [];
   let seats: string[] = [];
-  for (const host of sessions.filter((s) => s.flowKind === "channel" && String(s.id).includes("."))) {
+  for (const host of sessions.filter((s) => s.flowKind === "mailbox" && String(s.id).includes("."))) {
     const manifest = await api.get(`/sessions/${encodeURIComponent(host.id)}/manifest`);
     const refOf = (pattern: string) => (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
     const seatsRef = refOf("inventory/seats/*");
-    const channelsRef = refOf("inventory/channels/*");
-    if (seatsRef === undefined || channelsRef === undefined) continue;
+    const mailboxesRef = refOf("inventory/mailboxes/*");
+    if (seatsRef === undefined || mailboxesRef === undefined) continue;
     seats = (await api.collection(host.id, seatsRef)).map((r) => String(r.id));
-    channelIds.push(...(await api.collection(host.id, channelsRef)).map((r) => String(r.id)));
+    mailboxIds.push(...(await api.collection(host.id, mailboxesRef)).map((r) => String(r.id)));
     break;
   }
-  // Every row on every board a channel's manifest lists for it.
+  // Every row on every board a mailbox's manifest lists for it.
   const rows: Array<{ key: string; id: string; status: string; assignee: string }> = [];
-  for (const channelId of channelIds) {
-    const manifest = await api.get(`/sessions/${encodeURIComponent(channelId)}/manifest`);
+  for (const mailboxId of mailboxIds) {
+    const manifest = await api.get(`/sessions/${encodeURIComponent(mailboxId)}/manifest`);
     const refs = (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>)
-      .filter((r) => r.kind === "collection" && r.ref.startsWith(`${channelId}.`) && r.pattern === `${r.ref}/**`)
+      .filter((r) => r.kind === "collection" && r.ref.startsWith(`${mailboxId}.`) && r.pattern === `${r.ref}/**`)
       .map((r) => r.ref);
     for (const ref of refs) {
-      for (const row of await api.collection(channelId, ref)) {
+      for (const row of await api.collection(mailboxId, ref)) {
         rows.push({ key: `${ref}/${row.id}`, id: String(row.id), status: String(row.status), assignee: String(row.assignee ?? "") });
       }
     }

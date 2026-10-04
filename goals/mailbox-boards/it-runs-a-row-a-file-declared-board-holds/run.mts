@@ -1,32 +1,32 @@
 /**
  * Goal check — a team declared entirely in files has work filed onto its
- * channel's board by one seat and run to completion by another, which claimed
+ * mailbox's board by one seat and run to completion by another, which claimed
  * it rather than being handed it.
  *
  * **Model-free on purpose.** Nothing here is a judgment call: a row is filed,
  * a board drains it, a side effect happens or it does not. Putting a model in
  * the loop would add a way to fail that has nothing to do with the claim.
  *
- * What the tree contributes, and the code does not: the channel's id, the
+ * What the tree contributes, and the code does not: the mailbox's id, the
  * board's local name, the members, and which seat runs which kind. The ledger
- * id is never written anywhere — it is minted from where the channel folder
+ * id is never written anywhere — it is minted from where the mailbox folder
  * sits, which is why leg 0 greps the whole tree for it and fails if it is
  * there.
  *
  * The tree holds more than this check reads: a second board nobody drains, a
- * third member whose seat hears posts, and a channel on a kind of its own.
- * `workforce-conventions/a-channel-holds-the-work-a-seat-drains` reads those;
+ * third member whose seat hears posts, and a mailbox on a kind of its own.
+ * `workforce-conventions/a-mailbox-holds-the-work-a-seat-drains` reads those;
  * here they only have to leave the row's path alone.
  *
  * Legs:
  *   0  the tree declares a local name and never an id
  *   a  the tree alone produces the roster, the instances and the seats
- *   b  the channel's own read lists the board it holds, by name
- *   c  one seat files one row through the channel — no board in its own code
+ *   b  the mailbox's own read lists the board it holds, by name
+ *   c  one seat files one row through the mailbox — no board in its own code
  *   d  the other seat's board CLAIMS it and runs it, and the work really ran
  *   e  the row is completed on the minted ledger, read straight out of storage
  *
- * Run: pnpm tsx goals/channel-boards/it-runs-a-row-a-file-declared-board-holds/run.mts
+ * Run: pnpm tsx goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/run.mts
  */
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -37,31 +37,31 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import type { Task, TaskWorkerInput } from "@flow-state-dev/orchestration/tasks";
 import {
-  CHANNEL_KIND,
-  channelBoard,
-  channelBoardIds,
-  channelInstances,
+  MAILBOX_KIND,
+  mailboxBoard,
+  mailboxBoardIds,
+  mailboxInstances,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   workerConfigSchema,
-  type ChannelManifest,
+  type MailboxManifest,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
+import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 import { goalTmpDir, runGoal } from "../../lib/index.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
-const USER_ID = "u_channel_boards";
-const ORG_ID = "org_channel_boards";
+const USER_ID = "u_mailbox_boards";
+const ORG_ID = "org_mailbox_boards";
 
 /** Where the drained worker leaves its proof. A real file, not a counter. */
-const OUTBOX = join(goalTmpDir("channel-boards"), "ran.txt");
+const OUTBOX = join(goalTmpDir("mailbox-boards"), "ran.txt");
 
 /**
  * Controls perturb THIS FILE, never the fixture tree — leg 0 reads the tree, so
  * a fixture edit would die there and prove only that leg 0 works.
  *
- *   by-name  the coder seat resolves the board under a DIFFERENT channel that
+ *   by-name  the coder seat resolves the board under a DIFFERENT mailbox that
  *            declares the same local name. Everything still compiles and every
  *            id is well-formed; only the mint differs. Must fail at leg (d)/(e),
  *            which is what makes those legs a test of the minted identity rather
@@ -84,26 +84,26 @@ await runGoal(async () => {
 
   // ---- a. the tree alone produces the roster --------------------------------
   const roster = await readWorkforce(TREE);
-  const read = await readChannelsDirectory(TREE);
+  const read = await readMailboxesDirectory(TREE);
   if (roster.errors.length > 0 || read.errors.length > 0) {
     return { failures: ["the tree did not load cleanly"], evidence: "" };
   }
 
   const workers: WorkerManifest[] = roster.workers;
-  const channels: ChannelManifest[] = read.channels;
-  // The channel that holds boards. The tree's other channel runs a kind of its
+  const mailboxes: MailboxManifest[] = read.mailboxes;
+  // The mailbox that holds boards. The tree's other mailbox runs a kind of its
   // own, which holds none.
-  const channel = channels.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
-  if (channel === undefined) return { failures: ["the tree declared no channel holding a board"], evidence: "" };
+  const mailbox = mailboxes.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
+  if (mailbox === undefined) return { failures: ["the tree declared no mailbox holding a board"], evidence: "" };
 
   // Read off the FILE, never hardcoded — swap the folder names and a correct
   // implementation still passes. The first board the file declares is the one
   // the coder drains.
-  const boardNames = channel.declared.boards as string[];
+  const boardNames = mailbox.declared.boards as string[];
   const boardName = boardNames[0]!;
-  const triage = channelBoard(channel.id, boardName);
+  const triage = mailboxBoard(mailbox.id, boardName);
   const boardId = triage.id;
-  if (!channelBoardIds(channels).includes(boardId)) {
+  if (!mailboxBoardIds(mailboxes).includes(boardId)) {
     return { failures: [`the roster mints no ledger "${boardId}" for the board the file declares`], evidence: "" };
   }
 
@@ -122,13 +122,13 @@ await runGoal(async () => {
     actions: {
       file: {
         // The EM has no board, no collection and no drain — the one line that
-        // reaches the work is a dispatch into the channel's own session.
+        // reaches the work is a dispatch into the mailbox's own session.
         block: dispatcher({
           name: "em-file-row",
-          flowKind: CHANNEL_KIND,
+          flowKind: MAILBOX_KIND,
           action: "fileTask",
           inputSchema: z.object({ goal: z.string() }),
-          session: { id: () => channel.id },
+          session: { id: () => mailbox.id },
           payload: (input: { goal: string }) => ({
             board: boardName,
             goal: input.goal,
@@ -153,13 +153,13 @@ await runGoal(async () => {
   });
 
   // What the SEAT reaches for. On the passing path it is the same mint the
-  // channel made; under `by-name` it is another channel's board of the same
+  // mailbox made; under `by-name` it is another mailbox's board of the same
   // name, so "the names match" stops being enough.
-  const seatBoard = CONTROL === "by-name" ? channelBoard("other.team", boardName) : triage;
+  const seatBoard = CONTROL === "by-name" ? mailboxBoard("other.team", boardName) : triage;
 
   const board = taskBoard({
-    name: "channel-triage",
-    boardId: "channel-triage",
+    name: "mailbox-triage",
+    boardId: "mailbox-triage",
     collection: seatBoard,
     concurrency: 1,
     workers: { coder: ran }
@@ -169,22 +169,22 @@ await runGoal(async () => {
     kind: "coder",
     cardinality: "collection",
     configSchema: workerConfigSchema(),
-    // The whole of what a seat declares to reach the channel's ledger.
+    // The whole of what a seat declares to reach the mailbox's ledger.
     resources: { [seatBoard.id]: seatBoard },
     actions: { drain: { block: board.drain } }
   } as never);
 
-  // The generated module carries the tree's own channel kind, which the other
-  // channel names.
+  // The generated module carries the tree's own mailbox kind, which the other
+  // mailbox names.
   const generated = (await import(pathToFileURL(join(TREE, "workforce.gen.ts")).href)) as {
-    channelKinds: Record<string, never>;
+    mailboxKinds: Record<string, never>;
   };
-  const instances = channelInstances(channels, { kinds: generated.channelKinds });
+  const instances = mailboxInstances(mailboxes, { kinds: generated.mailboxKinds });
   const seats = hireWorkforce(workers, {
     kinds: { em: emKind as never, coder: coderKind as never },
     // One warning on stderr is expected, naming the board nobody drains. A
     // warning naming the coder's board would mean its declaration missed.
-    channelBoards: channelBoardIds(channels)
+    mailboxBoards: mailboxBoardIds(mailboxes)
   });
 
   const state = createFlowState({
@@ -197,7 +197,7 @@ await runGoal(async () => {
 
   try {
     const runtime = await state.getRuntime();
-    await openChannels(channels, {
+    await openMailboxes(mailboxes, {
       client: {
         createSession: async (options: {
           flowKind: string;
@@ -219,7 +219,7 @@ await runGoal(async () => {
               flowKind: options.flowKind,
               flowId: options.flowKind,
               userId: options.userId,
-              // `openChannels` no longer names an org (FIX-1442); this
+              // `openMailboxes` no longer names an org (FIX-1442); this
               // stand-in for the session route binds what the real route binds.
               orgId: options.orgId ?? ORG_ID,
               description: options.description,
@@ -265,19 +265,19 @@ await runGoal(async () => {
         runtimeConfig: { ...runtime.runtimeConfig }
       } as never)) as { output?: unknown; error?: unknown };
 
-    const channelInstance = instances.find((instance) => instance.kind === CHANNEL_KIND)!;
+    const mailboxInstance = instances.find((instance) => instance.kind === MAILBOX_KIND)!;
     const em = seats.find((seat) => seat.kind === "em")!;
     const coder = seats.find((seat) => seat.kind === "coder")!;
 
-    // ---- b. the channel says what it holds, by name -------------------------
-    const view = await act(channelInstance, channel.id, "read", {});
+    // ---- b. the mailbox says what it holds, by name -------------------------
+    const view = await act(mailboxInstance, mailbox.id, "read", {});
     const held = (view.output as { boards?: string[] } | undefined)?.boards;
     // Sorted on both sides: the framework sorts the ledgers a kind is built with.
     if (JSON.stringify(held) !== JSON.stringify([...boardNames].sort())) {
-      failures.push(`the channel read listed ${JSON.stringify(held)}, not ${JSON.stringify([...boardNames].sort())}`);
+      failures.push(`the mailbox read listed ${JSON.stringify(held)}, not ${JSON.stringify([...boardNames].sort())}`);
     }
 
-    // ---- c. one seat files one row, through the channel ---------------------
+    // ---- c. one seat files one row, through the mailbox ---------------------
     const goal = `wire the ${boardName} board end to end`;
     const filed = await act(em, `s_${em.id}`, "file", { goal });
     if (filed.error !== undefined) {
@@ -301,7 +301,7 @@ await runGoal(async () => {
     // Read from the ledger rather than from the drain's report, which would
     // say "1 task completed" whatever it actually wrote.
     const rows: Task[] = [];
-    const boardRead = await act(channelInstance, channel.id, "readBoard", { board: boardName });
+    const boardRead = await act(mailboxInstance, mailbox.id, "readBoard", { board: boardName });
     for (const row of (boardRead.output as { tasks?: Task[] } | undefined)?.tasks ?? []) {
       rows.push(row);
     }
@@ -321,9 +321,9 @@ await runGoal(async () => {
     return {
       failures,
       evidence:
-        `one tree at ${TREE}: channel "${channel.id}" declared board "${boardName}"; the ` +
+        `one tree at ${TREE}: mailbox "${mailbox.id}" declared board "${boardName}"; the ` +
         `framework minted "${boardId}", which appears in no file. The "em" seat filed one row ` +
-        `through the channel's own action, the "coder" seat's board claimed and ran it — proved ` +
+        `through the mailbox's own action, the "coder" seat's board claimed and ran it — proved ` +
         `by ${OUTBOX}, a real side effect the board could not have produced by reporting — and ` +
         `the row reads completed out of org-scoped storage under the minted id. Nothing was ` +
         `dispatched by hand.`

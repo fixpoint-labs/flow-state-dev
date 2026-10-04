@@ -200,8 +200,8 @@ function labApi(origin: string, bearer: string | undefined) {
     return out;
   };
   /** A board's rows as stored. */
-  const rows = async (channelId: string, boardRef: string): Promise<Array<{ status: string }>> =>
-    ((await get(`/sessions/${enc(channelId)}/resources/${enc(boardRef)}?limit=200`)).items ?? []).map((r: any) => ({ status: String(r.clientData?.status) }));
+  const rows = async (mailboxId: string, boardRef: string): Promise<Array<{ status: string }>> =>
+    ((await get(`/sessions/${enc(mailboxId)}/resources/${enc(boardRef)}?limit=200`)).items ?? []).map((r: any) => ({ status: String(r.clientData?.status) }));
   return { call, items, sessions, pendingAsks, rows };
 }
 
@@ -254,10 +254,10 @@ await runGoal(async () => {
   const desk = await readDeclaredRoster(LABS.desk.tree);
   const cosSeat = desk.workers.find((w) => w.id.split(".").at(-1) === COS_NAME);
   const asker = desk.workers.find((w) => w.declared.flow === "asker");
-  const channel = desk.channels[0];
-  if (cosSeat === undefined || asker === undefined || channel === undefined) throw new Error("the desk tree declares no chief of staff, asker or channel");
-  const boardRefs = ((channel.declared.boards as string[] | undefined) ?? []).map((b) => `${channel.id}.${b}`);
-  const members = new Set((channel.declared.members as string[] | undefined) ?? []);
+  const mailbox = desk.mailboxes[0];
+  if (cosSeat === undefined || asker === undefined || mailbox === undefined) throw new Error("the desk tree declares no chief of staff, asker or mailbox");
+  const boardRefs = ((mailbox.declared.boards as string[] | undefined) ?? []).map((b) => `${mailbox.id}.${b}`);
+  const members = new Set((mailbox.declared.members as string[] | undefined) ?? []);
 
   const pages = process.env.GOAL_PAGES ?? (await buildShiftManager(CONTROL));
   const failures: string[] = [];
@@ -315,17 +315,17 @@ await runGoal(async () => {
       if (shownCount !== pending.length) fail("summary", `the summary says ${shownCount} need you, the store holds ${pending.length} pending`);
       const shownAsks = await asksOnScreen(page);
       if (!same(shownAsks, pending)) fail("summary", `the summary lists [${shownAsks.join(", ")}], the store holds [${pending.join(", ")}]`);
-      const storeRunning = (await Promise.all(boardRefs.map((ref) => api.rows(channel.id, ref)))).flat().filter((r) => r.status === "in_progress").length;
+      const storeRunning = (await Promise.all(boardRefs.map((ref) => api.rows(mailbox.id, ref)))).flat().filter((r) => r.status === "in_progress").length;
       const storeNeedsYou = members.has(asker.id) ? pending.length : 0;
-      const stream = page.locator(`[data-testid=cos-stream][data-channel-id="${channel.id}"]`);
-      if ((await stream.count()) !== 1) fail("summary", `the rail lists ${channel.id} ${await stream.count()} times`);
+      const stream = page.locator(`[data-testid=cos-stream][data-mailbox-id="${mailbox.id}"]`);
+      if ((await stream.count()) !== 1) fail("summary", `the rail lists ${mailbox.id} ${await stream.count()} times`);
       else {
         const running = await stream.getByTestId("cos-stream-running").textContent();
         const needs = await stream.getByTestId("cos-stream-needs-you").textContent();
-        if (Number(running) !== storeRunning) fail("summary", `${channel.id} shows ${running} running, the store holds ${storeRunning}`);
-        if (Number(needs) !== storeNeedsYou) fail("summary", `${channel.id} shows ${needs} needing you, its members hold ${storeNeedsYou}`);
+        if (Number(running) !== storeRunning) fail("summary", `${mailbox.id} shows ${running} running, the store holds ${storeRunning}`);
+        if (Number(needs) !== storeNeedsYou) fail("summary", `${mailbox.id} shows ${needs} needing you, its members hold ${storeNeedsYou}`);
       }
-      evidence.push(`summary ${shownCount} need you / ${pending.length} pending, ${channel.id} ${storeRunning} running`);
+      evidence.push(`summary ${shownCount} need you / ${pending.length} pending, ${mailbox.id} ${storeRunning} running`);
 
       // inline
       const answered = shownAsks[0] ?? pending[0]!;

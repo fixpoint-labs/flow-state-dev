@@ -1,8 +1,8 @@
 /**
- * Real-path driver for the app half of the channels-in-the-reference-app goal
+ * Real-path driver for the app half of the mailboxes-in-the-reference-app goal
  * check. Copied into `apps/kitchen-sink` and run there as a real ESM file by
  * run.mts (via `runHarness`), because the subject here IS that app's own
- * wiring: its `fsdev.config.ts` opens the channels at module scope, and only a
+ * wiring: its `fsdev.config.ts` opens the mailboxes at module scope, and only a
  * file executed with the app as cwd resolves both its `@/*` aliases and its
  * `node_modules`.
  *
@@ -15,10 +15,10 @@
  *     unattended-board warning is emitted during the hire, which happens while
  *     that module evaluates. A static import would have run before any patch,
  *     so the config is imported DYNAMICALLY, after the patch is installed.
- *   - **Nothing here opens a channel.** The `openAtImport` read below exists to
+ *   - **Nothing here opens a mailbox.** The `openAtImport` read below exists to
  *     show that the CONFIG opened them — this file must never call an open of
  *     its own, or V11 grades the harness. It is read immediately after the
- *     import, before the router, so a channel opened lazily on first use would
+ *     import, before the router, so a mailbox opened lazily on first use would
  *     not be counted.
  *
  *     It does NOT distinguish an awaited open from a fire-and-forget one, and
@@ -34,25 +34,25 @@
  * Every address this file probes, handed over by run.mts on `GOAL_TREE`.
  *
  * **Nothing here is typed as a literal, and that is load-bearing.** run.mts
- * reads the channel ids, the kind each channel selected, the board holder and
- * each channel's members off the tree at run time, and passes them in. A
+ * reads the mailbox ids, the kind each mailbox selected, the board holder and
+ * each mailbox's members off the tree at run time, and passes them in. A
  * harness that spelled them itself would agree with the tree only by
  * coincidence.
  *
  * `appUserId` is the id the app's own pages call as, not an id this check
- * invents — a channel only the goal can reach is a channel no user has.
+ * invents — a mailbox only the goal can reach is a mailbox no user has.
  */
 interface TreeSpec {
-  channels: Array<{ id: string; address: string }>;
+  mailboxes: Array<{ id: string; address: string }>;
   boardHolder: { id: string; address: string };
-  /** Declared members, per channel id — who a fan-out on that channel addresses. */
-  membersByChannel: Record<string, string[]>;
-  channelOwner: string;
+  /** Declared members, per mailbox id — who a fan-out on that mailbox addresses. */
+  membersByMailbox: Record<string, string[]>;
+  mailboxOwner: string;
   appUserId: string;
 }
 
 const TREE = JSON.parse(process.env.GOAL_TREE ?? "") as TreeSpec;
-const USER_ID = TREE.channelOwner;
+const USER_ID = TREE.mailboxOwner;
 const out: Record<string, unknown> = { ok: false };
 
 /** Every `console.warn` the boot emitted, in order. */
@@ -62,19 +62,19 @@ console.warn = (...args: unknown[]) => {
   warnings.push(args.map((a) => String(a)).join(" "));
 };
 
-// The app's real wiring, evaluated now. Hiring, the channel bind and the
-// channel open all happen inside this await.
+// The app's real wiring, evaluated now. Hiring, the mailbox bind and the
+// mailbox open all happen inside this await.
 const { flowstate } = await import("./lib/flowstate");
 
-// ---- V11: which channels the BOOT opened, before this file calls anything -
+// ---- V11: which mailboxes the BOOT opened, before this file calls anything -
 // The next statements after the import, before the router: one await to reach
-// the stores, then one session read per channel. Early so that a channel
+// the stores, then one session read per mailbox. Early so that a mailbox
 // opened lazily on the first call would not be counted — not because being
 // early wins a race against a loose open. See the header.
 const openAtImport: string[] = [];
 {
   const stores = (await flowstate.getRuntime()).stores;
-  for (const { id } of TREE.channels) {
+  for (const { id } of TREE.mailboxes) {
     if ((await stores.session.get(id)) !== undefined) openAtImport.push(id);
   }
 }
@@ -167,18 +167,18 @@ async function act(
 const holderRead = await act(TREE.boardHolder.address, TREE.boardHolder.id, "read", {});
 out.holderRead = { requestStatus: holderRead.requestStatus, output: holderRead.output, error: holderRead.error };
 
-// ---- each channel's session, as the route hands it back -------------------
+// ---- each mailbox's session, as the route hands it back -------------------
 const sessions: Record<string, unknown> = {};
-for (const { id } of TREE.channels) {
+for (const { id } of TREE.mailboxes) {
   const res = await call("GET", ["sessions", id]);
   sessions[id] = res.status >= 400 ? { error: res.body, status: res.status } : res.body?.session;
 }
 out.sessions = sessions;
 
-// ---- V13: can a caller using the APP's own user id reach the channels? ----
+// ---- V13: can a caller using the APP's own user id reach the mailboxes? ----
 // Listed as `appUserId` — what `app/page.tsx` passes — rather than as the id
-// the config opened them under. Sessions are per-user: a channel opened as
-// somebody nobody calls as is a channel the app ships and no user of it can see.
+// the config opened them under. Sessions are per-user: a mailbox opened as
+// somebody nobody calls as is a mailbox the app ships and no user of it can see.
 {
   const listed = await call(
     "GET",
@@ -194,10 +194,10 @@ out.sessions = sessions;
     .filter((id): id is string => typeof id === "string");
 }
 
-// ---- V14: who each channel's fan-out reached, and who it delivered to -----
+// ---- V14: who each mailbox's fan-out reached, and who it delivered to -----
 //
-// One post per channel, written by a member, then the fan-out's own trace
-// rows. Two things come back per channel and they are deliberately separate:
+// One post per mailbox, written by a member, then the fan-out's own trace
+// rows. Two things come back per mailbox and they are deliberately separate:
 //
 //   `reached`   — how many members the fan-out block addressed. This is the
 //                 framework's half: a seat's post is never routed, so the
@@ -214,20 +214,20 @@ out.sessions = sessions;
 //
 // The fan-out rides a SEPARATE request from the post, so this waits for a trace
 // to appear rather than reading straight away — reading early returns nothing,
-// which is indistinguishable from a channel that delivered nothing, and that is
+// which is indistinguishable from a mailbox that delivered nothing, and that is
 // the exact thing being measured. It then waits a moment more, for the
 // deliveries' own traces.
 const NAME_ONLY_BLOCK = "kitchen-sink-notify-member";
-const FAN_OUT_BLOCK = "channel-fan-out";
+const FAN_OUT_BLOCK = "mailbox-fan-out";
 const notified: Record<string, { reached: number; delivered: string[]; problem?: string }> = {};
-for (const channel of TREE.channels) {
-  const members = TREE.membersByChannel[channel.id] ?? [];
-  const posted = await act(channel.address, channel.id, "post", {
+for (const mailbox of TREE.mailboxes) {
+  const members = TREE.membersByMailbox[mailbox.id] ?? [];
+  const posted = await act(mailbox.address, mailbox.id, "post", {
     body: `probe ${Date.now()}`,
     author: members[0],
   });
   if (posted.requestStatus !== "completed") {
-    notified[channel.id] = {
+    notified[mailbox.id] = {
       reached: 0,
       delivered: [],
       problem: `the post ended "${posted.requestStatus}"`,
@@ -236,7 +236,7 @@ for (const channel of TREE.channels) {
   }
   const stores = (await flowstate.getRuntime()).stores;
   const read = async () => {
-    const requests = (await stores.request.list({ sessionId: channel.id })) as any[];
+    const requests = (await stores.request.list({ sessionId: mailbox.id })) as any[];
     const traces = requests.flatMap((r) =>
       (r.items ?? []).filter((item: any) => item.type === "block_trace"),
     );
@@ -263,7 +263,7 @@ for (const channel of TREE.channels) {
     await new Promise((r) => setTimeout(r, 500));
     seen = await read();
   }
-  notified[channel.id] = { reached: seen.reached, delivered: [...new Set(seen.delivered)] };
+  notified[mailbox.id] = { reached: seen.reached, delivered: [...new Set(seen.delivered)] };
 }
 out.notified = notified;
 
@@ -271,15 +271,15 @@ out.notified = notified;
 //
 // Read off the seats the app registered, the way Workforce's `wakeMemberSeats`
 // reads it: a seat can hear a post when its kind declares the internal
-// `onChannelPost` entry. Reported, not graded — run.mts decides what the
+// `onMailboxPost` entry. Reported, not graded — run.mts decides what the
 // fan-out owed each member.
 {
   const registry = (await flowstate.getRuntime()).registry;
-  const members = new Set(Object.values(TREE.membersByChannel).flat());
+  const members = new Set(Object.values(TREE.membersByMailbox).flat());
   out.hearsPosts = [...members]
     .filter((member) => {
       const seat = registry.get(member) as { internal?: { actions?: object } } | undefined;
-      return Object.prototype.hasOwnProperty.call(seat?.internal?.actions ?? {}, "onChannelPost");
+      return Object.prototype.hasOwnProperty.call(seat?.internal?.actions ?? {}, "onMailboxPost");
     })
     .sort();
 }

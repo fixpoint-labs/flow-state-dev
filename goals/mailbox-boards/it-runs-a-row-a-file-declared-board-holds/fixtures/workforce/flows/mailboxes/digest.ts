@@ -1,20 +1,20 @@
 /**
- * A channel kind of this tree's own, declared by living in `flows/channels/`.
- * The `notices` channel names it; a goal check that needs a channel on a kind
+ * A mailbox kind of this tree's own, declared by living in `flows/mailboxes/`.
+ * The `notices` mailbox names it; a goal check that needs a mailbox on a kind
  * of its own reads this one.
  *
  * Nothing registers it. `fsdev gen` walks this folder and puts it on the
- * `channelKinds` map under its basename, `digest`, which is the name a
- * `CHANNEL.md` names in its `flow:` line. The flow's own `kind` has to agree
+ * `mailboxKinds` map under its basename, `digest`, which is the name a
+ * `MAILBOX.md` names in its `flow:` line. The flow's own `kind` has to agree
  * with that basename, the same way a worker kind's does.
  *
- * `cardinality: "singleton"` is the whole of a channel kind's identity
- * contract: one kind is one instance, and every channel naming it is a session
- * on that instance. A channel kind left at the default would be refused.
+ * `cardinality: "singleton"` is the whole of a mailbox kind's identity
+ * contract: one kind is one instance, and every mailbox naming it is a session
+ * on that instance. A mailbox kind left at the default would be refused.
  *
  * **Why this one diverges.** The framework's
  * built-in kind already covers a standup, a direct message and an announcement
- * channel — those differ by their members and their charter, not by their
+ * mailbox — those differ by their members and their charter, not by their
  * workflow. What genuinely differs here is `read`: a standing noticeboard's
  * transcript grows without bound and nobody wants the whole of it, so this
  * kind returns the tail. That is the test for writing a kind at all.
@@ -22,11 +22,11 @@
  * **It holds no board, and that is the rule rather than an omission.** Boards
  * are handed to the built-in kind at bind time, and a kind written by hand is
  * zero-arg by contract — so there is nowhere to hand it the ledgers a roster
- * minted. A `CHANNEL.md` pairing `boards:` with `flow: digest` is refused by
+ * minted. A `MAILBOX.md` pairing `boards:` with `flow: digest` is refused by
  * name when the roster binds.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { emitChannelPostLine, readChannelPostLines } from "@flow-state-dev/workforce";
+import { emitMailboxPostLine, readMailboxPostLines } from "@flow-state-dev/workforce";
 import { z } from "zod";
 
 /**
@@ -56,19 +56,19 @@ const digestLineSchema = z.object({
 type DigestLine = z.infer<typeof digestLineSchema>;
 
 /**
- * The session state every channel on this kind carries.
+ * The session state every mailbox on this kind carries.
  *
- * All three keys are the ones the channel binder writes at open. A key this
- * schema does not declare is stripped on the way in and the channel comes up
+ * All three keys are the ones the mailbox binder writes at open. A key this
+ * schema does not declare is stripped on the way in and the mailbox comes up
  * missing it — session create does not refuse a state-schema mismatch — so the
  * three here are a contract with the binder, not a convenience.
  *
  * `members` and `instructions` are required for the reason the built-in kind
  * requires them: a session something else created carries neither, and that
- * absence is what tells an open channel from an empty session.
+ * absence is what tells an open mailbox from an empty session.
  *
- * `transcript` holds only the notices a channel kept in state before each post
- * became its own `channel-post` item. Nothing writes it any more; `read`
+ * `transcript` holds only the notices a mailbox kept in state before each post
+ * became its own `mailbox-post` item. Nothing writes it any more; `read`
  * counts it ahead of the posted notices.
  */
 const digestStateSchema = z.object({
@@ -85,17 +85,17 @@ const digestPostInputSchema = z
   })
   .strict();
 
-/** What `read` projects: the newest notices, and who the channel is for. */
+/** What `read` projects: the newest notices, and who the mailbox is for. */
 const digestReadOutputSchema = z.object({
   id: z.string(),
   members: z.array(z.string()),
   /** Newest first, and never more than {@link DIGEST_TAIL}. */
   notices: z.array(digestLineSchema),
-  /** How many notices the channel holds in total, tail or not. */
+  /** How many notices the mailbox holds in total, tail or not. */
   total: z.number(),
 });
 
-/** Is this session state a `digest` channel somebody opened? */
+/** Is this session state a `digest` mailbox somebody opened? */
 function openDigest(
   state: unknown,
 ): { members: string[]; transcript: DigestLine[] } | undefined {
@@ -110,21 +110,21 @@ const post = handler({
   inputSchema: digestPostInputSchema,
   outputSchema: digestLineSchema,
   execute: async (input, ctx): Promise<DigestLine> => {
-    const channel = openDigest(ctx.session.state);
-    if (channel === undefined) {
+    const mailbox = openDigest(ctx.session.state);
+    if (mailbox === undefined) {
       throw new Error(
-        `session "${ctx.session.identity.id}" is not an open digest channel. A channel's ` +
-          `session is opened by \`openChannels\`; naming an id nobody opened creates an empty ` +
-          `session, not a channel.`,
+        `session "${ctx.session.identity.id}" is not an open digest mailbox. A mailbox's ` +
+          `session is opened by \`openMailboxes\`; naming an id nobody opened creates an empty ` +
+          `session, not a mailbox.`,
       );
     }
 
     // A validity check against the declared roster, not authentication — the
     // claim stays unverified either way. It only stops a notice naming a seat
-    // this channel has never heard of.
-    if (input.author !== undefined && !channel.members.includes(input.author)) {
+    // this mailbox has never heard of.
+    if (input.author !== undefined && !mailbox.members.includes(input.author)) {
       throw new Error(
-        `"${input.author}" is not a member of channel "${ctx.session.identity.id}".`,
+        `"${input.author}" is not a member of mailbox "${ctx.session.identity.id}".`,
       );
     }
 
@@ -137,9 +137,9 @@ const post = handler({
     };
 
     // The notice is this request's own item, the same way the built-in kind
-    // keeps a line, so a page shows this channel exactly as it shows any other.
+    // keeps a line, so a page shows this mailbox exactly as it shows any other.
     // Awaited: the item is the only copy, so a failed write fails the post.
-    await emitChannelPostLine(ctx, line);
+    await emitMailboxPostLine(ctx, line);
     return line;
   },
 });
@@ -149,18 +149,18 @@ const read = handler({
   inputSchema: z.object({}).strict(),
   outputSchema: digestReadOutputSchema,
   execute: async (_input, ctx) => {
-    const channel = openDigest(ctx.session.state);
-    if (channel === undefined) {
-      throw new Error(`session "${ctx.session.identity.id}" is not an open digest channel.`);
+    const mailbox = openDigest(ctx.session.state);
+    if (mailbox === undefined) {
+      throw new Error(`session "${ctx.session.identity.id}" is not an open digest mailbox.`);
     }
     // The divergence this kind exists for: the tail, newest first, never the
     // whole transcript. `total` is reported so a reader can tell a short
-    // channel from a truncated one; it counts what this read can see, which
-    // on a long-lived channel is the notices inside the history window.
-    const notices = [...channel.transcript, ...readChannelPostLines(ctx, digestLineSchema)];
+    // mailbox from a truncated one; it counts what this read can see, which
+    // on a long-lived mailbox is the notices inside the history window.
+    const notices = [...mailbox.transcript, ...readMailboxPostLines(ctx, digestLineSchema)];
     return {
       id: ctx.session.identity.id,
-      members: channel.members,
+      members: mailbox.members,
       notices: notices.reverse().slice(0, DIGEST_TAIL),
       total: notices.length,
     };
@@ -175,12 +175,12 @@ export default defineFlow({
     post: {
       block: post,
       description: "Post a notice. `author` is an unverified claim.",
-      // Keyed on the session, so two notices on one channel serialise.
+      // Keyed on the session, so two notices on one mailbox serialise.
       concurrency: "queue",
     },
     read: {
       block: read,
-      description: `Read this channel's ${DIGEST_TAIL} most recent notices, newest first.`,
+      description: `Read this mailbox's ${DIGEST_TAIL} most recent notices, newest first.`,
     },
   },
 });

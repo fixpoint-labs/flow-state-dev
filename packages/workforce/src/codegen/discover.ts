@@ -50,7 +50,7 @@ import {
 import { typescriptExtension } from "./typescript-module";
 
 /** Which locked folder a discovered file came from. */
-export type CodeSlotId = "worker" | "channel" | "block";
+export type CodeSlotId = "worker" | "mailbox" | "block";
 
 /**
  * One locked folder, and what a file in it becomes.
@@ -68,7 +68,7 @@ export interface CodeSlot {
   /** Path under the workforce root, POSIX, relative. Owner-locked. */
   readonly dir: string;
   /** The map this slot's files are rendered onto. Public: an app imports it. */
-  readonly exportName: "kinds" | "channelKinds" | "blocks";
+  readonly exportName: "kinds" | "mailboxKinds" | "blocks";
   /** What a basename here names, for a refusal to say. */
   readonly label: SegmentLabel;
 }
@@ -82,7 +82,7 @@ export interface CodeSlot {
  */
 export const CODE_SLOTS: readonly CodeSlot[] = Object.freeze([
   Object.freeze({ id: "worker", dir: "flows/workers", exportName: "kinds", label: "Kind" }),
-  Object.freeze({ id: "channel", dir: "flows/channels", exportName: "channelKinds", label: "Kind" }),
+  Object.freeze({ id: "mailbox", dir: "flows/mailboxes", exportName: "mailboxKinds", label: "Kind" }),
   Object.freeze({ id: "block", dir: "blocks", exportName: "blocks", label: "Block" }),
 ] as const);
 

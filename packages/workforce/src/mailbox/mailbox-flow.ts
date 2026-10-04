@@ -1,23 +1,23 @@
 /**
- * ChannelFlow — the one channel kind the framework ships.
+ * MailboxFlow — the one mailbox kind the framework ships.
  *
  * The identity rule this whole module is built around: **one kind is one
- * instance, and one channel is one named session on it.** The flow declares
+ * instance, and one mailbox is one named session on it.** The flow declares
  * `cardinality: "singleton"`, so the registry admits exactly one instance and
- * its address is the kind (`flow.id === flow.kind`). A hundred channels are a
- * hundred sessions on that one instance; what differs per channel — its
+ * its address is the kind (`flow.id === flow.kind`). A hundred mailboxes are a
+ * hundred sessions on that one instance; what differs per mailbox — its
  * members and its charter — lives in that session's own state, which is the
  * framework's existing home for durable per-session facts. Its transcript is
- * its posts: each post leaves one `channel-post` item on its own request, and
+ * its posts: each post leaves one `mailbox-post` item on its own request, and
  * `read` rebuilds the transcript from those items.
  *
  * A factory rather than a bare flow because a block cannot ride in a
- * zod-parsed config bag, and `options.notify` is a block. `channelFlow` is the
+ * zod-parsed config bag, and `options.notify` is a block. `mailboxFlow` is the
  * built-in the binder seeds.
  *
  * What the transcript can prove, said once here so no reader has to infer it: a
  * session is bound to ONE user, so the server-derived `principal` on every line
- * of a given channel is the SAME value. The `author` label is caller-supplied,
+ * of a given mailbox is the SAME value. The `author` label is caller-supplied,
  * stored with `authorVerified: false`, and is a display claim, not a proof of
  * who wrote the line. The members check on `author` is a validity check against
  * the declared roster, not authentication. Whether a line is a seat's — and so
@@ -38,22 +38,22 @@ import { taskToolActions, taskToolSuffix } from "@flow-state-dev/orchestration";
 import { taskSchema } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import {
-  channelBoardId,
-  channelBoardLedger,
-  channelBoardNamesFor,
-  resolveChannelBoard
-} from "./channel-board";
-import { emitChannelPostLine, readChannelPostLines } from "./channel-items";
+  mailboxBoardId,
+  mailboxBoardLedger,
+  mailboxBoardNamesFor,
+  resolveMailboxBoard
+} from "./mailbox-board";
+import { emitMailboxPostLine, readMailboxPostLines } from "./mailbox-items";
 import { incarnationOfRow } from "../roster/incarnation";
 import { seatAddress, splitSeatAddress } from "../roster/address";
 import { defineHiredRosterCollection } from "../roster/collections";
 import { INVENTORY_RACE_ATTEMPTS, isWriteConflict } from "../roster/remove";
 import {
-  CHANNEL_POST_COMPONENT,
-  channelTranscriptLineSchema,
+  MAILBOX_POST_COMPONENT,
+  mailboxTranscriptLineSchema,
   withoutRepeats,
-  type ChannelTranscriptLine
-} from "./channel-post-line";
+  type MailboxTranscriptLine
+} from "./mailbox-post-line";
 import {
   keepLine,
   postCaseSchema,
@@ -62,13 +62,13 @@ import {
   ROUTE_LEDGER_STATE,
   routeLedgerStateSchema,
   routeRequestSchema,
-  type ChannelRoute,
-  type ChannelRouting,
+  type MailboxRoute,
+  type MailboxRouting,
   type PostCase,
   type RouteDecision
-} from "./channel-route";
+} from "./mailbox-route";
 import {
-  defineChannelInventoryCollection,
+  defineMailboxInventoryCollection,
   defineMembershipIndexCollection,
   defineSeatInventoryCollection,
   membershipKey,
@@ -88,51 +88,51 @@ import {
   talkReadFor,
   talkReadOutputSchema
 } from "../projects/talk";
-import { isTemplateChannel, type TalkTemplateFacts } from "../projects/talk-template";
+import { isTemplateMailbox, type TalkTemplateFacts } from "../projects/talk-template";
 import type { SeatInventoryRow } from "../inventory/collections";
 
 /** The built-in kind's name, and so the built-in instance's address. */
-export const CHANNEL_KIND = "channel";
+export const MAILBOX_KIND = "mailbox";
 
-export { CHANNEL_POST_COMPONENT, channelTranscriptLineSchema, type ChannelTranscriptLine };
+export { MAILBOX_POST_COMPONENT, mailboxTranscriptLineSchema, type MailboxTranscriptLine };
 
 /**
- * The session state every channel on one instance shares.
+ * The session state every mailbox on one instance shares.
  *
  * `members` and `instructions` are REQUIRED, and that is load-bearing rather
  * than incidental: a session the action path created (which writes empty state
  * and applies no schema defaults) carries neither, and that absence is exactly
- * what `channel-not-bound` tests. Giving either a `.default()` would make every
- * unbound session look like an empty channel.
+ * what `mailbox-not-bound` tests. Giving either a `.default()` would make every
+ * unbound session look like an empty mailbox.
  *
  * State and not metadata, deliberately: `SessionRecord.metadata`, `topic` and
  * `coordinate` carry no authority by declared contract, and `members` is read
  * on a refusal path.
  */
-export const channelSessionStateSchema = z.object({
+export const mailboxesessionStateSchema = z.object({
   /** The declared roster. Written once at open; read-only on the post path. */
   members: z.array(z.string()),
-  /** The channel's charter — the `CHANNEL.md` body. */
+  /** The mailbox's charter — the `MAILBOX.md` body. */
   instructions: z.string(),
   /**
-   * Lines a channel kept in state before each post became its own
-   * `channel-post` item. Read-only: `read` returns them ahead of the posted
+   * Lines a mailbox kept in state before each post became its own
+   * `mailbox-post` item. Read-only: `read` returns them ahead of the posted
    * lines, and nothing writes here any more.
    */
-  transcript: z.array(channelTranscriptLineSchema).default([]),
+  transcript: z.array(mailboxTranscriptLineSchema).default([]),
   /**
    * The project a talk session is about (`../projects/talk.ts`), or `null`. A
-   * declared channel never sets it. It selects which project row a talk entry
+   * declared mailbox never sets it. It selects which project row a talk entry
    * checks, and grants nothing on its own. Nullable with a `null` default
-   * (BP-023, BP-030), so a channel opened before it existed still parses.
+   * (BP-023, BP-030), so a mailbox opened before it existed still parses.
    */
   resourceId: z.string().nullable().default(null)
 });
 
-export type ChannelSessionState = z.infer<typeof channelSessionStateSchema>;
+export type MailboxesessionState = z.infer<typeof mailboxesessionStateSchema>;
 
 /** What a caller may put in a post. Closed: a caller has nowhere to put a `principal`. */
-export const channelPostInputSchema = z
+export const mailboxPostInputSchema = z
   .object({
     body: z.string().min(1),
     /** Optional, unverified claim about which seat is posting. */
@@ -140,7 +140,7 @@ export const channelPostInputSchema = z
   })
   .strict();
 
-export type ChannelPostInput = z.infer<typeof channelPostInputSchema>;
+export type MailboxPostInput = z.infer<typeof mailboxPostInputSchema>;
 
 /**
  * The internal action a seat's answer to a routed post goes through: the
@@ -148,21 +148,21 @@ export type ChannelPostInput = z.infer<typeof channelPostInputSchema>;
  * here, not to `post`. Declared only on a kind built with a route and a
  * notify slot, the only kind that routes a post.
  */
-export const CHANNEL_ANSWER_ACTION = "answer";
+export const MAILBOX_ANSWER_ACTION = "answer";
 
 /**
- * The internal action a seat's own channel post goes through. A cross-flow
+ * The internal action a seat's own mailbox post goes through. A cross-flow
  * `post` is not this: `internal` is the generic address, and a claimed
  * `author` on it does not mark the line a seat's.
  */
-export const CHANNEL_SEAT_POST_ACTION = "seatPost";
+export const MAILBOX_SEAT_POST_ACTION = "seatPost";
 
 /**
  * What an answer carries: the post it answers, the words, and the seat.
  * Closed, and never caller-addressed: a caller who could name a post could
  * take its one answer.
  */
-export const channelAnswerInputSchema = z
+export const mailboxAnswerInputSchema = z
   .object({
     postId: z.string().min(1),
     body: z.string().min(1),
@@ -170,164 +170,164 @@ export const channelAnswerInputSchema = z
     /**
      * The delivery's `answerToken`, handed back. Required on a project's talk
      * session, where the answer's author is the seat the token was issued to;
-     * a declared channel ignores it.
+     * a declared mailbox ignores it.
      */
     token: z.string().min(1).optional()
   })
   .strict();
 
-type ChannelAnswerInput = z.infer<typeof channelAnswerInputSchema>;
+type MailboxAnswerInput = z.infer<typeof mailboxAnswerInputSchema>;
 
 /**
- * The channel-session field recording the routed posts that have their
+ * The mailbox-session field recording the routed posts that have their
  * answer: the post's id, and the id of the line that answered it. Never
  * trimmed, so a post delivered again however late lands no second answer. It
- * grows by one entry per routed answer, beside the lines the channel keeps.
+ * grows by one entry per routed answer, beside the lines the mailbox keeps.
  */
-const ANSWERED_POSTS_STATE = "channelAnsweredPosts";
+const ANSWERED_POSTS_STATE = "mailboxAnsweredPosts";
 
-/** A routed kind's channel state, as far as its appends go: the route ledger and the answered posts. */
-const routedChannelStateSchema = routeLedgerStateSchema.extend({
+/** A routed kind's mailbox state, as far as its appends go: the route ledger and the answered posts. */
+const routedMailboxestateSchema = routeLedgerStateSchema.extend({
   [ANSWERED_POSTS_STATE]: z.record(z.string(), z.string()).optional()
 });
 
-type RoutedChannelState = z.infer<typeof routedChannelStateSchema>;
+type RoutedMailboxestate = z.infer<typeof routedMailboxestateSchema>;
 
-/** What `read` projects: the channel, not the session's machinery. */
-export const channelReadOutputSchema = z.object({
+/** What `read` projects: the mailbox, not the session's machinery. */
+export const mailboxReadOutputSchema = z.object({
   id: z.string(),
   description: z.string().optional(),
   members: z.array(z.string()),
   /**
-   * The board NAMES this channel declared — never the rows, which are a board
-   * read. **Absent, not `[]`, on a channel that declares none**, so a channel
+   * The board NAMES this mailbox declared — never the rows, which are a board
+   * read. **Absent, not `[]`, on a mailbox that declares none**, so a mailbox
    * without boards projects exactly what it projected before boards existed.
    */
   boards: z.array(z.string()).optional(),
-  transcript: z.array(channelTranscriptLineSchema)
+  transcript: z.array(mailboxTranscriptLineSchema)
 });
 
-export type ChannelReadOutput = z.infer<typeof channelReadOutputSchema>;
+export type MailboxReadOutput = z.infer<typeof mailboxReadOutputSchema>;
 
 /**
- * Why a call on a channel was refused. Every one is a per-request refusal that
+ * Why a call on a mailbox was refused. Every one is a per-request refusal that
  * leaves the transcript — and the ledger — untouched.
  *
  * `board-not-declared` is the file path's own: a caller naming a board this
- * channel's `CHANNEL.md` did not declare. It is never another channel's board
+ * mailbox's `MAILBOX.md` did not declare. It is never another mailbox's board
  * being reached and refused, because the ledger id is minted from the
- * session's own identity and a name can only ever address this channel's.
+ * session's own identity and a name can only ever address this mailbox's.
  *
- * `board-needs-an-org` is the one a channel opened without an `orgId` meets.
+ * `board-needs-an-org` is the one a mailbox opened without an `orgId` meets.
  * A board is org-scoped storage, so there is no scope to read or write in and
  * the refusal says that rather than letting the resource registry report the
  * board as unregistered, which sends an author to check a registration that is
- * fine. Same shape as an org-scoped document read in an org-less channel.
+ * fine. Same shape as an org-scoped document read in an org-less mailbox.
  */
-export type ChannelRefusalReason =
-  | "channel-not-bound"
+export type MailboxRefusalReason =
+  | "mailbox-not-bound"
   | "author-not-a-member"
   | "board-not-declared"
   | "board-needs-an-org"
-  | "channel-is-a-template";
+  | "mailbox-is-a-template";
 
 /**
- * A post refused on the channel's own terms, as opposed to by the substrate.
+ * A post refused on the mailbox's own terms, as opposed to by the substrate.
  *
  * Carries `reason` so a caller can branch without matching on message text —
  * the same shape the dispatch seam's refusals use.
  */
-export class ChannelPostRefusedError extends Error {
-  readonly reason: ChannelRefusalReason;
+export class MailboxPostRefusedError extends Error {
+  readonly reason: MailboxRefusalReason;
 
-  constructor(reason: ChannelRefusalReason, detail: string) {
+  constructor(reason: MailboxRefusalReason, detail: string) {
     super(`${reason}: ${detail}`);
-    this.name = "ChannelPostRefusedError";
+    this.name = "MailboxPostRefusedError";
     this.reason = reason;
   }
 }
 
 /**
- * Is this session a bound channel, or merely a session that exists?
+ * Is this session a bound mailbox, or merely a session that exists?
  *
  * The shared instance answers for EVERY session id, and the action path is
  * create-or-get, so a caller naming an unused id gets a new, empty session on
- * the channel instance rather than a refusal. Boundness — not existence — is
- * therefore the test: `openChannels` writes `members` and `instructions`
+ * the mailbox instance rather than a refusal. Boundness — not existence — is
+ * therefore the test: `openMailboxes` writes `members` and `instructions`
  * together, and nothing else does.
  *
  * Answered against the WHOLE declared schema rather than by checking that the
  * two keys are present. A presence check calls `{ members: [42], instructions:
- * "x" }` a channel: the post path would admit it, `openChannels` would skip it
+ * "x" }` a mailbox: the post path would admit it, `openMailboxes` would skip it
  * as already open, and it would fail its declared schemas on every later
  * read — bound to nothing, and repairable by nothing. A state the schema
- * cannot parse is not a channel.
+ * cannot parse is not a mailbox.
  *
  * Exported for the binder, which asks this same question of a 409 — is a
- * channel open here, or merely a session? One definition, because a binder
+ * mailbox open here, or merely a session? One definition, because a binder
  * reading boundness differently from the fence would leave sessions the fence
  * still rejects. What the binder then DOES with the answer is its own and
  * narrower: it releases an id only when this kind's own empty session holds it.
  * Not re-exported from the package root.
  */
-export function boundChannel(
+export function boundMailbox(
   state: Readonly<Record<string, unknown>>
-): ChannelSessionState | undefined {
-  const parsed = channelSessionStateSchema.safeParse(state);
+): MailboxesessionState | undefined {
+  const parsed = mailboxesessionStateSchema.safeParse(state);
   return parsed.success ? parsed.data : undefined;
 }
 
 /**
- * Refuse a channel action on a session whose id is now a project talk
- * template's `CHANNEL.md` (`mintFor:`). The session it had as a channel may
- * survive in the store, still bound; a template is never a channel, so its
+ * Refuse a mailbox action on a session whose id is now a project talk
+ * template's `MAILBOX.md` (`mintFor:`). The session it had as a mailbox may
+ * survive in the store, still bound; a template is never a mailbox, so its
  * `post`, `read` and `answer` are refused rather than served from that state.
  */
-function refuseTemplateChannel(ctx: { session: { identity: { id: string } } }): void {
+function refuseTemplateMailbox(ctx: { session: { identity: { id: string } } }): void {
   const id = ctx.session.identity.id;
-  if (isTemplateChannel(PROJECTS_COLLECTION, id)) {
-    throw new ChannelPostRefusedError(
-      "channel-is-a-template",
-      `"${id}" is declared as a project talk template (\`mintFor:\`), not a channel. A project's room is ` +
+  if (isTemplateMailbox(PROJECTS_COLLECTION, id)) {
+    throw new MailboxPostRefusedError(
+      "mailbox-is-a-template",
+      `"${id}" is declared as a project talk template (\`mintFor:\`), not a mailbox. A project's room is ` +
         "reached through a member's talk session (`join`)."
     );
   }
 }
 
 /**
- * The open channel this session is, after the template fence: every channel
- * action that acts on its channel (post, read, answer, the board actions and
+ * The open mailbox this session is, after the template fence: every mailbox
+ * action that acts on its mailbox (post, read, answer, the board actions and
  * the inventory registration) finds it here, so none of them serves a session
  * whose id is now a project talk template's. `undefined` when the session is
- * not a bound channel; each caller refuses that in its own words.
+ * not a bound mailbox; each caller refuses that in its own words.
  */
-function openChannelOf(ctx: { session: { identity: { id: string }; state: Readonly<Record<string, unknown>> } }) {
-  refuseTemplateChannel(ctx);
-  return boundChannel(ctx.session.state);
+function openMailboxOf(ctx: { session: { identity: { id: string }; state: Readonly<Record<string, unknown>> } }) {
+  refuseTemplateMailbox(ctx);
+  return boundMailbox(ctx.session.state);
 }
 
 /**
- * The line a post makes, or the channel's refusal. Writes nothing: each append
+ * The line a post makes, or the mailbox's refusal. Writes nothing: each append
  * keeps the line itself.
  */
-function lineFor(input: ChannelPostInput, ctx: BlockContext, seatAuthored: boolean): ChannelTranscriptLine {
-  const channel = openChannelOf(ctx);
-  if (channel === undefined) {
-    throw new ChannelPostRefusedError(
-      "channel-not-bound",
-      `session "${ctx.session.identity.id}" is not an open channel. A channel's session is ` +
-        `opened by \`openChannels\`; naming an id nobody opened creates an empty session, not a channel.`
+function lineFor(input: MailboxPostInput, ctx: BlockContext, seatAuthored: boolean): MailboxTranscriptLine {
+  const mailbox = openMailboxOf(ctx);
+  if (mailbox === undefined) {
+    throw new MailboxPostRefusedError(
+      "mailbox-not-bound",
+      `session "${ctx.session.identity.id}" is not an open mailbox. A mailbox's session is ` +
+        `opened by \`openMailboxes\`; naming an id nobody opened creates an empty session, not a mailbox.`
     );
   }
 
   // A validity check against the declared roster, NOT authentication. The
   // claim stays unverified either way; this only stops a line naming a seat
-  // the channel has never heard of.
-  if (input.author !== undefined && !channel.members.includes(input.author)) {
-    throw new ChannelPostRefusedError(
+  // the mailbox has never heard of.
+  if (input.author !== undefined && !mailbox.members.includes(input.author)) {
+    throw new MailboxPostRefusedError(
       "author-not-a-member",
-      `"${input.author}" is not a member of channel "${ctx.session.identity.id}". ` +
-        `Members: ${channel.members.length > 0 ? channel.members.join(", ") : "(none)"}.`
+      `"${input.author}" is not a member of mailbox "${ctx.session.identity.id}". ` +
+        `Members: ${mailbox.members.length > 0 ? mailbox.members.join(", ") : "(none)"}.`
     );
   }
 
@@ -353,83 +353,83 @@ function lineFor(input: ChannelPostInput, ctx: BlockContext, seatAuthored: boole
  */
 function appendPostFor(seatAuthored: boolean) {
   return handler({
-    name: seatAuthored ? "channel-append-seat-post" : "channel-append-post",
-    inputSchema: channelPostInputSchema,
-    outputSchema: channelTranscriptLineSchema,
+    name: seatAuthored ? "mailbox-append-seat-post" : "mailbox-append-post",
+    inputSchema: mailboxPostInputSchema,
+    outputSchema: mailboxTranscriptLineSchema,
     sessionStateSchema: routeLedgerStateSchema,
-    execute: async (input: ChannelPostInput, ctx): Promise<ChannelTranscriptLine> => {
+    execute: async (input: MailboxPostInput, ctx): Promise<MailboxTranscriptLine> => {
       const line = lineFor(input, ctx, seatAuthored);
       // A route ledger left by a kind built with a route would miss this line,
       // and every line after it, so it goes before the line is kept. Once: the
-      // next post finds none, and posts on a channel that never had one write
+      // next post finds none, and posts on a mailbox that never had one write
       // nothing.
       if (ctx.session.state[ROUTE_LEDGER_STATE] !== undefined) {
         await ctx.session.atomicState(() => ({ [ROUTE_LEDGER_STATE]: undefined }));
       }
       // The line is this request's own item, and that item is the record: a
-      // client reads a channel by filtering its session's items to
-      // `channel-post`, the way it reads any conversation. Nothing is copied into
+      // client reads a mailbox by filtering its session's items to
+      // `mailbox-post`, the way it reads any conversation. Nothing is copied into
       // state — a second record of the post could only disagree with the first.
       // A kind built with a route is the one exception, and keeps only what its
       // route reads (`appendRoutedPostFor`).
-      await emitChannelPostLine(ctx, line);
+      await emitMailboxPostLine(ctx, line);
       return line;
     }
   });
 }
 
-/** What a routed kind's append hands on: the line, and for a person's post on a routed channel, its case. */
-const keptPostSchema = z.object({ line: channelTranscriptLineSchema, postCase: postCaseSchema.optional() });
+/** What a routed kind's append hands on: the line, and for a person's post on a routed mailbox, its case. */
+const keptPostSchema = z.object({ line: mailboxTranscriptLineSchema, postCase: postCaseSchema.optional() });
 
 type KeptPost = z.infer<typeof keptPostSchema>;
 
 /**
- * Keep one line on a kind built with a route. The rule: **the channel's state
+ * Keep one line on a kind built with a route. The rule: **the mailbox's state
  * is written with each line, in one write just before its item, and the
  * engine keeps every item a request emits on that request's record, even when
- * the request then fails.** So the route's ledger (`channel-route.ts`) holds
- * every line the channel shows, including one whose post failed after its
+ * the request then fails.** So the route's ledger (`mailbox-route.ts`) holds
+ * every line the mailbox shows, including one whose post failed after its
  * item was emitted, and a line that could not enter the ledger is never
  * emitted. The one gap is a store that loses the request's own record too:
- * the ledger then holds a line the channel does not.
+ * the ledger then holds a line the mailbox does not.
  *
  * For an answer, the same write marks its post answered, and is where a second
  * answer is refused: the mark is read and set in the one atomic write, so of
  * two answers to one post only the first to be written is emitted, and the
  * other writes nothing.
  *
- * Every line, on every channel of the kind, goes into the ledger, under the
- * post queue, so the ledger takes the channel's lines in order. Kept whether or
- * not the channel is routed, so a channel whose file drops `routing:` and later
+ * Every line, on every mailbox of the kind, goes into the ledger, under the
+ * post queue, so the ledger takes the mailbox's lines in order. Kept whether or
+ * not the mailbox is routed, so a mailbox whose file drops `routing:` and later
  * restores it has every line in the ledger. A person's post while it is not
  * routed becomes the last post with no route, so it holds nothing. A kind
  * built without a route keeps no ledger, and drops one left from before
  * (`appendPostFor`).
  *
- * A channel's first line with no ledger starts one from the lines in the
+ * A mailbox's first line with no ledger starts one from the lines in the
  * request's history window, the same window `read` sees, with no post to hold
- * for. On a busy channel that window can hold fewer than 20 lines.
+ * for. On a busy mailbox that window can hold fewer than 20 lines.
  *
  * @param answerPostId For an answer, the id of the post it answers.
  * @returns What was kept, with a person's post's case; `undefined` when the
  *   post `answerPostId` names has its answer already, and nothing was written.
  */
 async function keepRoutedLine(
-  ctx: BlockContext<Record<string, unknown>, RoutedChannelState>,
-  line: ChannelTranscriptLine,
+  ctx: BlockContext<Record<string, unknown>, RoutedMailboxestate>,
+  line: MailboxTranscriptLine,
   answerPostId?: string
 ): Promise<{ postCase?: PostCase } | undefined> {
   const seed = ctx.session.state[ROUTE_LEDGER_STATE] ?? {
     lines: withoutRepeats([
-      ...(boundChannel(ctx.session.state)?.transcript ?? []),
-      ...readChannelPostLines(ctx, channelTranscriptLineSchema)
+      ...(boundMailbox(ctx.session.state)?.transcript ?? []),
+      ...readMailboxPostLines(ctx, mailboxTranscriptLineSchema)
     ]).slice(-RECENT_LINES)
   };
   // The outcome comes back from the invocation that committed: `atomicState`
   // may run its mutator more than once.
   const kept = await withOutcome(
-    (mutator: (state: RoutedChannelState) => RoutedChannelState) => ctx.session.atomicState(mutator),
-    (state: RoutedChannelState) => {
+    (mutator: (state: RoutedMailboxestate) => RoutedMailboxestate) => ctx.session.atomicState(mutator),
+    (state: RoutedMailboxestate) => {
       const answered = state[ANSWERED_POSTS_STATE] ?? {};
       if (answerPostId !== undefined && Object.hasOwn(answered, answerPostId)) return { state: {}, result: undefined };
       const next = keepLine(state[ROUTE_LEDGER_STATE] ?? seed, line);
@@ -442,22 +442,22 @@ async function keepRoutedLine(
       };
     }
   );
-  if (kept !== undefined) await emitChannelPostLine(ctx, line);
+  if (kept !== undefined) await emitMailboxPostLine(ctx, line);
   return kept;
 }
 
 /**
  * The append on a kind built with a route: the line, kept by
- * {@link keepRoutedLine}. On a channel that declares `routing:`, a person's
+ * {@link keepRoutedLine}. On a mailbox that declares `routing:`, a person's
  * post comes out with its case.
  */
-const appendRoutedPostFor = (routing: Readonly<Record<string, ChannelRouting>>, seatAuthored: boolean) =>
+const appendRoutedPostFor = (routing: Readonly<Record<string, MailboxRouting>>, seatAuthored: boolean) =>
   handler({
-    name: seatAuthored ? "channel-append-routed-seat-post" : "channel-append-routed-post",
-    inputSchema: channelPostInputSchema,
+    name: seatAuthored ? "mailbox-append-routed-seat-post" : "mailbox-append-routed-post",
+    inputSchema: mailboxPostInputSchema,
     outputSchema: keptPostSchema,
-    sessionStateSchema: routedChannelStateSchema,
-    execute: async (input: ChannelPostInput, ctx): Promise<KeptPost> => {
+    sessionStateSchema: routedMailboxestateSchema,
+    execute: async (input: MailboxPostInput, ctx): Promise<KeptPost> => {
       const line = lineFor(input, ctx, seatAuthored);
       const postCase = (await keepRoutedLine(ctx, line))?.postCase;
       return postCase === undefined || routing[ctx.session.identity.id] === undefined ? { line } : { line, postCase };
@@ -472,11 +472,11 @@ const appendRoutedPostFor = (routing: Readonly<Record<string, ChannelRouting>>, 
  * before it got here, or refused here, leaves the post to be answered again.
  */
 const appendAnswer = handler({
-  name: "channel-append-answer",
-  inputSchema: channelAnswerInputSchema,
-  outputSchema: channelTranscriptLineSchema.nullable(),
-  sessionStateSchema: routedChannelStateSchema,
-  execute: async ({ postId, body, author }: ChannelAnswerInput, ctx): Promise<ChannelTranscriptLine | null> => {
+  name: "mailbox-append-answer",
+  inputSchema: mailboxAnswerInputSchema,
+  outputSchema: mailboxTranscriptLineSchema.nullable(),
+  sessionStateSchema: routedMailboxestateSchema,
+  execute: async ({ postId, body, author }: MailboxAnswerInput, ctx): Promise<MailboxTranscriptLine | null> => {
     const line = lineFor({ body, author }, ctx, true);
     return (await keepRoutedLine(ctx, line, postId)) === undefined ? null : line;
   }
@@ -487,51 +487,51 @@ const appendAnswer = handler({
  *
  * A factory because the declared board names come from the roster the KIND was
  * built with, filtered to this session's own id — not from session state. That
- * is what makes an edited `CHANNEL.md` reach a channel that is already open:
+ * is what makes an edited `MAILBOX.md` reach a mailbox that is already open:
  * the list is re-derived from the file on the next bind.
  *
- * The transcript is the lines a channel kept in state before posts became
+ * The transcript is the lines a mailbox kept in state before posts became
  * items, then the posted lines, each id once. The posted half comes from the
  * session's history window (50 requests by default, and a post with a notify
- * slot uses two), so on a busy channel `read` returns the recent lines. A page
+ * slot uses two), so on a busy mailbox `read` returns the recent lines. A page
  * reads every post from the session's items instead.
  */
-const readChannelFor = (boardIds: readonly string[]) =>
+const readMailboxFor = (boardIds: readonly string[]) =>
   handler({
-    name: "channel-read",
+    name: "mailbox-read",
     inputSchema: z.object({}).strict(),
-    outputSchema: channelReadOutputSchema,
-    execute: async (_input, ctx): Promise<ChannelReadOutput> => {
-      const channel = openChannelOf(ctx);
-      if (channel === undefined) {
-        throw new ChannelPostRefusedError(
-          "channel-not-bound",
-          `session "${ctx.session.identity.id}" is not an open channel.`
+    outputSchema: mailboxReadOutputSchema,
+    execute: async (_input, ctx): Promise<MailboxReadOutput> => {
+      const mailbox = openMailboxOf(ctx);
+      if (mailbox === undefined) {
+        throw new MailboxPostRefusedError(
+          "mailbox-not-bound",
+          `session "${ctx.session.identity.id}" is not an open mailbox.`
         );
       }
-      const boards = channelBoardNamesFor(ctx.session.identity.id, boardIds);
+      const boards = mailboxBoardNamesFor(ctx.session.identity.id, boardIds);
       return {
         id: ctx.session.identity.id,
         ...(ctx.session.metadata.description === undefined
           ? {}
           : { description: ctx.session.metadata.description }),
-        members: channel.members,
-        // Omitted rather than `[]` when this channel holds none — see the
+        members: mailbox.members,
+        // Omitted rather than `[]` when this mailbox holds none — see the
         // schema. The rows never come back here either way: reading a board is
         // a board read.
         ...(boards.length === 0 ? {} : { boards }),
-        transcript: withoutRepeats([...channel.transcript, ...readChannelPostLines(ctx, channelTranscriptLineSchema)])
+        transcript: withoutRepeats([...mailbox.transcript, ...readMailboxPostLines(ctx, mailboxTranscriptLineSchema)])
       };
     }
   });
 
 /** The ledger shape the two board actions use: the substrate's ref. */
-type ChannelTaskLedger = Exclude<Awaited<ReturnType<typeof resolveChannelBoard>>, undefined>;
+type MailboxTaskLedger = Exclude<Awaited<ReturnType<typeof resolveMailboxBoard>>, undefined>;
 
 /** What filing one row takes. Closed, as the post input is. */
-export const channelFileTaskInputSchema = z
+export const mailboxFileTaskInputSchema = z
   .object({
-    /** The board's LOCAL name, as the `CHANNEL.md` declared it. */
+    /** The board's LOCAL name, as the `MAILBOX.md` declared it. */
     board: z.string().min(1),
     goal: z.string().min(1),
     title: z.string().min(1).optional(),
@@ -550,10 +550,10 @@ export const channelFileTaskInputSchema = z
   })
   .strict();
 
-export type ChannelFileTaskInput = z.infer<typeof channelFileTaskInputSchema>;
+export type MailboxFileTaskInput = z.infer<typeof mailboxFileTaskInputSchema>;
 
 /** What filing one row hands back: where it landed, and which row it is. */
-export const channelFileTaskOutputSchema = z.object({
+export const mailboxFileTaskOutputSchema = z.object({
   board: z.string(),
   /** The minted ledger id — the same string a seat declares. */
   boardId: z.string(),
@@ -561,13 +561,13 @@ export const channelFileTaskOutputSchema = z.object({
   status: z.string()
 });
 
-export type ChannelFileTaskOutput = z.infer<typeof channelFileTaskOutputSchema>;
+export type MailboxFileTaskOutput = z.infer<typeof mailboxFileTaskOutputSchema>;
 
 /** What reading one board takes. */
-export const channelReadBoardInputSchema = z.object({ board: z.string().min(1) }).strict();
+export const mailboxReadBoardInputSchema = z.object({ board: z.string().min(1) }).strict();
 
 /**
- * One row as this channel publishes it — an **allowlist**, not the task minus a
+ * One row as this mailbox publishes it — an **allowlist**, not the task minus a
  * field.
  *
  * `readBoard` is a public action whose output reaches a model's context, so
@@ -591,7 +591,7 @@ export const channelReadBoardInputSchema = z.object({ board: z.string().min(1) }
  * `SERVER_ONLY_TASK_FIELDS` in `change-event.ts` is canonical for the first of
  * those; this covers the one boundary the substrate's emitter does not.
  */
-export const channelBoardRowSchema = taskSchema.pick({
+export const mailboxBoardRowSchema = taskSchema.pick({
   id: true,
   goal: true,
   title: true,
@@ -616,23 +616,23 @@ export const channelBoardRowSchema = taskSchema.pick({
 });
 
 /** What reading one board gives back: the rows, and nothing about the conversation. */
-export const channelReadBoardOutputSchema = z.object({
+export const mailboxReadBoardOutputSchema = z.object({
   board: z.string(),
   boardId: z.string(),
-  tasks: z.array(channelBoardRowSchema)
+  tasks: z.array(mailboxBoardRowSchema)
 });
 
-export type ChannelReadBoardOutput = z.infer<typeof channelReadBoardOutputSchema>;
+export type MailboxReadBoardOutput = z.infer<typeof mailboxReadBoardOutputSchema>;
 
 /**
- * Resolve the ledger a caller named, against the channel's OWN declared list.
+ * Resolve the ledger a caller named, against the mailbox's OWN declared list.
  *
  * Two fences in one place, in the order an author wants to hear them: the
- * session must be an open channel, and the name must be one this channel
+ * session must be an open mailbox, and the name must be one this mailbox
  * declared. The id is then minted from `ctx.session.identity.id` — never from
- * the payload — so a caller naming a board another channel declared addresses
- * this channel's id and simply misses it (BP-031). There is no input through
- * which another channel's rows can be selected.
+ * the payload — so a caller naming a board another mailbox declared addresses
+ * this mailbox's id and simply misses it (BP-031). There is no input through
+ * which another mailbox's rows can be selected.
  *
  * The ledger is resolved ONCE per request and handed to the caller, rather than
  * re-walking the resource registry per operation for an answer that cannot
@@ -642,24 +642,24 @@ async function ledgerNamed(
   ctx: BlockContext,
   boardIds: readonly string[],
   name: string
-): Promise<{ boardId: string; channel: ChannelSessionState; ledger: ChannelTaskLedger }> {
-  const channel = openChannelOf(ctx);
-  if (channel === undefined) {
-    throw new ChannelPostRefusedError(
-      "channel-not-bound",
-      `session "${ctx.session.identity.id}" is not an open channel. A channel's session is ` +
-        `opened by \`openChannels\`; naming an id nobody opened creates an empty session, not a channel.`
+): Promise<{ boardId: string; mailbox: MailboxesessionState; ledger: MailboxTaskLedger }> {
+  const mailbox = openMailboxOf(ctx);
+  if (mailbox === undefined) {
+    throw new MailboxPostRefusedError(
+      "mailbox-not-bound",
+      `session "${ctx.session.identity.id}" is not an open mailbox. A mailbox's session is ` +
+        `opened by \`openMailboxes\`; naming an id nobody opened creates an empty session, not a mailbox.`
     );
   }
 
-  const channelId = ctx.session.identity.id;
-  const held = channelBoardNamesFor(channelId, boardIds);
+  const mailboxId = ctx.session.identity.id;
+  const held = mailboxBoardNamesFor(mailboxId, boardIds);
   if (!held.includes(name)) {
-    throw new ChannelPostRefusedError(
+    throw new MailboxPostRefusedError(
       "board-not-declared",
-      `channel "${channelId}" declares no board "${name}". ` +
+      `mailbox "${mailboxId}" declares no board "${name}". ` +
         `Boards: ${held.length > 0 ? held.join(", ") : "(none)"}. A board is declared in the ` +
-        `channel's own \`CHANNEL.md\`, and its ledger id is minted from this channel's id.`
+        `mailbox's own \`MAILBOX.md\`, and its ledger id is minted from this mailbox's id.`
     );
   }
 
@@ -667,65 +667,65 @@ async function ledgerNamed(
   // the registry would report the board as unregistered — true, but it names
   // the wrong cause. A board is org-scoped storage by construction.
   if (ctx.org === undefined) {
-    throw new ChannelPostRefusedError(
+    throw new MailboxPostRefusedError(
       "board-needs-an-org",
-      `channel "${channelId}" holds board "${name}", but this channel is open without an ` +
+      `mailbox "${mailboxId}" holds board "${name}", but this mailbox is open without an ` +
         `organization. A board is org-scoped storage, so there is nothing to read or write ` +
-        `in. Open the channel with an \`orgId\` (or as a caller whose verified identity ` +
+        `in. Open the mailbox with an \`orgId\` (or as a caller whose verified identity ` +
         `carries one) and the board resolves.`
     );
   }
 
-  const boardId = channelBoardId(channelId, name);
+  const boardId = mailboxBoardId(mailboxId, name);
 
   // Caught rather than tested for: the resource registry THROWS on a key it
   // does not hold, so an `undefined` check alone is a branch that never runs
   // and a message nobody ever reads. Both outcomes land here and produce the
   // same refusal.
-  let ledger: ChannelTaskLedger | undefined;
+  let ledger: MailboxTaskLedger | undefined;
   try {
-    ledger = await resolveChannelBoard(ctx, boardId);
+    ledger = await resolveMailboxBoard(ctx, boardId);
   } catch {
     ledger = undefined;
   }
   if (ledger === undefined) {
-    throw new ChannelPostRefusedError(
+    throw new MailboxPostRefusedError(
       "board-not-declared",
-      `channel "${channelId}" declares board "${name}", but its ledger is not registered on ` +
-        `this flow. The channel kind is built holding every board its roster minted, so this ` +
-        `means the kind was built from a different roster than the one that opened this channel.`
+      `mailbox "${mailboxId}" declares board "${name}", but its ledger is not registered on ` +
+        `this flow. The mailbox kind is built holding every board its roster minted, so this ` +
+        `means the kind was built from a different roster than the one that opened this mailbox.`
     );
   }
-  return { boardId, channel, ledger };
+  return { boardId, mailbox, ledger };
 }
 
 /**
- * File one row onto a board this channel holds.
+ * File one row onto a board this mailbox holds.
  *
  * The roster check on `author` is the **same check a post meets, in the same
  * words** — and it is a validity check against the declared roster, not
  * authentication. `author` is optional and unverified, so a caller that omits
  * it is not checked at all, on this path exactly as on the post path. Filing is
  * not members-only, and this action does not pretend it is: the per-caller
- * identity that would make it so does not exist on the channel session
+ * identity that would make it so does not exist on the mailbox session
  * contract.
  */
 const fileTaskFor = (boardIds: readonly string[]) =>
   handler({
-    name: "channel-file-task",
-    inputSchema: channelFileTaskInputSchema,
-    outputSchema: channelFileTaskOutputSchema,
-    execute: async (input: ChannelFileTaskInput, ctx): Promise<ChannelFileTaskOutput> => {
-      const { boardId, channel, ledger } = await ledgerNamed(ctx, boardIds, input.board);
+    name: "mailbox-file-task",
+    inputSchema: mailboxFileTaskInputSchema,
+    outputSchema: mailboxFileTaskOutputSchema,
+    execute: async (input: MailboxFileTaskInput, ctx): Promise<MailboxFileTaskOutput> => {
+      const { boardId, mailbox, ledger } = await ledgerNamed(ctx, boardIds, input.board);
 
       // A validity check against the declared roster, NOT authentication. The
       // claim stays unverified either way; this only stops a row naming a seat
-      // the channel has never heard of.
-      if (input.author !== undefined && !channel.members.includes(input.author)) {
-        throw new ChannelPostRefusedError(
+      // the mailbox has never heard of.
+      if (input.author !== undefined && !mailbox.members.includes(input.author)) {
+        throw new MailboxPostRefusedError(
           "author-not-a-member",
-          `"${input.author}" is not a member of channel "${ctx.session.identity.id}". ` +
-            `Members: ${channel.members.length > 0 ? channel.members.join(", ") : "(none)"}.`
+          `"${input.author}" is not a member of mailbox "${ctx.session.identity.id}". ` +
+            `Members: ${mailbox.members.length > 0 ? mailbox.members.join(", ") : "(none)"}.`
         );
       }
 
@@ -754,16 +754,16 @@ const fileTaskFor = (boardIds: readonly string[]) =>
     }
   });
 
-/** Read one board this channel holds. */
+/** Read one board this mailbox holds. */
 const readBoardFor = (boardIds: readonly string[]) =>
   handler({
-    name: "channel-read-board",
-    inputSchema: channelReadBoardInputSchema,
-    outputSchema: channelReadBoardOutputSchema,
+    name: "mailbox-read-board",
+    inputSchema: mailboxReadBoardInputSchema,
+    outputSchema: mailboxReadBoardOutputSchema,
     execute: async (
-      input: z.infer<typeof channelReadBoardInputSchema>,
+      input: z.infer<typeof mailboxReadBoardInputSchema>,
       ctx
-    ): Promise<ChannelReadBoardOutput> => {
+    ): Promise<MailboxReadBoardOutput> => {
       const { boardId, ledger } = await ledgerNamed(ctx, boardIds, input.board);
       return {
         board: input.board,
@@ -772,35 +772,35 @@ const readBoardFor = (boardIds: readonly string[]) =>
         // every other coordinate with it, and parsing also strips the handle's
         // `items()` method, so what comes back is the row rather than a live
         // handle.
-        tasks: ledger.list().map((task) => channelBoardRowSchema.parse(task))
+        tasks: ledger.list().map((task) => mailboxBoardRowSchema.parse(task))
       };
     }
   });
 
 /**
- * One board's eight task tools as actions, for a channel that declared
+ * One board's eight task tools as actions, for a mailbox that declared
  * `boardActions: true` (FIX-1629).
  *
- * The same guarded verbs a seat's model holds through `channelBoardTaskTools`,
+ * The same guarded verbs a seat's model holds through `mailboxBoardTaskTools`,
  * so a refusal is the verb's own and comes back as `{ ok: false, error }`. The
- * one thing added is the fence a channel needs and a board on its own flow
- * does not: every channel shares this flow, so `cancelTask_eng_feature_work`
- * is callable on every channel's session. The resolver refuses unless the
- * session IS the board's channel, then reaches the ledger through
+ * one thing added is the fence a mailbox needs and a board on its own flow
+ * does not: every mailbox shares this flow, so `cancelTask_eng_feature_work`
+ * is callable on every mailbox's session. The resolver refuses unless the
+ * session IS the board's mailbox, then reaches the ledger through
  * {@link ledgerNamed} — the same checks `fileTask` and `readBoard` make —
  * before any row is read.
  */
 function boardTaskActionsFor(boardIds: readonly string[], boardId: string) {
-  // A board id is `<channelId>.<name>`, and a name carries no dot.
+  // A board id is `<mailboxId>.<name>`, and a name carries no dot.
   const split = boardId.lastIndexOf(".");
-  const channelId = boardId.slice(0, split);
+  const mailboxId = boardId.slice(0, split);
   const name = boardId.slice(split + 1);
   return taskToolActions(boardId, async (ctx) => {
-    if (ctx.session.identity.id !== channelId) {
-      throw new ChannelPostRefusedError(
+    if (ctx.session.identity.id !== mailboxId) {
+      throw new MailboxPostRefusedError(
         "board-not-declared",
-        `board "${boardId}" belongs to channel "${channelId}", and this is channel ` +
-          `"${ctx.session.identity.id}". A board's task actions work only in its own channel's session.`
+        `board "${boardId}" belongs to mailbox "${mailboxId}", and this is mailbox ` +
+          `"${ctx.session.identity.id}". A board's task actions work only in its own mailbox's session.`
       );
     }
     return (await ledgerNamed(ctx, boardIds, name)).ledger;
@@ -809,10 +809,10 @@ function boardTaskActionsFor(boardIds: readonly string[], boardId: string) {
 
 /**
  * What the fan-out entry is handed: enough to say which post is being
- * delivered, and for a person's post on a routed channel, its case as the
+ * delivered, and for a person's post on a routed mailbox, its case as the
  * post kept it. Internal-only entry, so no caller writes the case.
  */
-const channelFanOutInputSchema = z.object({
+const mailboxFanOutInputSchema = z.object({
   postId: z.string(),
   body: z.string(),
   principal: z.string(),
@@ -825,18 +825,18 @@ const channelFanOutInputSchema = z.object({
   postCase: postCaseSchema.optional()
 });
 
-export type ChannelFanOutInput = z.infer<typeof channelFanOutInputSchema>;
+export type MailboxFanOutInput = z.infer<typeof mailboxFanOutInputSchema>;
 
 /**
  * What a notify block is handed, once per declared member per post, or once
  * in all for a routed post.
  *
- * `seatAuthored`, `routed` and `recent` are set by the channel's own fan-out
+ * `seatAuthored`, `routed` and `recent` are set by the mailbox's own fan-out
  * and nothing else: a caller's post has no field that reaches them.
  */
-export const channelNotifyInputSchema = z.object({
-  /** The channel's session id. */
-  channelId: z.string(),
+export const mailboxNotifyInputSchema = z.object({
+  /** The mailbox's session id. */
+  mailboxId: z.string(),
   /** The declared member this delivery is addressed to. */
   member: z.string(),
   postId: z.string(),
@@ -845,27 +845,27 @@ export const channelNotifyInputSchema = z.object({
   /** The poster's unverified claim. Display only; it does not withhold a wake. */
   author: z.string().optional(),
   /**
-   * The channel marked this delivery as a seat's own post or answer. Copied
+   * The mailbox marked this delivery as a seat's own post or answer. Copied
    * from the internal entry. Absent on a public post, including one that
    * claims an `author`.
    */
   seatAuthored: z.literal(true).optional(),
   /**
-   * `true` when the channel's route picked this member, the one member the
+   * `true` when the mailbox's route picked this member, the one member the
    * post is delivered to; and on a project's talk session, for each of the
    * template's seats, every one of which answers into the room. Absent on
    * every other delivery. A kind that hears posts decides what it does with
-   * the mark; the built-in agent kind posts its reply into the channel, which
+   * the mark; the built-in agent kind posts its reply into the mailbox, which
    * on a talk session is the project's room.
    */
   routed: z.boolean().optional(),
   /**
-   * On a routed delivery, the channel's last lines before the post (up to
+   * On a routed delivery, the mailbox's last lines before the post (up to
    * 20), oldest first: the ones the route read. On a talk session's delivery,
    * the room's last lines before the post, up to 20. Absent on every other
    * delivery.
    */
-  recent: z.array(channelTranscriptLineSchema).optional(),
+  recent: z.array(mailboxTranscriptLineSchema).optional(),
   /**
    * On a talk session's delivery, the token for this seat's answer: issued to
    * this member alone, and handed back as the answer's `token`. The answer's
@@ -874,7 +874,7 @@ export const channelNotifyInputSchema = z.object({
   answerToken: z.string().optional()
 });
 
-export type ChannelNotifyInput = z.infer<typeof channelNotifyInputSchema>;
+export type MailboxNotifyInput = z.infer<typeof mailboxNotifyInputSchema>;
 
 /** The internal entry a talk post hands its fan-out to, in the poster's own talk session. */
 const TALK_POSTED_ACTION = "onTalkPosted";
@@ -890,7 +890,7 @@ const talkFanOutInputSchema = z.object({
 type TalkFanOutInput = z.infer<typeof talkFanOutInputSchema>;
 
 /** What a rescued delivery failure carries out: the reason, and nothing durable. */
-const channelRefusalNoteSchema = z.object({
+const mailboxRefusalNoteSchema = z.object({
   delivered: z.literal(false),
   reason: z.string()
 });
@@ -899,20 +899,20 @@ const channelRefusalNoteSchema = z.object({
  * Absorb one member's delivery refusal so the remaining members are still
  * attempted, carrying the reason out as this block's own output.
  *
- * **Nothing about a channel's session is written here.** A delivery outcome
- * is not a channel fact to widen every channel's declared state with, so the
+ * **Nothing about a mailbox's session is written here.** A delivery outcome
+ * is not a mailbox fact to widen every mailbox's declared state with, so the
  * reason travels in this request's own item log, alongside the rest of the
  * fan-out's trace, and nowhere else. (`ctx.session.appendJournal` re-reads the
  * record and commits at its version, so it would no longer erase a post that
  * landed in between; the item log is kept because that is where the trace is.)
  */
 const noteDeliveryRefusal = handler({
-  name: "channel-delivery-refused",
+  name: "mailbox-delivery-refused",
   inputSchema: z.unknown(),
-  outputSchema: channelRefusalNoteSchema,
+  outputSchema: mailboxRefusalNoteSchema,
   execute: async (error: unknown) => ({
     delivered: false as const,
-    reason: `channel delivery refused: ${error instanceof Error ? error.message : String(error)}`
+    reason: `mailbox delivery refused: ${error instanceof Error ? error.message : String(error)}`
   })
 });
 
@@ -929,15 +929,15 @@ const noteDeliveryRefusal = handler({
  * gives. This one runs inside the post's own request, where the queue hold
  * makes a journal write look safe — but "safe because nothing else is writing
  * right now" is not a property this flow can keep true, so the rule here is the
- * flat one: a channel makes no session write that is not a state delta.
+ * flat one: a mailbox makes no session write that is not a state delta.
  */
 const noteHandOffRefusal = handler({
-  name: "channel-hand-off-refused",
+  name: "mailbox-hand-off-refused",
   inputSchema: z.unknown(),
-  outputSchema: channelRefusalNoteSchema,
+  outputSchema: mailboxRefusalNoteSchema,
   execute: async (error: unknown) => ({
     delivered: false as const,
-    reason: `channel fan-out not started: ${error instanceof Error ? error.message : String(error)}`
+    reason: `mailbox fan-out not started: ${error instanceof Error ? error.message : String(error)}`
   })
 });
 
@@ -946,15 +946,15 @@ const noteHandOffRefusal = handler({
 // ---------------------------------------------------------------------------
 
 /**
- * The action the boot binder dispatches into each open channel's OWN session,
- * so the channel writes its own row.
+ * The action the boot binder dispatches into each open mailbox's OWN session,
+ * so the mailbox writes its own row.
  *
- * **Pinned.** `openInventory` names this string, and a channel kind a caller
+ * **Pinned.** `openInventory` names this string, and a mailbox kind a caller
  * hand-rolled must declare an action under it — the same way it must declare
- * `cardinality: "singleton"`. A kind that does not is a per-channel failure the
- * binder names, never a channel silently missing from the inventory.
+ * `cardinality: "singleton"`. A kind that does not is a per-mailbox failure the
+ * binder names, never a mailbox silently missing from the inventory.
  */
-export const INVENTORY_REGISTER_CHANNEL = "registerChannelInInventory";
+export const INVENTORY_REGISTER_MAILBOX = "registerMailboxInInventory";
 
 /**
  * The action the boot binder dispatches ONCE, carrying the roster's seats.
@@ -972,20 +972,20 @@ export const INVENTORY_REGISTER_SEATS = "registerSeatsInInventory";
 
 /**
  * The action the boot binder dispatches ONCE when the roster carries project
- * talk templates (`mintFor:`), naming their ids, so a channel row an earlier
- * boot wrote under one of those ids is retired: a template is never a channel,
+ * talk templates (`mintFor:`), naming their ids, so a mailbox row an earlier
+ * boot wrote under one of those ids is retired: a template is never a mailbox,
  * so a row advertising it as one is wrong rather than merely old.
  *
  * **Pinned**, and internal-only like {@link INVENTORY_REGISTER_SEATS}: its whole
  * input is ids to delete, with nothing to check them against.
  */
-export const INVENTORY_RETIRE_CHANNELS = "retireChannelsInInventory";
+export const INVENTORY_RETIRE_MAILBOXES = "retireMailboxesInInventory";
 
-/** Nothing a caller supplies reaches the channel's row. */
-const registerChannelInputSchema = z.object({}).strict();
+/** Nothing a caller supplies reaches the mailbox's row. */
+const registerMailboxInputSchema = z.object({}).strict();
 
 /** What a registration reports back: the row it wrote, so a caller can read it without a second read. */
-export const inventoryChannelRegisteredSchema = z.object({
+export const inventoryMailboxRegisteredSchema = z.object({
   id: z.string(),
   kind: z.string(),
   members: z.array(z.string())
@@ -999,11 +999,11 @@ const registerSeatsInputSchema = z
 /** What the seat write reports: how many rows landed. */
 export const inventorySeatsRegisteredSchema = z.object({ written: z.number() });
 
-/** The ids of the roster's talk templates, whose channel rows are retired. */
-const retireChannelsInputSchema = z.object({ ids: z.array(z.string().min(1)) }).strict();
+/** The ids of the roster's talk templates, whose mailbox rows are retired. */
+const retireMailboxesInputSchema = z.object({ ids: z.array(z.string().min(1)) }).strict();
 
-/** What the retirement reports: how many channel rows it removed. */
-export const inventoryChannelsRetiredSchema = z.object({ retired: z.number() });
+/** What the retirement reports: how many mailbox rows it removed. */
+export const inventoryMailboxesRetiredSchema = z.object({ retired: z.number() });
 
 /** The stored row is not one this boot may replace. */
 class NotTheBootsRow extends Error {}
@@ -1124,9 +1124,9 @@ async function publishBootSeatRow(
 }
 
 /**
- * The two blocks that write the live inventory, built for one channel kind.
+ * The two blocks that write the live inventory, built for one mailbox kind.
  *
- * Built per kind rather than once, because a channel row records **which kind
+ * Built per kind rather than once, because a mailbox row records **which kind
  * minted it** and a block cannot read its own flow's kind: `ctx.flow` is
  * narrowed to the create-time config bag and carries no name. So the kind is
  * closed over here, at the one place that also writes `kind:` onto the flow.
@@ -1137,7 +1137,7 @@ async function publishBootSeatRow(
  * check a registration that is fine.
  *
  * @param kind The kind name the flow declaring these actions was built with.
- *   `defineChannelFlow` passes its own; a hand-rolled kind passes the same
+ *   `defineMailboxFlow` passes its own; a hand-rolled kind passes the same
  *   string it passed `defineFlow({ kind })`, and a row carrying the wrong one
  *   is that kind's bug in the same way a mismatched `cardinality` is.
  * @returns Both entries, keyed by their action name. The blocks declare the
@@ -1145,9 +1145,9 @@ async function publishBootSeatRow(
  *   too. **Split them across `actions` and `internal.actions` — do not spread
  *   the whole return into `actions`.** `registerSeats`'s whole input is
  *   caller-supplied row data with nothing to check it against, so a public
- *   caller could write fabricated seat rows; `registerChannel` has no such
- *   risk (empty input, derives its row from the channel's own session state),
- *   so it is the one safe to leave public. `defineChannelFlow`'s own built-in
+ *   caller could write fabricated seat rows; `registerMailbox` has no such
+ *   risk (empty input, derives its row from the mailbox's own session state),
+ *   so it is the one safe to leave public. `defineMailboxFlow`'s own built-in
  *   kind makes exactly this split — read it there for the mechanics.
  *
  * @example
@@ -1156,11 +1156,11 @@ async function publishBootSeatRow(
  *     kind: "briefing",
  *     cardinality: "singleton",
  *     session: { stateSchema: briefingState },
- *     actions: { ...myActions, registerChannelInInventory: writer.registerChannelInInventory },
+ *     actions: { ...myActions, registerMailboxInInventory: writer.registerMailboxInInventory },
  *     internal: {
  *       actions: {
  *         registerSeatsInInventory: writer.registerSeatsInInventory,
- *         retireChannelsInInventory: writer.retireChannelsInInventory
+ *         retireMailboxesInInventory: writer.retireMailboxesInInventory
  *       }
  *     }
  *   });
@@ -1170,7 +1170,7 @@ export function inventoryWriterActions(kind: string) {
   // a collection is addressed by its pattern and scope, never by object
   // identity — so this costs nothing and keeps the declaration local to the
   // flow that installs it.
-  const channels = defineChannelInventoryCollection();
+  const mailboxes = defineMailboxInventoryCollection();
   const memberships = defineMembershipIndexCollection();
   const seats = defineSeatInventoryCollection();
   // Read by the seat write only, to tell a fired hire's leftover row from a
@@ -1178,36 +1178,36 @@ export function inventoryWriterActions(kind: string) {
   // write asks for it rather than when the request starts.
   const roster = { ...defineHiredRosterCollection(), prefetchMode: "lazy" as const };
 
-  const registerChannel = handler({
-    name: "channel-register-in-inventory",
-    inputSchema: registerChannelInputSchema,
-    outputSchema: inventoryChannelRegisteredSchema,
-    resources: { channels, memberships },
+  const registerMailbox = handler({
+    name: "mailbox-register-in-inventory",
+    inputSchema: registerMailboxInputSchema,
+    outputSchema: inventoryMailboxRegisteredSchema,
+    resources: { mailboxes, memberships },
     execute: async (_input, ctx) => {
-      const channel = openChannelOf(ctx);
-      if (channel === undefined) {
-        throw new ChannelPostRefusedError(
-          "channel-not-bound",
-          `session "${ctx.session.identity.id}" is not an open channel, so there is no ` +
-            `membership to publish. A channel's session is opened by \`openChannels\`, and the ` +
+      const mailbox = openMailboxOf(ctx);
+      if (mailbox === undefined) {
+        throw new MailboxPostRefusedError(
+          "mailbox-not-bound",
+          `session "${ctx.session.identity.id}" is not an open mailbox, so there is no ` +
+            `membership to publish. A mailbox's session is opened by \`openMailboxes\`, and the ` +
             `inventory binder runs after it.`
         );
       }
       if (ctx.org === undefined) {
         throw new Error(
-          `channel "${ctx.session.identity.id}" cannot register in the inventory: it is open ` +
-            `without an organization, and the inventory is org-scoped storage. Open the channel ` +
+          `mailbox "${ctx.session.identity.id}" cannot register in the inventory: it is open ` +
+            `without an organization, and the inventory is org-scoped storage. Open the mailbox ` +
             `with an \`orgId\` and it registers.`
         );
       }
 
       const id = ctx.session.identity.id;
-      // The channel's OWN session state, and nothing else. The binder carries
+      // The mailbox's OWN session state, and nothing else. The binder carries
       // no members, deliberately: a roster's `members:` is what a file said
       // when it was last read, and an edit to it never reaches a session that
       // is already open. Copying it here would republish that file-time answer
       // under a live name.
-      const members = [...channel.members];
+      const members = [...mailbox.members];
 
       // Every member's key is built up front, before anything is written.
       // `membershipKey` throws on a member id that can never be one — and
@@ -1218,27 +1218,27 @@ export function inventoryWriterActions(kind: string) {
       // half-written state instead of leaving nothing behind.
       const membershipKeys = members.map((seatId) => membershipKey(seatId, id));
 
-      // The membership rows go FIRST, and the channel row that names them
+      // The membership rows go FIRST, and the mailbox row that names them
       // goes last. Neither write is transactional with the other — a store
       // failure partway through the loop below still leaves whatever landed
-      // before it — so the ordering is what stops the channel row from ever
+      // before it — so the ordering is what stops the mailbox row from ever
       // claiming a member the index does not have: the row is only written
       // once every membership row it will name already exists. What it does
       // not buy: a membership row from an EARLIER successful run can still
-      // outlive this run's channel row if this run's own loop fails partway
+      // outlive this run's mailbox row if this run's own loop fails partway
       // through. That row is stale, not contradictory, and nothing here
       // prunes stale rows in the first place (see `inventoryWriterActions`'s
       // header).
       for (let i = 0; i < members.length; i++) {
         await ctx.resources.memberships.upsert(membershipKeys[i], {
           seatId: members[i],
-          channelId: id
+          mailboxId: id
         });
       }
 
-      // `openedAt` is create-only, so a second boot does not restamp a channel
+      // `openedAt` is create-only, so a second boot does not restamp a mailbox
       // that has been open since the first one.
-      await ctx.resources.channels.upsert(
+      await ctx.resources.mailboxes.upsert(
         id,
         { id, kind, members },
         { openedAt: new Date().toISOString() }
@@ -1258,7 +1258,7 @@ export function inventoryWriterActions(kind: string) {
         throw new Error(
           "the seat rows cannot be written: this request carries no organization, and the " +
             "inventory is org-scoped storage. Run the seat write under the same `orgId` the " +
-            "channels were opened with."
+            "mailboxes were opened with."
         );
       }
 
@@ -1290,38 +1290,38 @@ export function inventoryWriterActions(kind: string) {
     }
   });
 
-  const retireChannels = handler({
-    name: "inventory-retire-channels",
-    inputSchema: retireChannelsInputSchema,
-    outputSchema: inventoryChannelsRetiredSchema,
-    resources: { channels, memberships },
+  const retireMailboxes = handler({
+    name: "inventory-retire-mailboxes",
+    inputSchema: retireMailboxesInputSchema,
+    outputSchema: inventoryMailboxesRetiredSchema,
+    resources: { mailboxes, memberships },
     execute: async (input, ctx) => {
       if (ctx.org === undefined) {
         throw new Error(
-          "the retired channel rows cannot be removed: this request carries no organization, and " +
-            "the inventory is org-scoped storage. Run it under the same `orgId` the channels were opened with."
+          "the retired mailbox rows cannot be removed: this request carries no organization, and " +
+            "the inventory is org-scoped storage. Run it under the same `orgId` the mailboxes were opened with."
         );
       }
       // What to delete comes from the membership rows themselves, never from
-      // the channel row's `members`: registration can leave a membership row
-      // the channel row no longer lists, and the channel row may already be
-      // gone. The index is keyed seat-first (`<seatId>/<channelId>`), so no
-      // prefix reaches one channel's rows; the closest the store gets is one
+      // the mailbox row's `members`: registration can leave a membership row
+      // the mailbox row no longer lists, and the mailbox row may already be
+      // gone. The index is keyed seat-first (`<seatId>/<mailboxId>`), so no
+      // prefix reaches one mailbox's rows; the closest the store gets is one
       // listing of the index per run, kept to the retiring ids' rows before
       // anything is deleted. This runs once per boot, and only when the roster
       // carries a template.
       const retiring = new Set(input.ids);
-      const stale = (await ctx.resources.memberships.list()).filter((ref) => retiring.has(ref.state.channelId));
-      // Every membership row first, the channel rows last: a run that fails
-      // partway leaves the channel row standing, and the next run lists and
+      const stale = (await ctx.resources.memberships.list()).filter((ref) => retiring.has(ref.state.mailboxId));
+      // Every membership row first, the mailbox rows last: a run that fails
+      // partway leaves the mailbox row standing, and the next run lists and
       // finishes whatever is left either way.
       for (const ref of stale) {
-        await ctx.resources.memberships.delete(membershipKey(ref.state.seatId, ref.state.channelId));
+        await ctx.resources.memberships.delete(membershipKey(ref.state.seatId, ref.state.mailboxId));
       }
       let retired = 0;
       for (const id of input.ids) {
-        if ((await ctx.resources.channels.getOptional(id)) === undefined) continue;
-        await ctx.resources.channels.delete(id);
+        if ((await ctx.resources.mailboxes.getOptional(id)) === undefined) continue;
+        await ctx.resources.mailboxes.delete(id);
         retired += 1;
       }
       return { retired };
@@ -1329,11 +1329,11 @@ export function inventoryWriterActions(kind: string) {
   });
 
   return {
-    [INVENTORY_REGISTER_CHANNEL]: {
-      block: registerChannel,
+    [INVENTORY_REGISTER_MAILBOX]: {
+      block: registerMailbox,
       description:
-        "Publish this channel's row and its membership rows into the org's live inventory, " +
-        "from the channel's own session state. Boot machinery: takes no input, and re-running " +
+        "Publish this mailbox's row and its membership rows into the org's live inventory, " +
+        "from the mailbox's own session state. Boot machinery: takes no input, and re-running " +
         "it writes the same rows."
     },
     [INVENTORY_REGISTER_SEATS]: {
@@ -1342,19 +1342,19 @@ export function inventoryWriterActions(kind: string) {
         "Write the org's seat rows into the live inventory. Boot machinery, called once by " +
         "`openInventory` with the roster it was hired from."
     },
-    [INVENTORY_RETIRE_CHANNELS]: {
-      block: retireChannels,
+    [INVENTORY_RETIRE_MAILBOXES]: {
+      block: retireMailboxes,
       description:
-        "Remove the channel rows of ids the roster now declares as project talk templates. Boot " +
+        "Remove the mailbox rows of ids the roster now declares as project talk templates. Boot " +
         "machinery, called once by `openInventory`."
     }
   };
 }
 
-export interface DefineChannelFlowOptions {
+export interface DefineMailboxFlowOptions {
   /**
    * The fan-out slot: a block run once per declared member per post, outside
-   * the post's queue hold. Absent by default — a channel with no slot lands
+   * the post's queue hold. Absent by default — a mailbox with no slot lands
    * posts and wakes nobody.
    *
    * The framework carries the policy and the app supplies the addresses.
@@ -1370,29 +1370,29 @@ export interface DefineChannelFlowOptions {
   notify?: BlockDefinition<any, any>;
 
   /**
-   * The MINTED ledger ids of every board this roster's channels declared —
-   * `<channelId>.<boardName>`, never a local name.
+   * The MINTED ledger ids of every board this roster's mailboxes declared —
+   * `<mailboxId>.<boardName>`, never a local name.
    *
-   * Supplied by `channelInstances` from the roster it is validating, not by an
-   * app: a board is declared in a `CHANNEL.md`, and an id is minted from where
+   * Supplied by `mailboxInstances` from the roster it is validating, not by an
+   * app: a board is declared in a `MAILBOX.md`, and an id is minted from where
    * that file sits. Absent, this kind holds no board and carries neither board
    * action — which is exactly the shape it had before boards existed.
    *
-   * One flat list for every channel on the instance, because a channel kind is
-   * a singleton and its sessions are the channels: each session filters the
-   * list down to its own by id, and a board id splits into its channel and its
+   * One flat list for every mailbox on the instance, because a mailbox kind is
+   * a singleton and its sessions are the mailboxes: each session filters the
+   * list down to its own by id, and a board id splits into its mailbox and its
    * name unambiguously (a board name carries no dot).
    */
   boards?: readonly string[];
 
   /**
-   * The channels that declared `boardActions: true`, by channel id. Each of
+   * The mailboxes that declared `boardActions: true`, by mailbox id. Each of
    * their boards gets the eight task tools as actions, named
    * `<tool>_<board id with dots as underscores>`. Supplied by
-   * `channelInstances` from the roster, as `boards` is, never by an app.
+   * `mailboxInstances` from the roster, as `boards` is, never by an app.
    *
-   * Off by default, because anyone who can reach a channel can then settle
-   * or reassign its rows. A channel not listed keeps exactly the actions it
+   * Off by default, because anyone who can reach a mailbox can then settle
+   * or reassign its rows. A mailbox not listed keeps exactly the actions it
    * had before.
    */
   boardActions?: readonly string[];
@@ -1402,36 +1402,36 @@ export interface DefineChannelFlowOptions {
    * {@link inventoryWriterActions} builds, and the collections they write.
    *
    * Absent by default, and absent means absent: no collection is declared, no
-   * action exists, and a channel behaves exactly as it did before the inventory
+   * action exists, and a mailbox behaves exactly as it did before the inventory
    * existed. An entry that is only there to do nothing is worse than none,
    * which is how the fan-out slot beside it works too.
    *
-   * Supplied by `channelInstances({ inventory: true })` for the built-in, so an
+   * Supplied by `mailboxInstances({ inventory: true })` for the built-in, so an
    * app turns the inventory on at one call rather than by rebuilding the kind.
    */
   inventory?: boolean;
 
   /**
-   * The route, from `routeByPurpose(seats, { model })`. A channel on this kind
+   * The route, from `routeByPurpose(seats, { model })`. A mailbox on this kind
    * that declares `routing:` sends each person's post to one member, the one
-   * the route picks, instead of to every member. A channel without the line
+   * the route picks, instead of to every member. A mailbox without the line
    * fans out as before. Needs `notify`: the route picks a member, and the
    * notify block delivers to it.
    */
-  route?: ChannelRoute;
+  route?: MailboxRoute;
 
   /**
-   * Each routed channel's `routing:`, by channel id. Supplied by
-   * `channelInstances` from the roster, as `boards` is, never by an app: it is
+   * Each routed mailbox's `routing:`, by mailbox id. Supplied by
+   * `mailboxInstances` from the roster, as `boards` is, never by an app: it is
    * read from the files at every boot and never stored, so an edited
-   * `routing:` reaches an open channel at the next boot.
+   * `routing:` reaches an open mailbox at the next boot.
    */
-  routing?: Readonly<Record<string, ChannelRouting>>;
+  routing?: Readonly<Record<string, MailboxRouting>>;
 
   /**
    * The talk template this kind's project talk sessions run under: the seats
    * a post in a project's room wakes, and the room's charter. Supplied by
-   * `channelInstances` from the org-level default or a `CHANNEL.md` marked
+   * `mailboxInstances` from the org-level default or a `MAILBOX.md` marked
    * `mintFor:`, as `boards` is, never by an app. Built onto the kind at every
    * boot and never written into a session, so an edited template reaches
    * every project's room at the next boot. Absent, a talk post wakes nobody.
@@ -1440,52 +1440,52 @@ export interface DefineChannelFlowOptions {
 }
 
 /**
- * What {@link defineChannelFlow} returns: the flow factory, plus the one thing
- * `channelInstances` needs of it.
+ * What {@link defineMailboxFlow} returns: the flow factory, plus the one thing
+ * `mailboxInstances` needs of it.
  *
- * `withBoards` is NOT on {@link ChannelKind}, and that is the point. A kind a
+ * `withBoards` is NOT on {@link MailboxKind}, and that is the point. A kind a
  * caller wrote is zero-arg and stays zero-arg; handing board ids through the
  * public kind contract would be a permanent widen bought for no consumer that
  * exists. Instead, a kind that CAN hold boards is one this function built, and
  * a record pairing `boards:` with any other kind is refused by name at bind.
  */
-export type ChannelFlowFactory = ReturnType<typeof defineFlow> & {
+export type MailboxFlowFactory = ReturnType<typeof defineFlow> & {
   /** The same kind, rebuilt holding these minted board ids. */
-  withBoards: (boards: readonly string[]) => ChannelFlowFactory;
-  /** The same kind, rebuilt with each routed channel's `routing:`, by channel id. */
-  withRouting: (routing: Readonly<Record<string, ChannelRouting>>) => ChannelFlowFactory;
-  /** The same kind, rebuilt exposing these channels' board task actions. */
-  withBoardActions: (channelIds: readonly string[]) => ChannelFlowFactory;
+  withBoards: (boards: readonly string[]) => MailboxFlowFactory;
+  /** The same kind, rebuilt with each routed mailbox's `routing:`, by mailbox id. */
+  withRouting: (routing: Readonly<Record<string, MailboxRouting>>) => MailboxFlowFactory;
+  /** The same kind, rebuilt exposing these mailboxes' board task actions. */
+  withBoardActions: (mailboxIds: readonly string[]) => MailboxFlowFactory;
   /** The same kind, rebuilt holding a project talk template's seats and charter. */
-  withTemplate: (template: TalkTemplateFacts) => ChannelFlowFactory;
+  withTemplate: (template: TalkTemplateFacts) => MailboxFlowFactory;
 };
 
-/** Is this channel kind one {@link defineChannelFlow} built? */
-export function holdsBoards(kind: unknown): kind is ChannelFlowFactory {
+/** Is this mailbox kind one {@link defineMailboxFlow} built? */
+export function holdsBoards(kind: unknown): kind is MailboxFlowFactory {
   return (
     typeof kind === "function" &&
-    typeof (kind as Partial<ChannelFlowFactory>).withBoards === "function"
+    typeof (kind as Partial<MailboxFlowFactory>).withBoards === "function"
   );
 }
 
-/** The key a kind {@link defineChannelFlow} built with a route carries that route under. */
-const KIND_ROUTE = Symbol("channel-kind-route");
+/** The key a kind {@link defineMailboxFlow} built with a route carries that route under. */
+const KIND_ROUTE = Symbol("mailbox-kind-route");
 
 /**
- * The route a channel kind was built with, or `undefined` for a kind built
- * without one, or one {@link defineChannelFlow} did not build. The binder reads
+ * The route a mailbox kind was built with, or `undefined` for a kind built
+ * without one, or one {@link defineMailboxFlow} did not build. The binder reads
  * it to check a `routing:` line. Not re-exported from the package root.
  */
-export function routeOf(kind: unknown): ChannelRoute | undefined {
-  return typeof kind === "function" ? (kind as { [KIND_ROUTE]?: ChannelRoute })[KIND_ROUTE] : undefined;
+export function routeOf(kind: unknown): MailboxRoute | undefined {
+  return typeof kind === "function" ? (kind as { [KIND_ROUTE]?: MailboxRoute })[KIND_ROUTE] : undefined;
 }
 
-/** The key a kind {@link defineChannelFlow} built with a notify slot carries `true` under. */
-const KIND_WAKES = Symbol("channel-kind-wakes");
+/** The key a kind {@link defineMailboxFlow} built with a notify slot carries `true` under. */
+const KIND_WAKES = Symbol("mailbox-kind-wakes");
 
 /**
- * Was this channel kind built with a notify slot, so a post can wake anyone?
- * `false` for a kind built without one, or one {@link defineChannelFlow} did
+ * Was this mailbox kind built with a notify slot, so a post can wake anyone?
+ * `false` for a kind built without one, or one {@link defineMailboxFlow} did
  * not build. The binder reads it to refuse a talk template whose seats would
  * never be woken. Not re-exported from the package root.
  */
@@ -1494,32 +1494,32 @@ export function wakesSeats(kind: unknown): boolean {
 }
 
 /**
- * Build a channel kind.
+ * Build a mailbox kind.
  *
  * Every kind built here carries the same identity contract the registry
  * enforces: `cardinality: "singleton"`, so `flow.id === flow.kind`. A custom
- * kind passed through `channelInstances`'s `kinds` map must carry it too.
+ * kind passed through `mailboxInstances`'s `kinds` map must carry it too.
  *
  * @param options `notify`: the per-member fan-out block, absent by default.
- *   `route`: from `routeByPurpose`, for channels that declare `routing:`.
+ *   `route`: from `routeByPurpose`, for mailboxes that declare `routing:`.
  *   `boards`, `routing` and `boardActions`: supplied by the binder from the roster.
  * @returns The flow factory. Call it (no arguments) to mint the one instance.
  */
-export function defineChannelFlow(options: DefineChannelFlowOptions = {}): ChannelFlowFactory {
+export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): MailboxFlowFactory {
   const notify = options.notify;
   const boardIds = [...(options.boards ?? [])].sort();
 
   // Only `routeByPurpose` makes a route, so the order a post is placed in, the
-  // one-call cap and the record hold on every routed channel. The route
+  // one-call cap and the record hold on every routed mailbox. The route
   // carries its block under a key only this package holds.
   const routeBlock = options.route?.[ROUTE_BLOCK];
   if (options.route !== undefined && routeBlock === undefined) {
-    throw new Error("defineChannelFlow: `route` must be what routeByPurpose(seats, { model }) returned.");
+    throw new Error("defineMailboxFlow: `route` must be what routeByPurpose(seats, { model }) returned.");
   }
   if (routeBlock !== undefined && notify === undefined) {
     throw new Error(
-      "defineChannelFlow: a `route` needs a `notify` block to deliver to. Pass the wake as well: " +
-        "`defineChannelFlow({ notify: wakeMemberSeats(seats), route })`."
+      "defineMailboxFlow: a `route` needs a `notify` block to deliver to. Pass the wake as well: " +
+        "`defineMailboxFlow({ notify: wakeMemberSeats(seats), route })`."
     );
   }
   const routing = options.routing ?? {};
@@ -1527,20 +1527,20 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   // One declaration object per minted id, always from the memo. Two separate
   // `defineTaskCollection` calls sharing an id share ROWS and not POLICY — the
   // handed-off assignee freeze is a WeakSet on the declaration — so the seat's
-  // board and the channel's own writes must pass one value.
+  // board and the mailbox's own writes must pass one value.
   const boardResources = Object.fromEntries(
-    boardIds.map((id) => [id, channelBoardLedger(id)])
+    boardIds.map((id) => [id, mailboxBoardLedger(id)])
   );
 
   // Built once per kind, not per request, and only when this kind holds a
   // board: with no board there is nothing to file onto and nothing to read, so
   // there is no action rather than an action that always refuses.
-  const readChannel = readChannelFor(boardIds);
+  const readMailbox = readMailboxFor(boardIds);
   const fileTask = boardIds.length === 0 ? undefined : fileTaskFor(boardIds);
   const readBoard = boardIds.length === 0 ? undefined : readBoardFor(boardIds);
 
-  // Only for the boards of channels that opted in. Built from the minted ids,
-  // so a channel with no board, or one that did not opt in, adds nothing.
+  // Only for the boards of mailboxes that opted in. Built from the minted ids,
+  // so a mailbox with no board, or one that did not opt in, adds nothing.
   const optedIn = new Set(options.boardActions ?? []);
   const actionBoards = boardIds.filter((id) => optedIn.has(id.slice(0, id.lastIndexOf("."))));
   // The qualifier is not injective (`eng.feature.work` and `eng_feature.work`
@@ -1554,7 +1554,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     if (clash !== undefined) {
       throw new Error(
         `boardActions: boards "${clash}" and "${id}" would both answer to the task actions ` +
-          `\`<tool>_${taskToolSuffix(id)}\`. Rename a channel or a board.`
+          `\`<tool>_${taskToolSuffix(id)}\`. Rename a mailbox or a board.`
       );
     }
   }
@@ -1563,30 +1563,30 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     ...actionBoards.map((id) => boardTaskActionsFor(boardIds, id))
   ) as Record<string, ActionConfig>;
 
-  // Built on the FACTORY, never behind a `kind === "channel"` test inside the
-  // block: what the inventory promises is that EVERY open channel has a row,
+  // Built on the FACTORY, never behind a `kind === "mailbox"` test inside the
+  // block: what the inventory promises is that EVERY open mailbox has a row,
   // and a kind check in there would make that false for every kind but this
   // one. What decides whether the rows are written is whether the app asked.
   const inventoryActions =
-    options.inventory === true ? inventoryWriterActions(CHANNEL_KIND) : undefined;
+    options.inventory === true ? inventoryWriterActions(MAILBOX_KIND) : undefined;
 
   /**
-   * This channel's `routing:` fallback, when the route places this post: a
-   * person's post (not `seatAuthored`) to a channel that declares the line, on
+   * This mailbox's `routing:` fallback, when the route places this post: a
+   * person's post (not `seatAuthored`) to a mailbox that declares the line, on
    * a kind built with a route. A seat's post is never routed; it fans out as
    * unrouted. A claimed `author` is not that mark.
    */
-  const fallbackFor = (post: ChannelFanOutInput, ctx: BlockContext): string | undefined =>
+  const fallbackFor = (post: MailboxFanOutInput, ctx: BlockContext): string | undefined =>
     routeBlock === undefined || post.seatAuthored === true
       ? undefined
       : routing[ctx.session.identity.id]?.fallback;
 
   // Iterated from the session's own declared roster, read here rather than
-  // carried in the payload: the roster is the channel's, and a caller-supplied
+  // carried in the payload: the roster is the mailbox's, and a caller-supplied
   // copy would be caller-controllable input on a delivery path (BP-031).
-  const rosterDeliveries = (post: ChannelFanOutInput, ctx: BlockContext): ChannelNotifyInput[] =>
-    (boundChannel(ctx.session.state)?.members ?? []).map((member) => ({
-      channelId: ctx.session.identity.id,
+  const rosterDeliveries = (post: MailboxFanOutInput, ctx: BlockContext): MailboxNotifyInput[] =>
+    (boundMailbox(ctx.session.state)?.members ?? []).map((member) => ({
+      mailboxId: ctx.session.identity.id,
       member,
       postId: post.postId,
       body: post.body,
@@ -1596,12 +1596,12 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     }));
 
   /** A routed post's delivery: the one member the route picked, or none when it placed the post with nobody. */
-  const routedDeliveries = ({ post, member, recent }: RouteDecision, ctx: BlockContext): ChannelNotifyInput[] =>
+  const routedDeliveries = ({ post, member, recent }: RouteDecision, ctx: BlockContext): MailboxNotifyInput[] =>
     member === undefined
       ? []
       : [
           {
-            channelId: ctx.session.identity.id,
+            mailboxId: ctx.session.identity.id,
             member,
             postId: post.postId,
             body: post.body,
@@ -1619,7 +1619,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   // Declared ONLY when a slot was supplied. With no slot there is nothing to
   // deliver, so there is no entry to declare and no dispatch to make — rather
   // than a declared entry that exists to do nothing.
-  const fanOutHead = sequencer({ name: "channel-fan-out", inputSchema: channelFanOutInputSchema });
+  const fanOutHead = sequencer({ name: "mailbox-fan-out", inputSchema: mailboxFanOutInputSchema });
   const fanOut =
     deliver === undefined
       ? undefined
@@ -1632,29 +1632,29 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
           fanOutHead
             .branch({
               routed: [
-                ({ postCase, ...post }: ChannelFanOutInput, ctx: BlockContext) => ({
+                ({ postCase, ...post }: MailboxFanOutInput, ctx: BlockContext) => ({
                   post,
                   fallback: fallbackFor(post, ctx),
                   recent: postCase?.recent ?? [],
                   ...(postCase?.holder === undefined ? {} : { holder: postCase.holder })
                 }),
                 (request: { fallback?: string }) => request.fallback !== undefined,
-                sequencer({ name: "channel-routed-delivery", inputSchema: routeRequestSchema })
+                sequencer({ name: "mailbox-routed-delivery", inputSchema: routeRequestSchema })
                   .step(routeBlock)
                   .map((decision: RouteDecision, ctx) => routedDeliveries(decision, ctx as BlockContext))
               ],
               roster: [
-                (post: ChannelFanOutInput) => post,
-                (post: ChannelFanOutInput, ctx: BlockContext) => fallbackFor(post, ctx) === undefined,
+                (post: MailboxFanOutInput) => post,
+                (post: MailboxFanOutInput, ctx: BlockContext) => fallbackFor(post, ctx) === undefined,
                 handler({
-                  name: "channel-roster-delivery",
-                  inputSchema: channelFanOutInputSchema,
-                  outputSchema: z.array(channelNotifyInputSchema),
+                  name: "mailbox-roster-delivery",
+                  inputSchema: mailboxFanOutInputSchema,
+                  outputSchema: z.array(mailboxNotifyInputSchema),
                   execute: rosterDeliveries
                 })
               ]
             })
-            .forEach((deliveries: ChannelNotifyInput[]) => deliveries, deliver);
+            .forEach((deliveries: MailboxNotifyInput[]) => deliveries, deliver);
 
   // Hands the append off to a SEPARATE request so the queue hold covers the
   // append only. Fan-out latency must not count against the next poster's
@@ -1663,16 +1663,16 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     fanOut === undefined
       ? undefined
       : dispatcher({
-          name: "channel-hand-off",
+          name: "mailbox-hand-off",
           action: "onPosted",
-          inputSchema: channelFanOutInputSchema,
-          // The channel's own session. `{ id }`, never `{ key }`: a key-derived
+          inputSchema: mailboxFanOutInputSchema,
+          // The mailbox's own session. `{ id }`, never `{ key }`: a key-derived
           // child id is hashed with the parent session and lineage, so it
-          // cannot name a shared channel.
+          // cannot name a shared mailbox.
           session: { id: (_input, ctx) => ctx.session.identity.id }
         }).rescue([{ block: noteHandOffRefusal }]);
 
-  const fanOutOf = (line: ChannelTranscriptLine): ChannelFanOutInput => ({
+  const fanOutOf = (line: MailboxTranscriptLine): MailboxFanOutInput => ({
     postId: line.id,
     body: line.body,
     principal: line.principal,
@@ -1681,17 +1681,17 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   });
 
   /**
-   * One channel post. Public `post` and a dispatched `post` share the
+   * One mailbox post. Public `post` and a dispatched `post` share the
    * non-seat append. The seat post action is the only one that passes
    * `seatAuthored`, and it does not read that from `input`.
    */
-  const channelPostFor = (seatAuthored: boolean) => {
+  const mailboxPostFor = (seatAuthored: boolean) => {
     const appendPlain = appendPostFor(seatAuthored);
     if (handOff === undefined) return appendPlain;
     const head = sequencer({
-      name: seatAuthored ? "channel-post-internal" : "channel-post",
-      inputSchema: channelPostInputSchema,
-      outputSchema: channelTranscriptLineSchema
+      name: seatAuthored ? "mailbox-post-internal" : "mailbox-post",
+      inputSchema: mailboxPostInputSchema,
+      outputSchema: mailboxTranscriptLineSchema
     });
     if (routeBlock === undefined) return head.step(appendPlain).tap(fanOutOf, handOff);
     return head
@@ -1702,8 +1702,8 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
       )
       .map(({ line }: KeptPost) => line);
   };
-  const post = channelPostFor(false);
-  const seatLine = channelPostFor(true);
+  const post = mailboxPostFor(false);
+  const seatLine = mailboxPostFor(true);
 
   // A seat's answer to a routed post, on the only kind that routes one: the
   // line, handed off like any seat's line, or nothing when the post has its
@@ -1711,9 +1711,9 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   const answer =
     handOff === undefined || routeBlock === undefined
       ? undefined
-      : sequencer({ name: "channel-answer", inputSchema: channelAnswerInputSchema })
+      : sequencer({ name: "mailbox-answer", inputSchema: mailboxAnswerInputSchema })
           .step(appendAnswer)
-          .tapIf((line: ChannelTranscriptLine | null) => line !== null, fanOutOf, handOff);
+          .tapIf((line: MailboxTranscriptLine | null) => line !== null, fanOutOf, handOff);
 
   // A project's talk session is a session on this kind whose state names a
   // project (`resourceId`). `post`, `read` and `answer` keep one name each and
@@ -1728,23 +1728,23 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   // A talk post wakes the template's seats, once each, under the poster: the
   // fan-out runs in the poster's own talk session, so each seat's
   // conversation is keyed per person per room. Handed off to a separate
-  // request, as a channel's fan-out is, so the post queue's hold covers the
+  // request, as a mailbox's fan-out is, so the post queue's hold covers the
   // append only. Each delivery is routed: every seat's reply lands in the
   // room through this session's `answer`. Declared only when there is a seat
   // to wake and a notify block to wake it with.
   const templateSeats = [...(options.template?.seats ?? [])];
   const talkDeliveries = handler({
-    name: "channel-talk-deliveries",
+    name: "mailbox-talk-deliveries",
     inputSchema: talkFanOutInputSchema,
-    outputSchema: z.array(channelNotifyInputSchema),
+    outputSchema: z.array(mailboxNotifyInputSchema),
     resources: TALK_RESOURCES,
-    execute: async (posted: TalkFanOutInput, ctx): Promise<ChannelNotifyInput[]> => {
+    execute: async (posted: TalkFanOutInput, ctx): Promise<MailboxNotifyInput[]> => {
       const recent = await recentTalkLines(ctx as unknown as BlockContext, posted.projectId, posted.seq);
       const postId = roomLineKey(posted.projectId, posted.seq);
       // One wake per seat; each is recorded, woken and marked in its own
       // rescued run (`talkDeliver`), so one seat's failure is that seat's alone.
       return templateSeats.map((member) => ({
-        channelId: ctx.session.identity.id,
+        mailboxId: ctx.session.identity.id,
         member,
         postId,
         body: posted.body,
@@ -1760,33 +1760,33 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   // still-pending delivery again with its token; a delivered one comes back
   // with no token and is not woken.
   const talkRecorded = handler({
-    name: "channel-talk-recorded",
-    inputSchema: channelNotifyInputSchema,
-    outputSchema: channelNotifyInputSchema,
+    name: "mailbox-talk-recorded",
+    inputSchema: mailboxNotifyInputSchema,
+    outputSchema: mailboxNotifyInputSchema,
     resources: TALK_RESOURCES,
-    execute: async (delivery: ChannelNotifyInput, ctx): Promise<ChannelNotifyInput> => {
+    execute: async (delivery: MailboxNotifyInput, ctx): Promise<MailboxNotifyInput> => {
       const answerToken = await recordTalkDelivery(ctx as unknown as BlockContext, {
         projectId: talkProjectOf(ctx.session.state) as string,
         postId: delivery.postId as string,
         seat: delivery.member,
-        sessionId: delivery.channelId
+        sessionId: delivery.mailboxId
       });
       return answerToken === undefined ? delivery : { ...delivery, answerToken };
     }
   });
-  const toWake = (delivery: ChannelNotifyInput): boolean => delivery.answerToken !== undefined;
+  const toWake = (delivery: MailboxNotifyInput): boolean => delivery.answerToken !== undefined;
   // After a seat's wake has been dispatched: its delivery stops being one a
   // replay would wake again.
   const talkDelivered = handler({
-    name: "channel-talk-delivered",
-    inputSchema: channelNotifyInputSchema,
+    name: "mailbox-talk-delivered",
+    inputSchema: mailboxNotifyInputSchema,
     outputSchema: z.object({ delivered: z.literal(true) }),
     resources: TALK_RESOURCES,
-    execute: async (delivery: ChannelNotifyInput, ctx) => {
+    execute: async (delivery: MailboxNotifyInput, ctx) => {
       await markTalkDelivered(ctx as unknown as BlockContext, {
         postId: delivery.postId as string,
         seat: delivery.member,
-        sessionId: delivery.channelId
+        sessionId: delivery.mailboxId
       });
       return { delivered: true as const };
     }
@@ -1798,7 +1798,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   const talkDeliver =
     notify === undefined
       ? undefined
-      : sequencer({ name: "channel-talk-deliver", inputSchema: channelNotifyInputSchema })
+      : sequencer({ name: "mailbox-talk-deliver", inputSchema: mailboxNotifyInputSchema })
           .step(talkRecorded)
           .tapIf(toWake, notify)
           .stepIf(toWake, talkDelivered)
@@ -1806,7 +1806,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   // Every seat attempted, then any refused one reported: a fan-out with a seat
   // left `pending` did not complete, and says so.
   const talkSettled = handler({
-    name: "channel-talk-settled",
+    name: "mailbox-talk-settled",
     inputSchema: z.array(z.unknown()),
     outputSchema: z.object({ woken: z.number() }),
     execute: async (outcomes: unknown[]) => {
@@ -1826,14 +1826,14 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
   const talkFanOut =
     talkDeliver === undefined || templateSeats.length === 0
       ? undefined
-      : sequencer({ name: "channel-talk-fan-out", inputSchema: talkFanOutInputSchema })
+      : sequencer({ name: "mailbox-talk-fan-out", inputSchema: talkFanOutInputSchema })
           .step(talkDeliveries)
-          .forEach((deliveries: ChannelNotifyInput[]) => deliveries, talkDeliver)
+          .forEach((deliveries: MailboxNotifyInput[]) => deliveries, talkDeliver)
           .step(talkSettled);
   const talkPostEntry =
     talkFanOut === undefined
       ? talkPost
-      : sequencer({ name: "channel-talk-post", inputSchema: channelPostInputSchema, outputSchema: roomLineSchema })
+      : sequencer({ name: "mailbox-talk-post", inputSchema: mailboxPostInputSchema, outputSchema: roomLineSchema })
           .step(talkPost)
           .tap(
             (line: RoomLine): TalkFanOutInput => ({
@@ -1843,7 +1843,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
               principal: line.userId
             }),
             dispatcher({
-              name: "channel-talk-hand-off",
+              name: "mailbox-talk-hand-off",
               action: TALK_POSTED_ACTION,
               inputSchema: talkFanOutInputSchema,
               session: { id: (_input, ctx) => ctx.session.identity.id }
@@ -1851,13 +1851,13 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
           );
 
   const postEntry = router({
-    name: "channel-post-entry",
-    inputSchema: channelPostInputSchema,
-    outputSchema: z.union([channelTranscriptLineSchema, roomLineSchema]),
+    name: "mailbox-post-entry",
+    inputSchema: mailboxPostInputSchema,
+    outputSchema: z.union([mailboxTranscriptLineSchema, roomLineSchema]),
     routes: [anyBlock(post), anyBlock(talkPostEntry)],
     execute: (_input, ctx) => {
       if (isTalk(ctx)) return anyBlock(talkPostEntry);
-      refuseTemplateChannel(ctx);
+      refuseTemplateMailbox(ctx);
       return anyBlock(post);
     }
   });
@@ -1866,53 +1866,53 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
 
   const readInputSchema = z.object({ after: z.number().int().min(0).optional() }).strict();
   const readEntry = router({
-    name: "channel-read-entry",
+    name: "mailbox-read-entry",
     inputSchema: readInputSchema,
-    outputSchema: z.union([channelReadOutputSchema, talkReadOutputSchema]),
-    routes: [anyBlock(readChannel), anyBlock(talkRead)],
-    // A channel's read takes no cursor: it returns the recent transcript.
+    outputSchema: z.union([mailboxReadOutputSchema, talkReadOutputSchema]),
+    routes: [anyBlock(readMailbox), anyBlock(talkRead)],
+    // A mailbox's read takes no cursor: it returns the recent transcript.
     execute: (input, ctx) => {
       if (isTalk(ctx)) return anyBlock(talkRead).connectInput(() => ({ after: input.after ?? 0 }));
-      refuseTemplateChannel(ctx);
-      return anyBlock(readChannel).connectInput(() => ({}));
+      refuseTemplateMailbox(ctx);
+      return anyBlock(readMailbox).connectInput(() => ({}));
     }
   });
 
-  // On a kind without a route there is no channel answer, so a talk session's
+  // On a kind without a route there is no mailbox answer, so a talk session's
   // is the only path; anywhere else it refuses `talk-not-bound`.
   const answerEntry =
     answer === undefined
       ? talkAnswer
       : router({
-          name: "channel-answer-entry",
-          inputSchema: channelAnswerInputSchema,
-          outputSchema: z.union([channelTranscriptLineSchema.nullable(), roomLineSchema.nullable()]),
+          name: "mailbox-answer-entry",
+          inputSchema: mailboxAnswerInputSchema,
+          outputSchema: z.union([mailboxTranscriptLineSchema.nullable(), roomLineSchema.nullable()]),
           routes: [anyBlock(answer), anyBlock(talkAnswer)],
           execute: (_input, ctx) => {
             if (isTalk(ctx)) return anyBlock(talkAnswer);
-            refuseTemplateChannel(ctx);
+            refuseTemplateMailbox(ctx);
             return anyBlock(answer);
           }
         });
 
   const flow = defineFlow({
-    kind: CHANNEL_KIND,
+    kind: MAILBOX_KIND,
     // Not a preference: it is the declared mechanism for "one kind means one
     // thing". The registry throws `singleton-id-mismatch` unless id === kind.
     cardinality: "singleton",
-    session: { stateSchema: channelSessionStateSchema },
+    session: { stateSchema: mailboxesessionStateSchema },
     // The ledgers, and nothing else: no board, no drain, no task entry. A
-    // channel HOLDS rows; running them stays on the seat's side of the fence,
+    // mailbox HOLDS rows; running them stays on the seat's side of the fence,
     // and `defineFlow` asks nothing of a flow that declares only a collection.
     resources: boardResources,
     actions: {
       post: {
         block: postEntry,
         description:
-          "Post a line to this channel. The channel is the session; `author` is an unverified claim. " +
+          "Post a line to this mailbox. The mailbox is the session; `author` is an unverified claim. " +
           "On a project's talk session, the line goes to the project's room, members only.",
-        // Keyed on the session by default, so two posts on ONE channel
-        // serialise and posts on two channels never contend.
+        // Keyed on the session by default, so two posts on ONE mailbox
+        // serialise and posts on two mailboxes never contend.
         concurrency: "queue"
       },
       read: {
@@ -1922,9 +1922,9 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         // `boards` key at all.
         description:
           boardIds.length === 0
-            ? "Read this channel's recent transcript lines, members and description; `after` is ignored. " +
+            ? "Read this mailbox's recent transcript lines, members and description; `after` is ignored. " +
               "On a project's talk session, read the room's lines after `after`, members only."
-            : "Read this channel's recent transcript lines, members, description and declared board names; " +
+            : "Read this mailbox's recent transcript lines, members, description and declared board names; " +
               "`after` is ignored. On a project's talk session, read the room's lines after `after`, members only."
       },
       join: {
@@ -1939,19 +1939,19 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
             fileTask: {
               block: fileTask,
               description:
-                "File a row onto one of this channel's boards. `author` is an unverified claim, " +
+                "File a row onto one of this mailbox's boards. `author` is an unverified claim, " +
                 "checked against the roster and never proof of who called."
             },
             readBoard: {
               block: readBoard,
-              description: "Read the rows on one of this channel's boards."
+              description: "Read the rows on one of this mailbox's boards."
             }
           }),
       ...boardTaskActions,
-      // `registerChannel` only. It takes a closed, empty input and derives the
-      // row entirely from `ctx.session.state` — the channel's own,
+      // `registerMailbox` only. It takes a closed, empty input and derives the
+      // row entirely from `ctx.session.state` — the mailbox's own,
       // already-open state — so a caller cannot make it write anything but
-      // that channel's true members, and calling it early or twice is
+      // that mailbox's true members, and calling it early or twice is
       // harmless. Public because the door that reaches it is the app's own
       // action client at boot, and an internal dispatch resolves from a
       // different map.
@@ -1960,7 +1960,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
       // below for why.
       ...(inventoryActions === undefined
         ? {}
-        : { [INVENTORY_REGISTER_CHANNEL]: inventoryActions[INVENTORY_REGISTER_CHANNEL] })
+        : { [INVENTORY_REGISTER_MAILBOX]: inventoryActions[INVENTORY_REGISTER_MAILBOX] })
     },
     internal: {
       actions: {
@@ -1975,12 +1975,12 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         // internal dispatch, and the arbiter reads `concurrency` off whichever
         // entry it resolved. Sharing the block ref is the whole dedupe there is.
         post: { block: postEntry, concurrency: "queue" },
-        [CHANNEL_SEAT_POST_ACTION]: { block: seatLine, concurrency: "queue" },
+        [MAILBOX_SEAT_POST_ACTION]: { block: seatLine, concurrency: "queue" },
         // Here only, never in `actions`: the answer names the post it answers,
         // so a caller who could reach it could take that post's one answer.
         // On the post queue's key (the session), so answers and posts are one
         // line at a time.
-        [CHANNEL_ANSWER_ACTION]: { block: answerEntry, concurrency: "queue" as const },
+        [MAILBOX_ANSWER_ACTION]: { block: answerEntry, concurrency: "queue" as const },
         read: { block: readEntry },
         // `bind` is here only: it names its project, and the trusted callers
         // that reach it are a project's create and the app's own code.
@@ -1993,7 +1993,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         // the same implementation a caller reaches.
         ...boardTaskActions,
         // `registerSeats` lives ONLY here, never in the public `actions` map
-        // above. Unlike `registerChannel`, it has no session state to derive
+        // above. Unlike `registerMailbox`, it has no session state to derive
         // from — a seat has no session — so its whole input IS the row data,
         // with nothing in this package to check it against. Public
         // reachability would let any principal that can reach this flow write
@@ -2012,7 +2012,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
           : {
               [INVENTORY_REGISTER_SEATS]: inventoryActions[INVENTORY_REGISTER_SEATS],
               // Internal for the same reason: its input is ids to delete.
-              [INVENTORY_RETIRE_CHANNELS]: inventoryActions[INVENTORY_RETIRE_CHANNELS]
+              [INVENTORY_RETIRE_MAILBOXES]: inventoryActions[INVENTORY_RETIRE_MAILBOXES]
             }),
         ...(fanOut === undefined
           ? {}
@@ -2032,25 +2032,25 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
 
   // The rebuild seam. `options` is closed over, so a kind configured with a
   // notify slot keeps it when the binder hands it the roster's board ids —
-  // which is what stops "give this channel a board" and "wake its members"
+  // which is what stops "give this mailbox a board" and "wake its members"
   // from being two mutually exclusive ways to configure one kind.
   const factory = Object.assign(flow, {
-    withBoards: (boards: readonly string[]) => defineChannelFlow({ ...options, boards }),
-    withRouting: (routing: Readonly<Record<string, ChannelRouting>>) =>
-      defineChannelFlow({ ...options, routing }),
+    withBoards: (boards: readonly string[]) => defineMailboxFlow({ ...options, boards }),
+    withRouting: (routing: Readonly<Record<string, MailboxRouting>>) =>
+      defineMailboxFlow({ ...options, routing }),
     withBoardActions: (boardActions: readonly string[]) =>
-      defineChannelFlow({ ...options, boardActions }),
-    withTemplate: (template: TalkTemplateFacts) => defineChannelFlow({ ...options, template })
-  }) as ChannelFlowFactory;
+      defineMailboxFlow({ ...options, boardActions }),
+    withTemplate: (template: TalkTemplateFacts) => defineMailboxFlow({ ...options, template })
+  }) as MailboxFlowFactory;
   if (options.route !== undefined) Object.assign(factory, { [KIND_ROUTE]: options.route });
   if (options.notify !== undefined) Object.assign(factory, { [KIND_WAKES]: true });
   return factory;
 }
 
 /**
- * The built-in kind, seeded by `channelInstances` when the app names none.
+ * The built-in kind, seeded by `mailboxInstances` when the app names none.
  *
- * An app registers nothing to use channels. A custom kind is the rare escape
+ * An app registers nothing to use mailboxes. A custom kind is the rare escape
  * hatch, passed through the `kinds` map at boot.
  */
-export const channelFlow = defineChannelFlow();
+export const mailboxFlow = defineMailboxFlow();
