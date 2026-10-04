@@ -58,23 +58,23 @@ v1 fixes is an amendment to this epic ([ER-10](BUSINESS-RULES.md#how-the-set-is-
 FIX-1655 carries no Kind label in Linear, so its route defaults to spec. FIX-1662 and FIX-1664
 are Features; FIX-1663 an Improvement.
 
-## Where it is
+## Where it ended
 
-[The set table](SPEC.md#the-set--as-of-2026-09-30) is the review-time snapshot; follow its
-Linear links for live state. The build is a Cycle 2 candidate: Cycle PM decides when it starts.
+[The set table](SPEC.md#the-set--as-of-2026-09-30) is the review-time snapshot. The build was
+planned as a Cycle 2 candidate; it ran from the gate on 30 September to the closure's merge on
+4 October, as [the path](#the-path) shows. Linear and the implementation PRs hold the final state.
 
-## What unblocks what, from here
+## What unblocked what, as it happened
 
-1. **This spec is approved and merged** → design pass 2 goes to Claude Design; the FIX-1655,
-   FIX-1662 and FIX-1664 specs start in parallel; FIX-1663's QA plan is written beside them.
-2. **FIX-1662 merges** → FIX-1664's build merges into its frame.
-3. **The final hand-back is linked on FIX-1649** → FIX-1655 sets the light and dark values;
-   FIX-1662 and FIX-1664 do their final visual passes. A structural change goes to an
-   amendment first.
-4. **Every other child merges** (FIX-1655, FIX-1662, FIX-1664, and since the 2026-10-01
-   amendment FIX-1722, FIX-1723 and FIX-1725, and since 2026-10-02 FIX-1736 and FIX-1737) →
-   the closure run, on one `main` commit, legs a to d. A finding is filed as a child
-   of FIX-1649 that blocks FIX-1663; the whole plan runs again after the last fix merges.
+1. **The spec merged** (30 September): the FIX-1655, FIX-1662 and FIX-1664 specs ran in parallel,
+   with FIX-1663's QA plan beside them, and design pass 2 went to Claude Design.
+2. **FIX-1662 merged**, and FIX-1664's build merged into its frame the same day.
+3. **The final hand-back, v2, landed** (1 October): FIX-1655's light and dark values came with it.
+   Its structural changes went to the 2026-10-01 amendment first (FIX-1722, FIX-1723, FIX-1725),
+   and its look to the 2026-10-02 amendment (FIX-1736, FIX-1737).
+4. **Every other child merged**, and the closure ran on one `main` commit, legs a to d. Each
+   finding was filed as a child of FIX-1649 blocking FIX-1663, and the whole plan ran again after
+   the last fix merged, until it was clean on `01444863c`.
 
 The plan is written on [D3](DECISIONS.md#d3): one app, so no child builds a chrome package.
 
