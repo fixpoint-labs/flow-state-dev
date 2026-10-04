@@ -15,6 +15,8 @@ they pin them.
 | [FIX-1778](https://linear.app/fixpoint-labs/issue/FIX-1778) | A coordinator tool that creates a task assigned to a named worker, a fresh hire included, and the hand-off that starts it |
 | [FIX-1779](https://linear.app/fixpoint-labs/issue/FIX-1779) | Coordinator tools that set up a mailbox with a task list, subscribe workers, and attach it to a project |
 
+Workforce's own `fileTask` on a mailbox board starts nothing today, and FIX-1777 fixes only the post door. So the chief of staff hands work over by creating the task with FIX-1778's tool, which must start the worker. If FIX-1778 or FIX-1779 lands without that, it hands over by posting `<slug>: <what>` on the mailbox instead, and BR-1 and BR-4 read "posts" for "creates".
+
 If one of them lands a different shape than this plan assumes, re-draft the affected rows here
 and in [BUSINESS-RULES.md](BUSINESS-RULES.md) before building.
 

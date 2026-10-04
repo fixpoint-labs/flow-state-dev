@@ -39,7 +39,8 @@ Solid edges are this spec's calls. Dashed edges lost.
 - **A task, not a post.** The chief of staff creates the task for the worker rather than posting
   a line for another worker to file, because Jake asked it to prioritize assigning tasks and a
   post leaves the outcome to someone else. Posting stays a way for people to file work
-  (FIX-1777).
+  (FIX-1777), and is the fallback if FIX-1778's tool doesn't start the worker: Workforce's own
+  `fileTask` starts nothing today.
 - **Waived choices get plain defaults, named in the task and the reply.** Vite, React,
   TypeScript, plain CSS for a React ask.
 - **The chief of staff reads the projects each turn**, from the stored rows, because projects
