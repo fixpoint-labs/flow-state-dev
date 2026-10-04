@@ -35,8 +35,7 @@ import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
 import { describeFailure, snapshotReads, type Failure, type Seat } from "../lib/reads";
 import { navigate } from "../lib/routes";
-import { RunReadError, type SessionItems } from "../lib/run";
-import { orgWritesOf } from "../lib/send";
+import { orgWritesOf, RunReadError, type SessionItems } from "../lib/run";
 import { chiefOfStaffSuggestions, clockTime } from "../lib/shell";
 import { startChiefOfStaffWork, useChiefOfStaffWorking } from "../lib/working";
 import type { Gaps } from "../gaps";
@@ -313,9 +312,9 @@ function Talk({
           // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
           if (sent.suspended) void refresh();
           // It finished: read the Lab again only if it wrote what the snapshot holds, such as
-          // a project it created. A log that can't be read may hold any write.
+          // a project it created. A log that can't be read in time may hold any write.
           else
-            void orgWritesOf(clients, seat.id, sent.requestId).then((wrote) => {
+            void orgWritesOf(clients, { flowId: seat.id, requestId: sent.requestId }).then((wrote) => {
               if (wrote === undefined || wrote.some(snapshotReads)) void refresh();
             });
           return sent;

@@ -12,8 +12,8 @@
  * Nothing here looks for a run any other way: no listing, no key rebuilt from
  * the task, no "latest session of this seat".
  */
-import { compareItemOrder, createSSEClient, type ResourceManifest } from "@flow-state-dev/client";
-import { itemsForTask, type OutputItem } from "@flow-state-dev/core/items";
+import { compareItemOrder, createSSEClient, createSSEClientFromResponse, type ResourceManifest } from "@flow-state-dev/client";
+import { itemsForTask, type OutputItem, type ResourceChangeItem } from "@flow-state-dev/core/items";
 import type { RequestStatus } from "@flow-state-dev/core/types";
 import type { LabClients } from "./connection";
 import { describeFailure, type Failure } from "./reads";
@@ -115,6 +115,53 @@ export function followRequest(clients: LabClients, run: Pick<OpenRun, "flowId" |
     onRequestStatus: (event) => to.onStatus(event.status),
     onError: (error) => to.onError(describeFailure(error)),
   });
+}
+
+/** How long {@link orgWritesOf} waits for a finished request's log before giving up. */
+const WRITES_READ_TIMEOUT_MS = 10_000;
+
+/**
+ * The organization's resources a finished request wrote, by storage path: every
+ * `resource_change` the request emitted at `org` scope. Those items are
+ * transient, so the request's stored items never hold them; its event log,
+ * replayed over the same stream route {@link followRequest} reads, does.
+ *
+ * `undefined` when the log couldn't be read in time: the caller can't tell what
+ * the request wrote, so it treats it as having written anything.
+ */
+export async function orgWritesOf(
+  clients: LabClients,
+  run: Pick<OpenRun, "flowId" | "requestId">,
+  options: { timeoutMs?: number } = {},
+): Promise<string[] | undefined> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? WRITES_READ_TIMEOUT_MS);
+  try {
+    const response = await clients.fetcher(
+      `${clients.baseUrl ?? ""}/api/flows/${encodeURIComponent(run.flowId)}/requests/${encodeURIComponent(run.requestId)}/stream`,
+      { headers: { accept: "text/event-stream" }, signal: controller.signal },
+    );
+    return await new Promise<string[] | undefined>((resolve) => {
+      const paths = new Set<string>();
+      const stream = createSSEClientFromResponse({
+        response,
+        onItemDone: (event) => {
+          const item = event.item as OutputItem;
+          if (item.type === "resource_change" && (item as ResourceChangeItem).scope === "org") paths.add((item as ResourceChangeItem).resourcePath);
+        },
+        onError: () => resolve(undefined),
+        onClose: () => resolve([...paths]),
+      });
+      controller.signal.addEventListener("abort", () => {
+        stream.close();
+        resolve(undefined);
+      });
+    });
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Merge items, each `(request, id)` once, keeping the finished copy, in stored order. */
