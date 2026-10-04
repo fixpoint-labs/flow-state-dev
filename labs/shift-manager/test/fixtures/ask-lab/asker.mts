@@ -13,8 +13,9 @@
  *
  * And a door, `message`: a person's line into the seat's session, which the
  * engine writes as a user item before the block runs. It says it heard, as an
- * assistant item of its own ({@link heardLine}), or refuses a line that asks to
- * be refused, so a test can see both.
+ * assistant item of its own ({@link heardLine}), refuses a line that asks to
+ * be refused, or stops on a stock approval for a line that asks for one, the
+ * way a chief of staff's gated change does, so a test can see each.
  *
  * No model anywhere: the ask is the point, not what the seat would do.
  */
@@ -38,6 +39,9 @@ const messageSchema = z.object({ message: z.string() });
 /** The line a test sends to be refused. */
 export const ASKER_REFUSED_LINE = "refuse me";
 
+/** The line a test sends to have the seat stop on a person's approval before it answers. */
+export const ASKER_GATED_LINE = "ask me first";
+
 /** What the seat says when it hears `message`. */
 export const heardLine = (message: string) => `Heard: ${message}`;
 
@@ -45,8 +49,9 @@ const hear = handler({
   name: "asker-hear",
   inputSchema: messageSchema,
   outputSchema: z.object({ heard: z.string() }),
-  execute: (input, ctx) => {
+  execute: async (input, ctx) => {
     if (input.message === ASKER_REFUSED_LINE) throw new Error("This seat won't take that line.");
+    if (input.message === ASKER_GATED_LINE) await ctx.suspend!({ reason: "human_approval", message: `Approve: ${input.message}` });
     ctx.emit.message(heardLine(input.message));
     return { heard: input.message };
   },

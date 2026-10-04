@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it } from "vitest";
 import { TurnComposer } from "../src/components/TurnComposer";
 import { Composer } from "../src/surfaces/Stream";
+import type { BoardRow } from "../src/lib/reads";
 
 afterEach(() => cleanup());
 
@@ -56,5 +57,41 @@ describe("a slow send keeps the next line typed while it ran", () => {
       await delivered.done;
     });
     expect(input.value).toBe("the next message");
+  });
+});
+
+describe("a delivered line that stopped the worker says on what", () => {
+  const sendAs = async (stopped: "ask" | "wait" | null) => {
+    cleanup();
+    render(<TurnComposer testId="turn" label="Message" placeholder="" blocked={null} send={async () => ({ stopped })} />);
+    fireEvent.change(screen.getByTestId("turn-input"), { target: { value: "fire eng.coder" } });
+    await act(async () => fireEvent.click(screen.getByTestId("turn-send")));
+    const status = screen.getByTestId("turn-status");
+    expect(status.getAttribute("data-state")).toBe("delivered");
+    expect(screen.queryByTestId("turn-retry")).toBeNull();
+    return status.textContent;
+  };
+
+  it("points at Inbox only for a person's ask; any other stop reads as waiting, and no stop as plain delivered", async () => {
+    expect(await sendAs("ask")).toMatch(/Delivered\..*in Inbox/);
+    const wait = await sendAs("wait");
+    expect(wait).toMatch(/Delivered\..*waiting/);
+    expect(wait).not.toMatch(/Inbox/);
+    expect(await sendAs(null)).toBe("Delivered.");
+  });
+
+  it("the workstream composer's @worker line carries the same hint", async () => {
+    const row = { id: "only-task", title: "the coder's one task" } as BoardRow;
+    render(
+      <Composer
+        send={async () => undefined}
+        onKept={async () => {}}
+        mentions={["coder"]}
+        addressing={() => ({ blocked: null, rows: [row], send: async () => ({ stopped: "ask" as const }) })}
+      />,
+    );
+    fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "@coder fire eng.helper" } });
+    await act(async () => fireEvent.click(screen.getByTestId("composer-send")));
+    expect(screen.getByTestId("composer-status").textContent).toMatch(/Delivered\..*in Inbox/);
   });
 });

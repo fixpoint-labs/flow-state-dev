@@ -315,7 +315,8 @@ const ASK_PAGE_SIZE = 200;
 const ASK_READ_BATCH = 6;
 
 /** The reasons that are a person being asked something. */
-const PERSON_REASONS = new Set(["human_approval", "human_input"]);
+/** The suspension reasons that are a person's ask: the only ones Inbox lists. */
+export const PERSON_REASONS: ReadonlySet<string> = new Set(["human_approval", "human_input"]);
 
 /** A failure, in the server's own words when it sent any. */
 export function describeFailure(error: unknown): Failure {

@@ -12,7 +12,7 @@ import type { BoardRow } from "../src/lib/reads";
 import { GAPS } from "../src/gaps";
 import { bootColorScheme } from "../src/lib/color-scheme";
 import { createLabClients } from "../src/lib/connection";
-import { ASKER_REFUSED_LINE, heardLine } from "./fixtures/ask-lab/asker.mts";
+import { ASKER_GATED_LINE, ASKER_REFUSED_LINE, heardLine } from "./fixtures/ask-lab/asker.mts";
 import { ASK_LAB_USER_ID, openAskLab } from "./fixtures/ask-lab/lab.mts";
 import { serveLab, type ServedLab } from "./helpers/serve-lab";
 
@@ -248,7 +248,7 @@ describe("the composer's @mentions", () => {
         send={async () => {}}
         onKept={async () => {}}
         mentions={["coder"]}
-        addressing={() => ({ blocked: null, rows: [row], send: async () => {} })}
+        addressing={() => ({ blocked: null, rows: [row], send: async () => ({ stopped: null }) })}
       />,
     );
     fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "@coder first line" } });
@@ -586,6 +586,30 @@ describe("Chief of Staff (FIX-1722)", () => {
     fireEvent.click(screen.getByTestId("cos-composer-send"));
     expect((await screen.findByTestId("cos-composer-error", {}, { timeout: 5_000 })).textContent).toBe("This seat won't take that line.");
     expect(input.value).toBe(ASKER_REFUSED_LINE);
+  });
+
+  // A gated change (fire, retire) stops the seat's turn on the person's approval. The line
+  // is delivered and the ask waits in Inbox: Retry would send it, and raise the ask, twice.
+  it("reads a line whose turn stopped on an approval as delivered, pointing at Inbox, with no Retry", async () => {
+    const { clients } = await openCos("/", { chiefOfStaff: true });
+    expect((await screen.findByTestId("cos-summary-asks")).textContent).toBe("Nothing needs you.");
+    const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
+    fireEvent.click(screen.getByTestId("cos-composer-send"));
+    const status = screen.getByTestId("cos-composer-status");
+    await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
+    expect(status.textContent).toMatch(/Delivered\..*Inbox/);
+    expect(screen.queryByTestId("cos-composer-retry")).toBeNull();
+    expect(screen.queryByTestId("cos-composer-error")).toBeNull();
+    expect(input.value).toBe("");
+    // The Lab is read again, so the ask the composer points at is listed: here, and in Inbox.
+    await waitFor(() => expect(screen.getByTestId("cos-summary-asks").textContent).not.toBe("Nothing needs you."), { timeout: 5_000 });
+    // The session holds the line once, with the one ask it raised.
+    const sessionId = screen.getByTestId("cos-conversation").getAttribute("data-session-id")!;
+    const state = await clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["message", "suspension"] });
+    const items = (state.items ?? []) as Array<{ type: string; role?: string }>;
+    expect(items.filter((item) => item.type === "message" && item.role === "user")).toHaveLength(1);
+    expect(items.filter((item) => item.type === "suspension")).toHaveLength(1);
   });
 
   it("keeps a refused first line's conversation, so the next line goes into the same session (BR-15)", async () => {

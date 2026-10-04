@@ -8,16 +8,20 @@
  * owner names it. Shift Manager knows no kind and no action name of its own.
  *
  * **Delivered means the session holds it (BR-4).** The door's request is
- * followed until it ends. A line counts as delivered only when that request is
- * `completed` **and** the target session holds the request's user item. The
- * HTTP answer alone never says so: it only says the request started.
+ * followed until it ends or stops. A line counts as delivered only when that
+ * request is `completed` or `suspended` **and** the target session holds the
+ * request's user item. The HTTP answer alone never says so: it only says the
+ * request started. A `suspended` request stopped short of finishing, with the
+ * line in: the send resolves with `stopped` saying on what. `ask` is a
+ * person's ask Inbox lists, such as a chief of staff's approval to fire a
+ * seat; `wait` is any other suspension, which Inbox doesn't list.
  *
  * Three ways a line can fail to be delivered, and the caller keeps the draft
  * for each:
  *
  * - **refused**: the door's request failed. It rejects with the door's own reason.
  * - **not sent**: the line never reached the Lab, or its request ended some
- *   other way. Safe to send again.
+ *   other way (aborted, interrupted). Safe to send again.
  * - **unconfirmed**: the line may have arrived, but Shift Manager can't confirm it.
  *   The worker didn't answer in time, the session read failed, or the session
  *   doesn't show it. Sending again could send it twice, so nothing offers to.
@@ -27,7 +31,14 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { LabClients } from "./connection";
-import { describeFailure } from "./reads";
+import { deriveSuspensions } from "@flow-state-dev/react";
+import { describeFailure, PERSON_REASONS } from "./reads";
+
+/**
+ * Why a delivered line's request stopped short of finishing: on a person's ask
+ * that Inbox lists (`ask`), on anything else (`wait`), or not at all (`null`).
+ */
+export type TurnStop = "ask" | "wait" | null;
 
 /** Where a line goes: the session, the flow that owns it, and that flow's door. */
 export type TurnTarget = { sessionId: string; flowId: string; door: string };
@@ -97,6 +108,35 @@ async function sessionHoldsLine(clients: LabClients, sessionId: string, requestI
   return undefined;
 }
 
+/**
+ * What a suspended request is still stopped on, by the derivation Inbox lists
+ * asks with (`deriveSuspensions`), over the session's newest suspension and
+ * resume items. Only this request's still-pending suspensions count:
+ *
+ * - one whose reason is a person's ask: `ask`.
+ * - any other pending one, such as a stop on something else after an ask
+ *   that was answered: `wait`.
+ * - none, because it was resumed between the status poll and this read: `null`,
+ *   plain delivered.
+ *
+ * The line is delivered whatever this says. A read that fails is `wait`: the
+ * poll saw the request suspended, and `wait` points nowhere it might not be.
+ */
+async function stopOf(clients: LabClients, sessionId: string, requestId: string): Promise<TurnStop> {
+  const read = (offset: number) =>
+    clients.sessions.getSessionState(sessionId, { includeItems: true, itemTypes: ["suspension", "suspension_resume"], offset, limit: ITEM_PAGE });
+  try {
+    let page = await read(0);
+    const total = page.pagination?.total ?? 0;
+    if (total > ITEM_PAGE) page = await read(total - ITEM_PAGE);
+    const mine = deriveSuspensions((page.items ?? []) as OutputItem[]).pending.filter((view) => view.item.requestId === requestId);
+    if (mine.some((view) => PERSON_REASONS.has(view.item.reason))) return "ask";
+    return mine.length > 0 ? "wait" : null;
+  } catch {
+    return "wait";
+  }
+}
+
 /** The door's own reason for a failed request, in its words. */
 async function refusalOf(clients: LabClients, sessionId: string, requestId: string): Promise<string> {
   const failed = await call(() => clients.sessions.listSessionRequests(sessionId, { status: "failed" }));
@@ -107,13 +147,15 @@ async function refusalOf(clients: LabClients, sessionId: string, requestId: stri
 /**
  * Send `message` through the target's door, and resolve only once it is
  * delivered (BR-4). Rejects with {@link TurnNotDelivered} otherwise.
+ *
+ * @returns the door's request, and what it `stopped` on ({@link TurnStop}).
  */
 export async function sendTurn(
   clients: LabClients,
   target: TurnTarget,
   message: string,
   options: { timeoutMs?: number; pollMs?: number } = {},
-): Promise<{ requestId: string }> {
+): Promise<{ requestId: string; stopped: TurnStop }> {
   const actions = clients.actions(target.flowId);
   let requestId: string;
   try {
@@ -124,11 +166,15 @@ export async function sendTurn(
   }
 
   const until = Date.now() + (options.timeoutMs ?? SEND_TIMEOUT_MS);
+  let suspended = false;
   const unconfirmed = (why: string) => new TurnNotDelivered("unconfirmed", `${why} Check the worker's session before sending it again.`);
   try {
     for (;;) {
       const { status } = await call(() => actions.getRequestStatus(requestId));
-      if (status === "completed") break;
+      if (status === "completed" || status === "suspended") {
+        suspended = status === "suspended";
+        break;
+      }
       if (status === "failed") throw new TurnNotDelivered("refused", await refusalOf(clients, target.sessionId, requestId));
       if (status !== "in_progress") throw new TurnNotDelivered("not-sent", `The message's request ended ${status}.`);
       if (Date.now() > until) throw unconfirmed("The worker did not answer in time; the message may still arrive.");
@@ -141,5 +187,5 @@ export async function sendTurn(
     if (error instanceof ClientCallFailed) throw unconfirmed(`Couldn't read back whether the message arrived: ${error.message}.`);
     throw error;
   }
-  return { requestId };
+  return { requestId, stopped: suspended ? await stopOf(clients, target.sessionId, requestId) : null };
 }

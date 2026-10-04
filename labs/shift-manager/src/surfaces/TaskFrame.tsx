@@ -243,7 +243,7 @@ function Brief({ gaps }: { gaps: Gaps }) {
  */
 function Composer({ gaps, worker }: { gaps: Gaps; worker: string }) {
   const task = useTask();
-  const { clients, snapshot } = useLab();
+  const { clients, snapshot, refresh } = useLab();
   const { row } = task;
   const seats =
     snapshot === undefined || snapshot.refused !== undefined || snapshot.unreachable !== undefined
@@ -272,7 +272,10 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string }) {
       placeholder="Message this worker…"
       blocked={blocked}
       send={async (message) => {
-        await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message);
+        const sent = await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message);
+        // The ask it raised is new: read the Lab again so Inbox, where the composer points, lists it.
+        if (sent.stopped === "ask") void refresh();
+        return sent;
       }}
       extra={
         <label className="flex items-center gap-1.5" title={gaps.task.alsoPost}>
