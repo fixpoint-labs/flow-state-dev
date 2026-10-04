@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 676" role="img" aria-label="A mailbox and a room compared. Both run on the same mailbox flow kind; they differ in what the session is and where the talk is kept. A mailbox is declared in a MAILBOX.md in a team folder and opened at boot, and it is listed in the inventory. The mailbox is one session on the mailbox kind, such as support.desk. Its transcript is mailbox-post items in that one session. Its members are seats named in the file, fixed until the mailbox is opened again; a post wakes them. It can hold a board and route a post to one member. A room belongs to one project, created while the app runs; there is no file and it is not in the inventory. No session is the room: each member of the project has their own talk session on the mailbox kind, and every one reaches the same room. The room's lines are organization data, the room-lines collection, and a member's view reads them; they are not pushed. Its members are the people on the project row, checked on every call. A post wakes the seats in the organization's talk template, which are not members. A room holds no board and routes nothing. Use a mailbox for a standing topic a team owns, set in files, with a board or routing. Use a room for the people on a project talking together, private to them. In Shift Manager a workstream is a team's mailbox with its boards, and a project groups workstreams and has one room.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 676" role="img" aria-label="A mailbox and a room compared. Both usually run on the built-in mailbox flow kind; they differ in what the session is and where the talk is kept. A mailbox is declared in a MAILBOX.md in a team folder and opened at boot. The mailbox is one session on the mailbox kind, or on the kind its file names, such as support.desk. Its transcript is mailbox-post items in that one session. Its members are seats named in the file, fixed for that mailbox; when the kind has a notify block, a post wakes them. It can hold a board and route a post to one member. A room belongs to one project, created while the app runs; there is no file and it is never in the inventory. No session is the room: each member of the project has their own talk session on the built-in mailbox kind, and every one reaches the same room. The room's lines are organization data, the room-lines collection, and a member's view reads them; they are not pushed. Its members are the people on the project row, checked on every call. A post wakes the seats in the organization's talk template, which are not members. A room holds no board and routes nothing. Use a mailbox for a standing topic a team owns, set in files, with a board or routing. Use a room for the people on a project talking together, private to them. In Shift Manager a workstream is a team's mailbox with its boards, and a project groups workstreams and has one room.">
   <style>
     :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
             --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
@@ -27,19 +27,19 @@
 
   <rect class="bg" x="0" y="0" width="940" height="676" rx="16"/>
   <text class="title" x="24" y="38">Mailbox or room</text>
-  <text class="muted" x="24" y="60">Same flow kind underneath. What differs is what the session is, and where the talk is kept.</text>
+  <text class="muted" x="24" y="60">Usually the same flow kind underneath. What differs is what the session is, and where the talk is kept.</text>
 
   <!-- shared kind -->
   <rect class="wall-proc" x="24" y="76" width="892" height="44" rx="12"/>
   <text class="lbl" x="40" y="103">FLOW</text>
   <text class="code" x="84" y="103">mailbox</text>
-  <text class="p" x="150" y="103">One registered kind. Every mailbox and every talk session is a session on it.</text>
+  <text class="p" x="150" y="103">The built-in kind. Every room's talk sessions run on it, and so does a mailbox unless its file names another.</text>
 
   <!-- mailbox column -->
   <g id="mailbox">
     <rect class="wall-file" x="24" y="136" width="438" height="372" rx="14"/>
     <text class="h" x="40" y="160">A mailbox</text>
-    <text class="muted" x="40" y="178">Declared in MAILBOX.md, opened at boot, in the inventory</text>
+    <text class="muted" x="40" y="178">Declared in MAILBOX.md and opened at boot</text>
 
     <rect class="wall-sess" x="36" y="194" width="414" height="140" rx="12"/>
     <text class="lbl" x="50" y="216">ONE SESSION IS THE MAILBOX</text>
@@ -50,8 +50,8 @@
     <text class="muted" x="64" y="310">The transcript lives in this session</text>
 
     <text class="lbl" x="40" y="362">MEMBERS</text>
-    <text class="p" x="40" y="382">Seats named in the file. Fixed until</text>
-    <text class="p" x="40" y="400">the mailbox is opened again. A post wakes them.</text>
+    <text class="p" x="40" y="382">Seats named in the file, fixed for that mailbox.</text>
+    <text class="p" x="40" y="400">With a notify block on the kind, a post wakes them.</text>
     <text class="lbl" x="40" y="430">CAN ALSO</text>
     <text class="p" x="40" y="450">Hold a board of work to claim and finish.</text>
     <text class="p" x="40" y="470">Route a post to the one member it fits.</text>
