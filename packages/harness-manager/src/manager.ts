@@ -57,7 +57,14 @@ import {
   type TaskWorker,
 } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
-import { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, NETWORK_CALL_TIMEOUT_MS } from "./exec";
+import {
+  CHECKOUT_CLEANUP_TIMEOUT_MS,
+  GIT_TIMEOUT_MS,
+  type RunSourceAnswer,
+  type WorkspaceHost,
+  type WorkspacePlace,
+} from "@flow-state-dev/workspace";
+import { NETWORK_CALL_TIMEOUT_MS } from "./timeouts";
 import { MAX_TIMER_MS } from "./guards";
 import {
   RUNS,
@@ -97,10 +104,11 @@ import {
   assertDerivedIdentity,
   harnessTaskId,
   sameSegment,
+  ASK_MARKER_IGNORED,
   acquireCheckout,
   branchFor,
-  checkoutPathFor,
-  provisionCheckout,
+  hostForConfig,
+  placeFor,
   releaseCheckout,
   type RunLocation,
   type RunPrincipal,
@@ -288,7 +296,7 @@ export interface PhaseSpec {
    * tried — a pin shared between conductors, a pin retained by a construction
    * that then failed, and a comparison written to paper over both.
    */
-  validate?(workspace: WorkspaceConfig): unknown;
+  validate?(workspace: WorkspaceConfig | WorkspaceHost): unknown;
 }
 
 /** How the manager is wired to its board and its host. */
@@ -318,7 +326,17 @@ export interface ManagerOptions {
    */
   tenant: string | undefined;
   phase: PhaseSpec;
-  workspace: WorkspaceConfig;
+  /**
+   * Where each run's files come from, and where it works.
+   *
+   * `{ root, sourceRepo, baseRef }` cuts every run a new branch of
+   * `sourceRepo`, kept in that repository, with the checkout under `root`.
+   * A workspace host (`localWorkspaceHost` from `@flow-state-dev/workspace`)
+   * answers per run from its run source instead: a branch of an allowed
+   * remote with kept files beside it, or kept files alone. Both go through
+   * one provisioning path; the first is a host whose source is constant.
+   */
+  workspace: WorkspaceConfig | WorkspaceHost;
   /** Wall-clock budget for the harness run itself. */
   runTimeoutMs: number;
   /**
@@ -482,6 +500,20 @@ const managerStateSchema = z.object({
    */
   lockPath: z.string().nullable().default(null),
   leaseToken: z.string().nullable().default(null),
+  /**
+   * The repository and base this run was first provisioned from, read off its
+   * run record when the attempt opened. A retry provisions from these rather
+   * than from whatever its source answers now (BR-19). `null` before the
+   * first provision, and on a record written before they were kept.
+   */
+  remote: z.string().nullable().default(null),
+  baseRef: z.string().nullable().default(null),
+  /**
+   * The place this attempt was provisioned into, as the workspace host
+   * described it — what a save hands back to the host. `null` until
+   * provisioned, and again once its kept files were saved and released.
+   */
+  place: z.custom<WorkspacePlace>().nullable().default(null),
 });
 
 /** The manager's own result. Two outcomes; there is deliberately no third. */
@@ -994,9 +1026,14 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
           buildPrompt: (run: PromptRunContext) => phase.buildPrompt({ ...run, validated }),
         });
 
+  // **One provisioning path.** A fixed repository is a host whose source is
+  // constant and whose repository is used as it stands, so its runs' branches
+  // stay in `sourceRepo` and their checkouts where they always were.
+  const host: WorkspaceHost = isWorkspaceHost(workspace) ? workspace : hostForConfig(workspace);
+
   const { ownership } = resolveOwnership({
     runTimeoutMs,
-    provisionTimeoutMs: workspace.provisionTimeoutMs,
+    provisionTimeoutMs: isWorkspaceHost(workspace) ? workspace.provisionTimeoutMs : workspace.provisionTimeoutMs,
     ...(options.ownership !== undefined ? { ownership: options.ownership } : {}),
   });
 
@@ -1128,6 +1165,41 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
   };
 
   /**
+   * Save the run's kept files, and let them go once saved.
+   *
+   * Never throws: a save that fails is recorded on the run record's
+   * `lastSave` and leaves the files live, so the next save point tries again
+   * with nothing lost. Conflicted and contested paths were left as they were
+   * by the flush and are named on the record. A place with no kept files
+   * (a fixed repository) writes nothing.
+   */
+  const saveKeptFiles = async (ctx: BlockContext): Promise<void> => {
+    const state = harnessCtxState(ctx);
+    const place = state?.place;
+    if (place == null || place.filesDir === undefined) return;
+    let error: string | null = null;
+    let leftAlone: string[] = [];
+    try {
+      const report = await host.save(place);
+      leftAlone = [...report.conflicts, ...report.contested].map((outcome) => outcome.path);
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : String(cause);
+    }
+    if (state?.topic != null && state.taskId != null && state.attempt != null) {
+      await fenced(
+        writeRunRow(ctx, identityFrom(state, boardCollectionId), {
+          lastSave: { at: Date.now(), conflicts: leftAlone, error },
+        }),
+        "the run's kept files were saved",
+      );
+    }
+    if (error === null) {
+      await host.release(place);
+      await ctx.sequencer!.patchState({ place: null });
+    }
+  };
+
+  /**
    * Open the row — BEFORE the attempt waits for anything.
    *
    * The checkout path is derived here rather than read back, so a task woken in
@@ -1139,8 +1211,12 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.void(),
     sequencerStateSchema: managerStateSchema,
-    uses: [managerCapability],
-    execute: async (input, ctx) => {
+    // The host's capabilities too: the workspace's run source is asked here,
+    // and a source that reads a collection resolves it off this context.
+    uses: [managerCapability, ...(guardedUses ?? [])],
+    // Annotated for the reason `prepare`'s is: the host's `uses` widens the
+    // inferred context past what the helpers below accept.
+    execute: async (input, ctx: BlockContext) => {
       const { issue, phase: phaseName } = taskPayload(input);
 
       // **A manager runs exactly one phase, and it must be the one on the row.**
@@ -1239,7 +1315,6 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         issue,
         phase: phaseName,
       };
-      const workspacePath = checkoutPathFor(workspace, location);
       const branch = branchFor(location);
       const topic = runTopic(boardCollectionId, issue, phaseName);
 
@@ -1249,9 +1324,21 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         topic,
         taskId: input.taskId,
         attempt: input.attempts,
-        workspacePath,
         branch,
       });
+
+      // **Where the run works, from the workspace host.** Its source is asked
+      // now because the checkout's path is recorded on the row and named in
+      // the prompt before anything is provisioned. A run already provisioned
+      // keeps the repository its record names (see `pinnedAnswer`). With a
+      // fixed `sourceRepo` this is the path `checkoutPathFor` derives.
+      const recorded = await readRunRow(ctx, topic);
+      const pinned = { remote: recorded?.remote ?? null, baseRef: recorded?.baseRef ?? null };
+      await ctx.sequencer!.patchState({ ...pinned, place: null });
+      const answer = pinnedAnswer(await host.source(ctx), pinned);
+      if (answer.kind === "refused") throw new HarnessAttemptFailed(refusedMessage(answer));
+      const workspacePath = host.locate(answer, { place: placeFor(location) }).cwd;
+      await ctx.sequencer!.patchState({ workspacePath });
 
       // **Read the session the LAST attempt confirmed, before opening clears it.**
       //
@@ -1270,7 +1357,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // harness never confirmed a session — it was never sent one, or it was
       // sent one the vendor could not honour — so this attempt starts fresh
       // rather than asking for a dead id again.
-      const previousSessionId = (await readRunRow(ctx, topic))?.sessionId ?? null;
+      const previousSessionId = recorded?.sessionId ?? null;
       await ctx.sequencer!.patchState({ previousSessionId });
 
       // **Refusal stops the attempt.** The row can be reclaimed between the
@@ -1425,12 +1512,44 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         lockPath: lease.lockPath,
         leaseToken: lease.token,
       });
-      await provisionCheckout(workspace, {
+      // **Provisioned through the host, under the lease.** The source is asked
+      // again on THIS context, because a collection ref it hands back is bound
+      // to the context that resolved it. If its answer moved the run since
+      // the row was opened, the prompt already names the old place, so the
+      // attempt stops rather than running the agent somewhere else.
+      const location: RunLocation = {
         principal: runPrincipal(ctx),
         epic: boardCollectionId,
         issue: state.issue!,
         phase: state.phase!,
+      };
+      const answer = pinnedAnswer(await host.source(ctx), state);
+      if (answer.kind === "refused") throw new HarnessAttemptFailed(refusedMessage(answer));
+      if (host.locate(answer, { place: placeFor(location) }).cwd !== state.workspacePath) {
+        throw new HarnessAttemptFailed(
+          `[harness-manager] the run's workspace source changed between opening the run and ` +
+            `provisioning it, so the place its prompt names is not where it would work. ` +
+            `Stopping before the agent runs.`,
+        );
+      }
+      const place = await host.provision(answer, {
+        place: placeFor(location),
+        branch: state.branch!,
+        ignored: ASK_MARKER_IGNORED,
       });
+      await ctx.sequencer!.patchState({ place });
+
+      // **The repository and base the run started on, kept on its record**
+      // the first time it is provisioned, so a later change to its source
+      // applies to new rows and never moves this one.
+      if (state.remote == null && place.repo !== undefined) {
+        const pin = { remote: place.repo.remote, baseRef: place.repo.baseRef ?? null };
+        await fenced(
+          writeRunRow(ctx, identityFrom(harnessCtxState(ctx), boardCollectionId), pin),
+          "the run's repository was recorded",
+        );
+        await ctx.sequencer!.patchState(pin);
+      }
 
       // **A person's turns, after the phase's own prompt** (FIX-1690). Kept by
       // the door for this attempt, oldest first, in a section that says whose
@@ -1582,6 +1701,11 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         }),
         "the verdict was recorded",
       );
+
+      // **The run's kept files, saved at the end of its turn** — before any
+      // arm, so a run that parks on a question, completes, or fails its check
+      // has saved what it wrote either way.
+      await saveKeptFiles(ctx);
 
       // **The ask, before any arm.** Reading THIS attempt's marker path — never
       // a fixed one: the checkout survives a retry, so last attempt's question
@@ -1765,6 +1889,14 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // never remove a replacement's lock.
       releaseLeaseFromState(ctx);
 
+      // **A failed run keeps what it wrote.** Saved after the lease is let go:
+      // the save touches only the run's kept files, never the checkout. A
+      // failure before provisioning has no place, and one after `decide`
+      // already saved has released it, so this is a no-op for both. Its own
+      // failure, a superseded attempt's refusal included, must not replace
+      // the error this handler is unwinding.
+      await saveKeptFiles(ctx).catch(() => undefined);
+
       const reason = error instanceof Error ? error.message : String(error);
       const state = ctx.sequencer?.state;
       // A failure BEFORE the row was opened has no identity to fence against —
@@ -1858,6 +1990,41 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
     boardTasks,
   });
   return Object.assign(worker, { messageDoor }) as HarnessManager;
+}
+
+/** Is the `workspace` option a host, rather than a fixed repository's config? */
+function isWorkspaceHost(workspace: WorkspaceConfig | WorkspaceHost): workspace is WorkspaceHost {
+  return typeof (workspace as WorkspaceHost).provision === "function";
+}
+
+/**
+ * What a run provisions from: its source's answer, except that a run already
+ * provisioned keeps the repository and base its record names (BR-19). The
+ * answer's kept files still come from the source, which is the only thing
+ * that can hand back a collection bound to this context.
+ */
+function pinnedAnswer(
+  answer: RunSourceAnswer,
+  pinned: { remote: string | null; baseRef: string | null },
+): RunSourceAnswer {
+  if (answer.kind === "refused" || pinned.remote === null) return answer;
+  const files =
+    answer.kind === "files"
+      ? { projectId: answer.projectId, files: answer.files }
+      : answer.projectId !== undefined && answer.files !== undefined
+        ? { projectId: answer.projectId, files: answer.files }
+        : {};
+  return {
+    kind: "repo",
+    repo: pinned.remote,
+    ...(pinned.baseRef !== null ? { baseRef: pinned.baseRef } : {}),
+    ...files,
+  };
+}
+
+/** A source's refusal, as the failure the attempt records. */
+function refusedMessage(answer: { reason: string; message: string }): string {
+  return `[harness-manager] the workspace source refused this run (${answer.reason}): ${answer.message}`;
 }
 
 /**

@@ -7,7 +7,9 @@
  * 1. **Derivation.** Where an issue-phase's checkout is, as a pure function of
  *    the durable task. Never read back from anywhere.
  * 2. **Provisioning.** Idempotent per issue-phase, on its own branch. Never
- *    resets, never forces, never discards uncommitted work.
+ *    resets, never forces, never discards uncommitted work. The git itself is
+ *    the workspace host's (`@flow-state-dev/workspace`); this package starts
+ *    no git process of its own.
  * 3. **Ownership.** One live attempt in one tree, resolved by WAITING rather
  *    than by failing (obligation B).
  *
@@ -42,13 +44,19 @@
  * against a strict grammar before they reach a path, so a task filed by some
  * future caller that skips the schema still cannot escape the root.
  */
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { createHash, randomUUID } from "node:crypto";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { CHECKOUT_CLEANUP_TIMEOUT_MS, GIT_TIMEOUT_MS, run } from "./exec";
+import { createHash } from "node:crypto";
+import { resolve, sep } from "node:path";
+import {
+  acquireLock,
+  localWorkspaceHost,
+  releaseLock,
+  type IgnoredDirectory,
+  type WorkspaceHost,
+} from "@flow-state-dev/workspace";
 import { ASK_MARKER_DIR, ASK_MARKER_IGNORE_RULE, isAskMarkerPath } from "./ask";
-import { identityFromCommonDir } from "./guards";
 import { DERIVED_IDENTITY, LOCK_SUFFIX, OWNED_SEGMENT } from "./identity";
+
+export { isStrictlyInside, sleep } from "@flow-state-dev/workspace";
 
 /** Where checkouts and their lock files live, and what they are cut from. */
 export interface WorkspaceConfig {
@@ -495,805 +503,75 @@ export function branchFor(location: RunLocation): string {
   // agree, which is the whole reason the leaf is now derived in one function.
   return `conductor/${scope}/${issuePhaseSegment(location)}`;
 }
+/**
+ * The place segments of a run, under whatever root its host keeps: the same
+ * segments {@link checkoutPathFor} resolves, so a fixed-repository run's place
+ * is exactly the checkout this module has always derived.
+ */
+export function placeFor(location: RunLocation): string[] {
+  return [...locationSegments(location), issuePhaseSegment(location)];
+}
 
-/** The lock file guarding one checkout. Beside it, not inside — see `acquire`. */
+/** The lock file guarding one checkout. Beside it, not inside — see `acquireCheckout`. */
 function lockPathFor(checkoutPath: string): string {
   return `${checkoutPath}.lock`;
 }
 
 /**
- * Marks a provisioning that has started and not yet finished.
- *
- * Written before `git worktree add` and removed once it returns, so a directory
- * left behind by a killed provision is **positively identified** rather than
- * inferred from a missing `.git`. Beside the checkout rather than inside it, for
- * the same reason the lock is: `worktree add` must never meet a non-empty target.
+ * The directory a run writes its question into, which no repository may
+ * commit (see `./ask`). Handed to the workspace host on every provision, so a
+ * checkout whose repository would commit a question is refused before the
+ * agent runs, on a reused branch as well as a new one.
  */
-function provisioningMarkerFor(checkoutPath: string): string {
-  return `${checkoutPath}.provisioning`;
-}
+export const ASK_MARKER_IGNORED: IgnoredDirectory = {
+  dir: ASK_MARKER_DIR.split(sep).join("/"),
+  rule: ASK_MARKER_IGNORE_RULE,
+  guards: isAskMarkerPath,
+  why:
+    "A run writes the question it needs answered to a file named for its attempt inside " +
+    "that directory, and the coding agent's `git add -A` would commit it to the branch and " +
+    "the pull request.",
+};
 
 /**
- * The remaining time in one provisioning, as a per-call timeout.
- *
- * **Zero is not "no budget left" to `execFile` — it is "no timeout at all".**
- * So an exhausted deadline has to throw here rather than be passed down, or the
- * exact case this bound exists for (provisioning running long enough to be
- * declared stale) would remove the bound instead of enforcing it.
+ * The workspace host a fixed repository runs through: `sourceRepo` is a
+ * repository on this machine the operator named, so the host cuts worktrees
+ * from it directly, keeps every run's branch in it, and reaches no remote.
+ * The run source is constant.
  */
-function remainingBudget(deadline: number, now: () => number): number {
-  const left = deadline - now();
-  if (left <= 0) {
-    throw new Error(
-      "[harness-manager] provisioning exceeded its budget (workspace.provisionTimeoutMs) before " +
-        "it finished. The lock is held across provisioning, so a longer one would risk " +
-        "being declared stale while this attempt is still legitimately working.",
-    );
-  }
-  return left;
-}
-
-async function git(cwd: string, args: string[], timeoutMs = GIT_TIMEOUT_MS): Promise<string> {
-  const { stdout } = await run("git", args, {
-    cwd,
-    timeoutMs,
-    maxBuffer: 8 * 1024 * 1024,
+export function hostForConfig(config: WorkspaceConfig, now: () => number = Date.now): WorkspaceHost {
+  return localWorkspaceHost({
+    root: config.root,
+    remotes: { allow: [] },
+    localRepositories: [config.sourceRepo],
+    source: () => ({ kind: "repo", repo: config.sourceRepo, baseRef: config.baseRef }),
+    ...(config.provisionTimeoutMs !== undefined ? { provisionTimeoutMs: config.provisionTimeoutMs } : {}),
+    now,
   });
-  return stdout.trim();
 }
 
 /**
- * Refuse a checkout whose repository does not ignore the ask marker.
+ * Give this issue-phase a checkout of `config.sourceRepo`, or hand back the
+ * one the last attempt left.
  *
- * **The guarantee is checked where the marker LANDS, which is not where it was
- * being checked.** A run writes its question to `<checkout>/.fsdev/ask/N.md`
- * (see `./ask`), and nothing must commit it. That was resting on THIS
- * repository's `.gitignore` carrying a double-star `.fsdev` rule — but the
- * marker lands in the product checkout, a worktree of `sourceRepo`, which this
- * lab requires be a DIFFERENT repository. A target that never adopted the same
- * pattern has no such rule, so the agent's own `git add -A` stages the marker
- * and it lands in someone else's commit, on a pull request conductor opened.
- *
- * Asked of git rather than derived: ignore rules compose from the repository's
- * `.gitignore` files at every level, `$GIT_DIR/info/exclude` and the user's
- * global excludes, and re-implementing that resolution here is how the two
- * answers drift. `check-ignore` is git's own answer to the exact question.
- *
- * **Refused rather than fixed.** Installing the rule means writing into a
- * repository this lab does not own — a tracked `.gitignore` is the operator's
- * file, and `info/exclude` lives in the common dir every worktree of that
- * repository shares. This module's standing answer for a tree it cannot use is
- * to say so and change nothing, and the refusal lands before the agent runs,
- * which is what keeps it from being paid for once per retry.
- */
-async function assertAskMarkerIgnored(
-  checkoutPath: string,
-  left: () => number,
-  preservedBranch?: PreservedBranch,
-): Promise<void> {
-  // **Already committed is asked FIRST, and it is a different failure.** An
-  // ignore rule does not un-track a file: `git add -A` stages a change to a
-  // tracked path whatever the rules say. So a target that has committed a
-  // marker before is unsafe even with a correct `.gitignore`, and it needs the
-  // other instruction — remove the file, not add a line.
-  // `left` rather than one snapshot, redrawn before each command — the
-  // convention `looksHalfBuilt` already follows. Handed a single number, these
-  // two calls each get the WHOLE remaining budget, so the pair can outlast
-  // `provisionTimeoutMs`; the ownership arithmetic reads that number as the
-  // longest the lock is held, and a bound wrong by the command count is the
-  // failure `WorkspaceConfig.provisionTimeoutMs` is written against.
-  //
-  // **Filtered to marker NAMES, because tracked and ignored are independent in
-  // both directions.** `ls-files` lists everything tracked under the directory,
-  // and a target that keeps a `.gitkeep` or a README there is not endangered by
-  // it: measured, a tracked sibling forces git to descend and `git add -A`
-  // still leaves an untracked `1.md` ignored. Refusing on the whole listing
-  // refused a safe repository for a file that cannot become a question — the
-  // same shape of wrong answer `--no-index` was added to stop giving.
-  const tracked = (await git(checkoutPath, ["ls-files", "--", ASK_MARKER_DIR], left()))
-    .split("\n")
-    .filter((line) => line !== "" && isAskMarkerPath(line));
-  if (tracked.length > 0) {
-    throw new Error(
-      `[harness-manager] the repository behind ${checkoutPath} already tracks question markers ` +
-        `under ${ASK_MARKER_DIR}: ` +
-        `${tracked.join(", ")}. An ignore rule does not un-track a file — the ` +
-        `agent's \`git add -A\` stages a change to a tracked path regardless — so a run's ` +
-        `question would still be committed. Remove those files from that repository first.` +
-        staleBranchRemedy(preservedBranch),
-    );
-  }
-
-  // **The DIRECTORY, because the guarantee has to hold for every attempt.** A
-  // marker is named for the attempt that writes it, so a check on one filename
-  // answers about one attempt: a repository whose rule spells
-  // `.fsdev/ask/1.md` passes it and then commits attempt 2's question.
-  //
-  // An ignored directory is the one condition that cannot be defeated that way.
-  // Git does not descend into an excluded directory, so nothing inside can be
-  // staged — and a negation cannot re-open it, which the docs state and this
-  // was checked against: with `**/.fsdev/` plus `!.fsdev/ask/1.md`, `git add -A`
-  // stages nothing. No enumeration of filenames can satisfy it partially.
-  //
-  // **The cost, stated rather than hidden:** a rule that covers every marker
-  // FILE without covering the directory — `.fsdev/ask/*.md`, measured — is safe
-  // and is refused anyway. That is the safe direction of a check that cannot
-  // ask "for all n", and the message names a rule that satisfies it.
-  const probe = ASK_MARKER_DIR;
-  try {
-    // **`--no-index`, and without it this check was wrong about the very repo
-    // it exists for.** Consulting the index, `check-ignore` reports a TRACKED
-    // path as not ignored — measured, exit 1 with `**/.fsdev/` in place — so a
-    // target that had already leaked a marker was refused for missing a rule it
-    // had. The tracked case is caught above, by its own name; this call asks
-    // only the question it is for, which is whether the RULE covers the path.
-    await git(checkoutPath, ["check-ignore", "-q", "--no-index", probe], left());
-    return;
-  } catch (error) {
-    // Only a clean exit 1 is the finding; anything else is git being unable to
-    // answer, and reporting that as "not ignored" would name the wrong cause.
-    // Through the shared discriminator rather than an inlined `code === 1`,
-    // which is how this one shipped without the `killed` guard.
-    if (!gitAnsweredNo(error)) throw error;
-  }
-  throw new Error(
-    `[harness-manager] the repository behind ${checkoutPath} does not ignore the directory ` +
-      `"${probe}". A run writes the question it needs answered to a file named for its ` +
-      `attempt inside that directory, and nothing here can stop the coding agent's ` +
-      `\`git add -A\` from staging a file git does not already ignore — so the question ` +
-      `would be committed to the branch and land in the pull request. The DIRECTORY is ` +
-      `what is checked, because a rule naming one marker file leaves the next attempt's ` +
-      `unprotected. Add \`${ASK_MARKER_IGNORE_RULE}\` to that repository's .gitignore.` +
-      staleBranchRemedy(preservedBranch),
-  );
-}
-
-/**
- * The rest of an ignore refusal's remedy, when the tree is on a branch that
- * outlives the refusal.
- *
- * **"Fix the repository" is only the whole instruction for a checkout about to
- * be cut fresh from `baseRef`.** On any branch that survives this call — one
- * reused from a previous attempt, or a pre-existing branch `worktree add`
- * attached and {@link discardFreshCheckout} therefore keeps — the tree was cut
- * BEFORE the fix. The operator follows the instruction, the next attempt
- * reattaches the same branch, and it refuses identically. The advertised
- * recovery quietly does not apply, which is worse than no advice.
- *
- * Advice rather than automatic repair, deliberately: a branch this call did not
- * create may carry work, and the module's rule is that unknown contents are
- * kept. So the operator is told exactly which branch and given both outs.
- */
-function staleBranchRemedy(preserved: PreservedBranch | undefined): string {
-  if (preserved === undefined) return "";
-  const { branch, checkoutStillAttached } = preserved;
-  // **"Delete it" is not an instruction git will accept while a worktree has
-  // the branch checked out** — it refuses with `cannot delete branch ... used by
-  // worktree at ...`, which this repository's own specs already rely on. So the
-  // reuse path, where the tree is deliberately left standing, has to name the
-  // extra step; the create path, where the cleanup has already taken the tree
-  // away by the time anyone reads this, must not, or it sends the operator to
-  // remove a directory that is gone.
-  const deletion = checkoutStillAttached
-    ? `remove the checkout at ${preserved.checkoutPath} first and then delete "${branch}" ` +
-      `(git refuses to delete a branch a worktree still has checked out), so the next ` +
-      `attempt cuts a new one`
-    : `delete "${branch}" so the next attempt cuts a new one`;
-  return (
-    ` This checkout is on branch "${branch}", which nothing here removes — it may carry ` +
-    `work. That branch was cut before the fix, so fixing the source repository alone ` +
-    `leaves it unchanged and the next attempt reattaches it and refuses the same way: ` +
-    `bring "${branch}" up to date, or ${deletion}.`
-  );
-}
-
-/**
- * A branch the refusal will not remove, and what the operator can do about it.
- *
- * `checkoutStillAttached` is the half that decides which advice is actionable,
- * and it is NOT derivable from the branch: on reuse the tree stays and blocks
- * `branch -D`, while on the create path {@link discardFreshCheckout} has taken
- * the tree away before the refusal is rethrown.
- */
-interface PreservedBranch {
-  branch: string;
-  checkoutPath: string;
-  checkoutStillAttached: boolean;
-}
-
-/**
- * The branch a worktree is actually on, or `null` on a detached HEAD.
- *
- * A detached HEAD is a mismatch like any other — the run would commit to no
- * branch at all — so it is reported rather than tolerated.
- */
-async function currentBranch(
-  checkoutPath: string,
-  timeoutMs: number,
-): Promise<string | null> {
-  const head = await git(checkoutPath, ["rev-parse", "--abbrev-ref", "HEAD"], timeoutMs);
-  return head === "HEAD" ? null : head;
-}
-
-/**
- * Which REPOSITORY a directory belongs to, or `undefined` if it is not in one.
- *
- * The async twin of `repositoryIdentity`: same answer, obtained through the
- * budgeted git helper so it draws from the provisioning deadline rather than
- * blocking outside it. The rule that turns a `--git-common-dir` answer into an
- * identity lives in ONE place, `identityFromCommonDir`, so the startup guard and
- * this one cannot drift into two notions of "the same repository".
- *
- * The common dir and not the toplevel, for the reason the startup guard gives:
- * it is the one directory every worktree of a repository shares.
- */
-async function gitIdentity(dir: string, timeoutMs: number): Promise<string | undefined> {
-  try {
-    return identityFromCommonDir(dir, await git(dir, ["rev-parse", "--git-common-dir"], timeoutMs));
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Is every change in this tree a deletion?
- *
- * Porcelain status codes are two columns, index and working tree. A tree whose
- * every entry draws from `{" ", "D"}` has had files removed and nothing else
- * added, edited, renamed or staged.
- *
- * Paths are read only two characters deep, and git quotes anything exotic, so a
- * filename cannot forge an extra entry. If one somehow did, it would introduce a
- * code this rejects — pushing the caller toward refusing the tree, which is the
- * safe direction.
- */
-function everyChangeIsADeletion(porcelain: string): boolean {
-  for (const line of porcelain.split("\n")) {
-    if (line.length === 0) continue;
-    const index = line[0];
-    const worktree = line[1];
-    if (index !== " " && index !== "D") return false;
-    if (worktree !== " " && worktree !== "D") return false;
-  }
-  return true;
-}
-
-/**
- * Does this tree look like a `worktree add` that was killed part-way, in a
- * checkout nothing has since worked in?
- *
- * Two conditions, and the second is the one that matters.
- *
- * `git ls-files --deleted` lists tracked files the index expects and the working
- * tree does not have, which is what a half-populated checkout is. **It is not
- * unique to one**: an agent that deletes or renames a tracked file produces
- * exactly the same reading, so this alone hands a forged marker the authority to
- * delete a checkout during ordinary implementation work.
- *
- * So the tree must ALSO contain nothing an agent could have produced. A killed
- * `worktree add` writes tracked files and stops; it never leaves an edit, an
- * addition, a rename or a staged change. One `M` or `??` entry means content,
- * and content is never deleted here.
- *
- * **This narrows the marker's authority; it does not remove it.** A tree whose
- * only change is a deletion still qualifies, so an agent that deletes a tracked
- * file and nothing else can still be taken for a half-built checkout. What that
- * now costs is bounded: the deletion itself, which the retry re-derives.
- * Committed work is not at stake in any case — `worktree add -b` creates a real
- * branch in the source repository, and removing a checkout does not remove it,
- * which is why the reuse path below looks the branch up rather than the tree.
- *
- * **A tree we cannot interrogate does not look half-built.** If git cannot
- * answer — no `.git`, an unreadable repository, a timeout — the honest answer is
- * "unknown", and unknown must not authorise a recursive delete. The caller's
- * other branches handle a missing `.git` on its own terms.
- */
-async function looksHalfBuilt(path: string, left: () => number): Promise<boolean> {
-  if (!existsSync(join(path, ".git"))) return true;
-
-  // **A budget per command, drawn from the one deadline.** Both probes ran on a
-  // single snapshot of the remaining time, so together they could hold the lock
-  // for twice what `provisionTimeoutMs` promises — long enough for the stale
-  // threshold derived from that same number to expire and a replacement to take
-  // the checkout while this probe is still running.
-  //
-  // Each `left()` is called OUTSIDE the `catch` deliberately. An exhausted
-  // budget is a loud, specific failure everywhere else in this file, and
-  // swallowing it here would report "not half-built" for a probe that never
-  // finished — a refusal dressed as an answer.
-  const forListing = left();
-  let missing: string;
-  try {
-    missing = await git(path, ["ls-files", "--deleted"], forListing);
-  } catch {
-    return false;
-  }
-  if (missing.length === 0) return false;
-
-  const forStatus = left();
-  try {
-    const porcelain = await git(
-      path,
-      ["status", "--porcelain", "--untracked-files=all"],
-      forStatus,
-    );
-    return everyChangeIsADeletion(porcelain);
-  } catch {
-    return false;
-  }
-}
-
-async function branchExists(
-  config: WorkspaceConfig,
-  branch: string,
-  timeoutMs: number,
-): Promise<boolean> {
-  try {
-    await git(
-      config.sourceRepo,
-      ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`],
-      timeoutMs,
-    );
-    return true;
-  } catch (err) {
-    if (gitAnsweredNo(err)) return false;
-    throw new Error(
-      `[harness-manager] could not determine whether branch "${branch}" exists in ` +
-        `${config.sourceRepo}: the probe failed for a reason other than the ref being ` +
-        `absent. Not reporting that as a deleted branch — see the cause below.`,
-      { cause: err },
-    );
-  }
-}
-
-/**
- * Did git answer **no**, or did the probe itself fail?
- *
- * Two callers ask it, and neither can use a blanket `catch`: the ref probe
- * (`rev-parse --verify --quiet`, exit 1 = the ref is absent) and the ignore
- * probe (`check-ignore -q`, exit 1 = the path is not ignored). Named for the
- * shape rather than for either question, because the discriminator below is the
- * thing being shared and it is easy to re-derive slightly wrong — the ignore
- * probe originally inlined `code === 1` without the `killed` guard.
- *
- * A blanket `catch` cannot tell those apart, and answering `false` for both is
- * wrong twice over. On the reuse path the caller reports a branch someone
- * deleted, so whoever reads the message goes looking for a deletion that never
- * happened. On the fresh path the caller takes `worktree add -b`, which then
- * fails against the branch that does exist. Either way the attempt is charged
- * for an infrastructure failure — the same category error the ownership wait
- * refuses to make, arriving through a `catch` instead of through a lock.
- *
- * **The discriminator is measured, not assumed.** `git rev-parse --verify
- * --quiet` exits 1 with no signal when the ref is absent. Every other failure
- * looks different: a timeout comes back `killed: true` (with `code` 128 and
- * `signal` null, so `killed` is the witness and `signal` is not), a repository
- * git cannot read exits 128 unkilled, and a git that cannot be spawned carries
- * a string `code` such as `ENOENT`. Only the first is an answer.
- */
-function gitAnsweredNo(err: unknown): boolean {
-  const { code, killed } = (err ?? {}) as { code?: unknown; killed?: unknown };
-  return killed !== true && code === 1;
-}
-
-/**
- * Give this issue-phase a checkout, or hand back the one the last attempt left.
- *
- * Idempotent: called twice it returns the same directory, and the second call
- * leaves uncommitted work exactly where it was. Nothing here resets, forces,
- * cleans, or deletes — decision 2's economics are the work on disk surviving a
- * failed attempt.
- *
- * A checkout whose branch was deleted underneath **fails loudly**. Recreating it
- * would produce a divergent branch pointing at the base ref while the tree still
- * holds the last attempt's work, and the next push would be a surprise.
+ * Provisioned through the workspace host (`@flow-state-dev/workspace`), which
+ * runs every git command: idempotent, never resets, forces or discards work,
+ * one budget for the whole operation (`provisionTimeoutMs`, on `now`'s clock),
+ * and a checkout whose branch was deleted, switched, or cut from another
+ * repository is refused rather than recreated. The checkout is exactly
+ * {@link checkoutPathFor}'s path and the branch lives in `sourceRepo`.
  */
 export async function provisionCheckout(
   config: WorkspaceConfig,
   location: RunLocation,
   now: () => number = Date.now,
 ): Promise<Checkout> {
-  const path = checkoutPathFor(config, location);
   const branch = branchFor(location);
-  mkdirSync(resolve(config.root), { recursive: true });
-
-  // **One deadline for the whole operation.** Every git call below draws from
-  // it, so the lock is held for at most this long no matter how many commands
-  // the path happens to run. `now` is injectable for the same reason it is on
-  // `acquireCheckout`: the thing under test is time arithmetic.
-  const deadline = now() + (config.provisionTimeoutMs ?? GIT_TIMEOUT_MS);
-  const left = () => remainingBudget(deadline, now);
-
-  const marker = provisioningMarkerFor(path);
-
-  // **A marked tree is reused, cleared, or refused — and the marker alone does
-  // not decide which.** Two earlier calls in this file were both wrong, in
-  // opposite directions, and the rule below is what is left after each was
-  // measured.
-  //
-  // First: `.git` was treated as the witness that provisioning finished, so any
-  // checkout carrying it was reused. That is wrong. `git worktree add` killed
-  // mid-checkout leaves `.git`, the expected branch, and a registered worktree
-  // all in place with the tree only partly populated — measured at 400 tracked
-  // files, 241 present, 401 staged deletions waiting in the index. Reusing that
-  // hands the agent a tree that looks healthy and is missing most of the
-  // repository, and its first commit deletes every file the checkout never
-  // received. So `.git` witnesses that setup REACHED a point, not that it
-  // finished.
-  //
-  // Second, the over-correction: let the marker outrank `.git`, on the argument
-  // that a marked tree is "by construction one no agent has run in" — the marker
-  // is written before `worktree add` and cleared before this function returns,
-  // and the agent runs only after it returns. That is wrong about who can write
-  // the file. The marker lives beside the checkout, in the workspace root, and
-  // the coding agent has a shell: it can create `<checkout>.provisioning` at any
-  // time. The next attempt then reads a forged or stray marker as proof of an
-  // interrupted provision and recursively deletes a tree holding committed and
-  // uncommitted work — the exact loss the whole reuse design is priced on,
-  // caused by the guard against it.
-  //
-  // There is no filesystem location an unrestricted agent cannot reach, so
-  // "store the marker out of its scope" is not available *on the filesystem*.
-  // What IS available is a second opinion from git: a killed `worktree add`
-  // leaves tracked files MISSING from the working tree (the 241-of-400
-  // measurement above) and leaves nothing else at all. So the marker is acted on
-  // only when the tree independently agrees — see `looksHalfBuilt`, which is
-  // where the two conditions and their limits are written down.
-  //
-  // **That narrows the marker's authority rather than removing it**, and the
-  // honest statement of what is left is in `looksHalfBuilt` too. Removing it
-  // needs provisioning state the agent has no access to at all — the durable
-  // row, not a file — which is a change across the manager boundary rather than
-  // a third corroborator here.
-  //
-  // When they disagree — marker present, `.git` valid, nothing missing — the
-  // tree is REFUSED rather than reused or deleted. Reusing it would ignore a
-  // marker that might be real; deleting it destroys work that is definitely
-  // real. This module's standing answer for contents it cannot explain is to
-  // keep them and say so.
-  const interrupted = existsSync(marker) && (await looksHalfBuilt(path, left));
-
-  if (existsSync(marker) && !interrupted && existsSync(join(path, ".git"))) {
-    throw new Error(
-      `[harness-manager] ${marker} says a provision was interrupted, but the checkout at ${path} ` +
-        `is complete — every tracked file is present. One of the two is lying, and this ` +
-        `will not guess: the marker can be created by anything with write access to the ` +
-        `workspace root, including the coding agent, and the tree may hold real work. ` +
-        `Inspect it, then delete the marker to reuse the checkout or delete the checkout ` +
-        `to have it rebuilt.`,
-    );
-  }
-
-  if (!interrupted && existsSync(join(path, ".git"))) {
-    if (!(await branchExists(config, branch, left()))) {
-      throw new Error(
-        `[harness-manager] the checkout at ${path} is on branch "${branch}", which no longer ` +
-          `exists in ${config.sourceRepo}. Refusing to recreate it: the tree may hold ` +
-          `uncommitted work, and a fresh branch off ${config.baseRef} would diverge from ` +
-          `whatever the deleted one pointed at.`,
-      );
-    }
-
-    // **The branch existing is not the branch being checked out.** A worktree
-    // that was switched — by hand, by a tool, by a run that ran `git checkout` —
-    // still satisfies the check above, because the expected branch is still in
-    // the source repo; it is simply not the one this tree is on.
-    //
-    // Returning it anyway is a silent wrong answer of the worst kind here: the
-    // prompt tells the run it is on the expected branch, the run record says so,
-    // the commits land somewhere else entirely, and a pre-existing pull request
-    // for the expected branch can make the attempt look done. Every layer agrees
-    // and all of them are wrong.
-    //
-    // Fail loudly rather than resetting. A reset would discard whatever the tree
-    // holds, and this module never resets (decision 2's carry-forward is exactly
-    // that work).
-    const head = await currentBranch(path, left());
-    if (head !== branch) {
-      throw new Error(
-        `[harness-manager] the checkout at ${path} is on branch "${head}", not the expected ` +
-          `"${branch}". Refusing to use it: a run told it is on "${branch}" would commit ` +
-          `to "${head}" while the record says otherwise. Restore the branch or remove the ` +
-          `checkout by hand — nothing here resets a tree.`,
-      );
-    }
-
-    // **The checkout has to belong to the repository this config names.** The
-    // checks below verify the BRANCH — that it still exists, and that the tree
-    // is on it — and a branch name says nothing about which repository it lives
-    // in. The derived path is a function of the epic, principal and task, not of
-    // `sourceRepo`, so a persistent workspace root outlives a change to it: the
-    // old checkout still sits at the same path carrying the same deterministic
-    // branch name, both checks pass, and the agent edits and opens a pull
-    // request in the repository the operator moved OFF.
-    //
-    // Compared on the git common dir, so a sibling worktree of the right
-    // repository is still the right repository, and through the same helper the
-    // startup guard uses — one definition of "the same repository", or the two
-    // guards eventually disagree about it.
-    //
-    // Run through the budgeted git helper rather than the startup one: this is
-    // inside the provisioning deadline, and a call that does not draw from the
-    // budget is a hole in the bound the ownership arithmetic is sized from.
-    //
-    // **Placed after the branch checks, and that ordering is deliberate.** Put
-    // first, this guard answered "does not belong to" for a `sourceRepo` that is
-    // not a repository at all — true, and the wrong diagnosis: the branch probe
-    // above says exactly that, and a message naming the wrong cause is what the
-    // probe's own error was written to avoid. Both orders refuse before the agent
-    // runs, which is the property that matters, so the one with the better
-    // failure message wins.
-    const [mine, theirs] = await Promise.all([
-      gitIdentity(path, left()),
-      gitIdentity(config.sourceRepo, left()),
-    ]);
-    if (mine === undefined || theirs === undefined || mine !== theirs) {
-      throw new Error(
-        `[harness-manager] the checkout at ${path} does not belong to ${config.sourceRepo}. ` +
-          `Refusing to reuse it: the branch name matches, but a run given this tree would ` +
-          `commit and open a pull request in another repository. It may hold uncommitted ` +
-          `work, so nothing here removes it — move or delete it by hand, or point ` +
-          `workspace.root somewhere this repository owns.`,
-      );
-    }
-
-    // Re-checked on reuse, not only on creation: the rule is a tracked file on
-    // the branch this tree is on, so a run that deleted it leaves a checkout
-    // that provisioned legally and is no longer safe to write a question into.
-    // Reuse leaves the tree standing by design, so the branch it is on is
-    // still checked out and cannot be deleted until it is removed.
-    await assertAskMarkerIgnored(path, left, {
-      branch,
-      checkoutPath: path,
-      checkoutStillAttached: true,
-    });
-
-    return { path, branch, created: false };
-  }
-
-  // **A directory with no `.git` is a creation that never finished — remove it.**
-  //
-  // Measured, not reasoned about: `SIGTERM` to `git worktree add` (which is
-  // exactly how the provisioning budget ends it) leaves the target present,
-  // partly populated, and without `.git`. The next attempt then takes this same
-  // branch, and `worktree add` refuses with `fatal: '<path>' already exists` —
-  // on BOTH arms, since the killed run also leaves the branch behind. `worktree
-  // prune` does not help; it touches bookkeeping, and the leftover is a tree.
-  // So every remaining attempt failed on a leftover no retry could clear.
-  //
-  // **This does not weaken "never reset".** That rule protects the previous
-  // attempt's work, and the whole point of `.git` as the witness is that git
-  // writes it as part of setup — so a tree without it was never a usable
-  // checkout, no agent ever ran in it, and it holds nothing to carry forward.
-  // Reuse is still decided by `.git`; what changed is the disposition when the
-  // witness is absent, from "try anyway and fail" to "clear and recreate".
-  //
-  // Cleaning here rather than in a `catch` around the failed `add` is
-  // deliberate: a catch cannot run when the whole process is killed, and this
-  // covers that case too.
-  if (existsSync(path)) {
-    // **A missing `.git` does not prove nobody ever worked here**, which is what
-    // this branch used to assume. The run holds an agent with shell access, so
-    // removing or renaming `.git` inside its own checkout is reachable — by a
-    // cleanup script, or by an agent deciding to start over. The tree then looks
-    // exactly like an interrupted provision while holding real uncommitted work,
-    // and clearing it destroys the thing decision 2 is priced on.
-    //
-    // So the interrupted case is IDENTIFIED rather than inferred. `interrupted`
-    // is the corroborated reading established above, not a bare `existsSync` on
-    // the marker; with no `.git` here the corroboration is trivially satisfied,
-    // so on this branch it reduces to the marker — but it reduces to it by the
-    // same rule, not by a second one. Absent, this directory is something we did
-    // not make and cannot explain, and the safe disposition for unknown contents
-    // is to keep them.
-    if (!interrupted) {
-      throw new Error(
-        `[harness-manager] the checkout at ${path} has no \`.git\` and no record of an ` +
-          `interrupted provision, so it is not a half-created checkout and this will not ` +
-          `clear it — it may hold work. Inspect it and remove it by hand if it is junk.`,
-      );
-    }
-
-    // A guard on a destructive call. The path is derived under `config.root` by
-    // `checkoutPathFor`, and this keeps that true for any future caller that
-    // reaches this function another way.
-    const root = resolve(config.root);
-    if (!isStrictlyInside(path, root)) {
-      throw new Error(
-        `[harness-manager] refusing to clear ${path}: it is not inside the workspace root ` +
-          `${root}. A half-created checkout is only ever removed from the directory this ` +
-          `lab owns.`,
-      );
-    }
-    rmSync(path, { recursive: true, force: true });
-  }
-
-  // A worktree whose directory was removed leaves an administrative entry
-  // behind, and `worktree add` then refuses the path by name. Pruning is not a
-  // reset: it touches bookkeeping, never a tree.
-  await git(config.sourceRepo, ["worktree", "prune"], left());
-
-  const branchPreexisted = await branchExists(config, branch, left());
-  const args = branchPreexisted
-    ? ["worktree", "add", path, branch]
-    : ["worktree", "add", "-b", branch, path, config.baseRef];
-
-  // Written BEFORE the call that creates the tree and removed only once it has
-  // returned, so the window the marker covers is exactly the window in which a
-  // kill leaves a partial directory. A failed `add` deliberately leaves it: the
-  // provision did not finish, and the next attempt is the one entitled to clear.
-  // `worktree add` creates the nested path itself, so the marker's own parent
-  // may not exist yet — the same reason `acquireCheckout` makes it for the lock.
-  mkdirSync(join(path, ".."), { recursive: true });
-  writeFileSync(marker, "");
-  await git(config.sourceRepo, args, left());
-  rmSync(marker, { force: true });
-
-  // After the tree exists, because the answer depends on the checked-out
-  // `.gitignore` and there is nothing to ask git about before that.
-  //
-  // **And a refusal here undoes what this call just made, which is the one
-  // place clearing a tree with `.git` is legitimate.** Left behind, the
-  // checkout and its branch are durable: the next call finds a complete
-  // checkout with no interrupted-provision marker, reuses it, and asks the same
-  // question of the same branch — which was cut BEFORE the operator added the
-  // rule, so it fails identically forever. Fixing the repository would not fix
-  // the task.
-  //
-  // The "never reset" rule protects the PREVIOUS attempt's work, and there is
-  // none here: this branch is between `worktree add` and this function's own
-  // return, under the lock, with no agent yet dispatched. Same argument the
-  // no-`.git` branch above makes, at the one other moment it holds.
-  try {
-    // The branch is named in the refusal only when this call will not delete
-    // it. Fresh, `discardFreshCheckout` removes it and the next attempt cuts a
-    // new one from the fixed `baseRef`, so "fix the repository" is the whole
-    // instruction; pre-existing, it is deliberately kept and the operator has a
-    // second thing to do.
-    await assertAskMarkerIgnored(
-      path,
-      left,
-      // `checkoutStillAttached: false` because the catch below removes the tree
-      // before rethrowing — by the time anyone reads this, the branch is free.
-      branchPreexisted ? { branch, checkoutPath: path, checkoutStillAttached: false } : undefined,
-    );
-  } catch (refusal) {
-    const removed = await discardFreshCheckout(config, path, branch, branchPreexisted, now);
-    if (removed) throw refusal;
-    // Cleanup did not finish, so the leftover this function tried to prevent is
-    // there after all. Saying so beats a refusal that describes a tree the
-    // operator will not find, and beats replacing the diagnosis entirely.
-    throw new Error(
-      `${(refusal as Error).message}\n\n[harness-manager] and the checkout this call created ` +
-        `could not be removed, so ${path}${branchPreexisted ? "" : ` and branch "${branch}"`} ` +
-        `are still there. Fixing the repository will not be enough on its own — delete ` +
-        `them by hand, or the next attempt reuses a tree cut before the fix and fails the ` +
-        `same way.`,
-    );
-  }
-
-  return { path, branch, created: true };
-}
-
-/**
- * Undo the checkout this call just created, so its refusal is recoverable.
- *
- * The branch is deleted only when THIS call created it. `worktree add` without
- * `-b` attaches an existing branch, which belongs to whoever made it and may
- * carry work; removing the tree is ours, removing their branch is not.
- *
- * **Its own budget, and that is the whole reason it works.** Written against
- * the provisioning deadline, it could not run at all in the case it exists for:
- * `remainingBudget` THROWS once the deadline passes, so a refusal raised
- * *because* the budget ran out reached cleanup with no budget left, every git
- * call threw at the first `left()`, and the swallow below turned that into
- * silence — leaving exactly the branch this function was added to remove.
- *
- * Undoing an operation is not part of that operation's time box. The extension
- * is one {@link CHECKOUT_CLEANUP_TIMEOUT_MS} and only on the refusal path,
- * which ends the attempt anyway; the alternative is a wedge no retry can clear.
- *
- * **And the extension is counted, not assumed harmless.** It happens under the
- * lock, so `resolveOwnership` adds the same constant to `maxLockHeldMs` — the
- * number the stale window is derived from. Left out, a slow cleanup runs past
- * the point another worker may declare this lock stale, and two attempts end up
- * pruning the same worktree bookkeeping.
- *
- * **Reports whether it finished, and cleanup failures are still swallowed.**
- * The caller is already throwing something that names a real problem; replacing
- * that with "and then `git branch -D` timed out" trades a diagnosis for a
- * footnote. It gets a boolean instead, so it can add the leftover to its own
- * message rather than describing a tree the operator will not find.
- */
-async function discardFreshCheckout(
-  config: WorkspaceConfig,
-  path: string,
-  branch: string,
-  branchPreexisted: boolean,
-  now: () => number,
-): Promise<boolean> {
-  const deadline = now() + CHECKOUT_CLEANUP_TIMEOUT_MS;
-  const left = () => remainingBudget(deadline, now);
-  try {
-    // The same guard the half-created branch uses, for the same reason: a
-    // derived path stays derived only if every destructive call re-checks it.
-    const root = resolve(config.root);
-    if (!isStrictlyInside(path, root)) return false;
-
-    // **The interrupted-provision marker goes back on before the delete, and
-    // comes off after.** `rmSync` is synchronous and recursive, and node offers
-    // no way to bound it — no signal, no timeout — so this one call is the part
-    // of the cleanup the allowance above cannot actually cap. Small in practice
-    // (nothing has run in this tree yet, so it is the checked-out source at
-    // `baseRef` and nothing an agent built), but "small" is not "bounded".
-    //
-    // So the disposition is made safe instead of the duration made certain.
-    // Interrupted here, the leftover is a partly-removed tree, and without the
-    // marker the next attempt cannot distinguish it from work it must not
-    // touch: it refuses and asks for a human. With it, the leftover is
-    // positively identified as a provision that never finished, which the
-    // reuse path above already clears on its own.
-    //
-    // **This is a trade between two interruptions, not a free win, and the
-    // losing side is written down rather than left to be rediscovered.**
-    //
-    // - *The process is killed* — ordinary, and now recoverable with no human.
-    // - *The lock is taken because the delete outran the allowance* — remote,
-    //   and now WORSE. Marked, the replacement clears the tree and provisions
-    //   while this call is still alive behind it, so the `worktree prune` and
-    //   `branch -D` below can land on bookkeeping the replacement is building —
-    //   including a `branch -D` of the branch it just created. Unmarked, that
-    //   same race ended in a loud refusal instead.
-    //
-    // Taken deliberately: a kill is a thing that happens, while reaching the
-    // second case means an `rmSync` of a tree no agent has touched outrunning
-    // `staleAfterMs`, which is bounded below by the provisioning budget plus a
-    // minute. Both sides trace to one root cause — a delete node cannot bound
-    // running under a lock — which is LAB-149, and neither is closed by
-    // choosing differently here.
-    const marker = provisioningMarkerFor(path);
-    writeFileSync(marker, "");
-    rmSync(path, { recursive: true, force: true });
-    rmSync(marker, { force: true });
-
-    await git(config.sourceRepo, ["worktree", "prune"], left());
-    if (!branchPreexisted) {
-      await git(config.sourceRepo, ["branch", "-D", branch], left());
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Is `candidate` a **strict descendant** of `root`?
- *
- * The rule lives here rather than at the `rmSync` it guards, because a rule at a
- * call site gets copied and a rule in a function gets imported.
- *
- * Two things a `startsWith(`${root}/`)` prefix test gets wrong, and both fail
- * toward leaving a half-created tree that every later attempt trips over and
- * spends a retry on:
- *
- * - **A separator is not always `/`.** `resolve` yields the platform's
- *   separator, so on Windows every legitimate child fails a `/`-terminated
- *   prefix. `relative` compares path *segments* and has no separator to get
- *   wrong.
- * - **A root of `/` has no `${root}/` to match.** The prefix becomes `//`, which
- *   no resolved absolute path starts with, so every child is refused.
- *
- * **The root itself is not inside itself.** The prefix test admitted it — the
- * old condition short-circuited on `candidate === root` and let the removal
- * through, so a caller arriving with the root as its checkout path would have
- * had `rmSync(root, { recursive: true })` run against the directory holding
- * every other checkout. An empty `relative` is that case, and it is refused.
- */
-export function isStrictlyInside(candidate: string, root: string): boolean {
-  const rel = relative(root, candidate);
-  // `..` is compared as a whole segment, not as a prefix: a directory named
-  // `..conductor` is an ordinary child, and a prefix test would refuse it.
-  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+  const place = await hostForConfig(config, now).provision(
+    { kind: "repo", repo: config.sourceRepo, baseRef: config.baseRef },
+    { place: placeFor(location), branch, ignored: ASK_MARKER_IGNORED },
+  );
+  return { path: place.cwd, branch, created: place.repo?.created ?? false };
 }
 
 /** A held checkout. Release it on every exit from the attempt that took it. */
@@ -1301,69 +579,24 @@ export interface CheckoutLease {
   /** The lock file this acquisition created. */
   lockPath: string;
   /**
-   * A token written INTO that lock file, unique to this acquisition.
-   *
-   * **It does the inode's job, and survives being written down.** The release
-   * has to establish that the lock it is about to remove is still the one this
-   * acquisition created — a run that overruns the whole hold budget becomes
-   * stale-eligible while its process is alive, so a replacement can steal the
-   * path and a careless release would then remove the REPLACEMENT'S lock. The
-   * inode answered that, and could not be serialised: it is a fact about a live
-   * filesystem handle, so it forced a module-level table to keep the closure
-   * that held it alive. A token is a value, so the lease can live in the run's
-   * own state and release itself from there.
-   *
-   * An owner string alone is not enough, which is why this is not just the
-   * owner: a same-owner re-delivery creating a new lock with identical bytes
-   * must not be released by the old process.
-   *
-   * **What it does NOT buy**, stated plainly because the shape invites the
-   * assumption: compare-then-unlink is no more atomic for a token than it was
-   * for an inode. The stale-lock window this file already documents is
-   * unchanged. The token replaces the inode for serialisation and for
-   * same-owner re-delivery — not for stronger cross-process exclusion.
+   * A token written INTO that lock file, unique to this acquisition. A value,
+   * so the lease can live in the run's own state and be released from there,
+   * and what stops a displaced holder from releasing its replacement's lock.
    */
   token: string;
 }
 
 /**
- * Release a checkout lease — **the one place a lock this process took is
- * removed**, called from every exit.
- *
- * A function of the lease VALUE rather than a method on a live object, which is
- * what lets the lease live in the run's own state: the manager patches
- * `{ lockPath, token }` onto its state when it acquires, and both exits (the
- * harness step's settle hook and the chain's rescue) call this with what they
- * read back. No module-level table of live closures remains, so two managers in
- * one process cannot touch each other's lock by construction rather than by
- * keying.
- *
- * **Never unlinks a lock without establishing it is still ours.** Same rule as
- * the steal in `acquireCheckout`, and it has to be here too — this is the other
- * place that unlinks. The case it closes is reachable, and the construction
- * check is what makes it reachable rather than preventing it: a run that
- * overruns the whole hold budget becomes stale-eligible while its process is
- * still alive. Another attempt steals the lock and takes the tree; then this
- * release fires and, checking nothing, removes THE REPLACEMENT'S lock. A third
- * attempt acquires the path while the replacement is mid-edit — two agents in
- * one tree, which is the whole thing the lock prevents.
- *
- * Synchronous, because the settle hook that calls it is: every operation here
- * is a sync filesystem call. Idempotent, so the rescue calling it after the
- * settle hook already did is a read.
+ * Release a checkout lease — the one place a lock this process took is
+ * removed, called from every exit. Never unlinks a lock that is not this
+ * acquisition's. Synchronous and idempotent.
  */
 export function releaseCheckout(lease: CheckoutLease | undefined): void {
   if (lease === undefined) return;
   try {
-    const held = JSON.parse(readFileSync(lease.lockPath, "utf8")) as {
-      token?: string;
-    };
-    if (held.token === lease.token) {
-      rmSync(lease.lockPath, { force: true });
-    }
+    releaseLock({ path: lease.lockPath, token: lease.token });
   } catch {
-    // Already gone, or unreadable. Either way there is nothing of ours left to
-    // release, and a cleanup failure must never fail a run.
+    // A cleanup failure must never fail a run.
   }
 }
 
@@ -1376,97 +609,31 @@ export interface OwnershipBounds {
   /**
    * A lock older than this belongs to a process that is gone.
    *
-   * Sized past the run's own wall-clock deadline, so a lock is only ever
-   * declared stale once no live attempt could still be holding it. That is what
-   * lets this work without a heartbeat.
+   * Sized past the run's own wall-clock deadline plus provisioning, so a lock
+   * is only ever declared stale once no live attempt could still be holding
+   * it. That is what lets this work without a heartbeat.
    */
   staleAfterMs: number;
 }
 
 /**
- * Wait, but stop waiting the moment the attempt is cancelled.
- *
- * A plain `setTimeout` promise makes the wait's responsiveness a function of
- * `pollMs`, which is a caller-set public option: at a large but perfectly valid
- * interval, a shutdown or a lost claim is not observed until the whole interval
- * elapses, and the replacement worker waits out an attempt that has already
- * been told to stop. Resolving on `abort` removes the dependency instead of
- * bounding it — the wait is as responsive as the signal regardless of how
- * `pollMs` is configured.
- *
- * It resolves rather than rejects: the caller checks the signal on the next
- * line, so cancellation keeps ONE exit and one message rather than growing a
- * second throw site here.
- */
-export const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
-  new Promise<void>((resolve) => {
-    // **An already-aborted signal is checked, not just listened for.** `abort`
-    // fires once; a signal that aborted before this listener existed never
-    // replays it, so arming the listener alone sleeps the full interval on a
-    // cancellation that had already happened. The window is real: the caller
-    // checks cancellation, then computes a bound, then arrives here — and the
-    // abort can land in between. What it costs is the whole poll interval, which
-    // is caller-configured and can be large, spent after the run was told to
-    // stop: a shutdown that waits, and a lost claim whose recovery is delayed
-    // past the point the advertised behaviour promised.
-    if (signal?.aborted === true) {
-      resolve();
-      return;
-    }
-    const done = (): void => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", done);
-      resolve();
-    };
-    const timer = setTimeout(done, ms);
-    signal?.addEventListener("abort", done);
-  });
-
-/**
- * Take exclusive ownership of a checkout — **waiting** for it, not failing on it
- * (obligation B).
- *
- * Both halves of the obligation bind together and satisfying one while breaking
- * the other is not an implementation:
+ * Take exclusive ownership of a checkout for the whole attempt — **waiting**
+ * for it, not failing on it (obligation B).
  *
  * - **Two live attempts never share a tree.** A lapsed lease does not stop the
- *   attempt that held it, and the renewal driver's abort signal lags the loss by
- *   up to about a third of the lease. Two coding agents in one checkout corrupt
- *   the artifact the run exists to produce.
+ *   attempt that held it, and two coding agents in one checkout corrupt the
+ *   artifact the run exists to produce.
  * - **Resolving contention never consumes a retry.** Every throw out of this
- *   worker reaches the board's fenced failure recorder and spends one. A
- *   reclaimed attempt that merely refused would be charged for the DISPLACED
- *   attempt's lease lag, and overlapping wakes could exhaust the row's budget
- *   before the old run noticed it had lost its claim. The retry budget bounds
- *   coding failures; spending it on a lock is a category error and a silent one.
+ *   worker spends one, so ordinary contention waits and only exceeding
+ *   `waitMs` throws — a wedged process, correctly charged.
  *
- * So ordinary contention resolves by waiting and costs nothing. Only exceeding
- * the bound throws, and that is a wedged process rather than a race — a real
- * failure, correctly charged.
- *
- * The lock sits BESIDE the checkout rather than inside it, so `git worktree add`
- * never meets a non-empty directory and the file survives a tree that has not
- * been created yet.
- *
- * ## What this is not: atomic
- *
- * **Acquiring** is atomic — an `O_EXCL` create either wins or does not.
- * **Unlinking** is not, in either of the two places that do it. Both the steal
- * and the release establish the file's identity (inode plus the bytes it
- * carries) immediately before removing it, but compare-then-unlink is two
- * syscalls, and a lock could in principle change hands between them. That is
- * cross-process mutual exclusion the filesystem API does not offer at this
- * level; closing it needs a rename/token protocol, which is a bigger change
- * than this lab's ownership problem warrants.
- *
- * **What bounds the residual** is the construction check that `staleAfterMs`
- * must exceed the longest a live attempt can legitimately hold the lock — the
- * run's deadline AND the provisioning that precedes it, since the lock is taken
- * first. A lock is only ever judged stale
- * once no live attempt could still be holding it, so the window requires a
- * holder to release and a new attempt to acquire between two adjacent
- * syscalls. Narrow enough to name rather than to solve — and named rather than
- * left for a reader to assume the inode check is a guarantee it is not.
+ * Held across provisioning AND the run, which is why it is not the workspace
+ * host's own lock (that one is held only while provisioning). Built on the
+ * same lock file mechanism (`acquireLock` in `@flow-state-dev/workspace`):
+ * atomic create, a stale steal that re-checks the file it judged, a token
+ * release. No heartbeat: `staleAfterMs` outlasts the longest legitimate hold.
+ * The lock sits BESIDE the checkout, so `git worktree add` never meets a
+ * non-empty directory. A cancelled `signal` stops the wait at once.
  */
 export async function acquireCheckout(
   checkoutPath: string,
@@ -1475,114 +642,10 @@ export async function acquireCheckout(
   now: () => number = Date.now,
   signal?: AbortSignal,
 ): Promise<CheckoutLease> {
-  const lock = lockPathFor(checkoutPath);
-  /**
-   * Stop waiting once this attempt has been cancelled.
-   *
-   * **Checked in the WAIT, never during an in-flight git command.** Shutdown, or
-   * a lease renewal reporting that this attempt lost its claim, propagates
-   * through `ctx.signal`. Left unobserved, a stale attempt keeps polling for the
-   * whole ownership window and can still go on to acquire and provision a
-   * checkout it can no longer record a result for. That window is the run's
-   * deadline plus provisioning plus slack, so ignoring the signal costs the
-   * better part of an hour of a replacement's time.
-   *
-   * Observed here AND in the wait itself — `sleep` resolves on `abort`, so this
-   * runs when the signal arrives rather than when `pollMs` next elapses. The
-   * check alone would have made the delay a function of a caller-set option.
-   *
-   * Interrupting the wait is safe in a way interrupting provisioning is not:
-   * nothing has been created yet, so there is nothing half-made to leave behind.
-   */
-  const stopIfCancelled = (): void => {
-    if (signal?.aborted !== true) return;
-    throw new Error(
-      `[harness-manager] the attempt waiting for the checkout at ${checkoutPath} was cancelled ` +
-        "before it acquired the lock. Stopping rather than taking a tree whose result " +
-        "this attempt can no longer record.",
-    );
-  };
-  stopIfCancelled();
-  mkdirSync(join(checkoutPath, ".."), { recursive: true });
-  const deadline = now() + bounds.waitMs;
-
-  for (;;) {
-    try {
-      // **Unique per ACQUISITION, not per owner.** The owner is
-      // `<taskId>#<attempt>`, which a re-delivery of the same attempt repeats;
-      // the token is what tells this acquisition's lock from an identical-looking
-      // one a replacement created. See `CheckoutLease.token`.
-      const token = randomUUID();
-      writeFileSync(lock, JSON.stringify({ owner, token, at: now() }), { flag: "wx" });
-      return { lockPath: lock, token };
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-    }
-
-    // A holder older than any live attempt could be is a process that died.
-    // Steal it rather than waiting out a bound nobody is going to release.
-    //
-    // **The removal is conditioned on the identity of the file that was
-    // judged**, and that is the whole correctness of this branch.
-    // Remove-then-create is the obvious shape and it is broken: two waiters both
-    // stat one stale lock, both decide it is stale, A removes it and creates its
-    // replacement, and B then executes its already-authorised removal against
-    // *A's new lock* and creates its own. Both hold leases and two agents mutate
-    // one checkout — the precise harm obligation B exists to prevent, arriving
-    // through the mechanism meant to prevent it.
-    //
-    // So the victim is identified before it is judged (inode plus the bytes it
-    // carries), re-identified immediately before the unlink, and the steal is
-    // abandoned if anything moved. A successful steal only CLEARS the path — it
-    // never acquires. Acquisition is always the atomic `wx` create at the top of
-    // this loop, so a stealer competes fairly with every other waiter afterwards.
-    try {
-      const victim = statSync(lock);
-      const held = readFileSync(lock, "utf8");
-      if (now() - victim.mtimeMs > bounds.staleAfterMs) {
-        // Re-read rather than trusting the reads above: between judging the lock
-        // and unlinking it, the holder may have released and a live attempt
-        // taken the path.
-        const current = statSync(lock);
-        if (current.ino === victim.ino && readFileSync(lock, "utf8") === held) {
-          rmSync(lock, { force: true });
-        }
-        continue;
-      }
-    } catch (err) {
-      // It was released between the failed create and the stat. Retry.
-      //
-      // **Only disappearance retries, and the narrowing is the whole point.**
-      // `continue` here skips both the deadline check and the `await` below, so
-      // it is only safe for a condition the next iteration can resolve. A
-      // PERMANENT read failure — the path is a directory (`EISDIR`), the file is
-      // unreadable to this uid (`EACCES`) — reproduces on every pass: the `wx`
-      // create fails `EEXIST`, the read throws again, and the loop spins
-      // synchronously forever. Not merely slow: nothing between here and the top
-      // yields, so the deadline never fires, `stopIfCancelled` is never reached,
-      // and the dispatcher's event loop is held by a provisioning wait that
-      // advertises a bound it can no longer honour.
-      //
-      // Waiting `waitMs` first and then reporting a wedged HOLDER would be a
-      // second wrong answer: nobody holds this lock, the filesystem state is
-      // permanent, and the retry budget buys nothing. So it is raised as itself.
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-      continue;
-    }
-
-    if (now() >= deadline) {
-      throw new Error(
-        `[harness-manager] waited ${bounds.waitMs}ms for the checkout at ${checkoutPath} and it ` +
-          `is still held. Treating that as a wedged process rather than a race: an ` +
-          `ordinary reclaim resolves well inside this bound.`,
-      );
-    }
-    // **Never sleep past the deadline this loop advertises.** `waitMs` is the
-    // bound the caller was given and the drain budget is sized from, and a poll
-    // interval larger than what is left of it overshoots by the difference —
-    // measured at 203ms for `{ waitMs: 30, pollMs: 200 }`. The abort fix above
-    // covers cancellation; ordinary expiry needs the clock, not the signal.
-    await sleep(Math.min(bounds.pollMs, deadline - now()), signal);
-    stopIfCancelled();
-  }
+  const lease = await acquireLock(
+    lockPathFor(checkoutPath),
+    { waitMs: bounds.waitMs, pollMs: bounds.pollMs, staleAfterMs: bounds.staleAfterMs },
+    { owner, now, ...(signal !== undefined ? { signal } : {}), what: `the checkout at ${checkoutPath}` },
+  );
+  return { lockPath: lease.path, token: lease.token };
 }
