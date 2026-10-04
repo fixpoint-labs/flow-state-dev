@@ -30,8 +30,8 @@
  * poster, not after. That is a fact about those seats, not about this file.
  *
  * The one rule is how BR-8 is satisfied rather than asserted. `MAILBOX.md` declares
- * three members; only the EM is in the address map, so the coder and the
- * reviewer are true no-ops in the fan-out — not "dispatched to a block that
+ * the EM, the coder, the reviewer and the chief of staff; only the EM is in the
+ * address map, so every other member is a true no-op in the fan-out — not "dispatched to a block that
  * happens to do nothing", but never dispatched to at all, with the skip
  * recorded so the check grades a fact rather than an absence.
  *
