@@ -32,14 +32,14 @@
 import { execFileSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, goalTmpDir, runGoal } from "../../lib/index.mts";
 import { readShiftManagerTheme } from "../../lib/colour.mts";
 import { launchChromium } from "../../lib/playwright.mts";
 import { PENTEST_CONFIG, TREES, legA, legB, legC, staticFence, type LegCtx, type Report } from "./legs.mts";
 import { j3, j4, part4 } from "./parts.mts";
-import { SHIFT_MANAGER, buildPages, injected, labApi, open, readStore, readTree, startShiftManager, type Built, type Patch, type Swap } from "./shell.mts";
+import { SHIFT_MANAGER, THEME_IMPORT, buildPages, injected, labApi, open, readStore, readTree, startShiftManager, type Built, type Patch, type Swap } from "./shell.mts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SCRATCH = goalTmpDir("shift-manager-closure");
@@ -82,7 +82,6 @@ function legVerdict(id: string, prefix: string[], report: ReturnType<typeof coll
 
 // ---- builds --------------------------------------------------------------------
 
-const THEME_IMPORT = /^@import "@flow-state-dev\/design-system\/shift-manager\.css";\n/m;
 const NO_THEME: Patch = { file: "src/styles.css", from: THEME_IMPORT, to: "", why: "the design-system import line removed (leg c)" };
 const ACCENT = readShiftManagerTheme().attentionLight;
 const HARDCODED_ACCENT: Patch = {
@@ -108,57 +107,15 @@ const swapOf = (target: string | string[], goal: string, file: string): Swap => 
  */
 async function swapBuild(name: string, swap: Swap, noTheme: boolean, staticSeats?: Array<{ id: string; kind: string }>): Promise<Built> {
   if (!noTheme) return buildPages(SCRATCH, name, { swap, staticSeats });
-  // In a process of its own: Tailwind's Vite plugin keeps a stylesheet's
-  // compiled CSS per file across builds in one process, so this build would
-  // otherwise ship the themed build's CSS for the same \`src/styles.css\`.
+  // Tailwind's Vite plugin keeps a stylesheet's compiled CSS per file across
+  // builds in one process, so the no-theme swap runs in a child that calls the same build.
   const pages = join(SCRATCH, name, "pages");
   const script = join(SCRATCH, name, "build.mts");
   mkdirSync(join(SCRATCH, name), { recursive: true });
   writeFileSync(
     script,
-    `import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
-const [root, outDir, target, withFile, seats] = ${JSON.stringify([SHIFT_MANAGER, pages, swap.target, swap.with, staticSeats ?? []])};
-const THEME_IMPORT = ${THEME_IMPORT.toString()};
-const vite = await import(pathToFileURL(createRequire(root + "/package.json").resolve("vite")).href);
-let swapped = 0;
-const hit = new Set();
-let stripped = 0;
-await vite.build({
-  root,
-  configFile: root + "/vite.config.ts",
-  logLevel: "error",
-  build: { outDir, emptyOutDir: true },
-  define: { __STATIC_SEATS__: JSON.stringify(seats) },
-  plugins: [
-    {
-      name: "goal-control-swap",
-      enforce: "pre",
-      async resolveId(source, importer, opts) {
-        if (importer === undefined || importer === withFile) return null;
-        const resolved = await this.resolve(source, importer, { ...opts, skipSelf: true });
-        if (resolved?.id === undefined || ![target].flat().includes(resolved.id)) return null;
-        hit.add(resolved.id);
-        swapped += 1;
-        return withFile;
-      },
-    },
-    {
-      name: "goal-no-theme",
-      enforce: "pre",
-      load(id) {
-        if (id.includes("?") || !id.endsWith("/src/styles.css")) return null;
-        const code = readFileSync(id, "utf8");
-        const out = code.replace(THEME_IMPORT, "");
-        if (out !== code) stripped += 1;
-        return out;
-      },
-    },
-  ],
-});
-if (swapped === 0 || [target].flat().some((t) => !hit.has(t))) throw new Error("the build never imported " + [target].flat().filter((t) => !hit.has(t)).join(", "));
-if (stripped === 0) throw new Error("the theme import was never removed");
+    `import { buildPages } from ${JSON.stringify(pathToFileURL(join(HERE, "shell.mts")).href)};
+await buildPages(${JSON.stringify(SCRATCH)}, ${JSON.stringify(name)}, ${JSON.stringify({ swap, staticSeats: staticSeats ?? [], stripTheme: true })});
 `,
   );
   try {

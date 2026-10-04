@@ -160,12 +160,13 @@ export function labApi(origin: string, bearer: string | undefined) {
     }
     return rows;
   };
-  /** Every item of the given types in one session, oldest first. */
-  const items = async (sessionId: string, types: string[]): Promise<Array<Record<string, any>>> => {
+  /** Every item in one session, oldest first. `types` limits the query to those item types; omit it for every type. */
+  const items = async (sessionId: string, types: string[] = []): Promise<Array<Record<string, any>>> => {
     const out: Array<Record<string, any>> = [];
+    const typeQuery = types.length === 0 ? "" : `&item_types=${types.join(",")}`;
     for (let offset = 0, page = 0; page < 100; page += 1) {
       const body = await get(
-        `/sessions/${encodeURIComponent(sessionId)}/state?include_items=true&item_types=${types.join(",")}&offset=${offset}&limit=200`,
+        `/sessions/${encodeURIComponent(sessionId)}/state?include_items=true${typeQuery}&offset=${offset}&limit=200`,
       );
       out.push(...(body.items ?? []));
       if (body.pagination?.hasMore !== true) break;
