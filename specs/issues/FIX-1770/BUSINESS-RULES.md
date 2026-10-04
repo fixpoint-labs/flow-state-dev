@@ -30,7 +30,7 @@ The cases, as rules. *Proved by* is the check the plan runs. A rule marked *(fsd
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-12 | `--host` is not a loopback address and the Lab would run as the framework's unauthenticated default principal | Refused, with the guard's message *(fsdev)* | CI |
+| BR-12 | `--host` is not a loopback address and the Lab would run as the framework's unauthenticated default principal | Refused, with the guard's message; `--allow-unauthenticated` overrides it for a Lab authenticated at host level, as on `fsdev serve` *(fsdev)* | CI |
 | BR-13 | `--host` is not loopback and the Lab declares a bearer for its page | Refused: the token only ever goes to a loopback page *(fsdev)* | CI |
 | BR-14 | `--host` is not loopback and the bind is allowed | The anonymous debug surface `fsdev dev` opens on loopback stays closed *(fsdev)* | CI |
 | BR-15 | `--dev` with a non-loopback `--host` | Refused *(fsdev, as `--watch`)* | CI |
@@ -39,7 +39,7 @@ The cases, as rules. *Proved by* is the check the plan runs. A rule marked *(fsd
 
 | # | When | Then | Proved by |
 |---|---|---|---|
-| BR-16 | A module the Lab imported is saved | The Lab restarts within seconds, the command keeps running, the page reloads *(fsdev)* | Goal check b · CI |
+| BR-16 | A module the Lab imported is saved | The Lab restarts within seconds on the same port, the command keeps running, and an open page reloads itself, built pages included *(fsdev)* | Goal check b · CI |
 | BR-17 | A file under the config's directory is saved, such as a `WORKER.md` | Same as BR-16 *(fsdev)* | CI |
 | BR-18 | The app's page source, the Lab's data file, or anything in `node_modules` is saved | The Lab does not restart *(fsdev)* | CI |
 | BR-19 | A restart fails, for example on a syntax error | The error prints, the command keeps watching, and the next save tries again *(fsdev)* | CI |

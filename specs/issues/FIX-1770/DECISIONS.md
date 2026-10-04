@@ -105,5 +105,8 @@ It comes down to what one review has to hold: one PR mixes a host change, a supe
 
 - **Draft** — distribute Shift Manager beyond the repository: a generic fsdev app hook with
   `--host` and `--watch`, two `node` page options, a published thin CLI; three PRs.
+- **Round 1** — folded from review: `node --watch` is the one watch authority; the parent fixes
+  the port and a dev-only signal reloads an open page; dedicated GET routes stay ahead of the
+  page handler; `--allow-unauthenticated` as on `fsdev serve`; `patch` changesets.
 
 **Open: none.**
