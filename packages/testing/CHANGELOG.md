@@ -1,5 +1,84 @@
 # @flow-state-dev/testing
 
+## 0.3.0
+
+### Minor Changes
+
+- 211679a: New core block kind: `evaluator` (FIX-1554). It asks an evaluation model typed questions (`choice`, `score`, `boolean`) and returns typed answers, with the model's confidence when it reports one. Model strings resolve through your existing providers and gateways; models that can only generate are refused before any call. `BlockKind` and the trace's `blockKind` gain `"evaluator"`: code that switches on block kind should handle it. `ai` minimum raised to the first release with evaluation. `@ai-sdk/typesafe-ai` is an optional peer. `ModelResolver` gains an optional `resolveEvaluationModel`; a custom resolver without it runs generators as before and refuses evaluator model strings. Evaluation through Vercel's AI Gateway needs `@ai-sdk/gateway` 4.0.85 or later. `@flow-state-dev/testing` adds `mockEvaluationModel`.
+
+### Patch Changes
+
+- b2d2679: A hand-written `MockGeneratorInstance`'s `next()` now receives `{ toolResults }` as a second argument, what the tools the current call already ran returned, so a scripted step can depend on a tool's result (FIX-1589).
+- bb16f3a: `createMockModelResolver` takes `evaluators`, keyed by block name, so an evaluator with a model string resolves to a scripted evaluation, and `mockEvaluationModel`'s `answers` can be a function of each call's state (FIX-1610).
+- 5f9980c: `@flow-state-dev/testing` now declares `vitest` as an optional peer dependency. The `@flow-state-dev/testing/conformance` entry point imports `vitest` when it loads, so install `vitest` alongside it to use that subpath; the package root does not need it (FIX-1431).
+- 387f95c: Add `findNodeBuiltinsFromEntry` and `findImportsFromEntry`, which walk a source entry's import graph and report every Node built-in (or any import you name) it reaches with the chain that reached it, for guarding browser-safe entry points (FIX-1605).
+- Updated dependencies [283fb2a]
+- Updated dependencies [9f06d39]
+- Updated dependencies [53b50f0]
+- Updated dependencies [e4fb1f1]
+- Updated dependencies [538cd1a]
+- Updated dependencies [585b75b]
+- Updated dependencies [b75c1ed]
+- Updated dependencies [25ac53a]
+- Updated dependencies [456fe85]
+- Updated dependencies [6453d2c]
+- Updated dependencies [f282bcb]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [55c62a6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [85b2965]
+- Updated dependencies [1355483]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [8a55e23]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [21ffcbb]
+- Updated dependencies [5a55080]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [2d2518b]
+- Updated dependencies [c57890d]
+- Updated dependencies [7d4c413]
+- Updated dependencies [a64132b]
+- Updated dependencies [0abbcd9]
+- Updated dependencies [d9d00a4]
+- Updated dependencies [72c5b17]
+- Updated dependencies [65ddb90]
+- Updated dependencies [47a02d0]
+- Updated dependencies [e0f10e2]
+- Updated dependencies [9083569]
+- Updated dependencies [9510a03]
+- Updated dependencies [d2f77fc]
+- Updated dependencies [d9d00a4]
+- Updated dependencies [229de7a]
+- Updated dependencies [4ca0e99]
+- Updated dependencies [385d01e]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [8b8ba8d]
+- Updated dependencies [3c2ab06]
+- Updated dependencies [64b3ed7]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [b7c523b]
+- Updated dependencies [6bf61dc]
+- Updated dependencies [a021cd1]
+- Updated dependencies [1f2dadd]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [a26e426]
+- Updated dependencies [84cc226]
+  - @flow-state-dev/engine@0.3.0
+  - @flow-state-dev/core@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

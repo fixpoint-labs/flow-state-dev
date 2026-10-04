@@ -1,5 +1,70 @@
 # @flow-state-dev/react
 
+## 0.3.0
+
+### Minor Changes
+
+- bb1c224: `FlowNavigator` now draws an open leaf's `leafToolbar` on that leaf's own row, showing both row slots only when the row is hovered or focused (always on touch screens), so give them icon buttons with an `aria-label`, it adds dashed tree lines you can colour with `--fsd-nav-guide` and a `leafDetail` slot for content that sits on its own lines under an open leaf's row, and untitled session rows show a shortened id with the full id on hover (FIX-1561).
+
+### Patch Changes
+
+- 91a5afd: New `BoardList` panel draws a board as one list, newest first, with each task's status, and with `live` it reads the board again whenever the session it reads through keeps a change to that board (FIX-1622).
+- 698e06b: New `apiPath` option on every client constructor and on `FlowProvider` names where the server mounts the flow API (default `/api/flows`), so the client and React hooks can reach a Node server started with a custom `basePath`. Requests go to `baseUrl` + `apiPath` + route; with `apiPath` unset, every URL is unchanged. The `@flow-state-dev/node` README documents pairing `basePath` with `apiPath` (FIX-1677).
+- 931fdf9: `Roster`, `BoardColumns` and `BoardList` now show their error line, with Retry, when a collection still has pages left after 1,000 reads, instead of rendering the rows read so far as the complete list (FIX-1577).
+- 736e719: `Roster` and `BoardColumns` now read every page of their collection, following the list route's cursor instead of stopping at the first page — a collection past the route's default page size no longer truncates silently, dropping its last rows (FIX-1477).
+- 0e7e07e: Adds `SeatDetail`, a panel showing one seat's kind (from a prop, no read) and its instructions (one item read from the roster collection). A user-owned or undeclared seat shows its instructions as not published, with no read (FIX-1500).
+- b7c523b: `useSession` takes `live: true` to hear requests the view didn't send: other tabs, other people, agents answering in the same session. Their finished items join `items` about a second after the server keeps them, each once, in the order a reload shows, and `childSessions` is re-read whenever a run starts or finishes. Off by default (FIX-1609).
+
+  `useSession` now tells items apart by request and item id, live or not. Two requests that each keep a keyed item with the same key both appear in `items`; before, the later one replaced the earlier, or a reload showed it twice.
+
+  A live view opens its stream from the snapshot's `at`, so nothing kept after the snapshot is missed however long the snapshot took. Once a live view holds a finished copy of an item, a copy still being written never replaces it, whichever arrives first. A keyed item emitted twice keeps its later copy (by the server's `ts`, then `itemIndex`), whichever stream or snapshot brings it last.
+
+  The user's message a view shows while a request is sent gives way to the server's copy from either stream, so it no longer shows twice when the view's own stream drops first. An item that arrives live stays in view until a snapshot requested after it arrived, however long an earlier snapshot takes to land.
+
+  A snapshot read never undoes a newer one: when two are in flight, the one requested later wins, and an earlier one landing after it is dropped with the session detail read beside it. A session switch retires every read in flight. A history longer than a page is read so that no item is skipped when a request is removed or a keyed item moves between two pages: the read starts over, and fails after five tries rather than show part of the history as whole. It starts over too when a later page comes from another session that took the id. A snapshot read that lands, from `refresh()` or anywhere else, takes away the `error` an earlier failed snapshot read set, including the five-tries error; it leaves an error from anything else, such as a failed action, and one set by a read requested after it.
+
+  A live view's stream follows the session its snapshot read. When the session is deleted and its id used again, the stream stops; once a snapshot of the new session lands, the stream opens again on that one.
+
+  With `live: true`, once the stream has named the runs, a reconnect that fails, a refusal, or the session gone keeps the rows and raises `childSessionsStale`, until a connection names the runs again, or for good.
+
+- Updated dependencies [53b50f0]
+- Updated dependencies [585b75b]
+- Updated dependencies [49852d9]
+- Updated dependencies [698e06b]
+- Updated dependencies [456fe85]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [7d4c413]
+- Updated dependencies [65ddb90]
+- Updated dependencies [9510a03]
+- Updated dependencies [385d01e]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [b7c523b]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [b7c523b]
+- Updated dependencies [a021cd1]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [84cc226]
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/client@0.2.1
+  - @flow-state-dev/contracts@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes

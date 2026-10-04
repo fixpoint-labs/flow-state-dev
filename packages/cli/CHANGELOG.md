@@ -1,5 +1,130 @@
 # @flow-state-dev/fsdev
 
+## 0.3.0
+
+### Minor Changes
+
+- b75c1ed: `fsdev run` and `fsdev chat` now run as whoever the app's resolver names (new `FlowState.resolveInProcessPrincipal`, with `source: "cli"` reserved for it), stop with exit 2 before writing anything when that resolver or a seat's pin refuses the terminal (a `--session` owned by another user or organization now also exits 2 instead of 1), and take `--org`/`--user` to name the identity locally (FIX-1551).
+- 211679a: New core block kind: `evaluator` (FIX-1554). It asks an evaluation model typed questions (`choice`, `score`, `boolean`) and returns typed answers, with the model's confidence when it reports one. Model strings resolve through your existing providers and gateways; models that can only generate are refused before any call. `BlockKind` and the trace's `blockKind` gain `"evaluator"`: code that switches on block kind should handle it. `ai` minimum raised to the first release with evaluation. `@ai-sdk/typesafe-ai` is an optional peer. `ModelResolver` gains an optional `resolveEvaluationModel`; a custom resolver without it runs generators as before and refuses evaluator model strings. Evaluation through Vercel's AI Gateway needs `@ai-sdk/gateway` 4.0.85 or later. `@flow-state-dev/testing` adds `mockEvaluationModel`.
+- e9f9316: `fsdev gen` now finds the blocks in every package's `blocks/` folder and writes them to a new `packageBlocks` export, so `fsdev gen --check` reports a generated file that predates them as out of date (FIX-1459).
+
+### Patch Changes
+
+- 204860e: `declaredDevtoolConfig(flowState)` is now exported: the `devtool` block (user and bearer) an app's `fsdev.config.*` declares, or `undefined` when the block is empty, exactly as `fsdev dev` reads it. A host that serves its own pages through `serve()` can hand the same config to them (FIX-1662).
+- 82ec64e: `fsdev ui add a b c` installs every component in one shadcn call. It used to call shadcn once per component, so a later component that shared a dependency with an earlier one stopped at an overwrite prompt for the file the earlier call had just written (FIX-1655).
+- 65ddb90: Each request's record now stores its action result (`output` as JSON, and/or `error`) with its final status, `listSessionRequests` returns it (the output with `includeResultOutput`), the DevTool task row reads it instead of reconstructing it from traces, and a run a completion hook failed after the action answered now reports that answer as `output` (including `fsdev run`'s result, where it was `null`) (FIX-1661).
+- Updated dependencies [283fb2a]
+- Updated dependencies [7c533fc]
+- Updated dependencies [5ab09d4]
+- Updated dependencies [4a367f6]
+- Updated dependencies [9f06d39]
+- Updated dependencies [53b50f0]
+- Updated dependencies [e4fb1f1]
+- Updated dependencies [b69ec61]
+- Updated dependencies [8297186]
+- Updated dependencies [538cd1a]
+- Updated dependencies [585b75b]
+- Updated dependencies [80f6e25]
+- Updated dependencies [b75c1ed]
+- Updated dependencies [698e06b]
+- Updated dependencies [25ac53a]
+- Updated dependencies [456fe85]
+- Updated dependencies [6453d2c]
+- Updated dependencies [f282bcb]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [55c62a6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [85b2965]
+- Updated dependencies [1355483]
+- Updated dependencies [7d4158f]
+- Updated dependencies [a3bfbc2]
+- Updated dependencies [f469423]
+- Updated dependencies [50b5273]
+- Updated dependencies [211679a]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [bb1c224]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [8a55e23]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [98fa8da]
+- Updated dependencies [afb512f]
+- Updated dependencies [21ffcbb]
+- Updated dependencies [5a55080]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [a3bfbc2]
+- Updated dependencies [80f6e25]
+- Updated dependencies [2d2518b]
+- Updated dependencies [c57890d]
+- Updated dependencies [718e84c]
+- Updated dependencies [b2d2679]
+- Updated dependencies [bb16f3a]
+- Updated dependencies [02019e2]
+- Updated dependencies [7d4c413]
+- Updated dependencies [a64132b]
+- Updated dependencies [f704d4a]
+- Updated dependencies [0abbcd9]
+- Updated dependencies [d9d00a4]
+- Updated dependencies [72c5b17]
+- Updated dependencies [536b1f0]
+- Updated dependencies [9427a4d]
+- Updated dependencies [65ddb90]
+- Updated dependencies [47a02d0]
+- Updated dependencies [e0f10e2]
+- Updated dependencies [9083569]
+- Updated dependencies [9510a03]
+- Updated dependencies [d2f77fc]
+- Updated dependencies [d9d00a4]
+- Updated dependencies [229de7a]
+- Updated dependencies [4ca0e99]
+- Updated dependencies [385d01e]
+- Updated dependencies [3311cc2]
+- Updated dependencies [24a0829]
+- Updated dependencies [bb16f3a]
+- Updated dependencies [7c9e932]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [02120a2]
+- Updated dependencies [b823e03]
+- Updated dependencies [4f03fae]
+- Updated dependencies [8b8ba8d]
+- Updated dependencies [3c2ab06]
+- Updated dependencies [64b3ed7]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [b7c523b]
+- Updated dependencies [b7c523b]
+- Updated dependencies [6bf61dc]
+- Updated dependencies [a021cd1]
+- Updated dependencies [1f2dadd]
+- Updated dependencies [2e8f640]
+- Updated dependencies [912ae98]
+- Updated dependencies [5f9980c]
+- Updated dependencies [387f95c]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [b36a8a5]
+- Updated dependencies [a26e426]
+- Updated dependencies [ea0d0bf]
+- Updated dependencies [84cc226]
+- Updated dependencies [ecca6d0]
+- Updated dependencies [b092e17]
+- Updated dependencies [1f2650b]
+- Updated dependencies [e9f9316]
+- Updated dependencies [00a9347]
+- Updated dependencies [1bde68a]
+- Updated dependencies [a1b122e]
+- Updated dependencies [c364ebb]
+  - @flow-state-dev/engine@0.3.0
+  - @flow-state-dev/store-sqlite@0.3.0
+  - @flow-state-dev/workforce@0.4.0
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/node@0.1.4
+  - @flow-state-dev/devtool@0.3.0
+  - @flow-state-dev/testing@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
