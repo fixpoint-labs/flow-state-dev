@@ -183,6 +183,36 @@ An SSH login name isn't a credential, so `git@github.com:acme/storefront.git` an
 
 Stored rows aren't re-parsed when they're read, so a row saved without a `repository` key reads without one. Treat a missing value as `null`, or read rows through `projectRowSchema.parse(row)`, which fills it in.
 
+### Coding work in a project
+
+When a coding worker picks up work from one of the project's workstreams, it works in a fresh branch of the project's repository, as long as the host running the worker allows that remote. Nobody names a folder. Changing the repository applies to new work. Work already started stays where it began: on the repository it began with, or, if the project had none then, on the project's files.
+
+A project with no repository still runs coding work. The first run starts from an empty set of files, and everything it writes is saved to the [project's files](#the-projects-own-files). The next run starts from what the last one left. If two runs change the same file, the changes are merged; a real conflict is reported on the run instead of overwriting anyone's work. A run isn't marked done until what it wrote is saved: if the last save fails, the attempt fails and the retry saves it.
+
+To get this, build the coding worker's [harness manager](../orchestration/harness-manager.md) on a workspace host (from `@flow-state-dev/workspace`) whose source is `projectWorkspace`, given the same mailbox board the manager works:
+
+```ts
+import { harnessManager } from "@flow-state-dev/harness-manager";
+import { localWorkspaceHost } from "@flow-state-dev/workspace";
+import { mailboxBoard, projectWorkspace, projectWorkspaceCapability } from "@flow-state-dev/workforce";
+
+const work = mailboxBoard("eng.feature", "work");
+
+harnessManager({
+  boardCollectionId: work.id,
+  boardCollection: work,
+  workspace: localWorkspaceHost({
+    root: "/var/fsd/runs",
+    remotes: { allow: ["github.com"] },
+    source: projectWorkspace({ board: work }),
+  }),
+  uses: [projectWorkspaceCapability],
+  // ...
+});
+```
+
+`projectWorkspace` finds the project that holds the board's workstream and reads its row, nothing else. It refuses a run before any file is read when the person the run belongs to isn't one of the project's members (`not-a-member`), or when no project holds the workstream (`no-project`). The host refuses a remote its `remotes.allow` doesn't list, naming it, before anything is cloned; list `"file"` to allow `file://` remotes. A refused run isn't retried.
+
 ### The project's own files
 
 Notes, memory and anything else kept for a project live in the organization's `project-files` collection, under the project's id: `project-files/<projectId>/<path>`. Declare it with `defineProjectFilesCollection()`. Like `defineProjectsCollection()`, every call returns the same declaration. It's org-scoped, shared across flows, and loaded only when read.
@@ -205,6 +235,8 @@ Only the project's members can list the files, with `readProjectFiles`:
 It lists paths and sizes, not file contents. A block's output is recorded in the session log and can reach a model's context, so a listing stays small however large the files are.
 
 It returns that project's files, never another project's. A non-member is refused with `not-a-member`, and an unknown id with `no-such-project`. The collection has no browser read: a request for it through the collection route gets a 403.
+
+In a project with a repository, a coding run finds the project's files in `project/`, next to its checkout and never inside it, so they don't show up in `git status`. Whatever the run leaves there is saved back to the project.
 
 ## The room and talk sessions
 
