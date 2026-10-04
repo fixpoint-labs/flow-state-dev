@@ -1,5 +1,5 @@
 <svg viewBox="0 0 940 324" role="img" xmlns="http://www.w3.org/2000/svg"
-     aria-label="The territory: this project builds the Workforce app Lab, the shell and design system plus four product surfaces: org primitives, the eng workstream kit, attention and inspect, and review and GitHub wake. Below the fence is what it consumes and never extends: Workforce Layer 2 conventions, Layer 1 sessions, tasks and boards, the FIX-1637 wake spine, and reused FSD components. To the right, outside the project: Heartbeats or Paperclip clones, a Conductor or factory shell, kitchen-sink, and new Layer 1 nouns. The fence is one test: a noun a second app would need goes to Workforce, not into the Lab.">
+     aria-label="The territory: this project builds Shift Manager, the Workforce app: the shell and design system plus four product surfaces: org primitives, the eng workstream kit, attention and inspect, and review and GitHub wake. Below the fence is what it consumes and never extends: Workforce Layer 2 conventions, Layer 1 sessions, tasks and boards, the FIX-1637 wake spine, and reused FSD components. To the right, outside the project: Heartbeats or Paperclip clones, a Conductor or factory shell, kitchen-sink, and new Layer 1 nouns. The fence is one test: a noun a second app would need goes to Workforce, not into Shift Manager.">
   <style>
     :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
             --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
@@ -24,7 +24,7 @@
 
   <g id="owned">
     <rect class="n-own" x="16" y="16" width="660" height="150" rx="6"/>
-    <text class="t-lbl" x="32" y="36">THIS PROJECT · THE WORKFORCE APP LAB · EACH SURFACE OWNS WHAT IT MEANS</text>
+    <text class="t-lbl" x="32" y="36">THIS PROJECT · SHIFT MANAGER, THE WORKFORCE APP · EACH SURFACE OWNS WHAT IT MEANS</text>
     <rect class="n-box" x="32" y="46" width="612" height="40" rx="4"/>
     <text class="t-b" x="44" y="64">Shell · design system · nav</text>
     <text class="t-s" x="44" y="79">FIX-1649 — how every surface is reached and how it looks</text>
