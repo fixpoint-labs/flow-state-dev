@@ -139,8 +139,12 @@ are STE *technical names*. Use them without change. Define a term of art at firs
   review, or a log.
 - PR titles in conventional-commit form (`spec(FIX-775): …`).
 
-The official STE dictionary is not in this repository. Where you are not sure if a word
-is approved, use the shortest common word that has only one meaning. STE controls the
+**This is the STE writing rules, not certified STE.** Full compliance also needs the STE
+dictionary: each approved word has one meaning and approved parts of speech (for example,
+*check* is an approved noun but not an approved verb). The dictionary is in the
+[ASD-STE100 standard](https://www.asd-ste100.org/), not in this repository, and no check
+here validates against it. Use the dictionary when you can. When you cannot, use the
+shortest common word that has only one meaning. STE controls the
 words, not the layout: the blocks, the fold, and the budgets above stay the same. The
 worked examples in this file show structure. Their sentences are older than this rule, so
 do not copy their wording.
