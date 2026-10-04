@@ -16,9 +16,12 @@
  *    and nothing else is read (BR-3).
  * 2. **The organization**, off a listed session. The listing only ever holds
  *    sessions in the organization the Lab resolved for the person, and a
- *    session records it. A Lab that lists the person no session names no
- *    organization, and gets the refusal too: Shift Manager never draws a Lab under
- *    an unknown one (ER-4).
+ *    session records it. A person who holds no session on the room kind yet
+ *    has one opened first (`withRoomSession`), and the Lab stamps it with the
+ *    organization it resolves for them, so a member on a first visit is read
+ *    like any other. A Lab that still lists the person no session (it serves
+ *    no room kind) names no organization, and gets the refusal too: Shift
+ *    Manager never draws a Lab under an unknown one (ER-4).
  * 3. **The inventory**: the organization's seat and channel collections, found
  *    by their published key patterns in the manifest of a listed session whose
  *    flow declares them (the channel kind does). Nothing about the tree is
@@ -222,11 +225,11 @@ export const DISPATCHED_RUN_UNANSWERABLE =
   "This ask can't be answered from Shift Manager. The Lab reopens only runs a person, an MCP caller or a schedule started; a run it started by itself (a channel post waking a seat, a dispatch, a webhook) is never reopened from outside it.";
 
 /**
- * Why a Lab that lists the person no session is refused: nothing it serves
- * says which organization they are in.
+ * Why a Lab that lists the person no session, even after one was asked for on
+ * the room kind, is refused: nothing it serves says which organization they are in.
  */
-function noOrganization(userId: string): string {
-  return `The Lab names no organization for ${userId}: it holds no session of theirs, and a session is where the Lab records the organization it puts them in. Shift Manager's README lists what a Lab opens at boot.`;
+function noOrganization(userId: string, why = "it holds no session of theirs and serves no channel kind to open one on"): string {
+  return `The Lab names no organization for ${userId}: ${why}, and a session is where the Lab records the organization it puts them in. Shift Manager's README lists what a Lab opens at boot.`;
 }
 
 /** What an ask's card says when its session names no owning flow. */
@@ -496,6 +499,20 @@ export type LabReader = {
 };
 
 /** Build the reader for one connection. */
+/**
+ * The id of `userId`'s own session on the room kind: one per person, so two
+ * first visits at once (two tabs) open the same session rather than two.
+ */
+export function roomSessionId(userId: string): string {
+  return `${ROOM_KIND}-own-${userId}`;
+}
+
+/**
+ * Room-session opens in flight, per client, so reads that overlap on one page
+ * (StrictMode replaying the boot) share one open rather than racing it.
+ */
+const openingRoom = new WeakMap<LabClients, Promise<void>>();
+
 export function createLabReader(clients: LabClients): LabReader {
   const manifests = new Map<string, Promise<ResourceManifest>>();
 
@@ -701,9 +718,11 @@ export function createLabReader(clients: LabClients): LabReader {
 
   /**
    * This person's sessions, with one of their own on the room kind. A member
-   * who hasn't joined a room yet may hold only a seat's session, and nothing
-   * of theirs can read the organization's inventory or projects; a session on
-   * the room kind can, since that kind declares both. It is opened once and
+   * who hasn't joined a room yet may hold only a seat's session, or none at
+   * all on a first visit, and nothing of theirs can read the organization's
+   * inventory or projects; a session on
+   * the room kind can, since that kind declares both. It is opened once, under
+   * {@link roomSessionId} so overlapping first reads can't open two, and
    * listed from then on. If it can't be opened, the sessions are returned as
    * they were, with why: `null` when there is nothing to open (the Lab serves
    * no room kind, a 404), so nothing declares what it would have read.
@@ -713,11 +732,33 @@ export function createLabReader(clients: LabClients): LabReader {
   ): Promise<{ sessions: SessionSummary[]; failure: Failure | null }> => {
     if (sessions.some((s) => s.parentSessionId == null && s.flowKind === ROOM_KIND)) return { sessions, failure: null };
     try {
-      await clients.sessions.createSession({ flowKind: ROOM_KIND, userId: clients.userId });
+      let opening = openingRoom.get(clients);
+      if (opening === undefined) {
+        opening = openRoomSession().finally(() => openingRoom.delete(clients));
+        openingRoom.set(clients, opening);
+      }
+      await opening;
       return { sessions: await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" }), failure: null };
     } catch (error) {
       const failure = describeFailure(error);
       return { sessions, failure: failure.httpStatus === 404 ? null : failure };
+    }
+  };
+
+  /**
+   * Open the person's room session under its one id. A 409 is usually another
+   * page that opened it first, and the listing then holds it. Session ids are
+   * not scoped by organization, so a 409 the listing doesn't explain is that id
+   * held in another of the person's organizations: open one under a fresh id.
+   */
+  const openRoomSession = async (): Promise<void> => {
+    try {
+      await clients.sessions.createSession({ flowKind: ROOM_KIND, userId: clients.userId, sessionId: roomSessionId(clients.userId) });
+    } catch (error) {
+      if (describeFailure(error).httpStatus !== 409) throw error;
+      const listed = await clients.sessions.listSessions({ userId: clients.userId });
+      if (listed.some((s) => s.parentSessionId == null && s.flowKind === ROOM_KIND)) return;
+      await clients.sessions.createSession({ flowKind: ROOM_KIND, userId: clients.userId });
     }
   };
 
@@ -807,21 +848,29 @@ export function createLabReader(clients: LabClients): LabReader {
     // tree is read. A 401/403, no session, or a session with no organization is
     // the refusal; any other failure means the Lab couldn't be reached. Either
     // is the whole snapshot.
+    const firstFailure = (failure: Failure): LabSnapshot =>
+      failure.httpStatus === 401 || failure.httpStatus === 403 ? { refused: failure } : { unreachable: failure };
     let sessions: SessionSummary[];
-    let orgId: string | undefined;
     try {
       sessions = await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" });
-      const first = sessions[0];
-      if (first === undefined) return { refused: { message: noOrganization(clients.userId) } };
-      orgId = (await clients.sessions.getSession(first.id)).orgId;
     } catch (error) {
-      const failure = describeFailure(error);
-      return failure.httpStatus === 401 || failure.httpStatus === 403 ? { refused: failure } : { unreachable: failure };
+      return firstFailure(describeFailure(error));
     }
-    if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(clients.userId) } };
-
+    // Before the organization is read, on purpose, even though a Lab with no
+    // room kind answers it 404 on every refused read: the room session is the
+    // only session a first-visit person can have for the org to be read off.
     const room = await withRoomSession(sessions);
     sessions = room.sessions;
+    let orgId: string | undefined;
+    try {
+      const first = sessions[0];
+      if (first === undefined) return room.failure === null ? { refused: { message: noOrganization(clients.userId) } } : firstFailure(room.failure);
+      orgId = (await clients.sessions.getSession(first.id)).orgId;
+    } catch (error) {
+      return firstFailure(describeFailure(error));
+    }
+    if (typeof orgId !== "string" || orgId.length === 0) return { refused: { message: noOrganization(clients.userId, "their session records none") } };
+
     const inventory = await readInventory(sessions, orgId);
 
     const [boardEntries, asks, resources, projects] = await Promise.all([

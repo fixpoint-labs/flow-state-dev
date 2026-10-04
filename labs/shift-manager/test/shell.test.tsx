@@ -86,6 +86,13 @@ describe("the refusal (V2, BR-3)", () => {
   });
 
   it("a Lab that names no organization for the person gets the refusal, never an unknown one", async () => {
+    // A Lab that holds no session of theirs and serves no room kind to open one on.
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
+      /\/api\/flows\/channel\/sessions$/.test(String(input instanceof Request ? input.url : input))
+        ? new Response(JSON.stringify({ error: "no flow" }), { status: 404 })
+        : real(input, init),
+    );
     await openApp("/inbox", { channels: false });
     await screen.findByTestId("refusal");
     expect(screen.getByTestId("refusal-message").textContent).toMatch(/no organization/);
