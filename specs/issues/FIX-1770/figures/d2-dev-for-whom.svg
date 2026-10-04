@@ -1,0 +1,99 @@
+<svg viewBox="0 0 940 422" role="img" aria-label="D2, what --dev gives an install. Chosen: built pages and a Lab that restarts on a save. Instead of: shipping source and Vite for live page reload. It comes down to the first row: who edits what. Outside users edit their Lab, not Shift Manager. The price: changing the screens needs a checkout. Locks in: one flag whose meaning depends on the install. Flips if outside users ask to change the screens."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="422"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D2 · THE CALL</text>
+    <text class="t-q" x="32" y="52">What does --dev give someone who installed Shift Manager?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">Built pages, and a Lab restart</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Source and Vite, live page reload</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHO EDITS WHAT</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Matches what they edit</text>
+    <text class="t-s" x="248" y="179">their Lab restarts when they save</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Reloads pages they never edit</text>
+    <text class="t-s" x="612" y="179">Shift Manager&#x27;s screens aren&#x27;t theirs</text>
+  </g>
+
+  <g id="row-1">
+    <text class="t-lbl" x="32" y="220">THE INSTALL</text>
+    <text class="mark plus" x="228" y="222">+</text>
+    <text class="t-b" x="248" y="221">Small</text>
+    <text class="t-s" x="248" y="239">no build toolchain in their dependencies</text>
+    <text class="mark minus" x="592" y="222">−</text>
+    <text class="t-b" x="612" y="221">Vite, React tooling, Tailwind</text>
+    <text class="t-s" x="612" y="239">in every user&#x27;s install</text>
+    <line class="row" x1="16" y1="258" x2="924" y2="258"/>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="278">CHANGING THE SCREENS</text>
+    <text class="mark minus" x="228" y="280">−</text>
+    <text class="t-b" x="248" y="279">Needs a checkout</text>
+    <text class="t-s" x="248" y="297">no live page editing in an install</text>
+    <text class="mark plus" x="592" y="280">+</text>
+    <text class="t-b" x="612" y="279">Possible in any install</text>
+    <text class="t-s" x="612" y="297">edit the shipped source</text>
+    <line class="row" x1="16" y1="316" x2="924" y2="316"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="353">LOCKS IN</text>
+    <text class="t-b" x="32" y="373">One flag, two meanings, set by the install</text>
+    <text class="t-s" x="32" y="391">in a checkout --dev also serves pages from source</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="353">FLIPS IF</text>
+    <text class="t-b" x="494" y="373">Outside users ask to change the screens</text>
+    <text class="t-s" x="494" y="391">then a source package or theming is its own issue</text>
+  </g>
+</svg>

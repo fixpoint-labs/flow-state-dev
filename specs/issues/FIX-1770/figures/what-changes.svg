@@ -1,0 +1,69 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="Before and after. Before, in a checkout only: terminal one runs Vite, which proxies /api to port 4300 and serves a page without the DevTool link, shift, user or token; terminal two runs the lab script start.mts, which loads the config, guards the host, serves the DevTool and copies the pages to write the config in. After, from an install: one command, shift-manager, a thin wrapper that adds only the shift. Below a dashed line marking the framework layer, fsdev dev --app loads the config, guards the host, serves the DevTool beside the pages, hands the page its config and restarts the Lab under --watch, and node's serve() writes the page config into the HTML."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .panel { fill:var(--surface-2); }
+    .old   { fill:var(--surface); stroke:var(--gone); stroke-width:1.3; stroke-dasharray:5 4; }
+    .new   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .l1    { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .fence { stroke:var(--accent); stroke-width:1.2; stroke-dasharray:6 4; }
+    .arrow { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-c   { fill:var(--ink); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-bad { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .t-acc { fill:var(--accent); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="before">
+    <rect class="panel" x="16" y="16" width="440" height="368" rx="6"/>
+    <text class="t-lbl" x="32" y="38">BEFORE · IN A CHECKOUT ONLY</text>
+    <rect class="old" x="32" y="54" width="408" height="118" rx="5"/>
+    <text class="t-lbl" x="46" y="74">TERMINAL 1</text>
+    <text class="t-c" x="46" y="94">pnpm --filter …/shift-manager dev</text>
+    <text class="t-s" x="46" y="116">Vite on its own port</text>
+    <text class="t-s" x="46" y="134">proxies /api to the Lab on :4300</text>
+    <text class="t-bad" x="46" y="156">page has no DevTool link, shift, user or token</text>
+    <rect class="old" x="32" y="186" width="408" height="182" rx="5"/>
+    <text class="t-lbl" x="46" y="206">TERMINAL 2</text>
+    <text class="t-c" x="46" y="226">pnpm … start --team devteam</text>
+    <text class="t-s" x="46" y="248">a lab script, bin/start.mts, that does it all:</text>
+    <text class="t-s" x="58" y="268">loads the config · guards the host</text>
+    <text class="t-s" x="58" y="286">serves the DevTool on a second port</text>
+    <text class="t-s" x="58" y="304">copies the pages to write the config in</text>
+    <text class="t-bad" x="46" y="330">needs a fresh build of dist/</text>
+    <text class="t-bad" x="46" y="350">no restart when a flow changes</text>
+  </g>
+
+  <g id="after">
+    <rect class="panel" x="484" y="16" width="440" height="368" rx="6"/>
+    <text class="t-lbl" x="500" y="38">AFTER · FROM AN INSTALL, ONE COMMAND</text>
+    <rect class="new" x="500" y="54" width="408" height="84" rx="5"/>
+    <text class="t-lbl" x="514" y="74">SHIFT MANAGER · PUBLISHED</text>
+    <text class="t-c" x="514" y="94">shift-manager --config … [--dev]</text>
+    <text class="t-s" x="514" y="116">a thin wrapper: built pages, plus the shift</text>
+    <path class="arrow" d="M704 138 L704 168"/>
+    <line class="fence" x1="484" y1="160" x2="924" y2="160"/>
+    <text class="t-acc" x="806" y="154">FRAMEWORK · L1</text>
+    <rect class="l1" x="500" y="170" width="408" height="122" rx="5"/>
+    <text class="t-lbl" x="514" y="190">FSDEV DEV --APP</text>
+    <text class="t-s" x="514" y="210">loads the config · guards the host</text>
+    <text class="t-s" x="514" y="228">serves the DevTool beside the pages</text>
+    <text class="t-s" x="514" y="246">hands the page its config</text>
+    <text class="t-s" x="514" y="264">--watch: restarts the Lab on a change</text>
+    <text class="t-s" x="514" y="282">in a checkout: pages from source via Vite</text>
+    <path class="arrow" d="M704 292 L704 316"/>
+    <rect class="l1" x="500" y="316" width="408" height="52" rx="5"/>
+    <text class="t-lbl" x="514" y="336">NODE · SERVE()</text>
+    <text class="t-s" x="514" y="356">serves the pages, writes the page config into HTML</text>
+  </g>
+</svg>
