@@ -222,6 +222,13 @@ const rehireInput = z
   .strict();
 
 /**
+ * The kind's own refusal of a seat (its settings schema, through
+ * `hireWorkforce`), as `mint` raises it. The message is the kind's, unchanged;
+ * the class only lets `hire` tell it apart from a manifest fault.
+ */
+class KindRefusedSeat extends Error {}
+
+/**
  * The org the call runs under, from the verified principal.
  *
  * `identity.orgId` first: `identity.id` is the storage key, which carries the
@@ -499,10 +506,16 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
     if ("problem" in record) {
       throw new Error(`"${address}" could not be hired: ${record.problem}.`);
     }
-    const [seat] = hireWorkforce([record.manifest], {
-      kinds,
-      channelBoards: options.channelBoards,
-    });
+    let minted: FlowInstance[];
+    try {
+      minted = hireWorkforce([record.manifest], {
+        kinds,
+        channelBoards: options.channelBoards,
+      });
+    } catch (error) {
+      throw new KindRefusedSeat(error instanceof Error ? error.message : String(error));
+    }
+    const [seat] = minted;
     if (seat === undefined) {
       throw new Error(`"${address}" could not be hired, and no reason was given.`);
     }
@@ -735,17 +748,17 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       owningOrgId: orgId,
       incarnation,
     });
-    // The mint runs the kind's settings schema and writes nothing, so its
-    // refusal is one the caller can correct and send again. Said so, in front
-    // of the kind's own reason, because a model reading only the boot-time
-    // sentence takes it as final and asks the person instead of retrying.
+    // A kind's refusal writes nothing and the caller can correct it, so say
+    // so: a model reading only the boot-time sentence takes it as final.
+    // Any other mint fault keeps its own message.
     let seat: FlowInstance;
     try {
       seat = mint(orgId, row, address);
     } catch (error) {
+      if (!(error instanceof KindRefusedSeat)) throw error;
       throw new Error(
         `"${address}" was not hired, and nothing was written. Kind "${input.flow}" refused it: ` +
-          `${error instanceof Error ? error.message : String(error)}\n` +
+          `${error.message}\n` +
           `If that names a setting, call hire again with it in \`settings\`.`
       );
     }

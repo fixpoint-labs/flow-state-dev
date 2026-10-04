@@ -12,9 +12,11 @@
  *     which says neither that nothing was written nor that the call can be
  *     made again;
  *   - a refused hire leaving a roster row behind, which turns the corrected
- *     retry into "already hired".
+ *     retry into "already hired";
+ *   - a mint fault that is not the kind's refusal dressed as one, which sends
+ *     a model to retry a call no setting can fix.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
@@ -25,6 +27,21 @@ import { defineHiredRosterCollection } from "../src/roster/collections";
 import { defineSeatInventoryCollection } from "../src/inventory/collections";
 import { HIRED_ROSTER_RESOURCE, SEAT_INVENTORY_RESOURCE } from "../src/seat-hire-keys";
 import { workerConfigSchema } from "../src/worker-config";
+
+// Lets one case make `hireWorkforce` mint nothing without throwing: a mint
+// fault that is not the kind's refusal, which no real kind produces on demand.
+const mintFault = vi.hoisted(() => ({ empty: false }));
+vi.mock("../src/hire", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/hire")>();
+  return {
+    ...actual,
+    hireWorkforce: ((...args: Parameters<typeof actual.hireWorkforce>) =>
+      mintFault.empty ? [] : actual.hireWorkforce(...args)) as typeof actual.hireWorkforce,
+  };
+});
+afterEach(() => {
+  mintFault.empty = false;
+});
 
 const noop = handler({
   name: "noop",
@@ -102,5 +119,23 @@ describe("a hire missing a required setting comes back correctable", () => {
       "teams/eng/feature-brief",
     ]);
     expect(await rosterIds()).toEqual(["coder-2"]);
+  });
+});
+
+describe("a mint fault that is not the kind's refusal keeps its own message", () => {
+  it("does not dress it as a correctable settings refusal", async () => {
+    const { hire, ctx, registered, rosterIds } = await hireTool();
+    mintFault.empty = true;
+
+    const refused = await executeBlock({
+      block: hire,
+      input: { seatId: "coder-3", flow: "coder", settings: { document: "teams/eng/feature-brief" } },
+      ctx,
+    });
+    const message = refused.error?.message ?? "";
+    expect(message).toBe(`"acme.coder-3" could not be hired, and no reason was given.`);
+    expect(message).not.toMatch(/call hire again|nothing was written/i);
+    expect(registered).toEqual([]);
+    expect(await rosterIds()).toEqual([]);
   });
 });

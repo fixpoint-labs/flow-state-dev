@@ -55,12 +55,13 @@ import {
   type HireOptions,
 } from "@flow-state-dev/workforce";
 
+import { coderFlow } from "./flows/coder";
 import { deskClerkFlow } from "./flows/desk-clerk";
 import { instanceAt, kindAt, registerSeat, releaseSeat } from "./registry-access";
 import { roster } from "./roster";
 
 // Typed as the whole map, so the `agent` entry can be added below.
-export const kinds: NonNullable<HireOptions["kinds"]> = { "desk-clerk": deskClerkFlow };
+export const kinds: NonNullable<HireOptions["kinds"]> = { "desk-clerk": deskClerkFlow, coder: coderFlow };
 
 const seatHire = createSeatHireCapability({
   kinds,
@@ -68,7 +69,7 @@ const seatHire = createSeatHireCapability({
   unregister: releaseSeat,
   kindAt,
   instanceAt,
-  allowKinds: ["desk-clerk", "agent"],
+  allowKinds: ["desk-clerk", "coder", "agent"],
   askBefore: ["fire"],
   refuseRosterAdmin: true,
 });
@@ -94,7 +95,9 @@ kinds.agent = defineAgentWorkerFlow({
 
 `createWorkforceCapability` gives every seat on the kind `discover`, which is how the chief of staff answers questions about the roster. The small `channel-inventory` capability declares the channel inventory as a resource on the kind, and passing its key, `channelInventory` here, as `inventory.channels` lets `discover` answer who is on a channel too. `channelPostCapability` adds `post-to-channel`, so the chief of staff can answer in a channel it is a member of. `createSeatHireCapability` takes the same options as [`createSeatHireBlocks`](./durable-hire.md#the-ready-made-hire-and-fire-handlers), plus `askBefore`.
 
-`hire` asks the model for a kind, a seat id, and `settings`. It doesn't say which kinds require which settings. The chief of staff learns that from its `WORKER.md` body, so when it may hire a kind with a required setting, name the setting and its value there, as the example file does for a `coder`. A hire missing a required setting is refused with the setting named and nothing written, so the model can call `hire` again with it.
+`hire` asks the model for a kind, a seat id, and `settings`, but doesn't say which kinds require which settings. The chief of staff learns that from its `WORKER.md` body, so name each required setting and its value there, as the example file does for a `coder`. A hire missing a required setting is refused with the setting named and nothing written, so the model can call `hire` again with it.
+
+In the snippet above, `coderFlow` requires a `document` setting through its `configSchema`: `workerConfigSchema().extend({ document: z.string().min(1) })`.
 
 Installing the tools on a kind doesn't hand them to every seat of it. A seat holds `hire` or `fire` only when its own `tools:` names it, so keep those names in the chief of staff's file and no other. `refuseRosterAdmin: true` keeps them out of the seats the chief of staff hires, too. Leave it off and a hire may name them like any other tool.
 
