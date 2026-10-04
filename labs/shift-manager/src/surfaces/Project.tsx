@@ -11,7 +11,7 @@
  * - **Board** draws one lane per workstream of the project that holds a
  *   board, in the workstream Board's columns.
  * - **Workstreams** lists the workstreams the project's row names, each
- *   linking to its own level. One whose channel has left the tree is shown as
+ *   linking to its own level. One whose mailbox has left the tree is shown as
  *   gone, with no link.
  * - **Brief** is the row's brief.
  *
@@ -26,7 +26,7 @@
  * of it: it is read only when a member opens it.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import type { ChannelTranscriptLine } from "@flow-state-dev/workforce/browser";
+import type { MailboxTranscriptLine } from "@flow-state-dev/workforce/browser";
 import { Board } from "../components/Board";
 import { EmptyState, Meta, PartialMark, ScreenTitle, SectionFailure, Tabs } from "../components/ui";
 import { mergeLines } from "../lib/transcript";
@@ -174,7 +174,7 @@ function WorkstreamList({ listed }: { listed: readonly ListedWorkstream[] }) {
   return (
     <ul className="mx-auto w-full max-w-3xl space-y-1 p-4" data-testid="project-workstreams">
       {listed.map(({ id, workstream }) => (
-        <li key={id} data-testid="project-workstream" data-channel-id={id} data-gone={workstream === undefined ? "true" : undefined}>
+        <li key={id} data-testid="project-workstream" data-mailbox-id={id} data-gone={workstream === undefined ? "true" : undefined}>
           {workstream === undefined ? (
             <span className="text-sm text-muted-foreground">
               {id} · no longer in the Lab
@@ -183,7 +183,7 @@ function WorkstreamList({ listed }: { listed: readonly ListedWorkstream[] }) {
             <button
               type="button"
               className="text-sm underline-offset-2 hover:underline"
-              onClick={() => navigate({ level: "workstream", channelId: workstream.id, tab: "stream" })}
+              onClick={() => navigate({ level: "workstream", mailboxId: workstream.id, tab: "stream" })}
             >
               {workstream.id}
             </button>
@@ -214,7 +214,7 @@ function Lanes({ snapshot, listed, gaps }: { snapshot: LoadedSnapshot; listed: r
       {lanes.map((workstream) => {
         const boards = snapshot.boards[workstream.id]!;
         return (
-          <section key={workstream.id} data-testid="project-lane" data-channel-id={workstream.id}>
+          <section key={workstream.id} data-testid="project-lane" data-mailbox-id={workstream.id}>
             <h3 className="px-4 pt-3 text-xs font-medium">{workstream.id}</h3>
             {boards.ok ? (
               <Board rows={boards.value.rows} inReviewGap={gaps.inReview} />
@@ -318,7 +318,7 @@ export function RoomView({
   page: (after: number) => Promise<RoomPage>;
   post: (body: string) => Promise<void>;
 }) {
-  const [lines, setLines] = useState<ChannelTranscriptLine[] | undefined>(undefined);
+  const [lines, setLines] = useState<MailboxTranscriptLine[] | undefined>(undefined);
   const [failure, setFailure] = useState<{ failure: Failure; refused: boolean } | undefined>(undefined);
   /** The seq below the lines shown: 0 once the room's start is shown, unknown until it opens. */
   const [floor, setFloor] = useState<number | undefined>(undefined);

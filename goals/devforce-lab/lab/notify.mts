@@ -1,8 +1,8 @@
 /**
- * The lab's notify block — the `notify` slot `defineChannelFlow` takes.
+ * The lab's notify block — the `notify` slot `defineMailboxFlow` takes.
  *
- * **Not a second fan-out.** `channel-flow.ts` keeps the member walk: it reads
- * the roster off the channel's own session state and runs this block once per
+ * **Not a second fan-out.** `mailbox-flow.ts` keeps the member walk: it reads
+ * the roster off the mailbox's own session state and runs this block once per
  * declared member per post. What is the lab's here is only the *policy* — which
  * member each post reaches — because the dispatch seam refuses a target taken
  * out of stored data, so a notify block has to declare its own addresses.
@@ -14,13 +14,13 @@
  * ## Why there is no cycle break here, unlike `pentest-lab`
  *
  * `goals/pentest-lab/lab/notify.mts` carries a second rule — *a post with an
- * `author` routes to nobody* — because its seats answer on the channel, and two
+ * `author` routes to nobody* — because its seats answer on the mailbox, and two
  * seats answering each other never stop: 1 → 2 → 4 → 8 detached dispatches with
  * nothing to bound them.
  *
  * **This lab cannot reach that path, and the reason is structural rather than
  * incidental.** `Lab.post` takes a body and nothing else (`host.mts`), it is the
- * only caller of the channel's `post` action in this lab, and the EM seat
+ * only caller of the mailbox's `post` action in this lab, and the EM seat
  * answers a delivery by filing a row — it never posts back. So `author` is
  * always absent here, and a guard against it would be a guard against a cycle
  * this lab has no way to start. Copying one across would teach the next reader
@@ -29,7 +29,7 @@
  * A lab whose seats *do* reply owes the guard — and owes it before the second
  * poster, not after. That is a fact about those seats, not about this file.
  *
- * The one rule is how BR-8 is satisfied rather than asserted. `CHANNEL.md` declares
+ * The one rule is how BR-8 is satisfied rather than asserted. `MAILBOX.md` declares
  * three members; only the EM is in the address map, so the coder and the
  * reviewer are true no-ops in the fan-out — not "dispatched to a block that
  * happens to do nothing", but never dispatched to at all, with the skip
@@ -44,7 +44,7 @@
  */
 
 import { handler, sequencer, dispatcher } from "@flow-state-dev/core";
-import { channelNotifyInputSchema, type ChannelNotifyInput } from "@flow-state-dev/workforce";
+import { mailboxNotifyInputSchema, type MailboxNotifyInput } from "@flow-state-dev/workforce";
 import { z } from "zod";
 import { POST_ENTRY, ROOM_ENTRY } from "./workforce/flows/workers/em.mts";
 
@@ -53,10 +53,10 @@ const decisionSchema = z.object({
   /** The member to dispatch to, or null when this delivery routes to nobody. */
   target: z.string().nullable(),
   member: z.string(),
-  channelId: z.string(),
+  mailboxId: z.string(),
   body: z.string(),
   /**
-   * `true` for a post in a project's room. The channel kind marks every room
+   * `true` for a post in a project's room. The mailbox kind marks every room
    * delivery routed (each seat on the room's template answers), and this
    * lab's workstreams declare no `routing:`, so the mark is never set on one.
    */
@@ -106,7 +106,7 @@ export interface LabNotifyOptions {
  * Build the notify slot.
  *
  * @param options The address map and the log to record into.
- * @returns The block to pass as `defineChannelFlow({ notify })`.
+ * @returns The block to pass as `defineMailboxFlow({ notify })`.
  */
 export function labNotify(options: LabNotifyOptions) {
   const { addresses, log } = options;
@@ -119,13 +119,13 @@ export function labNotify(options: LabNotifyOptions) {
    */
   const decide = handler({
     name: "devforce-notify-decide",
-    inputSchema: channelNotifyInputSchema,
+    inputSchema: mailboxNotifyInputSchema,
     outputSchema: decisionSchema,
-    execute: (input: ChannelNotifyInput): Decision => {
+    execute: (input: MailboxNotifyInput): Decision => {
       const nowhere: Decision = {
         target: null,
         member: input.member,
-        channelId: input.channelId,
+        mailboxId: input.mailboxId,
         body: input.body,
         room: input.routed === true,
         postId: input.postId,
@@ -168,7 +168,7 @@ export function labNotify(options: LabNotifyOptions) {
       flowKind: addresses[member]!,
       inputSchema: decisionSchema,
       payload: (decision: Decision) => ({
-        channelId: decision.channelId,
+        mailboxId: decision.mailboxId,
         body: decision.body,
         member: decision.member,
       }),
@@ -186,7 +186,7 @@ export function labNotify(options: LabNotifyOptions) {
       flowKind: addresses[member]!,
       inputSchema: decisionSchema,
       payload: (decision: Decision) => ({
-        channelId: decision.channelId,
+        mailboxId: decision.mailboxId,
         postId: decision.postId,
         body: decision.body,
         member: decision.member,
@@ -197,7 +197,7 @@ export function labNotify(options: LabNotifyOptions) {
 
   let seq: any = sequencer({
     name: "devforce-notify",
-    inputSchema: channelNotifyInputSchema,
+    inputSchema: mailboxNotifyInputSchema,
   }).step(decide);
 
   for (const member of members) {

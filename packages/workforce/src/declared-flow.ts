@@ -1,7 +1,7 @@
 /**
  * What a record's `flow:` line selects — the one rule both doors read it by.
  *
- * Workers (`hireWorkforce`) and channels (`kindOf` in the channel binder) each
+ * Workers (`hireWorkforce`) and mailboxes (`kindOf` in the mailbox binder) each
  * turn a record's frontmatter into a kind. They differ in their default kind
  * and in how they word a refusal, and those stay with each door. What they
  * share is the classification: an absent key takes the door's default, a blank

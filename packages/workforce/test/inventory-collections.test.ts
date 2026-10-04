@@ -3,8 +3,8 @@
  * writer, and where the boundary around them actually falls.
  *
  * The collections are the floor the live inventory is written onto. Nothing
- * here writes a real row from a real channel or a real roster; that is the
- * binder's and the channel kind's job, and their own checks cover it. What has
+ * here writes a real row from a real mailbox or a real roster; that is the
+ * binder's and the mailbox kind's job, and their own checks cover it. What has
  * to be true first is that a row written by one flow is readable by another in
  * the same org, is not readable from a different org, and does not quietly stop
  * being shared when an app flips an unrelated flag.
@@ -20,8 +20,8 @@ import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
 import { z } from "zod";
 import {
-  channelInventoryRowSchema,
-  defineChannelInventoryCollection,
+  mailboxInventoryRowSchema,
+  defineMailboxInventoryCollection,
   defineMembershipIndexCollection,
   defineSeatInventoryCollection,
   membershipKey,
@@ -46,12 +46,12 @@ const inheritsIsolation = defineResourceCollection({
 });
 
 const seats = defineSeatInventoryCollection();
-const channels = defineChannelInventoryCollection();
+const mailboxes = defineMailboxInventoryCollection();
 const memberships = defineMembershipIndexCollection();
 
 type Rows = {
   seats: unknown[];
-  channels: unknown[];
+  mailboxes: unknown[];
   memberships: unknown[];
   control: unknown[];
 };
@@ -60,27 +60,27 @@ const writeBlock = handler({
   name: "inventory-write",
   inputSchema: z.object({
     seats: z.array(seatInventoryRowSchema),
-    channels: z.array(channelInventoryRowSchema.partial().and(z.object({ id: z.string() }))),
+    mailboxes: z.array(mailboxInventoryRowSchema.partial().and(z.object({ id: z.string() }))),
     memberships: z.array(z.tuple([z.string(), z.string()]))
   }),
   outputSchema: z.object({ written: z.number() }),
-  resources: { seats, channels, memberships, control: inheritsIsolation },
+  resources: { seats, mailboxes, memberships, control: inheritsIsolation },
   execute: async (input: any, ctx: any) => {
     for (const row of input.seats) {
       await ctx.resources.seats.upsert(row.id, row);
     }
-    for (const row of input.channels) {
-      await ctx.resources.channels.upsert(row.id, row);
+    for (const row of input.mailboxes) {
+      await ctx.resources.mailboxes.upsert(row.id, row);
     }
-    for (const [seatId, channelId] of input.memberships) {
-      await ctx.resources.memberships.upsert(membershipKey(seatId, channelId), {
+    for (const [seatId, mailboxId] of input.memberships) {
+      await ctx.resources.memberships.upsert(membershipKey(seatId, mailboxId), {
         seatId,
-        channelId
+        mailboxId
       });
     }
     await ctx.resources.control.upsert("probe", { id: "probe" });
     return {
-      written: input.seats.length + input.channels.length + input.memberships.length
+      written: input.seats.length + input.mailboxes.length + input.memberships.length
     };
   }
 });
@@ -90,11 +90,11 @@ const readBlock = handler({
   inputSchema: z.object({ membershipsOf: z.string().optional() }),
   outputSchema: z.object({
     seats: z.array(z.unknown()),
-    channels: z.array(z.unknown()),
+    mailboxes: z.array(z.unknown()),
     memberships: z.array(z.unknown()),
     control: z.array(z.unknown())
   }),
-  resources: { seats, channels, memberships, control: inheritsIsolation },
+  resources: { seats, mailboxes, memberships, control: inheritsIsolation },
   execute: async (input: any, ctx: any) => {
     const state = (ref: any): unknown => ref.state;
     const membershipRefs =
@@ -103,7 +103,7 @@ const readBlock = handler({
         : await ctx.resources.memberships.list(membershipPrefix(input.membershipsOf));
     return {
       seats: (await ctx.resources.seats.list()).map(state),
-      channels: (await ctx.resources.channels.list()).map(state),
+      mailboxes: (await ctx.resources.mailboxes.list()).map(state),
       memberships: membershipRefs.map(state),
       control: (await ctx.resources.control.list()).map(state)
     };
@@ -143,8 +143,8 @@ const SEED = {
     { id: "eng.lead", kind: "agent" },
     { id: "eng.analyst", kind: "agent" }
   ],
-  channels: [
-    { id: "eng.standup", kind: "channel", members: ["eng.lead", "eng.analyst"], openedAt: "2026-09-19T00:00:00.000Z" }
+  mailboxes: [
+    { id: "eng.standup", kind: "mailbox", members: ["eng.lead", "eng.analyst"], openedAt: "2026-09-19T00:00:00.000Z" }
   ],
   memberships: [
     ["eng.lead", "eng.standup"],
@@ -188,7 +188,7 @@ async function read(
 describe("what the collections declare", () => {
   it("pins the three storage patterns — public keys, breaking to move", () => {
     expect(seats.pattern).toBe("inventory/seats/*");
-    expect(channels.pattern).toBe("inventory/channels/*");
+    expect(mailboxes.pattern).toBe("inventory/mailboxes/*");
     expect(memberships.pattern).toBe("inventory/members/**");
   });
 
@@ -197,7 +197,7 @@ describe("what the collections declare", () => {
     // whole mechanism: `effectiveStorageTuple` only consults the flow's
     // `isolateOrgState` when the entry left `flowIsolation` unset. A check
     // written as `toBeFalsy()` would pass on the omission and prove nothing.
-    for (const collection of [seats, channels, memberships]) {
+    for (const collection of [seats, mailboxes, memberships]) {
       expect(collection.scope).toBe("org");
       expect(collection.flowIsolation).toBe(false);
     }
@@ -219,22 +219,22 @@ describe("a flow that did not write the rows", () => {
       "eng.lead": { id: "eng.lead", kind: "agent", door: null, hired: null, incarnation: null },
       "eng.analyst": { id: "eng.analyst", kind: "agent", door: null, hired: null, incarnation: null }
     });
-    expect(rows.channels).toEqual([
+    expect(rows.mailboxes).toEqual([
       {
         id: "eng.standup",
-        kind: "channel",
+        kind: "mailbox",
         members: ["eng.lead", "eng.analyst"],
         openedAt: "2026-09-19T00:00:00.000Z"
       }
     ]);
     // The third collection is asserted here too. The seed writes to all three,
     // so without this a membership upsert could fail outright and the seat and
-    // channel assertions above would still pass — the case would be green about
+    // mailbox assertions above would still pass — the case would be green about
     // two thirds of what it claims to read back.
     expect(rows.memberships).toHaveLength(3);
     expect(
-      (rows.memberships as Array<{ seatId: string; channelId: string }>).map(
-        (row) => `${row.seatId}/${row.channelId}`
+      (rows.memberships as Array<{ seatId: string; mailboxId: string }>).map(
+        (row) => `${row.seatId}/${row.mailboxId}`
       )
     ).toEqual(
       expect.arrayContaining([
@@ -256,7 +256,7 @@ describe("a flow that did not write the rows", () => {
     // same process reads the rows under the org that wrote them.
     expect(mine.seats).toHaveLength(2);
     expect(theirs.seats).toEqual([]);
-    expect(theirs.channels).toEqual([]);
+    expect(theirs.mailboxes).toEqual([]);
     expect(theirs.memberships).toEqual([]);
   });
 
@@ -268,7 +268,7 @@ describe("a flow that did not write the rows", () => {
 
     expect(rows.seats).toHaveLength(2);
     expect(Object.keys(byId(rows.seats)).sort()).toEqual(["eng.analyst", "eng.lead"]);
-    expect(rows.channels.map((row: any) => row.id)).toEqual(["eng.standup"]);
+    expect(rows.mailboxes.map((row: any) => row.id)).toEqual(["eng.standup"]);
     // The red state, live in the same request: the control collection left
     // `flowIsolation` unset, so under this flag its row went private to the
     // writer's flow and the reader sees none of it. That is what these three
@@ -297,18 +297,18 @@ describe("a flow that did not write the rows", () => {
 });
 
 describe("the membership index", () => {
-  it("lists one seat's channels and stops at the segment boundary (BR-17)", async () => {
+  it("lists one seat's mailboxes and stops at the segment boundary (BR-17)", async () => {
     const ctx = twoFlows();
     await write(ctx, { orgId: ORG });
 
     const rows = await read(ctx, { orgId: ORG, membershipsOf: "eng.lead" });
 
     // "eng.leadership" is seeded precisely so a prefix match without the
-    // trailing slash would drag it in. Asserting the channel ids rather than a
+    // trailing slash would drag it in. Asserting the mailbox ids rather than a
     // count is what makes that visible when it breaks.
     expect(rows.memberships).toEqual([
-      { seatId: "eng.lead", channelId: "eng.standup" },
-      { seatId: "eng.lead", channelId: "eng.retro" }
+      { seatId: "eng.lead", mailboxId: "eng.standup" },
+      { seatId: "eng.lead", mailboxId: "eng.retro" }
     ]);
   });
 
@@ -331,9 +331,9 @@ describe("the membership index", () => {
 
 describe("the row schemas", () => {
   it("drops a key the schema does not declare", () => {
-    const parsed = channelInventoryRowSchema.parse({
+    const parsed = mailboxInventoryRowSchema.parse({
       id: "eng.standup",
-      kind: "channel",
+      kind: "mailbox",
       members: [],
       openedAt: null,
       postCount: 7
@@ -353,9 +353,9 @@ describe("the row schemas", () => {
       hired: null,
       incarnation: null
     });
-    expect(channelInventoryRowSchema.parse({ id: "eng.standup", kind: "channel" })).toEqual({
+    expect(mailboxInventoryRowSchema.parse({ id: "eng.standup", kind: "mailbox" })).toEqual({
       id: "eng.standup",
-      kind: "channel",
+      kind: "mailbox",
       members: [],
       openedAt: null
     });

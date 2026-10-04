@@ -75,7 +75,7 @@ describe.each([
     }
   });
 
-  it("each workstream is exactly one declared channel, with its members", () => {
+  it("each workstream is exactly one declared mailbox, with its members", () => {
     const { snapshot, roster } = opened;
     if (!snapshot.inventory.ok) throw new Error(snapshot.inventory.failure.message);
     expect(
@@ -83,18 +83,18 @@ describe.each([
         a.id.localeCompare(b.id),
       ),
     ).toEqual(
-      roster.channels
+      roster.mailboxes
         .map((c) => ({ id: c.id, members: [...((c.declared.members as string[]) ?? [])].sort() }))
         .sort((a, b) => a.id.localeCompare(b.id)),
     );
   });
 
-  it("each workstream's boards are exactly the boards its channel attaches", () => {
+  it("each workstream's boards are exactly the boards its mailbox attaches", () => {
     const { snapshot, roster } = opened;
-    for (const channel of roster.channels) {
-      const boards = snapshot.boards[channel.id];
-      if (boards === undefined || !boards.ok) throw new Error(`boards of ${channel.id} did not load`);
-      const attached = ((channel.declared.boards as string[] | undefined) ?? []).map((name) => `${channel.id}.${name}`);
+    for (const mailbox of roster.mailboxes) {
+      const boards = snapshot.boards[mailbox.id];
+      if (boards === undefined || !boards.ok) throw new Error(`boards of ${mailbox.id} did not load`);
+      const attached = ((mailbox.declared.boards as string[] | undefined) ?? []).map((name) => `${mailbox.id}.${name}`);
       expect(boards.value.refs.sort()).toEqual(attached.sort());
       for (const row of boards.value.rows) expect(attached).toContain(row.boardRef);
     }
@@ -173,7 +173,7 @@ describe("devteam: an approved task's run", () => {
 
     let last: BoardRow | undefined;
     const settled = await eventually<BoardRow>(async () => {
-      last = (await reader.readBoard(running.channelId, running.boardRef)).find((r) => r.id === running.id);
+      last = (await reader.readBoard(running.mailboxId, running.boardRef)).find((r) => r.id === running.id);
       return last !== undefined && last.status !== "pending" && last.status !== "in_progress" ? last : undefined;
     }, "the approved row to settle", 45_000).catch((error: Error) => {
       throw new Error(`${error.message}; last read ${last?.status ?? "no row"}: ${last?.error ?? ""}`);

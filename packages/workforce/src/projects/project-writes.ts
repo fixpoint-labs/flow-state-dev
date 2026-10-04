@@ -11,7 +11,7 @@
  * `join` never adds its caller.
  *
  * **One project per workstream.** Each workstream is claimed before the row is
- * written, by creating `workstream-claims/<channelId>` with `create`. The claim
+ * written, by creating `workstream-claims/<mailboxId>` with `create`. The claim
  * is one shared key, so of two projects claiming one workstream at once
  * exactly one lands. A refused claim fails the write, names the workstream,
  * and releases the claims this write took, so a refused write leaves the row
@@ -48,8 +48,8 @@ import { dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { ActionConfig, BlockContext, ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { CHANNEL_KIND } from "../channel/channel-flow";
-import { defineChannelInventoryCollection, type ChannelInventoryRow } from "../inventory/collections";
+import { MAILBOX_KIND } from "../mailbox/mailbox-flow";
+import { defineMailboxInventoryCollection, type MailboxInventoryRow } from "../inventory/collections";
 import { retryOnConflict } from "./cas-retry";
 import {
   defineProjectsCollection,
@@ -67,24 +67,24 @@ import { ProjectRefusedError } from "./project-refusal";
 import { noteBindRefusal, TALK_BIND_ACTION, talkSessionKey } from "./talk-template";
 
 /**
- * The resource-map ref the channel inventory is read through here. Private to
+ * The resource-map ref the mailbox inventory is read through here. Private to
  * these writes, so it never meets an app's own accessor for the inventory.
  */
-const CHANNEL_INVENTORY_RESOURCE = "project-writes-channel-inventory";
+const MAILBOX_INVENTORY_RESOURCE = "project-writes-mailbox-inventory";
 
 /**
- * The channel inventory as the project writes declare it.
+ * The mailbox inventory as the project writes declare it.
  *
  * A flow declares one storage key once: two accessors may share it only as one
  * declaration. So a flow that installs the writes and also reads the inventory
  * itself (a chief of staff's discovery door, say) declares its own read with
  * this object, under any accessor, rather than with a
- * `defineChannelInventoryCollection()` of its own, which that flow refuses.
+ * `defineMailboxInventoryCollection()` of its own, which that flow refuses.
  *
  * @example
- *   resources: { channels: projectWritesChannelInventory }
+ *   resources: { mailboxes: projectWritesMailboxInventory }
  */
-export const projectWritesChannelInventory = defineChannelInventoryCollection();
+export const projectWritesMailboxInventory = defineMailboxInventoryCollection();
 
 /** What creating a project takes. Closed: nothing in it names the owner. */
 export const createProjectInputSchema = z
@@ -95,7 +95,7 @@ export const createProjectInputSchema = z
     brief: z.string().optional(),
     /** Who besides the creator may read and post the room. The creator is always a member. */
     members: z.array(z.string().min(1)).optional(),
-    /** Full ids of declared channels, from any team. */
+    /** Full ids of declared mailboxes, from any team. */
     workstreams: z.array(z.string().min(1)).optional()
   })
   .strict();
@@ -135,27 +135,27 @@ export type ProjectBlocks = {
 const WRITE_RESOURCES = {
   [PROJECTS_RESOURCE]: defineProjectsCollection(),
   [WORKSTREAM_CLAIMS_RESOURCE]: defineWorkstreamClaimsCollection(),
-  [CHANNEL_INVENTORY_RESOURCE]: projectWritesChannelInventory
+  [MAILBOX_INVENTORY_RESOURCE]: projectWritesMailboxInventory
 };
 
 function refsOf(ctx: BlockContext) {
   return {
     projects: ctx.resources[PROJECTS_RESOURCE] as unknown as ResourceCollectionRef<ProjectRow>,
     claims: ctx.resources[WORKSTREAM_CLAIMS_RESOURCE] as unknown as ResourceCollectionRef<WorkstreamClaim>,
-    inventory: ctx.resources[CHANNEL_INVENTORY_RESOURCE] as unknown as ResourceCollectionRef<ChannelInventoryRow>
+    inventory: ctx.resources[MAILBOX_INVENTORY_RESOURCE] as unknown as ResourceCollectionRef<MailboxInventoryRow>
   };
 }
 
 const unique = (ids: readonly string[]): string[] => [...new Set(ids)];
 
-/** Refuse any id that is not a channel this organization registered. Reads only; checked before any claim. */
-async function assertDeclaredChannels(ctx: BlockContext, ids: readonly string[]): Promise<void> {
+/** Refuse any id that is not a mailbox this organization registered. Reads only; checked before any claim. */
+async function assertDeclaredMailboxes(ctx: BlockContext, ids: readonly string[]): Promise<void> {
   const { inventory } = refsOf(ctx);
   for (const id of ids) {
     if ((await inventory.getOptional(id)) === undefined) {
       throw new ProjectRefusedError(
         "unknown-workstream",
-        `"${id}" is not a channel in this organization's inventory. A workstream is a declared channel, named by its full id.`
+        `"${id}" is not a mailbox in this organization's inventory. A workstream is a declared mailbox, named by its full id.`
       );
     }
   }
@@ -277,7 +277,7 @@ const writeProject = handler({
     if (existing !== undefined) return heldBy(existing.state as ProjectRow);
 
     const workstreams = unique(input.workstreams ?? []);
-    await assertDeclaredChannels(ctx, workstreams);
+    await assertDeclaredMailboxes(ctx, workstreams);
     const { claims } = refsOf(ctx);
     const token = newToken();
     // Every claim is created here, never adopted: a claim this id already
@@ -328,11 +328,11 @@ const writeProject = handler({
 });
 
 function createProjectSequence() {
-  // Talk sessions run on the built-in channel kind, the one the talk
+  // Talk sessions run on the built-in mailbox kind, the one the talk
   // template's reaction mints on too (`talk-template.ts`).
   const bindOwner = dispatcher({
     name: "project-bind-owner",
-    flowKind: CHANNEL_KIND,
+    flowKind: MAILBOX_KIND,
     action: TALK_BIND_ACTION,
     inputSchema: createProjectOutputSchema,
     // Keyed on the row, from the creating session: a re-sent create from the
@@ -378,7 +378,7 @@ const setWorkstreams = handler({
     }
 
     const next = unique(input.workstreams);
-    await assertDeclaredChannels(ctx, next.filter((id) => !row.state.workstreams.includes(id)));
+    await assertDeclaredMailboxes(ctx, next.filter((id) => !row.state.workstreams.includes(id)));
     const token = newToken();
     const stamped = new Set<string>();
 

@@ -2,7 +2,7 @@
  * Opening a collection to the browser must open exactly what was intended
  * (FIX-1477 S5, S6, BR-19, BR-21, BR-24).
  *
- * The roster and a channel's board ledger both gained a `client` block so a
+ * The roster and a mailbox's board ledger both gained a `client` block so a
  * `Roster` and a `BoardColumns` panel can read them at all — before that, the
  * collection-state route refused every read with `403 State read not
  * permitted`, and an action's return value has no path to a browser, so there
@@ -34,7 +34,7 @@
  *     `exclude`. A bare `{ state: { read: true } }` would therefore publish the
  *     whole row: the roster's `settings` passthrough bag, and a task
  *     envelope's `claimedBy`, `leaseUntil`, `retryLedger` and `writeLog` —
- *     server-set execution internals that `channelBoardRowSchema` withholds
+ *     server-set execution internals that `mailboxBoardRowSchema` withholds
  *     even from a model. Both declarations carry an explicit `expose`
  *     (BP-015). **Red state:** drop either `expose` and the
  *     `publishes no execution internals` test fails, naming the leaked key.
@@ -57,15 +57,15 @@ import { z } from "zod";
 import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engine";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { defineHiredRosterCollection } from "../src/roster/collections";
-import { channelBoard, CHANNEL_BOARD_CLIENT_FIELDS } from "../src/channel/channel-board";
-import { channelBoardRowSchema } from "../src/channel/channel-flow";
+import { mailboxBoard, MAILBOX_BOARD_CLIENT_FIELDS } from "../src/mailbox/mailbox-board";
+import { mailboxBoardRowSchema } from "../src/mailbox/mailbox-flow";
 import {
-  CHANNEL_KIND,
-  channelInstances,
+  MAILBOX_KIND,
+  mailboxInstances,
   defineSeatInventoryCollection,
-  openChannels,
+  openMailboxes,
   openInventory,
-  type ChannelManifest
+  type MailboxManifest
 } from "../src/index";
 import {
   createSeatHireBlocks,
@@ -84,7 +84,7 @@ const BOARD_REF = "eng.feature.triage";
 const FLOW_KIND = "workforce-panels";
 
 const rosterCollection = defineHiredRosterCollection();
-const boardLedger = channelBoard("eng.feature", "triage");
+const boardLedger = mailboxBoard("eng.feature", "triage");
 
 /** Execution internals a task envelope carries and a board card must never receive. */
 const EXECUTION_INTERNALS = ["claimedBy", "leaseUntil", "retryLedger", "writeLog"] as const;
@@ -247,13 +247,13 @@ function readCollection(
 
 describe("FIX-1477 · the panel collections' client read", () => {
   it("the browser's board fields stay a subset of the model's", () => {
-    // `CHANNEL_BOARD_CLIENT_FIELDS` cannot import `channelBoardRowSchema` —
+    // `MAILBOX_BOARD_CLIENT_FIELDS` cannot import `mailboxBoardRowSchema` —
     // the module dependency runs the other way — so the relationship between
     // the two allowlists is asserted here instead of expressed in a type. Add
     // an execution coordinate to the browser's list and this fails by naming
     // it, which is the drift that would otherwise be silent.
-    const modelFields = new Set(Object.keys(channelBoardRowSchema.shape));
-    const extra = CHANNEL_BOARD_CLIENT_FIELDS.filter((field) => !modelFields.has(field));
+    const modelFields = new Set(Object.keys(mailboxBoardRowSchema.shape));
+    const extra = MAILBOX_BOARD_CLIENT_FIELDS.filter((field) => !modelFields.has(field));
     expect(extra, "browser-only board fields the model's allowlist does not publish").toEqual([]);
   });
 
@@ -261,7 +261,7 @@ describe("FIX-1477 · the panel collections' client read", () => {
     const roster = rosterCollection as unknown as { scope?: string };
     const board = boardLedger as unknown as { scope?: string };
     expect(roster.scope, "the hired roster's scope").toBe("org");
-    expect(board.scope, "a channel board ledger's scope").toBe("org");
+    expect(board.scope, "a mailbox board ledger's scope").toBe("org");
   });
 
   it("an org's own member can read both collections at all", async () => {
@@ -383,12 +383,12 @@ describe("FIX-1477 · the panel collections' client read", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * The inventory half, on the path an app actually runs: the real channel kind
- * built by `channelInstances({ inventory: true })`, channels opened over the
- * real session route by `openChannels`, rows written by `openInventory` through
+ * The inventory half, on the path an app actually runs: the real mailbox kind
+ * built by `mailboxInstances({ inventory: true })`, mailboxes opened over the
+ * real session route by `openMailboxes`, rows written by `openInventory` through
  * the real writer, and every read through the real collection-state route.
  *
- * Two organizations, with DIFFERENT channel and seat ids. Identical rows in
+ * Two organizations, with DIFFERENT mailbox and seat ids. Identical rows in
  * both would make a read that leaks look isolated: the org-a session would get
  * org-b's rows back and they would compare equal.
  *
@@ -399,11 +399,11 @@ describe("FIX-1477 · the panel collections' client read", () => {
  * **Red states, observed:**
  * - Drop the `client` line from `defineSeatInventoryCollection`: the manifest
  *   stops listing it, so V1 fails with `org-a seat read — the manifest lists no
- *   such collection`, V2 with `inventory/seats/* on a channel with the
+ *   such collection`, V2 with `inventory/seats/* on a mailbox with the
  *   inventory on: expected undefined to be defined`, and V5 (which names the
  *   ref directly) with `expected 403 to be 200`.
- * - Drop `expose` from the channel inventory's `client` and the BR-5 case fails
- *   with `a channels row must not carry "secret"`.
+ * - Drop `expose` from the mailbox inventory's `client` and the BR-5 case fails
+ *   with `a mailboxes row must not carry "secret"`.
  * - Point the route's org read at another org (`resourceScopeIds` in
  *   `resources/internal.ts`, as in the header above) and V1 fails with
  *   `org-a's seats: expected [ 'beta.analyst', 'beta.lead' ] to deeply equal
@@ -412,10 +412,10 @@ describe("FIX-1477 · the panel collections' client read", () => {
 
 const INV_USER = "u_boot";
 
-/** Org -> the channel it opens and the seats it hires. No id appears in both. */
+/** Org -> the mailbox it opens and the seats it hires. No id appears in both. */
 const INVENTORY_ORGS = {
-  "org-a": { channel: "alpha.room", seats: ["alpha.lead", "alpha.coder"] },
-  "org-b": { channel: "beta.room", seats: ["beta.lead", "beta.analyst"] }
+  "org-a": { mailbox: "alpha.room", seats: ["alpha.lead", "alpha.coder"] },
+  "org-b": { mailbox: "beta.room", seats: ["beta.lead", "beta.analyst"] }
 } as const;
 type InvOrg = keyof typeof INVENTORY_ORGS;
 const INV_ORGS = Object.keys(INVENTORY_ORGS) as InvOrg[];
@@ -461,10 +461,10 @@ function harnessOver(router: any): Harness {
 }
 
 /**
- * Stand the channel kind up behind a verified-header resolver, open each org's
- * channel over the session route, and fill each org's inventory.
+ * Stand the mailbox kind up behind a verified-header resolver, open each org's
+ * mailbox over the session route, and fill each org's inventory.
  *
- * @param options.inventory Build the channel kind with the inventory on (the
+ * @param options.inventory Build the mailbox kind with the inventory on (the
  *   default) or off — V2's other state.
  * @param options.fill Run `openInventory` for both orgs. Off for V2's
  *   manifest-only cases.
@@ -472,12 +472,12 @@ function harnessOver(router: any): Harness {
 async function buildInventoryHarness(
   options: { inventory?: boolean; fill?: boolean } = {}
 ): Promise<InventoryHarness> {
-  const records: ChannelManifest[] = INV_ORGS.map((org) => ({
-    id: INVENTORY_ORGS[org].channel,
+  const records: MailboxManifest[] = INV_ORGS.map((org) => ({
+    id: INVENTORY_ORGS[org].mailbox,
     declared: { members: [...INVENTORY_ORGS[org].seats] },
     body: "Charter."
   }));
-  const instances = channelInstances(records, { inventory: options.inventory ?? true });
+  const instances = mailboxInstances(records, { inventory: options.inventory ?? true });
   const byKind: Record<string, any> = Object.fromEntries(
     instances.map((instance) => [instance.kind, instance])
   );
@@ -485,7 +485,7 @@ async function buildInventoryHarness(
     flows: byKind,
     stores: { default: { primary: inMemoryStores() } },
     modelResolver: createMockModelResolver({}),
-    // Host-level, because the built-in channel kind carries no authentication
+    // Host-level, because the built-in mailbox kind carries no authentication
     // of its own. The org comes from a verified header, never the body.
     resolvePrincipal: verifiedHeaderPrincipal(() => INV_USER)
   } as never);
@@ -502,9 +502,9 @@ async function buildInventoryHarness(
   };
 
   for (const org of INV_ORGS) {
-    const record = records.find((r) => r.id === INVENTORY_ORGS[org].channel)!;
+    const record = records.find((r) => r.id === INVENTORY_ORGS[org].mailbox)!;
     // Opened over the real session route, as the org's own principal.
-    await openChannels([record], {
+    await openMailboxes([record], {
       client: {
         createSession: async (create) => {
           const { status, json } = await h.post([create.flowKind, "sessions"], create, {
@@ -526,7 +526,7 @@ async function buildInventoryHarness(
     if (options.fill === false) continue;
 
     const binding = await openInventory(
-      { seats: INVENTORY_ORGS[org].seats.map((id) => ({ id, kind: "agent", actions: {} })), channels: [record] },
+      { seats: INVENTORY_ORGS[org].seats.map((id) => ({ id, kind: "agent", actions: {} })), mailboxes: [record] },
       {
         run: async (request) => {
           const result: any = await runAction({
@@ -547,7 +547,7 @@ async function buildInventoryHarness(
         },
         // One seat-writer session per org: the default id is one per store,
         // and two orgs writing through one session would be one org's session.
-        seatWriter: { flowKind: CHANNEL_KIND, sessionId: `inventory-binder-${org}` },
+        seatWriter: { flowKind: MAILBOX_KIND, sessionId: `inventory-binder-${org}` },
         userId: INV_USER,
         orgId: org
       }
@@ -571,7 +571,7 @@ async function inventoryRefs(h: Harness, sessionId: string, org: string) {
   return {
     resources,
     seats: byPattern("inventory/seats/*"),
-    channels: byPattern("inventory/channels/*"),
+    mailboxes: byPattern("inventory/mailboxes/*"),
     memberships: byPattern("inventory/members/**")
   };
 }
@@ -609,11 +609,11 @@ describe("FIX-1502 · the inventory collections' client read", () => {
 
     // The positive record first: both organizations' rows are in storage.
     for (const org of INV_ORGS) {
-      const { channel, seats } = INVENTORY_ORGS[org];
+      const { mailbox, seats } = INVENTORY_ORGS[org];
       expect(Object.keys(await h.stored(org)).sort(), `${org}'s stored inventory keys`).toEqual(
         [
-          `inventory/channels/${channel}`,
-          ...seats.map((seat) => `inventory/members/${seat}/${channel}`),
+          `inventory/mailboxes/${mailbox}`,
+          ...seats.map((seat) => `inventory/members/${seat}/${mailbox}`),
           ...seats.map((seat) => `inventory/seats/${seat}`)
         ].sort()
       );
@@ -623,7 +623,7 @@ describe("FIX-1502 · the inventory collections' client read", () => {
       const own = INVENTORY_ORGS[org];
       const otherOrg: InvOrg = org === "org-a" ? "org-b" : "org-a";
       const other = INVENTORY_ORGS[otherOrg];
-      const refs = await inventoryRefs(h, own.channel, org);
+      const refs = await inventoryRefs(h, own.mailbox, org);
       // Every place a caller can name an organization names the OTHER one.
       const steer = {
         query: `&orgId=${otherOrg}`,
@@ -631,26 +631,26 @@ describe("FIX-1502 · the inventory collections' client read", () => {
       };
 
       // `limit=1`, so every read below crosses pages.
-      const seats = await listAll(h, own.channel, refs.seats, org, steer);
-      const channels = await listAll(h, own.channel, refs.channels, org, steer);
-      const memberships = await listAll(h, own.channel, refs.memberships, org, steer);
+      const seats = await listAll(h, own.mailbox, refs.seats, org, steer);
+      const mailboxes = await listAll(h, own.mailbox, refs.mailboxes, org, steer);
+      const memberships = await listAll(h, own.mailbox, refs.memberships, org, steer);
 
       expect(seats.status, `${org} seat read — ${seats.raw}`).toBe(200);
-      expect(channels.status, `${org} channel read — ${channels.raw}`).toBe(200);
+      expect(mailboxes.status, `${org} mailbox read — ${mailboxes.raw}`).toBe(200);
       expect(memberships.status, `${org} membership read — ${memberships.raw}`).toBe(200);
 
       expect(seats.rows.map((r) => r.id).sort(), `${org}'s seats`).toEqual([...own.seats].sort());
-      expect(channels.rows.map((r) => r.id), `${org}'s channels`).toEqual([own.channel]);
-      expect(channels.rows[0]!.members, `${org}'s channel members`).toEqual([...own.seats]);
-      expect(typeof channels.rows[0]!.openedAt, `${org}'s channel registration time`).toBe("string");
+      expect(mailboxes.rows.map((r) => r.id), `${org}'s mailboxes`).toEqual([own.mailbox]);
+      expect(mailboxes.rows[0]!.members, `${org}'s mailbox members`).toEqual([...own.seats]);
+      expect(typeof mailboxes.rows[0]!.openedAt, `${org}'s mailbox registration time`).toBe("string");
       expect(
-        memberships.rows.map((r) => `${r.seatId}>${r.channelId}`).sort(),
+        memberships.rows.map((r) => `${r.seatId}>${r.mailboxId}`).sort(),
         `${org}'s memberships`
-      ).toEqual(own.seats.map((seat) => `${seat}>${own.channel}`).sort());
+      ).toEqual(own.seats.map((seat) => `${seat}>${own.mailbox}`).sort());
 
       // Over the raw payload too, so a shape change cannot turn the above into no-ops.
-      for (const foreign of [other.channel, ...other.seats]) {
-        for (const read of [seats, channels, memberships]) {
+      for (const foreign of [other.mailbox, ...other.seats]) {
+        for (const read of [seats, mailboxes, memberships]) {
           expect(read.raw, `${org}'s read leaked ${foreign}`).not.toContain(foreign);
         }
       }
@@ -659,9 +659,9 @@ describe("FIX-1502 · the inventory collections' client read", () => {
 
   it("V1 · a session created claiming another organization in its body is still its principal's (BR-4)", async () => {
     const h = await buildInventoryHarness();
-    const refs = await inventoryRefs(h, INVENTORY_ORGS["org-a"].channel, "org-a");
+    const refs = await inventoryRefs(h, INVENTORY_ORGS["org-a"].mailbox, "org-a");
     const created = await h.post(
-      [CHANNEL_KIND, "sessions"],
+      [MAILBOX_KIND, "sessions"],
       { userId: INV_USER, orgId: "org-b", sessionId: "s-claims-b" },
       { "x-verified-org": "org-a" }
     );
@@ -681,8 +681,8 @@ describe("FIX-1502 · the inventory collections' client read", () => {
         flowIsolation: false,
         stateSchema: z.object({ id: z.string(), kind: z.string() })
       }),
-      channels: defineResourceCollection({
-        pattern: "inventory/channels/*",
+      mailboxes: defineResourceCollection({
+        pattern: "inventory/mailboxes/*",
         scope: "org",
         flowIsolation: false,
         stateSchema: z.object({ id: z.string() })
@@ -691,7 +691,7 @@ describe("FIX-1502 · the inventory collections' client read", () => {
         pattern: "inventory/members/**",
         scope: "org",
         flowIsolation: false,
-        stateSchema: z.object({ seatId: z.string(), channelId: z.string() })
+        stateSchema: z.object({ seatId: z.string(), mailboxId: z.string() })
       })
     };
     const flow = defineFlow({
@@ -731,12 +731,12 @@ describe("FIX-1502 · the inventory collections' client read", () => {
   it("V1 control · a key written into a stored row does not reach the browser (BR-5)", async () => {
     const h = await buildInventoryHarness();
     const org = "org-a";
-    const { channel, seats } = INVENTORY_ORGS[org];
+    const { mailbox, seats } = INVENTORY_ORGS[org];
     // A key the named fields leave out, planted straight into each stored row.
     for (const key of [
       `inventory/seats/${seats[0]}`,
-      `inventory/channels/${channel}`,
-      `inventory/members/${seats[0]}/${channel}`
+      `inventory/mailboxes/${mailbox}`,
+      `inventory/members/${seats[0]}/${mailbox}`
     ]) {
       const current = await h.runtime.stores.resourceState.get("org", org, key);
       expect(current, `${key} is stored`).toBeDefined();
@@ -751,13 +751,13 @@ describe("FIX-1502 · the inventory collections' client read", () => {
       expect(planted.state.secret, `${key} carries the planted key`).toBe("LEAKED-INVENTORY-KEY");
     }
 
-    const refs = await inventoryRefs(h, channel, org);
+    const refs = await inventoryRefs(h, mailbox, org);
     for (const [name, ref] of [
       ["seats", refs.seats],
-      ["channels", refs.channels],
+      ["mailboxes", refs.mailboxes],
       ["memberships", refs.memberships]
     ] as const) {
-      const read = await listAll(h, channel, ref, org);
+      const read = await listAll(h, mailbox, ref, org);
       expect(read.status, `${name} read — ${read.raw}`).toBe(200);
       // The rows carrying the planted key are in the read at all.
       expect(read.rows.length, `${name} rows`).toBeGreaterThan(0);
@@ -769,21 +769,21 @@ describe("FIX-1502 · the inventory collections' client read", () => {
   });
 
   it("V2 · the manifest lists the three collections as readable with the inventory on, and none with it off (BR-6)", async () => {
-    const patterns = ["inventory/seats/*", "inventory/channels/*", "inventory/members/**"];
-    const channel = INVENTORY_ORGS["org-a"].channel;
-    const on = await inventoryRefs(await buildInventoryHarness({ inventory: true, fill: false }), channel, "org-a");
-    const off = await inventoryRefs(await buildInventoryHarness({ inventory: false, fill: false }), channel, "org-a");
+    const patterns = ["inventory/seats/*", "inventory/mailboxes/*", "inventory/members/**"];
+    const mailbox = INVENTORY_ORGS["org-a"].mailbox;
+    const on = await inventoryRefs(await buildInventoryHarness({ inventory: true, fill: false }), mailbox, "org-a");
+    const off = await inventoryRefs(await buildInventoryHarness({ inventory: false, fill: false }), mailbox, "org-a");
 
     for (const pattern of patterns) {
       const entry = on.resources.find((e) => e.pattern === pattern);
-      expect(entry, `${pattern} on a channel with the inventory on`).toBeDefined();
+      expect(entry, `${pattern} on a mailbox with the inventory on`).toBeDefined();
       expect(entry!.kind).toBe("collection");
       expect(entry!.scope).toBe("org");
       expect(entry!.client?.state?.read, `${pattern} is readable`).toBe(true);
     }
     expect(
       off.resources.filter((e) => String(e.pattern ?? "").startsWith("inventory/")),
-      "inventory collections on a channel with the inventory off"
+      "inventory collections on a mailbox with the inventory off"
     ).toEqual([]);
   });
 });

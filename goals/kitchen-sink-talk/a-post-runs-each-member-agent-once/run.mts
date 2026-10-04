@@ -1,6 +1,6 @@
 /**
  * Goal check: when a person posts to `support.help` from the kitchen-sink page,
- * the one specialist the channel's route picks runs once on the post and no
+ * the one specialist the mailbox's route picks runs once on the post and no
  * other member runs, and that run is there in the specialist's conversation
  * after a reload.
  *
@@ -11,7 +11,7 @@
  * member a post names in `[route:<member>]`. Two legs:
  *
  *   support.accounts  post a line naming it, carrying a fresh token, from the
- *         channel's panel; reload; open every conversation the seat lists.
+ *         mailbox's panel; reload; open every conversation the seat lists.
  *         Exactly one holds the token: the post heard once, as the seat's
  *         turn, with one reply carrying the wake marker under it. Then a
  *         second line, different text; reload; it is in that same
@@ -24,7 +24,7 @@
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/a-post-runs-each-member-agent-once/run.mts
  * Controls: GOAL_CONTROL=name-only-notify  (a line naming each member, no seat run: must FAIL at support.accounts, and nothing else)
- *           GOAL_CONTROL=no-route          (the channel's `routing:` lines taken off, so every member hears: must FAIL at others, and nothing else)
+ *           GOAL_CONTROL=no-route          (the mailbox's `routing:` lines taken off, so every member hears: must FAIL at others, and nothing else)
  *           GOAL_CONTROL=no-author-filter  (leg c's control: must leave every leg here green)
  */
 import { randomUUID } from "node:crypto";
@@ -51,7 +51,7 @@ interface Seat {
 
 interface Fixture {
   port: number;
-  channel: Seat;
+  mailbox: Seat;
   agents: Seat[];
   others: Seat[];
   /** The tag the scripted route reads to pick who answers. */
@@ -79,15 +79,15 @@ if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
 
 type Conversation = { sessionId: string; runOf: string | null; messages: Array<{ role: string; text: string }> };
 
-/** Post a line to the channel from its panel, and wait until it shows. */
+/** Post a line to the mailbox from its panel, and wait until it shows. */
 async function post(page: Page, origin: string, line: string): Promise<void> {
   await openShell(page, origin);
-  await open(page, fixture.channel.kind);
-  await row(page, fixture.channel.id).click();
-  await panel(page).getByLabel("Post to this channel").fill(line);
+  await open(page, fixture.mailbox.kind);
+  await row(page, fixture.mailbox.id).click();
+  await panel(page).getByLabel("Post to this mailbox").fill(line);
   await panel(page).getByRole("button", { name: "Send" }).click();
   await readUntil(
-    () => panel(page).getByTestId("channel-line").filter({ hasText: line }).count(),
+    () => panel(page).getByTestId("mailbox-line").filter({ hasText: line }).count(),
     (n) => n > 0,
     10_000,
   );

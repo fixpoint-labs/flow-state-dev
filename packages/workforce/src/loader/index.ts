@@ -3,7 +3,7 @@
  *
  * The Node-only half of the package. `readDeclaredRoster` is the widest entry
  * point: one call over the readers below, returning the whole declared tree —
- * workers, teams, documents, channels — plus one flattened list of what failed
+ * workers, teams, documents, mailboxes — plus one flattened list of what failed
  * to load, each entry tagged with the layer that reported it. It walks nothing
  * itself, and it collects rather than throws, so the caller keeps its own boot
  * policy. Under it, `readWorkforce` is the entry point an app wanting seats
@@ -17,11 +17,11 @@
  * optional `TEAM.md` — what a team is, and the instructions every seat on it
  * carries — `readResourcesDirectory` scans `org/resources/` and
  * `teams/<id>/resources/` and returns one `ResourceDoc` per document, and
- * `readChannelsDirectory` scans `teams/<id>/channels/<name>/` and returns one
- * `ChannelManifest` per channel, and `readPackagesDirectory` reads every
+ * `readMailboxesDirectory` scans `teams/<id>/mailboxes/<name>/` and returns one
+ * `MailboxManifest` per mailbox, and `readPackagesDirectory` reads every
  * `packages/<name>/PACKAGE.md` at the org, team and worker levels into one
  * `PackageManifest` each. All seven stop there — nothing here builds a
- * flow, an agent, a resource, a channel instance or a registry, and neither
+ * flow, an agent, a resource, a mailbox instance or a registry, and neither
  * does the composer over them.
  *
  * Under all of them sit the walk primitives the readers share, published for
@@ -98,11 +98,11 @@ export {
 } from "./read-packages-directory";
 
 export {
-  readChannelsDirectory,
-  type ChannelManifestError,
-  type ChannelManifestErrorKind,
-  type ReadChannelsDirectoryResult,
-} from "./read-channels-directory";
+  readMailboxesDirectory,
+  type MailboxManifestError,
+  type MailboxManifestErrorKind,
+  type ReadMailboxesDirectoryResult,
+} from "./read-mailboxes-directory";
 
 export {
   IGNORED_ENTRIES,
@@ -136,6 +136,6 @@ export type {
   WorkerManifest,
   TeamManifest,
   ResourceDoc,
-  ChannelManifest,
+  MailboxManifest,
   PackageManifest,
 } from "../manifest";

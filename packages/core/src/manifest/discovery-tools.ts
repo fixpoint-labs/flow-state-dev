@@ -66,7 +66,7 @@ async function readDomain(
   ctx: BlockContext,
 ): Promise<z.infer<typeof domainResultSchema>> {
   const source = registry.source(domain);
-  // Absent, not empty-with-a-reason: a scope that carries no channels is an
+  // Absent, not empty-with-a-reason: a scope that carries no mailboxes is an
   // ordinary state and the model should read it as "nothing here".
   if (source === undefined) return { domain, entries: [] };
 
@@ -103,7 +103,7 @@ async function readDomain(
  *   four returns the known names rather than throwing, so the next call can
  *   succeed.
  *
- * One tool taking a domain, rather than a `listSeats` / `listChannels` family:
+ * One tool taking a domain, rather than a `listSeats` / `listMailboxes` family:
  * it keeps the shared shape real in the surface a model sees, and `detail`
  * turns "how much does an entry say" into a per-call choice. Going from one
  * tool to four later is additive; going from four to one would break prompts.
@@ -112,7 +112,7 @@ export function discoveryTools(registry: ManifestRegistry) {
   const discover = handler({
     name: "discover",
     description:
-      "List what is in scope for you right now — the seats you can hand work to, the channels they share, the skills you can load, and the resources you can read. Omit `domain` for everything in scope.",
+      "List what is in scope for you right now — the seats you can hand work to, the mailboxes they share, the skills you can load, and the resources you can read. Omit `domain` for everything in scope.",
     inputSchema: z.object({
       domain: z
         .string()

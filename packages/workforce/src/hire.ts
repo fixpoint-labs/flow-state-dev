@@ -195,12 +195,12 @@ export interface HireOptions {
   packageBlocks?: Record<string, Record<string, BlockDefinition<any, any>>>;
 
   /**
-   * The ledger ids this app's channels declared — `channelBoardIds(channels)`.
+   * The ledger ids this app's mailboxes declared — `mailboxBoardIds(mailboxes)`.
    *
-   * Handed over so this step can say when a channel holds a board **no flow
+   * Handed over so this step can say when a mailbox holds a board **no flow
    * hired here declares**: the rows would sit `pending` forever with nothing
    * said, which is the one failure a declared board can produce silently. Each
-   * unattended id gets a `console.warn` naming the channel and the id.
+   * unattended id gets a `console.warn` naming the mailbox and the id.
    *
    * **A warning, never a refusal**, and the reason is in the evidence rather
    * than in a preference: a seat may legitimately live in another process, and
@@ -212,7 +212,7 @@ export interface HireOptions {
    * cannot invent a roster's ids, and every caller that predates boards hires
    * exactly as it did.
    */
-  channelBoards?: readonly string[];
+  mailboxBoards?: readonly string[];
 
   /**
    * The documents this app declared, keyed by ref — the map
@@ -617,7 +617,7 @@ export function hireWorkforce(
     // an ABSENT key now resolves to the built-in.
     //
     // Which case the `flow:` is in is `readDeclaredFlow`'s call, shared with
-    // the channel door (its doc carries why a key holding `null` is present,
+    // the mailbox door (its doc carries why a key holding `null` is present,
     // not absent). The sentences stay here: they are this door's words.
     const declaredFlow = readDeclaredFlow(manifest.declared, AGENT_KIND);
 
@@ -686,7 +686,7 @@ export function hireWorkforce(
     // the seat can read, since the flow's id is kept off the block context.
     // Written here and nowhere else, so every mint path (files, the runtime
     // `hire` tool, the boot reload) carries it. A hired record's `id` is its
-    // org-qualified address, so it brings the logical id a channel's
+    // org-qualified address, so it brings the logical id a mailbox's
     // `members:` lists on `manifest.seatId`; a file record's `id` is that id.
     settings[SEAT_ID_KEY] = manifest.seatId ?? manifest.id;
 
@@ -926,7 +926,7 @@ export function hireWorkforce(
 
   // After the refusals, deliberately: a roster that did not hire has nothing
   // to be unattended by, and a warning printed beside a fatal error is noise.
-  for (const warning of unattendedBoardWarnings(options.channelBoards ?? [], seats)) {
+  for (const warning of unattendedBoardWarnings(options.mailboxBoards ?? [], seats)) {
     console.warn(warning);
   }
   // A kind with two doors is reported, not refused: the seat is hired, and
@@ -964,18 +964,18 @@ export function unattendedBoardWarnings(
   const warnings: string[] = [];
   for (const boardId of boardIds) {
     if (declared.has(boardId)) continue;
-    // A board id is its channel's id, a dot, and a name carrying no dot.
-    const channelId = boardId.slice(0, boardId.lastIndexOf("."));
-    // The LOCAL name in the prose, because that is what the `CHANNEL.md` says
+    // A board id is its mailbox's id, a dot, and a name carrying no dot.
+    const mailboxId = boardId.slice(0, boardId.lastIndexOf("."));
+    // The LOCAL name in the prose, because that is what the `MAILBOX.md` says
     // and what an operator goes looking for. The minted id appears once, in
     // the fix, where it is the thing to copy.
-    const boardName = boardId.slice(channelId.length + 1);
+    const boardName = boardId.slice(mailboxId.length + 1);
     warnings.push(
-      `[workforce] channel "${channelId}" holds board "${boardName}" (ledger "${boardId}"), ` +
+      `[workforce] mailbox "${mailboxId}" holds board "${boardName}" (ledger "${boardId}"), ` +
         `and no flow hired in this ` +
         `call declares it. Rows filed there will sit pending until something drains them — ` +
         `declare the board on the seat that runs the work ` +
-        `(\`resources: { [board.id]: board }\` with \`channelBoard("${channelId}", "${boardName}")\`), ` +
+        `(\`resources: { [board.id]: board }\` with \`mailboxBoard("${mailboxId}", "${boardName}")\`), ` +
         `or ignore this if that seat runs in another process.`
     );
   }

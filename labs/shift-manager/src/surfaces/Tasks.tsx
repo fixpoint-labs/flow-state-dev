@@ -48,7 +48,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
   const failed = Object.entries(snapshot.boards).filter(([, b]) => !b.ok);
 
   const keyOf = (row: BoardRow): string =>
-    by === "state" ? columnFor(row.status) : by === "worker" ? (seatFor(roster, row)?.id ?? row.assignee ?? "unassigned") : row.channelId;
+    by === "state" ? columnFor(row.status) : by === "worker" ? (seatFor(roster, row)?.id ?? row.assignee ?? "unassigned") : row.mailboxId;
   const groups =
     by === "state"
       ? OPEN_COLUMNS.map((column) => [column, rows.filter((r) => columnFor(r.status) === column)] as const)
@@ -100,10 +100,10 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-[22px] pb-5">
-        {failed.map(([channelId, b]) =>
+        {failed.map(([mailboxId, b]) =>
           b.ok ? null : (
-            <div key={channelId} className="mt-3">
-              <SectionFailure what={`The boards of ${channelId}`} failure={b.failure} onRetry={() => void refresh()} />
+            <div key={mailboxId} className="mt-3">
+              <SectionFailure what={`The boards of ${mailboxId}`} failure={b.failure} onRetry={() => void refresh()} />
             </div>
           ),
         )}
@@ -179,7 +179,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                         —
                       </td>
                       <td className={cn(MONO_CELL, "truncate text-foreground/80")} data-testid="task-row-stream">
-                        #{row.channelId}
+                        #{row.mailboxId}
                       </td>
                       <td className="truncate py-2 pr-3 text-[13px]" title={seat?.id ?? row.assignee ?? undefined} data-testid="task-row-worker">
                         {seat?.name ?? row.assignee ?? "—"}

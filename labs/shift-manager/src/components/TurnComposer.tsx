@@ -1,6 +1,6 @@
 /**
  * A composer that sends a person's line to a worker (S11): a task's, and
- * Inbox's reply box. The workstream composer, which also posts to its channel,
+ * Inbox's reply box. The workstream composer, which also posts to its mailbox,
  * uses the same send state for its `@worker` lines: {@link useTurnSend} and
  * {@link TurnSendStatus}.
  *

@@ -122,11 +122,11 @@ export interface SeatHireCapabilityOptions {
    */
   allowKinds?: readonly string[];
   /**
-   * Channel-board ledger ids, forwarded to `hireWorkforce` so an unattended
+   * Mailbox-board ledger ids, forwarded to `hireWorkforce` so an unattended
    * board still warns. Hire does not attach boards; the warning is the
    * honesty.
    */
-  channelBoards?: readonly string[];
+  mailboxBoards?: readonly string[];
 }
 
 const hireInput = z
@@ -495,7 +495,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
     }
     const [seat] = hireWorkforce([record.manifest], {
       kinds,
-      channelBoards: options.channelBoards,
+      mailboxBoards: options.mailboxBoards,
     });
     if (seat === undefined) {
       throw new Error(`"${address}" could not be hired, and no reason was given.`);
@@ -564,7 +564,7 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       });
     }
     const warnings = [
-      ...unattendedBoardWarnings(options.channelBoards ?? [], [seat]),
+      ...unattendedBoardWarnings(options.mailboxBoards ?? [], [seat]),
       ...(door.problem === undefined ? [] : [door.problem]),
     ];
     return warnings.length > 0 ? { warning: warnings.join("\n") } : {};

@@ -5,7 +5,7 @@
  * `collections.ts` is canonical for the keys and row shapes; `talk.ts` for how
  * a session reaches a room; `room-store.ts` for how a room is written and read;
  * `talk-template.ts` for a room's seats and charter, and the mint on create.
- * The talk entries are built into every channel kind by `defineChannelFlow`.
+ * The talk entries are built into every mailbox kind by `defineMailboxFlow`.
  */
 
 export {
@@ -36,7 +36,7 @@ export {
   createProjectInputSchema,
   createProjectOutputSchema,
   defineProjectBlocks,
-  projectWritesChannelInventory,
+  projectWritesMailboxInventory,
   setWorkstreamsInputSchema,
   setWorkstreamsOutputSchema,
   type CreateProjectInput,

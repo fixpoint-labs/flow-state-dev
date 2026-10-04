@@ -131,7 +131,7 @@ function StreamItem({ id, state, active }: { id: string; state: "needs" | "run" 
   return (
     <button
       type="button"
-      onClick={() => navigate({ level: "workstream", channelId: id, tab: "stream" })}
+      onClick={() => navigate({ level: "workstream", mailboxId: id, tab: "stream" })}
       aria-current={active ? "page" : undefined}
       data-testid={`nav-workstream-${id}`}
       data-dot={state ?? "none"}
@@ -236,7 +236,7 @@ function ShiftSwitch({ look }: { look: ShiftLook }) {
 /**
  * PROJECTS (BR-22): each project by title, its workstreams beneath it, a
  * project with none still listed; then No project with every workstream no
- * project lists, only when there is one. A workstream id whose channel left
+ * project lists, only when there is one. A workstream id whose mailbox left
  * the tree is shown as gone, with no link.
  */
 function ProjectsSection({
@@ -257,7 +257,7 @@ function ProjectsSection({
     return <SectionFailure what={what} failure={view.failure} onRetry={onRetry} testId="projects-failure" />;
   }
   const workstreamItem = (w: Workstream) => (
-    <StreamItem key={w.id} id={w.id} state={marks.get(w.id) ?? null} active={route.level === "workstream" && route.channelId === w.id} />
+    <StreamItem key={w.id} id={w.id} state={marks.get(w.id) ?? null} active={route.level === "workstream" && route.mailboxId === w.id} />
   );
   const projectItem = (projectId: string, label: string) => (
     <NavItem
@@ -275,7 +275,7 @@ function ProjectsSection({
           <div className="pl-3">
             {workstreams.map(({ id, workstream }) =>
               workstream === undefined ? (
-                <p key={id} className="px-2 py-1 text-xs text-muted-foreground" data-testid="nav-workstream-gone" data-channel-id={id}>
+                <p key={id} className="px-2 py-1 text-xs text-muted-foreground" data-testid="nav-workstream-gone" data-mailbox-id={id}>
                   {id} · no longer in the Lab
                 </p>
               ) : (

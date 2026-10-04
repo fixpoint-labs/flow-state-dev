@@ -23,23 +23,23 @@
 export const SHELL_FLOW_KIND = "chat-agent";
 
 /**
- * The channel kinds: the framework's own `channel`, plus every kind under
- * `workforce/flows/channels/`, of which this app has none.
+ * The mailbox kinds: the framework's own `mailbox`, plus every kind under
+ * `workforce/flows/mailboxes/`, of which this app has none.
  */
-export const CHANNEL_KINDS = ["channel"] as const;
+export const MAILBOX_KINDS = ["mailbox"] as const;
 
-/** Whether a picked flow kind is a channel kind, whose panel shows a transcript rather than a conversation. */
-export function isChannelKind(kind: string): boolean {
-  return (CHANNEL_KINDS as readonly string[]).includes(kind);
+/** Whether a picked flow kind is a mailbox kind, whose panel shows a transcript rather than a conversation. */
+export function isMailboxKind(kind: string): boolean {
+  return (MAILBOX_KINDS as readonly string[]).includes(kind);
 }
 
 /**
- * The channels the tree declares, each with the kind its `CHANNEL.md` selects:
+ * The mailboxes the tree declares, each with the kind its `MAILBOX.md` selects:
  * what the rail lists under that kind. A store kept across an upgrade can still
- * hold the sessions of channels the tree no longer declares, so the rail reads
+ * hold the sessions of mailboxes the tree no longer declares, so the rail reads
  * these by id rather than listing the kind (`lib/rail-sessions.ts`).
  */
-export const SHELL_CHANNELS = [{ id: "support.help", kind: "channel" }] as const;
+export const SHELL_MAILBOXES = [{ id: "support.help", kind: "mailbox" }] as const;
 
 /**
  * The seat kinds: the built-in `agent`, plus every kind under
@@ -120,14 +120,14 @@ export const ROSTER_BOOT_REPORT_KEY = `${ROSTER_BOOT_REPORT_PREFIX}latest`;
 
 /**
  * The boards the right panel draws, one per `boards:` entry in the tree's
- * `CHANNEL.md` files.
+ * `MAILBOX.md` files.
  *
  * `ref` is the ledger id the workforce package mints for that pair. The panel
- * reads each board through its channel's session, whose flow declares it under
+ * reads each board through its mailbox's session, whose flow declares it under
  * that id, and the test checks the two agree.
  */
 export const SHELL_BOARDS = [
-  { channelId: "support.help", board: "escalations", ref: "support.help.escalations" },
+  { mailboxId: "support.help", board: "escalations", ref: "support.help.escalations" },
 ] as const;
 
 /**

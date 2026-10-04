@@ -3,7 +3,7 @@
  *
  * The conversation is an ordinary session of the chief of staff's seat: the
  * person's newest one on that seat's flow that nothing else started. A session
- * a channel post or another run opened has a parent and is never it. With
+ * a mailbox post or another run opened has a parent and is never it. With
  * none, the first line opens one through the seat's door.
  *
  * Lines go in through {@link sendTurn}, the one send path, so *delivered*

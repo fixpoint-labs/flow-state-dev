@@ -7,9 +7,9 @@ description: "A project is a row your organization keeps: a title, a brief, an o
 
 # Projects
 
-A workstream is a channel you declare in a `CHANNEL.md`, with the boards it holds. A **project** groups workstreams. It answers a question no single channel can: which pieces of work belong together, and who is working on them.
+A workstream is a mailbox you declare in a `MAILBOX.md`, with the boards it holds. A **project** groups workstreams. It answers a question no single mailbox can: which pieces of work belong together, and who is working on them.
 
-A project is data, not a file. You don't write a folder or a `CHANNEL.md` for one. It's a row in the organization's `projects` collection, created while the app runs, by your own code or by a seat acting for a person. It belongs to the organization rather than to a team, so one project usually gathers workstreams from several teams.
+A project is data, not a file. You don't write a folder or a `MAILBOX.md` for one. It's a row in the organization's `projects` collection, created while the app runs, by your own code or by a seat acting for a person. It belongs to the organization rather than to a team, so one project usually gathers workstreams from several teams.
 
 Each project also has a **room**: one conversation its members share. Everyone on the project reads and posts in the same room, each through a session of their own.
 
@@ -29,7 +29,7 @@ The organization owns the projects. A project groups the workstreams that belong
 | `status` | A free label. New projects are `"active"` |
 | `ownerUserId` | The person who created it |
 | `members` | Who can read and post in the room. Always includes the owner |
-| `workstreams` | Full channel ids of the declared channels it groups, such as `eng.feature` and `ops.release` |
+| `workstreams` | Full mailbox ids of the declared mailboxes it groups, such as `eng.feature` and `ops.release` |
 | `sessions` | Each member's own talk session on the room, at most one per person |
 
 Everyone in the organization can list the rows. That a project exists isn't a secret. Its room is.
@@ -46,7 +46,7 @@ export default defineProjectsCollection();
 
 You can call `defineProjectsCollection()` anywhere you need it. Every call returns the same declaration, so they never conflict. The collection is org-scoped, shared across flows, and readable from the browser, which is how a UI lists an organization's projects.
 
-Its one option, `talk`, is the template every project's room is built from: the seats a post wakes and the charter they work under. Declare it once, usually in `org/resources/projects.ts`. Passing the same template again changes nothing, and passing a different one throws. [A room per project](./channels.md#a-room-per-project) covers it.
+Its one option, `talk`, is the template every project's room is built from: the seats a post wakes and the charter they work under. Declare it once, usually in `org/resources/projects.ts`. Passing the same template again changes nothing, and passing a different one throws. [A room per project](./mailboxes.md#a-room-per-project) covers it.
 
 ## Creating a project
 
@@ -113,7 +113,7 @@ const agent = defineAgentWorkerFlow({
     }).step(projects.createProject),
     setWorkstreams: sequencer({
       name: "setWorkstreams",
-      description: "Replace a project's workstreams with this list of full channel ids.",
+      description: "Replace a project's workstreams with this list of full mailbox ids.",
       inputSchema: setWorkstreamsInputSchema,
       outputSchema: setWorkstreamsOutputSchema,
     }).step(projects.setWorkstreams),
@@ -123,29 +123,29 @@ const agent = defineAgentWorkerFlow({
 
 A seat calls them only when its own `tools:` names them. The owner is the person whose session the seat is answering in, so a project a seat creates belongs to whoever asked for it, and `members` adds the people they name. The talk session `createProject` gets ready is that person's.
 
-The writes read the organization's [channel inventory](./inventory.md) to check workstream ids. A flow takes one declaration of a collection, so if the same kind reads the inventory itself, for example through `createWorkforceCapability`'s `discover`, declare that read with `projectWritesChannelInventory` rather than a `defineChannelInventoryCollection()` of its own:
+The writes read the organization's [mailbox inventory](./inventory.md) to check workstream ids. A flow takes one declaration of a collection, so if the same kind reads the inventory itself, for example through `createWorkforceCapability`'s `discover`, declare that read with `projectWritesMailboxInventory` rather than a `defineMailboxInventoryCollection()` of its own:
 
 ```ts
 import { defineCapability } from "@flow-state-dev/core";
-import { projectWritesChannelInventory } from "@flow-state-dev/workforce";
+import { projectWritesMailboxInventory } from "@flow-state-dev/workforce";
 
-const channelInventory = defineCapability({
-  name: "channel-inventory",
-  resources: { channelInventory: projectWritesChannelInventory },
+const mailboxInventory = defineCapability({
+  name: "mailbox-inventory",
+  resources: { mailboxInventory: projectWritesMailboxInventory },
 });
 ```
 
 A second declaration of the inventory beside the writes fails when the flow is built:
 
 ```text
-Resource collision in flow "agent": accessor keys "channelInventory" and "project-writes-channel-inventory" resolve to the same effective storage key (scope=org, ref=inventory/channels/*, flowIsolation=false). Pick distinct refs or flowIsolation settings.
+Resource collision in flow "agent": accessor keys "mailboxInventory" and "project-writes-mailbox-inventory" resolve to the same effective storage key (scope=org, ref=inventory/mailboxes/*, flowIsolation=false). Pick distinct refs or flowIsolation settings.
 ```
 
 [The chief of staff](./chief-of-staff.md#starting-projects) is a seat set up this way.
 
 ## One project per workstream
 
-A workstream belongs to at most one project. Each id must be a channel in the organization's [inventory](./inventory.md). Before a row is written, the write claims each of its workstreams. If two projects claim the same workstream at the same moment, exactly one of them gets it.
+A workstream belongs to at most one project. Each id must be a mailbox in the organization's [inventory](./inventory.md). Before a row is written, the write claims each of its workstreams. If two projects claim the same workstream at the same moment, exactly one of them gets it.
 
 A refused write leaves nothing behind. If one workstream is already claimed, the whole write fails, the refusal names that workstream, and any claims the write had already taken are released. Removing a workstream with `setWorkstreams` releases its claim.
 
@@ -153,7 +153,7 @@ A workstream no project lists isn't lost. A UI shows it under **No project**.
 
 ## The room and talk sessions
 
-A project's room is stored on the organization's side, one row per line. Nobody reaches it directly. Each member gets their own **talk session**: a session on the channel kind that knows which project it's about. Every room call goes through one.
+A project's room is stored on the organization's side, one row per line. Nobody reaches it directly. Each member gets their own **talk session**: a session on the mailbox kind that knows which project it's about. Every room call goes through one.
 
 A session, the room and a line are three separate things. The session is one person's, the room and its lines are the organization's, and none of them holds a copy of another.
 
@@ -169,11 +169,11 @@ Each member has exactly one talk session on the project, however many windows th
 
 | Call | What it does |
 |------|--------------|
-| `join { projectId }` | Returns your talk session on the project. If the project already lists one for you, you get that one back, so a second window ends up in the same session. Otherwise the session you called from becomes your talk session. A declared channel's own session can't become one: `join` from it is refused with `talk-on-a-channel` |
+| `join { projectId }` | Returns your talk session on the project. If the project already lists one for you, you get that one back, so a second window ends up in the same session. Otherwise the session you called from becomes your talk session. A declared mailbox's own session can't become one: `join` from it is refused with `talk-on-a-mailbox` |
 | `post { body }` | Adds a line to the room, as you |
 | `read { after }` | Returns the lines after a cursor, up to 200 at a time, and the cursor for the next read, with the room's charter and seats |
 
-`createProject` gets the creator's talk session ready for them. With a [talk template](./channels.md#a-room-per-project) in place, so does any other code that creates a project inside a flow turn. Every other member joins.
+`createProject` gets the creator's talk session ready for them. With a [talk template](./mailboxes.md#a-room-per-project) in place, so does any other code that creates a project inside a flow turn. Every other member joins.
 
 Other members' lines aren't pushed to you. They show up the next time your view reads the room, so read on open, on focus, and after you post.
 

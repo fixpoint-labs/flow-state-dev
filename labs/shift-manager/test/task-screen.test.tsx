@@ -39,7 +39,7 @@ async function openLab(options: Parameters<typeof openRunLab>[0] = {}) {
     Promise.all(
       lab.filed.map(async (f) => {
         const stored = (await runtime.stores.resourceState.get("org", DEFAULT_ORG_ID, `${lab.ledger.id}/${f.taskId}`))?.state;
-        return toBoardRow(lab.ledger.id, lab.channel.id, f.taskId, stored);
+        return toBoardRow(lab.ledger.id, lab.mailbox.id, f.taskId, stored);
       }),
     );
   return { lab, served: s, clients, rows };
@@ -327,7 +327,7 @@ describe("the Session draws with Shift Manager's registry copies (ER-6)", () => 
 });
 
 describe("the header's worker", () => {
-  it("resolves a name two teams share to the seat in this row's channel, as the inspector does", async () => {
+  it("resolves a name two teams share to the seat in this row's mailbox, as the inspector does", async () => {
     const opened = await openLab();
     const row = await heldRow(opened, false);
     const seat = opened.lab.seats.find((s) => s.flow === undefined && s.policy === "per-task")!;

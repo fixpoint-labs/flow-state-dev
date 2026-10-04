@@ -5,11 +5,11 @@
  *   projects/<id>                       one row per project: title, brief, owner, members, workstreams, talk sessions
  *   room-lines/<projectId>/<seq>        one row per line of the project's room, created and never edited
  *   room-seq/<projectId>                the room's sequence counter and its committed watermark, alone
- *   workstream-claims/<channelId>       which project holds a workstream; one shared key, written with `create`
+ *   workstream-claims/<mailboxId>       which project holds a workstream; one shared key, written with `create`
  *
  * A project is runtime data. It is created after the tree was read, so no
- * `CHANNEL.md` and no inventory row can name it; the row is the project's one
- * record, and it lists the workstreams (declared channels) it holds.
+ * `MAILBOX.md` and no inventory row can name it; the row is the project's one
+ * record, and it lists the workstreams (declared mailboxes) it holds.
  *
  * Every collection here is org-scoped and shared across flows
  * (`flowIsolation: false`, spelled out for the reason the inventory spells it
@@ -86,7 +86,7 @@ export const projectRowSchema = z.object({
   ownerUserId: z.string().min(1),
   /** Who may read and post the room. Always includes the owner. */
   members: z.array(z.string()).default([]),
-  /** Full channel ids of the declared channels this project holds, from any team. */
+  /** Full mailbox ids of the declared mailboxes this project holds, from any team. */
   workstreams: z.array(z.string()).default([]),
   /**
    * The token each listed workstream's claim carried when this row was written.
@@ -175,7 +175,7 @@ const SHARED_ACROSS_FLOWS = false;
 
 // Each `define*Collection` below returns ONE shared declaration rather than a
 // fresh one per call. A flow refuses two different declarations under one ref
-// ("Resource conflict"), and these are declared by every channel kind, by the
+// ("Resource conflict"), and these are declared by every mailbox kind, by the
 // project writes, and by an app's own `org/resources/projects.ts` — which may
 // all meet in one flow. Rows are addressed by pattern and scope either way.
 
@@ -193,7 +193,7 @@ const SHARED_ACROSS_FLOWS = false;
  *
  * **The org-level talk template** rides here, beside the collection: `talk`
  * names the seats a post in any project's room wakes, the room's charter, and
- * the channel kind talk sessions run on. It is read by `channelInstances`
+ * the mailbox kind talk sessions run on. It is read by `mailboxInstances`
  * (pass it the org's resource map as `resources`), which builds it onto the
  * kind and mints each creator's talk session when a row is created. The
  * declaration returned is the same one every call returns; see
@@ -219,7 +219,7 @@ export type ProjectsCollectionOptions = {
 };
 
 /**
- * The one projects declaration, for an identity check (`channelInstances`
+ * The one projects declaration, for an identity check (`mailboxInstances`
  * asks whether a `mintFor:` names it). Not re-exported from the package root:
  * apps declare it with {@link defineProjectsCollection}.
  */
@@ -266,7 +266,7 @@ const ROOM_SEQ_COLLECTION = defineResourceCollection({
 });
 
 /**
- * Workstream claims, at `workstream-claims/<channelId>`. One shared key per
+ * Workstream claims, at `workstream-claims/<mailboxId>`. One shared key per
  * workstream, written with `create`, so of two projects claiming the same
  * workstream at once exactly one lands. No browser read: the project rows
  * already say which workstreams each holds.

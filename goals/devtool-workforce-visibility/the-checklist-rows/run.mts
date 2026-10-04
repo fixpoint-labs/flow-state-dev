@@ -11,8 +11,8 @@
  * - Row 4 (a parked row says why, with nothing expanded): the builder seat
  *   parks on a question by design, driven through the lab's own driver. This
  *   file only reads the screen.
- * - Row 5 (the organization's seats, channels and who is in which): read from
- *   the channel's session on a second serve of the same config with the debug
+ * - Row 5 (the organization's seats, mailboxes and who is in which): read from
+ *   the mailbox's session on a second serve of the same config with the debug
  *   endpoints off, because row 4's driver reads the ledger over the debug
  *   route and row 5 must be green without it. See `row5.mts`.
  *

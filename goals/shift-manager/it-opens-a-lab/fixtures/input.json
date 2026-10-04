@@ -1,5 +1,5 @@
 {
-  "line": "Shift Manager check: this line is posted from the composer and should be kept by the channel.",
+  "line": "Shift Manager check: this line is posted from the composer and should be kept by the mailbox.",
   "devteam": {
     "issue": "release-notes-page",
     "text": "Add a release notes page that lists the last three tags."

@@ -203,7 +203,7 @@ async function b0(report: Report): Promise<void> {
             flows: flows.map((f) => String(f.id ?? f.kind)).sort(),
             orgs: store.orgs,
             seats: store.seats,
-            channels: store.channels.map((c) => `${c.id}[${c.members.join(",")}]`),
+            mailboxes: store.mailboxes.map((c) => `${c.id}[${c.members.join(",")}]`),
             userId: who.userId,
             bearer: who.bearer !== undefined,
           };
@@ -224,7 +224,7 @@ async function b0(report: Report): Promise<void> {
         const b = JSON.stringify(theirs[key]);
         if (a !== b) fail(`the writer's config boots a different ${key}: ${b}, the committed config ${a}`);
       }
-      report.note(`b0: booted with the README's command over the writer's copy; both configs boot ${ours.flows.length} flows, org [${ours.orgs.join(", ")}], seats [${ours.seats.join(", ")}], workstreams [${ours.channels.join(", ")}], page as ${ours.userId}${ours.bearer ? " with a bearer" : ""}`);
+      report.note(`b0: booted with the README's command over the writer's copy; both configs boot ${ours.flows.length} flows, org [${ours.orgs.join(", ")}], seats [${ours.seats.join(", ")}], workstreams [${ours.mailboxes.join(", ")}], page as ${ours.userId}${ours.bearer ? " with a bearer" : ""}`);
     } finally {
       await browser.close();
     }
@@ -423,8 +423,8 @@ const CHILDREN: Child[] = [
   // D1's children.
   { id: "P3.2 FIX-1666 it-waits-for-a-person-before-it-files", run: "goals/devforce-lab/it-waits-for-a-person-before-it-files/run.mts" },
   { id: "P3.2 FIX-1666 it-waits-for-a-person-before-it-files", run: "goals/devforce-lab/it-waits-for-a-person-before-it-files/run.mts", control: "no-gate", must: /a row existed before any approval/, allowed: /./ },
-  { id: "P3.2 FIX-1667 it-keeps-its-rows-on-the-channels-board", run: "goals/devforce-lab/it-keeps-its-rows-on-the-channels-board/run.mts" },
-  { id: "P3.2 FIX-1667 it-keeps-its-rows-on-the-channels-board", run: "goals/devforce-lab/it-keeps-its-rows-on-the-channels-board/run.mts", control: "kind-ledger", must: /the channel's board returned no rows/, allowed: /./ },
+  { id: "P3.2 FIX-1667 it-keeps-its-rows-on-the-mailboxes-board", run: "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/run.mts" },
+  { id: "P3.2 FIX-1667 it-keeps-its-rows-on-the-mailboxes-board", run: "goals/devforce-lab/it-keeps-its-rows-on-the-mailboxes-board/run.mts", control: "kind-ledger", must: /the mailbox's board returned no rows/, allowed: /./ },
   // P3.3: the goal labs the set touched.
   { id: "P3.3 devforce-lab it-wakes-the-seat-a-file-declared", run: "goals/devforce-lab/it-wakes-the-seat-a-file-declared/run.mts" },
   { id: "P3.3 devforce-lab it-commits-from-the-seats-own-file", run: "goals/devforce-lab/it-commits-from-the-seats-own-file/run.mts" },

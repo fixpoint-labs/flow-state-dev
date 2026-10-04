@@ -3,7 +3,7 @@
  * into, and the type of a source that produces them for one domain.
  *
  * An orchestrator that has to decide *who does this* asks one door what is in
- * scope for it right now. Seats, channels, skills and resources already have
+ * scope for it right now. Seats, mailboxes, skills and resources already have
  * working readers; what they lacked is a shared shape to answer in. This is
  * that shape and nothing more: identity, what kind of thing it is, what it is
  * for, and an optional hint at how to work with it.
@@ -17,7 +17,7 @@
  * and no source stores a second copy of its domain's state.
  *
  * Not to be confused with `ResourceManifest` (client-facing, flow-static) or
- * `WorkerManifest` / `ChannelManifest` (on-disk records). Those keep the bare
+ * `WorkerManifest` / `MailboxManifest` (on-disk records). Those keep the bare
  * word; this surface only ever says "manifest entry".
  */
 
@@ -29,7 +29,7 @@
  * six — a generator already gets its tool list from its provider, and what
  * another seat can do belongs on that seat's entry.
  */
-export const MANIFEST_DOMAINS = ["seats", "channels", "skills", "resources"] as const;
+export const MANIFEST_DOMAINS = ["seats", "mailboxes", "skills", "resources"] as const;
 
 /** One of the four pinned discovery domains. */
 export type ManifestDomain = (typeof MANIFEST_DOMAINS)[number];

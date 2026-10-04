@@ -89,11 +89,11 @@ describe("the refusal (V2, BR-3)", () => {
     // A Lab that holds no session of theirs and serves no room kind to open one on.
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
-      /\/api\/flows\/channel\/sessions$/.test(String(input instanceof Request ? input.url : input))
+      /\/api\/flows\/mailbox\/sessions$/.test(String(input instanceof Request ? input.url : input))
         ? new Response(JSON.stringify({ error: "no flow" }), { status: 404 })
         : real(input, init),
     );
-    await openApp("/inbox", { channels: false });
+    await openApp("/inbox", { mailboxes: false });
     await screen.findByTestId("refusal");
     expect(screen.getByTestId("refusal-message").textContent).toMatch(/no organization/);
     expect(screen.queryByTestId("sidebar")).toBeNull();
@@ -140,7 +140,7 @@ describe("a Lab booted without its inventory (V3, BR-4)", () => {
 });
 
 describe("empty states (BR-14, BR-28)", () => {
-  it("a workstream whose channel attaches no board says so on the Board tab and in the panel", async () => {
+  it("a workstream whose mailbox attaches no board says so on the Board tab and in the panel", async () => {
     await openApp("/w/ops.side/board");
     expect((await screen.findByTestId("board-none")).textContent).toMatch(/attaches no board/);
     expect(screen.getByTestId("panel-tasks-none").textContent).toMatch(/attaches no board/);
@@ -180,7 +180,7 @@ describe("a workstream's Stream holds its members' asks (BR-16)", () => {
 });
 
 describe("the composer (V6)", () => {
-  it("draws a post only once the channel holds it", async () => {
+  it("draws a post only once the mailbox holds it", async () => {
     const { clients } = await openApp("/w/ops.side/stream");
     const input = (await screen.findByTestId("composer-input")) as HTMLTextAreaElement;
     // Hold the post's request open: nothing may be drawn while it is.
@@ -201,7 +201,7 @@ describe("the composer (V6)", () => {
     // The live stream can draw the kept line before the post's next status poll
     // answers, and only that answer clears the draft: wait for it, don't race it.
     await waitFor(() => expect(input.value).toBe(""));
-    // And the channel holds it.
+    // And the mailbox holds it.
     const state = await clients.sessions.getSessionState("ops.side", { includeItems: true, itemTypes: ["component"] });
     expect(JSON.stringify(state.items)).toContain("kept line");
   });
@@ -212,12 +212,12 @@ describe("the composer (V6)", () => {
     const real = globalThis.fetch;
     vi.spyOn(globalThis, "fetch").mockImplementation((i, init) =>
       String(i instanceof Request ? i.url : i).includes("/actions/post")
-        ? Promise.resolve(new Response(JSON.stringify({ error: "post refused by the channel" }), { status: 422 }))
+        ? Promise.resolve(new Response(JSON.stringify({ error: "post refused by the mailbox" }), { status: 422 }))
         : real(i, init),
     );
     fireEvent.change(input, { target: { value: "refused line" } });
     fireEvent.click(screen.getByTestId("composer-send"));
-    expect((await screen.findByTestId("composer-error")).textContent).toMatch(/post refused by the channel/);
+    expect((await screen.findByTestId("composer-error")).textContent).toMatch(/post refused by the mailbox/);
     expect(input.value).toBe("refused line");
     expect(screen.queryByText("refused line", { selector: "[data-testid=transcript-line-body]" })).toBeNull();
   });
@@ -228,7 +228,7 @@ describe("the composer (V6)", () => {
     fireEvent.change(input, { target: { value: "@asker please look" } });
     await waitFor(() => expect(screen.getByTestId("composer-status").textContent).toBe(`ops.asker ${GAPS.turn.noTask}`));
     expect((screen.getByTestId("composer-send") as HTMLButtonElement).disabled).toBe(true);
-    // The button draws v2's ⏎; its name says the line goes to a worker, not the channel.
+    // The button draws v2's ⏎; its name says the line goes to a worker, not the mailbox.
     expect(screen.getByTestId("composer-send").getAttribute("aria-label")).toBe("Send");
 
     fireEvent.change(input, { target: { value: "@nobody please" } });
@@ -511,11 +511,11 @@ describe("Chief of Staff (FIX-1722)", () => {
     await openCos("/cos", {}, 1);
     await waitFor(() => expect(screen.getByTestId("cos-needs-you").textContent).toBe("1"));
     const streams = screen.getAllByTestId("cos-stream").map((el) => [
-      el.getAttribute("data-channel-id"),
+      el.getAttribute("data-mailbox-id"),
       within(el).getByTestId("cos-stream-running").textContent,
       within(el).getByTestId("cos-stream-needs-you").textContent,
     ]);
-    // ops.asker sits in both channels; ops.helper only in the desk.
+    // ops.asker sits in both mailboxes; ops.helper only in the desk.
     expect(streams).toEqual([
       ["ops.desk", "0", "1"],
       ["ops.side", "0", "1"],

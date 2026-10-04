@@ -6,8 +6,8 @@
  * It reports raw observations and grades nothing: the grading is the goal's.
  *
  * Every door used here is one a person or an app already has — the session
- * route to open the channel (through the workforce package's own
- * `openChannels`), the action route to file, drain and answer, and the
+ * route to open the mailbox (through the workforce package's own
+ * `openMailboxes`), the action route to file, drain and answer, and the
  * DevTool's own debug read for the ledger. Nothing is written into a store by
  * hand, and nothing runs in this process that the server does not.
  *
@@ -24,7 +24,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { openChannels } from "@flow-state-dev/workforce";
+import { openMailboxes } from "@flow-state-dev/workforce";
 import { REPO_ROOT, intentFreeEnv, refuseIfAnswering, stopProcessGroup } from "../../lib/index.mts";
 import { LAB_USER_ID, type LabTree } from "./host.mts";
 import { FILE_ENTRY, type FileInput } from "./workforce/flows/workers/planner.mts";
@@ -219,10 +219,10 @@ export class Scenario {
   }
 
   /**
-   * Open the channel through the workforce package's own `openChannels`, over
-   * the server's HTTP session route — the only route that takes a channel's
+   * Open the mailbox through the workforce package's own `openMailboxes`, over
+   * the server's HTTP session route — the only route that takes a mailbox's
    * state at create — and create each seat's working session the same way.
-   * The config's boot has already opened the channel; `openChannels` meets
+   * The config's boot has already opened the mailbox; `openMailboxes` meets
    * that session and leaves it as it is.
    */
   async open(): Promise<void> {
@@ -259,7 +259,7 @@ export class Scenario {
         await this.json(`/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
       },
     };
-    await openChannels([this.tree.channel], { client, userId: LAB_USER_ID });
+    await openMailboxes([this.tree.mailbox], { client, userId: LAB_USER_ID });
     for (const seat of [this.tree.plannerId, ...this.tree.workerIds]) {
       await client.createSession({ flowKind: seat, userId: LAB_USER_ID, sessionId: this.seatSession(seat) });
     }

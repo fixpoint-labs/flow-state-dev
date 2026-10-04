@@ -1,6 +1,6 @@
 {
   "port": 3038,
-  "channel": { "kind": "channel", "id": "support.help", "board": "escalations" },
+  "mailbox": { "kind": "mailbox", "id": "support.help", "board": "escalations" },
   "seatKind": "agent",
   "specialists": [
     { "id": "support.devices", "description": "Printers, laptops, phones, wifi and anything else with a power button." },

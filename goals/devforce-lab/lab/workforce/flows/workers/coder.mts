@@ -14,8 +14,8 @@
  *
  * ## The board declaration below is the framework's tax, not a convention
  *
- * The board belongs to the feature channel: its `CHANNEL.md` names it, and the
- * host hands this kind the channel's ledger. The manager runs each row as a
+ * The board belongs to the feature mailbox: its `MAILBOX.md` names it, and the
+ * host hands this kind the mailbox's ledger. The manager runs each row as a
  * coding run whose checkout and branch are derived from that ledger's id.
  *
  * This kind also declares the feature board a second time — same `boardId`,
@@ -33,7 +33,7 @@
  * documents the same constraint in its header.
  *
  * **Do not read it as how DevForce declares boards.** Board authoring is
- * settled — a channel-attached `TaskCollection` (FIX-1385), which is where this
+ * settled — a mailbox-attached `TaskCollection` (FIX-1385), which is where this
  * lab's board now lives. The cross-flow claim-gate cost is the framework's to
  * remove; FIX-1408 closed with it in place, and nothing owns it now. A kind that
  * needs a task entry pays it today, labelled interim. A Lab that taught it as
@@ -82,7 +82,7 @@ export interface CoderWorkerFlowOptions {
   /** The file-declared documents, as `resourcesFromDocs` built them. */
   resources: DeclaredResources;
   /**
-   * The ledger the manager runs rows off — the feature channel's. Its id is
+   * The ledger the manager runs rows off — the feature mailbox's. Its id is
    * what every run's checkout folder and branch are derived from.
    */
   ledger: FeatureLedger;

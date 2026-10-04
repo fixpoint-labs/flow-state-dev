@@ -47,7 +47,7 @@ const TASK_TOOLS = [
  * The board suffixes the flow's own action list names: every `<suffix>` for
  * which all eight `<tool>_<suffix>` are actions. `taskToolActions` generates
  * the eight together, so a whole family is a board's tools even when this
- * session has no rows on that board (a sibling Workforce channel sharing the
+ * session has no rows on that board (a sibling Workforce mailbox sharing the
  * flow kind, or a board with no tasks yet). An app's own `cancelTask_now`
  * comes with no family, so it names no board.
  */

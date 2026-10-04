@@ -1,10 +1,10 @@
 {
   "port": 3041,
-  "channel": { "kind": "channel", "id": "support.help" },
+  "mailbox": { "kind": "mailbox", "id": "support.help" },
   "replier": { "kind": "agent", "id": "support.devices" },
   "route": "[route:support.devices]",
   "marker": "[scenario:reply-after-a-hold]",
-  "lineMarker": "[reply:in-channel]",
+  "lineMarker": "[reply:in-mailbox]",
   "lineWithinMs": 15000,
   "maxSnapshotReads": 2
 }

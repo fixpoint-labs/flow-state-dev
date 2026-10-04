@@ -74,13 +74,13 @@ describe("the generator reads the tree, never the modules in it", () => {
     // on all three. Getting a rendered module back is the proof it did not.
     const root = tree({
       "flows/workers/researcher.ts": `import x from "@nope/does-not-exist"; export default x;`,
-      "flows/channels/standup.ts": `import { y } from "not-a-package-either"; export default y;`,
+      "flows/mailboxes/standup.ts": `import { y } from "not-a-package-either"; export default y;`,
       "blocks/triage.ts": `this is not valid TypeScript at all ((((`,
     });
 
     const result = await discoverWorkforceCode(root);
 
-    expect(found(result.files)).toEqual(["block:triage", "channel:standup", "worker:researcher"]);
+    expect(found(result.files)).toEqual(["block:triage", "mailbox:standup", "worker:researcher"]);
     expect(renderWorkforceCode(result.files, result.resourceModules)).toContain(
       `"researcher": worker_researcher`,
     );
@@ -125,24 +125,24 @@ describe("the root the caller configured", () => {
 });
 
 describe("what the walk finds", () => {
-  it("registers a worker kind, a channel kind and a block under their basenames", async () => {
+  it("registers a worker kind, a mailbox kind and a block under their basenames", async () => {
     const root = tree({
       "flows/workers/researcher.ts": "export default {};",
-      "flows/channels/standup.ts": "export default {};",
+      "flows/mailboxes/standup.ts": "export default {};",
       "blocks/triage.ts": "export default {};",
     });
 
     const { files } = await discoverWorkforceCode(root);
 
     // Slot, name and import path together: a file landing on the wrong map
-    // would hand `hireWorkforce` a channel kind, which the registry refuses.
+    // would hand `hireWorkforce` a mailbox kind, which the registry refuses.
     expect(files).toEqual([
       { slot: "block", name: "triage", path: "blocks/triage.ts", importPath: "./blocks/triage" },
       {
-        slot: "channel",
+        slot: "mailbox",
         name: "standup",
-        path: "flows/channels/standup.ts",
-        importPath: "./flows/channels/standup",
+        path: "flows/mailboxes/standup.ts",
+        importPath: "./flows/mailboxes/standup",
       },
       {
         slot: "worker",
@@ -166,7 +166,7 @@ describe("what the walk finds", () => {
     expect(files).toEqual([]);
     expect(searched).toEqual([
       "flows/workers",
-      "flows/channels",
+      "flows/mailboxes",
       "blocks",
       "org/resources",
       "org/workers/*/resources",
@@ -275,7 +275,7 @@ describe("what the walk refuses", () => {
     const root = tree({
       "flows/workers/con.ts": "export default {};",
       "blocks/nul.ts": "export default {};",
-      "flows/channels/com1.ts": "export default {};",
+      "flows/mailboxes/com1.ts": "export default {};",
     });
 
     const problems = await refusalsOf(root);
@@ -285,12 +285,12 @@ describe("what the walk refuses", () => {
     // cannot be checked out on Windows at all. The person it breaks is not the
     // one who added the file, and it reads as a broken clone rather than as a
     // naming mistake — so it is caught in the walk, where the name is chosen.
-    // Refusals come back in slot order (worker, channel, block) — the order
+    // Refusals come back in slot order (worker, mailbox, block) — the order
     // `CODE_SLOTS` declares — which is not the path order the *files* render
     // in. Both are deliberate and they are not the same list.
     expect(problems).toEqual([
       expect.stringContaining('"flows/workers/con.ts"'),
-      expect.stringContaining('"flows/channels/com1.ts"'),
+      expect.stringContaining('"flows/mailboxes/com1.ts"'),
       expect.stringContaining('"blocks/nul.ts"'),
     ]);
     for (const problem of problems) {
@@ -317,13 +317,13 @@ describe("what the walk refuses", () => {
   it("refuses one basename claimed by both flow folders", async () => {
     const root = tree({
       "flows/workers/standup.ts": "export default {};",
-      "flows/channels/standup.ts": "export default {};",
+      "flows/mailboxes/standup.ts": "export default {};",
     });
 
     const problems = await refusalsOf(root);
 
     expect(problems).toEqual([
-      expect.stringContaining('"flows/channels/standup.ts" and "flows/workers/standup.ts"'),
+      expect.stringContaining('"flows/mailboxes/standup.ts" and "flows/workers/standup.ts"'),
     ]);
   });
 
@@ -388,7 +388,7 @@ describe("staying in step", () => {
     const files: Record<string, string> = {
       "flows/workers/analyst.ts": "export default {};",
       "flows/workers/researcher.ts": "export default {};",
-      "flows/channels/standup.ts": "export default {};",
+      "flows/mailboxes/standup.ts": "export default {};",
       "blocks/triage.ts": "export default {};",
     };
     const forwards = tree(files);
@@ -409,7 +409,7 @@ describe("staying in step", () => {
     const imported = [...first.matchAll(/^import \w+ from "(.+)";$/gm)].map((match) => match[1]);
     expect(imported).toEqual([
       "./blocks/triage",
-      "./flows/channels/standup",
+      "./flows/mailboxes/standup",
       "./flows/workers/analyst",
       "./flows/workers/researcher",
     ]);
@@ -444,7 +444,7 @@ describe("the rendered module", () => {
   it("imports every file statically and types each map as the parameter it feeds", async () => {
     const root = tree({
       "flows/workers/code-reviewer.ts": "export default {};",
-      "flows/channels/standup.ts": "export default {};",
+      "flows/mailboxes/standup.ts": "export default {};",
       "blocks/triage.ts": "export default {};",
     });
 
@@ -455,7 +455,7 @@ describe("the rendered module", () => {
     expect(rendered).toContain(`import worker_code_reviewer from "./flows/workers/code-reviewer";`);
     expect(rendered).toContain(`"code-reviewer": worker_code_reviewer`);
     expect(rendered).toContain(`satisfies NonNullable<HireOptions["kinds"]>`);
-    expect(rendered).toContain(`satisfies NonNullable<ChannelInstancesOptions["kinds"]>`);
+    expect(rendered).toContain(`satisfies NonNullable<MailboxInstancesOptions["kinds"]>`);
     expect(rendered).toContain(`satisfies Record<string, BlockDefinition>`);
     expect(rendered).toContain("Do not edit");
     // Nothing dynamic: a lazy import here would put the walk back at run time.
@@ -488,7 +488,7 @@ describe("the rendered module", () => {
     // An app with no custom kinds should not acquire an import because of a
     // folder it does not have — and there is no member for a type to catch.
     expect(rendered).toContain("export const kinds = {};");
-    expect(rendered).toContain("export const channelKinds = {};");
+    expect(rendered).toContain("export const mailboxKinds = {};");
     expect(rendered).not.toContain("HireOptions");
   });
 });

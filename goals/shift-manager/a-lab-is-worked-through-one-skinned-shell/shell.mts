@@ -198,7 +198,7 @@ export type Tree = {
   root: string;
   seats: string[];
   teams: string[];
-  channels: Array<{ id: string; members: string[]; boardRefs: string[] }>;
+  mailboxes: Array<{ id: string; members: string[]; boardRefs: string[] }>;
 };
 
 export async function readTree(root: string): Promise<Tree> {
@@ -209,7 +209,7 @@ export async function readTree(root: string): Promise<Tree> {
     root,
     seats,
     teams: [...new Set(seats.map((s) => (s.includes(".") ? s.split(".")[0]! : "Staff")))],
-    channels: roster.channels.map((c) => ({
+    mailboxes: roster.mailboxes.map((c) => ({
       id: c.id,
       members: Array.isArray(c.declared.members) ? (c.declared.members as string[]) : [],
       boardRefs: ((c.declared.boards as string[] | undefined) ?? []).map((b) => `${c.id}.${b}`),
@@ -225,7 +225,7 @@ export type StoredAsk = { suspensionId: string; sessionId: string; seat: string 
 /** What the store holds, read through the Lab's routes by this script. */
 export type Store = {
   seats: string[];
-  channels: Array<{ id: string; kind: string; members: string[] }>;
+  mailboxes: Array<{ id: string; kind: string; members: string[] }>;
   rows: Record<string, StoredRow[]>;
   asks: StoredAsk[];
   /** The organizations the person's sessions are bound to. */
@@ -238,18 +238,18 @@ export type Store = {
 const PERSON_REASONS = new Set(["human_approval", "human_input"]);
 
 export async function readStore(api: LabApi, tree: Tree, userId: string): Promise<Store> {
-  // The inventory, through the first channel's session, by its published key patterns.
-  const host = tree.channels[0]!.id;
+  // The inventory, through the first mailbox's session, by its published key patterns.
+  const host = tree.mailboxes[0]!.id;
   const manifest = await api.get(`/sessions/${encodeURIComponent(host)}/manifest`);
   const refOf = (pattern: string) =>
     (manifest.resources as Array<{ kind: string; ref: string; pattern: string }>).find((r) => r.kind === "collection" && r.pattern === pattern)?.ref;
   const seatsRef = refOf("inventory/seats/*");
-  const channelsRef = refOf("inventory/channels/*");
+  const mailboxesRef = refOf("inventory/mailboxes/*");
   const seats = seatsRef === undefined ? [] : (await api.collection(host, seatsRef)).map((r) => String(r.id));
-  const channels =
-    channelsRef === undefined
+  const mailboxes =
+    mailboxesRef === undefined
       ? []
-      : (await api.collection(host, channelsRef)).map((r) => ({ id: String(r.id), kind: String(r.kind), members: Array.isArray(r.members) ? (r.members as string[]) : [] }));
+      : (await api.collection(host, mailboxesRef)).map((r) => ({ id: String(r.id), kind: String(r.kind), members: Array.isArray(r.members) ? (r.members as string[]) : [] }));
 
   const projectsRef = refOf("projects/*");
   const projects =
@@ -263,11 +263,11 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
         }));
 
   const rows: Store["rows"] = {};
-  for (const channel of tree.channels) {
-    rows[channel.id] = [];
-    for (const ref of channel.boardRefs) {
-      for (const row of await api.collection(channel.id, ref)) {
-        rows[channel.id]!.push({
+  for (const mailbox of tree.mailboxes) {
+    rows[mailbox.id] = [];
+    for (const ref of mailbox.boardRefs) {
+      for (const row of await api.collection(mailbox.id, ref)) {
+        rows[mailbox.id]!.push({
           ref,
           id: String(row.id),
           status: String(row.status),
@@ -294,7 +294,7 @@ export async function readStore(api: LabApi, tree: Tree, userId: string): Promis
       }
     }
   }
-  return { seats, channels, rows, asks, orgs, projects };
+  return { seats, mailboxes, rows, asks, orgs, projects };
 }
 
 /** Whether a session holds a resume for `suspensionId`. */

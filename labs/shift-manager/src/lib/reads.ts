@@ -9,7 +9,7 @@
  * What a refresh reads, in order:
  *
  * 1. **The person's sessions**, dispatch runs included. A seat woken by a
- *    channel post runs in a dispatch-run session, which the default listing
+ *    mailbox post runs in a dispatch-run session, which the default listing
  *    leaves out, so without `include: "dispatch-runs"` that seat's ask would
  *    be invisible. This is also Shift Manager's first read: when the Lab refuses it
  *    for want of a verified organization, the snapshot is only that refusal
@@ -22,21 +22,21 @@
  *    like any other. A Lab that still lists the person no session (it serves
  *    no room kind) names no organization, and gets the refusal too: Shift
  *    Manager never draws a Lab under an unknown one (ER-4).
- * 3. **The inventory**: the organization's seat and channel collections, found
+ * 3. **The inventory**: the organization's seat and mailbox collections, found
  *    by their published key patterns in the manifest of a listed session whose
- *    flow declares them (the channel kind does). Nothing about the tree is
+ *    flow declares them (the mailbox kind does). Nothing about the tree is
  *    written in Shift Manager; this is where every seat, team and workstream name
  *    comes from.
- * 4. **Each workstream's attached boards**: the channel kind's manifest lists
- *    one collection per attached board, `<channelId>.<name>`, read through the
- *    channel's own session.
+ * 4. **Each workstream's attached boards**: the mailbox kind's manifest lists
+ *    one collection per attached board, `<mailboxId>.<name>`, read through the
+ *    mailbox's own session.
  * 5. **Pending asks**: for each listed session a seat owns, the suspension
  *    items only, reduced by `react`'s `deriveSuspensions` to the ones still
  *    pending. Not the transcript.
  * 6. **Declared documents** a browser may read, from each listed flow's
  *    manifest, for Jump to (BR-10).
  * 7. **The organization's projects**: every row of its `projects` collection,
- *    found by its published key pattern on a workstream's channel kind.
+ *    found by its published key pattern on a workstream's mailbox kind.
  *    PROJECTS groups the workstreams by them. A project's room is never read
  *    here: it is read through the person's own talk session when a project's
  *    Stream opens (`talk.ts`).
@@ -92,7 +92,7 @@ export type Seat = {
    */
   hired: boolean | null;
   /**
-   * The id boards and channels name the seat by: for a hired seat the
+   * The id boards and mailboxes name the seat by: for a hired seat the
    * `<seatId>` inside its `<org>.<seatId>` address, otherwise `id` itself.
    */
   seatId: string;
@@ -101,13 +101,13 @@ export type Seat = {
   name: string;
 };
 
-/** A workstream: a declared channel, as the channel inventory registers it (D2). */
+/** A workstream: a declared mailbox, as the mailbox inventory registers it (D2). */
 export type Workstream = {
-  /** The channel's id, which is its session id and its address in Shift Manager. */
+  /** The mailbox's id, which is its session id and its address in Shift Manager. */
   id: string;
-  /** The channel's flow kind. */
+  /** The mailbox's flow kind. */
   kind: string | null;
-  /** The seat ids the channel declares as members. */
+  /** The seat ids the mailbox declares as members. */
   members: string[];
 };
 
@@ -116,7 +116,7 @@ export type ProjectSession = { sessionId: string; userId: string };
 
 /**
  * A project: a row of the organization's `projects` collection. It names no
- * team; its workstreams are channel ids from any team.
+ * team; its workstreams are mailbox ids from any team.
  */
 export type Project = {
   /** The row id, also the project's address in Shift Manager. */
@@ -128,7 +128,7 @@ export type Project = {
   ownerUserId: string;
   /** Who may read and post the project's room. */
   members: string[];
-  /** The channel ids the project holds, as the row lists them. */
+  /** The mailbox ids the project holds, as the row lists them. */
   workstreams: string[];
   /** Each member's talk session, at most one per person. */
   sessions: ProjectSession[];
@@ -151,9 +151,9 @@ export type RunLink = { sessionId: string; requestId: string; attempt: number };
 
 /** One row on an attached board, with the fields a board publishes to a browser. */
 export type BoardRow = {
-  /** The board's collection ref, `<channelId>.<name>`. */
+  /** The board's collection ref, `<mailboxId>.<name>`. */
   boardRef: string;
-  channelId: string;
+  mailboxId: string;
   id: string;
   title: string;
   /** The row's goal, as filed. */
@@ -192,7 +192,7 @@ export type Ask = {
    * is shown, and its answer is unavailable.
    */
   flowId: string | null;
-  /** The session that started this run, for a dispatch run (a channel, when a post woke the seat). */
+  /** The session that started this run, for a dispatch run (a mailbox, when a post woke the seat). */
   parentSessionId: string | null;
   kind: "approval" | "question";
   item: SuspensionItem;
@@ -222,13 +222,13 @@ export const REOPENED_SOURCES: ReadonlySet<string> = new Set(["http", "mcp", "sc
 
 /** What an ask's card says when its run can't be reopened from outside the Lab. */
 export const DISPATCHED_RUN_UNANSWERABLE =
-  "This ask can't be answered from Shift Manager. The Lab reopens only runs a person, an MCP caller or a schedule started; a run it started by itself (a channel post waking a seat, a dispatch, a webhook) is never reopened from outside it.";
+  "This ask can't be answered from Shift Manager. The Lab reopens only runs a person, an MCP caller or a schedule started; a run it started by itself (a mailbox post waking a seat, a dispatch, a webhook) is never reopened from outside it.";
 
 /**
  * Why a Lab that lists the person no session, even after one was asked for on
  * the room kind, is refused: nothing it serves says which organization they are in.
  */
-function noOrganization(userId: string, why = "it holds no session of theirs and serves no channel kind to open one on"): string {
+function noOrganization(userId: string, why = "it holds no session of theirs and serves no mailbox kind to open one on"): string {
   return `The Lab names no organization for ${userId}: ${why}, and a session is where the Lab records the organization it puts them in. Shift Manager's README lists what a Lab opens at boot.`;
 }
 
@@ -287,15 +287,15 @@ export type LabSnapshot =
     };
 
 /** The organization's inventory collections, by their published key patterns. */
-const INVENTORY_PATTERNS = { seats: "inventory/seats/*", channels: "inventory/channels/*" } as const;
+const INVENTORY_PATTERNS = { seats: "inventory/seats/*", mailboxes: "inventory/mailboxes/*" } as const;
 
 /**
- * The flow kind every project's room is on: workforce's built-in channel kind
- * (`CHANNEL_KIND`), whichever kind a workstream runs on or the projects were
+ * The flow kind every project's room is on: workforce's built-in mailbox kind
+ * (`MAILBOX_KIND`), whichever kind a workstream runs on or the projects were
  * read through. Spelled here because the workforce browser entry doesn't
  * export it; `static.test.ts` pins the two together.
  */
-export const ROOM_KIND = "channel";
+export const ROOM_KIND = "mailbox";
 
 /**
  * The organization's projects, by their published key pattern.
@@ -375,7 +375,7 @@ export function toSeat(row: unknown, orgId: string): Seat | undefined {
   return { id, kind: text(field(row, "kind")), door: text(field(row, "door")), hired, seatId: address, team, name };
 }
 
-/** A channel inventory row. A row written before `members` existed reads as none (BP-030). */
+/** A mailbox inventory row. A row written before `members` existed reads as none (BP-030). */
 export function toWorkstream(row: unknown): Workstream | undefined {
   const id = text(field(row, "id"));
   if (id === null) return undefined;
@@ -435,10 +435,10 @@ function strings(value: unknown): string[] {
 }
 
 /** A board row, from what the board publishes. */
-export function toBoardRow(boardRef: string, channelId: string, topic: string, data: unknown): BoardRow {
+export function toBoardRow(boardRef: string, mailboxId: string, topic: string, data: unknown): BoardRow {
   return {
     boardRef,
-    channelId,
+    mailboxId,
     id: text(field(data, "id")) ?? topic,
     title: text(field(data, "title")) ?? text(field(data, "goal")) ?? topic,
     goal: text(field(data, "goal")),
@@ -457,13 +457,13 @@ export function toBoardRow(boardRef: string, channelId: string, topic: string, d
 }
 
 /**
- * The board refs a channel's manifest lists for that channel: collections
- * keyed `<channelId>.<name>/**` where the name carries no dot. The split is
+ * The board refs a mailbox's manifest lists for that mailbox: collections
+ * keyed `<mailboxId>.<name>/**` where the name carries no dot. The split is
  * exact because a board name may not contain one, so `a.b.c` belongs to `a.b`
  * and never to `a`.
  */
-export function boardRefsFor(channelId: string, manifest: ResourceManifest): string[] {
-  const prefix = `${channelId}.`;
+export function boardRefsFor(mailboxId: string, manifest: ResourceManifest): string[] {
+  const prefix = `${mailboxId}.`;
   return manifest.resources
     .filter(
       (entry) =>
@@ -490,7 +490,7 @@ export type LabReader = {
   /** One refresh: every read once. */
   read(): Promise<LabSnapshot>;
   /** Re-read one workstream's one board, for a screen waiting on a row to move. */
-  readBoard(channelId: string, boardRef: string): Promise<BoardRow[]>;
+  readBoard(mailboxId: string, boardRef: string): Promise<BoardRow[]>;
   /**
    * Answer an ask through its session's owning flow. Rejects when the session
    * names no owner, or when the Lab refuses the answer.
@@ -545,8 +545,8 @@ export function createLabReader(clients: LabClients): LabReader {
     return rows;
   };
 
-  const readBoard = async (channelId: string, boardRef: string): Promise<BoardRow[]> =>
-    (await readCollection(channelId, boardRef)).map((row) => toBoardRow(boardRef, channelId, row.topic, row.clientData));
+  const readBoard = async (mailboxId: string, boardRef: string): Promise<BoardRow[]> =>
+    (await readCollection(mailboxId, boardRef)).map((row) => toBoardRow(boardRef, mailboxId, row.topic, row.clientData));
 
   /**
    * The organization's hired roster (its seat ids), through the first listed
@@ -609,12 +609,12 @@ export function createLabReader(clients: LabClients): LabReader {
         manifest.resources.find((r) => r.kind === "collection" && r.pattern === pattern && r.client.state?.read === true)
           ?.ref;
       const seatsRef = refOf(INVENTORY_PATTERNS.seats);
-      const channelsRef = refOf(INVENTORY_PATTERNS.channels);
-      if (seatsRef === undefined || channelsRef === undefined) continue;
+      const mailboxesRef = refOf(INVENTORY_PATTERNS.mailboxes);
+      if (seatsRef === undefined || mailboxesRef === undefined) continue;
       try {
-        const [seatRows, channelRows] = await Promise.all([
+        const [seatRows, mailboxRows] = await Promise.all([
           readCollection(sessionId, seatsRef),
-          readCollection(sessionId, channelsRef),
+          readCollection(sessionId, mailboxesRef),
         ]);
         // Each seat beside the incarnation its row carries, which the
         // team-list rule matches against the roster row's.
@@ -636,7 +636,7 @@ export function createLabReader(clients: LabClients): LabReader {
           roster.ok || hiddenForNoRoster === 0
             ? null
             : `${hiddenForNoRoster} hired seat${hiddenForNoRoster === 1 ? " isn't" : "s aren't"} listed: the roster didn't load, so Shift Manager can't show ${hiddenForNoRoster === 1 ? "it's" : "they're"} still hired. ${roster.failure.message}`;
-        const workstreams = channelRows
+        const workstreams = mailboxRows
           .map((r) => toWorkstream(r.clientData))
           .filter((w): w is Workstream => w !== undefined);
         // Empty means nothing registered, not nothing listed: hired seats the
@@ -646,7 +646,7 @@ export function createLabReader(clients: LabClients): LabReader {
             ok: false,
             failure: {
               message:
-                "The Lab's inventory is empty: it registers no seats and no channels. The Lab booted without opening its inventory.",
+                "The Lab's inventory is empty: it registers no seats and no mailboxes. The Lab booted without opening its inventory.",
             },
           };
         }
@@ -659,7 +659,7 @@ export function createLabReader(clients: LabClients): LabReader {
       ok: false,
       failure: {
         message:
-          "No inventory to read: none of this person's sessions is on a flow that declares the organization's seat and channel inventory. The Lab booted without opening its inventory.",
+          "No inventory to read: none of this person's sessions is on a flow that declares the organization's seat and mailbox inventory. The Lab booted without opening its inventory.",
       },
     };
   };
@@ -668,7 +668,7 @@ export function createLabReader(clients: LabClients): LabReader {
    * The organization's projects, read once, through a session of this
    * person's own whose flow declares the projects collection with a browser
    * read. A project needs no workstream, so neither does this read. That
-   * session only carries the read; rooms are on the built-in channel kind
+   * session only carries the read; rooms are on the built-in mailbox kind
    * (`ROOM_KIND`).
    *
    * `read` opens one on the room kind for a person who holds none

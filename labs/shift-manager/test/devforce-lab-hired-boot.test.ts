@@ -83,7 +83,7 @@ async function open(file: string, root?: string, scriptedModel?: ModelResolver, 
     runTimeoutMs: harness.runTimeoutMs,
     workspace: { root: scratch.root, sourceRepo: scratch.sourceRepo, baseRef: BASE_REF },
     coderSeatId: "eng.coder",
-    channels: { addresses: {}, log: createNotifyLog() },
+    mailboxes: { addresses: {}, log: createNotifyLog() },
     inventory: true,
     ...(withAsk ? { ask: ASK_FEATURE } : {}),
     ...(root === undefined ? {} : { root }),
@@ -128,16 +128,16 @@ describe("a stored hire whose address a file-declared seat now has", () => {
 
 describe("an org worker folder named like one of the Lab's own flows", () => {
   it("refuses to open, naming the folder, rather than replacing that flow", async () => {
-    // `channel` is the channel kind's flow id: an org seat's id is its bare folder name.
+    // `mailbox` is the mailbox kind's flow id: an org seat's id is its bare folder name.
     const root = join(mkdtempSync(join(tmpdir(), "devforce-tree-")), "workforce");
     cpSync(LAB_TREE, root, { recursive: true });
-    mkdirSync(join(root, "org", "workers", "channel"), { recursive: true });
+    mkdirSync(join(root, "org", "workers", "mailbox"), { recursive: true });
     writeFileSync(
-      join(root, "org", "workers", "channel", "WORKER.md"),
-      "---\ndescription: Named like the channel kind.\nflow: agent\n---\n\nYou are a seat called channel.\n",
+      join(root, "org", "workers", "mailbox", "WORKER.md"),
+      "---\ndescription: Named like the mailbox kind.\nflow: agent\n---\n\nYou are a seat called mailbox.\n",
     );
     const file = await seededStore({});
-    await expect(open(file, root)).rejects.toThrow(/seat "channel".*already the flow "channel"/);
+    await expect(open(file, root)).rejects.toThrow(/seat "mailbox".*already the flow "mailbox"/);
   }, 120_000);
 });
 
@@ -263,14 +263,14 @@ describe("a re-hire the process died in after its roster write", () => {
   }, 120_000);
 });
 
-describe("the chief of staff's post to the team channel", () => {
-  it("lands as a line: the channel's members include the chief of staff", async () => {
+describe("the chief of staff's post to the team mailbox", () => {
+  it("lands as a line: the mailbox's members include the chief of staff", async () => {
     const file = await seededStore({});
-    let channel = "";
+    let mailbox = "";
     const seen: GeneratorModelCallOptions[] = [];
     const script: Array<(o: GeneratorModelCallOptions) => GeneratorModelResult> = [
       () => ({
-        toolCalls: [{ toolCallId: "p1", toolName: "post-to-channel", args: { channel, body: "The helper is hired." } }],
+        toolCalls: [{ toolCallId: "p1", toolName: "post-to-mailbox", args: { mailbox, body: "The helper is hired." } }],
         finishReason: "tool-calls",
       }),
       () => ({ text: "posted", finishReason: "stop" }),
@@ -289,7 +289,7 @@ describe("the chief of staff's post to the team channel", () => {
     };
     const resolver = Object.assign(() => model, { resolveId: (id: string) => id }) as unknown as ModelResolver;
     const lab = await open(file, undefined, resolver);
-    channel = lab.channelId!;
+    mailbox = lab.mailboxId!;
     const runtime = await lab.state.getRuntime();
 
     const started = await runAction({
@@ -297,7 +297,7 @@ describe("the chief of staff's post to the team channel", () => {
       flow: runtime.registry.get(COS) as FlowInstance,
       actionName: "run",
       input: { message: "tell the team the helper is hired" },
-      // The Lab's person, whose channel session it is.
+      // The Lab's person, whose mailbox session it is.
       userId: LAB_USER_ID,
       sessionId: "s-cos-post",
       stores: runtime.stores,
@@ -305,7 +305,7 @@ describe("the chief of staff's post to the team channel", () => {
     } as never);
     expect((await runtime.stores.request.get(started.requestId!))?.status).toBe("completed");
 
-    // The dispatch hands the post over and returns; the channel lands it on its own request.
+    // The dispatch hands the post over and returns; the mailbox lands it on its own request.
     let lines = await lab.transcript!();
     for (let tries = 0; tries < 50 && !lines.some((line) => line.author === COS); tries++) {
       await new Promise((resolve) => setTimeout(resolve, 100));

@@ -43,7 +43,7 @@ export type Roster = { seats: readonly Seat[]; workstreams: readonly Workstream[
  *    inside its `<org>.<seatId>` address), is the assignee;
  * 2. the one seat whose own name is the assignee;
  * 3. when that name belongs to seats in more than one team, the one of them
- *    that is a member of the row's channel, by either id.
+ *    that is a member of the row's mailbox, by either id.
  *
  * Still more than one, or none, is no seat: a row is never shown against
  * several seats, or against a guess. Which seat actually claimed the row is
@@ -56,9 +56,9 @@ export function seatFor(roster: Roster, row: BoardRow): Seat | undefined {
   if (exact !== undefined) return exact;
   const named = roster.seats.filter((seat) => seat.name === row.assignee);
   if (named.length <= 1) return named[0];
-  const members = new Set(roster.workstreams.find((w) => w.id === row.channelId)?.members ?? []);
-  const inChannel = named.filter((seat) => members.has(seat.id) || members.has(seat.seatId));
-  return inChannel.length === 1 ? inChannel[0] : undefined;
+  const members = new Set(roster.workstreams.find((w) => w.id === row.mailboxId)?.members ?? []);
+  const inMailbox = named.filter((seat) => members.has(seat.id) || members.has(seat.seatId));
+  return inMailbox.length === 1 ? inMailbox[0] : undefined;
 }
 
 /** A worker's shift status, the one word Roster, the sidebar and the workstream panel draw. */
@@ -139,7 +139,7 @@ export function rosterOf(snapshot: LoadedSnapshot): Roster {
 
 /**
  * The asks a workstream's Stream shows (BR-18): the Inbox's asks whose seat is
- * one of the channel's members, in Inbox's order.
+ * one of the mailbox's members, in Inbox's order.
  */
 export function asksFor(workstream: Workstream, asks: readonly Ask[]): Ask[] {
   const members = new Set(workstream.members);
@@ -162,8 +162,8 @@ export function asksOfTask(snapshot: LabSnapshot | undefined, row: BoardRow | un
 }
 
 /**
- * The workstreams an ask belongs to: the channel whose post started the run,
- * when there is one, otherwise every channel the seat is a member of.
+ * The workstreams an ask belongs to: the mailbox whose post started the run,
+ * when there is one, otherwise every mailbox the seat is a member of.
  */
 export function workstreamsOf(ask: Ask, workstreams: readonly Workstream[]): Workstream[] {
   const parent = workstreams.find((w) => w.id === ask.parentSessionId);
@@ -253,7 +253,7 @@ export function teamsOf(seats: readonly Seat[]): Array<{ team: string; seats: Se
 /**
  * One workstream a project lists: its id as the row holds it, and the
  * workstream the inventory registers under that id. `undefined` when the
- * channel has left the tree: the id stays on the row, and is shown as gone.
+ * mailbox has left the tree: the id stays on the row, and is shown as gone.
  */
 export type ListedWorkstream = { id: string; workstream: Workstream | undefined };
 
@@ -389,7 +389,7 @@ export function shiftSummary(snapshot: LoadedSnapshot): {
     asks: snapshot.asks,
     running:
       failed === undefined
-        ? { ok: true, value: { runs: running.length, workstreams: new Set(running.map((row) => row.channelId)).size } }
+        ? { ok: true, value: { runs: running.length, workstreams: new Set(running.map((row) => row.mailboxId)).size } }
         : { ok: false, failure: failed },
   };
 }

@@ -1,7 +1,7 @@
 {
   "port": 3987,
   "app": {
-    "channel": "support.help",
+    "mailbox": "support.help",
     "board": "escalations",
     "seat": "support.devices",
     "block": "escalate",

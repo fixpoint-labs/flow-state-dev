@@ -41,7 +41,7 @@ export function tasksSummary(snapshot: LoadedSnapshot): string {
     `${asks} ${asks === 1 ? "needs" : "need"} you`,
     `${counts["on shift"]} on shift`,
     `${counts["on call"]} on call`,
-    plural(new Set(inFlight.map((row) => row.channelId)).size, "stream", "streams"),
+    plural(new Set(inFlight.map((row) => row.mailboxId)).size, "stream", "streams"),
   ].join(" · ");
 }
 

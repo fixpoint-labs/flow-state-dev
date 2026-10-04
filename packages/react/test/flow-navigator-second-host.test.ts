@@ -2,7 +2,7 @@
 /**
  * What the SECOND host needed and the first did not (FIX-1477 PR-B).
  *
- * The reference app knows its kinds: it filters on `channel` and `agent`,
+ * The reference app knows its kinds: it filters on `mailbox` and `agent`,
  * which are values in its own source. A generic inspector does not — the
  * developer tool is pointed at whatever server is running, and the kinds are
  * app-defined strings it can only learn by asking. Both gaps below were found
@@ -78,7 +78,7 @@ describe("FlowNavigator · a host that cannot name its kinds", () => {
   });
 
   it("keeps a named section filtering, so the wildcard is opt-in", async () => {
-    mount(mixed, { sections: [{ label: "Channels", kinds: ["chat"] }] });
+    mount(mixed, { sections: [{ label: "Mailboxes", kinds: ["chat"] }] });
 
     await waitFor(() => expect(kindRow("chat")).toBeTruthy());
     expect(document.querySelectorAll("[data-kind]")).toHaveLength(1);

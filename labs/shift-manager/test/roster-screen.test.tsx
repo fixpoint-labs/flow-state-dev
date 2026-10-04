@@ -27,8 +27,8 @@ vi.mock("../src/lib/reads", async (importOriginal) => {
 
 const ORG = "acme";
 const seat = (id: string, kind = "worker") => toSeat({ id, kind }, ORG)!;
-const row = (channel: string, id: string, status: string, assignee: string): BoardRow =>
-  toBoardRow(`${channel}.work`, channel, id, { id, title: `${id} title`, status, assignee });
+const row = (mailbox: string, id: string, status: string, assignee: string): BoardRow =>
+  toBoardRow(`${mailbox}.work`, mailbox, id, { id, title: `${id} title`, status, assignee });
 const ask = (seatId: string, suspensionId: string, message: string): Ask =>
   ({
     sessionId: `s_${suspensionId}`,
@@ -49,10 +49,10 @@ const ask = (seatId: string, suspensionId: string, message: string): Ask =>
 function lab(options: { asks?: "failed"; boards?: "ops failed"; inventory?: "failed" } = {}): LabSnapshot {
   const seats = [seat("eng.coder", "coder"), seat("eng.reviewer"), seat("ops.asker", "asker"), seat("ops.idle"), seat("chief-of-staff", "cos")];
   const workstreams = [
-    toWorkstream({ id: "eng.desk", kind: "channel", members: ["eng.coder", "eng.reviewer"] })!,
-    toWorkstream({ id: "ops.desk", kind: "channel", members: ["ops.asker", "ops.idle"] })!,
+    toWorkstream({ id: "eng.desk", kind: "mailbox", members: ["eng.coder", "eng.reviewer"] })!,
+    toWorkstream({ id: "ops.desk", kind: "mailbox", members: ["ops.asker", "ops.idle"] })!,
   ];
-  const ok = (rows: BoardRow[]): Section<WorkstreamBoards> => ({ ok: true, value: { refs: [`${rows[0]!.channelId}.work`], rows } });
+  const ok = (rows: BoardRow[]): Section<WorkstreamBoards> => ({ ok: true, value: { refs: [`${rows[0]!.mailboxId}.work`], rows } });
   return {
     readAt: Date.UTC(2026, 9, 1, 9, 30),
     sessions: [],

@@ -4,7 +4,7 @@
  *
  * Compose it into a worker kind's `uses` and every seat of that kind gains one
  * tool: `discover`, which answers what is in scope for it right now. The
- * capability installs the workforce's own two domains (seats and channels,
+ * capability installs the workforce's own two domains (seats and mailboxes,
  * projected from the declared roster (files, and when asked the durable hired
  * roster) joined to FIX-1405's live inventory rows —
  * see `./manifest-sources`) and carries whatever other domains the app hands
@@ -143,7 +143,7 @@ export function createWorkforceCapability(
   const doors = new Map<string, ReturnType<typeof discoveryTools>["discover"]>();
   const doorFor = (selection: readonly ManifestDomain[] | undefined) => {
     // Sorted, because the key stands for a SET: a kind that writes
-    // `discover: [seats, channels]` and one that writes `[channels, seats]`
+    // `discover: [seats, mailboxes]` and one that writes `[mailboxes, seats]`
     // narrow to the same door, and an order-sensitive key would build and hold
     // a second identical `discoveryTools` instance for the same scope.
     const key = selection === undefined ? "*" : [...selection].sort().join(",");

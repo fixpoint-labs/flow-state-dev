@@ -63,7 +63,7 @@ function fakeServer(
 }
 
 const sections = [
-  { label: "Channels", kinds: ["chat"] },
+  { label: "Mailboxes", kinds: ["chat"] },
   { label: "Seats", kinds: ["agent"] },
 ];
 
@@ -204,7 +204,7 @@ describe("FlowNavigator · sections", () => {
 
     await waitFor(() => expect(kindRow("chat")).toBeTruthy());
     expect(document.querySelector('[data-empty-section="Seats"]')).toBeTruthy();
-    // Not an error, and Channels still drew its kind.
+    // Not an error, and Mailboxes still drew its kind.
     expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
   });
 
@@ -704,7 +704,7 @@ describe("FlowNavigator · session labels (BR-16 – BR-19)", () => {
     expect(sessionRow("sess_1790206121611_42636c63df102").textContent).toBe("Refund for order 4417");
     // The prefix says what it is; the tail is what tells two apart.
     expect(sessionRow("sess_1790206133090_9f1e07ab55c3").textContent).toBe("sess_…ab55c3");
-    // Not engine-shaped, so nothing to shorten: a channel reads as its name.
+    // Not engine-shaped, so nothing to shorten: a mailbox reads as its name.
     expect(sessionRow("support.noticeboard").textContent).toBe("support.noticeboard");
     // An empty title is no title.
     expect(sessionRow("sess_1790206140712_0c4d2e91aa7f").textContent).toBe("sess_…91aa7f");
