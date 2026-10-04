@@ -108,7 +108,7 @@ Add `--watch` and leave `fsdev dev` running while you work on your flows:
 fsdev dev --config ./fsdev.config.mts --watch
 ```
 
-When you save a file your config loaded, such as a flow module, or any file in the config's folder, such as a `WORKER.md` read from disk, the server restarts on the same port and any page open on it reloads by itself. Saving a data file, something under `node_modules`, or a file in a folder whose name starts with a dot does nothing. With `--port 0`, the free port is picked once and kept across restarts.
+When you save a file your config loaded, such as a flow module, any file in the config's folder, such as a `WORKER.md` read from disk, or a `.env.local` file `fsdev` loaded, the server restarts on the same port and any page open on it reloads by itself. Adding a new file to the config's folder, such as a new worker's `WORKER.md`, restarts it too. Saving a data file, something under `node_modules`, or a file in a folder whose name starts with a dot does nothing. With `--port 0`, the free port is picked once and kept across restarts.
 
 A restart is a new process. A config with in-memory stores starts empty each time, so use SQLite if you want your data to survive an edit. If the server fails to start after a save, for example on a syntax error, the error prints and `fsdev dev` waits for the next save.
 

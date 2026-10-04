@@ -9,10 +9,12 @@
  * is up, and keeps running when a child fails: `node --watch` waits for the
  * next save.
  *
- * A Lab change is a module the Lab loaded, or a file under its config's
- * directory, which a child reports to `node --watch` itself. Never a module
- * under `node_modules` (see `dev-watch-preload.ts`), the app's pages, or a
- * data file.
+ * A Lab change is a module the Lab loaded, a file under its config's
+ * directory, or an `.env.local` file it loaded, which a child reports to
+ * `node --watch` itself. Never a module under `node_modules` (see
+ * `dev-watch-preload.ts`), the app's pages, or a data file. A file created
+ * under the config's directory after a child started is one `node --watch`
+ * can't know of, so that child asks the parent to start it over.
  *
  * Each child stamps its pages with a boot id meta and serves a stream that
  * sends that id. The page script compares the two and reloads when a new child
@@ -20,7 +22,7 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readdirSync } from "node:fs";
+import { readdirSync, statSync, watch } from "node:fs";
 import { createServer } from "node:net";
 import type { ServerResponse } from "node:http";
 import { extname, join, sep } from "node:path";
@@ -84,34 +86,54 @@ export async function superviseDev(options: SuperviseOptions): Promise<Superviso
   const child: WatchChild = { port, ...(devtoolPort === undefined ? {} : { devtoolPort }) };
   const preload = new URL(`./dev-watch-preload${extname(fileURLToPath(import.meta.url))}`, import.meta.url);
 
-  const watcher: ChildProcess = spawn(
-    process.execPath,
-    [
-      ...process.execArgv,
-      "--watch",
-      "--watch-preserve-output",
-      "--import",
-      preload.href,
-      process.argv[1]!,
-      ...process.argv.slice(2),
-    ],
-    { stdio: ["inherit", "inherit", "inherit", "ipc"], env: { ...process.env, [CHILD_ENV]: JSON.stringify(child) } },
-  );
+  const start = (): ChildProcess =>
+    spawn(
+      process.execPath,
+      [
+        ...process.execArgv,
+        "--watch",
+        "--watch-preserve-output",
+        "--import",
+        preload.href,
+        process.argv[1]!,
+        ...process.argv.slice(2),
+      ],
+      { stdio: ["inherit", "inherit", "inherit", "ipc"], env: { ...process.env, [CHILD_ENV]: JSON.stringify(child) } },
+    );
   const host = options.host.includes(":") ? `[${options.host}]` : options.host;
   const url = `http://${host}:${port}/`;
   let ready = false;
-  watcher.on("message", (message) => {
-    if (!ready && typeof message === "object" && message !== null && "fsdevDevReady" in message) {
-      ready = true;
-      options.onFirstReady(url);
-    }
-  });
-  const exited = new Promise<void>((resolve) => watcher.once("exit", () => resolve()));
+  let closing = false;
+  let restarting = false;
+  let watcher: ChildProcess;
+  let exited: Promise<void>;
+  const run = () => {
+    watcher = start();
+    exited = new Promise<void>((resolve) => watcher.once("exit", () => resolve()));
+    watcher.on("message", (message) => {
+      if (typeof message !== "object" || message === null) return;
+      if (!ready && "fsdevDevReady" in message) {
+        ready = true;
+        options.onFirstReady(url);
+      }
+      // A file appeared that `node --watch` can't know of: start it over, on the same ports.
+      if ("fsdevDevRestart" in message && !restarting && !closing) {
+        restarting = true;
+        watcher.kill("SIGTERM");
+        void exited.then(() => {
+          restarting = false;
+          if (!closing) run();
+        });
+      }
+    });
+  };
+  run();
 
   return {
     url,
     devtoolUrl: devtoolPort === undefined ? undefined : `http://${host}:${devtoolPort}/`,
     async close() {
+      closing = true;
       if (watcher.exitCode === null && watcher.signalCode === null) watcher.kill("SIGTERM");
       await exited;
     },
@@ -133,22 +155,74 @@ function reservePort(host: string, port: number): Promise<number> {
 /**
  * Report files to `node --watch` so a save restarts this child: every file
  * under `dir`, skipping dot entries, `node_modules`, data files and the `skip`
- * paths (the app's pages). A no-op outside a `node --watch` child.
+ * paths (the app's pages). A file created there later, which `node --watch`
+ * can't know of, asks the parent to start the child over. A no-op outside a
+ * `node --watch` child.
  */
-export function reportLabFiles(dir: string, skip: readonly string[]): void {
+export function watchLabFiles(dir: string, skip: readonly string[]): void {
   if (process.send === undefined || process.env.WATCH_REPORT_DEPENDENCIES === undefined) return;
-  const files: string[] = [];
-  const walk = (at: string) => {
-    for (const entry of readdirSync(at, { withFileTypes: true })) {
-      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+  const known = new Set<string>();
+  const skipped = (name: string, path: string) =>
+    name.startsWith(".") || name === "node_modules" || skip.some((s) => path === s || path.startsWith(s + sep));
+  // Returns whether a file not known before was found.
+  const walk = (at: string): boolean => {
+    let found = false;
+    let entries;
+    try {
+      entries = readdirSync(at, { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    watchDir(at);
+    for (const entry of entries) {
       const path = join(at, entry.name);
-      if (skip.some((s) => path === s || path.startsWith(s + sep))) continue;
-      if (entry.isDirectory()) walk(path);
-      else if (entry.isFile() && !DATA_FILE.test(entry.name)) files.push(path);
+      if (skipped(entry.name, path)) continue;
+      if (entry.isDirectory()) found = walk(path) || found;
+      else if (entry.isFile() && !DATA_FILE.test(entry.name) && !known.has(path)) {
+        known.add(path);
+        found = true;
+      }
+    }
+    return found;
+  };
+  const watched = new Set<string>();
+  let asked = false;
+  const watchDir = (at: string) => {
+    if (watched.has(at)) return;
+    try {
+      const watcher = watch(at, { persistent: false }, (event, name) => {
+        if (event !== "rename" || name === null || asked) return;
+        const path = join(at, name);
+        if (known.has(path) || skipped(name, path) || DATA_FILE.test(name)) return;
+        // After a moment, so an editor's temporary file has gone again.
+        setTimeout(() => {
+          if (asked) return;
+          let stats;
+          try {
+            stats = statSync(path);
+          } catch {
+            return;
+          }
+          if (stats.isFile() || (stats.isDirectory() && walk(path))) {
+            asked = true;
+            process.send?.({ fsdevDevRestart: true });
+          }
+        }, 150).unref();
+      });
+      watcher.on("error", () => undefined);
+      watched.add(at);
+    } catch {
+      // A directory gone already: nothing to watch.
     }
   };
   walk(dir);
-  if (files.length > 0) process.send({ "watch:require": files });
+  reportWatchFiles([...known]);
+}
+
+/** Report `files` to `node --watch`, so a save to one restarts this child. A no-op outside a `node --watch` child. */
+export function reportWatchFiles(files: readonly string[]): void {
+  if (process.send === undefined || process.env.WATCH_REPORT_DEPENDENCIES === undefined || files.length === 0) return;
+  process.send({ "watch:require": [...files] });
 }
 
 /** A database file and its journals: the Lab writes these, so they never restart it. */

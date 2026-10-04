@@ -23,7 +23,7 @@
 import { exec } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import type { Command } from "commander";
 import {
   createFlowApiRouter,
@@ -48,9 +48,10 @@ import {
   announceReady,
   chainPageHandlers,
   createReloadSignal,
-  reportLabFiles,
+  reportWatchFiles,
   superviseDev,
   takeWatchChild,
+  watchLabFiles,
   type ReloadSignal,
 } from "../dev-watch";
 import { formatFailedImportSection } from "../resolve-flow";
@@ -186,7 +187,14 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<Dev
       : await resolveApp(options.app, cwd, options.watch === true);
 
   if (options.watch === true && watchChild === undefined) {
-    // The parent: bad input has failed above; the child loads the config.
+    // The parent: bad input fails here, since a child that fails before it
+    // reports a file leaves `node --watch` nothing to restart it on.
+    if (typeof options.config === "string") locateConfig({ cwd, configPath: options.config });
+    for (const file of options.dotenv ?? []) {
+      const path = isAbsolute(file) ? file : resolve(cwd, file);
+      if (!existsSync(path)) throw new CliError(`--dotenv file not found: ${path}`, EXIT_CONFIG_ERROR);
+    }
+    // The child loads the config.
     let devtool = false;
     if (app !== undefined) devtool = await resolveDevToolAssets().then(() => true, () => false);
     const supervisor = await superviseDev({
@@ -214,7 +222,7 @@ export async function executeDevCommand(options: DevCommandOptions): Promise<Dev
         : locateConfig({ cwd, configPath: typeof options.config === "string" ? options.config : undefined });
     if (configPath !== undefined) {
       const pages = app?.pages.kind === "source" ? app.pages.root : app?.pages.dir;
-      reportLabFiles(dirname(configPath), pages === undefined ? [] : [pages]);
+      watchLabFiles(dirname(configPath), pages === undefined ? [] : [pages]);
     }
     reload = createReloadSignal();
   }
@@ -269,7 +277,9 @@ async function resolveDevRuntime(options: DevCommandOptions, host: string, loopb
     config: options.config,
     flowDir: options.flowDir,
     dotenv: options.dotenv,
-    beforeConfigLoad: () => {
+    beforeConfigLoad: (envFiles) => {
+      // A watch child restarts on a save to an env file it loaded.
+      reportWatchFiles(envFiles);
       // Never on a network bind: the debug surface reads full server state and
       // admits Origin-less requests, which only a loopback page may make.
       if (!loopback) {

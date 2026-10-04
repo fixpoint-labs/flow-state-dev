@@ -83,6 +83,7 @@ async function makeLab(): Promise<string> {
   await writeFile(join(lab, "data", "lab.sqlite"), "v1");
   await mkdir(join(lab, ".fsdev"));
   await writeFile(join(lab, ".fsdev", "state.json"), "{}");
+  await writeFile(join(lab, ".env.local"), "LAB_KEY=a\n");
   return lab;
 }
 
@@ -194,6 +195,34 @@ describe("fsdev dev --watch on a real child", () => {
     expect([...(await bootsOver(run, 3_000))]).toEqual([before]);
   }, 60_000);
 
+  it("restarts on a save to an .env.local file the Lab loaded", async () => {
+    const before = await bootId(run);
+    await writeFile(join(lab, ".env.local"), "LAB_KEY=b\n");
+    await nextBoot(run, before);
+  }, 60_000);
+
+  it("restarts, on the same port, when a file is created under the config's directory after it started", async () => {
+    const before = await bootId(run);
+    await mkdir(join(lab, "tree", "b"));
+    await writeFile(join(lab, "tree", "b", "WORKER.md"), "# b\n");
+    await nextBoot(run, before);
+    // Its next save is a save to a known file.
+    const after = await bootId(run);
+    await writeFile(join(lab, "tree", "b", "WORKER.md"), "# b, edited\n");
+    await nextBoot(run, after);
+  }, 90_000);
+
+  it.each([
+    ["a new data file", "data/new.sqlite"],
+    ["a new file in a dot directory", ".fsdev/new.json"],
+    ["a new page file", "pages/new.html"],
+  ])("does not restart when %s is created", async (_what, file) => {
+    const before = await bootId(run);
+    expect(before).toBeDefined();
+    await writeFile(join(lab, file), "x");
+    expect([...(await bootsOver(run, 3_000))]).toEqual([before]);
+  }, 60_000);
+
   it("keeps watching after a failed restart, and the next save starts it again", async () => {
     await writeFile(join(lab, "flows", "hello.mts"), "export const flow = ;\n");
     const until = Date.now() + 30_000;
@@ -283,6 +312,29 @@ describe("fsdev dev --watch on a real child", () => {
     expect(await exited).toBe(0);
     // Nothing is left serving the port.
     await expect(fetch(url, { signal: AbortSignal.timeout(2_000) })).rejects.toThrow();
+  }, 30_000);
+});
+
+describe("fsdev dev --watch with input that names a missing file", () => {
+  it.each([
+    ["--config", ["--config", "missing.config.mts"], "Config file not found"],
+    ["--dotenv", ["--dotenv", "missing.env"], "--dotenv file not found"],
+  ])("exits with the config error for a missing %s, rather than wait on a save", async (_flag, args, message) => {
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "fsdev-watch-missing-")));
+    const proc = spawn(
+      process.execPath,
+      ["--import", tsxLoader, join(cli, "src", "bin.ts"), "dev", "--watch", "--port", "0", "--no-open", ...args],
+      { cwd: dir, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, FORCE_COLOR: "0" } },
+    );
+    let output = "";
+    proc.stderr!.on("data", (d) => (output += String(d)));
+    const code = await Promise.race([
+      new Promise<number | null>((r) => proc.once("exit", r)),
+      new Promise((r) => setTimeout(() => r("still running"), 20_000)),
+    ]);
+    proc.kill("SIGTERM");
+    expect(code).toBe(3);
+    expect(output).toContain(message);
   }, 30_000);
 });
 
