@@ -85,7 +85,7 @@ describe("checkHiredSeatRow", () => {
     if (!checked.ok) expect(checked.detail).toMatch(/queue/);
   });
 
-  it("unreadable: a row that doesn't parse, a row stamped for another org, an unaddressable org", () => {
+  it("unreadable: a row that doesn't parse, a row stamped for another org; any org id addresses", () => {
     const shapeless = checkHiredSeatRow("acme", { seatId: "support.x" }, kinds);
     expect(shapeless).toMatchObject({ ok: false, reason: "unreadable" });
     expect(shapeless.ok ? undefined : shapeless.row).toBeUndefined();
@@ -94,8 +94,9 @@ describe("checkHiredSeatRow", () => {
     expect(foreign).toMatchObject({ ok: false, reason: "unreadable" });
     if (!foreign.ok) expect(foreign.detail).toMatch(/cannot be registered under "acme"/);
 
-    const badOrg = checkHiredSeatRow("Not An Org", stored({ seatId: "support.z", flow: "desk", owningOrgId: null }), kinds);
-    expect(badOrg).toMatchObject({ ok: false, reason: "unreadable" });
+    // An org id outside lowercase-hyphen is escaped into the address, not refused.
+    const spacedOrg = checkHiredSeatRow("Not An Org", stored({ seatId: "support.z", flow: "desk", settings: { queue: "q" }, owningOrgId: null }), kinds);
+    expect(spacedOrg).toMatchObject({ ok: true });
   });
 
   it("the reload names each skipped row with the check's detail, unchanged", async () => {

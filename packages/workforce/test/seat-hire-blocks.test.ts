@@ -11,6 +11,8 @@ import { createTestContext } from "@flow-state-dev/testing";
 import type { SeatHireCapabilityOptions } from "../src/seat-hire-blocks";
 import { defineHiredRosterCollection } from "../src/roster/collections";
 import { defineSeatInventoryCollection } from "../src/inventory/collections";
+import { seatAddress, splitSeatAddress } from "../src/roster/address";
+import { DEFAULT_ORG_ID } from "@flow-state-dev/core/types";
 
 const captured = vi.hoisted(() => ({
   hire: undefined as unknown,
@@ -43,14 +45,17 @@ function presetTools(cap: Parameters<typeof resolveActivePresets>[0]): unknown[]
   );
 }
 
-async function hireAgainst(register: SeatHireCapabilityOptions["register"] = () => {}) {
+async function hireAgainst(
+  register: SeatHireCapabilityOptions["register"] = () => {},
+  orgId = "acme",
+) {
   const { createSeatHireBlocks } = await import("../src/seat-hire-blocks");
   const { hire } = createSeatHireBlocks({
     register,
     unregister: () => true,
   });
   const runtime = await createTestContext({
-    orgId: "acme",
+    orgId,
     sessionId: "test-session",
     declaredResources: {
       [HIRED_ROSTER_RESOURCE]: defineHiredRosterCollection(),
@@ -151,4 +156,32 @@ describe("register throwing leaves no roster row and no inventory row", () => {
     expect(await listedIds(ctx, HIRED_ROSTER_RESOURCE, "seatId")).toEqual([]);
     expect(await listedIds(ctx, SEAT_INVENTORY_RESOURCE, "id")).toEqual([]);
   });
+});
+
+describe("an org id that is not a lowercase-hyphen segment can hire", () => {
+  // The framework's own default org, and the `org_…` ids auth providers hand
+  // out. Put the segment check back in `seatAddress` and every hire here is
+  // refused with "Organization id … must be lowercase letters".
+  for (const orgId of ["org_pentest_lab", DEFAULT_ORG_ID, "Org_2NfXq"]) {
+    it(`hires under "${orgId}", at an address that splits back to the seat id`, async () => {
+      const registered: string[] = [];
+      const { hire, ctx } = await hireAgainst((seat) => {
+        registered.push(seat.id);
+      }, orgId);
+
+      const result = await executeBlock({
+        block: hire,
+        input: { seatId: "helper", flow: "agent" },
+        ctx,
+      });
+
+      expect(result.error).toBeUndefined();
+      const address = (result.output as { address: string }).address;
+      expect(address).toBe(seatAddress(orgId, "helper"));
+      expect(registered).toEqual([address]);
+      expect(splitSeatAddress(orgId, address)).toBe("helper");
+      expect(await listedIds(ctx, HIRED_ROSTER_RESOURCE, "seatId")).toEqual(["helper"]);
+      expect(await listedIds(ctx, SEAT_INVENTORY_RESOURCE, "id")).toEqual([address]);
+    });
+  }
 });

@@ -16,6 +16,7 @@ import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import {
   defineHiredRosterCollection,
   reloadHiredSeats,
+  seatAddress,
   toHiredSeatRow,
   workerConfigSchema,
 } from "@flow-state-dev/workforce";
@@ -226,11 +227,16 @@ await runGoal(async () => {
   if (reload !== undefined) {
     const ids = reload.seats.map((seat) => seat.id);
     if (!ids.includes(namedAddress)) fail("c", `reload did not return ${namedAddress}; got ${JSON.stringify(ids)}`);
-    const devProblem = reload.problems.find(
-      (problem) => problem.includes(DEFAULT_ORG_ID) && problem.includes(fixture.devSeatId),
-    );
-    if (devProblem === undefined) {
-      fail("c", `the default-org row was not named in problems: ${JSON.stringify(reload.problems)}`);
+    // The dev hire comes back as a seat: the default org is escaped into its
+    // address rather than refused.
+    const devAddress = seatAddress(DEFAULT_ORG_ID, fixture.devSeatId);
+    const devProblem = reload.problems.find((problem) => problem.includes(DEFAULT_ORG_ID));
+    if (!ids.includes(devAddress) || devProblem !== undefined) {
+      fail(
+        "c",
+        `the default-org row did not come back as ${devAddress}: ${JSON.stringify(ids)}, ` +
+          `problems ${JSON.stringify(reload.problems)}`,
+      );
     }
     const strayProblem = reload.problems.find((problem) => problem.includes(fixture.strayOrg));
     if (strayProblem === undefined || !strayProblem.includes("cannot be registered under")) {
@@ -263,7 +269,7 @@ await runGoal(async () => {
         evidence:
           `dev hire stored under ${DEFAULT_ORG_ID}; reload over [${DEFAULT_ORG_ID}, ${fixture.namedOrg}] ` +
           `returned ${JSON.stringify(ids)} and ${reload.problems.length} problems; ` +
-          `${namedAddress} answered after restart; default-org row named: ${devProblem}; ` +
+          `${namedAddress} answered after restart; default-org row came back as ${devAddress}; ` +
           `stray row refused: ${strayProblem}`,
       };
     }
