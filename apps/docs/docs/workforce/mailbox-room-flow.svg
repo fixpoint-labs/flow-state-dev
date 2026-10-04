@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 742" role="img" aria-label="How a post travels through a mailbox and through a project&#x27;s room, as swimlanes with time running left to right. A mailbox: Alice owns the session support.desk, a session on the mailbox kind that holds the transcript. Alice posts, the line is kept in that session, the notify block wakes the seat in its own session keyed mailbox:support.desk, the seat&#x27;s answer line lands back in support.desk, and Alice reads the transcript. Bob, another user, posts to support.desk and is refused with the same 404 as an unknown session, because the session belongs to Alice. A room: Alice and Bob are members of a project and each has their own talk session. Alice posts from hers, and the line is written to room-lines, organization data that holds the room&#x27;s transcript. The template seat is woken as Alice, in a conversation it keeps per person, and its answer comes back through Alice&#x27;s session as the next line in room-lines. Bob reads from his own session and gets both lines. Carol is in the organization but not a member, and her join is refused with not-a-member. Why a session per member: a session acts for one user, and anyone else is refused as if it did not exist, so people share a conversation through a room, each posting from their own session into one organization resource. A mailbox is one session, so only its owner can post to it or read it; it is how seats and one user talk.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 742" role="img" aria-label="How a post travels through a mailbox and through a project&#x27;s room, as swimlanes with time running left to right. A mailbox: Alice owns the session support.desk, a session on the mailbox kind that holds the transcript. Alice posts, the line is kept in that session, the notify block wakes the worker in its own session keyed mailbox:support.desk, the worker&#x27;s answer line lands back in support.desk, and Alice reads the transcript. Bob, another user, posts to support.desk and is refused with the same 404 as an unknown session, because the session belongs to Alice. A room: Alice and Bob are members of a project and each has their own talk session. Alice posts from hers, and the line is written to room-lines, organization data that holds the room&#x27;s transcript. The template worker is woken as Alice, in a conversation it keeps per person, and its answer comes back through Alice&#x27;s session as the next line in room-lines. Bob reads from his own session and gets both lines. Carol is in the organization but not a member, and her join is refused with not-a-member. Why a session per member: a session acts for one user, and anyone else is refused as if it did not exist, so people share a conversation through a room, each posting from their own session into one organization resource. A mailbox is one session, so only its owner can post to it or read it; it is how workers and one user talk.">
   <style>
     :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
             --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
@@ -48,7 +48,7 @@
   <text class="lname" x="48" y="181">Session support.desk</text>
   <text class="lnote" x="48" y="197">mailbox kind; holds the transcript</text>
   <rect class="lane" x="36" y="209" width="868" height="40" rx="8"/>
-  <text class="lname" x="48" y="227">The seat&#x27;s own session</text>
+  <text class="lname" x="48" y="227">The worker&#x27;s own session</text>
   <text class="lnote" x="48" y="243">keyed mailbox:support.desk</text>
   <rect class="lane" x="36" y="255" width="868" height="40" rx="8"/>
   <text class="lname" x="48" y="273">Bob</text>
@@ -58,7 +58,7 @@
   <rect class="stepbox" x="360" y="168.0" width="120" height="30" rx="7"/>
   <text class="step" x="368" y="187.0">2 line kept here</text>
   <rect class="stepbox-proc" x="496" y="214.0" width="120" height="30" rx="7"/>
-  <text class="step" x="504" y="233.0">3 seat woken</text>
+  <text class="step" x="504" y="233.0">3 worker woken</text>
   <rect class="stepbox" x="632" y="168.0" width="120" height="30" rx="7"/>
   <text class="step" x="640" y="187.0">4 answer line</text>
   <rect class="stepbox" x="768" y="122.0" width="120" height="30" rx="7"/>
@@ -90,7 +90,7 @@
   <text class="lname" x="48" y="475">room-lines</text>
   <text class="lnote" x="48" y="491">org data; the transcript</text>
   <rect class="lane" x="36" y="503" width="868" height="40" rx="8"/>
-  <text class="lname" x="48" y="521">Template seat</text>
+  <text class="lname" x="48" y="521">Template worker</text>
   <text class="lnote" x="48" y="537">one conversation per person</text>
   <rect class="lane" x="36" y="549" width="868" height="40" rx="8"/>
   <text class="lname" x="48" y="567">Carol</text>
@@ -102,7 +102,7 @@
   <rect class="stepbox-proc" x="450" y="508.0" width="108" height="30" rx="7"/>
   <text class="step" x="458" y="527.0">3 woken as Alice</text>
   <rect class="stepbox" x="563" y="370.0" width="108" height="30" rx="7"/>
-  <text class="step" x="571" y="389.0">4 seat&#x27;s answer</text>
+  <text class="step" x="571" y="389.0">4 the answer</text>
   <rect class="stepbox-org" x="676" y="462.0" width="108" height="30" rx="7"/>
   <text class="step" x="684" y="481.0">5 line n+1</text>
   <rect class="stepbox" x="789" y="416.0" width="108" height="30" rx="7"/>
@@ -127,5 +127,5 @@
   <text class="h" x="40" y="646">Why a session per member</text>
   <text class="p" x="40" y="670">A session acts for one user, and a post from anyone else is refused as if the session did not exist.</text>
   <text class="p" x="40" y="690">So people share a conversation through a room: each posts from their own session into one org resource.</text>
-  <text class="p" x="40" y="710">A mailbox is one session, so only its owner can post to it or read it. It is how seats and one user talk.</text>
+  <text class="p" x="40" y="710">A mailbox is one session, so only its owner can post to it or read it. It is how workers and one user talk.</text>
 </svg>
