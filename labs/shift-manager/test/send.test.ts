@@ -12,7 +12,12 @@ const TARGET = { sessionId: "s_run", flowId: "eng.coder", door: "message" };
 
 type Item = { requestId: string; role?: string; type: string; reason?: string; suspensionId?: string };
 
-/** Clients whose door request ends `status`, and whose session holds `items`, paged by offset and limit. */
+/**
+ * Clients whose door request ends `status`, and whose session holds `items`,
+ * paged by offset and limit. Listing the session's suspended requests answers
+ * the door's request, with its own items, while its status is `suspended`.
+ * `reads` counts the reads of suspension items each way.
+ */
 function stubClients(options: {
   status: string;
   /** Statuses for the polls after the first, in order; the last repeats. Default: `status` throughout. */
@@ -24,15 +29,20 @@ function stubClients(options: {
   stateFails?: unknown;
   /** The session read answers this instead of a page. */
   stateAnswers?: unknown;
-  /** Only the read of suspension items rejects; the line's read-back still answers. */
+  /** Only the reads of suspensions reject; the line's read-back still answers. */
   suspensionsFail?: boolean;
-  /** What the session holds for every read of suspension items after the first. */
-  itemsLater?: Item[];
-}): { clients: LabClients; sent: unknown[] } {
+}): { clients: LabClients; sent: unknown[]; reads: { sessionSuspensions: number; suspendedRequests: number } } {
   const sent: unknown[] = [];
   const items = options.items ?? [];
   let polls = 0;
-  let suspensionReads = 0;
+  const reads = { sessionSuspensions: 0, suspendedRequests: 0 };
+  /** The request's status at the next look, from `status` and then `later`. */
+  const nextStatus = () => {
+    const later = options.later ?? [];
+    const status = polls === 0 || later.length === 0 ? options.status : later[Math.min(polls - 1, later.length - 1)];
+    polls += 1;
+    return status;
+  };
   const clients = {
     actions: (flowId: string) => ({
       sendAction: async (action: string, input: unknown, opts: unknown) => {
@@ -40,24 +50,14 @@ function stubClients(options: {
         sent.push({ flowId, action, input, opts });
         return { request: { id: "req_door" } };
       },
-      getRequestStatus: async () => {
-        const later = options.later ?? [];
-        const status = polls === 0 || later.length === 0 ? options.status : later[Math.min(polls - 1, later.length - 1)];
-        polls += 1;
-        return { status };
-      },
+      getRequestStatus: async () => ({ status: nextStatus() }),
     }),
     sessions: {
       getSessionState: async (_id: string, read: { offset?: number; limit?: number; itemTypes?: string[] } = {}) => {
         if (options.stateFails !== undefined) throw options.stateFails;
         if (options.stateAnswers !== undefined) return options.stateAnswers;
-        if (options.suspensionsFail === true && read.itemTypes?.includes("suspension") === true) {
-          throw new ClientHttpError("Request failed (503)", { status: 503, body: null });
-        }
-        const suspensions = read.itemTypes?.includes("suspension") === true;
-        const held = suspensions && suspensionReads > 0 && options.itemsLater !== undefined ? options.itemsLater : items;
-        if (suspensions) suspensionReads += 1;
-        const typed = held.filter((item) => read.itemTypes === undefined || read.itemTypes.includes(item.type));
+        if (read.itemTypes?.includes("suspension") === true) reads.sessionSuspensions += 1;
+        const typed = items.filter((item) => read.itemTypes === undefined || read.itemTypes.includes(item.type));
         const offset = read.offset ?? 0;
         const limit = read.limit ?? 50;
         const page = typed.slice(offset, offset + limit);
@@ -66,11 +66,20 @@ function stubClients(options: {
           pagination: { offset, limit, total: typed.length, hasMore: offset + page.length < typed.length, nextOffset: offset + page.length },
         };
       },
-      listSessionRequests: async () =>
-        options.failure === undefined ? [] : [{ id: "req_door", result: { error: { message: options.failure } } }],
+      listSessionRequests: async (_id: string, list: { status?: string; includeItems?: boolean } = {}) => {
+        if (list.status === "suspended") {
+          reads.suspendedRequests += 1;
+          if (options.suspensionsFail === true) throw new ClientHttpError("Request failed (503)", { status: 503, body: null });
+          const status = nextStatus();
+          if (status !== "suspended") return [];
+          const own = items.filter((item) => item.requestId === "req_door" && item.type !== "message");
+          return [{ id: "req_door", status, ...(list.includeItems === true ? { items: own } : {}) }];
+        }
+        return options.failure === undefined ? [] : [{ id: "req_door", result: { error: { message: options.failure } } }];
+      },
     },
   } as unknown as LabClients;
-  return { clients, sent };
+  return { clients, sent, reads };
 }
 
 const kindOf = async (promise: Promise<unknown>) => {
@@ -171,31 +180,34 @@ describe("sendTurn", () => {
       await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "ask" });
     });
 
-    // suspended → resumed → suspended again on another reason, all under one request id: the
-    // stop reported is the one pending now, not the one first read.
-    it("re-suspended on a different reason between the read and the recheck: the newer stop is reported", async () => {
-      const { clients } = stubClients({
-        status: "suspended",
-        items: [line, ask("s1")],
-        itemsLater: [line, ask("s1"), resume("s1"), ask("s2", "external_event")],
-      });
-      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "wait" });
-    });
-
-    it("re-suspended on a person's ask after a wait was read: the ask is reported", async () => {
-      const { clients } = stubClients({
-        status: "suspended",
-        items: [line, ask("s1", "external_event")],
-        itemsLater: [line, ask("s1", "external_event"), resume("s1"), ask("s2")],
-      });
+    // A request resumed and suspended again under one id: its own items, read with its status,
+    // say what it is stopped on now.
+    it("re-suspended on a person's ask after a wait was answered: the ask is reported", async () => {
+      const { clients } = stubClients({ status: "suspended", items: [line, ask("s1", "external_event"), resume("s1"), ask("s2")] });
       await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "ask" });
     });
 
+    // The read is the request's own: one call, however long the session's history.
+    it("classifies from the request's own items in one read, not by paging the session's history", async () => {
+      const others = Array.from({ length: 2_000 }, (_, i) => [
+        { requestId: `req_${i}`, type: "suspension", reason: "human_approval", suspensionId: `o${i}` },
+        { requestId: `req_${i}`, type: "suspension_resume", suspensionId: `o${i}` },
+      ]).flat();
+      const { clients, reads } = stubClients({ status: "suspended", items: [line, ...others, ask("s1")] });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "ask" });
+      expect(reads).toEqual({ sessionSuspensions: 0, suspendedRequests: 1 });
+    });
+
     // Whatever the words say, a turn the poll saw suspended tells the caller to read the Lab again.
-    it("nothing pending at the first read, then re-suspended on an ask: still reported suspended", async () => {
-      const { clients } = stubClients({ status: "suspended", items: [line, ask("s1"), resume("s1")], itemsLater: [line, ask("s1"), resume("s1"), ask("s2")] });
-      const sent = await sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 });
-      expect(sent.suspended).toBe(true);
+    it("nothing pending when its stop is read: plain delivered words, still reported suspended", async () => {
+      const { clients } = stubClients({ status: "suspended", items: [line, ask("s1"), resume("s1")] });
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: null });
+    });
+
+    it("a classification that outlasts the send's deadline is a wait, not a hang", async () => {
+      const { clients } = stubClients({ status: "suspended", items: [line, ask("s1")] });
+      (clients.sessions as { listSessionRequests: unknown }).listSessionRequests = () => new Promise(() => {});
+      await expect(sendTurn(clients, TARGET, "fire eng.coder", { pollMs: 1, timeoutMs: 50 })).resolves.toEqual({ requestId: "req_door", suspended: true, stopped: "wait" });
     });
 
     it("a failed read of the suspensions, resumed meanwhile: the recheck says running, so plain delivered", async () => {

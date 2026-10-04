@@ -320,8 +320,7 @@ export type PendingSuspension = ReturnType<typeof deriveSuspensions>["pending"][
 /**
  * The suspensions still pending in one session: every page of its suspension
  * and resume items, reduced by `react`'s `deriveSuspensions`. Inbox lists its
- * asks from this read, and a send classifies a suspended turn from it, so the
- * two can't disagree.
+ * asks from this read.
  */
 export async function readPendingSuspensions(clients: LabClients, sessionId: string): Promise<PendingSuspension[]> {
   const items: OutputItem[] = [];

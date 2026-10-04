@@ -556,9 +556,9 @@ describe("Chief of Staff (FIX-1722)", () => {
     let failing = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
       const url = String(i instanceof Request ? i.url : i);
-      // Both of the send's own reads of the conversation's suspensions fail, so it can't tell
-      // what the turn stopped on; the refresh after it reads normally.
-      if (failing > 0 && /\/sessions\/cos_[^/]+\/state/.test(url) && url.includes("item_types=suspension")) {
+      // The send's own read of the turn's suspended request fails, so it can't tell what the
+      // turn stopped on; the refresh after it reads normally.
+      if (failing > 0 && /\/sessions\/cos_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
         failing -= 1;
         return new Response(JSON.stringify({ error: "store offline" }), { status: 503 });
       }
@@ -566,7 +566,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     });
     const input = (await screen.findByTestId("cos-composer-input")) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: ASKER_GATED_LINE } });
-    failing = 2;
+    failing = 1;
     fireEvent.click(screen.getByTestId("cos-composer-send"));
     const status = screen.getByTestId("cos-composer-status");
     await waitFor(() => expect(status.getAttribute("data-state")).toBe("delivered"), { timeout: 5_000 });
@@ -584,10 +584,10 @@ describe("Chief of Staff (FIX-1722)", () => {
     let emptying = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
       const url = String(i instanceof Request ? i.url : i);
-      // The send's first read of the conversation's suspensions finds none pending.
-      if (emptying > 0 && /\/sessions\/cos_[^/]+\/state/.test(url) && url.includes("item_types=suspension")) {
+      // The send's read of the turn's suspended request finds it no longer suspended.
+      if (emptying > 0 && /\/sessions\/cos_[^/]+\/requests/.test(url) && url.includes("include_items=true")) {
         emptying -= 1;
-        return new Response(JSON.stringify({ items: [], pagination: { offset: 0, limit: 200, total: 0, hasMore: false } }), {
+        return new Response(JSON.stringify({ requests: [] }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });

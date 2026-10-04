@@ -34,7 +34,8 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { LabClients } from "./connection";
-import { describeFailure, PERSON_REASONS, readPendingSuspensions } from "./reads";
+import { deriveSuspensions } from "@flow-state-dev/react";
+import { describeFailure, PERSON_REASONS } from "./reads";
 
 /**
  * Why a delivered line's request stopped short of finishing: on a person's ask
@@ -111,40 +112,22 @@ async function sessionHoldsLine(clients: LabClients, sessionId: string, requestI
 }
 
 /**
- * This request's still-pending suspensions, from the read Inbox lists asks
- * from ({@link readPendingSuspensions}): what they stop on, and which
- * suspensions they are. `undefined` when the read fails.
- */
-async function pendingStop(
-  clients: LabClients,
-  sessionId: string,
-  requestId: string,
-): Promise<{ stop: TurnStop; ids: string } | undefined> {
-  try {
-    const mine = (await readPendingSuspensions(clients, sessionId)).filter((view) => view.item.requestId === requestId);
-    const stop = mine.some((view) => PERSON_REASONS.has(view.item.reason)) ? "ask" : mine.length > 0 ? "wait" : null;
-    return { stop, ids: mine.map((view) => view.item.suspensionId).sort().join(",") };
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * What a suspended request is still stopped on. Only this request's
- * still-pending suspensions count: one whose reason is a person's ask is
- * `ask`; any other pending one is `wait`; none (resumed since the poll) is
- * `null`, plain delivered.
+ * What a suspended request is still stopped on, read from that request alone:
+ * the session's suspended requests with their own item logs, so the read is
+ * one call however much history the session holds, and the request's status
+ * and its items come back together. Only its still-pending suspensions count
+ * (`deriveSuspensions`, as Inbox derives them):
  *
- * The label only picks the composer's words: callers read the Lab again on
- * the send's `suspended`, whatever this says.
+ * - one whose reason is a person's ask: `ask`.
+ * - any other pending one, such as a stop on something else after an ask
+ *   that was answered: `wait`.
+ * - none, or the request no longer listed as suspended (resumed since the
+ *   poll): `null`, plain delivered.
  *
- * A stop is bound to the suspensions it was read from. A resume marks the
- * request running before it writes its resume item, and a resumed request can
- * suspend again under the same id, so after the first read the status is
- * polled once more (not suspended: `null`) and the pending suspensions are
- * read again. The same suspensions keep the first answer; different ones are
- * classified from the second read. Whatever can't be read is `wait`. The line
- * is delivered whatever this says.
+ * A read that fails is checked against the request's status once: still
+ * suspended is `wait`, otherwise `null`; a status that can't be read either
+ * is `wait`. The label only picks the composer's words: callers read the Lab
+ * again on the send's `suspended`, whatever this says.
  */
 async function stopOf(
   clients: LabClients,
@@ -152,18 +135,35 @@ async function stopOf(
   sessionId: string,
   requestId: string,
 ): Promise<TurnStop> {
-  const first = await pendingStop(clients, sessionId, requestId);
-  if (first?.stop === null) return null;
+  let suspended: Array<{ id: string; items?: unknown }>;
   try {
-    if ((await actions.getRequestStatus(requestId)).status !== "suspended") return null;
+    suspended = await clients.sessions.listSessionRequests(sessionId, { status: "suspended", includeItems: true });
   } catch {
-    return first?.stop ?? "wait";
+    try {
+      return (await actions.getRequestStatus(requestId)).status === "suspended" ? "wait" : null;
+    } catch {
+      return "wait";
+    }
   }
-  const now = await pendingStop(clients, sessionId, requestId);
-  if (now === undefined) return first?.stop ?? "wait";
-  if (first !== undefined && now.ids === first.ids) return first.stop;
-  // Suspended, but on suspensions the first read didn't see: what is pending now decides.
-  return now.stop ?? "wait";
+  const request = suspended.find((r) => r.id === requestId);
+  if (request === undefined) return null;
+  const pending = deriveSuspensions((Array.isArray(request.items) ? request.items : []) as OutputItem[]).pending;
+  if (pending.some((view) => PERSON_REASONS.has(view.item.reason))) return "ask";
+  return pending.length > 0 ? "wait" : null;
+}
+
+/**
+ * {@link stopOf}, inside what is left of the send's deadline: past it, `wait`.
+ * The line is already delivered, and the caller reads the Lab again either way.
+ */
+async function stopWithin(until: number, stop: Promise<TurnStop>): Promise<TurnStop> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<TurnStop>((resolve) => (timer = setTimeout(() => resolve("wait"), Math.max(0, until - Date.now()))));
+  try {
+    return await Promise.race([stop, late]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** The door's own reason for a failed request, in its words. */
@@ -218,5 +218,5 @@ export async function sendTurn(
     if (error instanceof ClientCallFailed) throw unconfirmed(`Couldn't read back whether the message arrived: ${error.message}.`);
     throw error;
   }
-  return { requestId, suspended, stopped: suspended ? await stopOf(clients, actions, target.sessionId, requestId) : null };
+  return { requestId, suspended, stopped: suspended ? await stopWithin(until, stopOf(clients, actions, target.sessionId, requestId)) : null };
 }
