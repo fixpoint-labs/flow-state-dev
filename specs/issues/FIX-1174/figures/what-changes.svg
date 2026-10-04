@@ -1,0 +1,68 @@
+<svg viewBox="0 0 940 330" role="img" aria-label="The @flow-state-dev/claude-code package today and after. Today the /cli entry holds the remote dispatch block, its capability, the output parser, the terminal wrapper, the handle type, the typed errors, and the resolver seam; the docs site has a remote-dispatch page. After, the /cli entry holds only the resolver seam, the remote-dispatch parts and their tests are removed, and the docs page is removed with its old address redirected to the SDK agent page. The /sdk entry and the package root are unchanged in both."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .keep  { fill:var(--code-soft); stroke:var(--code); stroke-width:1.2; }
+    .gone  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:5 4; }
+    .strike{ stroke:var(--gone); stroke-width:1.2; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-h   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-g   { fill:var(--gone); font-family:system-ui,-apple-system,sans-serif; font-size:12px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="330"/>
+
+  <g id="headers">
+    <text class="t-lbl" x="16" y="26">TODAY</text>
+    <text class="t-lbl" x="484" y="26">AFTER</text>
+  </g>
+
+  <g id="today-cli">
+    <rect class="n-box" x="16" y="38" width="440" height="176" rx="6"/>
+    <text class="t-h" x="32" y="62">/cli</text>
+    <text class="t-s" x="72" y="62">claude --remote dispatch + the resolver seam</text>
+    <text class="t-b" x="32" y="88">remote dispatch block · its capability</text>
+    <text class="t-b" x="32" y="110">output parser · terminal (PTY) wrapper</text>
+    <text class="t-b" x="32" y="132">remote handle type · typed errors</text>
+    <text class="t-b" x="32" y="154">4 test files covering the above</text>
+    <rect class="keep" x="32" y="170" width="408" height="30" rx="4"/>
+    <text class="t-b" x="44" y="190">resolver seam (how to run the local claude binary)</text>
+  </g>
+
+  <g id="after-cli">
+    <rect class="n-box" x="484" y="38" width="440" height="176" rx="6"/>
+    <text class="t-h" x="500" y="62">/cli</text>
+    <text class="t-s" x="540" y="62">the resolver seam only</text>
+    <rect class="gone" x="500" y="74" width="408" height="88" rx="4"/>
+    <text class="t-g" x="516" y="96">removed: dispatch, capability, parser,</text>
+    <text class="t-g" x="516" y="116">PTY wrapper, handle type, errors, their tests</text>
+    <text class="t-s" x="516" y="140">16 public names · one minor changeset lists them</text>
+    <rect class="keep" x="500" y="170" width="408" height="30" rx="4"/>
+    <text class="t-b" x="512" y="190">resolver seam, byte for byte</text>
+  </g>
+
+  <g id="unchanged">
+    <rect class="keep" x="16" y="226" width="440" height="34" rx="4"/>
+    <text class="t-b" x="32" y="248">/sdk entry · package root</text>
+    <rect class="keep" x="484" y="226" width="440" height="34" rx="4"/>
+    <text class="t-b" x="500" y="248">/sdk entry · package root — unchanged</text>
+  </g>
+
+  <g id="docs">
+    <rect class="n-box" x="16" y="272" width="440" height="42" rx="4"/>
+    <text class="t-lbl" x="32" y="290">DOCS SITE</text>
+    <text class="t-b" x="32" y="306">"Claude Code (remote dispatch)" page, 4 pages link to it</text>
+    <rect class="gone" x="484" y="272" width="440" height="42" rx="4"/>
+    <text class="t-lbl" x="500" y="290">DOCS SITE</text>
+    <text class="t-g" x="500" y="306">page removed · old address redirects to the SDK agent page</text>
+  </g>
+</svg>

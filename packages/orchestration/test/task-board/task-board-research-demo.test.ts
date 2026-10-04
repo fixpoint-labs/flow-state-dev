@@ -77,9 +77,9 @@ function makeSynthesizer(): TaskWorker {
     execute: async (input, ctx: BlockContext) => {
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "sequencer",
+        backing: "state",
         collectionId: "research",
-        sequencer: ctx.getTarget("research-board")! as never,
+        state: ctx.getTarget("research-board")! as never,
       });
       const self = collection.get(input.taskId) as Task | undefined;
       const depOutputs = (self?.deps ?? [])

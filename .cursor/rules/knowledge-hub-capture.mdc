@@ -1,6 +1,6 @@
 ---
 description: Capture the owner's stream of thought in Knowledge Hub
-alwaysApply: true
+alwaysApply: false
 ---
 
 # Knowledge Hub Capture

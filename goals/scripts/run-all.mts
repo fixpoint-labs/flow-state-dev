@@ -10,7 +10,8 @@
  * impossible to read. The sweep is a deliberate act, not a watch loop.
  *
  *   pnpm goal:all                  # every goal with a runner
- *   pnpm goal:all --model-free     # only goals whose goal.md says Model: n/a
+ *   pnpm goal:all --model-free     # only goals whose goal.md says Model: n/a, and the
+ *                                  # model-free legs of goals that declare a Model-free run
  *   pnpm goal:all suspension       # only goals whose path contains "suspension"
  *   pnpm goal:all --list           # show what would run, run nothing
  */
@@ -28,6 +29,21 @@ interface Goal {
   hasRunner: boolean;
   /** True when goal.md declares `Model: n/a` / `none` — costs no inference. */
   modelFree: boolean;
+  /**
+   * For a model-backed goal whose legs split, the env that runs only its
+   * model-free legs, from goal.md's `**Model-free run:** \`NAME=value\``.
+   * A `--model-free` sweep runs the goal with it rather than skipping it.
+   */
+  modelFreeEnv?: Record<string, string>;
+}
+
+/** `**Model-free run:** \`GOAL_LEG=model-free\`` — one or more `NAME=value` in backticks. */
+function modelFreeRunEnv(spec: string): Record<string, string> | undefined {
+  const line = /^\*\*Model-free run[:.]\*\*(.*)$/m.exec(spec)?.[1];
+  if (line === undefined) return undefined;
+  const pairs = [...line.matchAll(/`([A-Z][A-Z0-9_]*)=([^`\s]+)`/g)];
+  if (pairs.length === 0) throw new Error(`goal.md's Model-free run names no \`NAME=value\`: ${line.trim()}`);
+  return Object.fromEntries(pairs.map((m) => [m[1]!, m[2]!]));
 }
 
 /** Recursively find every directory holding a `goal.md`, skipping `_template`. */
@@ -50,11 +66,14 @@ function discover(dir: string, found: Goal[] = []): Goal[] {
       // and a prose form (`**Model.**`). Accept both.
       const modelLine = /^\*\*Model[:.]\*\*(.*)$/m.exec(spec);
       const declared = (modelLine?.[1] ?? "").trim().toLowerCase();
+      const modelFree = declared.startsWith("n/a") || declared.startsWith("none");
+      const modelFreeEnv = modelFree ? undefined : modelFreeRunEnv(spec);
       found.push({
         id: relative(GOALS_ROOT, child),
         dir: child,
         hasRunner: hasFile(join(child, "run.mts")),
-        modelFree: declared.startsWith("n/a") || declared.startsWith("none"),
+        modelFree,
+        ...(modelFreeEnv === undefined ? {} : { modelFreeEnv }),
       });
     } else {
       discover(child, found);
@@ -74,7 +93,8 @@ function hasFile(path: string): boolean {
 const USAGE = `pnpm goal:all [options] [path-filter...]
 
   --list         Show what would run; run nothing.
-  --model-free   Only goals whose goal.md declares Model: n/a / none.
+  --model-free   Only goals whose goal.md declares Model: n/a / none, plus the
+                 model-free legs of a goal that declares a Model-free run.
   --help         This message.
   --timeout=<m>  Per-goal wall-clock cap in minutes (default 20). A goal that
                  exceeds it is killed, recorded TIMEOUT, and the sweep goes on.
@@ -130,7 +150,7 @@ const filters = args.filter((a) => !a.startsWith("-"));
 
 const all = discover(GOALS_ROOT).sort((a, b) => a.id.localeCompare(b.id));
 const selected = all.filter((goal) => {
-  if (modelFreeOnly && !goal.modelFree) return false;
+  if (modelFreeOnly && !goal.modelFree && goal.modelFreeEnv === undefined) return false;
   if (filters.length > 0 && !filters.some((f) => goal.id.includes(f))) return false;
   return true;
 });
@@ -140,7 +160,11 @@ const runnable = selected.filter((g) => g.hasRunner);
 
 if (listOnly) {
   for (const goal of selected) {
-    const tags = [goal.modelFree ? "model-free" : "model-backed", goal.hasRunner ? "" : "NO RUNNER"]
+    const tags = [
+      goal.modelFree ? "model-free" : "model-backed",
+      goal.modelFreeEnv === undefined ? "" : `model-free legs: ${Object.entries(goal.modelFreeEnv).map(([k, v]) => `${k}=${v}`).join(" ")}`,
+      goal.hasRunner ? "" : "NO RUNNER",
+    ]
       .filter(Boolean)
       .join(", ");
     console.log(`${goal.id}  (${tags})`);
@@ -158,7 +182,10 @@ type Verdict = "PASS" | "FAIL" | "TIMEOUT";
 const results: { id: string; verdict: Verdict; note: string }[] = [];
 
 for (const [index, goal] of runnable.entries()) {
-  const header = `[${index + 1}/${runnable.length}] ${goal.id}`;
+  // A --model-free sweep runs a split goal's model-free legs only.
+  const legEnv = modelFreeOnly && !goal.modelFree ? goal.modelFreeEnv : undefined;
+  const legNote = legEnv === undefined ? "" : ` (${Object.entries(legEnv).map(([k, v]) => `${k}=${v}`).join(" ")})`;
+  const header = `[${index + 1}/${runnable.length}] ${goal.id}${legNote}`;
   console.log(`\n${"=".repeat(Math.min(header.length + 4, 80))}\n${header}\n${"=".repeat(Math.min(header.length + 4, 80))}`);
 
   // stdout is INHERITED, not piped.
@@ -179,6 +206,7 @@ for (const [index, goal] of runnable.entries()) {
     cwd: GOALS_ROOT,
     stdio: ["ignore", "inherit", "inherit"],
     timeout: timeoutMinutes * 60_000,
+    ...(legEnv === undefined ? {} : { env: { ...process.env, ...legEnv } }),
   });
 
   // A timeout is NOT the same verdict as a failure: the goal did not fail its
@@ -193,7 +221,7 @@ for (const [index, goal] of runnable.entries()) {
   const timedOut = (run.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
   const verdict: Verdict = timedOut ? "TIMEOUT" : run.status === 0 ? "PASS" : "FAIL";
   results.push({
-    id: goal.id,
+    id: `${goal.id}${legNote}`,
     verdict,
     note: timedOut
       ? `exceeded ${timeoutMinutes}m — killed`

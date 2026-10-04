@@ -122,7 +122,7 @@ export function createSeedTasksFromPlan<TState>(
     execute: async (planOutput, ctx) => {
       const collection = await getOrCreateTaskCollection({
         ctx,
-        backing: "request",
+        backing: "state",
         collectionId,
         // The board's caps, or nothing when the board applied none. A second
         // ref over the same ledger enforces only what it was built with.

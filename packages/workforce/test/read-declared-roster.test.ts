@@ -3,7 +3,7 @@
  *
  * What is pinned here is that this is a JOIN and not a fourth walk: every
  * record each reader returns arrives unchanged and in walk order, every error
- * channel arrives flattened into one list in a stated order and tagged with the
+ * mailbox arrives flattened into one list in a stated order and tagged with the
  * layer it came from, each entry carrying the reader's own `Error` OBJECT
  * rather than a copy of its text, and a tree with problems still hands back
  * everything that loaded. The one throw is the root, because that is the one
@@ -18,7 +18,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readChannelsDirectory } from "../src/loader/read-channels-directory";
+import { readMailboxesDirectory } from "../src/loader/read-mailboxes-directory";
 import { readDeclaredRoster } from "../src/loader/read-declared-roster";
 import { readWorkforce } from "../src/loader/read-workforce";
 
@@ -47,14 +47,14 @@ async function writeTeamFile(team: string, frontmatter: string): Promise<void> {
   await fs.writeFile(path.join(dir, "TEAM.md"), `---\n${frontmatter}\n---\n\nHow we work.\n`);
 }
 
-async function writeChannel(
+async function writeMailbox(
   team: string,
   name: string,
-  frontmatter = "description: A channel\nmembers: [qa.tester]",
+  frontmatter = "description: A mailbox\nmembers: [qa.tester]",
 ): Promise<void> {
-  const dir = path.join(root, "teams", team, "channels", name);
+  const dir = path.join(root, "teams", team, "mailboxes", name);
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.join(dir, "CHANNEL.md"), `---\n${frontmatter}\n---\n\nTalk here.\n`);
+  await fs.writeFile(path.join(dir, "MAILBOX.md"), `---\n${frontmatter}\n---\n\nTalk here.\n`);
 }
 
 async function writeDocument(slot: string, name: string): Promise<void> {
@@ -70,7 +70,7 @@ describe("readDeclaredRoster", () => {
   it("returns every record the readers found, and no problems", async () => {
     await writeTeamFile("qa", "description: The quality team");
     await writeWorker("qa", "tester");
-    await writeChannel("qa", "standup");
+    await writeMailbox("qa", "standup");
     await writeDocument("org/resources", "handbook");
 
     const roster = await readDeclaredRoster(root);
@@ -78,48 +78,48 @@ describe("readDeclaredRoster", () => {
     expect(roster.problems).toEqual([]);
     expect(roster.workers.map((w) => w.id)).toEqual(["qa.tester"]);
     expect(roster.teams.map((t) => t.id)).toEqual(["qa"]);
-    expect(roster.channels.map((c) => c.id)).toEqual(["qa.standup"]);
+    expect(roster.mailboxes.map((c) => c.id)).toEqual(["qa.standup"]);
     expect(roster.documents.map((d) => d.ref)).toEqual(["handbook"]);
   });
 
   it("flattens all five error channels in one stated order (BR-2)", async () => {
     // One failure per layer, so the ordering claim is made against every
-    // channel rather than the three that happened to be easiest to break.
+    // mailbox rather than the three that happened to be easiest to break.
     await writeWorker("qa", "tester"); // loads — what the skill error attaches to
     await fs.mkdir(path.join(root, "teams", "qa", "workers", "broken"), { recursive: true });
     await fs.mkdir(path.join(root, "org", "skills", "house-style"), { recursive: true });
     await fs.mkdir(path.join(root, "teams", "qa", "TEAM.md"), { recursive: true });
     await fs.mkdir(path.join(root, "org", "resources"), { recursive: true });
     await fs.writeFile(path.join(root, "org", "resources", "loose.md"), "no frontmatter here\n");
-    await writeChannel("qa", "brokenchannel", "members: [qa.tester]");
+    await writeMailbox("qa", "brokenmailbox", "members: [qa.tester]");
 
     const roster = await readDeclaredRoster(root);
 
     // Unsorted, deliberately. The sequence IS the contract: worker slots, then
-    // each seat's skills, then team files, then documents, then channels.
+    // each seat's skills, then team files, then documents, then mailboxes.
     expect(roster.problems.map((p) => p.layer)).toEqual([
       "worker",
       "skill",
       "team",
       "document",
-      "channel",
+      "mailbox",
     ]);
   });
 
   it("keeps every record that loaded when other records did not (BR-4)", async () => {
     await writeWorker("qa", "tester");
-    await writeChannel("qa", "standup");
+    await writeMailbox("qa", "standup");
     await writeDocument("org/resources", "handbook");
     await fs.mkdir(path.join(root, "teams", "qa", "workers", "broken"), { recursive: true });
-    await writeChannel("qa", "brokenchannel", "members: [qa.tester]");
+    await writeMailbox("qa", "brokenmailbox", "members: [qa.tester]");
     await fs.writeFile(path.join(root, "org", "resources", "loose.md"), "no frontmatter here\n");
 
     const roster = await readDeclaredRoster(root);
 
-    expect(roster.problems.map((p) => p.layer)).toEqual(["worker", "document", "channel"]);
+    expect(roster.problems.map((p) => p.layer)).toEqual(["worker", "document", "mailbox"]);
     // The point of BR-4: the good records survived the bad ones, in walk order.
     expect(roster.workers.map((w) => w.id)).toEqual(["qa.tester"]);
-    expect(roster.channels.map((c) => c.id)).toEqual(["qa.standup"]);
+    expect(roster.mailboxes.map((c) => c.id)).toEqual(["qa.standup"]);
     expect(roster.documents.map((d) => d.ref)).toEqual(["handbook"]);
   });
 
@@ -136,13 +136,13 @@ describe("readDeclaredRoster", () => {
     expect(roster.problems[0].error.message).toBe(direct.errors[0].error.message);
   });
 
-  it("carries a channel problem's path and wording from the reader (BR-2)", async () => {
-    await writeChannel("qa", "nodesc", "members: [qa.tester]");
+  it("carries a mailbox problem's path and wording from the reader (BR-2)", async () => {
+    await writeMailbox("qa", "nodesc", "members: [qa.tester]");
 
     const roster = await readDeclaredRoster(root);
-    const direct = await readChannelsDirectory(root);
+    const direct = await readMailboxesDirectory(root);
 
-    expect(roster.problems.map((p) => p.layer)).toEqual(["channel"]);
+    expect(roster.problems.map((p) => p.layer)).toEqual(["mailbox"]);
     expect(roster.problems[0].path).toBe(direct.errors[0].path);
     expect(roster.problems[0].error.message).toBe(direct.errors[0].error.message);
   });
@@ -156,21 +156,21 @@ describe("readDeclaredRoster", () => {
     const sentinel = new Error("a wording only the reader owns", { cause });
 
     vi.resetModules();
-    vi.doMock("../src/loader/read-channels-directory", () => ({
-      readChannelsDirectory: async () => ({
-        channels: [],
-        errors: [{ path: "teams/qa/channels/x", error: sentinel, kind: "channel-load-failed" }],
+    vi.doMock("../src/loader/read-mailboxes-directory", () => ({
+      readMailboxesDirectory: async () => ({
+        mailboxes: [],
+        errors: [{ path: "teams/qa/mailboxes/x", error: sentinel, kind: "mailbox-load-failed" }],
       }),
     }));
     try {
       const fresh = await import("../src/loader/read-declared-roster");
       const roster = await fresh.readDeclaredRoster(root);
 
-      const channel = roster.problems.find((p) => p.layer === "channel");
-      expect(channel?.error).toBe(sentinel);
-      expect(channel?.error.cause).toBe(cause);
+      const mailbox = roster.problems.find((p) => p.layer === "mailbox");
+      expect(mailbox?.error).toBe(sentinel);
+      expect(mailbox?.error.cause).toBe(cause);
     } finally {
-      vi.doUnmock("../src/loader/read-channels-directory");
+      vi.doUnmock("../src/loader/read-mailboxes-directory");
       vi.resetModules();
     }
   });

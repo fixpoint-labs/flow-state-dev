@@ -73,7 +73,7 @@ Checks that cannot fail are the common case, not the rare one. A leg asserting `
 **Prefer a named control over an ad-hoc mutation.** A control is a flag the run already understands, so the red state is reproducible by anyone, on any checkout, without touching the tree:
 
 ```bash
-GOAL_CONTROL=by-name pnpm tsx goals/channel-boards/it-runs-a-row-a-file-declared-board-holds/run.mts
+GOAL_CONTROL=by-name pnpm tsx goals/mailbox-boards/it-runs-a-row-a-file-declared-board-holds/run.mts
 ```
 
 `run.mts` reads `process.env.GOAL_CONTROL` and passes it to the harness, which degrades the one behaviour the control names. Declare each one in `goal.md` under **Controls**, with the assertions it must fail, by name (`a:working`, not leg a) — a leg goes red on any of its assertions, so a control that fails the wrong one is itself a check that cannot fail. Record the run in the **Verdict log** as a `FAIL (expected)` row with what it printed.
@@ -97,7 +97,9 @@ Every goal repeats the same scaffolding around the part that is actually its own
 | `durable`    | `durableStores`, `registryFor`, `approvePending`, `approvalContext`, `silentLogger` |
 | `model`      | `DEFAULT_MODEL`, `gatewayModel`, `goalModel`, `goalAttempts` |
 | `specs`      | `runSpecs` — delegate to an app's mock-free vitest specs |
+| `server`     | `refuseIfAnswering`, `stopProcessGroup` — for a goal that spawns its own server: refuse when anything already answers on the port, and stop the whole detached process group so no survivor is left for the next run to grade |
 | `playwright` | `launchChromium`, `preinstalledChromium` — Chromium for a goal that reads the shipped DevTool. **Not re-exported from `index.mts`**, so a goal that opens no browser does not load Playwright; import `../../lib/playwright.mts` directly |
+| `shift-manager` | `buildShiftManagerCopy` (a patched scratch copy, built with Vite), `startShiftManager` (its start script over a Lab, with `NODE_ENV` as it was before any in-process build), `labApi` (the Lab's routes) — for the Shift Manager goals. **Not re-exported from `index.mts`**; import `../../lib/shift-manager.mts` directly |
 
 The library covers scaffolding only. **The grading logic is the goal** and belongs in `run.mts`. So does retry *policy* — the corpus has three, and they mean different things (retry-until-first-pass over model flakiness vs. require-k-of-k where the stability number is itself the published result).
 
@@ -145,6 +147,6 @@ A model-backed goal check costs real model calls, and that cost is the point —
 3. Write `run.mts` against the real path, using `goals/lib` for the scaffolding; put inputs in `fixtures/`.
 4. Run it, and record the result as the first row of the verdict log.
 
-Keep the **Model** field present and machine-readable (`**Model:** …` or `**Model.** …`) — `goal:all` reads it to decide what a `--model-free` sweep may run. `n/a` and `none` both mean model-free.
+Keep the **Model** field present and machine-readable (`**Model:** …` or `**Model.** …`) — `goal:all` reads it to decide what a `--model-free` sweep may run. `n/a` and `none` both mean model-free. A model-backed goal whose legs split can add `**Model-free run:** `NAME=value`` naming the env that runs only its model-free legs; a `--model-free` sweep then runs it with that env instead of skipping it.
 
 Reach for a new `goals/lib` helper only when a *third* goal needs the same scaffolding. Two copies is not yet a pattern; the library is for what every goal repeats, not for anything that could be shared.

@@ -2,7 +2,8 @@
  * `TaskCollectionRef` — uniform API across both backings (FIX-443 §3.3).
  *
  * The same shape is returned from `getOrCreateTaskCollection` regardless
- * of how the collection is stored (sequencer-state vs resource-collection).
+ * of how the collection is stored (atomic state — a ref, or the request — vs
+ * resource).
  * Patterns and dispatchers consume `TaskCollectionRef` and never reach for
  * the underlying storage directly.
  */
@@ -337,6 +338,24 @@ export interface TaskTransitionOptions {
 }
 
 /**
+ * `awaitReview`'s options: the ordinary transition guards, plus what the park
+ * is for.
+ */
+export interface AwaitReviewOptions extends TaskTransitionOptions {
+  /**
+   * The worker was stopped so a person's message can reach it, rather than
+   * asking a question of its own (FIX-1690). Marks the row `parkedForTurn`; its
+   * `unpark` then counts a turn re-entry, and the claim after it is not
+   * charged against `maxAttempts`.
+   *
+   * Runs only from `in_progress`, whatever `ifAllowed` says: a row that
+   * settled, re-pended or parked first comes back `declined` naming the
+   * status it found.
+   */
+  forTurn?: boolean;
+}
+
+/**
  * `Task` plus a runtime accessor for the items the worker emitted while it
  * held the claim window (FIX-480 §3.1). Returned from `list` / `get` so
  * pattern aggregators (synthesizers, reviewers, replanners) can pick from
@@ -457,7 +476,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * enforcement lives, rather than derived from the board's own config, because
    * a board handed a collection it did not construct knows nothing about that
    * collection's caps — and a caller who builds one deliberately
-   * (`getOrCreateTaskCollection({ backing: "request", maxTotalRetries: 5 })`)
+   * (`getOrCreateTaskCollection({ backing: "state", maxTotalRetries: 5 })`)
    * would otherwise be told "no limit" about a limit they set themselves.
    *
    * `null` means exactly one thing everywhere: no limit is in force. That covers
@@ -527,7 +546,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   awaitReview(
     id: string,
     feedback?: string,
-    options?: TaskTransitionOptions
+    options?: AwaitReviewOptions
   ): Promise<TaskWriteOutcome>;
   /**
    * Hand a parked task its answer and put it back in the queue (FIX-1244).

@@ -26,7 +26,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   ticketForClaim,
   type TaskCollectionRef,
 } from "../../src/tasks";
@@ -35,9 +35,9 @@ import { createFakeSequencerState } from "../helpers";
 let seq = 0;
 function collection(): TaskCollectionRef {
   seq += 1;
-  return createSequencerBackedTaskCollection({
+  return createStateBackedTaskCollection({
     collectionId: `parked-decline-${seq}`,
-    sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+    state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
   });
 }
 

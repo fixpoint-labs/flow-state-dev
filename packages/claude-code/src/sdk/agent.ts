@@ -47,6 +47,7 @@ import {
   workRecorderResources,
 } from "./work-collections";
 import { defaultResolveClaudeAgent } from "./sdk-client";
+import { trackProcess } from "./process-exit";
 import {
   createClaudeAgentSessionProvider,
   type ClaudeAgentSession,
@@ -480,9 +481,12 @@ export interface ClaudeCodeAgentOptions {
  * `"success"`. `null` here means the SDK reported a subtype this version does
  * not recognize (`normalizeSubtype` only nulls unknown values — `"success"` is
  * always recognized), so it is a failure, not a silent success.
+ *
+ * `isError` is the result's `is_error` flag: a `"success"` carrying it is the
+ * SDK's shape for a turn that ended on an API error, so it errored too.
  */
-function isErroredSubtype(subtype: SdkResultSubtype | null): boolean {
-  return subtype !== "success";
+function isErroredSubtype(subtype: SdkResultSubtype | null, isError: boolean): boolean {
+  return subtype !== "success" || isError;
 }
 
 /**
@@ -686,6 +690,50 @@ function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: ()
 }
 
 /**
+ * How long an aborted run waits for the agent's process to exit before the
+ * block settles. The process keeps writing the session's transcript until it
+ * exits, so a run stopped early and resumed straight away would otherwise be
+ * told its conversation does not exist. Bounded so a process that never exits
+ * cannot hold the block.
+ *
+ * Sized against the SDK's own shutdown: on abort it closes the process's input
+ * and gives it 2s to exit before sending `SIGTERM`. A process that exits on
+ * its own, or on that signal, lands inside this bound.
+ *
+ * **What it bounds:** the wait on the vendor — the SDK's stream and the
+ * process's exit, together. **What it does not:** the block's own in-flight
+ * write (an item persist, or the host's `onSession` hook), awaited to
+ * completion after it, because finalizing items past that write leaves them
+ * open with nobody to close them.
+ *
+ * Internal and mutable only as a test seam — not re-exported from the package.
+ * Read at abort time, so a test can shorten it for a vendor that never exits.
+ */
+export const abortExitGrace = { ms: 5_000 };
+
+/**
+ * Resolve once `promise` settles (either way) or `ms` elapses, whichever is
+ * first. Never rejects, and clears its timer so a settled wait holds no handle.
+ */
+async function settledWithin(promise: Promise<unknown>, ms: number): Promise<void> {
+  if (ms <= 0) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      promise.then(
+        () => {},
+        () => {},
+      ),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Create the in-process Agent SDK handler block.
  *
  * On success it appends an {@link SdkAgentHandle} to
@@ -696,14 +744,17 @@ function rejectOnAbort(signal: AbortSignal): { promise: Promise<never>; stop: ()
  * wrapped in {@link ClaudeAgentRunError}, surfaced as an error item, and
  * rethrown.
  *
- * **A fired `ctx.signal` ends the run the instant it fires** (FIX-1301) —
- * `query()`'s loop is raced against the signal rather than awaited outright,
- * so the block stops WAITING the moment its own deadline fires rather than
- * whenever the SDK's stream happens to settle. The already-wired
- * `abortController` (below) still tells the SDK to stop; this block simply no
- * longer waits to find out whether it did. A subprocess the vendor spawned
- * can therefore outlive the abort — the working directory's sandbox is the
- * fence for that, not this block's deadline.
+ * **A fired `ctx.signal` stops the race against the vendor stream right away**
+ * (FIX-1301) — `query()`'s loop is raced against the signal rather than awaited
+ * outright, so the block's deadline is not bounded by whenever the SDK's stream
+ * happens to settle. The rejection itself can arrive up to
+ * {@link abortExitGrace} later: the already-wired `abortController` (below)
+ * tells the SDK to stop, and the block then waits, bounded, for the agent's
+ * process to exit (observed through the SDK's spawn hook — the SDK's own stream
+ * can end first), so the session's transcript is complete before anyone can
+ * resume it. A subprocess the vendor spawned can therefore outlive the abort —
+ * the working directory's sandbox is the fence for that, not this block's
+ * deadline.
  *
  * See {@link ClaudeCodeAgentOptions.detached} for the background-work mode.
  */
@@ -873,6 +924,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       const resolved = await resolveClaudeAgent(ctx);
       const dispatchedAt = Date.now();
       const abortController = forwardSignalToController(ctx.signal);
+      // Holds the real process so an abort can wait for it to exit — the
+      // SDK's stream ends ~2s into its shutdown whether or not it has.
+      const agentProcess = trackProcess();
 
       const queryOptions: ClaudeAgentQueryOptions = {
         model,
@@ -884,6 +938,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         maxTurns,
         includePartialMessages,
         abortController,
+        spawnClaudeCodeProcess: agentProcess.spawn,
         ...(workingDirectory !== undefined ? { cwd: workingDirectory } : {}),
         // Spread conditionally rather than passed as `undefined`. For
         // `settingSources` the two are different instructions — absent means
@@ -918,6 +973,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // carrying a subtype this package does not recognize. Only this flag
       // tells those apart, and `outcome` depends on the difference.
       let terminalResultArrived = false;
+      // The result's `is_error` flag, read beside the subtype: a `success` can
+      // still be a failed turn.
+      let resultIsError = false;
       let finalMessage: string | null = null;
       let newSessionId: string | null = session.sdkSessionId;
       /**
@@ -945,6 +1003,10 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // there, even on the rejection path that skips it) — `.current` on an
       // object isn't tracked that way.
       const inFlightRef: { current: Promise<unknown> | null } = { current: null };
+
+      // The vendor loop, hoisted so the abort branch can wait on it (bounded)
+      // after the race below has been lost to the signal.
+      let loop: Promise<void> | undefined;
 
       // Recorder shutdown is STRUCTURAL, not per-path. It used to be written out
       // on the success path and again on the throw path, which made it one more
@@ -977,7 +1039,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // otherwise write into it concurrently — orphaned items with no
           // terminal `item.done`, or a recorder observation landing after
           // `stop()` and never flushed.
-          const loop = (async () => {
+          loop = (async () => {
             for await (const message of resolved.query({
               prompt: promptText,
               options: queryOptions,
@@ -1062,6 +1124,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
                 if (event.kind === "result") {
                   terminalResultArrived = true;
                   resultSubtype = event.subtype;
+                  resultIsError = event.isError;
                   if (event.sessionId !== null) newSessionId = event.sessionId;
                   if (event.finalMessage !== null)
                     finalMessage = event.finalMessage;
@@ -1086,10 +1149,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           })();
           // If the signal below wins the race, `loop` is abandoned rather than
           // cancelled — it may still be running against the vendor's stream
-          // (see the docblock above). A rejection from it after that point has
-          // nobody left racing it, so it must never become an unhandled
-          // rejection: we told the vendor to stop (`abortController`); we do
-          // not wait to find out whether it did.
+          // (see the docblock above). The abort branch waits for it only up to
+          // `abortExitGrace.ms`, so a rejection from it can still land with
+          // nobody racing it, and must never become an unhandled rejection.
           loop.catch(() => {});
           const abortRace = rejectOnAbort(ctx.signal);
           try {
@@ -1106,6 +1168,15 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
           // name/code — so gating on it here missed every other reason
           // shape despite OUR signal having fired and won the race.
           const abortedByOurSignal = ctx.signal.aborted;
+          if (abortedByOurSignal && loop !== undefined) {
+            // Bounded wait for the process to exit — see `abortExitGrace`. The
+            // loop first: once it settles the SDK has spawned if it ever will,
+            // so `exited()` is read after it rather than before.
+            const deadline = Date.now() + abortExitGrace.ms;
+            await settledWithin(loop, deadline - Date.now());
+            const exited = agentProcess.exited();
+            if (exited !== null) await settledWithin(exited, deadline - Date.now());
+          }
           if (abortedByOurSignal && inFlightRef.current) {
             // The abandoned loop can still be mid-`await` on its own
             // `emitTranslatedEvent`/`closeStreamingItems` call when the race
@@ -1147,8 +1218,12 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             );
             throw reason;
           }
+          // The SDK's own exit errors carry the process's stderr only when the
+          // SDK spawned it; this block does, so it carries the tail instead.
+          const stderrTail = agentProcess.stderrTail();
           const wrapped = new ClaudeAgentRunError(
-            `Claude Code agent run failed: ${(err as Error).message}`,
+            `Claude Code agent run failed: ${(err as Error).message}` +
+              (stderrTail === "" ? "" : `\n${stderrTail}`),
             { cause: (err as Error).message },
           );
           await emitTranslatedEvent(
@@ -1166,14 +1241,14 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         // back to the SDK result's text.
         finalMessage = emitState.finalMessage ?? finalMessage;
 
-        const errored = isErroredSubtype(resultSubtype);
+        const errored = isErroredSubtype(resultSubtype, resultIsError);
         const handle: SdkAgentHandle = {
           source: CLAUDE_SDK_SOURCE,
           status: errored ? "errored" : "completed",
           sessionId: newSessionId,
           url: null,
           dispatchedAt,
-          outcome: outcomeFromResultSubtype(resultSubtype, terminalResultArrived),
+          outcome: outcomeFromResultSubtype(resultSubtype, terminalResultArrived, resultIsError),
           finalMessage,
           usage,
           // The SDK reports its own total, so the basis is `reported` whenever
@@ -1201,7 +1276,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
         ctx.emit.status(
           errored
-            ? `Claude Code agent run errored (${resultSubtype ?? "unknown subtype"}).`
+            ? `Claude Code agent run errored (${
+                resultSubtype === "success" ? "is_error" : (resultSubtype ?? "unknown subtype")
+              }).`
             : "Claude Code agent run completed.",
           { transient: false },
         );

@@ -1,0 +1,10 @@
+{
+  "devteam": {
+    "issue": "release-notes-page",
+    "text": "Add a release notes page that lists the last three tags."
+  },
+  "desk": {
+    "line": "What needs me first this shift?",
+    "reply": "Nothing is waiting on you yet. I'll flag the first ask the moment it lands."
+  }
+}

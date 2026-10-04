@@ -358,6 +358,8 @@ await runGoal(async () => {
     kinds: hireKinds,
     register: (seat, pin) => state.register(seat, { pin }),
     unregister: (id) => state.unregister(id),
+    kindAt: (id) => runtime.registry.get(id)?.kind,
+    instanceAt: (id) => runtime.registry.get(id),
   });
   hireKinds.agent = defineAgentWorkerFlow({ uses: [seatHire] });
   const [manager] = hireWorkforce(

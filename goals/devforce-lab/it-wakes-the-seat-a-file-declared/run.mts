@@ -73,8 +73,14 @@ interface Fixture {
   coordinatorSeat: string;
   unknownSeat: string;
   seats: Record<string, SeatFixture>;
+  /**
+   * The org seats the tree declares under `org/workers/`, by id, with their
+   * kind. Hired with the team seats, and outside this check's per-seat legs:
+   * the chief of staff runs the built-in kind, which has no inspect entry.
+   */
+  orgSeats: Record<string, { kind: string }>;
   documents: string[];
-  channels: string[];
+  mailboxes: string[];
   promptTokens: string[];
   tokenHomes: Record<string, string>;
   wait: { timeoutMs: number; pollMs: number };
@@ -313,12 +319,11 @@ await runGoal(async () => {
     // ---- (a) BR-1, BR-2 — the tree alone produced all of it ---------------
     {
       const seatIds = Object.keys(lab.seats).sort();
-      if (!sameSet(seatIds, Object.keys(fixture.seats))) {
-        note(
-          `hired ${JSON.stringify(seatIds)}, wanted ${JSON.stringify(Object.keys(fixture.seats))}`,
-        );
+      const wantedSeats = [...Object.keys(fixture.seats), ...Object.keys(fixture.orgSeats)];
+      if (!sameSet(seatIds, wantedSeats)) {
+        note(`hired ${JSON.stringify(seatIds)}, wanted ${JSON.stringify(wantedSeats)}`);
       }
-      for (const [seatId, expected] of Object.entries(fixture.seats)) {
+      for (const [seatId, expected] of Object.entries({ ...fixture.seats, ...fixture.orgSeats })) {
         const seat = lab.seats[seatId] as { kind?: string } | undefined;
         if (seat === undefined) continue;
         if (seat.kind !== expected.kind) {
@@ -331,10 +336,10 @@ await runGoal(async () => {
         note(`documents ${JSON.stringify(docRefs)}, wanted ${JSON.stringify(fixture.documents)}`);
       }
       // The COMPLETE set, not its first element — a loader that started
-      // returning a second channel would otherwise leave this green.
-      const channelIds = lab.roster.channels.map((channel) => channel.id);
-      if (!sameSet(channelIds, fixture.channels)) {
-        note(`channels ${JSON.stringify(channelIds)}, wanted ${JSON.stringify(fixture.channels)}`);
+      // returning a second mailbox would otherwise leave this green.
+      const mailboxIds = lab.roster.mailboxes.map((mailbox) => mailbox.id);
+      if (!sameSet(mailboxIds, fixture.mailboxes)) {
+        note(`mailboxes ${JSON.stringify(mailboxIds)}, wanted ${JSON.stringify(fixture.mailboxes)}`);
       }
 
       // BR-2, both halves. One line of one `WORKER.md` is the only difference
@@ -367,7 +372,7 @@ await runGoal(async () => {
       evidence.push(
         `one root produced ${seatIds.length} seats on ${
           new Set(Object.values(fixture.seats).map((s) => s.kind)).size
-        } kinds, ${docRefs.length} documents and ${channelIds.length} channel; a tree naming an ` +
+        } kinds, ${docRefs.length} documents and ${mailboxIds.length} mailbox; a tree naming an ` +
           `unregistered kind refused the whole roster and its corrected twin hired cleanly`,
       );
     }
@@ -658,7 +663,7 @@ await runGoal(async () => {
       JSON.stringify([
         tree.workers.map((w) => w.id).sort(),
         tree.documents.map((d) => d.ref).sort(),
-        tree.channels.map((c) => c.id).sort(),
+        tree.mailboxes.map((c) => c.id).sort(),
       ]);
     if (shape(real) !== shape(withDecoy)) {
       note(`a boards/ folder changed what the tree produced: ${shape(withDecoy)}`);
@@ -673,10 +678,10 @@ await runGoal(async () => {
       );
     }
     // And the positive half, without which "it changed nothing" is equally
-    // true of a loader that reads nothing at all: the channels/ folder beside
+    // true of a loader that reads nothing at all: the mailboxes/ folder beside
     // it DOES load.
-    if (withDecoy.channels.length === 0) {
-      note(`the tree produced no channels, so "an unwalked folder loads as nothing" says nothing`);
+    if (withDecoy.mailboxes.length === 0) {
+      note(`the tree produced no mailboxes, so "an unwalked folder loads as nothing" says nothing`);
     }
 
     // BR-17, at the door the rule names.
@@ -705,7 +710,7 @@ await runGoal(async () => {
         );
       }
       evidence.push(
-        `a boards/ folder loads as nothing while the channels/ folder beside it loads, and an ` +
+        `a boards/ folder loads as nothing while the mailboxes/ folder beside it loads, and an ` +
           `org-less read is refused at the transport door while the same read through the same ` +
           `door, carrying a verified bearer, lands with the seat's own facts`,
       );

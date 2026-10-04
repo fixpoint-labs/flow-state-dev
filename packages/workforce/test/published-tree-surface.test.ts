@@ -49,7 +49,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WorkforceCodeError, discoverWorkforceCode } from "../src/codegen/discover";
-import { readChannelsDirectory } from "../src/loader/read-channels-directory";
+import { readMailboxesDirectory } from "../src/loader/read-mailboxes-directory";
+import { PRE_RENAME_NAMES as OLD } from "../src/mailbox/pre-rename";
 import { readPackagesDirectory } from "../src/loader/read-packages-directory";
 import {
   readReferencesDirectory,
@@ -70,8 +71,8 @@ interface Readout {
   documents: string[];
   /** Reference refs that loaded, from the `references/` slot. Its own field, not merged into `documents`: the two slots go to different install halves, and a shape accounted for by the wrong one is a shape nobody reads. */
   references: string[];
-  /** Channel ids that loaded. */
-  channels: string[];
+  /** Mailbox ids that loaded. */
+  mailboxes: string[];
   /** Ids of teams whose `TEAM.md` loaded. */
   teams: string[];
   /** Resource-module refs the codegen walk found. */
@@ -125,8 +126,8 @@ interface PublishedShape {
  * gets fixed fails until it is removed, and a new gap fails on arrival.
  *
  * Empty, and that is the honest answer rather than a clean bill of health.
- * Every path the published surface declares is read by something today; what is
- * broken is one level up, in {@link KNOWN_UNRESOLVABLE_REFS}. The list stays
+ * Every path the published surface declares is read by something today, and
+ * {@link KNOWN_UNRESOLVABLE_REFS} one level up is empty too. The list stays
  * because the next gap needs somewhere to be recorded the moment it arrives,
  * and because an empty one is what makes the equality assertion say "none".
  */
@@ -166,14 +167,7 @@ const WORKER_REFS_RESOLVE: ReadonlyArray<{ file: string; quote: string }> = [
  * unresolvable ref fails on arrival, and one that starts resolving fails until
  * its row is struck.
  */
-const KNOWN_UNRESOLVABLE_REFS: ReadonlyArray<{ worker: string; owner: string }> = [
-  {
-    worker: "build",
-    owner:
-      "FIX-1414 — an org-level worker has no id to be addressed by, so the ref " +
-      "published for its documents names nothing hireable",
-  },
-];
+const KNOWN_UNRESOLVABLE_REFS: ReadonlyArray<{ worker: string; owner: string }> = [];
 
 /**
  * Where the published surface lives. Every `.md` under these directories is
@@ -218,7 +212,7 @@ const RESERVED = new Set([
   // A third slot added later arrives here on its own.
   ...DOCUMENT_SLOTS,
   "skills",
-  "channels",
+  "mailboxes",
   "flows",
   "blocks",
   "packages",
@@ -239,7 +233,7 @@ const RESERVED = new Set([
  */
 const SLOT_PLACEHOLDER = "<slot>";
 /** Filenames the convention fixes, which stay literal in a shape. */
-const FIXED_LEAVES = new Set(["WORKER.md", "CHANNEL.md", "SKILL.md", "PACKAGE.md"]);
+const FIXED_LEAVES = new Set(["WORKER.md", "MAILBOX.md", "SKILL.md", "PACKAGE.md"]);
 
 /**
  * A published path token, reduced to the shape it is an instance of.
@@ -298,7 +292,7 @@ function toShape(token: string): string | undefined {
       if (parent === "teams") return "<team>";
       if (parent === "workers") return "<worker>";
       if (parent === "skills") return "<skill>";
-      if (parent === "channels") return "<channel>";
+      if (parent === "mailboxes") return "<mailbox>";
       if (parent === "packages") return "<package>";
       return segment;
     })
@@ -403,10 +397,6 @@ function extensionsDeclaredIn(text: string): Set<string> {
  */
 const PROSE_PUBLISHED: ReadonlyArray<{ shape: string; why: string }> = [
   {
-    shape: "org/resources/<name>.ts",
-    why: "published by 'A capability lives at the organization level or in a team.' — no page writes the path",
-  },
-  {
     shape: "org/workers/<worker>/resources/<name>.ts",
     why: "published by 'A plain resource there is fine…' — the sentence covers a worker's folder at either level",
   },
@@ -447,7 +437,7 @@ async function writeFile(root: string, at: string, contents: string): Promise<vo
   await fs.writeFile(target, contents);
 }
 
-/** A `WORKER.md`, `CHANNEL.md`, `SKILL.md` or document with the minimum each requires. */
+/** A `WORKER.md`, `MAILBOX.md`, `SKILL.md` or document with the minimum each requires. */
 const doc = (description: string, body = "Body.\n"): string =>
   `---\ndescription: ${description}\n---\n\n${body}`;
 
@@ -459,11 +449,21 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     shape: "teams/<team>/workers/<worker>/WORKER.md",
     publishedIn: {
       file: "apps/docs/docs/workforce/overview.md",
-      quote: "Each worker lives at `teams/<team>/workers/<name>/WORKER.md`.",
+      quote: "A worker on a team lives at `teams/<team>/workers/<name>/WORKER.md`",
     },
     write: (root) => writeFile(root, "teams/alpha/workers/lead/WORKER.md", doc("A lead.")),
     accountedFor: (out) =>
       out.workers.includes("alpha.lead") || out.reported.includes("teams/alpha/workers/lead"),
+  },
+  {
+    shape: "org/workers/<worker>/WORKER.md",
+    publishedIn: {
+      file: "apps/docs/docs/workforce/workers-on-disk.md",
+      quote:
+        "`org/workers/<name>/` is a seat slot like a team's, so a folder there with no `WORKER.md` is reported.",
+    },
+    write: (root) => writeFile(root, "org/workers/cos/WORKER.md", doc("The chief of staff.")),
+    accountedFor: (out) => out.workers.includes("cos") || out.reported.includes("org/workers/cos"),
   },
   {
     shape: "teams/<team>/TEAM.md",
@@ -482,16 +482,30 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       out.teams.includes("alpha") || out.reported.includes("teams/alpha/TEAM.md"),
   },
   {
-    shape: "teams/<team>/channels/<channel>/CHANNEL.md",
+    shape: "teams/<team>/mailboxes/<mailbox>/MAILBOX.md",
     publishedIn: {
-      file: "apps/docs/docs/workforce/channels.md",
-      quote: "`teams/engineering/channels/standup/` becomes `engineering.standup`",
+      file: "apps/docs/docs/workforce/mailboxes.md",
+      quote: "`teams/engineering/mailboxes/standup/` becomes `engineering.standup`",
     },
     write: (root) =>
-      writeFile(root, "teams/alpha/channels/standup/CHANNEL.md", doc("A standup.")),
+      writeFile(root, "teams/alpha/mailboxes/standup/MAILBOX.md", doc("A standup.")),
     accountedFor: (out) =>
-      out.channels.includes("alpha.standup") ||
-      out.reported.includes("teams/alpha/channels/standup"),
+      out.mailboxes.includes("alpha.standup") ||
+      out.reported.includes("teams/alpha/mailboxes/standup"),
+  },
+  {
+    // The record's name from before the rename, which the README's upgrade
+    // section publishes so a reader can find it. Never loaded: accounted for
+    // only by being reported, file by file, so it can never be silent.
+    shape: `teams/<team>/${OLD.recordFolder}/<name>/${OLD.recordFile}`,
+    publishedIn: {
+      file: "packages/workforce/README.md",
+      quote: `Rename \`teams/<team>/${OLD.recordFolder}/<name>/${OLD.recordFile}\` to \`teams/<team>/mailboxes/<name>/MAILBOX.md\``,
+    },
+    write: (root) =>
+      writeFile(root, `teams/alpha/${OLD.recordFolder}/standup/${OLD.recordFile}`, doc("A standup.")),
+    accountedFor: (out) =>
+      out.reported.includes(`teams/alpha/${OLD.recordFolder}/standup/${OLD.recordFile}`),
   },
   {
     shape: "org/references/<name>.md",
@@ -620,8 +634,11 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       file: "apps/docs/docs/workforce/documents-on-disk.md",
       quote: ORG_WORKER_DOC_REF_ROW,
     },
-    write: (root) =>
-      writeFile(root, "org/workers/build/resources/playbook.md", doc("A playbook.")),
+    // Beside its WORKER.md, as in the docs tree: the folder is the `build` seat.
+    write: async (root) => {
+      await writeFile(root, "org/workers/build/WORKER.md", doc("The build seat."));
+      await writeFile(root, "org/workers/build/resources/playbook.md", doc("A playbook."));
+    },
     accountedFor: (out) =>
       out.documents.includes("workers/build/playbook") ||
       out.reported.includes("org/workers/build/resources/playbook.md"),
@@ -701,15 +718,15 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       out.reported.includes("flows/workers/request-triage.ts"),
   },
   {
-    shape: "flows/channels/<kind>.ts",
+    shape: "flows/mailboxes/<kind>.ts",
     publishedIn: {
       file: "apps/docs/docs/workforce/code-on-disk.md",
-      quote: "standup.ts              ← a channel kind",
+      quote: "standup.ts              ← a mailbox kind",
     },
-    write: (root) => writeFile(root, "flows/channels/standup.ts", "export default {};\n"),
+    write: (root) => writeFile(root, "flows/mailboxes/standup.ts", "export default {};\n"),
     accountedFor: (out) =>
-      out.code.includes("channel:standup") ||
-      out.reported.includes("flows/channels/standup.ts"),
+      out.code.includes("mailbox:standup") ||
+      out.reported.includes("flows/mailboxes/standup.ts"),
   },
   {
     shape: "blocks/<name>.ts",
@@ -830,15 +847,41 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
       out.packageBlocks.includes("teams/alpha/workers/lead/packages/refunds:issue-refund") ||
       out.reported.includes("teams/alpha/workers/lead/packages/refunds/blocks/issue-refund.ts"),
   },
+  {
+    shape: "org/workers/<worker>/packages/<package>/PACKAGE.md",
+    publishedIn: {
+      file: PACKAGES_PAGE,
+      quote: "`workforce/org/workers/<worker>/packages/<name>/PACKAGE.md`",
+    },
+    write: (root) =>
+      writeFile(root, "org/workers/build/packages/kit/PACKAGE.md", doc("A kit.")),
+    accountedFor: (out) =>
+      out.packages.includes("org/workers/build/packages/kit") ||
+      out.reported.includes("org/workers/build/packages/kit") ||
+      out.reported.includes("org/workers/build/packages/kit/PACKAGE.md"),
+  },
+  {
+    shape: "org/workers/<worker>/packages/<package>/blocks/<name>.ts",
+    publishedIn: {
+      file: PACKAGES_PAGE,
+      quote: "`workforce/org/workers/<worker>/packages/<name>/blocks/<block>.ts`",
+    },
+    write: (root) =>
+      writeFile(root, "org/workers/build/packages/kit/blocks/tool.ts", "export default {};\n"),
+    accountedFor: (out) =>
+      out.packageBlocks.includes("org/workers/build/packages/kit:tool") ||
+      out.reported.includes("org/workers/build/packages/kit/blocks/tool.ts"),
+  },
   // `.tsx` is published in a sentence and written in no tree on any page, so
   // nothing above exercises it — a declaration the suite reported full coverage
   // over while never touching it.
   //
-  // Two rows, not seven. The extension is not one setting: `codegen/discover.ts`
-  // and `codegen/discover-resource-modules.ts` each keep their OWN
-  // `TYPESCRIPT_EXTENSIONS`, so one row per walk is the granularity at which
-  // dropping `.tsx` can actually be caught. A row for every `.ts` position would
-  // be six more fixtures that all fail or all pass together.
+  // Two rows, not seven. The extension list is one definition
+  // (`codegen/typescript-module.ts`), but `codegen/discover.ts` and
+  // `codegen/discover-resource-modules.ts` each apply it in their own walk, so
+  // one row per walk is the granularity at which a walk that stops finding
+  // `.tsx` can actually be caught. A row for every `.ts` position would be six
+  // more fixtures that all fail or all pass together.
   {
     shape: "flows/workers/<kind>.tsx",
     publishedIn: {
@@ -886,8 +929,8 @@ async function readEverything(root: string): Promise<Readout> {
   const references = await readReferencesDirectory(root);
   for (const error of references.errors) reported.push(error.path);
 
-  const channels = await readChannelsDirectory(root);
-  for (const error of channels.errors) reported.push(error.path);
+  const mailboxes = await readMailboxesDirectory(root);
+  for (const error of mailboxes.errors) reported.push(error.path);
 
   // The seat the fixture's team shapes hang off. Read directly rather than
   // through `readWorkforce`'s join so a shape stays observable even when the
@@ -941,7 +984,7 @@ async function readEverything(root: string): Promise<Readout> {
     workers: workforce.workers.map((worker) => worker.id),
     documents: resources.documents.map((document) => document.ref),
     references: references.documents.map((reference) => reference.ref),
-    channels: channels.channels.map((channel) => channel.id),
+    mailboxes: mailboxes.mailboxes.map((mailbox) => mailbox.id),
     teams: workforce.teams.map((team) => team.id),
     resourceModules,
     seatBlocks,
@@ -977,8 +1020,7 @@ function workerFromRef(ref: string): { worker: string; folder: string } | undefi
   if (name === undefined) return undefined;
 
   // `teams/<team>/workers/<name>/…` mints `<team>.<name>`; an org-level worker
-  // has no team segment, so the id it would mint is FIX-1414's to decide and
-  // the bare folder name is the most that can be asserted about it.
+  // has no team segment, and its id is the bare folder name.
   return at === 2 && segments[0] === "teams"
     ? { worker: `${segments[1]}.${name}`, folder: `teams/${segments[1]}/workers/${name}` }
     : { worker: name, folder: `org/workers/${name}` };
@@ -1081,8 +1123,8 @@ describe("the published workforce-tree surface", () => {
     expect(
       [...declaredExtensions].filter((ext) => !exercised.has(ext) && !excused.has(ext)).sort(),
       `The published pages name a file extension no row exercises.\n` +
-        `Each of the two walks keeps its own TYPESCRIPT_EXTENSIONS list, so one row per walk ` +
-        `is what covers an extension — drop it from one list and only that walk's row fails. ` +
+        `Each walk applies the extension rule in its own loop, so one row per walk is what ` +
+        `covers an extension — a walk that stops finding it fails only its own row. ` +
         `If the token is not really an extension, add it to NOT_AN_EXTENSION with why.`,
     ).toEqual([]);
   });
@@ -1125,10 +1167,15 @@ describe("the published workforce-tree surface", () => {
     // says such a folder's documents load and the missing file is reported
     // separately, so this is the case that proves the assertion below
     // discriminates: its ref is unresolved for a reason the author is TOLD, and
-    // it must not read the same as the org-level silence.
+    // it must not read the same as silence.
     await writeFile(root, "teams/alpha/workers/ghost/resources/note.md", doc("A note."));
 
     const out = await readEverything(root);
+
+    // The published example names a seat that exists: the docs tree gives
+    // `org/workers/build/` its WORKER.md, so its runbook's ref resolves to a
+    // loaded seat, not merely to a reported folder.
+    expect(out.workers).toContain("build");
 
     // The class policy, applied to an address instead of a path: a ref that
     // names a worker must name one that loaded, or one whose absence was

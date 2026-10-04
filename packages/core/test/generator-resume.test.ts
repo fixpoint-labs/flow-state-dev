@@ -163,6 +163,19 @@ describe("reconstructGeneratorResume (FIX-814)", () => {
     expect(res.content[0].output).toEqual({ type: "content", value: [{ type: "text", text: "REDACTED" }] });
   });
 
+  it("replays a recorded mapper failure as the run's failure, never as the tool's success or a failed tool call", () => {
+    // The tool ran, but its `mapModelOutput` threw: the live loop fails the
+    // run. A recovery that rebuilt this step must fail it the same way, not
+    // hand the model the raw output (or an error-text it never saw).
+    const items = [
+      stepArtifact(0, [{ toolCallId: "a", toolName: "t", alias: "t" }]),
+      toolOutput("a", "t", "failed", { errorCode: "MODEL_OUTPUT_MAP_FAILED", errorMessage: "mapper broke" }),
+      stepArtifact(1, [{ toolCallId: "g", toolName: "gate", alias: "gate" }]),
+      toolOutput("g", "gate", "failed", { errorCode: "SUSPENSION" }),
+    ];
+    expect(() => run(items, gateLogical(1, "gate", "g"))).toThrow(/mapper broke/);
+  });
+
   it("classifies a step's failed tool_outputs three ways: pending / losing / ordinary", () => {
     const items = [
       stepArtifact(0, [

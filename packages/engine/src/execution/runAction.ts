@@ -13,6 +13,7 @@ import { isValidOrgId } from "@flow-state-dev/core";
 import { OrgRequiredError } from "../transports/errors";
 import { resolveActionCore } from "./resolve-action-core";
 import { readDispatchStamp } from "./dispatch-metadata";
+import { hasResumeMetadata, stripResumeMetadata } from "./resume-metadata";
 import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH, resolveEntry as resolveTypedEntry, taskBindingOf } from "@flow-state-dev/core";
 import type { TaskEntry } from "@flow-state-dev/core/types";
@@ -41,6 +42,7 @@ import type { FlowError } from "../errors/flow-error";
 import { ValidationError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
+import { mergeItemsById } from "../stores/shared";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
 import { executeBlock } from "./executeBlock";
 import { recordOutput, settledRecordFields, type RecordedOutput, type RequestSettlement } from "./request-action-result";
@@ -366,6 +368,22 @@ function parseActionInput(action: ActionCore, input: unknown): unknown {
 }
 
 /**
+ * The items a request record holds: no transient item, and no ephemeral
+ * content. The one rule for every write of a record's items, so a read while
+ * a request runs (FIX-1735) shows what its settled record will. Hands the list
+ * over as it is when nothing in it is left out, since a running request calls
+ * this per streamed delta.
+ */
+function itemsForPersistedRecord(items: OutputItem[]): OutputItem[] {
+  const clean = !items.some(
+    (item) =>
+      item.transient === true ||
+      (item.type === "message" && (item as MessageItem).content?.some(isEphemeralContent) === true)
+  );
+  return clean ? items : stripEphemeralContent(items.filter((item) => item.transient !== true));
+}
+
+/**
  * Strips ephemeral content parts (e.g. output_audio) from items before
  * persistence. Ephemeral content is streamed to the client in real time
  * but should not be stored, since it may contain large binary payloads.
@@ -476,11 +494,7 @@ async function settleFreshRequestSetupFailure(options: {
           },
           now
         );
-      const items = stripEphemeralContent(
-        mergeItemsById(base.items ?? [], [...options.emittedItems, item]).filter(
-          (entry) => entry.transient !== true
-        )
-      );
+      const items = itemsForPersistedRecord(mergeItemsById(base.items ?? [], [...options.emittedItems, item]));
       const failed: RequestRecord = {
         ...base,
         ...settledRecordFields({ status: "failed", error: normalized }),
@@ -488,6 +502,15 @@ async function settleFreshRequestSetupFailure(options: {
         updatedAt: now,
         items
       };
+      // Items before the status, as every terminal write does: on a store
+      // whose `set` drops `items`, a `failed` read must not come without its
+      // error item. Only onto a record this run already holds, though; one
+      // this write creates may be lost to another request taking the id
+      // ("absent"), so its items follow the write that wins it.
+      if (current !== undefined) {
+        options.stores.request.persistItems(options.requestId, items);
+        await options.stores.request.flushItems(options.requestId);
+      }
       const written = await options.stores.request.set(
         options.requestId,
         failed,
@@ -495,8 +518,10 @@ async function settleFreshRequestSetupFailure(options: {
       );
       if (written.ok) {
         writtenIncarnation = resolveRequestIncarnation(failed);
-        options.stores.request.persistItems(options.requestId, items);
-        await options.stores.request.flushItems(options.requestId);
+        if (current === undefined) {
+          options.stores.request.persistItems(options.requestId, items);
+          await options.stores.request.flushItems(options.requestId);
+        }
         settled = true;
       }
     }
@@ -581,7 +606,7 @@ async function writeRequestRecordPatch(
   }
 
   const sanitized = patch.items !== undefined
-    ? { ...patch, items: stripEphemeralContent(patch.items.filter(item => item.transient !== true)) }
+    ? { ...patch, items: itemsForPersistedRecord(patch.items) }
     : patch;
 
   // Request-record patches (items, status, timestamps) are written outside
@@ -683,32 +708,6 @@ async function finalizeRequestRecord(
     }
   }
   return false;
-}
-
-/**
- * Union prior persisted items with this run's items by `id`, last-write-wins
- * per id, preserving order (prior items first in their original order, then
- * any new ids in re-entry order). Used for the terminal write of a same-request
- * continuation (FIX-811), where the re-entry emitter holds only post-resume
- * items but a GET must return the full pause→continue history. A backstop for
- * stores whose `persistItems` already merges (sqlite); load-bearing for the
- * in-memory store whose `persistItems` is a no-op.
- */
-function mergeItemsById(
-  prior: readonly OutputItem[],
-  reentry: readonly OutputItem[]
-): OutputItem[] {
-  const byId = new Map<string, OutputItem>();
-  const order: string[] = [];
-  for (const item of prior) {
-    if (!byId.has(item.id)) order.push(item.id);
-    byId.set(item.id, item);
-  }
-  for (const item of reentry) {
-    if (!byId.has(item.id)) order.push(item.id);
-    byId.set(item.id, item);
-  }
-  return order.map((id) => byId.get(id)!);
 }
 
 /**
@@ -954,9 +953,21 @@ export async function runActionInternal<
   options: RunActionInternalOptions<TFlow, TActionName>
 ): Promise<ExecutionResult> {
   const requestId = options.requestId ?? generateId("req");
+  // Caller metadata never carries a resume instruction (BP-031, FIX-1707):
+  // drop `resumeContext` / `resumeOf` before anything reads or persists it. A
+  // resolution arrives only as the typed `options.resumeContext`.
+  if (hasResumeMetadata(options.metadata)) {
+    logRuntimeEvent(
+      options.runtimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER,
+      "warn",
+      "[flow-state] ignored resume keys in request metadata",
+      { requestId, flowKind: options.flow.kind, actionName: options.actionName }
+    );
+  }
+  const metadata = stripResumeMetadata(options.metadata);
   const attempt = beginRequestAttempt(options.stores.request, requestId);
   try {
-    return await runActionAttempt({ ...options, requestId }, attempt);
+    return await runActionAttempt({ ...options, requestId, metadata }, attempt);
   } finally {
     // Reached with the attempt still open only when the run ended by
     // throwing rather than through its own finalization (a setup failure, or
@@ -1039,6 +1050,9 @@ async function runActionAttempt<
   let priorItemsForMerge: readonly OutputItem[] = [];
   const itemsToPersist = (): OutputItem[] =>
     isReplayMode ? mergeItemsById(priorItemsForMerge, response.getItems()) : response.getItems();
+  // What a running request's incremental persists write: the log its record
+  // will hold when it settles (FIX-1735).
+  const persistableItems = (): OutputItem[] => itemsForPersistedRecord(itemsToPersist());
 
   if (options.onItem !== undefined) {
     // Fan every item to the caller's listener, transient ones included (they
@@ -1207,6 +1221,19 @@ async function runActionAttempt<
   // settled, so no stored cancel is delivered: one delivered for admission's
   // request would stay on this run's controller if another request took the id.
   let incarnationSettled = false;
+  /**
+   * Hand the store the items this run's record is about to settle with, and
+   * wait out every item write, before a terminal write. The SQL stores keep
+   * items out of the record row, so the terminal write's own `items` never
+   * reach them, and the emitter's `item.done` hook fires after the event's
+   * `onEvent`, which can put a block's last items in the store after the
+   * status. A run that never settled which record it holds persists nothing
+   * (FIX-1735).
+   */
+  const flushSettlingItems = async (): Promise<void> => {
+    if (incarnationSettled) options.stores.request.persistItems(requestId, persistableItems());
+    await options.stores.request.flushItems(requestId);
+  };
   /**
    * Whether a cancel is recorded on the request this run executes as. The flag
    * is read first, as the O(1) `isAbortRequested`, and only when it is set is
@@ -1542,8 +1569,8 @@ async function runActionAttempt<
         // state_snapshot items are transient by design — no items-log persist.
         return;
       }
-      if (item.transient === true) return;
-      options.stores.request.persistItems(requestId, itemsToPersist());
+      if (item.transient === true || !incarnationSettled) return;
+      options.stores.request.persistItems(requestId, persistableItems());
     },
     // FIX-479: incremental items-snapshot checkpoint while streaming text.
     // content.delta events no longer enter the persisted events log; the
@@ -1554,8 +1581,8 @@ async function runActionAttempt<
     // delta callers do not amplify disk I/O.
     onItemUpdate: (item) => {
       if (item.type === "state_snapshot") return;
-      if (item.transient === true) return;
-      options.stores.request.persistItems(requestId, itemsToPersist());
+      if (item.transient === true || !incarnationSettled) return;
+      options.stores.request.persistItems(requestId, persistableItems());
     }
   });
 
@@ -1596,7 +1623,8 @@ async function runActionAttempt<
   // the ReplayLog build and checkpoint restore. Replay covers suspension resume
   // (a `resumeContext` re-enters a `suspended` record) and crash recovery
   // (`continueRequest` re-enters an `interrupted` record with no resumeContext).
-  const resumeContextRaw = options.metadata?.resumeContext as ResumeContext | undefined;
+  // Only the typed option is read — never metadata, which callers control.
+  const resumeContextRaw = options.resumeContext;
   let priorRecord: RequestRecord | undefined;
   if (resumeContextRaw !== undefined || options.replayMode === true) {
     priorRecord = await options.stores.request.get(requestId).catch(() => undefined);
@@ -1804,14 +1832,12 @@ async function runActionAttempt<
   }
 
   // Resume mode bookkeeping is declared before the pre-transition try so the
-  // values survive into the post-transition body. `resumeOf` (legacy
-  // two-request path) is independent of replay metadata; `resumeContext` /
-  // `checkpointSourceId` are assigned inside the try once `effectiveMetadata`
-  // is built.
-  const resumeOf = options.metadata?.resumeOf as string | undefined;
+  // values survive into the post-transition body. `resumeContext` is set only
+  // on a suspension resume in replay mode, with `pendingBlockLogicalId` taken
+  // from the replay log — so it can only ever resolve the gate this request
+  // actually suspended at.
   let resumeContext: ResumeContext | undefined;
   let replayLog: ReplayLog | undefined;
-  let effectiveMetadata = options.metadata;
   let ctx: ExecutionContext;
   try {
     if (isReplayMode && priorRecord !== undefined) {
@@ -1829,10 +1855,7 @@ async function runActionAttempt<
       // exactly that gate and re-suspends at any other.
       if (resumeContextRaw !== undefined) {
         const pendingBlockLogicalId = replayLog.pendingSuspension()?.blockLogicalId;
-        effectiveMetadata = {
-          ...options.metadata,
-          resumeContext: { ...resumeContextRaw, pendingBlockLogicalId }
-        };
+        resumeContext = { ...resumeContextRaw, pendingBlockLogicalId };
       }
     }
 
@@ -1845,7 +1868,8 @@ async function runActionAttempt<
       orgId: options.orgId,
       tenantId: options.tenantId,
       source,
-      metadata: effectiveMetadata,
+      metadata: options.metadata,
+      resumeContext,
       input: options.input,
       signal: composedSignal,
       sideChainSignal: sideChainController.signal,
@@ -1884,6 +1908,10 @@ async function runActionAttempt<
     }
     incarnationSettled = true;
     if (registered.signal.aborted) forwardRegisteredAbort();
+    // Items persist only into the record this run now holds: one emitted
+    // before (the caller's own line) could otherwise land in a record another
+    // principal took the id with. Whatever was held back goes now.
+    options.stores.request.persistItems(requestId, persistableItems());
 
     // First poll (FIX-1026), against the request this run executes as. It
     // closes the window where the cancel was recorded between admission and
@@ -1908,18 +1936,16 @@ async function runActionAttempt<
     await pollAbortIntent();
 
     // Resume mode: load the suspension record + checkpoint to restore the durable
-    // sequencer's accumulator state. `resumeOf` (legacy two-request path) reads
-    // from the ORIGINAL request id; same-request replay (FIX-811) reads from this
-    // request's own id. Step skipping is no longer positional — completed blocks
-    // are injected per-logical-path via `ctx._replayLog` (set below in replay
-    // mode); this only restores sequencer state.
-    resumeContext = effectiveMetadata?.resumeContext as ResumeContext | undefined;
-    const checkpointSourceId = isReplayMode ? requestId : resumeOf;
-    if (checkpointSourceId !== undefined && resumeContext !== undefined) {
+    // sequencer's accumulator state. Same-request replay (FIX-811) reads from
+    // this request's own id. Step skipping is no longer positional — completed
+    // blocks are injected per-logical-path via `ctx._replayLog` (set below in
+    // replay mode); this only restores sequencer state. `resumeContext` is only
+    // ever set in replay mode (above).
+    if (resumeContext !== undefined) {
       const provider = options.runtimeConfig.durabilityProvider;
       if (provider !== undefined) {
         const suspension = await provider.loadSuspension(
-          checkpointSourceId,
+          requestId,
           resumeContext.suspensionId
         );
         if (suspension !== null && suspension.stepIndex >= 0) {
@@ -1927,7 +1953,7 @@ async function runActionAttempt<
           // checkpoint key. In replay mode the request id is unchanged, so the
           // checkpoint lives under this same id.
           const checkpoint = await options.stores.checkpoints.latest(
-            checkpointSourceId,
+            requestId,
             suspension.blockInstanceId
           );
           (ctx as any)._resumeState = {
@@ -2207,6 +2233,7 @@ async function runActionAttempt<
         await flushCheckpoints();
         await flushTraces();
 
+        await flushSettlingItems();
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: itemsToPersist()
         });
@@ -2228,14 +2255,13 @@ async function runActionAttempt<
         if (eventsRateInterval !== undefined) clearInterval(eventsRateInterval);
 
         // Release the resume lease so the request can be resumed again at the
-        // NEXT gate. Legacy two-request resume keyed the lease on `resumeOf`;
-        // same-request continuation (FIX-811) keys it on this request id itself
-        // (the resume route acquires it on `requestId`, and `resumeOf` is
-        // undefined here). Without this, a re-suspension strands the lease until
-        // its 60s TTL and the next approval 409s. Awaited before `finished`
-        // resolves so the next resume POST sees a released lease (the terminal
-        // path releases via `durabilityProvider.cleanup`).
-        const reSuspendLeaseKey = resumeOf ?? (isReplayMode ? requestId : undefined);
+        // NEXT gate. Same-request continuation (FIX-811) keys it on this request
+        // id itself (the resume route acquires it on `requestId`). Without this,
+        // a re-suspension strands the lease until its 60s TTL and the next
+        // approval 409s. Awaited before `finished` resolves so the next resume
+        // POST sees a released lease (the terminal path releases via
+        // `durabilityProvider.cleanup`).
+        const reSuspendLeaseKey = isReplayMode ? requestId : undefined;
         if (reSuspendLeaseKey !== undefined) {
           try {
             const lease = await options.stores.leases.get(reSuspendLeaseKey);
@@ -2401,6 +2427,9 @@ async function runActionAttempt<
     await flushCheckpoints();
     await flushTraces();
 
+    // Then the items the record settles with, so the status below is never
+    // read without them on a store whose `set` drops `items`.
+    await flushSettlingItems();
     const completedAt = Date.now();
     const items = itemsToPersist();
     terminalRecordIncarnation = await settleRequestRecord(
@@ -2424,30 +2453,8 @@ async function runActionAttempt<
     // Persist the final event list (includes terminal status event)
     await options.stores.request.flushEvents(requestId);
 
-    if (resumeOf !== undefined && options.runtimeConfig.durabilityProvider !== undefined) {
-      try {
-        if (terminalStatus === "completed") {
-          await options.runtimeConfig.durabilityProvider.cleanup(resumeOf);
-        } else {
-          // On failure/abort, only release the lease — preserve suspension
-          // records so the operator can retry via the resume endpoint.
-          const lease = await options.stores.leases.get(resumeOf);
-          if (lease !== null) {
-            await options.stores.leases.release(resumeOf, lease.leaseId);
-          }
-        }
-      } catch (err) {
-        logRuntimeEvent(logger, "warn", "[flow-state] durability cleanup failed", {
-          requestId, resumeOf, error: String(err)
-        });
-      }
-    }
-
-    // Non-resumed durable completion: clean up THIS request's own durability
-    // artifacts (suspension records + lease) when it completes on the first
-    // run (never suspended/resumed). The `resumeOf` block above already cleans
-    // the original request on the resume path, so this branch is mutually
-    // exclusive with it (guarded by `resumeOf === undefined`) — no double-clean.
+    // Durable completion: clean up THIS request's own durability artifacts
+    // (suspension records + lease) when it completes.
     //
     // "Durable" here means the request actually exercised durability:
     // `action.durable` is the documented action-level opt-in (it's what makes
@@ -2462,17 +2469,16 @@ async function runActionAttempt<
     // `cleanupCheckpointsOnTerminal` (per-instance terminal deletes during the
     // run already handle the common case; this is the catch-up for any survivors).
     //
-    // `isReplayMode` (FIX-811): a same-request continuation re-enters with
-    // `resumeOf === undefined` but does NOT re-emit durable frames (completed
-    // steps are injected from the log), so `sawDurableFrame` stays false on
-    // resume. A replay is durable by definition — the request was suspended —
-    // so force cleanup here to release the resume lease and delete the resolved
-    // suspension records on terminal completion. Without it both linger until
+    // `isReplayMode` (FIX-811): a same-request continuation does NOT re-emit
+    // durable frames (completed steps are injected from the log), so
+    // `sawDurableFrame` stays false on resume. A replay is durable by
+    // definition — the request was suspended — so force cleanup here to
+    // release the resume lease and delete the resolved suspension records on
+    // terminal completion. Without it both linger until
     // their TTL, and the resume route's lease (keyed on this request id) would
     // strand a spurious 409 against an already-completed request.
     const usedDurability = action.durable === true || sawDurableFrame || isReplayMode;
     if (
-      resumeOf === undefined &&
       usedDurability &&
       terminalStatus === "completed" &&
       options.runtimeConfig.durabilityProvider !== undefined
@@ -2708,6 +2714,7 @@ async function runActionAttempt<
         await flushTraces();
 
         const abortedAt = Date.now();
+        await flushSettlingItems();
         terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "aborted" }, {
           abortedAt,
           items: itemsToPersist(),
@@ -2741,6 +2748,7 @@ async function runActionAttempt<
         await flushCheckpoints();
         await flushTraces();
 
+        await flushSettlingItems();
         terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "interrupted" }, {
           interruptedAt: Date.now(),
           items: itemsToPersist(),
@@ -2775,6 +2783,7 @@ async function runActionAttempt<
       await flushTraces();
 
       const failedAt = Date.now();
+      await flushSettlingItems();
       terminalRecordIncarnation = await settleRequestRecord(
         options.stores,
         requestId,

@@ -18,7 +18,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   classifierDispatcher,
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   startLeaseRenewal,
   ticketForClaim,
   withLeaseRenewal,
@@ -49,9 +49,9 @@ function harness(): Harness {
     tasks: {},
   });
   return {
-    collection: createSequencerBackedTaskCollection({
+    collection: createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer,
+      state: sequencer,
       now: () => clock,
     }),
     setNow: (n) => {
@@ -142,9 +142,9 @@ describe("renewLease — the write", () => {
     // idle worker on the board into a full collection scan.
     const events: unknown[] = [];
     let clock = 1000;
-    const collection = createSequencerBackedTaskCollection({
+    const collection = createStateBackedTaskCollection({
       collectionId: "tasks",
-      sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+      state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
       onChange: (e) => events.push(e),
       now: () => clock,
     });

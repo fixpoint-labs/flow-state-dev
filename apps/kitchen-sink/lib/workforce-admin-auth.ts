@@ -20,7 +20,7 @@
  *
  * **Every token must name {@link KITCHEN_SINK_ORG_ID}.** This app runs as one
  * organization (`lib/kitchen-sink-principal.ts`): its assistant, its seats and
- * its channels all resolve to it, and so does every seat hired through them. A
+ * its mailboxes all resolve to it, and so does every seat hired through them. A
  * token bound anywhere else would administer a roster nothing in this app
  * reads, and its `fire` would miss every seat the app hired. So an entry naming
  * another organization is refused when the credentials are read, and the
@@ -193,7 +193,7 @@ export function adminPrincipalResolver(): ResolvePrincipalFn | undefined {
  * from anything on a request (BP-031).
  *
  * **On the seat instance, and nowhere wider.** A host-level resolver would put
- * every open flow in this app (`chat-agent`, the channels, the file-declared
+ * every open flow in this app (`chat-agent`, the mailboxes, the file-declared
  * seats) behind the admin token. A resolver on the kind would do the same to
  * the file-declared seats of that kind, which run unpinned for `devuser`. The
  * instance is the one place that covers exactly the pinned seats.

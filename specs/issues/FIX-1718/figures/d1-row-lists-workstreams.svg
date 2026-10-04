@@ -1,0 +1,102 @@
+<svg viewBox="0 0 940 422" role="img" aria-label="D1, how a workstream joins a project. Chosen: the project&#x27;s row lists its workstreams, one project each, checked on write. Instead of: the project named on each workstream&#x27;s inventory row or CHANNEL.md. It comes down to the first row: a project is created at runtime, after the tree and its inventory rows were written, so only the row can name it. Second row: the chief of staff changes one row, and Shift Manager reads one collection. The price is the third row: the one-project rule is checked when a row is written, not by the shape. Locks in: workstreams, a list of declared channel ids, on the row; nothing added to the inventory or CHANNEL.md. Flips if workstreams need data of their own; then they become rows of a second collection."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --gone:#DE8A84; } }
+    .bg     { fill:var(--surface); }
+    .ask    { fill:var(--surface-2); }
+    .chosen { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .lost   { fill:var(--surface); stroke:var(--rule); stroke-width:1.4; stroke-dasharray:5 4; }
+    .decide { fill:var(--accent-soft); }
+    .bar    { fill:var(--accent); }
+    .row    { stroke:var(--rule); stroke-width:1; }
+    .foot   { fill:var(--surface-2); }
+    .t-lbl  { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-tag  { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; font-weight:600; }
+    .t-q    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:15px; }
+    .t-h    { font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:14px; }
+    .t-b    { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-size:12.5px; }
+    .t-s    { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .mark   { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:16px; font-weight:700; }
+    .plus   { fill:var(--code); }
+    .minus  { fill:var(--gone); }
+    .tie    { fill:var(--ink-3); }
+    .c-code { fill:var(--code); }
+    .c-mute { fill:var(--ink-3); }
+    .c-lost { fill:var(--ink-2); }
+    .c-acc  { fill:var(--accent); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="422"/>
+
+  <g id="the-call">
+    <rect class="ask" x="16" y="14" width="908" height="48" rx="6"/>
+    <text class="t-lbl" x="32" y="32">D1 · THE CALL</text>
+    <text class="t-q" x="32" y="52">How does a workstream join a project?</text>
+  </g>
+
+  <g id="options">
+    <rect class="chosen" x="212" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-code" x="228" y="93">CHOSEN</text>
+    <text class="t-h c-code" x="228" y="112">The project&#x27;s row lists it</text>
+    <rect class="lost" x="576" y="76" width="348" height="46" rx="5"/>
+    <text class="t-tag c-mute" x="592" y="93">INSTEAD OF</text>
+    <text class="t-h c-lost" x="592" y="112">Named on the workstream&#x27;s own row</text>
+  </g>
+
+  <g id="row-decides">
+    <rect class="decide" x="16" y="134" width="908" height="62" rx="4"/>
+    <rect class="bar" x="16" y="134" width="4" height="62"/>
+    <text class="t-lbl" x="32" y="156">WHEN A</text>
+    <text class="t-lbl" x="32" y="169">PROJECT EXISTS</text>
+    <text class="t-tag c-acc" x="32" y="186">▸ DECIDES IT</text>
+    <text class="mark plus" x="228" y="162">+</text>
+    <text class="t-b" x="248" y="161">Any time, at runtime</text>
+    <text class="t-s" x="248" y="179">the row is written when it is made</text>
+    <text class="mark minus" x="592" y="162">−</text>
+    <text class="t-b" x="612" y="161">Only what the tree knew at boot</text>
+    <text class="t-s" x="612" y="179">inventory rows are written from files</text>
+  </g>
+
+  <g id="row-2">
+    <text class="t-lbl" x="32" y="222">WHAT A</text>
+    <text class="t-lbl" x="32" y="235">CHANGE TOUCHES</text>
+    <text class="mark plus" x="228" y="224">+</text>
+    <text class="t-b" x="248" y="223">One row</text>
+    <text class="t-s" x="248" y="241">Shift Manager reads one collection</text>
+    <text class="mark minus" x="592" y="224">−</text>
+    <text class="t-b" x="612" y="223">Every workstream it moves</text>
+    <text class="t-s" x="612" y="241">and a project field on the inventory</text>
+    <line class="row" x1="16" y1="256" x2="924" y2="256"/>
+  </g>
+
+  <g id="row-3">
+    <text class="t-lbl" x="32" y="282">ONE PROJECT</text>
+    <text class="t-lbl" x="32" y="295">EACH</text>
+    <text class="mark minus" x="228" y="284">−</text>
+    <text class="t-b" x="248" y="283">Checked on write</text>
+    <text class="t-s" x="248" y="301">a second row naming it is refused</text>
+    <text class="mark plus" x="592" y="284">+</text>
+    <text class="t-b" x="612" y="283">Held by the shape</text>
+    <text class="t-s" x="612" y="301">one field, one value</text>
+    <line class="row" x1="16" y1="316" x2="924" y2="316"/>
+  </g>
+
+  <g id="locks-in">
+    <rect class="foot" x="16" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="32" y="353">LOCKS IN</text>
+    <text class="t-b" x="32" y="373">workstreams: declared channel ids, on the row</text>
+    <text class="t-s" x="32" y="391">inventory and CHANNEL.md gain nothing for it</text>
+  </g>
+
+  <g id="flips-if">
+    <rect class="foot" x="478" y="332" width="446" height="74" rx="5"/>
+    <text class="t-lbl" x="494" y="353">FLIPS IF</text>
+    <text class="t-b" x="494" y="373">Workstreams need data of their own</text>
+    <text class="t-s" x="494" y="391">then a second collection, and this field moves</text>
+  </g>
+</svg>

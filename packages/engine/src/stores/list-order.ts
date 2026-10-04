@@ -5,8 +5,7 @@
  * Shared rather than inlined per adapter for the same reason the filter
  * predicates in `scope-keys.ts` are: two adapters implementing "the same"
  * ordering separately is how they drift, and the SQL adapters mirror these in
- * their `ORDER BY` builders because they cannot import across the type-only
- * package boundary.
+ * their `ORDER BY` builders because the ordering has to be SQL there.
  */
 import type {
   RequestListOptions,

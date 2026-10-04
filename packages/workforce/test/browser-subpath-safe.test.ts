@@ -2,14 +2,14 @@
  * Guard: `@flow-state-dev/workforce/browser` stays browser-safe.
  *
  * A client component imports that subpath for the names a panel reads with —
- * the roster key, the channel post component, the transcript line type. A
+ * the roster key, the mailbox post component, the transcript line type. A
  * browser bundler cannot resolve a Node built-in, so one module on that graph
  * importing `node:async_hooks` fails the whole page at compile time, in the
  * consumer's dev server rather than in our tests.
  *
  * That is how it broke: a kitchen-sink client component took
- * `CHANNEL_POST_COMPONENT` from the package root, the constant lived in
- * `channel-flow.ts`, and that module reaches the orchestration task board,
+ * `MAILBOX_POST_COMPONENT` from the package root, the constant lived in
+ * `mailbox-flow.ts`, and that module reaches the orchestration task board,
  * which imports `node:async_hooks`. The offending import sat in ANOTHER
  * package, so unlike `orchestration/test/tasks-subpath-browser-safe.spec.ts`
  * this walk follows workspace-package specifiers into their source through
@@ -43,15 +43,17 @@ describe("@flow-state-dev/workforce/browser", () => {
   it("still exports the names the kitchen-sink panels import", async () => {
     // The other direction: emptying the entry would pass the walk above.
     const entry = await import("@flow-state-dev/workforce/browser");
-    expect(entry.CHANNEL_POST_COMPONENT).toBe("channel-post");
+    expect(entry.MAILBOX_POST_COMPONENT).toBe("mailbox-post");
     expect(entry.HIRED_ROSTER_RESOURCE).toBe("hiredRoster");
+    expect(entry.HIRED_ROSTER_BROWSER_PATTERN).toBe("workforce/roster/*");
     expect(entry.SEAT_INVENTORY_RESOURCE).toBe("seatInventory");
     expect(typeof entry.splitSeatAddress).toBe("function");
-    expect(typeof entry.channelTranscriptLineSchema.parse).toBe("function");
-    // The sixth, the `ChannelTranscriptLine` type, is pinned in `browser-exports.test-d.ts`.
+    expect(typeof entry.listedSeatRows).toBe("function");
+    expect(typeof entry.mailboxTranscriptLineSchema.parse).toBe("function");
+    // The eighth, the `MailboxTranscriptLine` type, is pinned in `browser-exports.test-d.ts`.
   });
 
-  it("finds the Node built-in the package root reaches through the channel floor", () => {
+  it("finds the Node built-in the package root reaches through the mailbox floor", () => {
     // Proves the walk crosses into workspace packages: the root is NOT
     // browser-safe, and the offender lives in orchestration, not here.
     const offenders = findNodeBuiltinsFromEntry(path.join(pkgRoot, "src/index.ts"), {

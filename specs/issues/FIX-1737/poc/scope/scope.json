@@ -1,0 +1,13 @@
+{
+  "slices": {
+    "A": ["F2", "F3", "F4", "F5", "F7", "F8", "F9", "W4", "C9", "W12"],
+    "B": ["F12", "F13", "F14", "F15", "F16", "F18", "F20", "F22", "C1", "C2", "C3", "C5", "C7", "C8", "C10"],
+    "C": ["W1", "W5", "W11", "T7", "T9", "T13", "P2", "P5", "P7", "P8"],
+    "D": ["I1", "I2", "I3", "I5", "I8", "I11", "I17", "I18", "K1", "K2", "K3", "K4", "K5", "K8", "K9", "R1", "R6", "R8"]
+  },
+  "outDrawable": {
+    "F1": "FIX-1736 (fonts)",
+    "T4": "registry part (message, reasoning and tool cards)",
+    "T6": "registry part (user message)"
+  }
+}

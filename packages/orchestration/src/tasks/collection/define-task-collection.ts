@@ -103,7 +103,7 @@ export function defineTaskCollection<
 
   const collection = defineResourceCollection({
     // `<id>/**` (deep), not `<id>/*`: task ids may contain slashes (a caller can
-    // seed `{ id: "parent/child" }`, which the request/sequencer backings store
+    // seed `{ id: "parent/child" }`, which the state backing stores
     // fine). A single-level `/*` would reject those keys on a durable board, so
     // the same tasks must round-trip through the resource pattern too.
     pattern: `${options.id}/**`,

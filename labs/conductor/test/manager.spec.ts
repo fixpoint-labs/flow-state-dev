@@ -1723,6 +1723,18 @@ describe("the ledger is partitioned by tenant", () => {
       expect(seen.prompts).toHaveLength(runsBefore);
     });
 
+    it("refuses a foreign MESSAGE before it reads the board", async () => {
+      // The door reads the board to find the run, keeps a turn and stops an
+      // attempt. Refused by the door's own reasons ("hasn't started") would
+      // mean it had already read another tenant's ledger to say so.
+      live = conductorFor(OTHER);
+      await live.call("seed", { issue: ISSUE, phase: PHASE }, undefined, OTHER);
+
+      await expect(
+        live.call("message", { message: "not yours" }, undefined, "globex"),
+      ).rejects.toThrow(/serves "acme"/);
+    });
+
     it("does not let a tenant NAMED like the default alias an untenanted one", async () => {
       // The state the tenant check itself introduced. `?? "single-tenant"`
       // collapsed absence into a value, so a real tenant called `single-tenant`

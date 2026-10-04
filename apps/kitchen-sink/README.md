@@ -1,6 +1,6 @@
 # Kitchen Sink
 
-The canonical reference application for `@flow-state-dev`, and a Workforce app you can copy. It hires a team, gives that team a channel and a board, and shows all of it in a shell whose navigator, roster and board list are imported from `@flow-state-dev/react`.
+The canonical reference application for `@flow-state-dev`, and a Workforce app you can copy. It hires a team, gives that team a mailbox and a board, and shows all of it in a shell whose navigator, roster and board list are imported from `@flow-state-dev/react`.
 
 Kitchen sink is a reference app, not a minimal example. It hosts every subsystem and is where features get tested end to end. For small, focused, copy-paste-able demos see `examples/`.
 
@@ -35,11 +35,11 @@ The `pnpm fsdev` commands below run from `apps/kitchen-sink`, where `fsdev.confi
 KITCHEN_SINK_TEST_MODE=1 pnpm --filter @flow-state-dev/kitchen-sink dev
 ```
 
-The specialists and the assistant all answer with the same placeholder, `Test mode (no scenario sentinel matched).`, but the channel around them works as it does with a key: a post in `support.help` is routed to one specialist, and that specialist's answer lands in the channel under its name. The scripted route can't read a question, so it goes by a tag instead. A post containing `[route:support.devices]` goes to `support.devices`, and a post with no tag goes to `support.general`, the channel's fallback. The end-to-end tests run in this mode.
+The specialists and the assistant all answer with the same placeholder, `Test mode (no scenario sentinel matched).`, but the mailbox around them works as it does with a key: a post in `support.help` is routed to one specialist, and that specialist's answer lands in the mailbox under its name. The scripted route can't read a question, so it goes by a tag instead. A post containing `[route:support.devices]` goes to `support.devices`, and a post with no tag goes to `support.general`, the mailbox's fallback. The end-to-end tests run in this mode.
 
 ## What to read first
 
-- `workforce/`: the support team, four specialists and the channel that sends each post to one of them. This is the authoring path, and the shortest route to understanding the app.
+- `workforce/`: the support team, four specialists and the mailbox that sends each post to one of them. This is the authoring path, and the shortest route to understanding the app.
 - `app/page.tsx`: the shell, with one navigator on the left, the stream in the middle, and boards and the roster on the right.
 - `flows/`: the flows the app serves, including `chat-agent`, the assistant the stream talks to.
 
@@ -47,18 +47,18 @@ The chat agent either answers in the turn or files the work to a durable board, 
 
 ## The support team (`workforce/`)
 
-The support team is one channel and four specialists, declared in files rather than wired in code.
+The support team is one mailbox and four specialists, declared in files rather than wired in code.
 
-Open `support.help` in the rail (expand `channel`, under Channels, to find it) and ask a question. The channel sends each post to the one specialist whose job fits it: `support.devices` for printers, laptops, phones and wifi, `support.accounts` for sign-in and billing, `support.fsd` for questions about building with flow-state-dev, and `support.general` for anything else. You see which specialist is working on it, then its answer as a line under its name, without reloading. The specialist can show as working for a few seconds after its answer appears, while it finishes its run, filing a case for instance.
+Open `support.help` in the rail (expand `mailbox`, under Mailboxes, to find it) and ask a question. The mailbox sends each post to the one specialist whose job fits it: `support.devices` for printers, laptops, phones and wifi, `support.accounts` for sign-in and billing, `support.fsd` for questions about building with flow-state-dev, and `support.general` for anything else. You see which specialist is working on it, then its answer as a line under its name, without reloading. The specialist can show as working for a few seconds after its answer appears, while it finishes its run, filing a case for instance.
 
-The rail lists the channels the files declare. A store kept from an earlier version of the app can still hold other channels' sessions; they stay in the store and don't show in the rail.
+The rail lists the mailboxes the files declare. A store kept from an earlier version of the app can still hold other mailboxes' sessions; they stay in the store and don't show in the rail.
 
-Each specialist is a `WORKER.md` under `workforce/teams/support/workers/`. Its `description:` is its job, and it is what the channel reads to decide who answers:
+Each specialist is a `WORKER.md` under `workforce/teams/support/workers/`. Its `description:` is its job, and it is what the mailbox reads to decide who answers:
 
 ```md
 ---
 description: Printers, laptops, phones, wifi and anything else with a power button.
-tools: [post-to-channel, escalate]
+tools: [post-to-mailbox, escalate]
 ---
 
 You are the support team's devices specialist. Answer in a sentence or two, and say plainly
@@ -69,33 +69,33 @@ None of the four names a `flow:`, so all of them run on the built-in agent kind.
 
 ### How a post finds its specialist
 
-Routing is two lines in `workforce/teams/support/channels/help/CHANNEL.md`:
+Routing is two lines in `workforce/teams/support/mailboxes/help/MAILBOX.md`:
 
 ```md
 routing:
   fallback: support.general
 ```
 
-and one in `workforce/hire.ts`, where the channel kind is built with `routeByPurpose(seats, { model: ROUTE_MODEL })`. For each post from a person, if their last post is still waiting on a specialist, this one goes there too. Otherwise one evaluator call picks a specialist from the four descriptions, reading the channel's recent lines along with the post. (An evaluator is a block that answers a typed question with one model call.) If that call fails, `support.general` takes the post. Only the chosen specialist hears it.
+and one in `workforce/hire.ts`, where the mailbox kind is built with `routeByPurpose(seats, { model: ROUTE_MODEL })`. For each post from a person, if their last post is still waiting on a specialist, this one goes there too. Otherwise one evaluator call picks a specialist from the four descriptions, reading the mailbox's recent lines along with the post. (An evaluator is a block that answers a typed question with one model call.) If that call fails, `support.general` takes the post. Only the chosen specialist hears it.
 
 `ROUTE_MODEL` lives in `lib/models.ts`. It has to be a model that can evaluate, and not every chat model can: see [Evaluation models](../docs/docs/fundamentals/models.md#evaluation-models). The specialists answer on the [`chat` intent](../docs/docs/fundamentals/models.md#intents) under `models.intents` in `fsdev.config.ts`, because no `WORKER.md` names a `model:` of its own.
 
-The specialist answers with the channel's last 20 lines in view, so "where can I buy it?" finds its "it" even when the laptop came up with a different specialist. Its own conversation for the channel keeps only the posts routed to it and its answers, so something said further back, to someone else, may need saying again.
+The specialist answers with the mailbox's last 20 lines in view, so "where can I buy it?" finds its "it" even when the laptop came up with a different specialist. Its own conversation for the mailbox keeps only the posts routed to it and its answers, so something said further back, to someone else, may need saying again.
 
-Take the `routing:` lines out and every specialist hears every post, which is what a channel does by default.
+Take the `routing:` lines out and every specialist hears every post, which is what a mailbox does by default.
 
-The support desk needs actions to run in process. With `FSD_BULLMQ_DISPATCH=1` (see [Environment variables](#environment-variables)), a post to `support.help` shows up in the channel but no specialist answers it. A specialist you talk to directly answers but says it couldn't file the case.
+The support desk needs actions to run in process. With `FSD_BULLMQ_DISPATCH=1` (see [Environment variables](#environment-variables)), a post to `support.help` shows up in the mailbox but no specialist answers it. A specialist you talk to directly answers but says it couldn't file the case.
 
 ### When a case needs a person
 
-A specialist that decides a case needs a person calls `escalate`, a tool in `workforce/blocks/escalate.ts`. It files one row onto the channel's `escalations` board through the channel's own `fileTask` action, signed with the specialist's own id, and the specialist says so in its answer. The model chooses only what the row says. The case appears in the team panel's `escalations` list, newest first, with its status, in every open tab as soon as it is filed. The list follows `support.help`, the channel the specialist files through. A tab holds one stream connection for the list, and a second if `support.help` is also open in the navigator.
+A specialist that decides a case needs a person calls `escalate`, a tool in `workforce/blocks/escalate.ts`. It files one row onto the mailbox's `escalations` board through the mailbox's own `fileTask` action, signed with the specialist's own id, and the specialist says so in its answer. The model chooses only what the row says. The case appears in the team panel's `escalations` list, newest first, with its status, in every open tab as soon as it is filed. The list follows `support.help`, the mailbox the specialist files through. A tab holds one stream connection for the list, and a second if `support.help` is also open in the navigator.
 
-Only the channel's members can file there. Any other seat given the tool is told nothing was filed, and nothing is sent to the channel.
+Only the mailbox's members can file there. Any other seat given the tool is told nothing was filed, and nothing is sent to the mailbox.
 
 Nobody works `escalations` in this app, and the boot says so:
 
 ```
-[workforce] channel "support.help" holds board "escalations" (ledger
+[workforce] mailbox "support.help" holds board "escalations" (ledger
 "support.help.escalations"), and no flow hired in this call declares it. …
 ```
 
@@ -103,25 +103,25 @@ Filed cases stay `pending` for a person to read. In an app of your own, that war
 
 ### Talking to one specialist
 
-To talk to a specialist directly, expand `agent` under Seats in the rail, open the specialist, and press the **+** on its row (its tooltip says New conversation). That conversation is separate from the channel and keeps both sides across a reload. The specialist sees the earlier turns of that conversation and nothing from any other. A case it files with `escalate` from here lands on `support.help`'s `escalations` board, in the team panel's list with the cases filed from the channel.
+To talk to a specialist directly, expand `agent` under Seats in the rail, open the specialist, and press the **+** on its row (its tooltip says New conversation). That conversation is separate from the mailbox and keeps both sides across a reload. The specialist sees the earlier turns of that conversation and nothing from any other. A case it files with `escalate` from here lands on `support.help`'s `escalations` board, in the team panel's list with the cases filed from the mailbox.
 
 ```bash
 pnpm fsdev run support.devices run -i '{"message":"My phone stopped charging."}'
 ```
 
-Under an open specialist, the rail also lists the conversation it keeps for `support.help`. That row is labelled with its session id, a long string starting `dsx_`, not with the channel's name.
+Under an open specialist, the rail also lists the conversation it keeps for `support.help`. That row is labelled with its session id, a long string starting `dsx_`, not with the mailbox's name.
 
-### Posting to the channel over HTTP
+### Posting to the mailbox over HTTP
 
-A channel is a named session on the one `channel` flow, so the flow in the URL is `channel` and the channel's id goes where a session id goes:
+A mailbox is a named session on the one `mailbox` flow, so the flow in the URL is `mailbox` and the mailbox's id goes where a session id goes:
 
 ```bash
-curl -X POST localhost:3000/api/flows/channel/support.help/actions/post \
+curl -X POST localhost:3000/api/flows/mailbox/support.help/actions/post \
   -H 'content-type: application/json' \
   -d '{"userId":"devuser","input":{"body":"My phone stopped charging."}}'
 ```
 
-The call answers `202` with the request it started. The post, and the specialist's answer after it, land on the channel's session a moment later. Whatever `userId` you send, this app runs the call as `devuser` (see [One organization](#one-organization)).
+The call answers `202` with the request it started. The post, and the specialist's answer after it, land on the mailbox's session a moment later. Whatever `userId` you send, this app runs the call as `devuser` (see [One organization](#one-organization)).
 
 To read the lines back, read the session's items:
 
@@ -129,23 +129,23 @@ To read the lines back, read the session's items:
 curl 'localhost:3000/api/flows/sessions/support.help/state?include_items=true&item_types=component'
 ```
 
-Each item whose `component` is `channel-post` is one line: its `data` carries the `body`, and an `author` when a specialist wrote it. The `channel-route` items beside them record which specialist each post went to.
+Each item whose `component` is `mailbox-post` is one line: its `data` carries the `body`, and an `author` when a specialist wrote it. The `mailbox-route` items beside them record which specialist each post went to.
 
 ### Where the pieces come from
 
-Tools, blocks and capabilities come from files too: a file under `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That module is committed, so the code an app can run is fixed when you run the command, which is what lets a bundler see it. The roster is read at boot: `hireKitchenSinkWorkforce()` walks `workforce/teams/` and hires a seat per `WORKER.md`. Adding a specialist means a folder, a line in the channel's `members:`, and a restart. Adding a tool means a file and `fsdev gen`.
+Tools, blocks and capabilities come from files too: a file under `workforce/blocks/` or a `resources/` folder becomes an entry in `workforce/workforce.gen.ts` when you run `fsdev gen`. That module is committed, so the code an app can run is fixed when you run the command, which is what lets a bundler see it. The roster is read at boot: `hireKitchenSinkWorkforce()` walks `workforce/teams/` and hires a seat per `WORKER.md`. Adding a specialist means a folder, a line in the mailbox's `members:`, and a restart. Adding a tool means a file and `fsdev gen`.
 
-Channels are opened at boot, and opening is idempotent. Re-opening is not a migration: an open channel keeps the members and charter it was opened with, so on a persistent store a new specialist doesn't join a channel that is already open. `boards:` and `routing:` are the exceptions, read from the file on every boot.
+Mailboxes are opened at boot, and opening is idempotent. Re-opening is not a migration: an open mailbox keeps the members and charter it was opened with, so on a persistent store a new specialist doesn't join a mailbox that is already open. `boards:` and `routing:` are the exceptions, read from the file on every boot.
 
-A seat's post wakes nobody, so a specialist's answer never sets off another. The check is on the claimed `author`, which the channel does not verify; an app with a real identity model should compare whatever it resolves a caller to.
+A specialist's answer does not wake the other specialists.
 
-Which organization the channel sessions land in comes from the caller's verified identity, not from anything a file declares. If you add authentication, open them as a caller whose identity already carries the organization you want: [which organization a channel runs in](../docs/docs/workforce/channels.md#which-organization-a-channel-runs-in).
+Which organization the mailbox sessions land in comes from the caller's verified identity, not from anything a file declares. If you add authentication, open them as a caller whose identity already carries the organization you want: [which organization a mailbox runs in](../docs/docs/workforce/mailboxes.md#which-organization-a-mailbox-runs-in).
 
 ### One organization
 
-This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both are set in `fsdev.config.ts` by a `resolvePrincipal` that reads nothing from the request. It applies to every flow that doesn't bring its own resolver, which means every page, seat and channel, so nobody calling the app can pick another organization. It is a stand-in for real sign-in, and it means **anyone who can open a deployed copy of this app can post to its channel and talk to its seats, on your model key**. If you deploy it somewhere other people can reach, put sign-in in front of it first.
+This app runs as one organization, `kitchen-sink`, and one user, `devuser`. Both are set in `fsdev.config.ts` by a `resolvePrincipal` that reads nothing from the request. It applies to every flow that doesn't bring its own resolver, which means every page, seat and mailbox, so nobody calling the app can pick another organization. It is a stand-in for real sign-in, and it means **anyone who can open a deployed copy of this app can post to its mailbox and talk to its seats, on your model key**. If you deploy it somewhere other people can reach, put sign-in in front of it first.
 
-**If the app refuses to start with `[workforce] this store was written before kitchen-sink ran as organization "kitchen-sink"`**, the store holds channel sessions from another organization, and the message names each one with the organization it belongs to. That data can't be carried over, so delete the store and restart. For the local filesystem profile, delete `.fsdev/data` (or the whole `.fsdev` folder). For Postgres, point `FSD_DB_URL` at an empty database.
+**If the app refuses to start with `[workforce] this store was written before kitchen-sink ran as organization "kitchen-sink"`**, the store holds mailbox sessions from another organization, and the message names each one with the organization it belongs to. That data can't be carried over, so delete the store and restart. For the local filesystem profile, delete `.fsdev/data` (or the whole `.fsdev` folder). For Postgres, point `FSD_DB_URL` at an empty database.
 
 ### Hiring while the app runs
 
@@ -166,7 +166,7 @@ The admin hire goes over HTTP because the admin flow checks a token and the CLI 
 
 The admin action has a credential of its own, but not an organization of its own. Every token has to name `kitchen-sink`. An entry naming any other organization is refused when the app starts, and the refusal is logged, so a token can never quietly administer an organization this app doesn't serve. A seat the admin action hires belongs to the operator who hired it.
 
-The admin flow also has a `fire` action, which removes a seat the admin action hired. A hired seat doesn't show in the rail and doesn't join `support.help`: a channel's members are the ones its file names. The page has no control for hiring.
+The admin flow also has a `fire` action, which removes a seat the admin action hired. A hired seat doesn't show in the rail and doesn't join `support.help`: a mailbox's members are the ones its file names. The page has no control for hiring.
 
 The seat answers any configured admin token, not only the one that hired it: every token resolves to the same admin principal, and the seat is pinned to that principal. It belongs to the organization and to the admin user, so its address carries both. The seat carries the admin flow's resolver, so a request with no token, or a token it doesn't recognize, gets `401` from that resolver before the pin is checked. Call it with any configured token:
 
@@ -181,8 +181,8 @@ Restart the app and ask the seat something. The reload runs at startup, before t
 
 ## The page (`app/`)
 
-- **Layout**: three columns. A `FlowNavigator` rail over channels, seats and the assistant's conversations; the stream; and a standing panel with the roster and the channel boards (plus artifacts in build mode). Below `lg` the panel opens from the header, and below `sm` the rail does too. A row's buttons in the rail show when you hover or focus the row.
-- **Channels**: Open `support.help` in the rail to read it and post. Your post calls the channel's own `post` action, the same one `fsdev run` and the [HTTP call above](#posting-to-the-channel-over-http) reach, and appears as `devuser`, the one user this app runs as. Lines other requests post appear while the view is open, and the view shows which specialist is working.
+- **Layout**: three columns. A `FlowNavigator` rail over mailboxes, seats and the assistant's conversations; the stream; and a standing panel with the roster and the mailbox boards (plus artifacts in build mode). Below `lg` the panel opens from the header, and below `sm` the rail does too. A row's buttons in the rail show when you hover or focus the row.
+- **Mailboxes**: Open `support.help` in the rail to read it and post. Your post calls the mailbox's own `post` action, the same one `fsdev run` and the [HTTP call above](#posting-to-the-mailbox-over-http) reach, and appears as `devuser`, the one user this app runs as. Lines other requests post appear while the view is open, and the view shows which specialist is working.
 - **Seats**: Open a specialist in the rail to see its kind and what it handles, under its row. The **+** on its row starts a conversation with it; your message and its reply stay in that conversation. See [Talking to one specialist](#talking-to-one-specialist).
 - **Roster**: The team panel's roster lists seats [hired while the app runs](#hiring-while-the-app-runs), not the four declared in files. Until you hire one, it says no seats have been hired in this organization yet, while the rail lists the four specialists.
 - **Session management**: Open the assistant in the rail and press the **+** on its row (New session) to start a session. Its sessions are listed under it; pick one to switch to it.

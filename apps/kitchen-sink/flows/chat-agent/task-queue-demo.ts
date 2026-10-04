@@ -35,7 +35,7 @@ const extractInputSchema = z.object({
 function getCollection(ctx: BlockContext) {
   return getOrCreateTaskCollection({
     ctx,
-    backing: "request",
+    backing: "state",
     collectionId: COLLECTION_ID,
   });
 }

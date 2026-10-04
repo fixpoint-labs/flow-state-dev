@@ -35,7 +35,7 @@ import {
 } from "@flow-state-dev/engine";
 
 export const flowstate = createFlowState({
-  flows: { billing: billingFlow },
+  flows: { billing: billingFlow() },
   stores: { default: { primary: inMemoryStores() } },
   adapters: [
     createWebhookTransportAdapter({
@@ -84,6 +84,7 @@ import { defineFlow, defineWebhookBinding } from "@flow-state-dev/core";
 
 const billingFlow = defineFlow({
   kind: "billing",
+  actions: {}, // no caller-facing actions: webhooks are the only way in
   authentication: { defaultUserId: "system", requireUser: false },
   webhooks: {
     stripe: {
@@ -126,6 +127,9 @@ action endpoint to `POST` it to, and it is never exposed as an MCP tool. It runs
 only through a verified webhook. (Webhook-originated requests are likewise not
 re-runnable from the public retry/continue routes, which carry no signature
 check.)
+
+`defineFlow` still requires an `actions` map. A flow that only receives webhooks
+declares `actions: {}`, as the samples on this page do.
 
 The event handed to a binding is a `WebhookInboundEvent`:
 
@@ -357,6 +361,7 @@ interface StripeEvent {
 
 export const billingFlow = defineFlow({
   kind: "billing",
+  actions: {}, // no caller-facing actions: webhooks are the only way in
   authentication: { defaultUserId: "system", requireUser: false },
   webhooks: {
     stripe: {
@@ -382,7 +387,7 @@ import {
 import { billingFlow } from "@/flows/billing";
 
 export const flowstate = createFlowState({
-  flows: { billingFlow },
+  flows: { billing: billingFlow() },
   stores: { default: { primary: inMemoryStores() } },
   adapters: [
     createWebhookTransportAdapter({

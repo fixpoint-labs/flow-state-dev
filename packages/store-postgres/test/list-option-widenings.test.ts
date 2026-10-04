@@ -3,8 +3,8 @@
  * property the two ordered reads must hold.
  *
  * The behaviour matrix mirrors `packages/engine/test/list-option-widenings.test.ts`
- * case for case. This adapter cannot import the shared predicates (type-only
- * package boundary), so it reproduces them in its `WHERE` and `ORDER BY`
+ * case for case. The shared predicates are JavaScript and can't run inside
+ * SQL, so this adapter reproduces them in its `WHERE` and `ORDER BY`
  * builders — an adapter that diverges is the exact failure this coverage
  * exists to catch.
  *

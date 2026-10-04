@@ -162,7 +162,7 @@ Each store must implement its interface from `@flow-state-dev/engine`:
 
 #### RequestStore
 - `get(id)` — fetch by request ID
-- `set(id, record)` — insert or update request
+- `set(id, record)` — insert or update request. A record with no `items` keeps the stored items: if items live on the record, carry them through (the runtime's request-state write leaves `items` off)
 - `delete(id)` — remove request
 - `list(filters?)` — filters include `sessionId`, `userId`, `flowKind`, `status`
 - `persistItems(requestId, items)` — batch item persistence (use microtask batching, non-blocking)

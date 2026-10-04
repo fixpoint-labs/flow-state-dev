@@ -1,0 +1,14 @@
+{
+  "orgId": "support-desk",
+  "userId": "u-owner",
+  "cutKind": "desk-clerk",
+  "keptKind": "concierge",
+  "requiredSetting": "queue",
+  "settingValue": "billing",
+  "cutSeat": "support.joe",
+  "rehireSeat": "support.kim",
+  "refusedSeat": "support.lin",
+  "healthySeat": "support.ada",
+  "firedBeforeSeat": "support.old",
+  "marker": "tag-7d1c"
+}

@@ -121,6 +121,8 @@ request first and checks the owner before touching user, org or history.
 Ownership is orthogonal to transport trust: `source` and the resolved principal
 say who may call; `flowId` says which instance a record belongs to.
 
+### Execution configuration is per host, with one per-envelope exception
+
 The host's `runtimeConfig` is the execution configuration for everything it
 dispatches. That is the rule, and `runtimeConfig` on the envelope is the single
 exception to it — set by the framework, never by an adapter and never read from
@@ -227,12 +229,24 @@ immediately, while `finished` resolves when the action completes. Adapters
 that need a streamed response (HTTP+SSE) consume `handle.liveStream.readable`;
 adapters that just want a final result (webhook, schedule) await
 `handle.finished`.
+Before it creates anything, `dispatch` runs the concurrency arbiter; see
+[Concurrency arbitration](#concurrency-arbitration).
 
-The **concurrency policy** (FIX-837) is enforced here, at the top of
-`host.dispatch`, before any request record or live stream is created — so every
-transport inherits it at the one shared seam. The arbiter resolves the
-effective policy (`action.concurrency ?? flow.request.concurrency ?? "allow"`)
-and a key (default: the tenant-namespaced session id):
+`host.resolvePrincipal` is the auth integration point. Per-flow
+`authentication.resolvePrincipal` (set on `defineFlow`) wins over the
+host-level fallback (`createFlowApiRouter({ resolvePrincipal })`). Adapter
+code does not change because adapters always call `host.resolvePrincipal`
+rather than implementing auth themselves; the host applies per-flow
+routing, `defaultUserId` fallback, and `requireUser` enforcement
+transparently. See `authentication.md`.
+
+### Concurrency arbitration
+
+The **concurrency policy** (FIX-837) is enforced at the top of `host.dispatch`,
+before any request record or live stream is created, so every transport
+inherits it at the one shared seam. The arbiter resolves the effective policy
+(`action.concurrency ?? flow.request.concurrency ?? "allow"`) and a key
+(default: the tenant-namespaced session id):
 
 - `reject` claims the key; if another request holds it, the dispatch is refused
   with `ConcurrencyRejectedError` (status 409, carrying the in-flight
@@ -248,28 +262,32 @@ and a key (default: the tenant-namespaced session id):
   queued. An over-long wait rejects `finished` with `ConcurrencyQueueTimeoutError`
   (status 503).
 - `allow` (default) and a key that resolves to `undefined` (no session, `"none"`,
-  or a custom key returning `undefined`) are passthroughs — today's behavior.
+  or a custom key returning `undefined`) are passthroughs.
 
-On the in-process path the key is acquired and released within a single
-`dispatch` lifecycle (released when `finished` settles, and on every failure
-before the run starts), so there is no cross-call handoff and no leaked key. On
-the external path over a shared lease backend the place is handed off
-(`ConcurrencyAdmission.handOff()`) to the job once it is enqueued, and the
-worker gives it back when the run ends; every failure before the enqueue gives
-it back in the dispatching process. The arbiter keeps its lines in a
-lease backend (`transports/concurrency/lease-backend.ts`): in memory by default,
-which serializes one process, or the one a queue adapter supplies as
+**Where the lines live.** The arbiter keeps its lines in a lease backend
+(`transports/concurrency/lease-backend.ts`): in memory by default, which
+serializes one process, or the one a queue adapter supplies as
 `WorkerAdapter.leaseBackend`, which every process of the deployment shares.
-Only then is an external dispatch arbitrated: its place rides the job as
-`DispatchEnvelope.leasePlace`, and the worker waits its turn and gives it back.
+`bullmqWorker` supplies one on its Redis (`createRedisLeaseBackend`). An
+external dispatch is arbitrated only over a shared backend; that is what
+`host.arbitratesExternalDispatch` reports.
 
-`host.resolvePrincipal` is the auth integration point. Per-flow
-`authentication.resolvePrincipal` (set on `defineFlow`) wins over the
-host-level fallback (`createFlowApiRouter({ resolvePrincipal })`). Adapter
-code does not change because adapters always call `host.resolvePrincipal`
-rather than implementing auth themselves; the host applies per-flow
-routing, `defaultUserId` fallback, and `requireUser` enforcement
-transparently. See `authentication.md`.
+**Who holds the key.** On the in-process path the key is acquired and released
+within a single `dispatch` lifecycle (released when `finished` settles, and on
+every failure before the run starts), so there is no cross-call handoff and no
+leaked key. On the external path over a shared lease backend the place rides
+the job as `DispatchEnvelope.leasePlace`: it is handed off
+(`ConcurrencyAdmission.handOff()`) once the job is enqueued, the worker waits
+its turn, and gives it back when the run ends. Every failure before the enqueue
+gives it back in the dispatching process.
+
+**Expiry.** A shared backend's places expire unless renewed. A waiter whose
+place the backend dropped (`isMyTurn` answers `"missing"`) takes a new place at
+the back of the line, in the arbiter's wait and in the BullMQ worker alike. A
+run holding its turn whose place can no longer be kept (a renewal answers
+`false`, or none lands for half the backend's `leaseMs`) is stopped through
+`ConcurrencyAdmission.lost`, which the host folds into the run's signal; the
+BullMQ worker does the same with `holdLeasePlace`.
 
 ## The HTTP adapter as reference
 

@@ -137,7 +137,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@flow-state-dev/mcp`               | MCP transport adapter                                                   |
 | `@flow-state-dev/scheduled`         | Scheduled-actions transport                                             |
 | `@flow-state-dev/voice-openai`      | OpenAI voice transport                                                  |
-| `@flow-state-dev/claude-code`       | Claude Code integration — dispatch cloud coding tasks via the local `claude` CLI |
+| `@flow-state-dev/claude-code`       | Claude Code integration — run a Claude Code agent in-process as a harness block (Agent SDK) |
 | `@flow-state-dev/codex`             | Codex integration — run OpenAI's Codex agent as a block through the Codex SDK, returning core's neutral harness handle |
 | `@flow-state-dev/cursor`            | Cursor integration — run Cursor's coding agent as a block through the Cursor SDK local runtime, returning core's neutral harness handle |
 | `@flow-state-dev/tools`             | Reusable tool blocks                                                    |

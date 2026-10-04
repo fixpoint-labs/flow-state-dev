@@ -2,4 +2,4 @@
 "@flow-state-dev/workforce": patch
 ---
 
-Add `wakeMemberSeats(seats, { fallback? })`, a channel notify block that wakes each member whose hired seat declares `onChannelPost`, once per post, and never on a post with an `author` (FIX-1602).
+Add `wakeMemberSeats(seats, { fallback? })`, a mailbox notify block that wakes each member whose hired seat declares `onMailboxPost`, once per post (FIX-1602).

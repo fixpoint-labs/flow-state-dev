@@ -54,8 +54,10 @@ export function seatSettingsSchema() {
   });
 }
 
-/** The parts of the bag this module reads where the bag's type is erased. */
+/** The parts of the bag this lab reads where the bag's type is erased. */
 export interface SeatConfig {
+  /** The seat's own id, imposed by the hire and never authored. */
+  seatId?: string;
   instructions?: string;
   document: string;
   seatSkills: Array<{ name: string; skillMd: string }>;

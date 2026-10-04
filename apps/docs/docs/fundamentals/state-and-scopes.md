@@ -10,7 +10,7 @@ This page walks through the scopes and the basic patterns you'll use every day. 
 
 ## The four scopes
 
-State is organized into four hierarchical scopes:
+State is organized into four scopes, each its own record with its own key:
 
 | Scope | Question it answers | Lifetime |
 |-------|---------------------|----------|
@@ -18,6 +18,10 @@ State is organized into four hierarchical scopes:
 | **Session** | What does this conversation need to remember? | Across requests in a conversation |
 | **User** | What does this person need across all their conversations? | Across sessions for a user |
 | **Org** | What does the team need to share? | Across sessions in an org |
+
+![Request, session, user and org state are four separate records, none inside another. Request state belongs to one action run and the next request cannot see it. Session state belongs to one conversation: its state, items, metadata and journal, and the resources an action declares, keyed by the session id and by the tenant when one is sent. User state follows one person across conversations and flows, keyed by the user id; with isolateUserState it is one record per flow copy instead, and an instance with an owner pin keeps one record per person in the pinned organization instead. Org state is shared by everyone in the organization, keyed by the org id, or one record per flow copy with isolateOrgState. A session is bound to one organization when it is created; it names its user and org but holds neither one's state. A tenant id splits sessions only. Blocks read and write all four; the browser sees only the fields a scope's client config exposes](./state-scopes.svg)
+
+A session names the user and organization it belongs to. It doesn't contain their state: each scope is read and written on its own record.
 
 Most of your state lives at the session level. The other three matter, but they show up after you've shipped your first conversation. Start with session.
 
@@ -230,7 +234,7 @@ This mirrors how resources work: a resource without a `client` config is invisib
 
 You'll reach for these less often than session, but each has a specific job.
 
-**Request** is scratch space for one execution. Intermediate processing results between blocks, retry counters, temporary flags. It vanishes when the action completes.
+**Request** is scratch space for one run: intermediate results, retry counters, temporary flags.
 
 ```ts
 requestStateSchema: z.object({ retryCount: z.number().default(0) })
@@ -238,7 +242,7 @@ requestStateSchema: z.object({ retryCount: z.number().default(0) })
 
 Use request state when you explicitly *don't* want data to accumulate in the session. The rule of thumb: if the next request might care, use session.
 
-**User** persists across sessions. Preferences, accumulated knowledge, personal collections — anything that should follow a user from conversation to conversation.
+**User** follows a person from conversation to conversation: preferences, accumulated knowledge, personal collections.
 
 ```ts
 userStateSchema: z.object({
@@ -248,9 +252,9 @@ userStateSchema: z.object({
 })
 ```
 
-User scope is shared across flows on the same server by default — every flow's user state schema is structurally compared at startup, and incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. See [Authentication](/docs/server/authentication) for the trust model and [Flow Isolation](/docs/advanced/flow-isolation) if you need to keep a flow's user state separate. Isolated state belongs to the particular flow copy that wrote it, so a definition running as several named copies keeps one private record per copy.
+By default every flow on the server shares one user record per person, so each flow's user state schema is compared at startup. Incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. [Flow Isolation](/docs/advanced/flow-isolation) gives each flow copy its own record instead, and an instance registered with an owner pin, such as a [hired seat](/docs/workforce/durable-hire#what-a-seat-saves-for-a-person), keeps one record per person in its pinned organization.
 
-**Org** is the team-level boundary. Shared configuration, knowledge bases, settings that an admin controls for everyone. Every request runs in an organization, so org state is there to read on any execution. [Authentication](/docs/server/authentication#every-request-runs-in-an-organization) covers where that organization comes from.
+**Org** is shared by the whole team: configuration, knowledge bases, settings an admin controls for everyone.
 
 ```ts
 orgStateSchema: z.object({
@@ -260,7 +264,7 @@ orgStateSchema: z.object({
 })
 ```
 
-Org scope is also shared across flows by default with the same registry-time schema check as user scope. Read it inside a block with `ctx.org?.state.config`. `ctx.org` is optional in the types, so `?.` is needed to compile. It is there on every execution. A session is bound to its organization when it is created, and a later request that resolves to a different one against that session throws `OrgBindingMismatchError` at runtime.
+Org state is shared across flows the same way and gets the same startup check. Read it with `ctx.org?.state.config`: `ctx.org` is optional in the types, but every request runs in an organization, so it is there on every execution ([where that organization comes from](/docs/server/authentication#every-request-runs-in-an-organization)). A session is tied to the organization it was created in, and a request against it that resolves to a different organization throws `OrgBindingMismatchError`.
 
 For the full operation reference and CAS semantics that apply to all four scopes, see [State Operations](/docs/fundamentals/state-operations). For how `userId` and `orgId` flow into a request — including who's responsible for verifying them — see [Authentication](/docs/server/authentication).
 
@@ -282,16 +286,9 @@ You read the tenant in a block the same way as any identity field: `ctx.session.
 
 Apps that never send the header do nothing: with no tenant id, a session keys on its own id alone. [Persistence](/docs/persistence/overview#tenant-isolation) covers the storage side, including what a persistent adapter does to an existing database.
 
-## Why four scopes?
+## State tied to a run
 
-Two scopes would force you to choose between "per-request" and "everything else." Six would create unnecessary ceremony. Four maps cleanly to the real boundaries:
-
-- **Request** — scratch space that doesn't pollute the conversation.
-- **Session** — the conversational memory.
-- **User** — what follows a person across conversations.
-- **Org** — what a team shares.
-
-These four are tied to identity. Blocks can also hold state tied to *execution* — a generator remembering what it's loaded so far, a sequencer counting its own loop passes — that lives and dies with one run. See [Block State](/docs/advanced/block-state) for that primitive.
+The four scopes are tied to identity. Blocks can also hold state tied to *execution* — a generator remembering what it's loaded so far, a sequencer counting its own loop passes — that lives and dies with one run. See [Block State](/docs/advanced/block-state) for that primitive.
 
 ## When to declare state at the flow level
 

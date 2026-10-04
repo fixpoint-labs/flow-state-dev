@@ -77,7 +77,7 @@ describe("taskActionsFor", () => {
 
   describe("a board named only by its generated task tools", () => {
     // `taskToolActions` always generates the whole family of eight for a
-    // board. A board this session has no rows on (a sibling Workforce channel
+    // board. A board this session has no rows on (a sibling Workforce mailbox
     // sharing the flow kind, or a board with no tasks yet) is not listed, but
     // its family in the flow's action list still names it, so its tools are
     // that board's and never generic.
@@ -88,7 +88,7 @@ describe("taskActionsFor", () => {
     const schemasFor = (names: string[]) =>
       Object.fromEntries(names.map((name) => [name, name.startsWith("addTask") || name.startsWith("listTasks") ? noTaskId : takesTaskId]));
 
-    it("keeps a sibling channel's tools off this channel's rows", () => {
+    it("keeps a sibling mailbox's tools off this mailbox's rows", () => {
       const names = [...family("eng_queue_work"), ...family("eng_other_work")];
       const offered = taskActionsFor(names, schemasFor(names), "eng.queue.work", ["eng.queue.work"]);
       expect(offered).toEqual([

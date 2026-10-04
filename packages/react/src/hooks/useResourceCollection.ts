@@ -159,12 +159,13 @@ export function useResourceCollection<TClient = unknown>(
 ): UseResourceCollectionResult<TClient> {
   const context = useFlowContext();
   const baseUrl = context.baseUrl;
+  const apiPath = context.apiPath;
 
   // FIX-427: hoist the client into a single useMemo. The previous hook
   // instantiated `createResourceClient` twice per render.
   const client = useMemo(
-    () => createResourceClient({ baseUrl }),
-    [baseUrl]
+    () => createResourceClient({ baseUrl, apiPath }),
+    [baseUrl, apiPath]
   );
 
   // Per-instance page cache keyed by normalized query. Held in a ref so

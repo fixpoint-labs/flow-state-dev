@@ -102,11 +102,11 @@ When a request dies before it can finish — server crash, HMR reload mid-flow, 
 
 ### Hearing requests you didn't send
 
-A view hears the requests it sends. Some sessions have more than one writer: a channel where agents answer, a board several people work, the same conversation open in two tabs. Their lines land in the session, but nothing tells a view that didn't send them. Ask the view to stay live:
+A view hears the requests it sends. Some sessions have more than one writer: a mailbox where agents answer, a board several people work, the same conversation open in two tabs. Their lines land in the session, but nothing tells a view that didn't send them. Ask the view to stay live:
 
 ```tsx
-const channel = useSession(sessionId, {
-  flowKind: "channel",
+const mailbox = useSession(sessionId, {
+  flowKind: "mailbox",
   items: true,
   live: true,
 });
@@ -117,7 +117,7 @@ The hook then opens one stream for the session. Each finished item from any requ
 The background-work list stays current too. The hook re-reads `session.childSessions` when a run is handed off, even one still waiting its turn, and again when the run finishes. To list the runs that haven't finished:
 
 ```tsx
-const working = channel.childSessions.filter((run) => run.status === "active");
+const working = mailbox.childSessions.filter((run) => run.status === "active");
 ```
 
 A live view holds a connection open while it is mounted, and the server reads the session about once a second for it. Leave `live` off for a view only one person writes to; the request stream already carries everything there. If the server doesn't offer the stream, or refuses it when the view first connects, the view behaves as if you hadn't asked, with no error. A dropped connection reconnects on its own and fills in what it missed. Access is checked when a connection opens, and the server closes each one after at most 15 minutes, so revoking someone's access to the session takes effect within 15 minutes.

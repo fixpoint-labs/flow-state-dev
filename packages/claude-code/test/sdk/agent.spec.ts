@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { describe, it, expect, vi } from "vitest";
+import { spawn as spawnChild, type ChildProcess } from "node:child_process";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { mkdir as mkdirAsync, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,9 +8,10 @@ import { isAbsolute, join, relative, win32 } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
 import { isWindowsReservedName } from "@flow-state-dev/core/helpers";
-import { defineCapability, isAbortLike } from "@flow-state-dev/core";
+import { defineCapability, handler, isAbortLike, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
+  abortExitGrace,
   claudeCodeAgent,
   forwardSignalToController,
   runNamespace,
@@ -457,7 +459,21 @@ describe("claudeCodeAgent", () => {
   // stdout to close, and the Claude Code SDK path has the same shape — so the
   // block must stop WAITING on its own signal rather than on the SDK's
   // generator settling.
+  //
+  // The block does wait a bounded grace for the vendor's process to exit (see
+  // the nested describe below). The vendors in these tests never exit, so they
+  // run with a short grace: what they pin is that the bound, not the vendor,
+  // decides when the block settles.
   describe("stops on ctx.signal firing, not on the SDK stream settling", () => {
+    const shippedGraceMs = abortExitGrace.ms;
+    /** A grace far inside each test's 500ms race bound. */
+    beforeEach(() => {
+      abortExitGrace.ms = 50;
+    });
+    afterEach(() => {
+      abortExitGrace.ms = shippedGraceMs;
+    });
+
     /** A `query` whose generator never advances past its first message, abort
      * or no abort — the fake vendor stream that never closes. */
     function hangingQueryAfterFirstMessage(onFirstMessage: () => void): ResolveClaudeAgent {
@@ -538,6 +554,156 @@ describe("claudeCodeAgent", () => {
       ).toBe("sess_seen_before_abort");
     });
 
+    // A run stopped right after it starts is the run a host resumes next — and
+    // the vendor's process keeps writing that session's transcript for a while
+    // after it is told to stop. Settling before it has exited hands the host a
+    // session id the vendor cannot find yet ("No conversation found").
+    describe("waits, bounded, for the vendor's process to exit before settling", () => {
+      /** A `query` shaped like the real SDK on abort: it honors the forwarded
+       * `abortController`, but its stream only ends once the process has
+       * exited — `lateWriteMs` after the abort, the window in which the
+       * transcript is still being written. Never ends without an abort. */
+      function vendorStillWritingAfterAbort(lateWriteMs: number) {
+        const state = { transcriptComplete: false, sawFirstMessage: Promise.resolve() };
+        let sawFirst: () => void = () => {};
+        state.sawFirstMessage = new Promise<void>((resolve) => {
+          sawFirst = resolve;
+        });
+        const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+          query: async function* (args) {
+            const signal = args.options!.abortController!.signal;
+            yield { type: "system", subtype: "init", session_id: "sess_early" } as SdkMessageLike;
+            sawFirst();
+            await new Promise<void>((resolve) => {
+              const exitLater = () =>
+                setTimeout(() => {
+                  state.transcriptComplete = true;
+                  resolve();
+                }, lateWriteMs);
+              if (signal.aborted) exitLater();
+              else signal.addEventListener("abort", exitLater, { once: true });
+            });
+            throw new DOMException("Claude Code process aborted by user", "AbortError");
+          },
+        });
+        return { state, resolveClaudeAgent };
+      }
+
+      it("does not settle an aborted run until the vendor's transcript is complete", async () => {
+        abortExitGrace.ms = shippedGraceMs;
+        const vendor = vendorStillWritingAfterAbort(100);
+        const block = claudeCodeAgent({ resolveClaudeAgent: vendor.resolveClaudeAgent });
+        const runtime = await createTestContext({ declaredResources: block.declaredResources });
+        const controller = new AbortController();
+        (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        await vendor.state.sawFirstMessage;
+        controller.abort();
+
+        const caught = await withRaceTimeout(
+          runPromise!.then(
+            () => null,
+            (err) => err,
+          ),
+          2_000,
+        );
+        expect(isAbortLike(caught)).toBe(true);
+        // The id the host will resume from is persisted, and by the time the
+        // block hands control back the vendor has finished writing it.
+        expect(
+          (runtime.ctx.session.state as Record<string, unknown>)[SDK_SESSION_ID_KEY],
+        ).toBe("sess_early");
+        expect(vendor.state.transcriptComplete).toBe(true);
+      });
+
+      it("waits for the process itself, not the SDK stream, which can end while the process is still writing", async () => {
+        // The SDK's shutdown is bounded at ~2s: past that its stream ends (and
+        // its `return()` resolves) whether or not the process has exited. So
+        // this fake ends its stream the moment it is aborted, while the real
+        // child process it spawned — through the block's spawn hook, as the
+        // SDK does — finishes "writing" 150ms after its stdin closes.
+        abortExitGrace.ms = shippedGraceMs;
+        const state = { transcriptComplete: false };
+        let sawFirst: () => void = () => {};
+        const sawFirstMessage = new Promise<void>((resolve) => {
+          sawFirst = resolve;
+        });
+        const resolveClaudeAgent: ResolveClaudeAgent = () => ({
+          query: async function* (args) {
+            const opts = args.options!;
+            const spawnOptions = {
+              command: process.execPath,
+              args: [
+                "-e",
+                "process.stdin.resume(); process.stdin.on('end', () => setTimeout(() => process.exit(0), 150));",
+              ],
+              env: { ...process.env },
+              signal: new AbortController().signal,
+            };
+            const child = (opts.spawnClaudeCodeProcess?.(spawnOptions) ??
+              spawnChild(spawnOptions.command, spawnOptions.args, {
+                stdio: ["pipe", "pipe", "pipe"],
+              })) as ChildProcess;
+            child.once("exit", () => {
+              state.transcriptComplete = true;
+            });
+            const signal = opts.abortController!.signal;
+            const aborted = new Promise<void>((resolve) => {
+              if (signal.aborted) resolve();
+              else signal.addEventListener("abort", () => resolve(), { once: true });
+            });
+            yield { type: "system", subtype: "init", session_id: "sess_early" } as SdkMessageLike;
+            sawFirst();
+            await aborted;
+            child.stdin!.end(); // what the SDK's close() does first
+            throw new DOMException("Claude Code process aborted by user", "AbortError");
+          },
+        });
+        const block = claudeCodeAgent({ resolveClaudeAgent });
+        const runtime = await createTestContext({ declaredResources: block.declaredResources });
+        const controller = new AbortController();
+        (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        await sawFirstMessage;
+        controller.abort();
+
+        const caught = await withRaceTimeout(
+          runPromise!.then(
+            () => null,
+            (err) => err,
+          ),
+          2_000,
+        );
+        expect(isAbortLike(caught)).toBe(true);
+        expect(state.transcriptComplete).toBe(true);
+      });
+
+      it("with no grace, settles on the signal without waiting for the exit", async () => {
+        abortExitGrace.ms = 0;
+        const vendor = vendorStillWritingAfterAbort(200);
+        const block = claudeCodeAgent({ resolveClaudeAgent: vendor.resolveClaudeAgent });
+        const runtime = await createTestContext({ declaredResources: block.declaredResources });
+        const controller = new AbortController();
+        (runtime.ctx as unknown as { signal: AbortSignal }).signal = controller.signal;
+
+        const runPromise = block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+        await vendor.state.sawFirstMessage;
+        controller.abort();
+
+        const caught = await withRaceTimeout(
+          runPromise!.then(
+            () => null,
+            (err) => err,
+          ),
+          100,
+        );
+        expect(isAbortLike(caught)).toBe(true);
+        expect(vendor.state.transcriptComplete).toBe(false);
+      });
+    });
+
     it("rejects immediately when ctx.signal is already aborted before the first message", async () => {
       let neverCalled = true;
       const resolveClaudeAgent: ResolveClaudeAgent = () => ({
@@ -546,7 +712,9 @@ describe("claudeCodeAgent", () => {
           await new Promise(() => {}); // never resolves
         },
       });
-      const block = claudeCodeAgent({ resolveClaudeAgent });
+      const block = claudeCodeAgent({
+        resolveClaudeAgent,
+      });
       const runtime = await createTestContext({ declaredResources: block.declaredResources });
       (runtime.ctx as unknown as { signal: AbortSignal }).signal = AbortSignal.abort();
 
@@ -1043,6 +1211,55 @@ describe("claudeCodeAgent", () => {
     expect(items.some((i) => i.type === "error")).toBe(true);
   });
 
+  it("reports a failed run when a success result carries is_error", async () => {
+    // The SDK ends a turn that hit an API error with subtype "success" AND
+    // `is_error: true`, putting the error text in `result`. Reading the
+    // subtype alone records that run as a success: a flow downstream sees a
+    // completed handle and no error item, and the failure surfaces later as
+    // missing output with nothing to trace it back to.
+    const messages: SdkMessageLike[] = [
+      {
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "API Error: 529 overloaded",
+        session_id: "sess_api",
+      },
+    ];
+    const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages) });
+    const { output, error, items, state } = await testBlock(block, { input: { prompt: "x" } });
+
+    // Still a return, not a throw — the same contract as every errored result.
+    expect(error).toBeNull();
+    const handle = output as SdkAgentHandle;
+    expect(handle.status).toBe("errored");
+    expect(handle.outcome).toBe("failed");
+    // The vendor's own word is kept as reported, beside the verdict.
+    expect(handle.resultSubtype).toBe("success");
+
+    const errorItem = items.find((i) => i.type === "error") as
+      | { message?: string; code?: string }
+      | undefined;
+    expect(errorItem?.message).toBe("API Error: 529 overloaded");
+    expect(errorItem?.code).toBe("is_error");
+
+    // What the session records is the failure, not a success.
+    const runs = state.session[SDK_AGENT_RUNS_KEY] as SdkAgentHandle[];
+    expect(runs.at(-1)).toMatchObject({ status: "errored", outcome: "failed" });
+  });
+
+  it("keeps a success result with is_error: false a completed run", async () => {
+    // The other side of the line above: the flag, not its presence, decides.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([{ ...RESULT_OK, is_error: false } as SdkMessageLike]),
+    });
+    const { output, items } = await testBlock(block, { input: { prompt: "x" } });
+
+    expect((output as SdkAgentHandle).status).toBe("completed");
+    expect((output as SdkAgentHandle).outcome).toBe("finished");
+    expect(items.some((i) => i.type === "error")).toBe(false);
+  });
+
 });
 
 /**
@@ -1062,6 +1279,152 @@ describe("claudeCodeAgent", () => {
  * `resume`. A polarity slip reverses behaviour with no type error, since
  * `boolean | undefined` accepts either sense of the flag.
  */
+describe("claudeCodeAgent — task attribution", () => {
+  // A run inside a task-board task entry: the entry's leading tap marks the task
+  // scope, and the agent runs as a later step. Every item the run produces must
+  // carry that taskId, or it is missing from the task's own view (Shift Manager's task
+  // screen reads items by taskId). Driven through the real block over a
+  // scripted SDK stream, so every emit site the stream reaches is covered, not
+  // just the ones a per-site test happens to name.
+  it("stamps the task's id on every item of a run, in the state each item settles in", async () => {
+    const messages: SdkMessageLike[] = [
+      { type: "system", subtype: "init", session_id: "sess_task" },
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "plan" } } },
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "work" } } },
+      {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "thinking", thinking: "plan" },
+            { type: "text", text: "working" },
+            { type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "ls" } },
+            { type: "tool_use", id: "toolu_agent", name: "Agent", input: { task: "sub" } },
+          ],
+        },
+      },
+      {
+        type: "assistant",
+        parent_tool_use_id: "toolu_agent",
+        message: { content: [{ type: "tool_use", id: "toolu_inner", name: "Read", input: { path: "a" } }] },
+      },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "ok" }] } },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_orphan", content: "late" }] } },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_agent", content: "child done" }] } },
+      RESULT_OK,
+    ];
+    const markTask = handler({
+      name: "mark-task",
+      inputSchema: z.object({ prompt: z.string() }),
+      execute: (_input, ctx) => {
+        (ctx as { _markTaskScope?: (taskId: string) => void })._markTaskScope?.("row-7--implement");
+      },
+    });
+    const entry = sequencer({ name: "task-entry", inputSchema: z.object({ prompt: z.string() }) })
+      .tap(markTask)
+      .step(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages) }));
+
+    const { items, error } = await testBlock(entry, { input: { prompt: "do the thing" } });
+
+    expect(error).toBeNull();
+    // The run's own items; the framework's status/trace items are not this emitter's.
+    const RUN_TYPES = new Set(["message", "reasoning", "tool_output", "container", "error"]);
+    const runItems = items.filter((i) => RUN_TYPES.has(i.type));
+    expect(new Set(runItems.map((i) => i.type))).toEqual(
+      new Set(["message", "reasoning", "tool_output", "container"]),
+    );
+    for (const item of runItems) {
+      expect({ id: item.id, type: item.type, taskId: item.taskId }).toEqual({
+        id: item.id,
+        type: item.type,
+        taskId: "row-7--implement",
+      });
+    }
+  });
+});
+
+describe("claudeCodeAgent — inside an owned container", () => {
+  // The Container Ownership contract (`docs/architecture/streaming.md`): every
+  // item emitted inside a container carries that container's `ownedBy`, and a
+  // nested container's own item carries the outer owner. A Claude Code run
+  // placed inside a container must show its steps inside it, as Codex and
+  // Cursor runs do; a sub-agent's own steps still show inside the sub-agent.
+  // Driven through the real block inside a real sequencer that declares a
+  // container, so the owner comes from the runtime, not a hand-built identity.
+  it("stamps the container's owner on every top-level item and sub-agent box, and the sub-agent's on its own items", async () => {
+    const messages: SdkMessageLike[] = [
+      { type: "system", subtype: "init", session_id: "sess_owned" },
+      {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "thinking", thinking: "plan" },
+            { type: "text", text: "working" },
+            { type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "ls" } },
+          ],
+        },
+      },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "ok" }] } },
+      {
+        type: "assistant",
+        message: { content: [{ type: "tool_use", id: "toolu_agent", name: "Agent", input: { task: "sub" } }] },
+      },
+      {
+        type: "assistant",
+        parent_tool_use_id: "toolu_agent",
+        message: { content: [{ type: "tool_use", id: "toolu_inner", name: "Read", input: { path: "a" } }] },
+      },
+      {
+        type: "user",
+        parent_tool_use_id: "toolu_agent",
+        message: { content: [{ type: "tool_result", tool_use_id: "toolu_inner", content: "ok" }] },
+      },
+      { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_agent", content: "child done" }] } },
+      { type: "result", subtype: "error_max_turns", result: "too many turns", session_id: "sess_owned" },
+    ];
+    const owned = sequencer({
+      name: "owned-run",
+      inputSchema: z.object({ prompt: z.string() }),
+      container: { component: "harness-run" },
+    }).step(claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages), includePartialMessages: false }));
+
+    const { items, error } = await testBlock(owned, { input: { prompt: "do the thing" } });
+
+    expect(error).toBeNull();
+    const outer = items.find((i) => i.type === "container" && i.blockName === "owned-run") as
+      | { provenance: { blockInstanceId: string } }
+      | undefined;
+    expect(outer).toBeDefined();
+    const outerOwner = outer!.provenance.blockInstanceId;
+    const subagent = items.find((i) => i.type === "container" && i.blockName === "Agent") as
+      | { provenance: { blockInstanceId: string } }
+      | undefined;
+    expect(subagent).toBeDefined();
+    const subagentOwner = subagent!.provenance.blockInstanceId;
+
+    const RUN_TYPES = new Set(["message", "reasoning", "tool_output", "container", "error"]);
+    const runItems = items.filter((i) => RUN_TYPES.has(i.type) && i !== outer);
+    expect(new Set(runItems.map((i) => i.type))).toEqual(
+      new Set(["message", "reasoning", "tool_output", "container", "error"]),
+    );
+    const ownership = runItems.map((i) => {
+      const callId = (i as { toolCall?: { callId?: string } }).toolCall?.callId;
+      return { type: i.type, callId, ownedBy: (i as { ownedBy?: string }).ownedBy };
+    });
+    // Spelled out from the script above, not derived from what was emitted: the
+    // sub-agent's own tool call (`toolu_inner`) sits in the sub-agent's box;
+    // every other step, and the sub-agent box itself, sits in the container.
+    const expectedOwnership = [
+      { type: "reasoning", callId: undefined, ownedBy: outerOwner },
+      { type: "message", callId: undefined, ownedBy: outerOwner },
+      { type: "tool_output", callId: "toolu_1", ownedBy: outerOwner },
+      { type: "container", callId: undefined, ownedBy: outerOwner },
+      { type: "tool_output", callId: "toolu_inner", ownedBy: subagentOwner },
+      { type: "error", callId: undefined, ownedBy: outerOwner },
+    ];
+    expect(ownership).toEqual(expectedOwnership);
+  });
+});
+
 describe("claudeCodeAgent — detached", () => {
   /** The read the board's refusal performs, spelled the same way. */
   function authoredSessionStateSchema(block: unknown): unknown {
@@ -2688,6 +3051,29 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
       expect(handle.outcome).toBe("failed");
       expect(handle.status).toBe("errored");
       expect(handle.resultSubtype).toBeNull();
+    });
+
+    it("reads a success flagged is_error as failed, and a limit flagged is_error as a limit", async () => {
+      // The SDK sets `is_error` on its error subtypes too. The flag turns a
+      // `success` into a failure; it must not turn a turn cap into one, or a
+      // manager would stop telling "ran out of turns" apart from "broke".
+      const apiError = await runFor({
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "API Error: 500",
+        session_id: "s",
+      });
+      expect(apiError.outcome).toBe("failed");
+
+      const capped = await runFor({
+        type: "result",
+        subtype: "error_max_turns",
+        is_error: true,
+        session_id: "s",
+      });
+      expect(capped.outcome).toBe("stopped-at-limit");
+      expect(capped.status).toBe("errored");
     });
 
     it("leaves outcome, usage and cost null when the run reported no result", async () => {

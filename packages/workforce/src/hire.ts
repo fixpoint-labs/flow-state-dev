@@ -69,6 +69,7 @@ import {
 import { workerConfigSchema } from "./worker-config";
 import { heldPackageProblems, resolveHeldPackages } from "./seat-packages";
 import { recordSeatDescription } from "./seat-description";
+import { seatDoorOf } from "./seat-door";
 
 /**
  * The keys the factory itself reads. Everything else is the worker's settings.
@@ -95,6 +96,62 @@ const RESERVED_KEYS = [
  * merges over this one. Define once, hire many — never per hire or per request.
  */
 const builtInAgentWorkerFlow = defineAgentWorkerFlow() as unknown as AnyFlowType;
+
+/**
+ * The kinds a hire resolves a `flow:` against: the built-in `agent` underneath
+ * the caller's map, so a caller's own `agent` wins.
+ *
+ * Shared with the roster's per-row check (`roster/check.ts`), which decides a
+ * stored seat's kind is gone before anything is minted, and has to decide it
+ * against exactly this map.
+ */
+export function resolvableKinds(kinds: HireOptions["kinds"]): Record<string, AnyFlowType> {
+  return { [AGENT_KIND]: builtInAgentWorkerFlow, ...kinds };
+}
+
+function availableKinds(kindNames: readonly string[]): string {
+  return kindNames.length > 0 ? kindNames.map((k) => `"${k}"`).join(", ") : "(none)";
+}
+
+function missingKindReason(kind: string, available: string): string {
+  return `names flow kind "${kind}", which was not passed to hireWorkforce. Kinds passed: ${available}`;
+}
+
+/**
+ * What {@link hireWorkforce} throws when every refusal came from a kind's own
+ * minter (its `configSchema`), and none from the framework. The message is
+ * the ordinary refusal; the type lets a runtime hire say the caller can
+ * correct the settings and try again, which no framework refusal allows.
+ */
+export class KindRefusedHireError extends Error {}
+
+function hireRefusalMessage(refused: number, total: number, problems: readonly string[]): string {
+  return (
+    `hireWorkforce refused ${refused} of ${total} worker${total === 1 ? "" : "s"}; ` +
+    `nothing was hired:\n  - ${problems.join("\n  - ")}`
+  );
+}
+
+/**
+ * What `hireWorkforce` throws for one record whose only fault is a kind it was
+ * not passed — the same sentence, built without a hire.
+ *
+ * The roster's per-row check names a stored seat whose kind is gone before it
+ * mints anything, and the boot report it feeds must not change wording because
+ * of that. One builder for both is what keeps them saying the same thing.
+ *
+ * @param manifestId The record's id (a hired seat's address).
+ * @param kind The kind it names.
+ * @param kinds The caller's kind map, as passed to `hireWorkforce`.
+ */
+export function missingKindRefusal(
+  manifestId: string,
+  kind: string,
+  kinds: HireOptions["kinds"]
+): string {
+  const available = availableKinds(Object.keys(resolvableKinds(kinds)));
+  return hireRefusalMessage(1, 1, [`worker "${manifestId}" — ${missingKindReason(kind, available)}`]);
+}
 
 export interface HireOptions {
   /**
@@ -146,12 +203,12 @@ export interface HireOptions {
   packageBlocks?: Record<string, Record<string, BlockDefinition<any, any>>>;
 
   /**
-   * The ledger ids this app's channels declared — `channelBoardIds(channels)`.
+   * The ledger ids this app's mailboxes declared — `mailboxBoardIds(mailboxes)`.
    *
-   * Handed over so this step can say when a channel holds a board **no flow
+   * Handed over so this step can say when a mailbox holds a board **no flow
    * hired here declares**: the rows would sit `pending` forever with nothing
    * said, which is the one failure a declared board can produce silently. Each
-   * unattended id gets a `console.warn` naming the channel and the id.
+   * unattended id gets a `console.warn` naming the mailbox and the id.
    *
    * **A warning, never a refusal**, and the reason is in the evidence rather
    * than in a preference: a seat may legitimately live in another process, and
@@ -163,7 +220,7 @@ export interface HireOptions {
    * cannot invent a roster's ids, and every caller that predates boards hires
    * exactly as it did.
    */
-  channelBoards?: readonly string[];
+  mailboxBoards?: readonly string[];
 
   /**
    * The documents this app declared, keyed by ref — the map
@@ -438,7 +495,7 @@ export function hireWorkforce(
   // replacing the kind (`defineAgentWorkerFlow({ ... })` registered here), never a
   // second option on this function. A roster hired with `kinds: {}` therefore
   // carries an empty tool catalog, because nothing ever merges into ours.
-  const kinds: Record<string, AnyFlowType> = { [AGENT_KIND]: builtInAgentWorkerFlow, ...options.kinds };
+  const kinds = resolvableKinds(options.kinds);
 
   // One ref cannot be both a document and a reference. Checked here as well as
   // at the loader, the same two-door reason every other refusal in this file
@@ -458,8 +515,7 @@ export function hireWorkforce(
     );
   }
 
-  const kindNames = Object.keys(kinds);
-  const available = kindNames.length > 0 ? kindNames.map((k) => `"${k}"`).join(", ") : "(none)";
+  const available = availableKinds(Object.keys(kinds));
 
   const ordered = [...manifests].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const seats: FlowInstance[] = [];
@@ -468,6 +524,8 @@ export function hireWorkforce(
   // contribute several reasons — two unresolved grants, two malformed entries —
   // and counting sentences is how `refused 2 of 1 worker` gets printed.
   const refusedWorkers = new Set<string>();
+  // The workers whose one refusal came from their kind's own minter.
+  const kindRefusedWorkers = new Set<string>();
   const seen = new Set<string>();
   const seatBlocks = options.seatBlocks ?? {};
   const packageBlocks = options.packageBlocks ?? {};
@@ -569,7 +627,7 @@ export function hireWorkforce(
     // an ABSENT key now resolves to the built-in.
     //
     // Which case the `flow:` is in is `readDeclaredFlow`'s call, shared with
-    // the channel door (its doc carries why a key holding `null` is present,
+    // the mailbox door (its doc carries why a key holding `null` is present,
     // not absent). The sentences stay here: they are this door's words.
     const declaredFlow = readDeclaredFlow(manifest.declared, AGENT_KIND);
 
@@ -604,7 +662,7 @@ export function hireWorkforce(
     // hand us something that is not a flow factory at all.
     const factory = Object.hasOwn(kinds, kind) ? kinds[kind] : undefined;
     if (factory === undefined) {
-      refuse(`names flow kind "${kind}", which was not passed to hireWorkforce. Kinds passed: ${available}`);
+      refuse(missingKindReason(kind, available));
       continue;
     }
 
@@ -638,7 +696,7 @@ export function hireWorkforce(
     // the seat can read, since the flow's id is kept off the block context.
     // Written here and nowhere else, so every mint path (files, the runtime
     // `hire` tool, the boot reload) carries it. A hired record's `id` is its
-    // org-qualified address, so it brings the logical id a channel's
+    // org-qualified address, so it brings the logical id a mailbox's
     // `members:` lists on `manifest.seatId`; a file record's `id` is that id.
     settings[SEAT_ID_KEY] = manifest.seatId ?? manifest.id;
 
@@ -681,11 +739,15 @@ export function hireWorkforce(
     // name among them has been shown to be one tool. This step cannot see a
     // kind's catalog, so a named package block that is also a catalog key is
     // refused by the kind at its mint (the built-in one does), not here.
+    // The seat id it was hired as, not a hired seat's org-qualified address:
+    // the same id the reference wall places the seat by.
     const { held, problems: heldProblems } = resolveHeldPackages(
-      manifest.id,
+      manifest.seatId ?? manifest.id,
       manifest.declared[PACKAGES_KEY],
       manifest.packages,
-      packageBlocks
+      packageBlocks,
+      // Only an address carries the org to peel; a seat id never does.
+      manifest.seatId === undefined ? manifest.ownerPin?.orgId : undefined
     );
     const packageProblems = [...heldProblems, ...heldPackageProblems(held, registry)];
     if (packageProblems.length > 0) {
@@ -771,8 +833,13 @@ export function hireWorkforce(
     // anything. What keeps that from touching an app with no references is the
     // wall itself: a kind holding none hands `base` straight back, including
     // handing back `undefined` so the seat is minted with no map at all.
+    //
+    // Placed by the seat id, not the address: a runtime hire answers on an
+    // org-qualified address (`acme.engineering.ada`), and its place in the
+    // tree is the seat id it was hired as (`engineering.ada`).
+    const placedAs = manifest.seatId ?? manifest.id;
     const wall = applyReferenceWall({
-      seatId: manifest.id,
+      seatId: placedAs,
       declared: manifest.declared[SEAT_REFERENCES_KEY],
       hasDeclared: Object.hasOwn(manifest.declared, SEAT_REFERENCES_KEY),
       catalog: options.references,
@@ -786,6 +853,9 @@ export function hireWorkforce(
     }
     seatResources = wall.resources;
 
+    // True only while the kind's own minter runs, so the catch below can tell
+    // the kind's refusal (its `configSchema`) from a throw after it.
+    let minting = true;
     try {
       // Always a bag, so always admitted. The branch that stood here passed no
       // bag at all for a record that declared nothing — which is admission
@@ -798,6 +868,7 @@ export function hireWorkforce(
         ...(manifest.ownerPin !== undefined ? { ownerPin: manifest.ownerPin } : {}),
         ...(seatResources !== undefined ? { resources: seatResources } : {})
       });
+      minting = false;
 
       // The narrowing is checked on the seat that was BUILT, not on the map it
       // was built from. `defineFlow` merges the blocks' own declarations on top
@@ -827,7 +898,7 @@ export function hireWorkforce(
         minted: seat.resources as DeclaredResources | undefined,
         allowed: wall.reachable,
         catalog: options.references,
-        seatId: manifest.id,
+        seatId: placedAs,
         kind
       });
       if (crossed.length > 0) {
@@ -846,6 +917,7 @@ export function hireWorkforce(
       const message = messageOf(error);
       const hint = admissionHint(message);
       refuse(hint === undefined ? message : `${message} ${hint}`);
+      if (minting) kindRefusedWorkers.add(manifest.id);
     }
   }
 
@@ -864,16 +936,26 @@ export function hireWorkforce(
   // which happens in the loop above.
 
   if (problems.length > 0) {
-    throw new Error(
-      `hireWorkforce refused ${refusedWorkers.size} of ${ordered.length} worker${ordered.length === 1 ? "" : "s"}; ` +
-        `nothing was hired:\n  - ${problems.join("\n  - ")}`
-    );
+    const message = hireRefusalMessage(refusedWorkers.size, ordered.length, problems);
+    // Typed only when every refusal is a kind's own: one framework refusal in
+    // the roster and the whole error stays the framework's.
+    // A kind-refused worker contributes exactly one problem (the catch is its
+    // last step), so the counts match only when nothing else was refused.
+    throw problems.length === kindRefusedWorkers.size
+      ? new KindRefusedHireError(message)
+      : new Error(message);
   }
 
   // After the refusals, deliberately: a roster that did not hire has nothing
   // to be unattended by, and a warning printed beside a fatal error is noise.
-  for (const warning of unattendedBoardWarnings(options.channelBoards ?? [], seats)) {
+  for (const warning of unattendedBoardWarnings(options.mailboxBoards ?? [], seats)) {
     console.warn(warning);
+  }
+  // A kind with two doors is reported, not refused: the seat is hired, and
+  // published with no door, so it takes no message until one is removed.
+  for (const seat of seats) {
+    const { problem } = seatDoorOf(seat);
+    if (problem !== undefined) console.warn(`[workforce] ${problem}`);
   }
 
   return seats;
@@ -904,18 +986,18 @@ export function unattendedBoardWarnings(
   const warnings: string[] = [];
   for (const boardId of boardIds) {
     if (declared.has(boardId)) continue;
-    // A board id is its channel's id, a dot, and a name carrying no dot.
-    const channelId = boardId.slice(0, boardId.lastIndexOf("."));
-    // The LOCAL name in the prose, because that is what the `CHANNEL.md` says
+    // A board id is its mailbox's id, a dot, and a name carrying no dot.
+    const mailboxId = boardId.slice(0, boardId.lastIndexOf("."));
+    // The LOCAL name in the prose, because that is what the `MAILBOX.md` says
     // and what an operator goes looking for. The minted id appears once, in
     // the fix, where it is the thing to copy.
-    const boardName = boardId.slice(channelId.length + 1);
+    const boardName = boardId.slice(mailboxId.length + 1);
     warnings.push(
-      `[workforce] channel "${channelId}" holds board "${boardName}" (ledger "${boardId}"), ` +
+      `[workforce] mailbox "${mailboxId}" holds board "${boardName}" (ledger "${boardId}"), ` +
         `and no flow hired in this ` +
         `call declares it. Rows filed there will sit pending until something drains them — ` +
         `declare the board on the seat that runs the work ` +
-        `(\`resources: { [board.id]: board }\` with \`channelBoard("${channelId}", "${boardName}")\`), ` +
+        `(\`resources: { [board.id]: board }\` with \`mailboxBoard("${mailboxId}", "${boardName}")\`), ` +
         `or ignore this if that seat runs in another process.`
     );
   }

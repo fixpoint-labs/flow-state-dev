@@ -86,12 +86,14 @@ something stable in the payload, as above, and every event for that customer lan
 same session, so its state builds up. `when` is an optional predicate on the event: return
 `false` and that delivery runs nothing, which narrows a coarse event type to the ones you want.
 
-The provider's signature verifies each delivery. With no resolver, as in the example, every
-event runs as the `system` user, and the flow is left on the development default. Its
-management and session endpoints are open to anyone. `GET /api/flows/sessions` lists its
-sessions to any caller. And `fsdev serve` won't bind a non-loopback host.
+The provider's signature verifies each delivery, but that's all the example checks. With no
+resolver, every event runs as the `system` user and the flow stays on the development default:
 
-In production, give the flow, or the host, a `resolvePrincipal` that returns your organization
+- its management and session endpoints are open to anyone,
+- `GET /api/flows/sessions` lists its sessions to any caller,
+- and `fsdev serve` won't bind a non-loopback host.
+
+For production, give the flow, or the host, a `resolvePrincipal` that returns your organization
 for webhook deliveries, as in
 [Stripe webhook with HMAC signature](/docs/server/authentication#stripe-webhook-with-hmac-signature).
 
@@ -186,7 +188,9 @@ it settles.
 
 To move the work off your web process entirely, give `createFlowState` a queue:
 `worker: bullmqWorker({ connection })` from `@flow-state-dev/bullmq`. Actions and dispatched
-runs then go through Redis to a worker, and if a worker dies mid-run, the job is retried.
+runs then go through Redis to a worker, and if a worker dies mid-run, the job is retried. Its
+`mode` decides whether a process enqueues work, runs it, or both; the next section covers what
+that changes.
 
 Read next: [Work that outlives the turn](/guides/background-work) compares side chains,
 queue-backed runs and dispatches side by side. [Dispatched work](/docs/server/background-work)
@@ -194,52 +198,57 @@ has every option and refusal.
 
 ## Into a new session or an existing one
 
-A dispatcher's `session` option decides where the work runs.
+A dispatcher's `session` option decides where the work runs:
 
-What's allowed depends on whether the process hands work to a queue. With `bullmqWorker`, its
-`mode` sets that. `colocated`, the default, both enqueues work and runs a worker, and a job may
-run on any worker on the queue, this one or another replica's. `dispatch-only` enqueues and
-leaves the running to separate workers. `worker-only` is one of those workers: it runs queued
-jobs and enqueues nothing. See
-[Separated workers](/guides/background-jobs-bullmq#4-separated-workers). If you replace the host's
-[`dispatcher` option](/docs/configuration/runtime#createflowstate-fields) on `createFlowState`
-(not the `dispatcher()` block) with your own that runs work in another process, the refusals
-below apply to it as well.
+| `session` | Runs in |
+|---|---|
+| `{ key: (input) => string }` | a session derived from the key, created on first use |
+| `{ id: (input) => string }` | a session that already exists |
+| `{ from: true }` | the session that dispatched this run, as a reply |
 
-| `session` | Runs in | With a queue |
-|---|---|---|
-| `{ key: (input) => string }` | a session derived from the key, created on first use | Works |
-| `{ id: (input) => string }` | a session that already exists | Refused from a process that hands work to the queue. From a `worker-only` worker it runs in process, without retries |
-| `{ from: true }` | the session that dispatched this run, as a reply | Refused from a process that hands work to the queue. From a `worker-only` worker it runs in process, without retries |
+A `{ key }` dispatch works on every host. Work into a session that already exists, by `{ id }` or
+`{ from: true }`, has to wait for that session's
+[concurrency policy](/docs/advanced/concurrency-policies), so whether it works depends on how
+your host runs dispatched work:
 
-Refused means the dispatch throws `DispatchRefusedError` with `refused: "external-dispatcher"`
-in `colocated` or `dispatch-only` mode, or under a custom external dispatcher, before anything
-is enqueued. A `{ key }` dispatch, a webhook delivery (with or without a `sessionId`) and a
-schedule tick run normally there.
+- **In process, with no queue:** works.
+- **`bullmqWorker` in `colocated` or `dispatch-only` mode:** works. The policy holds across all of
+  the queue's processes, so the dispatch is enqueued and runs in whichever worker picks it up, once
+  the session is free. `colocated`, the default, both enqueues and runs jobs, and a job may run on
+  any worker on the queue. `dispatch-only` enqueues and leaves the running to separate workers. See
+  [Separated workers](/guides/background-jobs-bullmq#4-separated-workers).
+- **`bullmqWorker` in `worker-only` mode:** a worker runs queued jobs and enqueues nothing, so the
+  dispatch runs in that process, without retries.
+- **A custom [`dispatcher`](/docs/configuration/runtime#createflowstate-fields) on
+  `createFlowState`** (the host option, not the `dispatcher()` block) **that runs work in another
+  process:** it can't apply the policy, so the dispatch throws `DispatchRefusedError` with
+  `refused: "external-dispatcher"` before anything is enqueued.
 
-If you use Workforce, its channels are sessions that already exist, so the same rule reaches
-them. On a process that hands work to the queue, such as a `colocated` one, a post made
-from your app is saved to the channel and shows in its transcript, but no member is woken and
-nothing answers. A post from another flow, made on such a process, is refused with
-`external-dispatcher`. See
-[Channels](/docs/workforce/channels#where-posting-from-another-flow-works-and-where-it-doesnt).
+Webhook deliveries (with or without a `sessionId`) and schedule ticks run normally on every host.
+
+Workforce mailboxes are sessions that already exist, so the same rule reaches them. On a host
+that can't apply a mailbox's policy across processes, a post made from your app is saved to the
+mailbox and shows in its transcript, but no member is woken and nothing answers. A post from
+another flow on such a host is refused with `external-dispatcher`. See
+[Mailboxes](/docs/workforce/mailboxes#where-posting-from-another-flow-works-and-where-it-doesnt).
 
 To get a hand-off's result back into the conversation that started it on any host, with
 retries, start the work with a `{ key }`, have it write what it found somewhere both sides can
 read, such as a user- or org-scoped resource or a task board, and read it from the
 conversation. From your app, the client SDK's `listChildSessions` lists the sessions a
-conversation's hand-offs started. If the flow has to deliver into an existing session, serve it from a
-host with no queue worker, and accept that its runs aren't retried.
+conversation's hand-offs started. If the flow has to deliver into an existing session behind a
+custom dispatcher, serve it from a host with no queue worker, and accept that its runs aren't
+retried.
 
-## A channel or a board
+## A mailbox or a board
 
-If you use Workforce, a channel and a board look alike and do different jobs. A **channel** holds
+If you use Workforce, a mailbox and a board look alike and do different jobs. A **mailbox** holds
 a conversation: posts, in order, that its members can be woken by. A **board** holds work:
-rows a worker claims, runs and settles. A channel can hold boards. Use the channel for what
-people and agents say, and a board for what has to get done. Posting in a channel hands
+rows a worker claims, runs and settles. A mailbox can hold boards. Use the mailbox for what
+people and agents say, and a board for what has to get done. Posting in a mailbox hands
 nobody the work; filing a row does.
 
-Read next: [Channels](/docs/workforce/channels), [Holding a board](/docs/workforce/channels#holding-a-board),
+Read next: [Mailboxes](/docs/workforce/mailboxes), [Holding a board](/docs/workforce/mailboxes#holding-a-board),
 and [Task board](/docs/orchestration/task-board).
 
 ## Where each setting lives

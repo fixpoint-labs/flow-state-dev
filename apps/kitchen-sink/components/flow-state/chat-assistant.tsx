@@ -69,9 +69,9 @@ export const chatAssistantRenderers: RendererRegistry = {
     // goalSeekLoop's stop reason and drain count, emitted once as the loop
     // exits. It is for tests and tooling reading the stream, not for a reader.
     "goal-seek-loop-termination": false,
-    // A routed channel's record of who each post went to. The channel's lines
-    // are `channel-post` items; the record is bookkeeping, never a line.
-    "channel-route": false,
+    // A routed mailbox's record of who each post went to. The mailbox's lines
+    // are `mailbox-post` items; the record is bookkeeping, never a line.
+    "mailbox-route": false,
     // Debate's per-round, per-decision, and verdict items are collected
     // and rendered by the <Debate /> container renderer above.
     "debate-turn": false,

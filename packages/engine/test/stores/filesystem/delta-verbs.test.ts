@@ -137,12 +137,14 @@ describe("Filesystem adapter — delta verbs", () => {
       expect((await store.get("s1"))?.state).toEqual({ count: 15 });
     });
 
-    it("treats a missing or non-numeric field as 0", async () => {
+    it("treats a missing field as 0 and refuses a non-numeric one, leaving it intact", async () => {
       const store = createFilesystemSessionStore({ rootDir });
       await seed(store, "s1", { label: "x" });
       await store.incField!("s1", ["count"], 3, 0, Date.now());
-      await store.incField!("s1", ["label"], 2, 1, Date.now());
-      expect((await store.get("s1"))?.state).toEqual({ count: 3, label: 2 });
+      await expect(store.incField!("s1", ["label"], 2, 1, Date.now())).rejects.toThrow(
+        /not a number/
+      );
+      expect((await store.get("s1"))?.state).toEqual({ count: 3, label: "x" });
     });
 
     it("supports negative deltas and decimals", async () => {

@@ -1,0 +1,73 @@
+<svg viewBox="0 0 940 344" role="img" aria-label="Before and after. Before: the Claude Code, Codex and Cursor emitters each read the runtime identity themselves; Claude Code takes the task id only, so its top-level steps escape the container they run in; Codex and Cursor take the task id and the owner. After: one core reader beside the identity type returns the task id and the owner; all three emitters stamp both, so Claude Code nests like the others; items inside a Claude Code sub-agent keep that sub-agent as their owner. Every other stamped field is identical before and after."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .src   { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .copy  { fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .one   { fill:var(--code-soft); stroke:var(--code); stroke-width:1.6; }
+    .edge  { stroke:var(--ink-3); stroke-width:1.2; fill:none; }
+    .divd  { stroke:var(--rule); stroke-width:1; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:13px; }
+    .t-s   { fill:var(--ink-2); font-family:system-ui,-apple-system,sans-serif; font-size:11px; }
+    .c-gone { fill:var(--gone); }
+    .c-code { fill:var(--code); }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="344"/>
+
+  <g id="before">
+    <text class="t-lbl" x="24" y="30">TODAY · THREE PRIVATE COPIES</text>
+    <rect class="src" x="24" y="44" width="420" height="44" rx="5"/>
+    <text class="t-b" x="40" y="64">runtime identity</text>
+    <text class="t-s" x="40" y="80">task id · owner · where the run sits</text>
+    <path class="edge" d="M90 88 V124 M234 88 V124 M378 88 V124"/>
+    <rect class="copy" x="24" y="124" width="132" height="70" rx="5"/>
+    <text class="t-b" x="36" y="146">Claude Code</text>
+    <text class="t-s" x="36" y="164">own read</text>
+    <text class="t-s c-gone" x="36" y="182">task only · escapes</text>
+    <rect class="copy" x="168" y="124" width="132" height="70" rx="5"/>
+    <text class="t-b" x="180" y="146">Codex</text>
+    <text class="t-s" x="180" y="164">own read</text>
+    <text class="t-s c-gone" x="180" y="182">task + owner</text>
+    <rect class="copy" x="312" y="124" width="132" height="70" rx="5"/>
+    <text class="t-b" x="324" y="146">Cursor</text>
+    <text class="t-s" x="324" y="164">copy of Codex's</text>
+    <text class="t-s c-gone" x="324" y="182">task + owner</text>
+    <text class="t-s" x="24" y="222">A fourth harness copies one of these,</text>
+    <text class="t-s" x="24" y="238">and can forget the task, or the owner, as Claude Code did.</text>
+  </g>
+
+  <line class="divd" x1="470" y1="20" x2="470" y2="330"/>
+
+  <g id="after">
+    <text class="t-lbl" x="496" y="30">AFTER · ONE CORE READER</text>
+    <rect class="src" x="496" y="44" width="420" height="44" rx="5"/>
+    <text class="t-b" x="512" y="64">runtime identity</text>
+    <text class="t-s" x="512" y="80">unchanged</text>
+    <path class="edge" d="M706 88 V112"/>
+    <rect class="one" x="576" y="112" width="260" height="48" rx="5"/>
+    <text class="t-b c-code" x="592" y="132">itemScope · core</text>
+    <text class="t-s" x="592" y="150">returns task and owner; decides nothing</text>
+    <path class="edge" d="M640 160 L566 204 M706 160 V204 M772 160 L846 204"/>
+    <rect class="n-box" x="496" y="204" width="132" height="70" rx="5"/>
+    <text class="t-b" x="508" y="226">Claude Code</text>
+    <text class="t-s c-code" x="508" y="244">task + owner</text>
+    <text class="t-s" x="508" y="262">sub-agent: its own</text>
+    <rect class="n-box" x="640" y="204" width="132" height="70" rx="5"/>
+    <text class="t-b" x="652" y="226">Codex</text>
+    <text class="t-s" x="652" y="244">task + owner</text>
+    <rect class="n-box" x="784" y="204" width="132" height="70" rx="5"/>
+    <text class="t-b" x="796" y="226">Cursor</text>
+    <text class="t-s" x="796" y="244">task + owner</text>
+    <text class="t-s c-code" x="496" y="304">Claude Code now stamps the owner, so it nests like the others.</text>
+    <text class="t-s" x="496" y="322">Every other stamped field identical to today, pinned before the move.</text>
+  </g>
+</svg>

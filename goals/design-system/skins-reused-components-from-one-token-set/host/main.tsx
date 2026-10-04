@@ -4,7 +4,7 @@
  * Copied into a host app that installed the registry with `fsdev ui add`. It
  * imports only what the host installed (`@/components/flow-state/*`) and the
  * chrome from `@flow-state-dev/react`, and adds no CSS of its own: the
- * stylesheet is the host's `app/globals.css`, plus App Lab's theme when the
+ * stylesheet is the host's `app/globals.css`, plus Shift Manager's theme when the
  * URL asks for it.
  *
  * Each part is a `[data-part]` section. `data-means` marks the parts whose
@@ -12,7 +12,7 @@
  * where something is off and nobody is asked. The grading lives in `run.mts`;
  * this page only renders.
  *
- *   ?theme=app-lab   load `app/themed.css` (globals + the App Lab stylesheet)
+ *   ?theme=shift-manager   load `app/themed.css` (globals + the Shift Manager stylesheet)
  *   ?dark=1          put `.dark` on <html> before the first render
  */
 import { StrictMode, type ReactNode } from "react";
@@ -40,7 +40,7 @@ import * as f from "./fixtures";
 
 const params = new URLSearchParams(location.search);
 if (params.get("dark") === "1") document.documentElement.classList.add("dark");
-if (params.get("theme") === "app-lab") await import("./app/themed.css");
+if (params.get("theme") === "shift-manager") await import("./app/themed.css");
 else await import("./app/globals.css");
 
 /** One swept part. `component` names the registry file the part exists to exercise. */
@@ -283,7 +283,7 @@ function Page() {
           <Part name="navigator" component="FlowNavigator">
             <FlowNavigator
               sections={[
-                { label: "Channels", kinds: ["support"] },
+                { label: "Mailboxes", kinds: ["support"] },
                 { label: "Seats", kinds: ["agent"] },
               ]}
               selectedSessionId="sess-1"

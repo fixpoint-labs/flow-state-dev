@@ -13,4 +13,6 @@ export {
   writeUserId,
   readBearerToken,
   hasInjectedUserId,
+  readSessionAddress,
+  SESSION_ADDRESS_PARAM,
 } from "./config";

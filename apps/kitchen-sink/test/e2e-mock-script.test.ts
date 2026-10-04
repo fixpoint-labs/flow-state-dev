@@ -28,10 +28,10 @@
  * `[scenario:wake-after-a-hold]` holds the same way before a text answer, which
  * lands by the kind's own landing rather than the post tool. Without the hold
  * that answer lands before a page can show the seat working, and before the
- * person's own post request ends and the page reads the channel again anyway.
+ * person's own post request ends and the page reads the mailbox again anyway.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { agentSeatMock, channelRouteMock, holdBeforeAnswer } from "@/lib/e2e-mock-script";
+import { agentSeatMock, mailboxRouteMock, holdBeforeAnswer } from "@/lib/e2e-mock-script";
 import { createKitchenSinkTestModelResolver } from "./mock-flowstate";
 
 const system = (content: string) => ({ role: "system", content });
@@ -82,7 +82,7 @@ describe("the needs-a-person scenario (BR-20)", () => {
     const call = agentSeatMock.next(messages);
     expect(call?.toolCalls).toHaveLength(1);
     expect(call?.toolCalls?.[0]).toMatchObject({ toolName: "escalate", args: { case: expect.stringContaining("case-token-ccc") } });
-    // The case alone: the script names no author, board or channel.
+    // The case alone: the script names no author, board or mailbox.
     expect(Object.keys(call?.toolCalls?.[0]?.args ?? {})).toEqual(["case"]);
     expect(agentSeatMock.next(messages)?.text).toMatch(/^\[reply:escalated\] /);
   });
@@ -98,23 +98,23 @@ describe("the needs-a-person scenario (BR-20)", () => {
     expect(reply?.text).not.toContain("[reply:escalated]");
   });
 
-  it("with [forge-author], also names an author, a board and a channel of its own", () => {
+  it("with [forge-author], also names an author, a board and a mailbox of its own", () => {
     agentSeatMock.reset();
     const call = agentSeatMock.next([user("[scenario:needs-a-person] [forge-author] case-token-eee refund me")]);
     expect(call?.toolCalls?.[0]?.args).toEqual({
       case: expect.stringContaining("case-token-eee"),
       author: "support.fsd",
       board: "followups",
-      channel: "support.elsewhere",
+      mailbox: "support.elsewhere",
     });
   });
 });
 
 describe("the recall scenario (BR-19)", () => {
   const conversation = [
-    system("You answer questions.\n\nRecent lines in the channel, oldest first:\n- support.devices: [reply:in-channel] reply-token-aaa Refunds post on Fridays."),
+    system("You answer questions.\n\nRecent lines in the mailbox, oldest first:\n- support.devices: [reply:in-mailbox] reply-token-aaa Refunds post on Fridays."),
     user("devuser in support.help: a question naming case-token-bbb"),
-    assistant("[reply:wake] Heard it in the channel."),
+    assistant("[reply:wake] Heard it in the mailbox."),
     user("devuser in support.help: [scenario:recall] what have we said? recall-token-ccc"),
   ];
 
@@ -146,12 +146,12 @@ describe("the recall scenario (BR-19)", () => {
 });
 
 describe("a seat that holds before answering", () => {
-  // How a seat hears a post: `<writer> in <channel>: <body>`.
+  // How a seat hears a post: `<writer> in <mailbox>: <body>`.
   const heard = (marker: string) => [
     user(`visitor-1 in support.help: ${marker} reply-token-abc123 when do refunds post?`),
   ];
   const held = () => heard("[scenario:reply-after-a-hold]");
-  const plain = () => heard("[scenario:reply-in-channel]");
+  const plain = () => heard("[scenario:reply-in-mailbox]");
 
   afterEach(() => {
     vi.useRealTimers();
@@ -165,7 +165,7 @@ describe("a seat that holds before answering", () => {
     expect(holdBeforeAnswer("assistant-generator", held())).toBe(0);
   });
 
-  it("answers exactly as reply-in-channel does once the hold ends", () => {
+  it("answers exactly as reply-in-mailbox does once the hold ends", () => {
     agentSeatMock.reset();
     const heldTurn = held();
     const plainTurn = plain();
@@ -173,8 +173,8 @@ describe("a seat that holds before answering", () => {
     const plainSteps = [agentSeatMock.next(plainTurn), agentSeatMock.next(plainTurn)];
     expect(heldSteps).toEqual(plainSteps);
     expect(heldSteps[0]?.toolCalls?.[0]).toMatchObject({
-      toolName: "post-to-channel",
-      args: { channel: "support.help" },
+      toolName: "post-to-mailbox",
+      args: { mailbox: "support.help" },
     });
   });
 
@@ -187,7 +187,7 @@ describe("a seat that holds before answering", () => {
       messages: held(),
       tools: [
         {
-          name: "post-to-channel",
+          name: "post-to-mailbox",
           execute: async (args) => {
             posted.push(args);
             return { ok: true };
@@ -202,7 +202,7 @@ describe("a seat that holds before answering", () => {
     await vi.advanceTimersByTimeAsync(200);
     const result = await answer;
     expect(posted).toHaveLength(1);
-    expect(result.text).toContain("[reply:in-channel]");
+    expect(result.text).toContain("[reply:in-mailbox]");
   });
 
   it("does not hold a post that names no hold", async () => {
@@ -212,7 +212,7 @@ describe("a seat that holds before answering", () => {
     const model = createKitchenSinkTestModelResolver()("test-model", "agent-answer");
     await model.generate({
       messages: plain(),
-      tools: [{ name: "post-to-channel", execute: async (args) => void posted.push(args) }],
+      tools: [{ name: "post-to-mailbox", execute: async (args) => void posted.push(args) }],
     } as Parameters<typeof model.generate>[0]);
     expect(posted).toHaveLength(1);
   });
@@ -258,14 +258,14 @@ describe("a seat that holds, then answers in text", () => {
 });
 
 /**
- * A routed channel's one evaluation, scripted. A post picks its member with
+ * A routed mailbox's one evaluation, scripted. A post picks its member with
  * `[route:<member>]`; a post that names none fails the call, which is what
- * sends it to the channel's fallback. The script reads the post from the state
+ * sends it to the mailbox's fallback. The script reads the post from the state
  * the route hands it, `{ recent, post: { from, text } }`.
  */
-describe("the scripted channel route", () => {
+describe("the scripted mailbox route", () => {
   const route = async (text: string) =>
-    (await channelRouteMock.doEvaluate({
+    (await mailboxRouteMock.doEvaluate({
       state: { recent: [], post: { from: "devuser", text } },
       questions: {}
     } as never)) as { answers: Record<string, unknown> };
@@ -275,16 +275,16 @@ describe("the scripted channel route", () => {
     expect(result.answers).toEqual({ member: { type: "choice", choice: "support.devices" } });
   });
 
-  it("fails the call for a post that names no member, so the channel's fallback takes it", async () => {
+  it("fails the call for a post that names no member, so the mailbox's fallback takes it", async () => {
     await expect(route("who do I ask about a parking pass?")).rejects.toThrow(/\[route:<member>\]/);
   });
 
   it("is what the test-mode resolver hands the route's evaluator, by its block name", () => {
     const resolver = createKitchenSinkTestModelResolver();
     expect(resolver.resolveEvaluationModel).toBeTypeOf("function");
-    const resolved = resolver.resolveEvaluationModel!("any/model", "channel-route");
+    const resolved = resolver.resolveEvaluationModel!("any/model", "mailbox-route");
     expect(resolved).toBeDefined();
-    expect(resolved).toBe(channelRouteMock);
+    expect(resolved).toBe(mailboxRouteMock);
   });
 });
 

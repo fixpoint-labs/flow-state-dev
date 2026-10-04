@@ -8,7 +8,7 @@ import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createFlowState, inMemoryStores, runAction } from "../../src";
+import { continueRequest, createFlowRegistry, createFlowState, inMemoryStores, runAction } from "../../src";
 import type { FlowInstance } from "@flow-state-dev/core";
 
 const approvalStep = handler({
@@ -85,25 +85,21 @@ describe("createFlowState durable: true — end to end", () => {
       resumeData: { approved: true }
     });
 
-    // Phase 2: resume run completes with the approved branch.
-    const resumed = await runAction({
-    orgId: DEFAULT_ORG_ID,
-      flow: approvalFlow as FlowInstance,
-      actionName: "go",
-      input: { request: "deploy" },
-      userId: "u1",
-      sessionId: "s1",
+    // Phase 2: continuing the same request completes with the approved branch.
+    const registry = createFlowRegistry();
+    registry.register(approvalFlow as never);
+    const { finished } = await continueRequest({
+      requestId: initial.requestId!,
       stores,
+      flowRegistry: registry,
       runtimeConfig,
-      metadata: {
-        resumeOf: initial.requestId,
-        resumeContext: {
-          suspensionId: pending[0]!.suspensionId,
-          action: "approve",
-          data: { approved: true }
-        }
+      resumeContext: {
+        suspensionId: pending[0]!.suspensionId,
+        action: "approve",
+        data: { approved: true }
       }
     });
+    const resumed = await finished;
     expect(resumed.error).toBeUndefined();
     expect(resumed.output).toBe("approved");
 

@@ -171,7 +171,7 @@ function buildFlow(options: {
           Promise.reject(new Error(REPORT_ERROR));
       }
       return announcementFailingStore(
-        await getOrCreateTaskCollection({ ctx, backing: "request", collectionId }),
+        await getOrCreateTaskCollection({ ctx, backing: "state", collectionId }),
         {
           failOn: options.failOn,
           ...(options.provenance !== undefined
@@ -551,7 +551,7 @@ describe("FIX-963: a recorder failure after the write committed", () => {
         announcementFailingStore(
           await getOrCreateTaskCollection({
             ctx,
-            backing: "request",
+            backing: "state",
             collectionId: INNER,
           }),
           { failOn: "complete" }

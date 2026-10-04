@@ -18,7 +18,7 @@ import { handler } from "@flow-state-dev/core";
 import { runForTest, testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   DEFAULT_MAX_TOTAL_RETRIES,
   defineTaskCollection,
   getOrCreateTaskCollection,
@@ -45,9 +45,9 @@ function cappedCollection(caps: {
   maxTotalTasks?: number | null;
   maxEnqueuedTasks?: number | null;
 }): TaskCollectionRef {
-  return createSequencerBackedTaskCollection({
+  return createStateBackedTaskCollection({
     collectionId: "capped",
-    sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+    state: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
     ...caps,
   });
 }
@@ -269,7 +269,7 @@ describe("taskBoard caps — a SECOND ref over the same ledger", () => {
         // A bare resolver — the shape a pattern writer used before FIX-931.
         const bare = await getOrCreateTaskCollection({
           ctx,
-          backing: "request",
+          backing: "state",
           collectionId: "second-ref",
         });
         await bare.addTasks(
@@ -279,7 +279,7 @@ describe("taskBoard caps — a SECOND ref over the same ledger", () => {
         // The same ledger, resolved WITH the board's caps.
         const withCaps = await getOrCreateTaskCollection({
           ctx,
-          backing: "request",
+          backing: "state",
           collectionId: "second-ref",
           ...board.caps,
         });
@@ -322,7 +322,7 @@ describe("taskBoard caps — a SUPPLIED collection is the sole authority", () =>
       taskBoard({
         name: "factory-capped",
         collection: (ctx) =>
-          getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "fc" }),
+          getOrCreateTaskCollection({ ctx, backing: "state", collectionId: "fc" }),
         workers: noopWorker,
         maxEnqueuedTasks: 5,
       }),

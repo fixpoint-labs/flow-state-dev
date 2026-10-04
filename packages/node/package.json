@@ -76,6 +76,7 @@
     "hono": "^4.6.14"
   },
   "devDependencies": {
+    "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",

@@ -787,21 +787,28 @@ function translateResult(msg: Extract<SdkMessageLike, { type: "result" }>): Tran
   const errorsText =
     msg.errors && msg.errors.length > 0 ? msg.errors.join("; ") : undefined;
 
+  const isError = msg.is_error === true;
   const events: TranslatedEvent[] = [];
   // Any terminal subtype that is not "success" is an errored outcome — including
   // an unrecognized subtype (a future SDK failure mode), which `normalizeSubtype`
   // maps to `null`. Keying off the raw subtype here (and `subtype !== "success"`
   // in the agent's status check) prevents a failed run from reporting "completed".
-  if (rawSubtype !== "success") {
+  //
+  // So is a "success" the SDK flagged `is_error`: that is how it reports a turn
+  // that ended on an API error, with the error text in `result`. The subtype
+  // only says the loop exited normally; the flag says the turn failed.
+  if (rawSubtype !== "success" || isError) {
+    const reason = rawSubtype === "success" ? "is_error" : rawSubtype;
     events.push({
       kind: "error",
-      message: msg.result ?? errorsText ?? `Claude Code agent run failed (${rawSubtype ?? "unknown subtype"}).`,
-      code: rawSubtype ?? "unknown",
+      message: msg.result ?? errorsText ?? `Claude Code agent run failed (${reason ?? "unknown subtype"}).`,
+      code: reason ?? "unknown",
     });
   }
   events.push({
     kind: "result",
     subtype,
+    isError,
     finalMessage:
       typeof msg.result === "string" ? msg.result : (errorsText ?? null),
     sessionId: msg.session_id ?? null,

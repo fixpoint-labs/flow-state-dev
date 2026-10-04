@@ -262,7 +262,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   async function getCollection(ctx: BlockContext): Promise<TaskCollectionRef> {
     return getOrCreateTaskCollection({
       ctx,
-      backing: "request",
+      backing: "state",
       collectionId,
       ...boardCaps,
     });

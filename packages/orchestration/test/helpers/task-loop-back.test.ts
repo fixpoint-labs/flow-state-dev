@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   defaultTaskLoopUntil,
   taskLoopBack,
   DEFAULT_TASK_LOOP_MAX_ITERATIONS,
@@ -13,9 +13,9 @@ import {
 function buildCollection() {
   const captured = createCapturedChanges();
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
-  return createSequencerBackedTaskCollection({
+  return createStateBackedTaskCollection({
     collectionId: "tasks",
-    sequencer,
+    state: sequencer,
     onChange: captured.onChange,
   });
 }

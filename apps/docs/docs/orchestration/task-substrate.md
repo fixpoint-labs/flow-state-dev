@@ -135,7 +135,7 @@ export const seedResearchPlan = handler({
   async execute(input, ctx) {
     const collection = await getOrCreateTaskCollection({
       ctx,
-      backing: "request",
+      backing: "state", // no `state` field: the tasks live on the request
       collectionId: "research-plan",
     });
 

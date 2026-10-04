@@ -81,6 +81,8 @@ import {
 } from "./run-owner";
 
 export type { RequestIdentityContext } from "./run-owner";
+import { TURNS, takeTurns, turnCollection, turnsPromptSection } from "./turns";
+import { createMessageDoor, type MessageDoorAction, type MessageDoorOptions } from "./door";
 import {
   INBOX,
   askQuestion,
@@ -146,15 +148,32 @@ export interface AnsweredQuestion {
 }
 
 /**
- * What a prompt builder gets on top of {@link PhaseRunContext}: the two things
- * the ask adds.
+ * What a prompt builder gets on top of {@link PhaseRunContext}: the task it was
+ * claimed for, and the two things the ask adds.
  *
  * Separate from `PhaseRunContext` rather than optional fields on it. The
- * done-condition needs neither, and a field that is sometimes absent is the
+ * done-condition needs none of them, and a field that is sometimes absent is the
  * silent-partial shape this lab exists to remove — a builder cannot tell "no
  * answers" from "nobody read them" if the same `undefined` means both.
  */
 export interface PromptRunContext extends PhaseRunContext {
+  /**
+   * The task this attempt was claimed for, as the board packed it: its `goal`,
+   * and its `title`, `context`, `input`, `deps` and `priorWork` when the row has
+   * them. A field the row lacks is an absent key, never `undefined`.
+   *
+   * The same on every attempt, so a retry or the attempt after a person's
+   * message starts from the same work. Build the prompt from this rather than
+   * from {@link PhaseRunContext.issue}, which is only the row's identity.
+   * `metadata` is left out: it is the board's bookkeeping, not the brief.
+   *
+   * A `Pick` of the board's worker-input schema, so its fields keep the
+   * board's names and there is no second field list to drift.
+   */
+  task: Pick<
+    z.infer<typeof taskWorkerInputSchema>,
+    "goal" | "title" | "context" | "input" | "deps" | "priorWork"
+  >;
   /**
    * Every ANSWERED question for this issue-phase, oldest first — across all
    * attempts, deliberately. That is the question history, not a freshness
@@ -278,7 +297,7 @@ export interface ManagerOptions {
    * The board's ledger collection id — the fence reads the live claim from it,
    * and every run's checkout folder, branch and run record are derived from it.
    *
-   * Used as is: a channel's board (`eng.feature.work`) is accepted with its
+   * Used as is: a mailbox's board (`eng.feature.work`) is accepted with its
    * dots. Checked when the manager is built, so an id a git branch cannot carry
    * (a `.lock` ending, a doubled or trailing dot, a separator) is refused here
    * rather than after a row has been claimed.
@@ -876,6 +895,9 @@ function createManagerCapability(options: {
       // question a child session writes is the one the coordinator session
       // reads — one registration, not two storage slots that look alike.
       [INBOX]: inboxCollection,
+      // Where a person's message to a run is kept for the attempt that acts on
+      // it (FIX-1690). The door writes it; the next attempt's prompt takes it.
+      [TURNS]: turnCollection,
       // Declared so the fence can read the LIVE claim off the board row. The
       // board declares the same definition object, so this is one registration
       // rather than a second storage slot that looks like the first.
@@ -884,8 +906,28 @@ function createManagerCapability(options: {
   });
 }
 
+/**
+ * The manager: a task worker, plus the door a coding kind declares so a person
+ * can talk to its runs.
+ */
+export type HarnessManager = TaskWorker & {
+  /**
+   * The public action that takes a person's message into a run's session
+   * (FIX-1690). Declare it on the kind whose rows this manager runs, with an
+   * `internal` entry that runs their board's drain. After a stop the door
+   * dispatches that entry into the session that claimed the row, so the next
+   * attempt runs in the same session:
+   *
+   * ```ts
+   * internal: { actions: { resume: { block: board.drain } } },
+   * actions: { message: manager.messageDoor({ drain: "resume" }) }
+   * ```
+   */
+  messageDoor(options: MessageDoorOptions): MessageDoorAction;
+};
+
 /** Build the manager: one handed-off worker for one phase. */
-export function harnessManager(options: ManagerOptions): TaskWorker {
+export function harnessManager(options: ManagerOptions): HarnessManager {
   const {
     boardCollectionId,
     boardCollection,
@@ -989,7 +1031,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
   // Merging the manager's entries LAST would prevent all three, and it is the
   // wrong fix: the host's declaration would simply not work, with nothing
   // anywhere saying why. This fails loudly, naming the key.
-  const RESERVED_ACCESSORS = new Set([RUNS, boardCollectionId, INBOX]);
+  const RESERVED_ACCESSORS = new Set([RUNS, boardCollectionId, INBOX, TURNS]);
 
   /** Refuse a capability set that claims one of the manager's accessors. */
   const assertClaimsNothingReserved = (
@@ -1009,7 +1051,8 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     throw new Error(
       `[harness-manager] a capability on \`uses\` declares collection(s) ` +
         `${claimed.map((k) => `"${k}"`).join(", ")}, which the manager owns (${when}) — ` +
-        `"${RUNS}" is the run record, "${INBOX}" is the question inbox, and ` +
+        `"${RUNS}" is the run record, "${INBOX}" is the question inbox, "${TURNS}" holds ` +
+        `a person's messages to a run, and ` +
         `"${boardCollectionId}" is the board ledger the attempt fence reads. All ` +
         `are already available to the phase; declaring them again would replace ` +
         `the manager's own.`,
@@ -1244,7 +1287,7 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
             topic,
             boardCollectionId,
           },
-          { workspacePath, branch },
+          { workspacePath, branch, childSessionId: ctx.session.identity.id },
         ),
         "the run row was opened",
       );
@@ -1318,6 +1361,14 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         branch: state.branch!,
         ...(input.feedback !== undefined ? { feedback: input.feedback } : {}),
         ctx,
+        task: {
+          goal: input.goal,
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.context !== undefined ? { context: input.context } : {}),
+          ...(input.input !== undefined ? { input: input.input } : {}),
+          ...(input.deps !== undefined ? { deps: input.deps } : {}),
+          ...(input.priorWork !== undefined ? { priorWork: input.priorWork } : {}),
+        },
         answers,
         // The prompt is the only place this path is named, which is what makes
         // the ask FORCED rather than spontaneous — the harness offers no seam
@@ -1380,7 +1431,20 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
         issue: state.issue!,
         phase: state.phase!,
       });
-      return { prompt };
+
+      // **A person's turns, after the phase's own prompt** (FIX-1690). Kept by
+      // the door for this attempt, oldest first, in a section that says whose
+      // words they are: a third channel beside `feedback` (why the last
+      // attempt failed) and `answers` (what a person answered), for the reason
+      // those two are already apart. Taken last, once the checkout is ready, so
+      // an attempt that could not start leaves them for the next one.
+      // Before the harness starts, and the door depends on it: a turn this
+      // attempt takes is marked taken before any session can be named
+      // (`continueOnceStarted` in `./door`, pinned in `message-door.spec.ts`).
+      const turns = await takeTurns(ctx, state.issue!, state.phase!, input.attempts);
+      return {
+        prompt: turns.length === 0 ? prompt : `${prompt}\n\n${turnsPromptSection(turns)}`,
+      };
     },
   });
 
@@ -1785,7 +1849,15 @@ export function harnessManager(options: ManagerOptions): TaskWorker {
     .rescue([{ block: recordFailure }]);
 
   worker.validate();
-  return worker;
+
+  const messageDoor = createMessageDoor({
+    name,
+    boardCollectionId,
+    boardCollection,
+    capability: managerCapability as unknown as DefinedCapability,
+    boardTasks,
+  });
+  return Object.assign(worker, { messageDoor }) as HarnessManager;
 }
 
 /**

@@ -22,25 +22,25 @@ import type { WorkforceCapabilityOptions } from "../src/workforce-capability";
 
 /** The replacement, and the shape every case below is measured against. */
 export const supported = createWorkforceCapability({
-  roster: { workers: [], channels: [] },
-  inventory: { seats: "seatInventory", channels: "channelInventory" }
+  roster: { workers: [], mailboxes: [] },
+  inventory: { seats: "seatInventory", mailboxes: "mailboxInventory" }
 });
 
 /** A domain with no inventory key is an ordinary state, not a missing argument. */
 export const partial = createWorkforceCapability({
-  roster: { workers: [], channels: [] },
-  inventory: { channels: "channelInventory" }
+  roster: { workers: [], mailboxes: [] },
+  inventory: { mailboxes: "mailboxInventory" }
 });
 
 export const removedAgents = createWorkforceCapability({
-  roster: { workers: [], channels: [] },
+  roster: { workers: [], mailboxes: [] },
   inventory: {},
   // @ts-expect-error `agents` was removed — the expected type names the replacement.
   agents: [{ name: "reviewer" }]
 });
 
 export const removedCatalog = createWorkforceCapability({
-  roster: { workers: [], channels: [] },
+  roster: { workers: [], mailboxes: [] },
   inventory: {},
   // @ts-expect-error `catalog` was removed — it was never read.
   catalog: { search: {} }
@@ -54,7 +54,7 @@ export const removedCatalog = createWorkforceCapability({
  * the call site, so the refusal has to live on the type.
  */
 export const byReference: WorkforceCapabilityOptions = {
-  roster: { workers: [], channels: [] },
+  roster: { workers: [], mailboxes: [] },
   inventory: {},
   // @ts-expect-error same key, same refusal, reached through the exported type.
   agents: []

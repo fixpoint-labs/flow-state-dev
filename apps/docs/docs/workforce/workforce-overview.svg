@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 560" role="img" aria-labelledby="title desc">
+  <title id="title">Worker file, seat and session: where each lives</title>
+  <desc id="desc">A WORKER.md file in your repository is the description. readWorkforce turns files into plain records, hireWorkforce turns each record into a seat, a configured copy of a flow kind with its own id, and your app registers the seats. Sessions, state and resources a seat writes live in your store. A seat hired while the app runs is also written to the store as a roster row. A task board's assignee names a board worker, never a seat.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" style="fill:var(--card-line)"/>
+    </marker>
+    <style>
+      :root { --bg:#ffffff; --ink:#0f172a; --ink-2:#334155; --muted:#64748b;
+              --proc-fill:#faf5ff; --proc:#7e22ce; --sess-fill:#eff6ff; --sess:#1d4ed8;
+              --org-fill:#f0fdf4; --org:#15803d; --card:#ffffff; --card-line:#334155; --box:#f8fafc;
+              --faint:#94a3b8; --no:#b91c1c; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg:#0e0e14; --ink:#e5e7eb; --ink-2:#cbd5e1; --muted:#94a3b8;
+                --proc-fill:#1d1030; --proc:#c084fc; --sess-fill:#0f1a33; --sess:#60a5fa;
+                --org-fill:#0b2016; --org:#4ade80; --card:#14141c; --card-line:#64748b; --box:#181822;
+                --faint:#64748b; --no:#f87171; } }
+      .bg { fill: var(--bg); }
+      .wall-sess { fill: var(--sess-fill); stroke: var(--sess); stroke-width: 2; }
+      .wall-org { fill: var(--org-fill); stroke: var(--org); stroke-width: 2; }
+      .wall-file { fill: var(--box); stroke: var(--card-line); stroke-width: 2; }
+      .card { fill: var(--card); stroke: var(--card-line); stroke-width: 1.5; }
+      .card-sess { fill: var(--card); stroke: var(--sess); stroke-width: 1.5; }
+      .box { fill: var(--box); stroke: var(--card-line); stroke-width: 1.5; }
+      .title { font: 700 20px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .h { font: 700 14px ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+      .p { font: 13px ui-sans-serif, system-ui, sans-serif; fill: var(--ink-2); }
+      .muted { font: 12px ui-sans-serif, system-ui, sans-serif; fill: var(--muted); }
+      .code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: var(--ink); }
+      .edge { stroke: var(--card-line); stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="920" height="560" rx="16" class="bg"/>
+
+  <text x="28" y="36" class="title">Worker file, seat, session: where each lives</text>
+  <text x="28" y="58" class="muted">A worker file describes a worker; the seat you hire from it is what runs.</text>
+
+  <!-- Repo -->
+  <rect x="28" y="84" width="248" height="300" rx="14" class="wall-file"/>
+  <text x="44" y="108" class="h">Your repository</text>
+  <text x="44" y="126" class="muted">Files you write and commit</text>
+
+  <rect x="44" y="142" width="216" height="104" rx="10" class="card"/>
+  <text x="58" y="166" class="h">WORKER.md</text>
+  <text x="58" y="186" class="code">teams/engineering/</text>
+  <text x="58" y="202" class="code">  workers/lead/</text>
+  <text x="58" y="228" class="muted">Settings and instructions</text>
+
+  <rect x="44" y="258" width="216" height="110" rx="10" class="card"/>
+  <text x="58" y="282" class="h">MAILBOX.md</text>
+  <text x="58" y="302" class="code">teams/engineering/</text>
+  <text x="58" y="318" class="code">  mailboxes/standup/</text>
+  <text x="58" y="344" class="muted">Members and a charter.</text>
+  <text x="58" y="360" class="muted">Opens a session, not a seat.</text>
+
+  <!-- Process -->
+  <rect x="296" y="84" width="320" height="300" rx="14" class="wall-sess"/>
+  <text x="312" y="108" class="h">Your app's process</text>
+  <text x="312" y="126" class="muted">Rebuilt at every start</text>
+
+  <rect x="312" y="142" width="288" height="56" rx="10" class="card"/>
+  <text x="326" y="164" class="h">Record</text>
+  <text x="326" y="184" class="muted">readWorkforce: reads the files</text>
+
+  <rect x="312" y="218" width="288" height="78" rx="10" class="card-sess"/>
+  <text x="326" y="240" class="h">Seat engineering.lead</text>
+  <text x="326" y="260" class="muted">hireWorkforce: a flow kind, configured,</text>
+  <text x="326" y="276" class="muted">with its own id. Reads no files.</text>
+
+  <rect x="312" y="316" width="288" height="52" rx="10" class="card"/>
+  <text x="326" y="338" class="h">Registry</text>
+  <text x="326" y="356" class="muted">registerMany: now it answers requests</text>
+
+  <path d="M456 198 L456 216" class="edge"/>
+  <path d="M456 296 L456 314" class="edge"/>
+  <path d="M260 194 L310 170" class="edge"/>
+
+  <!-- Store -->
+  <rect x="636" y="84" width="256" height="300" rx="14" class="wall-org"/>
+  <text x="652" y="108" class="h">Your store</text>
+  <text x="652" y="126" class="muted">Kept across restarts when persistent</text>
+
+  <rect x="652" y="142" width="224" height="104" rx="10" class="card"/>
+  <text x="666" y="166" class="h">Sessions on the seat</text>
+  <text x="666" y="188" class="p">Each person's conversation,</text>
+  <text x="666" y="206" class="p">its state and resources</text>
+  <text x="666" y="230" class="muted">Never written into the file</text>
+
+  <rect x="652" y="258" width="224" height="110" rx="10" class="card"/>
+  <text x="666" y="282" class="h">Roster row</text>
+  <text x="666" y="302" class="muted">Only for a seat hired while</text>
+  <text x="666" y="318" class="muted">the app runs. Read back at</text>
+  <text x="666" y="334" class="muted">the next start.</text>
+  <text x="666" y="356" class="muted">See Hiring at runtime</text>
+
+  <!-- Not a copy -->
+  <rect x="28" y="404" width="864" height="136" rx="12" class="box"/>
+  <text x="44" y="428" class="h">Not a copy</text>
+  <text x="44" y="452" class="p">A seat is the flow kind plus an id and settings. The kind is unchanged, and many seats can run on it.</text>
+  <text x="44" y="472" class="p">You open a session against a seat the way you open one against any flow. Its sessions belong to the seat, not to the file.</text>
+  <text x="44" y="492" class="p">A mailbox is a session on the shared mailbox kind. Its members are seats; the mailbox is not one.</text>
+  <text x="44" y="520" class="muted">A task board's assignee names a board worker, never a seat. Workforce does not staff a board.</text>
+</svg>

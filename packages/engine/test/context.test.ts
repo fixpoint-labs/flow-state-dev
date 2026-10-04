@@ -320,6 +320,59 @@ describe("createExecutionContext", () => {
     ).rejects.toThrow("read-only");
   });
 
+  // Content is last-write-wins: a writeContent that resolves must leave the
+  // store holding the body it wrote. A context's own earlier read (or write)
+  // of the key says nothing about what the store holds by the time it writes,
+  // so it cannot be the basis for skipping the write as a no-op.
+  it.each(["read", "wrote"] as const)("a later writeContent lands when it matches the body this context last %s", async (how) => {
+    const flow = defineFlow({
+      kind: "content-lww-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: handler({ name: "noop", execute: () => ({ ok: true }) })
+        }
+      },
+      resources: {
+        notes: defineResource({
+          scope: "session",
+          stateSchema: z.object({})
+        })
+      }
+    })();
+
+    const stores = createInMemoryStores();
+    const open = (requestId: string) =>
+      createExecutionContext({
+        orgId: DEFAULT_ORG_ID,
+        flow,
+        actionName: "run",
+        requestId,
+        sessionId: "sess_content_lww",
+        userId: "user_content_lww",
+        stores
+      });
+
+    // A holds "draft" — read from the store, or its own write. B (a separate
+    // request on the same session) then overwrites it with "edited".
+    if (how === "read") await (await open("req_content_lww_seed")).resources.notes.writeContent("draft");
+    const writerA = await open("req_content_lww_a");
+    if (how === "read") {
+      await expect(writerA.resources.notes.readContent()).resolves.toBe("draft");
+    } else {
+      await writerA.resources.notes.writeContent("draft");
+    }
+    const writerB = await open("req_content_lww_b");
+    await expect(writerB.resources.notes.readContent()).resolves.toBe("draft");
+    await writerB.resources.notes.writeContent("edited");
+
+    // A deliberately writes "draft" again — the latest write, so it must win.
+    await writerA.resources.notes.writeContent("draft");
+
+    const reader = await open("req_content_lww_reader");
+    await expect(reader.resources.notes.readContent()).resolves.toBe("draft");
+  });
+
   it("replays block_tool_output items using the stored alias for tool-call/tool-result toolName", async () => {
     // The model only ever saw the sanitised alias (e.g. `tf_memory_recall`).
     // History replay must rebuild the tool-call / tool-result content parts

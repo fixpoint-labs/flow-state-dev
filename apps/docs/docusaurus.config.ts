@@ -68,7 +68,8 @@ const config: Config = {
       // Task Board and Flow Policy moved from /docs/patterns/* to
       // /docs/orchestration/* when the orchestration package was carved out.
       // Workers on disk moved from /docs/orchestration/* to /docs/workforce/*
-      // when Workforce became its own top-level section.
+      // when Workforce became its own top-level section. The Claude Code
+      // `--remote` page was removed; its address points at the SDK agent.
       "@docusaurus/plugin-client-redirects",
       {
         redirects: [
@@ -91,6 +92,14 @@ const config: Config = {
           {
             from: "/docs/advanced/utility-blocks-deprecated",
             to: "/docs/patterns/utility-blocks/core",
+          },
+          {
+            from: "/docs/tools/claude-code-cli",
+            to: "/docs/tools/claude-code-sdk",
+          },
+          {
+            from: "/docs/workforce/channels",
+            to: "/docs/workforce/mailboxes",
           },
         ],
       },

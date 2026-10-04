@@ -172,6 +172,8 @@ process.on("SIGTERM", () => void flowstate.dispose());
 
 Separated processes can't share an in-memory registry. Both sides need a store backend they genuinely share — Postgres in production, or SQLite/filesystem on a shared disk for a single-machine setup.
 
+Each entry's [concurrency policy](/docs/advanced/concurrency-policies#across-processes) holds across every container, through the same Redis as the queue: two `queue` runs into one session run one after the other even when different workers pick them up. The `concurrency: 4` above is something else, the number of jobs one worker process runs at a time. When you upgrade, roll out the worker containers before the web tier.
+
 ### Low-level primitives
 
 `bullmqWorker` composes from public factories — `createBullmqRuntime`, `createFlowWorker`, `createWorkerDispatcher`, `createRedisStreamBridge`. Reach for them directly only when building a custom topology (your own dispatcher, a non-FlowState host). For everything else, the `worker` option is the supported path; hand-wiring these pieces means you own the store-sharing invariant yourself.

@@ -39,7 +39,7 @@ Run `fsdev gen` after adding or removing a block, as you would for any other `bl
 
 Where the folder sits decides who holds it.
 
-- **A worker's own.** `workforce/teams/<team>/workers/<worker>/packages/<name>/PACKAGE.md`, with its tools in `workforce/teams/<team>/workers/<worker>/packages/<name>/blocks/<block>.ts`. That worker holds it, always.
+- **A worker's own.** `workforce/teams/<team>/workers/<worker>/packages/<name>/PACKAGE.md`, with its tools in `workforce/teams/<team>/workers/<worker>/packages/<name>/blocks/<block>.ts`. That worker holds it, always. An [org seat](./workers-on-disk.md#the-tree) keeps its own at `workforce/org/workers/<worker>/packages/<name>/PACKAGE.md`, with its tools in `workforce/org/workers/<worker>/packages/<name>/blocks/<block>.ts`.
 - **A team's library.** `workforce/teams/<team>/packages/<name>/PACKAGE.md`, with its tools in `workforce/teams/<team>/packages/<name>/blocks/<block>.ts`. A worker on that team holds it once it names it.
 - **The org's library.** `workforce/org/packages/<name>/PACKAGE.md`, with its tools in `workforce/org/packages/<name>/blocks/<block>.ts`. Any worker holds it once it names it.
 
@@ -88,7 +88,7 @@ const seats = hireWorkforce(workers, { kinds, seatBlocks, packageBlocks });
 
 Leave `packageBlocks` out and a held package brings its instructions and no tools.
 
-`readWorkforce` puts the packages in each worker's reach on that worker's record as `packages`: the org's library, its team's library, and its own folder. Which of them the worker holds is decided when it is hired, from its `packages:` line.
+`readWorkforce` puts the packages in each worker's reach on that worker's record as `packages`: the org's library, its team's library, and its own folder. An org seat has no team, so its reach is the org's library and its own folder. Which of them the worker holds is decided when it is hired, from its `packages:` line.
 
 ## When a file is wrong
 

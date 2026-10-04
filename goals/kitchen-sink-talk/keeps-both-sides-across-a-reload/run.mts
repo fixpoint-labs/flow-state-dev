@@ -1,6 +1,6 @@
 /**
  * Goal check: from the kitchen-sink page, a person talks to a specialist and
- * posts to the support channel, and after a reload both conversations are
+ * posts to the support mailbox, and after a reload both conversations are
  * still there, showing who said what.
  *
  * Real path, scripted model, out of CI. See goal.md for the contract.
@@ -8,8 +8,8 @@
  * Two legs, in one real browser against the app's PRODUCTION build (built
  * here, never assumed), on its scripted model:
  *
- *   channel  post a unique line to `support.help` from its panel; reload; the
- *            line is in the channel's transcript, labelled with the app's one
+ *   mailbox  post a unique line to `support.help` from its panel; reload; the
+ *            line is in the mailbox's transcript, labelled with the app's one
  *            user.
  *   seat     start a conversation on `support.devices` from its row, send a
  *            unique message; reload; the message is there as the person's
@@ -24,7 +24,7 @@
  * pass. The page draws no optimistic copy of either side.
  *
  * Run:      PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm tsx goals/kitchen-sink-talk/keeps-both-sides-across-a-reload/run.mts
- * Controls: GOAL_CONTROL=no-post-item       (must FAIL at the channel leg only)
+ * Controls: GOAL_CONTROL=no-post-item       (must FAIL at the mailbox leg only)
  *           GOAL_CONTROL=drop-user-message  (must FAIL at the seat leg only)
  * Held-out: GOAL_SEAT=<another specialist>
  */
@@ -48,20 +48,20 @@ import { launchChromium } from "../../lib/playwright.mts";
 
 interface Fixture {
   port: number;
-  channel: { kind: string; id: string; label: string };
+  mailbox: { kind: string; id: string; label: string };
   seat: { kind: string; id: string; marker: string; replyMarker: string };
 }
 
 const fixture = loadFixture<Fixture>(import.meta.url);
 const ORIGIN = `http://127.0.0.1:${fixture.port}`;
-// The roster has one channel, so only the seat has a held-out override.
-const CHANNEL = fixture.channel.id;
+// The roster has one mailbox, so only the seat has a held-out override.
+const MAILBOX = fixture.mailbox.id;
 const SEAT = process.env.GOAL_SEAT ?? fixture.seat.id;
 const CONTROL = process.env.GOAL_CONTROL ?? "";
 
 /** The one leg each control must redden, and only that one. */
 const EXPECTED: Record<string, string> = {
-  "no-post-item": "channel",
+  "no-post-item": "mailbox",
   "drop-user-message": "seat",
 };
 if (CONTROL !== "" && EXPECTED[CONTROL] === undefined) {
@@ -91,7 +91,7 @@ const STRIP_ITEMS = `(() => {
   const stripped = (item) =>
     item != null &&
     (control === "no-post-item"
-      ? item.type === "component" && item.component === "channel-post"
+      ? item.type === "component" && item.component === "mailbox-post"
       : item.type === "message" && item.role === "user");
   const original = window.fetch.bind(window);
   window.fetch = async (input, init) => {
@@ -151,14 +151,14 @@ async function applyControl(page: Page): Promise<void> {
 
 const openShell = (page: Page) => openShellAt(page, ORIGIN);
 
-/** The channel's transcript as drawn: each line's label and body. */
+/** The mailbox's transcript as drawn: each line's label and body. */
 const transcript = (page: Page) =>
   panel(page)
-    .locator('[data-testid="channel-line"]')
+    .locator('[data-testid="mailbox-line"]')
     .evaluateAll((lines) =>
       lines.map((line) => ({
-        label: line.querySelector('[data-testid="channel-line-label"]')?.textContent ?? "",
-        body: line.querySelector('[data-testid="channel-line-body"]')?.textContent ?? "",
+        label: line.querySelector('[data-testid="mailbox-line-label"]')?.textContent ?? "",
+        body: line.querySelector('[data-testid="mailbox-line-body"]')?.textContent ?? "",
       })),
     );
 
@@ -181,27 +181,27 @@ await runGoal(async () => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await applyControl(page);
 
-    // ---- channel: post, reload, read -------------------------------------
+    // ---- mailbox: post, reload, read -------------------------------------
     await openShell(page);
-    await open(page, fixture.channel.kind);
-    await row(page, CHANNEL).click();
-    await panel(page).getByLabel("Post to this channel").fill(line);
+    await open(page, fixture.mailbox.kind);
+    await row(page, MAILBOX).click();
+    await panel(page).getByLabel("Post to this mailbox").fill(line);
     await panel(page).getByRole("button", { name: "Send" }).click();
     // Let the post settle before the reload; nothing here is graded.
-    await readUntil(() => panel(page).getByLabel("Post to this channel").inputValue(), (v) => v === "", 10_000);
+    await readUntil(() => panel(page).getByLabel("Post to this mailbox").inputValue(), (v) => v === "", 10_000);
 
     await page.reload();
     await openShell(page);
-    await open(page, fixture.channel.kind);
-    await row(page, CHANNEL).click();
+    await open(page, fixture.mailbox.kind);
+    await row(page, MAILBOX).click();
     const lines = await readUntil(() => transcript(page), (ls) => ls.some((l) => l.body === line));
     const found = lines.filter((l) => l.body === line);
     if (found.length !== 1) {
-      fail("channel", `after the reload, ${CHANNEL}'s transcript holds ${found.length} copies of the posted line "${line}" (want 1); it shows ${lines.length} lines`);
-    } else if (found[0]!.label !== fixture.channel.label) {
-      fail("channel", `the posted line reads as "${found[0]!.label}", not "${fixture.channel.label}"`);
+      fail("mailbox", `after the reload, ${MAILBOX}'s transcript holds ${found.length} copies of the posted line "${line}" (want 1); it shows ${lines.length} lines`);
+    } else if (found[0]!.label !== fixture.mailbox.label) {
+      fail("mailbox", `the posted line reads as "${found[0]!.label}", not "${fixture.mailbox.label}"`);
     } else {
-      evidence.push(`channel: after a reload, ${CHANNEL} shows "${line}" labelled ${found[0]!.label}, once`);
+      evidence.push(`mailbox: after a reload, ${MAILBOX} shows "${line}" labelled ${found[0]!.label}, once`);
     }
 
     // ---- seat: a new conversation, a message, reload, read ---------------

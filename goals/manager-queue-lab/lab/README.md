@@ -9,7 +9,7 @@ Four issues in this epic build surface for that sentence. None of them makes it 
 ```
 lab/workforce/
   teams/eng/
-    channels/queue/CHANNEL.md      boards: [work]  ->  the ledger
+    mailboxes/queue/MAILBOX.md      boards: [work]  ->  the ledger
     workers/manager/WORKER.md      flow: coordinator, tools: []
     workers/builder-a/WORKER.md    flow: builder, answersFor: desk-one
     workers/builder-b/WORKER.md    flow: builder, answersFor: desk-two
@@ -17,12 +17,12 @@ lab/workforce/
   flows/workers/{coordinator,builder}.mts
 ```
 
-One line of frontmatter — `boards: [work]` — mints the ledger. Nothing writes its id; the framework derives it from where the channel folder sits, and both goal checks grep every file under `lab/` for that string and fail on a hit.
+One line of frontmatter — `boards: [work]` — mints the ledger. Nothing writes its id; the framework derives it from where the mailbox folder sits, and both goal checks grep every file under `lab/` for that string and fail on a hit.
 
 **The coordinator's file says `tools: []` and it holds all eight task tools anyway.** That is not an omission and it is not a bug. The tools arrive as capability *controls*, minted per resolver and never exported, so no `tools:` line can grant them or fence them out. The grant is one line in the kind:
 
 ```ts
-uses: [channelBoardTaskTools(work)]
+uses: [mailboxBoardTaskTools(work)]
 ```
 
 If you find yourself wanting to write a board tool into a `WORKER.md`, you are about to take the other door — an app registering `buildTaskToolsList()` in its own catalog, where a seat's `tools:` *does* bite. Read `BR-2` first. That door is wired here only as a control, and turning it on makes the contract gate go red.
@@ -33,7 +33,7 @@ Both drive the same host, the same tree and the same hire. They differ by who fi
 
 | Check | What it proves |
 |---|---|
-| `it-stands-the-team-and-its-board-up-from-files` | Model-free. The declaration surface and the queue as a *view*: four seats from one tree, the refusal a seat-folder board earns, the three tool-set arms, the channel's author check both ways, four columns derived and never written, the status enum, and the diff fence. |
+| `it-stands-the-team-and-its-board-up-from-files` | Model-free. The declaration surface and the queue as a *view*: four seats from one tree, the refusal a seat-folder board earns, the three tool-set arms, the mailbox's author check both ways, four columns derived and never written, the status enum, and the diff fence. |
 | `it-routes-a-queue-to-the-seats-their-files-name` | **The exit gate.** More rows than seats, a coordinator choosing who gets what, every row on the seat its own file answers for, each in its own session, the extra one waiting rather than being re-routed, and a row for nobody refused by name. |
 
 ## The one idea worth carrying away
@@ -47,7 +47,7 @@ Which is why the negative control can go red at all. It **swaps** two builders' 
 ## What this lab does not prove
 
 - **Nothing about the package format.** It authors no package shape at all, which is why it is compatible with every answer FIX-1394 can reach, *don't collapse* included.
-- **Nothing about the nested cascade** — personal boards, request boards, a row that fans into rows. One hop only: the channel's board, then the seat.
+- **Nothing about the nested cascade** — personal boards, request boards, a row that fans into rows. One hop only: the mailbox's board, then the seat.
 - **Nothing about what a busy seat *should* do** — the epic ruled that, and the lab is pinned to the ruling rather than being evidence for it. See below.
 - **Nothing about scale, cost or a real coding run.** Worker bodies are stubs that write a line. `goals/devforce-lab/` is where a row becoming a supervised coding run is evidenced, and it stays as it is — this lab's diff gate rejects that subtree on purpose, because "byte for byte as before" is something a diff can prove and a behavioural suite cannot.
 

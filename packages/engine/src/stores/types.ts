@@ -6,6 +6,7 @@ import type {
   SuspensionRecord
 } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
+import type { ExpectedVersion as SharedExpectedVersion } from "@flow-state-dev/core/helpers";
 import type {
   BlockTraceItem,
   OutputItem,
@@ -544,8 +545,11 @@ export type OrgListOptions = {
  *    does arithmetic or binds the value to a SQL parameter.
  *  - The CAS delta verbs read-modify-write an existing record, so `"absent"`
  *    is meaningless there and **throws** rather than conflicting.
+ *
+ * Defined once in `@flow-state-dev/contracts` beside the write-version guards
+ * that consume it; this is the same type under the engine's name.
  */
-export type ExpectedVersion = number | "any" | "absent";
+export type ExpectedVersion = SharedExpectedVersion;
 
 /**
  * Outcome of a CAS-aware `Store.set`. Encodes conflict as data rather than
@@ -605,8 +609,9 @@ export interface DeltaStoreOps<TRecord> {
 
   /**
    * Atomically add `delta` to the numeric value at `path` inside `state`.
-   * Treats a missing or non-numeric value as `0`. Other record fields are
-   * preserved unchanged.
+   * Treats a missing key or `null` as `0`; throws via the adapter's normal
+   * error surface, writing nothing, if a value is already present and is not
+   * a number. Other record fields are preserved unchanged.
    */
   incField?(
     id: string,
@@ -692,6 +697,16 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * writer builds `{ ...heldRecord, ...patch }` from a snapshot that predates
    * the flag, so honouring it means erasing a cancellation nobody intended to
    * touch. Write it with {@link RequestStore.setFieldsIfStatus}.
+   *
+   * **A `set` whose record leaves `items` off keeps the stored items**
+   * (FIX-1735). The request-state write is a full-record write built from the
+   * snapshot the run took when it started, so it leaves `items` off rather
+   * than hand back that snapshot's. An adapter that keeps items on the record
+   * and replaces the whole record on `set` would drop every item persisted
+   * since: carry the stored `items` through when `value.items` is absent
+   * (the in-memory and filesystem adapters use `withHeldItems`). An adapter
+   * that keeps items out of `set` entirely, as the SQL pair does, holds this
+   * already. A record that carries `items` may still replace them.
    */
   set(
     id: string,
@@ -722,8 +737,10 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * the full set. Order is preserved — existing items keep their position, new
    * ids append. This lets a same-request continuation (suspend → resume under
    * the same id) persist only its post-resume items while a `get` still returns
-   * the full pause→continue history. The in-memory adapter's no-op satisfies
-   * this trivially (items live on the record); persistent adapters UPSERT.
+   * the full pause→continue history. The in-memory and filesystem adapters
+   * merge onto the record (`mergeItemsById`); the SQL adapters UPSERT. Items
+   * persisted while the request runs are readable before it settles
+   * (FIX-1735).
    *
    * Content-update contract (FIX-839): "last-write-wins per id" is by item
    * CONTENT, not object reference. The runtime mutates a single item object in

@@ -2,6 +2,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import {
+  ClientHttpError,
   createClient,
   createTypedClient,
   type ClientFetch,
@@ -94,6 +95,17 @@ describe("createClient", () => {
         fetcher: vi.fn()
       })
     ).toThrow("userId");
+  });
+
+  it("refuses an abort with a ClientHttpError carrying the route's status", async () => {
+    // A caller tells "already finished" (409) from "not yours" (403) by the
+    // status, not by parsing the message.
+    const fetcher = vi.fn<ClientFetch>(async () => new Response("already terminal", { status: 409 }));
+    const client = createClient({ flowKind: "demo", userId: "devuser", fetcher });
+    const refused = await client.abortRequest("req_1").catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(ClientHttpError);
+    expect((refused as ClientHttpError).status).toBe(409);
+    expect((refused as ClientHttpError).message).toBe("Abort request failed (409): already terminal");
   });
 });
 

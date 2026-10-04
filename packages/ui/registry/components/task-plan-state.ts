@@ -93,6 +93,7 @@ export type TaskChangeKind =
   | "metadata_changed"
   | "priority_changed"
   | "assignee_changed"
+  | "run_linked"
   | (string & {});
 
 /** Counts payload on `task-board-meta` completion. */

@@ -279,7 +279,8 @@ By default the arbiter keeps each key's line in the running process
 (`createInMemoryLeaseBackend()`), so a policy serializes requests that run in
 that process, and work handed to an external queue runs unarbitrated. A queue
 adapter whose runs land in several processes can supply a backend they all
-share as `leaseBackend` on its `WorkerAdapter`. The arbiter in every process
+share as `leaseBackend` on its `WorkerAdapter`; `bullmqWorker` supplies one on
+its Redis. The arbiter in every process
 then lines up on the same keys, and an external dispatch is arbitrated too: the
 host takes the run's place before enqueueing (once the caller's ownership of the
 session and request id is confirmed), and the job carries it as
@@ -290,9 +291,15 @@ A backend implements four calls and holds no policy:
 | Call | Does |
 | --- | --- |
 | `take({ key, requestId, ifEmpty? })` | Appends a place to the key's line, or with `ifEmpty` (the `reject` policy) claims only a free key and otherwise answers `{ heldBy }`. Not idempotent |
-| `isMyTurn(place)` | True when the place is first on its key |
+| `isMyTurn(place)` | True when the place is first on its key. `"missing"` when the line no longer has it (its lease ran out): the waiter takes a new place at the back |
 | `giveBack(place)` | Removes the place and wakes the next waiter. Idempotent |
-| `renew(place)` | Extends a place whose lease expires. Called every 2 seconds for as long as the process holds the place, until it gives it back or enqueues its job |
+| `renew(place)` | Extends a place whose lease expires. Called every 2 seconds (every quarter of `leaseMs` when that is shorter) for as long as the process holds the place, until it gives it back or enqueues its job. Answers `false` when the place is gone |
+
+A backend whose places expire also declares `leaseMs`, how long a place lives
+past its last renewal. A run holding its turn is then stopped when a renewal
+answers `false`, or when no renewal has landed for half of `leaseMs`, so it has
+ended before another process can take the key. The run's signal fires with
+`ConcurrencyLeaseLostError` and the request ends `interrupted`.
 
 Any call may throw when the backend is unreachable; the dispatch is then
 refused rather than run unarbitrated. Over a supplied backend a `reject`
@@ -303,8 +310,11 @@ The worker owns a job's place: it waits for `isMyTurn`, runs, and gives the
 place back. `planQueueWait({ key, waitedMs, attempt })` answers "not my turn
 yet" the way the engine does, with jittered backoff inside the 30-second queue
 budget, so a worker that waits by requeueing its job reaches the same timeout
-an in-process run would. A job whose `leasePlace` is `null` or absent runs as it
-always did.
+an in-process run would. `holdLeasePlace(backend, place, onLost)` renews the
+place while the job runs and reports it lost the way the arbiter does, and
+`settleUnstartedRequest(stores, requestId, ending)` ends a request whose run
+never started (a wait that timed out) with the same record the engine writes.
+A job whose `leasePlace` is `null` or absent runs as it always did.
 
 ## Authentication
 
@@ -629,6 +639,8 @@ Do not implement it as a version CAS. Terminal transitions persist `version` **u
 **`setFieldsIfStatus` is the only member that may write `abortRequested`.** `set` must ignore the field in both directions: a full record handed to `set` cannot set the flag and cannot clear a stored one. The compiler will not enforce this, since the field is still on `RequestRecord` for reading. An adapter that honours it on `set` lets a full-record write built from a stale snapshot erase a cancellation.
 
 How you store the flag is yours. The shipped adapters differ: in-memory and the SQL pair keep it on the record and force the stored value through on `set`; the filesystem adapter keeps a marker file beside the record, because its `get()` loads inline items and would break the O(1) bound. Whichever you pick, `get()` must still surface the flag on the returned record.
+
+**A `set` that leaves `items` off keeps the stored items.** The runtime writes the whole request record when a block changes request state, and it leaves `items` off that record, because its copy is from when the run started. If your adapter keeps items on the record and `set` replaces the record, carry the stored items through whenever `value.items` is absent, or every item persisted since the run started disappears until the request settles. An adapter that keeps items out of `set`, as the SQLite and Postgres adapters do, already holds this. A record that does carry `items` may still replace them.
 
 The cross-store conformance suite (`createRequestStoreConformanceTests`, from `@flow-state-dev/engine/testing`) covers all of this.
 
@@ -978,7 +990,7 @@ const provider = createCheckpointDurabilityProvider({
 
 The interface methods are `saveCheckpoint`, `loadCheckpoint`, `suspend`, `loadSuspension`, `listSuspended`, `acquireLease`, `releaseLease`, `cleanup`, plus the retention seams `cleanupCheckpoints` (delegates to `CheckpointStore.deleteForRequest`) and `pruneSuspensions` (delegates to `SuspensionStore.pruneTerminalBefore`). `createCheckpointDurabilityProvider` delegates each to the matching store from `StoreRegistry`.
 
-`SuspensionStore` and `LeaseStore` ship with in-memory, filesystem, SQLite, and Postgres adapters. See the [Durable Execution guide](https://flow-state.dev/docs/advanced/durable-execution) for usage patterns.
+`SuspensionStore` and `LeaseStore` ship with in-memory, filesystem, SQLite, and Postgres adapters. A custom `LeaseStore` can run `createLeaseStoreConformanceTests({ name, createStore })`, from `@flow-state-dev/engine/testing`. It checks that concurrent acquires of one key grant exactly one lease, that each lease id is a fresh UUID, and that a holder whose lease expired can't release the lease that replaced it. See the [Durable Execution guide](https://flow-state.dev/docs/advanced/durable-execution) for usage patterns.
 
 A suspension inside a router's chosen branch resumes the same branch: the recorded `router_decision` is validated against the re-run selector before dispatch (a mismatch fails with `RouteUnavailableError`), and completed work inside the branch replays from the durable log instead of re-executing.
 
@@ -1056,6 +1068,8 @@ The server exposes a read-only debug surface at `/api/flows/sessions/:id/debug/r
 
 The endpoint is off by default. Opt in with `debugEndpointsEnabled: true` on `createFlowApiRouter`, or set `FSDEV_DEBUG_ENDPOINTS=1` in the environment. By default the route accepts only loopback origins; widen with `debugAllowedOrigins` for non-loopback DevTool hosts.
 
+A request with no `Origin` header (curl, a script, or a same-origin GET from a browser) is rejected with `403 { "error": "debug_endpoints_origin_rejected", "origin": null }`. `Origin: null` counts as no header. To accept these requests, pass `debugAllowAnonymousLocal: true` to `createFlowApiRouter` or `createFlowState`, or set `FSDEV_DEBUG_ALLOW_ANONYMOUS_LOCAL=1`. Only the value `1` turns it on. An explicit option, including `false`, overrides the env var. Opting in doesn't widen the origin check: a request whose `Origin` is neither loopback nor in `debugAllowedOrigins` is still rejected.
+
 ```ts
 const router = createFlowApiRouter({
   registry,
@@ -1064,7 +1078,9 @@ const router = createFlowApiRouter({
 });
 ```
 
-The DevTool's Resources panel uses this surface. `fsdev dev` enables it automatically on loopback. Don't ship it enabled to production without auditing the origin allowlist and gating the route behind whatever authentication your host already enforces.
+The DevTool's Resources panel uses this surface. `fsdev dev` enables it automatically on loopback and turns on `debugAllowAnonymousLocal` so the DevTool can reach it; `fsdev serve` does neither. Don't ship it enabled to production without auditing the origin allowlist and gating the route behind whatever authentication your host already enforces.
+
+The origin check doesn't identify the caller. Any local process can send a loopback `Origin` and pass, and with `debugAllowAnonymousLocal` on, any client that can reach the port gets in without one. Only turn that option on for a server bound to loopback, and don't expose debug endpoints on a network you don't trust.
 
 See [Debug vs client state](https://flow-state.dev/docs/devtool/debug-vs-client-state) for the full mental model.
 

@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, beforeEach } from "vitest";
 import {
-  createSequencerBackedTaskCollection,
+  createStateBackedTaskCollection,
   createResourceBackedTaskCollection,
   type TaskCollectionRef,
   type TaskChangeEvent,
@@ -32,9 +32,9 @@ function sequencerBacking(): BackingFactory {
     const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
     const captured = createCapturedChanges();
     return {
-      collection: createSequencerBackedTaskCollection({
+      collection: createStateBackedTaskCollection({
         collectionId: "tasks",
-        sequencer,
+        state: sequencer,
         onChange: captured.onChange,
         now: () => clock,
       }),

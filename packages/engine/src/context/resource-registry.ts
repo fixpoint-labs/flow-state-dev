@@ -57,6 +57,7 @@ import {
   ValidationError
 } from "../errors/flow-error";
 import { resourceStorageKeys } from "../resources/storage-keys";
+import { ownKeyRecord } from "../resources/own-key-record";
 import {
   normalizeResourceDefault,
   normalizeResourceState,
@@ -253,9 +254,9 @@ function applyIncrements(
     // The check is on the RESULT, not the delta: a non-finite delta always
     // yields a non-finite result, and only a result check catches an overflow
     // from two finite operands (`Number.MAX_VALUE * 2`). `z.number()` accepts
-    // ±Infinity, so the write-path schema parse does not catch this — and the
-    // adapters then disagree, the memory store keeping `Infinity` where every
-    // JSON-serializing adapter stores `null`.
+    // ±Infinity, so the write-path schema parse does not catch this — and
+    // every adapter stores state as JSON, which would write `null` in its
+    // place (FIX-1266).
     if (!Number.isFinite(result)) {
       return refuseDelta(
         `Resource "${label}" incState result for "${field}" is not finite (${String(result)})`
@@ -508,7 +509,7 @@ export function normalizeScopeResources(
   configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined,
   seed: Record<string, unknown> | undefined
 ): Record<string, JsonObject> {
-  const normalized: Record<string, JsonObject> = {};
+  const normalized = ownKeyRecord<JsonObject>();
   const storageKeys = resourceStorageKeys(configs);
 
   for (const [accessor, config] of Object.entries(configs ?? {})) {
@@ -540,7 +541,7 @@ export function normalizeScopeResourceContent(
   configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined,
   seed: Record<string, unknown> | undefined
 ): Record<string, string> {
-  const normalized: Record<string, string> = {};
+  const normalized = ownKeyRecord<string>();
   const storageKeys = resourceStorageKeys(configs);
 
   for (const [accessor, config] of Object.entries(configs ?? {})) {
@@ -632,7 +633,7 @@ export async function loadDeclaredScopeContent(
   configs: Record<string, ResourceConfig | ResourceCollectionConfig>
 ): Promise<Record<string, string>> {
   const accessors = Object.entries(configs);
-  if (accessors.length === 0) return {};
+  if (accessors.length === 0) return ownKeyRecord();
 
   const storageKeys = resourceStorageKeys(configs);
   const fixedKeys = new Set<string>();
@@ -664,7 +665,7 @@ export async function loadDeclaredScopeContent(
     )
   ]);
 
-  const seed: Record<string, string> = {};
+  const seed = ownKeyRecord<string>();
   for (const result of collectionResults) {
     Object.assign(seed, result);
   }
@@ -691,7 +692,7 @@ export async function loadDeclaredResourceState(
   configs: Record<string, ResourceConfig | ResourceCollectionConfig>
 ): Promise<Record<string, VersionedResourceState>> {
   const accessors = Object.entries(configs);
-  if (accessors.length === 0) return {};
+  if (accessors.length === 0) return ownKeyRecord();
 
   const storageKeys = resourceStorageKeys(configs);
   const fixedKeys = new Set<string>();
@@ -719,7 +720,7 @@ export async function loadDeclaredResourceState(
     )
   ]);
 
-  const seed: Record<string, VersionedResourceState> = {};
+  const seed = ownKeyRecord<VersionedResourceState>();
   for (const result of collectionResults) {
     Object.assign(seed, result);
   }
@@ -741,7 +742,7 @@ export function filterFlowLevelEager(
   configs: Record<string, ResourceConfig | ResourceCollectionConfig>,
   flowLevelKeys: ReadonlySet<string>
 ): Record<string, ResourceConfig | ResourceCollectionConfig> {
-  const out: Record<string, ResourceConfig | ResourceCollectionConfig> = {};
+  const out = ownKeyRecord<ResourceConfig | ResourceCollectionConfig>();
   for (const [accessor, config] of Object.entries(configs)) {
     if (!flowLevelKeys.has(accessor)) continue;
     if ((config as { prefetchMode?: string }).prefetchMode === "lazy") continue;

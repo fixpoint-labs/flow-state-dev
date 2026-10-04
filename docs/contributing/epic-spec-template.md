@@ -119,7 +119,8 @@ Optional comments are triaged, not a reason to grind to zero or restart the desi
 
 *(Authored for the reviewed revision, with dated status and pinned figures. After merge,
 leave this original review record intact; a follow-up amendment describes its own delta.
-Budget ~525 prose words above the fold. Rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
+Budget ~525 prose words above the fold. Rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md), including its prose in ASD-STE100
+(→ "Language — ASD-STE100"); the rows taken from `SPEC.md` get rewritten to STE, not pasted.)*
 
 The teams table from `SPEC.md`. Then **the goal** in its one sentence, the *how we'll know*
 figure as a mermaid fence with its sentence, and one line naming which issue's goal check
@@ -232,11 +233,11 @@ and implementation PRs. Follow-up amendments pin their own figures.
 The document the product owner reads at the gate and everyone reads when they arrive mid-epic.
 Sections, in order:
 
-1. **The header line** — epic · N issues · project · the objective it serves, and the links.
-2. **Teams, before and after** — a table: a team that… · today · after this epic. Three to
-   five rows. This is the objective stated in observable behaviour.
-3. **Why now**, in a paragraph.
-4. **The goal, and how we'll know it's met** — the same four parts as an issue spec
+1. **Teams, before and after** — a table: a team that… · today · after this epic. Three to
+   five rows. This is the objective stated in observable behaviour, and it is the problem, so
+   it comes first: nothing sits between the nav line and it.
+2. **Why now**, in a paragraph.
+3. **The goal, and how we'll know it's met** — the same four parts as an issue spec
    ([`spec-template.md`](spec-template.md#the-goal-and-how-well-know-its-met)): the goal in one
    sentence, *is it the right goal?*, the figure, and *how we verify*. At this altitude the
    goal is the epic's outcome, *smaller, and rejected* is usually a subset of the issues
@@ -245,27 +246,29 @@ Sections, in order:
    not a check of its own.
    Each child spec still states its own goal, and says in *the real need* which part of this
    one it carries.
-5. **What's in the box** — the one figure: in the box · composed in by the app · replaced in
+4. **What's in the box** — the one figure: in the box · composed in by the app · replaced in
    one line · not built. And its sentence.
-6. **The set · as of `<date>`** — the reviewed snapshot: issue · what it delivers · why the set needs
+5. **The set · as of `<date>`** — the reviewed snapshot: issue · what it delivers · why the set needs
    it · status with PR links. Then the counts line and the holistic necessity check in a
    paragraph: whether N is really N−1, and the collapse trigger if one was named. The closure
    issue is a row from the first revision, marked **closure · required**; a bug its runs find
    joins the table as a row that blocks it. **A bug row carries no spec PR by design** ([`orchestration.md`](orchestration.md) → "Which issues get
    a spec"); an empty cell there is correct.
-7. **How the issues flow into each other** — the dependency graph as mermaid, edges labelled
+6. **How the issues flow into each other** — the dependency graph as mermaid, edges labelled
    with what one issue hands the next, inputs from other epics dashed, unfiled issues as
    placeholders. Then the legend sentence.
-8. **What stays as it is** — the neighbours the set deliberately leaves alone.
-9. **Sign off** — one-liners with no figures; the trade-offs stay beside their cards, and only
+7. **What stays as it is** — the neighbours the set deliberately leaves alone.
+8. **Sign off** — one-liners with no figures; the trade-offs stay beside their cards, and only
    the PR body pins them. The goal first, then the objective and the cross-cutting calls that pass the filters, each linking
    its card, each with *If wrong:*. **Open: none**, or the live forks named.
+9. **The facts line** — epic · N issues · project · the objective it serves; sibling links stay on the nav line.
+   Last, for the reason a PR body's links line is last: a reader wants it only after deciding
+   to go deeper, and above the problem it is a label they must read past
+   ([`writing-for-humans.md`](writing-for-humans.md) → "The rule").
 
 > # FIX-770 · Stream resilience: a dropped connection is a non-event
 >
 > **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md) · [Evolution](EVOLUTION.md)
->
-> Epic · 4 issues · Streaming · Goal 1, validate through real usage
 >
 > ## Four teams, before and after
 >
@@ -383,6 +386,8 @@ Sections, in order:
 > **Open: none.** Every question the set raised is answered in [DECISIONS.md](DECISIONS.md). The
 > rules every child obeys are in [BUSINESS-RULES.md](BUSINESS-RULES.md). The order the work runs
 > in, and what each issue entails, is [PLAN.md](PLAN.md).
+>
+> Epic · 4 issues · Streaming · Goal 1, validate through real usage
 
 **Under [`epic-pm`](../../.agents/skills/epic-pm/SKILL.md) the sign-off is stricter**: it
 carries that skill's five objective lines — Outcome · Proof · Lead measure · Not doing · Kill

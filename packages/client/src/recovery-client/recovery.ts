@@ -9,15 +9,13 @@
  */
 import type { ResumeAction } from "@flow-state-dev/contracts";
 import { buildFlowApiUrl, requestJson, resolveFetch } from "../internal/http";
-import type { ClientFetch } from "../types";
+import type { ClientTransportOptions } from "../types";
 
 /** The resolution actions the resume endpoint accepts. */
 const RESUME_ACTIONS: readonly ResumeAction[] = ["approve", "reject", "submit", "skip"];
 
-export type CreateRecoveryClientOptions = {
-  baseUrl?: string;
-  fetcher?: ClientFetch;
-};
+/** Options for the recovery client: the shared {@link ClientTransportOptions}. */
+export type CreateRecoveryClientOptions = ClientTransportOptions;
 
 export type CheckInterruptedOptions = {
   /** User whose stale active-request entries should be swept. Required. */
@@ -188,6 +186,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
         fetcher,
         url: buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path: `/api/flows/users/${encodeURIComponent(trimmed)}/check-interrupted`,
           query: { staleThresholdMs }
         }),
@@ -212,6 +211,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
         fetcher,
         url: buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path: `/api/flows/${encodeURIComponent(flowKind)}/sessions/${encodeURIComponent(sessionId)}/requests/${encodeURIComponent(requestId)}/retry`
         }),
         init
@@ -236,6 +236,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
         fetcher,
         url: buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path: `/api/flows/${encodeURIComponent(flowKind)}/sessions/${encodeURIComponent(sessionId)}/requests/${encodeURIComponent(requestId)}/continue`
         }),
         init: { method: "POST" }
@@ -252,6 +253,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
       const response = await fetcher(
         buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path: `/api/flows/${encodeURIComponent(flowKind)}/sessions/${encodeURIComponent(sessionId)}/requests/${encodeURIComponent(requestId)}/continue`,
           query: includeTrace ? { include: "trace" } : undefined
         }),
@@ -279,6 +281,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
         fetcher,
         url: buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/resume`
         }),
         init: {
@@ -298,6 +301,7 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
       const response = await fetcher(
         buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/resume`
         }),
         {
