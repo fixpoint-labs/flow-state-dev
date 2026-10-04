@@ -688,6 +688,9 @@ importers:
       '@flow-state-dev/workforce':
         specifier: workspace:*
         version: link:../packages/workforce
+      '@flow-state-dev/workspace':
+        specifier: workspace:*
+        version: link:../packages/workspace
       '@openai/codex-sdk':
         specifier: 0.152.1
         version: 0.152.1
