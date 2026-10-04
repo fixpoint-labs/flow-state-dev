@@ -58,7 +58,7 @@ import {
 import { defineCapability, handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext, FlowInstance } from "@flow-state-dev/core/types";
 import type { WorkspaceConfig } from "@flow-state-dev/harness-manager";
-import { localWorkspaceHost, type WorkspaceHost } from "@flow-state-dev/workspace";
+import { localWorkspaceHost, redactRemote, type WorkspaceHost } from "@flow-state-dev/workspace";
 import { z } from "zod";
 import {
   AGENT_KIND,
@@ -338,7 +338,7 @@ function askRepository(projectOf: (input: z.infer<typeof repositoryAskInputSchem
             `can't ask for one: it runs without durable execution. Nothing was changed.`,
         );
       }
-      const repository = input.repository == null ? null : withoutCredentials(input.repository);
+      const repository = input.repository == null ? null : redactRemote(input.repository);
       await ctx.suspend({
         reason: "human_approval",
         message:
@@ -350,19 +350,6 @@ function askRepository(projectOf: (input: z.infer<typeof repositoryAskInputSchem
       });
     },
   });
-}
-
-/** A remote as a person may be shown it: a URL with no user or password in it. */
-function withoutCredentials(remote: string): string {
-  try {
-    const url = new URL(remote);
-    if (url.username === "" && url.password === "") return remote;
-    url.username = "";
-    url.password = "";
-    return url.href;
-  } catch {
-    return remote;
-  }
 }
 
 /**
