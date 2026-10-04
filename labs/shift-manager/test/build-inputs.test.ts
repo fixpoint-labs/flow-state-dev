@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { build } from "vite";
 import { afterEach, describe, expect, it } from "vitest";
-import { recordBuildInputs, staleBuildInputs } from "../../../scripts/build-inputs.mjs";
+import { BUILD_INPUTS_FILE, recordBuildInputs, staleBuildInputs } from "../../../scripts/build-inputs.mjs";
 
 let repo: string;
 afterEach(() => rmSync(repo, { recursive: true, force: true }));
@@ -53,7 +53,7 @@ describe("a page build's record of its source", () => {
 
   it("counts a build with no record as stale, since nothing says what it was built from", async () => {
     const { dist } = await builtApp();
-    unlinkSync(join(dist, "build-inputs.json"));
+    unlinkSync(join(dist, BUILD_INPUTS_FILE));
     expect(staleBuildInputs(dist, repo)).toMatch(/no build-inputs\.json/);
   });
 });
