@@ -70,7 +70,7 @@ A host module can do some of this setup for you. When its options say they open 
 
 ```ts title="teams/devteam/fsdev.config.mts (excerpt)"
 const lab = await openLab({
-  stores: inMemoryStores(),
+  stores: sqliteStores({ filename: STORE }),
   inventory: true, // its host opens the mailboxes, then the inventory
   devtool: true, // its host hands the page the Lab's user
   // ...options of its own

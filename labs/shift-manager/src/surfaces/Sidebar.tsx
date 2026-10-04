@@ -82,8 +82,8 @@ const ICON_PATHS = {
 
 function NavIcon({ name }: { name: keyof typeof ICON_PATHS }) {
   return (
-    <svg viewBox="0 0 14 14" className="size-3.5 shrink-0 text-foreground" aria-hidden data-look="nav-icon">
-      <path d={ICON_PATHS[name]} fill="none" stroke="currentColor" strokeWidth={1.2} />
+    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth={1.2} className="size-3.5 shrink-0 text-foreground" aria-hidden data-look="nav-icon">
+      <path d={ICON_PATHS[name]} />
     </svg>
   );
 }
