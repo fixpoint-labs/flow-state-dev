@@ -11,7 +11,7 @@
  * {@link splitSeatAddress} from here.
  */
 
-import { encodeUserSegment } from "@flow-state-dev/core/types";
+import { encodeUserSegment, isValidOrgId } from "@flow-state-dev/core/types";
 
 /**
  * The address a runtime-hired seat answers on.
@@ -66,6 +66,12 @@ export function seatAddress(
 function orgSegment(orgId: string): string {
   if (orgId.length === 0) {
     throw new Error("An organization id must not be empty — it is the first half of a seat's address");
+  }
+  // `isValidOrgId` refuses these at the principal; checked again here because
+  // the escape is injective only on well-formed strings (a lone surrogate
+  // encodes as U+FFFD, the same bytes as a real U+FFFD).
+  if (!isValidOrgId(orgId)) {
+    throw new Error(`Organization id ${JSON.stringify(orgId)} is not a usable organization id`);
   }
   return encodeUserSegment(orgId);
 }

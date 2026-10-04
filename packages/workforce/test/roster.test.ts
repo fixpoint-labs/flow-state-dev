@@ -232,6 +232,16 @@ describe("V4 · the org segment is what makes the address unambiguous", () => {
     expect(splitSeatAddress("acme.support", "acme.support.ada")).toBeUndefined();
   });
 
+  it("refuses an org id with a lone surrogate, which would share U+FFFD's address", () => {
+    // The escape goes through UTF-8, where a lone surrogate becomes U+FFFD.
+    // Admit it and these two orgs would answer on one address.
+    expect(seatAddress("�", "ada")).toBe("%EF%BF%BD.ada");
+    expect(() => seatAddress("\uD800", "ada")).toThrow(/not a usable organization id/);
+    expect(() => seatAddress("acme\uDC00", "ada")).toThrow(/not a usable organization id/);
+    // A well-formed pair is an ordinary character.
+    expect(seatAddress("😀", "ada")).toBe("%F0%9F%98%80.ada");
+  });
+
   it("refuses an empty org id", () => {
     expect(() => seatAddress("", "support.ada")).toThrow(/organization id must not be empty/);
     expect(splitSeatAddress("", ".ada")).toBeUndefined();
