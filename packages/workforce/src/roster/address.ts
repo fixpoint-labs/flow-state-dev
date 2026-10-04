@@ -29,8 +29,9 @@ import { encodeUserSegment, isValidOrgId } from "@flow-state-dev/core/types";
  * shape: dotted for a team seat (`"<teamId>.<name>"`), bare for an org seat
  * (`"<name>"`). Only the leading segment has to be dot-free.
  *
- * @throws when the org id or the seat id is empty, or the seat id starts with
- * `~` (that marker is the user-owned form).
+ * @throws when the org id is empty, whitespace-only, or not well-formed
+ * Unicode (a lone UTF-16 surrogate; see `isValidOrgId`), or when the seat id
+ * is empty or starts with `~` (that marker is the user-owned form).
  */
 export function seatAddress(
   orgId: string,
@@ -61,7 +62,8 @@ export function seatAddress(
  * every other character (`_`, `.`, `%`, upper case) is percent-encoded, so the
  * result holds no `.` and two org ids never share one.
  *
- * @throws when the org id is empty.
+ * @throws when the org id is empty, whitespace-only, or not well-formed
+ * Unicode (a lone UTF-16 surrogate), the ids `isValidOrgId` refuses.
  */
 function orgSegment(orgId: string): string {
   if (orgId.length === 0) {
