@@ -489,7 +489,11 @@ describe("Chief of Staff (FIX-1722)", () => {
 
   it("names the missing seat in place of the conversation, with the summary still drawn (BR-11)", async () => {
     await openCos("/");
-    expect((await screen.findByTestId("cos-none")).textContent).toContain(GAPS.chiefOfStaff.none.title);
+    const none = (await screen.findByTestId("cos-none")).textContent ?? "";
+    expect(none).toContain(GAPS.chiefOfStaff.none.title);
+    // Org seats have shipped: the copy names where to declare the seat today, and promises nothing.
+    expect(none).toContain("org/workers/chief-of-staff/");
+    expect(none).not.toMatch(/once .* ship|FIX-\d+/);
     expect(screen.getByTestId("cos-summary")).toBeTruthy();
     expect(screen.queryByTestId("cos-composer")).toBeNull();
   });
