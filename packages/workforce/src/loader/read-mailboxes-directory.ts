@@ -230,6 +230,8 @@ async function preRenameRecords(team: { dir: string; path: string }): Promise<Ma
   const reports: MailboxManifestError[] = [];
   for (const name of names) {
     if (IGNORED_ENTRIES.has(name)) continue;
+    // Only a folder can hold a record; anything else is left to the folder's own report.
+    if ((await classify(path.join(oldDir, name))).kind !== "directory") continue;
     const file = await classify(path.join(oldDir, name, PRE_RENAME_NAMES.recordFile));
     if (file.kind === "absent") continue;
     const at = `${oldPath}/${name}/${PRE_RENAME_NAMES.recordFile}`;

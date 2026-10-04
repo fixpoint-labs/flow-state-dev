@@ -48,7 +48,7 @@ import {
   type DiscoveredPackageBlock,
 } from "./discover-package-blocks";
 import { typescriptExtension } from "./typescript-module";
-import { PRE_RENAME_NAMES, preRenameKindsFolderProblem } from "../mailbox/pre-rename";
+import { PRE_RENAME_NAMES, preRenameKindNameProblem, preRenameKindsFolderProblem } from "../mailbox/pre-rename";
 
 /** Which locked folder a discovered file came from. */
 export type CodeSlotId = "worker" | "mailbox" | "block";
@@ -264,6 +264,13 @@ export async function discoverWorkforceCode(root: string): Promise<DiscoveryResu
         validateSegment(name, slot.label);
       } catch (error) {
         problems.push(`"${relative}" — ${(error as Error).message}`);
+        continue;
+      }
+
+      // A kind named for the old built-in: every session on it would read as
+      // data from before the rename.
+      if (slot.id !== "block" && name === PRE_RENAME_NAMES.kind) {
+        problems.push(preRenameKindNameProblem(`"${relative}"`));
         continue;
       }
 

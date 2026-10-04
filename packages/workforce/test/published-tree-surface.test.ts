@@ -50,6 +50,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WorkforceCodeError, discoverWorkforceCode } from "../src/codegen/discover";
 import { readMailboxesDirectory } from "../src/loader/read-mailboxes-directory";
+import { PRE_RENAME_NAMES as OLD } from "../src/mailbox/pre-rename";
 import { readPackagesDirectory } from "../src/loader/read-packages-directory";
 import {
   readReferencesDirectory,
@@ -491,6 +492,20 @@ const PUBLISHED_SHAPES: readonly PublishedShape[] = [
     accountedFor: (out) =>
       out.mailboxes.includes("alpha.standup") ||
       out.reported.includes("teams/alpha/mailboxes/standup"),
+  },
+  {
+    // The record's name from before the rename, which the README's upgrade
+    // section publishes so a reader can find it. Never loaded: accounted for
+    // only by being reported, file by file, so it can never be silent.
+    shape: `teams/<team>/${OLD.recordFolder}/<name>/${OLD.recordFile}`,
+    publishedIn: {
+      file: "packages/workforce/README.md",
+      quote: `Rename \`teams/<team>/${OLD.recordFolder}/<name>/${OLD.recordFile}\` to \`teams/<team>/mailboxes/<name>/MAILBOX.md\``,
+    },
+    write: (root) =>
+      writeFile(root, `teams/alpha/${OLD.recordFolder}/standup/${OLD.recordFile}`, doc("A standup.")),
+    accountedFor: (out) =>
+      out.reported.includes(`teams/alpha/${OLD.recordFolder}/standup/${OLD.recordFile}`),
   },
   {
     shape: "org/references/<name>.md",

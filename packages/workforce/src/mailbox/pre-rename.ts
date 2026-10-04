@@ -72,6 +72,20 @@ export function preRenameKindsFolderProblem(): string {
 }
 
 /**
+ * The refusal for a kind of the app's own named for the old built-in. Every
+ * session on it would read as data from before the rename, so the app's own
+ * store would be refused on its next boot.
+ *
+ * @param where What named it: a file, or the call it was passed to.
+ */
+export function preRenameKindNameProblem(where: string): string {
+  return (
+    `${where} names a kind "${PRE_RENAME_NAMES.kind}", the built-in mailbox kind's name ` +
+    `${BEFORE_THE_RENAME}. A session on it is refused as old data, so give the kind another name.`
+  );
+}
+
+/**
  * Why a mailbox id held by a session on the old built-in kind cannot open: the
  * store predates the rename, and nothing reads that kind any more.
  */

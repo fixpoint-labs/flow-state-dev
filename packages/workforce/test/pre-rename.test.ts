@@ -15,12 +15,19 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createManifestRegistry, discoveryTools } from "@flow-state-dev/core";
+import { createManifestRegistry, defineFlow, discoveryTools } from "@flow-state-dev/core";
 import { createInMemoryStores } from "@flow-state-dev/engine";
 import { createTestContext, runForTest } from "@flow-state-dev/testing";
 import { readDeclaredRoster, readMailboxesDirectory } from "../src/loader";
 import { WorkforceCodeError, discoverWorkforceCode } from "../src/codegen";
-import { MAILBOX_KIND, MAILBOX_POST_COMPONENT, findPreRenameMarks, openMailboxes, type MailboxManifest } from "../src/index";
+import {
+  MAILBOX_KIND,
+  MAILBOX_POST_COMPONENT,
+  findPreRenameMarks,
+  mailboxInstances,
+  openMailboxes,
+  type MailboxManifest,
+} from "../src/index";
 import { PRE_RENAME_NAMES as OLD } from "../src/mailbox/pre-rename";
 
 const roots: string[] = [];
@@ -91,6 +98,14 @@ describe("a tree from before the rename (BR-12)", () => {
     expect(errors[0]!.error.message).toContain("teams/eng/mailboxes/");
   });
 
+  it("reports an old folder holding only a stray file as the folder, never as a record that is not there", async () => {
+    const root = tree({ [`teams/eng/${OLD.recordFolder}/README.md`]: "Notes.\n" });
+
+    const { errors } = await readMailboxesDirectory(root);
+
+    expect(errors.map((e) => e.path)).toEqual([`teams/eng/${OLD.recordFolder}`]);
+  });
+
   it("reaches the roster a host boots from, where its errors are fatal", async () => {
     const root = tree({ [`teams/eng/${OLD.recordFolder}/standup/${OLD.recordFile}`]: RECORD });
 
@@ -117,6 +132,36 @@ describe("a kinds folder from before the rename (BR-13)", () => {
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain(`"${OLD.kindsFolder}"`);
     expect(problems[0]).toContain("flows/mailboxes");
+  });
+});
+
+describe("a kind named for the old built-in", () => {
+  // Every session on it would read as data from before the rename, so the boot
+  // after the first would refuse the app's own store. Refused where it is named.
+  it("is refused by fsdev gen, in either flow folder", async () => {
+    for (const folder of ["flows/mailboxes", "flows/workers"]) {
+      const root = tree({ [`${folder}/${OLD.kind}.ts`]: "export default {};\n" });
+
+      const error = await discoverWorkforceCode(root).then(
+        () => undefined,
+        (caught: unknown) => caught,
+      );
+
+      expect(error, folder).toBeInstanceOf(WorkforceCodeError);
+      expect((error as WorkforceCodeError).problems, folder).toEqual([
+        expect.stringMatching(new RegExp(`"${folder}/${OLD.kind}\\.ts".*renamed to mailboxes.*another name`)),
+      ]);
+    }
+  });
+
+  it("is refused by mailboxInstances, before anything is registered", () => {
+    const kind = defineFlow({ kind: OLD.kind, cardinality: "singleton", actions: {} } as never);
+
+    expect(() =>
+      mailboxInstances([{ id: "eng.standup", declared: { flow: OLD.kind }, body: "Post." }], {
+        kinds: { [OLD.kind]: kind as never },
+      }),
+    ).toThrow(new RegExp(`"${OLD.kind}".*renamed to mailboxes.*another name`));
   });
 });
 

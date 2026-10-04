@@ -52,7 +52,7 @@ import {
   mailboxBoardNameProblem
 } from "./mailbox-board";
 import type { MailboxRouting } from "./mailbox-route";
-import { PRE_RENAME_NAMES, preRenameOccupantProblem } from "./pre-rename";
+import { PRE_RENAME_NAMES, preRenameKindNameProblem, preRenameOccupantProblem } from "./pre-rename";
 import { PROJECTS_COLLECTION } from "../projects/collections";
 import {
   orgTalkTemplateOf,
@@ -608,6 +608,12 @@ export function mailboxInstances(
   manifests: readonly MailboxManifest[],
   options: MailboxInstancesOptions = {}
 ): FlowInstance[] {
+  // Before anything else: every session on this name reads as old data, so
+  // the app's own store would be refused on its next boot.
+  if (options.kinds !== undefined && Object.hasOwn(options.kinds, PRE_RENAME_NAMES.kind)) {
+    throw new Error(preRenameKindNameProblem("mailboxInstances"));
+  }
+
   // The seed: the built-in fills the map only where the caller left the key
   // free, so `kinds: { mailbox: mine }` replaces it wholesale. With the
   // inventory asked for, the seed is the same built-in rebuilt holding the
