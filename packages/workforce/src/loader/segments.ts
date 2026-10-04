@@ -1,5 +1,5 @@
 /**
- * What a name in the tree is allowed to be — a team, worker or channel folder,
+ * What a name in the tree is allowed to be — a team, worker or mailbox folder,
  * or a document file.
  *
  * One rule, shared by every reader that names a level of the tree, because the
@@ -38,8 +38,8 @@ const RESERVED_SEGMENTS = new Set(["_meta"]);
 /**
  * What a segment names, for the error to say.
  *
- * `Team` and `Worker` are the two halves of a seat's address, and `Channel` is
- * the second half of a channel's — dot-joined the same way, because a channel
+ * `Team` and `Worker` are the two halves of a seat's address, and `Mailbox` is
+ * the second half of a mailbox's — dot-joined the same way, because a mailbox
  * id is a flow instance id and a session id. `Document` is a file-declared
  * resource's name — the one segment that is a *file* rather than a folder, and
  * the one whose identity is joined with a `/` rather than a `.`, because a
@@ -59,7 +59,7 @@ const RESERVED_SEGMENTS = new Set(["_meta"]);
 export type SegmentLabel =
   | "Team"
   | "Worker"
-  | "Channel"
+  | "Mailbox"
   | "Document"
   | "Kind"
   | "Block"
@@ -85,8 +85,8 @@ export function validateSegment(segment: string, label: SegmentLabel): void {
     const identity =
       label === "Document"
         ? `it becomes part of the document's ref, which is joined with a "/"`
-        : label === "Channel"
-          ? `it becomes part of the channel's identity, which is joined with a "."`
+        : label === "Mailbox"
+          ? `it becomes part of the mailbox's identity, which is joined with a "."`
           : label === "Kind"
             ? `it becomes the kind's name, which a worker file's \`flow:\` names and a minted flow instance id is built from`
             : label === "Block"

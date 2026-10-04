@@ -1,5 +1,5 @@
 /**
- * Goal check — two seats work one channel's board, a person answers a parked
+ * Goal check — two seats work one mailbox's board, a person answers a parked
  * row through the owning seat's own action, the work changes hands, and a
  * reader can say what happened from the DevTool's own screens.
  *
@@ -229,8 +229,8 @@ async function main() {
 
   // ---- V0. the board by name, and the mint in no file ----------------------
   const files = treeFiles(PROOF_DIR);
-  const declaring = files.filter((path) => path.endsWith("CHANNEL.md") && readFileSync(path, "utf8").includes(tree.boardName));
-  if (declaring.length === 0) fail("V0", `no CHANNEL.md under the proof declares the board "${tree.boardName}" by name`);
+  const declaring = files.filter((path) => path.endsWith("MAILBOX.md") && readFileSync(path, "utf8").includes(tree.boardName));
+  if (declaring.length === 0) fail("V0", `no MAILBOX.md under the proof declares the board "${tree.boardName}" by name`);
   for (const path of files) {
     if (readFileSync(path, "utf8").includes(tree.boardId)) {
       fail("V0", `${path} writes the minted ledger id; a file declares a NAME`);
@@ -278,7 +278,7 @@ async function main() {
     }
     const firstId = String(first.id);
     if (rowsAfterFiling.length !== 1) {
-      fail("V1", `${rowsAfterFiling.length} rows landed for one piece of work (the channel has ${(tree.channel.declared.members as unknown[] | undefined)?.length ?? 0} members)`);
+      fail("V1", `${rowsAfterFiling.length} rows landed for one piece of work (the mailbox has ${(tree.mailbox.declared.members as unknown[] | undefined)?.length ?? 0} members)`);
     }
     for (const row of rowsAfterFiling) {
       if (row.goal !== fixture.piece.goal) fail("V1", `row ${row.id} does not carry the piece verbatim: ${JSON.stringify(row.goal)}`);
@@ -654,7 +654,7 @@ async function main() {
   return {
     failures,
     evidence:
-      `the shipped \`fsdev dev\` served a hire read from ${tree.roster.workers.length} WORKER.md files and one CHANNEL.md ` +
+      `the shipped \`fsdev dev\` served a hire read from ${tree.roster.workers.length} WORKER.md files and one MAILBOX.md ` +
       `declaring board "${tree.boardName}" (its minted id appears in no file). The planner filed one row for "${fixture.piece.desk}"; ` +
       `the seat whose own file answers for it parked it with the question, and its drain returned; a second person's answer did not land; ` +
       `the person's answer through that seat's own action did, and the same seat finished the row and filed the next one for ` +

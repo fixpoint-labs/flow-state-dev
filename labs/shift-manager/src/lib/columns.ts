@@ -12,8 +12,8 @@
  * the word on the card, never hidden.
  */
 
-/** The five columns, in the order the board draws them. */
-export const COLUMNS = ["QUEUED", "RUNNING", "NEEDS YOU", "IN REVIEW", "DONE"] as const;
+/** The five columns, in the order the board draws them: design v2's (v2:1327). */
+export const COLUMNS = ["QUEUED", "RUNNING", "IN REVIEW", "NEEDS YOU", "DONE"] as const;
 
 /** One of the five. */
 export type Column = (typeof COLUMNS)[number];

@@ -4,7 +4,7 @@
  * A panel read resolves its ref against the reading session's own flow, so the
  * shell can only show the roster if `chat-agent` declares it. Each one is
  * org-scoped, so a chat-agent session reads its own organization's rows and no
- * other's. The boards are not here: each is read through its own channel's
+ * other's. The boards are not here: each is read through its own mailbox's
  * session, whose flow already declares it.
  *
  * - `HIRED_ROSTER_RESOURCE` — the hired roster, from the same factory the

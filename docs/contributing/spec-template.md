@@ -160,7 +160,9 @@ Optional comments do not require another design round merely to reach zero comme
 [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md); what follows is the spec-PR instance.
 Budget ~475 prose words above the fold. The body is not another spec document: every line
 in it is in `SPEC.md` too, shorter. The one thing it takes from elsewhere is each decision's
-trade-off figure, which lives beside its card in `DECISIONS.md`.)*
+trade-off figure, which lives beside its card in `DECISIONS.md`. Write its prose in
+ASD-STE100, per [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → "Language — ASD-STE100";
+the rows cut from `SPEC.md` get rewritten to STE, not pasted.)*
 
 The people table from `SPEC.md`, cut to five rows. Then **the goal**, in its one sentence,
 the *how we'll know* figure (a mermaid fence, pasted as text) with its sentence, and one line

@@ -1,6 +1,6 @@
 /**
  * The goal's Lab with no chief of staff: the desk's `asker` seat alone in its
- * channel, opened the same way as the desk (`../lab/open-desk.mts`). What the
+ * mailbox, opened the same way as the desk (`../lab/open-desk.mts`). What the
  * **no CoS** leg serves.
  */
 import { fileURLToPath } from "node:url";

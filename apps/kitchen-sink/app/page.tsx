@@ -59,7 +59,7 @@ import { SessionItemsProvider } from "@/components/flow-state/session-items-cont
 import { ChatAgentMessage } from "@/components/chat-agent/message";
 import { cn } from "@/lib/utils";
 import { railSessions } from "@/lib/rail-sessions";
-import { CHANNEL_KINDS, defaultConversation, isChannelKind, SEAT_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
+import { MAILBOX_KINDS, defaultConversation, isMailboxKind, SEAT_KINDS, SHELL_FLOW_KIND } from "@/lib/workforce-shell";
 import { KITCHEN_SINK_USER_ID } from "@/lib/kitchen-sink-principal";
 import { pageGoalControl } from "@/lib/goal-control";
 
@@ -82,7 +82,7 @@ type MobilePanel = "chat" | "artifacts";
  * accepts as that owner: a visitor here sees the seats hired into this app's
  * organization, and not an operator's own. A seat declared in a worker file is
  * pinned to nobody and is listed to anyone who can load this page. Set this to
- * `false` to ship the rail with channels only; the roster panel on the right
+ * `false` to ship the rail with mailboxes only; the roster panel on the right
  * is organization-scoped either way.
  */
 const SHOW_SEATS_IN_RAIL = true;
@@ -101,14 +101,14 @@ function isSeatKind(kind: string): boolean {
 
 /**
  * The rail's sections. How deep each kind goes is read off the flow's declared
- * cardinality, never written here: a channel kind opens straight into its
+ * cardinality, never written here: a mailbox kind opens straight into its
  * conversations, a seat kind opens into seats and then one seat's.
  *
  * "Assistant" is this app's own chat flow, so its conversations stay one click
  * away.
  */
 const RAIL_SECTIONS: readonly FlowNavigatorSection[] = [
-  { label: "Channels", kinds: CHANNEL_KINDS },
+  { label: "Mailboxes", kinds: MAILBOX_KINDS },
   ...(SHOW_SEATS_IN_RAIL ? [{ label: "Seats", kinds: SEAT_KINDS }] : []),
   { label: "Assistant", kinds: [SHELL_FLOW_KIND] },
 ];
@@ -124,7 +124,7 @@ const RAIL_THEME = {
 
 /**
  * A session picked in the rail that is not one of the assistant's own.
- * `address` is the flow it belongs to: the kind for a channel, the seat's own
+ * `address` is the flow it belongs to: the kind for a mailbox, the seat's own
  * id for a seat. Continuing or retrying a request is routed by it.
  */
 type PickedSession = { sessionId: string; kind: string; address: string };
@@ -244,7 +244,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     autoPlayTTS: ttsEnabled,
   });
 
-  // A channel's or a seat's session, when one is picked in the rail. Its panel
+  // A mailbox's or a seat's session, when one is picked in the rail. Its panel
   // has a composer of its own, which calls the picked flow's own action on
   // this session; the assistant's composer stays wired to the assistant.
   // It follows the whole session (`live`), because others write here too: a
@@ -271,7 +271,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
   // backend each render.
   const resourceClient = useMemo(() => createResourceClient({ baseUrl: "", fetcher: panelFetch }), []);
   // The roster reads through the assistant's session, because that flow is the
-  // one declaring it; each board reads through its own channel's session. The
+  // one declaring it; each board reads through its own mailbox's session. The
   // assistant's organization, from its own record, is the one a seat's address
   // is read against.
   const panelSessionId = flow.activeSessionId;
@@ -279,7 +279,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
 
   // Starts a seat's new conversation from the rail.
   const sessionClient = useMemo(() => createSessionClient({ baseUrl: "" }), []);
-  // What the rail lists: a channel kind's declared channels, never one a kept
+  // What the rail lists: a mailbox kind's declared mailboxes, never one a kept
   // store holds from an earlier roster. Stable, so the navigator's reads stay
   // fenced on it.
   const railSessionSource = useMemo(() => railSessions(sessionClient), [sessionClient]);
@@ -428,7 +428,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
     () => ({
       // "New session" sits on the assistant's own row, and "New
       // conversation" on each seat's: the places a conversation can be
-      // started from this page. Channels get none; the boot opens them.
+      // started from this page. Mailboxes get none; the boot opens them.
       leafToolbar: (leaf: FlowNavigatorLeafState) =>
         leaf.kind === SHELL_FLOW_KIND ? (
           <AssistantLeafToolbar
@@ -558,7 +558,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
         kind={picked.kind}
         requestStatus={pickedRequestStatus}
         conversation={
-          isChannelKind(picked.kind) ? null : (
+          isMailboxKind(picked.kind) ? null : (
           <Conversation className="min-h-0 flex-1" data-testid="conversation">
             <ConversationBody
               items={pickedSession.items}
@@ -621,7 +621,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
             : "hidden",
         )}
         data-testid="rail"
-        aria-label="Channels, seats and conversations"
+        aria-label="Mailboxes, seats and conversations"
       >
         <Rail
           slots={railSlots}
@@ -673,7 +673,7 @@ function KitchenSinkApp({ e2eSessionId, pickedLive }: { e2eSessionId: string | n
         </div>
 
         {/* The model named here is the assistant's own preference, and only the
-            assistant answers with it. A picked channel or seat answers through
+            assistant answers with it. A picked mailbox or seat answers through
             its model intents (an `FSDEV_*` override lands there), and each reply
             carries the model that produced it, so the bar names none there. */}
         <ClientDataBar
@@ -799,8 +799,8 @@ function Rail({
   return (
     <>
       <div className="min-h-0 flex-1 py-1" style={RAIL_THEME}>
-        {/* Dispatch runs too: a seat's conversation for a channel is a run the
-            channel started, and is listed only when they are included. */}
+        {/* Dispatch runs too: a seat's conversation for a mailbox is a run the
+            mailbox started, and is listed only when they are included. */}
         <FlowNavigator
           sections={RAIL_SECTIONS}
           sessionClient={sessionSource}

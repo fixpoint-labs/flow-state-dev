@@ -165,8 +165,8 @@ describe("taskToolActions — the set", () => {
     }
   });
 
-  it("qualifies a dotted board id the way a channel's tools already are", () => {
-    // The same qualifier a model sees on a channel board, so the DevTool can
+  it("qualifies a dotted board id the way a mailbox's tools already are", () => {
+    // The same qualifier a model sees on a mailbox board, so the DevTool can
     // scope an action to its board by one rule.
     expect(taskToolSuffix("eng.feature.work")).toBe("eng_feature_work");
     expect(taskToolSuffix("support.help.escalations")).toBe("support_help_escalations");

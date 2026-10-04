@@ -143,7 +143,7 @@ export function parseHiredSeatRow(value: unknown): { row: HiredSeatRow } | RowPr
  *     load-bearing.
  *   - `body` is the instructions, which the hire step turns into the
  *     `instructions` setting exactly as it does for a file's Markdown body.
- *   - `seatId` is the row's own seat id, the logical id a channel's
+ *   - `seatId` is the row's own seat id, the logical id a mailbox's
  *     `members:` lists, which the hire step stamps as the seat's `seatId`
  *     setting. The address is not it.
  *

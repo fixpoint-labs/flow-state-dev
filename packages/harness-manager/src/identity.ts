@@ -45,8 +45,8 @@ export const OWNED_SEGMENT = /^[A-Za-z0-9]+(?:[_-][A-Za-z0-9]+)*$/;
  *   *derived identity* is already built (a board collection id, say) and lands
  *   between `/` separators rather than inside a join, so it may legitimately
  *   carry `--`.
- * - **A single interior `.`.** A board a channel holds is named
- *   `<channel>.<board>` (`eng.feature.work`), and the id is used as is — never
+ * - **A single interior `.`.** A board a mailbox holds is named
+ *   `<mailbox>.<board>` (`eng.feature.work`), and the id is used as is — never
  *   translated, because `eng-feature-work` may already be another board's id.
  *   One dot between two runs of letters and digits is something both a path and
  *   a git ref accept; `..`, a leading or trailing dot and a separator are not,

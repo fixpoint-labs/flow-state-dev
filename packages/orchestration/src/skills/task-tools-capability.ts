@@ -873,7 +873,7 @@ export const taskTools = createTaskToolsCapability();
  * not allow in a tool name (`[a-zA-Z0-9_-]`) turned into `_`. So
  * `eng.feature.work`'s tools are `cancelTask_eng_feature_work`.
  *
- * **Pinned.** It is the name a model is told about on a channel board and the
+ * **Pinned.** It is the name a model is told about on a mailbox board and the
  * name an action carries under {@link taskToolActions}, and the DevTool scopes
  * a row's actions to its board by it.
  */
@@ -910,7 +910,7 @@ export interface TaskToolActionsBoard {
  *   through the board's own resolver, and each action composes the board's
  *   capability, so the flow need not declare the collection again.
  * - `taskToolActions(collectionId, resolve)` — for a caller that resolves a
- *   durable ledger itself (a Workforce channel does, to fence each action to
+ *   durable ledger itself (a Workforce mailbox does, to fence each action to
  *   its own session).
  *
  * These are public actions: anyone who can call the flow can call them.

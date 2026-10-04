@@ -87,7 +87,7 @@ import {
 export type ResourceDocErrorKind =
   /** A structural folder — a root, a team, a `workers/` level, a worker folder, or a `resources/` slot — is a symlink or is there and could not be listed. Every document under it is missing. */
   | "unreadable-slot"
-  /** A directory sits where a document file belongs — the mistake an author arriving from `workers/` or `channels/` makes. */
+  /** A directory sits where a document file belongs — the mistake an author arriving from `workers/` or `mailboxes/` makes. */
   | "folder-where-file-belongs"
   /** One document file did not load: an unusable name, a symlink, an unreadable file, no frontmatter, or a missing `description`. */
   | "document-load-failed"

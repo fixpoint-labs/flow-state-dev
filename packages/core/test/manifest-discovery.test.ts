@@ -101,14 +101,14 @@ describe("discover", () => {
     expect(result.domains.map((d) => d.domain)).toEqual(["skills"]);
   });
 
-  // BR-3. A workforce with no channels registered yet is an ordinary state, and
+  // BR-3. A workforce with no mailboxes registered yet is an ordinary state, and
   // the model should read it as "nothing here" rather than as a fault.
   it("answers a scope-less domain with an empty list, not an error", async () => {
     const { discover } = discoveryTools(createManifestRegistry([sourceOf("seats", [seat("reviewer")])]));
 
-    const result = await runForTest(discover, { domain: "channels", detail: "thin" }, ctx);
+    const result = await runForTest(discover, { domain: "mailboxes", detail: "thin" }, ctx);
 
-    expect(result.domains).toEqual([{ domain: "channels", entries: [] }]);
+    expect(result.domains).toEqual([{ domain: "mailboxes", entries: [] }]);
     expect(result.problem).toBeUndefined();
   });
 
@@ -116,10 +116,10 @@ describe("discover", () => {
   // registry holds, so there is no wider list for a model-supplied `domain` to
   // filter down from (BP-031). A seat's own `discover:` narrowing rides on top.
   it("cannot reach a domain the registry was not built with", async () => {
-    const outOfScope = sourceOf("channels", [{ id: "ops", kind: "channel", purpose: "Ops chatter." }]);
+    const outOfScope = sourceOf("mailboxes", [{ id: "ops", kind: "mailbox", purpose: "Ops chatter." }]);
     const { discover } = discoveryTools(createManifestRegistry([sourceOf("seats", [seat("reviewer")])]));
 
-    const asked = await runForTest(discover, { domain: "channels", detail: "full" }, ctx);
+    const asked = await runForTest(discover, { domain: "mailboxes", detail: "full" }, ctx);
     const everything = await runForTest(discover, { domain: null, detail: "full" }, ctx);
 
     expect(asked.domains[0]!.entries).toEqual([]);
@@ -137,7 +137,7 @@ describe("discover", () => {
 
     expect(result.domains).toEqual([]);
     expect(result.problem).toContain('Unknown domain "agents"');
-    expect(result.problem).toContain("seats, channels, skills, resources");
+    expect(result.problem).toContain("seats, mailboxes, skills, resources");
   });
 
   // BR-5. One misconfigured collection must not cost the agent its whole turn.

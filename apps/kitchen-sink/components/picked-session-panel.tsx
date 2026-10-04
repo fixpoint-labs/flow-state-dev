@@ -1,18 +1,18 @@
 "use client";
 
 /**
- * A channel's or a seat's session, opened from the rail, with a composer that
+ * A mailbox's or a seat's session, opened from the rail, with a composer that
  * talks to it.
  *
  * Every composer here calls an action the picked flow already declares, on the
- * picked session's own address — nothing is added for the page. A channel is
+ * picked session's own address — nothing is added for the page. A mailbox is
  * posted to through its own `post`, with the body only: the person at the page
  * is not a member, so naming them as `author` would be refused, and the line's
  * server-set `principal` already says who posted. A seat is sent the action
  * its kind answers with (`SEAT_ASKS`); a kind with none shows its reason and
  * no composer.
  *
- * A channel's panel shows its transcript, which is its `channel-post` items,
+ * A mailbox's panel shows its transcript, which is its `mailbox-post` items,
  * not the session's item stream: a post leaves nothing else worth reading.
  * Only what the server kept is drawn. There is no optimistic copy of the
  * person's line or message, so what shows after a reload is what showed
@@ -26,10 +26,10 @@
  */
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { useSession } from "@flow-state-dev/react";
-import { CHANNEL_POST_COMPONENT, type ChannelTranscriptLine } from "@flow-state-dev/workforce/browser";
+import { MAILBOX_POST_COMPONENT, type MailboxTranscriptLine } from "@flow-state-dev/workforce/browser";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { isChannelKind, seatAskFor } from "@/lib/workforce-shell";
+import { isMailboxKind, seatAskFor } from "@/lib/workforce-shell";
 
 type Session = ReturnType<typeof useSession>;
 
@@ -37,17 +37,17 @@ type Session = ReturnType<typeof useSession>;
 export type RequestStatusLookup = (requestId: string) => Promise<string>;
 
 /** Who a line names: its author claim, else the server's principal, else nobody. */
-export function lineLabel(line: Pick<ChannelTranscriptLine, "author" | "principal">): string {
+export function lineLabel(line: Pick<MailboxTranscriptLine, "author" | "principal">): string {
   return line.author ?? line.principal ?? "unattributed";
 }
 
-/** The session's `channel-post` lines, in the order the session holds them. */
-function channelLines(items: Session["items"]): ChannelTranscriptLine[] {
+/** The session's `mailbox-post` lines, in the order the session holds them. */
+function mailboxLines(items: Session["items"]): MailboxTranscriptLine[] {
   return items.flatMap((item) => {
     const component = item as { type: string; component?: string; data?: unknown };
-    if (component.type !== "component" || component.component !== CHANNEL_POST_COMPONENT) return [];
-    const data = component.data as Partial<ChannelTranscriptLine> | undefined;
-    return typeof data?.id === "string" && typeof data.body === "string" ? [data as ChannelTranscriptLine] : [];
+    if (component.type !== "component" || component.component !== MAILBOX_POST_COMPONENT) return [];
+    const data = component.data as Partial<MailboxTranscriptLine> | undefined;
+    return typeof data?.id === "string" && typeof data.body === "string" ? [data as MailboxTranscriptLine] : [];
   });
 }
 
@@ -55,10 +55,10 @@ function channelLines(items: Session["items"]): ChannelTranscriptLine[] {
  * The picked session's panel.
  *
  * @param session The picked session, as `useSession` returns it.
- * @param kind The picked flow's kind: a channel kind or a seat kind.
+ * @param kind The picked flow's kind: a mailbox kind or a seat kind.
  * @param requestStatus Reads a sent request's own status, so a send settles
  *   on its request and not on whatever the session's stream did.
- * @param conversation The session's item stream, drawn for a seat. A channel
+ * @param conversation The session's item stream, drawn for a seat. A mailbox
  *   draws its transcript instead, so the page need not build one for it.
  */
 export function PickedSessionPanel({
@@ -75,17 +75,17 @@ export function PickedSessionPanel({
   // Each composer is keyed by the session it talks to, so a draft, a pending
   // send or a failure never carries over to the next pick.
   const composerKey = session.sessionId ?? "none";
-  if (isChannelKind(kind)) {
+  if (isMailboxKind(kind)) {
     return (
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="picked-session">
-        <ChannelTranscript session={session} />
+        <MailboxTranscript session={session} />
         <WorkingRows session={session} />
         <Composer
           key={composerKey}
           session={session}
           requestStatus={requestStatus}
-          label="Post to this channel"
-          placeholder="Write a line for this channel…"
+          label="Post to this mailbox"
+          placeholder="Write a line for this mailbox…"
           send={(text) => session.sendAction("post", { body: text })}
         />
       </section>
@@ -115,18 +115,18 @@ export function PickedSessionPanel({
   );
 }
 
-/** A channel's transcript, oldest first, each line under who it names. */
-function ChannelTranscript({ session }: { session: Session }) {
-  const lines = useMemo(() => channelLines(session.items), [session.items]);
+/** A mailbox's transcript, oldest first, each line under who it names. */
+function MailboxTranscript({ session }: { session: Session }) {
+  const lines = useMemo(() => mailboxLines(session.items), [session.items]);
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto" data-testid="channel-transcript">
+    <div className="min-h-0 flex-1 overflow-y-auto" data-testid="mailbox-transcript">
       <ol className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-3 py-4 sm:px-4">
         {lines.map((line) => (
-          <li key={line.id} className="flex flex-col gap-0.5" data-testid="channel-line">
-            <span className="text-xs font-medium text-muted-foreground" data-testid="channel-line-label">
+          <li key={line.id} className="flex flex-col gap-0.5" data-testid="mailbox-line">
+            <span className="text-xs font-medium text-muted-foreground" data-testid="mailbox-line-label">
               {lineLabel(line)}
             </span>
-            <span className="whitespace-pre-wrap text-sm" data-testid="channel-line-body">
+            <span className="whitespace-pre-wrap text-sm" data-testid="mailbox-line-body">
               {line.body}
             </span>
           </li>

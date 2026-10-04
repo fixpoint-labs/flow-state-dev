@@ -156,10 +156,10 @@ function Centre({ snapshot, route, gaps, look }: { snapshot: LoadedSnapshot; rou
     case "project":
       return <ProjectView snapshot={snapshot} projectId={route.projectId} tab={route.tab} gaps={gaps} />;
     case "workstream": {
-      const workstream = findWorkstream(snapshot, route.channelId);
+      const workstream = findWorkstream(snapshot, route.mailboxId);
       return workstream === undefined ? (
         <EmptyState title="No such workstream" testId="workstream-missing">
-          This Lab's inventory registers no channel "{route.channelId}".
+          This Lab's inventory registers no mailbox "{route.mailboxId}".
         </EmptyState>
       ) : (
         <WorkstreamView key={workstream.id} snapshot={snapshot} workstream={workstream} tab={route.tab} gaps={gaps} />
@@ -178,7 +178,7 @@ function Panel({ snapshot, route, gaps }: { snapshot: LoadedSnapshot; route: Rou
   if (route.level === "cos") {
     content = <ChiefOfStaffPanel snapshot={snapshot} gaps={gaps} />;
   } else if (route.level === "workstream") {
-    const workstream = findWorkstream(snapshot, route.channelId);
+    const workstream = findWorkstream(snapshot, route.mailboxId);
     if (workstream !== undefined) content = <WorkstreamPanel snapshot={snapshot} workstream={workstream} gaps={gaps} />;
   } else if (route.level === "task") {
     content = <TaskInspector snapshot={snapshot} gaps={gaps} />;

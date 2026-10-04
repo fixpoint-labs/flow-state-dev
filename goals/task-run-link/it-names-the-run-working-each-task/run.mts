@@ -10,13 +10,13 @@
  * Never against what the board or the hand-off said it did: those are
  * neighbours of the claim, generated on the path being tested.
  *
- * What the tree contributes: the channel, its board, the member that drains it,
+ * What the tree contributes: the mailbox, its board, the member that drains it,
  * and the members it hands rows to — each with its session policy, and one on a
- * flow of its own. Rename the team, the channel or the board, or swap which seat
+ * flow of its own. Rename the team, the mailbox or the board, or swap which seat
  * is per-worker, and a correct build still passes.
  *
  * Legs:
- *   a        the tree alone produces the channel, the board and the seats
+ *   a        the tree alone produces the mailbox, the board and the seats
  *   ran      every row's run really ran, and left its proof on disk
  *   browser  the browser read of the board names each row's own run
  *   model    the model read (`readBoard`) names each row's own run
@@ -54,17 +54,17 @@ import {
   type TaskWorkerInput
 } from "@flow-state-dev/orchestration/tasks";
 import {
-  CHANNEL_KIND,
-  channelBoard,
-  channelBoardIds,
-  channelInstances,
+  MAILBOX_KIND,
+  mailboxBoard,
+  mailboxBoardIds,
+  mailboxInstances,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   workerConfigSchema,
-  type ChannelManifest,
+  type MailboxManifest,
   type WorkerManifest
 } from "@flow-state-dev/workforce";
-import { readChannelsDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
+import { readMailboxesDirectory, readWorkforce } from "@flow-state-dev/workforce/loader";
 import { goalTmpDir, runGoal, silentLogger } from "../../lib/index.mts";
 
 const TREE = fileURLToPath(new URL("./fixtures/workforce", import.meta.url));
@@ -120,7 +120,7 @@ await runGoal(async () => {
 
   // ---- a. the tree alone ----------------------------------------------------
   const roster = await readWorkforce(TREE);
-  const read = await readChannelsDirectory(TREE);
+  const read = await readMailboxesDirectory(TREE);
   if (roster.errors.length > 0 || read.errors.length > 0) {
     return {
       failures: [`the tree did not load cleanly: ${JSON.stringify([...roster.errors, ...read.errors])}`],
@@ -128,16 +128,16 @@ await runGoal(async () => {
     };
   }
   const workers: WorkerManifest[] = roster.workers;
-  const channels: ChannelManifest[] = read.channels;
-  const channel = channels.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
-  if (channel === undefined) return { failures: ["the tree declared no channel holding a board"], evidence: "" };
-  const boardName = (channel.declared.boards as string[])[0]!;
-  const ledger = channelBoard(channel.id, boardName);
+  const mailboxes: MailboxManifest[] = read.mailboxes;
+  const mailbox = mailboxes.find((c) => ((c.declared.boards as string[] | undefined) ?? []).length > 0);
+  if (mailbox === undefined) return { failures: ["the tree declared no mailbox holding a board"], evidence: "" };
+  const boardName = (mailbox.declared.boards as string[])[0]!;
+  const ledger = mailboxBoard(mailbox.id, boardName);
 
-  // Members, off the channel file: the one that drains (a flow of its own, no
+  // Members, off the mailbox file: the one that drains (a flow of its own, no
   // hand-off policy), and the seats it hands rows to (a declared policy).
   const byId = new Map(workers.map((w) => [w.id, w]));
-  const members = ((channel.declared.members as string[] | undefined) ?? []).map((id) => byId.get(id)!);
+  const members = ((mailbox.declared.members as string[] | undefined) ?? []).map((id) => byId.get(id)!);
   const drainer = members.find((w) => w.declared.flow !== undefined && w.declared.handoff === undefined);
   const seats = members
     .filter((w) => typeof w.declared.handoff === "string")
@@ -263,14 +263,14 @@ await runGoal(async () => {
     actions: {}
   } as never);
 
-  const instances = channelInstances(channels);
+  const instances = mailboxInstances(mailboxes);
   const hired = hireWorkforce(workers, {
     kinds: {
       [drainer.declared.flow as string]: leadKind as never,
       [PASSIVE_KIND]: passiveKind as never,
       ...(otherKinds as Record<string, never>)
     },
-    channelBoards: channelBoardIds(channels)
+    mailboxBoards: mailboxBoardIds(mailboxes)
   });
   const state = createFlowState({
     flows: {
@@ -291,7 +291,7 @@ await runGoal(async () => {
       return { status: response.status, text: await response.text() };
     };
 
-    await openChannels(channels, {
+    await openMailboxes(mailboxes, {
       client: {
         createSession: async (options: { flowKind: string; sessionId?: string; description?: string; state?: Record<string, unknown> }) => {
           const id = String(options.sessionId);
@@ -339,16 +339,16 @@ await runGoal(async () => {
         runtimeConfig: { ...runtime.runtimeConfig }
       } as never)) as { output?: unknown; error?: unknown; requestId?: string };
 
-    const channelInstance = instances.find((instance) => instance.kind === CHANNEL_KIND)!;
+    const mailboxInstance = instances.find((instance) => instance.kind === MAILBOX_KIND)!;
     const lead = hired.find((seat) => seat.id === drainer.id)!;
     const row = async (taskId: string): Promise<Task | undefined> =>
       (await runtime.stores.resourceState.get("org", ORG_ID, `${ledger.id}/${taskId}`))?.state as Task | undefined;
 
-    // ---- file the rows, through the channel ------------------------------
+    // ---- file the rows, through the mailbox ------------------------------
     type Filed = { taskId: string; seat: (typeof seats)[number]; retry: boolean };
     const filed: Filed[] = [];
     const file = async (seat: (typeof seats)[number], n: number, retry = false) => {
-      const out = await act(channelInstance, channel.id, "fileTask", {
+      const out = await act(mailboxInstance, mailbox.id, "fileTask", {
         board: boardName,
         goal: `${seat.name} row ${n}${retry ? " (fails once)" : ""}`,
         assignee: seat.name,
@@ -415,7 +415,7 @@ await runGoal(async () => {
     };
 
     // ---- browser: the board's browser read --------------------------------
-    const browser = await get(["sessions", channel.id, "resources", ledger.id]);
+    const browser = await get(["sessions", mailbox.id, "resources", ledger.id]);
     if (browser.status !== 200) failures.push(`browser: the board read answered ${browser.status}: ${browser.text}`);
     const cards = new Map<string, Record<string, unknown>>(
       ((JSON.parse(browser.text || "{}").items ?? []) as Array<{ clientData: Record<string, unknown> }>).map((i) => [
@@ -430,7 +430,7 @@ await runGoal(async () => {
     }
 
     // ---- model: readBoard ------------------------------------------------
-    const model = await act(channelInstance, channel.id, "readBoard", { board: boardName });
+    const model = await act(mailboxInstance, mailbox.id, "readBoard", { board: boardName });
     const modelRows = new Map(((model.output as { tasks?: Task[] } | undefined)?.tasks ?? []).map((t) => [t.id, t]));
     for (const f of filed) {
       const t = modelRows.get(f.taskId);
@@ -516,7 +516,7 @@ await runGoal(async () => {
     return {
       failures,
       evidence:
-        `channel "${channel.id}", board "${boardName}" (ledger ${ledger.id}), drained by "${drainer.id}" from ` +
+        `mailbox "${mailbox.id}", board "${boardName}" (ledger ${ledger.id}), drained by "${drainer.id}" from ` +
         `${CONVO_A} and re-drained from ${CONVO_B}. ${filed.length} rows across seats ` +
         `${seats.map((s) => `${s.name}:${s.policy}${s.flow ? `@${s.flow}` : ""}`).join(", ")}; every row's link on ` +
         `the browser read, the model read and the last task-change of its run's own stream equals the session and ` +

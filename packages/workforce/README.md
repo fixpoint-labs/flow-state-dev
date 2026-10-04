@@ -20,7 +20,7 @@ model: openai/gpt-5.4-mini
 You are the engineering lead. You break work into tasks and report what came back.
 ```
 
-`readDeclaredRoster` reads that tree — every worker, team, document and channel declared in it —
+`readDeclaredRoster` reads that tree — every worker, team, document and mailbox declared in it —
 and lists whatever failed to load on `problems`.
 
 ```ts
@@ -270,7 +270,7 @@ const seats = hireWorkforce(roster.workers);
 | `teams` | One `TeamManifest` per team that wrote a [`TEAM.md`](#the-optional-team-file). A team without one is absent, not present-and-empty. |
 | `documents` | One `ResourceDoc` per [document](#reading-documents-from-files), from every `resources/` folder the convention reads. |
 | `references` | One `ResourceDoc` per [reference](#reading-documents-from-files), from every `references/` folder, each carrying the `filePath` it was read from. |
-| `channels` | One `ChannelManifest` per [channel](#declaring-channels-in-files) under `teams/<id>/channels/`. There is no `org/channels/` level, the way there is for documents. |
+| `mailboxes` | One `MailboxManifest` per [mailbox](#declaring-mailboxes-in-files) under `teams/<id>/mailboxes/`. There is no `org/mailboxes/` level, the way there is for documents. |
 | `problems` | Everything that did not load. Empty for a tree that loads cleanly. |
 
 Each list arrives in tree order.
@@ -280,7 +280,7 @@ the hire step the way a body is imposed as `instructions`. A `WORKER.md` declari
 itself is refused by name at both the loader and the hire step — where a skill folder sits is
 what decides who can see it.
 
-For seats alone, without documents or channels, read the worker half with
+For seats alone, without documents or mailboxes, read the worker half with
 [`readWorkforce`](#reading-a-workforce-from-files).
 
 ### What did not load
@@ -301,14 +301,14 @@ roster.problems;
 //    path: "org/resources/loose.md",
 //    error: Error('"loose.md" has no frontmatter — a resource file needs at least a
 //                  `description`') },
-//  { layer: "channel",
-//    path: "teams/qa/channels/standup",
-//    error: Error('CHANNEL.md in "standup/" must declare a non-empty `description`') }]
+//  { layer: "mailbox",
+//    path: "teams/qa/mailboxes/standup",
+//    error: Error('MAILBOX.md in "standup/" must declare a non-empty `description`') }]
 ```
 
-`layer` is one of `worker`, `skill`, `team`, `package`, `document`, `reference` or `channel`, and
+`layer` is one of `worker`, `skill`, `team`, `package`, `document`, `reference` or `mailbox`, and
 the entries arrive in that order: worker slots, then each seat's skills, then team files, then
-packages, then documents, then references, then channels, and last a `reference` entry per basename claimed in both slots. `path`
+packages, then documents, then references, then mailboxes, and last a `reference` entry per basename claimed in both slots. `path`
 is the path that failed, relative to the root. `error` is the original `Error`, `cause` chain
 intact.
 
@@ -330,7 +330,7 @@ if (missingSeats.length) {
 
 It throws on the root and nothing else: a path that cannot be read, a path that is a symlink, or
 one spelled with an interior `..` that steps back through an earlier segment (pass the path that
-resolves to). Everything below the root is collected, including a team, worker, channel or document
+resolves to). Everything below the root is collected, including a team, worker, mailbox or document
 whose name breaks the naming rules.
 
 ## Hiring a workforce
@@ -461,7 +461,7 @@ A worker kind is an ordinary flow. What makes it *hireable* is that its `configS
 | `seatSkills` | The skills its folders resolved for it, in level order. Imposed on every seat, present and empty when there are none. |
 | `seatTools` | The blocks this seat's `tools:` resolved to from its own folders and the packages it holds, already resolved. Imposed on every seat, present and empty when there are none. Live blocks, not names — names that resolved to the kind's catalog stay on the kind's own `tools` setting. |
 | `seatPackages?` | The [packages](#packages-from-files) this seat holds, in the order it holds them: `{ name, path, instructions?, tools }[]`, where `tools` is the package's blocks. Imposed when the seat holds at least one, absent otherwise. |
-| `seatId` | The seat's own id — the one a channel's `members:` lists and checks an author against. For a runtime-hired seat it is the roster's seat id, not its `<orgId>.<seatId>` address. Imposed on every seat. A block inside the seat reads it from `ctx.flow.config.seatId` to sign what it files or posts. |
+| `seatId` | The seat's own id — the one a mailbox's `members:` lists and checks an author against. For a runtime-hired seat it is the roster's seat id, not its `<orgId>.<seatId>` address. Imposed on every seat. A block inside the seat reads it from `ctx.flow.config.seatId` to sign what it files or posts. |
 
 So hiring imposes `instructions` when the body is not empty, `seatSkills`, `seatTools` and `seatId`
 always, `teamInstructions` when the seat's team wrote a `TEAM.md`, and `seatPackages` when the seat
@@ -647,14 +647,14 @@ every bad worker, and nothing is returned, so a bad record cannot leave a half-h
 
 The `kinds` map above names each kind a second time, after the flow already declared it. There is a
 file convention for that half too: put a flow under `workforce/flows/workers/` or
-`workforce/flows/channels/`, or a block under `workforce/blocks/`, and the basename is the name it
+`workforce/flows/mailboxes/`, or a block under `workforce/blocks/`, and the basename is the name it
 registers under.
 
 ```
 workforce/
   flows/
     workers/request-triage.ts                        ← default-exports a flow, cardinality: "collection"
-    channels/standup.ts                              ← default-exports a flow, singleton (the default)
+    mailboxes/standup.ts                              ← default-exports a flow, singleton (the default)
   blocks/triage.ts                                   ← a block any worker may name
   teams/engineering/blocks/build-status.ts           ← a block this team's workers may name
   teams/engineering/workers/triage/blocks/page.ts    ← a block this one worker may name
@@ -663,8 +663,8 @@ workforce/
 ```
 
 `fsdev gen` walks those folders and writes `workforce/workforce.gen.ts` beside them, exporting
-`kinds`, `channelKinds`, `blocks`, `seatBlocks` and `packageBlocks` — parameters `hireWorkforce`,
-`channelInstances`, a task board and a worker kind's tool catalog already take. The same file
+`kinds`, `mailboxKinds`, `blocks`, `seatBlocks` and `packageBlocks` — parameters `hireWorkforce`,
+`mailboxInstances`, a task board and a worker kind's tool catalog already take. The same file
 carries `resourceModules`, covered in [Resource modules from files](#resource-modules-from-files).
 
 ```ts
@@ -1088,23 +1088,23 @@ files; `hireWorkforce` throws on the same collision for a catalog that never pas
 `resourcesFromDocs` and `referencesFromDocs` throw instead of collecting, because a record that
 cannot become a resource is a startup misconfiguration.
 
-## Channels
+## Mailboxes
 
-A **channel** is a place several agents talk about one topic, with one durable transcript, where
+A **mailbox** is a place several agents talk about one topic, with one durable transcript, where
 nobody is assigned the work and nobody closes it out. This package ships the flow kind that runs one,
-plus the two calls that bind a roster of channels to it.
+plus the two calls that bind a roster of mailboxes to it.
 
 The identity rule is the thing to get straight first, because it is not the one `WORKER.md` teaches:
-**one kind is one instance, and one channel is one named session on that instance.** A hundred
-channel records are a hundred sessions on a single registered flow. What differs per channel (who its
+**one kind is one instance, and one mailbox is one named session on that instance.** A hundred
+mailbox records are a hundred sessions on a single registered flow. What differs per mailbox (who its
 members are, what its charter says, what has been said in it) lives in that session's state.
 
-You register nothing to use channels. The built-in kind is seeded for you.
+You register nothing to use mailboxes. The built-in kind is seeded for you.
 
 ```ts
-import { channelInstances, openChannels, type ChannelManifest } from "@flow-state-dev/workforce";
+import { mailboxInstances, openMailboxes, type MailboxManifest } from "@flow-state-dev/workforce";
 
-const channels: ChannelManifest[] = [
+const mailboxes: MailboxManifest[] = [
   {
     id: "engineering.standup",
     declared: {
@@ -1116,52 +1116,52 @@ const channels: ChannelManifest[] = [
 ];
 
 // Build time. One instance per distinct kind, not per record.
-flowRegistry.registerMany(channelInstances(channels)); // one instance, id "channel"
+flowRegistry.registerMany(mailboxInstances(mailboxes)); // one instance, id "mailbox"
 
 // Runtime, once the host is up. One named session per record.
-await openChannels(channels, { client: sessionClient, userId: "u_42" });
+await openMailboxes(mailboxes, { client: sessionClient, userId: "u_42" });
 ```
 
 The two calls are separate because they happen at two different times: an instance is registered
-when the server is built, and a session can only be opened once it is running. `openChannels` needs
+when the server is built, and a session can only be opened once it is running. `openMailboxes` needs
 a `userId` because a session belongs to one user, as *What a transcript proves* below explains.
 
-Every channel session runs in an organization, and your app does not name it. The server binds it
+Every mailbox session runs in an organization, and your app does not name it. The server binds it
 from the caller's verified identity, which is whatever your
 [`resolvePrincipal`](https://flow-state.dev/docs/server/authentication#every-request-runs-in-an-organization)
 returned; an app that configures no authentication gets the reserved `DEFAULT_ORG_ID`. Storage at
-organization scope resolves against it inside the channel, including file-declared documents and a
-channel board's rows. A session's organization is fixed when the session is created, so open your
-channels as a caller whose verified identity already carries the organization you want them in.
+organization scope resolves against it inside the mailbox, including file-declared documents and a
+mailbox board's rows. A session's organization is fixed when the session is created, so open your
+mailboxes as a caller whose verified identity already carries the organization you want them in.
 
 A record declares eight keys and no others: `flow` (which kind, optional), `description`, `members`,
-`boards`, `instructions` (or a body, which is the same setting), `routing` (see the channels
-guide, "Routing a channel"), `boardActions`, and `mintFor` (see [Projects](#projects): it makes
-the file a project talk template, not a channel). `boardActions: true` exposes each of the channel's
-boards' task tools as channel actions (`cancelTask_<channel>_<board>` and its seven siblings), each
-working only in its own channel's session; it is off by default, because anyone who can reach the
-channel can then settle or reassign its rows. An opted-in board whose action names come out the
+`boards`, `instructions` (or a body, which is the same setting), `routing` (see the mailboxes
+guide, "Routing a mailbox"), `boardActions`, and `mintFor` (see [Projects](#projects): it makes
+the file a project talk template, not a mailbox). `boardActions: true` exposes each of the mailbox's
+boards' task tools as mailbox actions (`cancelTask_<mailbox>_<board>` and its seven siblings), each
+working only in its own mailbox's session; it is off by default, because anyone who can reach the
+mailbox can then settle or reassign its rows. An opted-in board whose action names come out the
 same as any other board's, opted in or not, such as `eng.feature`'s `work` and `eng_feature`'s `work`
-(both `…_eng_feature_work`), refuses at `channelInstances` with an error naming both; rename a channel
+(both `…_eng_feature_work`), refuses at `mailboxInstances` with an error naming both; rename a mailbox
 or a board. The list is closed and checked
-at `channelInstances`: an undeclared key, an `id:`, a `system:`, or a body alongside `instructions:`
+at `mailboxInstances`: an undeclared key, an `id:`, a `system:`, or a body alongside `instructions:`
 each refuse by name.
 
-### Declaring channels in files
+### Declaring mailboxes in files
 
-A channel can be a folder with a `CHANNEL.md` in it, the way a worker is a folder with a
-`WORKER.md`. `readChannelsDirectory` walks `<root>/teams/<teamId>/channels/<channelName>/` and
-hands back the same `ChannelManifest[]` the two calls above take.
+A mailbox can be a folder with a `MAILBOX.md` in it, the way a worker is a folder with a
+`WORKER.md`. `readMailboxesDirectory` walks `<root>/teams/<teamId>/mailboxes/<mailboxName>/` and
+hands back the same `MailboxManifest[]` the two calls above take.
 
 ```
-workforce/teams/engineering/channels/standup/CHANNEL.md
-workforce/teams/engineering/channels/incidents/CHANNEL.md
+workforce/teams/engineering/mailboxes/standup/MAILBOX.md
+workforce/teams/engineering/mailboxes/incidents/MAILBOX.md
 ```
 
 ```md
 ---
 description: Where the engineering team posts daily status.
-flow: channel
+flow: mailbox
 members: [engineering.lead, engineering.analyst]
 ---
 
@@ -1169,32 +1169,32 @@ Post what you finished, what you're on, and what's blocking you.
 ```
 
 ```ts
-import { readChannelsDirectory } from "@flow-state-dev/workforce/loader";
+import { readMailboxesDirectory } from "@flow-state-dev/workforce/loader";
 
-const { channels, errors } = await readChannelsDirectory("./workforce");
-if (errors.length) throw new Error(`workforce: ${errors.length} channel(s) failed to load`);
+const { mailboxes, errors } = await readMailboxesDirectory("./workforce");
+if (errors.length) throw new Error(`workforce: ${errors.length} mailbox(es) failed to load`);
 
-flowRegistry.registerMany(channelInstances(channels));
+flowRegistry.registerMany(mailboxInstances(mailboxes));
 ```
 
 Each record is plain data:
 
 | Field | Description |
 |-------|-------------|
-| `id` | `"<teamId>.<channelName>"`, minted from the two folder names — e.g. `"engineering.standup"`. This is the channel's session id. An `id:` in the frontmatter does not set it, and refuses. |
-| `declared` | The frontmatter exactly as written. A `CHANNEL.md` must set `description`, and cannot set `system:`; either one fails at load. The rest of what a channel may declare (`flow`, `members`, `boards`, `instructions`, `routing`) is checked when you call `channelInstances`, so a misspelled key loads without complaint and refuses at registration. |
-| `body` | The Markdown below the frontmatter — the channel's charter. |
+| `id` | `"<teamId>.<mailboxName>"`, minted from the two folder names — e.g. `"engineering.standup"`. This is the mailbox's session id. An `id:` in the frontmatter does not set it, and refuses. |
+| `declared` | The frontmatter exactly as written. A `MAILBOX.md` must set `description`, and cannot set `system:`; either one fails at load. The rest of what a mailbox may declare (`flow`, `members`, `boards`, `instructions`, `routing`) is checked when you call `mailboxInstances`, so a misspelled key loads without complaint and refuses at registration. |
+| `body` | The Markdown below the frontmatter — the mailbox's charter. |
 
-**A channel is a folder, not a file**, unlike a resource. A loose file in a `channels/` folder is
-passed over, so a `README.md` sitting beside the channel folders is fine. Team and channel folder
+**A mailbox is a folder, not a file**, unlike a resource. A loose file in a `mailboxes/` folder is
+passed over, so a `README.md` sitting beside the mailbox folders is fine. Team and mailbox folder
 names must be lowercase letters, digits and single hyphens, at most 64 characters. A team with no
-`channels/` folder is not an error: an app can declare no channels in files, or build some records
+`mailboxes/` folder is not an error: an app can declare no mailboxes in files, or build some records
 by hand and read the rest.
 
 The reader builds nothing: no instance, no session, no registry entry. A `flow:` naming a kind you
-never passed is not caught here; `channelInstances` refuses it. It throws only when `root` itself
-cannot be read or is a symlink. A folder that produces no channel lands in `errors`, keyed by its
-path, and every other channel still loads. Treat a non-empty `errors` as fatal at startup unless you
+never passed is not caught here; `mailboxInstances` refuses it. It throws only when `root` itself
+cannot be read or is a symlink. A folder that produces no mailbox lands in `errors`, keyed by its
+path, and every other mailbox still loads. Treat a non-empty `errors` as fatal at startup unless you
 have a reason to run a short roster.
 
 The subpath is separate because the reader imports `node:fs`. The package root is server-only too:
@@ -1205,72 +1205,72 @@ it reaches Node built-ins through the packages it builds on. A browser component
 
 `post` and `read` are both reachable by a client and by another flow, and a dispatched
 `post` is the same kind of line as a client `post`. Neither sets `seatAuthored`, so hearing
-members wake whether or not the payload sets `author`. A seat's `post-to-channel` tool and a
+members wake whether or not the payload sets `author`. A seat's `post-to-mailbox` tool and a
 routed answer are the lines with `seatAuthored: true`, and `wakeMemberSeats` wakes nobody for
 those. A woken seat of the built-in `agent` kind sees the writer as `author`, or as `principal`
 when there is no `author`. `read` is the same call either way. A post addresses the
-channel's **session id**:
+mailbox's **session id**:
 
 ```ts
 const postToStandup = dispatcher({
   name: "post-to-standup",
-  flowKind: "channel",                          // the shared instance
+  flowKind: "mailbox",                          // the shared instance
   action: "post",
   inputSchema: z.object({ body: z.string() }),
-  session: { id: () => "engineering.standup" }, // the channel
+  session: { id: () => "engineering.standup" }, // the mailbox
   payload: (input) => ({ body: input.body, author: "engineering.lead" }),
 });
 ```
 
 Address `{ id }`, never `{ key }`: a key-derived session resolves to a different session for every
-poster, so the channel never sees the post. Nothing detects that mistake.
+poster, so the mailbox never sees the post. Nothing detects that mistake.
 
 A flow-to-flow post works where dispatch runs in process, or where queue workers share a lease
 backend (`WorkerAdapter.leaseBackend`). On a deployment whose dispatcher hands work to an external
-queue and whose adapter supplies no shared lease backend, a post into an opened channel is refused
+queue and whose adapter supplies no shared lease backend, a post into an opened mailbox is refused
 with `external-dispatcher`. A post through the public action route is written there, but its
-notify block never runs: no member is woken and a routed channel doesn't answer.
+notify block never runs: no member is woken and a routed mailbox doesn't answer.
 
-A post into a session nobody opened refuses `channel-not-bound` and writes nothing. The shared
+A post into a session nobody opened refuses `mailbox-not-bound` and writes nothing. The shared
 instance answers for every session id and the action path creates what it does not find, so
-boundness, not existence, is what makes a session a channel.
+boundness, not existence, is what makes a session a mailbox.
 
-Each post leaves one `channel-post` item on the channel's session, and that item is the line.
-A page renders the channel from those items; `read` is for models and other flows, returns the
+Each post leaves one `mailbox-post` item on the mailbox's session, and that item is the line.
+A page renders the mailbox from those items; `read` is for models and other flows, returns the
 lines inside the session's history window, and never reaches a browser. `author` on a client
 `post` is an optional unverified label, stored with `authorVerified: false`. A name that is not a
 declared member is refused (`author-not-a-member`) and nothing is written. It does not decide who
-`wakeMemberSeats` wakes. `principal` is the channel session's user, the same on every line.
+`wakeMemberSeats` wakes. `principal` is the mailbox session's user, the same on every line.
 
 ### Holding a board
 
-`boards:` declares durable task ledgers the channel keeps, as a list of plain local names:
+`boards:` declares durable task ledgers the mailbox keeps, as a list of plain local names:
 
 ```yaml
 members: [engineering.lead, engineering.analyst]
 boards: [followups]
 ```
 
-The ledger id is minted from the channel that holds it — `engineering.incidents` holding
+The ledger id is minted from the mailbox that holds it — `engineering.incidents` holding
 `followups` is `engineering.incidents.followups` — and no record writes it. A board name is a plain
 local name: not empty, no whitespace, none of `.` `/` `*` `[` `]`, and not `__proto__`, `prototype`
 or `constructor`, and not `lock`, in any case. The dot is the one that matters, since it is the join
-and a name carrying one would address another channel's board. `lock` is reserved because it would
+and a name carrying one would address another mailbox's board. `lock` is reserved because it would
 mint an id ending in `.lock`, which a git branch can't carry, so a coding run could never work that
 board.
 
-A channel holding one or more boards declares two more actions, `fileTask` and `readBoard`,
+A mailbox holding one or more boards declares two more actions, `fileTask` and `readBoard`,
 reachable by a client and by another flow. Unlike `post`, each is the same block either way. Both
 take the board's **local** name; `fileTask` hands back
 `{ board, boardId, taskId, status }`, and the row's id is minted rather than chosen. Naming a board
-the channel does not hold refuses `board-not-declared` and lists what it does hold; naming another
-channel's board refuses the same way. `read` gains a `boards` key listing the local names; a channel
+the mailbox does not hold refuses `board-not-declared` and lists what it does hold; naming another
+mailbox's board refuses the same way. `read` gains a `boards` key listing the local names; a mailbox
 holding none omits it and declares neither action.
 
 `readBoard` returns a declared projection of each row, not the whole record: the board's own facts,
 without the claim's execution coordinates (`claimedBy`, the lease) or the substrate's write
 provenance. The one coordinate it does carry is `run`, the handed-off run working the task, so a
-reader can open that run. `channelBoardRowSchema` is that shape.
+reader can open that run. `mailboxBoardRowSchema` is that shape.
 
 A board's ledger is readable directly by a browser, which is what lets a UI draw the board as
 columns without going through an action. The ledger is org-scoped, so that read resolves against the
@@ -1278,32 +1278,32 @@ organization the reading session belongs to. What crosses is `id`, `title`, `goa
 `assignee`, `run`, `priority`, `attempts`, `maxAttempts`, `deps`, `labels`, `error`, `createdAt`,
 `updatedAt`, `startedAt` and `completedAt`.
 
-The channel owns the ledger and runs nothing. A seat that claims rows resolves the same declaration
-with `channelBoard`, declares it as a resource, and drains it:
+The mailbox owns the ledger and runs nothing. A seat that claims rows resolves the same declaration
+with `mailboxBoard`, declares it as a resource, and drains it:
 
 ```ts
-import { channelBoard } from "@flow-state-dev/workforce";
+import { mailboxBoard } from "@flow-state-dev/workforce";
 
-const followups = channelBoard("engineering.incidents", "followups");
+const followups = mailboxBoard("engineering.incidents", "followups");
 const board = taskBoard({ name: "followups", collection: followups, workers });
 
 defineFlow({
   kind: "analyst",
   // A seat that only drains declares the ledger itself. A seat that composes
-  // `channelBoardTaskTools(followups)` does not — the capability declares it.
+  // `mailboxBoardTaskTools(followups)` does not — the capability declares it.
   resources: { [followups.id]: followups },
   actions: { drain: { block: board.drain } },
 });
 ```
 
-`channelBoard` returns the same ledger the channel writes to, carrying its `id`, so the two sides
+`mailboxBoard` returns the same ledger the mailbox writes to, carrying its `id`, so the two sides
 agree on both the rows and the board's settings.
 
-The channel's id and the board's name are retyped at that call and nothing checks them against the
+The mailbox's id and the board's name are retyped at that call and nothing checks them against the
 tree. A typo does not fail: it resolves a second, empty ledger, and the only signal is the
 unattended-board warning below.
 
-`channelBoardTaskTools(board)` is the model's door onto one. Compose it in the seat kind's `uses`
+`mailboxBoardTaskTools(board)` is the model's door onto one. Compose it in the seat kind's `uses`
 and the seat holds all eight task tools over that board, each name carrying the board's id —
 `addTask_engineering_incidents_followups` and so on for `assignTask`, `updateTask`, `listTasks`,
 `completeTask`, `failTask`, `blockTask` and `cancelTask`. Composing the capability also declares the
@@ -1311,21 +1311,21 @@ ledger, so the seat's flow does not declare it again. A seat's `tools:` list can
 nor fence them out. A narrower set is a different capability.
 
 Compose it once per board; a seat holding two boards holds sixteen tools and the names say which
-board each writes to. A channel board is org-scoped, so it cannot be declared by a block colocated
+board each writes to. A mailbox board is org-scoped, so it cannot be declared by a block colocated
 in a seat's own folder; that refuses at hire.
 
-Pass `hireWorkforce` the roster's minted ids as `channelBoards` and it warns on stderr for any board
-no hired seat declares, naming the channel and the board. It never refuses: a channel may keep a
+Pass `hireWorkforce` the roster's minted ids as `mailboxBoards` and it warns on stderr for any board
+no hired seat declares, naming the mailbox and the board. It never refuses: a mailbox may keep a
 board that only people read.
 
-Renaming or moving a channel's folder re-keys its boards, because a board id is derived from where
-the channel sits. Rows filed under the old id stay at the old key, nothing migrates them and nothing
+Renaming or moving a mailbox's folder re-keys its boards, because a board id is derived from where
+the mailbox sits. Rows filed under the old id stay at the old key, nothing migrates them and nothing
 refuses. The unattended-board warning is what makes it visible, since the seat still names the id
 that moved.
 
 ### What a transcript proves
 
-A session is bound to one user, so **every line of a given channel carries the same `principal`**,
+A session is bound to one user, so **every line of a given mailbox carries the same `principal`**,
 the server-derived identity the post ran under. It does not name the poster. The optional `author`
 is an unverified label, stored beside `authorVerified: false`, and `authorVerified` is always
 `false`. There is no verified per-participant identity on a line. The members check on `author` is
@@ -1335,10 +1335,10 @@ or approval flow on these fields and you get a far weaker guarantee than the nam
 
 ### Waking members
 
-`defineChannelFlow({ notify })` takes a block run once per declared member per post. The roster it
+`defineMailboxFlow({ notify })` takes a block run once per declared member per post. The roster it
 walks is the whole declared list, the poster included. A block that should skip a seat's own post
 reads `input.seatAuthored === true`. Comparing `author` to `member` only skips a delivery when the
-caller claimed that name. `author` is an unverified claim. `principal` is the channel session's
+caller claimed that name. `author` is an unverified claim. `principal` is the mailbox session's
 user and is the same on every line, so it does not name the poster.
 The delivery runs in its own request, outside the post's turn, so a slow delivery never delays the next post. A delivery that
 fails is recorded; the post stays written and membership is unchanged. Without a slot, posts land and
@@ -1347,25 +1347,25 @@ nobody is woken.
 The framework carries the policy and your app supplies the addresses: the framework will not pick a
 dispatch target out of stored data, so a notify block declares its own recipients.
 
-`wakeMemberSeats(seats, { fallback? })` is the notify block for `defineChannelFlow({ notify })`.
-It wakes each member whose hired seat declares the internal `onChannelPost` entry, once per post,
-in one conversation per seat per channel. A seat's line (`seatAuthored: true`) wakes nobody. A
+`wakeMemberSeats(seats, { fallback? })` is the notify block for `defineMailboxFlow({ notify })`.
+It wakes each member whose hired seat declares the internal `onMailboxPost` entry, once per post,
+in one conversation per seat per mailbox. A seat's line (`seatAuthored: true`) wakes nobody. A
 client `post` wakes each hearing member whether or not it sets `author`. Members whose seat can't
 hear a post get `fallback`, or nothing, including on a seat's line. The fallback is not sent to a
 member who would have been woken. Pass the seats
-`hireWorkforce` returned, and hire before you build channels. The built-in `agent` kind declares
-`onChannelPost`; a kind of your own hears posts by declaring it too. See the channels guide,
+`hireWorkforce` returned, and hire before you build mailboxes. The built-in `agent` kind declares
+`onMailboxPost`; a kind of your own hears posts by declaring it too. See the mailboxes guide,
 "Waking agent seats".
 
-### Routing a channel
+### Routing a mailbox
 
-A channel whose file declares `routing:` with a `fallback:` member sends each client `post` to one
+A mailbox whose file declares `routing:` with a `fallback:` member sends each client `post` to one
 member instead of waking them all, including a post that sets `author`. A seat's line
 (`seatAuthored: true`) is not routed, and `wakeMemberSeats` wakes nobody for it. Build the kind
 with a route:
 
 ```ts
-defineChannelFlow({
+defineMailboxFlow({
   notify: wakeMemberSeats(seats),
   route: routeByPurpose(seats, { model: "typesafe-ai/jev" }),
 });
@@ -1374,32 +1374,32 @@ defineChannelFlow({
 `routeByPurpose(seats, { model })` places each client `post` in this order: the member the last
 client `post` was routed to by the evaluator or the fallback, until it answers (a post held this way holds
 nothing, and neither does one whose route isn't recorded yet); else one evaluator call (block name
-`channel-route`) choosing among the members whose seat hears posts and has a description, each
+`mailbox-route`) choosing among the members whose seat hears posts and has a description, each
 described by its `WORKER.md` `description:`; else the `fallback:` member, when that call fails or
 answers outside the options, or when no member has a description and there is no call. A seat hired
 at runtime has no description, since `hire` takes none, so it gets a post only as the fallback, or
 as the next post held for it after that. The model must be able to evaluate. Only the chosen member
-is notified, with `routed: true` and `recent` (the channel's last 20 lines) on its delivery, and
-each decision is kept as one `channel-route` item on the channel's session, never as a line. The
+is notified, with `routed: true` and `recent` (the mailbox's last 20 lines) on its delivery, and
+each decision is kept as one `mailbox-route` item on the mailbox's session, never as a line. The
 two fallbacks differ: `routing: fallback:` names a member who takes a post the route can't place,
 while `wakeMemberSeats`'s `fallback` is a block run for members whose seat can't hear a post, and a
-routed post never reaches it. A channel without the line is not routed, even on a routed kind: its
-notify block runs for every member. `channelInstances` refuses a `routing:` on a kind built without
+routed post never reaches it. A mailbox without the line is not routed, even on a routed kind: its
+notify block runs for every member. `mailboxInstances` refuses a `routing:` on a kind built without
 a route, and a fallback that isn't a member with a seat the route can reach.
 
-Every channel on a kind built with a route (`defineChannelFlow({ route })`) keeps its last 20 lines,
-and the person's last post with where it went, in its session state under `channelRouteLedger`,
-whether or not its `CHANNEL.md` declares `routing:`. Each post updates it. So neither the lines a
-routed member sees nor the hold is limited by the session's history window. The exception is the first post after a channel's kind gains a route: its first post on a kind built with one, or its first after the channel was posted to while the app ran its kind without a route. That post is never held, and its member sees only the earlier
+Every mailbox on a kind built with a route (`defineMailboxFlow({ route })`) keeps its last 20 lines,
+and the person's last post with where it went, in its session state under `mailboxRouteLedger`,
+whether or not its `MAILBOX.md` declares `routing:`. Each post updates it. So neither the lines a
+routed member sees nor the hold is limited by the session's history window. The exception is the first post after a mailbox's kind gains a route: its first post on a kind built with one, or its first after the mailbox was posted to while the app ran its kind without a route. That post is never held, and its member sees only the earlier
 lines still inside the history window, which can be fewer than 20. Removing `routing:` from a
-channel's file and restoring it loses no lines. A client `post` made while it was removed holds
-nothing, so the next routed post after it is placed by the evaluator or the fallback. A channel on a
+mailbox's file and restoring it loses no lines. A client `post` made while it was removed holds
+nothing, so the next routed post after it is placed by the evaluator or the fallback. A mailbox on a
 kind built without a route keeps no record.
 
 Cancelling a routed post's fan-out (the request that picks the member and wakes it) may not stop the
-answer. If it is cancelled before the route is recorded in `channelRouteLedger`, nobody is woken, the
+answer. If it is cancelled before the route is recorded in `mailboxRouteLedger`, nobody is woken, the
 `fallback:` member included. If the route was already recorded there, the chosen member is woken and
-answers, though the fan-out ends `aborted`. After a cancel, a `channel-route` item can name a member
+answers, though the fan-out ends `aborted`. After a cancel, a `mailbox-route` item can name a member
 who was never woken.
 
 Routing works where dispatch runs in process, or where queue workers share a lease backend
@@ -1410,35 +1410,50 @@ picked or woken and nothing answers.
 ### Registering your own kind
 
 The escape hatch, not a setup step. Reach for it when the workflow graph genuinely diverges. A
-standup, a DM and an announce channel are all channels on the one built-in kind, differentiated by
+standup, a DM and an announce mailbox are all mailboxes on the one built-in kind, differentiated by
 members and charter.
 
 ```ts
 // A kind of your own, alongside the built-in.
-channelInstances(channels, { kinds: { "my-channel": defineMyChannelFlow() } });
+mailboxInstances(mailboxes, { kinds: { "my-mailbox": defineMyMailboxFlow() } });
 
 // Or replace the built-in wholesale, keeping the standard behaviour with your own notify block.
-channelInstances(channels, { kinds: { channel: defineChannelFlow({ notify }) } });
+mailboxInstances(mailboxes, { kinds: { mailbox: defineMailboxFlow({ notify }) } });
 ```
 
 Your factory carries the same contract the built-in does: `cardinality: "singleton"`, so
 `flow.id === flow.kind`. A `flow:` naming a kind you did not pass refuses by name and never falls
 back to the built-in. The `kinds` map is the whole registration surface; there is no second API.
 
-### What channels do not do yet
+### What mailboxes do not do yet
 
 No join or leave verb, no delete or retirement, and no summary pass over a long transcript.
-Membership is the declared list and nothing else writes it, so changing who is in a channel means
-editing the record and opening a fresh channel. Re-running `openChannels` over an open channel
+Membership is the declared list and nothing else writes it, so changing who is in a mailbox means
+editing the record and opening a fresh mailbox. Re-running `openMailboxes` over an open mailbox
 finds it bound and leaves its session alone, so the three settings written at create — `members:`,
 the charter (a body or `instructions:`) and `description:` — keep whatever they were opened with.
 `flow:` is settled at create too, since it picks the session's kind. Re-opening is not a migration.
 
 `boards:` is the one that does reach: the board list is built onto the kind from the roster on
-every bind and is never stored on the session, so adding a board to an open channel's file makes it
+every bind and is never stored on the session, so adding a board to an open mailbox's file makes it
 usable the next time you run.
-It does repair a channel whose id was claimed before it was opened — a post that arrives first
+It does repair a mailbox whose id was claimed before it was opened — a post that arrives first
 leaves an empty session there, and re-running binds it.
+
+### Upgrading from channels
+
+Mailboxes used to be called channels, everywhere, and the old names are not read.
+
+- **Files.** Rename `teams/<team>/channels/<name>/CHANNEL.md` to `teams/<team>/mailboxes/<name>/MAILBOX.md`,
+  and `workforce/flows/channels/` to `workforce/flows/mailboxes/`. A tree that still has the old
+  names reports an error for each one, and `fsdev gen` refuses to run. Neither is skipped.
+- **Code.** Every `channel` export has a `mailbox` name: `channelFlow` is `mailboxFlow`,
+  `openChannels` is `openMailboxes`, `ChannelManifest` is `MailboxManifest`. A transcript line is a
+  `mailbox-post` item.
+- **Stored data.** A store written before the rename does not open: `openMailboxes` stops on a
+  session of the old kind, and `findPreRenameMarks` finds the rest for a host's boot check. Start
+  from an empty store. Old conversations, and the inventory rows that listed old channels, are not
+  carried over.
 
 ## Hiring at runtime, and reloading at boot
 
@@ -1547,7 +1562,7 @@ import {
 import type { FlowInstance } from "@flow-state-dev/core";
 
 const kinds: NonNullable<HireOptions["kinds"]> = {};
-const roster = { workers: [], channels: [] };
+const roster = { workers: [], mailboxes: [] };
 const held = new Map<string, FlowInstance>();
 const live = {
   register: (seat: FlowInstance, _pin: { orgId: string; userId?: string }) => {
@@ -1589,7 +1604,7 @@ the factory runs is hireable.
 | `kindAt?(id)` | Kind serving an address right now. Hire uses it to refuse a second hire of a live seat, and a seat id a file-declared seat answers on. Fire uses it to refuse a file-declared seat. Omit it and a duplicate seat is still refused. |
 | `allowKinds?` | Subset of kinds this tool may mint. |
 | `refuseRosterAdmin?` | When `true`, `hire` and `rehire` refuse settings that would give the new seat the roster tools: `hire`, `fire`, `rehire` or `brokenSeats` in `tools:`, or the `seat-hire` capability under `capabilities:`. Default `false`. |
-| `channelBoards?` | Ledger ids forwarded so an unattended board warns. Hire does not attach boards. |
+| `mailboxBoards?` | Ledger ids forwarded so an unattended board warns. Hire does not attach boards. |
 | `askBefore?` | `"hire"` and/or `"fire"`: those tools wait for a person's approval before they change anything. `rehire` always waits. Omitted, `hire` and `fire` act at once. Any other entry throws when the capability is built. |
 
 **`hire`** takes `{ seatId, flow, settings?, instructions?, orgId? }` (extra keys are refused)
@@ -1597,11 +1612,16 @@ and returns `{ seatId, address, warning? }`. `address` is `<orgId>.<seatId>`.
 
 A successful hire leaves a roster row and an inventory row. A thrown `register` leaves neither.
 A duplicate seat is refused. It does not invent a kind. It does not attach boards. `warning`
-is present when a named channel board is unattended.
+is present when a named mailbox board is unattended.
 
 It refuses an unknown kind or one outside `allowKinds` (and lists the hireable ones), an
 address already served, a seat id a file-declared seat answers on, an address a declared
 seat's inventory row sits at (`hired: false`), and a request with no organization.
+
+It also refuses when the kind's settings schema refuses the seat, before anything is written, with
+`"<address>" was not hired, and nothing was written. Kind "<kind>" refused it: <the schema's message>`
+and a last line, ``If that names a setting, call hire again with it in `settings`.`` A model calling
+the tool gets this as the tool's result and can call again with the setting.
 
 **`fire`** takes `{ seatId, owner?, orgId? }` (extra keys are refused) and returns
 `{ seatId, address, released, alreadyGone? }`. It deletes the roster row, unregisters the
@@ -1719,15 +1739,15 @@ there lands under `%5F%5Ffsd%5Fdefault%5Forg%5F%5F.<seatId>` and reloads at the 
 other. Configure a `resolvePrincipal` that returns an `orgId` on the flow that mounts these to hire
 into a real organization.
 
-### Posting to a channel from a seat
+### Posting to a mailbox from a seat
 
-`channelPostCapability` puts one tool, `post-to-channel`, on a worker kind's catalog. Install it
-with `defineAgentWorkerFlow({ uses: [channelPostCapability] })`, and a seat names the tool in
-`tools:` to use it. Its input is `{ channel, body }` and nothing else, so an `author` from the
+`mailboxPostCapability` puts one tool, `post-to-mailbox`, on a worker kind's catalog. Install it
+with `defineAgentWorkerFlow({ uses: [mailboxPostCapability] })`, and a seat names the tool in
+`tools:` to use it. Its input is `{ mailbox, body }` and nothing else, so an `author` from the
 model is refused.
 
-Outside a routed turn (below), the tool posts through the built-in channel kind with the seat's
-`seatId` (its record id, as `members:` lists it) as `author`, so the channel's member check applies.
+Outside a routed turn (below), the tool posts through the built-in mailbox kind with the seat's
+`seatId` (its record id, as `members:` lists it) as `author`, so the mailbox's member check applies.
 The line has `seatAuthored: true`, so `wakeMemberSeats` wakes nobody for it. A client `post` that
 sets `author` to the same seat id wakes hearing members. `hireWorkforce`
 writes `seatId` on every
@@ -1736,57 +1756,57 @@ the built-in `agent` kind is refused when its flow is built, whether or not it n
 seat of any other kind carrying the capability is refused when a turn would offer the tool, before
 the model is called. Either way it posts nothing.
 
-The tool returns once the post is handed to the channel, as `{ handedTo, note }`. A refusal by the
-channel, such as an author who is not a member, lands on the channel's request, not in the seat's
+The tool returns once the post is handed to the mailbox, as `{ handedTo, note }`. A refusal by the
+mailbox, such as an author who is not a member, lands on the mailbox's request, not in the seat's
 turn. A refusal at dispatch fails the call by name: `session-not-found` for an id nobody opened,
-`session-not-addressable` for a session on another channel kind, and `external-dispatcher` behind
+`session-not-addressable` for a session on another mailbox kind, and `external-dispatcher` behind
 a dispatcher that hands work to an external queue without a shared lease backend. The tool works
 only where dispatch runs in process or is arbitrated over a shared lease backend.
 
-In a routed channel, a routed member of the built-in `agent` kind has a non-empty reply handed to
-the channel as its answer, whether or not it calls the tool. A tool call into that channel during
+In a routed mailbox, a routed member of the built-in `agent` kind has a non-empty reply handed to
+the mailbox as its answer, whether or not it calls the tool. A tool call into that mailbox during
 the turn is handed over as the answer first, and the reply lands only if the tool's answer didn't,
-for instance because the channel failed to write it. A second tool call there posts nothing and
-tells the model its answer was already handed to the channel. A call into any other channel during
+for instance because the mailbox failed to write it. A second tool call there posts nothing and
+tells the model its answer was already handed to the mailbox. A call into any other mailbox during
 that turn goes through `seatPost`. An empty reply posts nothing, and fails the run unless the tool
 handed an answer over in that turn.
 
-The reply and the tool's answer both land through an internal entry of the channel kind, one only a
+The reply and the tool's answer both land through an internal entry of the mailbox kind, one only a
 dispatch can reach, never a client. It applies `post`'s member check and the same `seatId` author,
 and the line has `seatAuthored: true`.
 Each post gets at most one answer line. Once one lands, any other answer to that post lands
-nothing, even one sent at the same moment. An answer the channel refuses writes nothing and doesn't
-use up the post's one answer line; the refusal is a failed request on the channel's session. A kind
-of your own receives `routed: true` and `recent` (the channel's last 20 lines) and has nothing
+nothing, even one sent at the same moment. An answer the mailbox refuses writes nothing and doesn't
+use up the post's one answer line; the refusal is a failed request on the mailbox's session. A kind
+of your own receives `routed: true` and `recent` (the mailbox's last 20 lines) and has nothing
 posted for it.
 
-Also exported: `CHANNEL_POST_CAPABILITY` (`"channel-post"`), `POST_TO_CHANNEL_TOOL`
-(`"post-to-channel"`) and `postToChannelInputSchema`.
+Also exported: `MAILBOX_POST_CAPABILITY` (`"mailbox-post"`), `POST_TO_MAILBOX_TOOL`
+(`"post-to-mailbox"`) and `postToMailboxInputSchema`.
 
 ## The inventory
 
-The tree tells you what a workforce is meant to be. A `WORKER.md` declares a seat, a `CHANNEL.md`
-declares a channel, and both are read once at boot. Neither can tell a block which seats and channels
-were actually registered in an organization, or which channels a given seat is in, and a block cannot
+The tree tells you what a workforce is meant to be. A `WORKER.md` declares a seat, a `MAILBOX.md`
+declares a mailbox, and both are read once at boot. Neither can tell a block which seats and mailboxes
+were actually registered in an organization, or which mailboxes a given seat is in, and a block cannot
 walk folders to find out.
 
 The inventory keeps that record as data: three org-scoped resource collections, one row per
-registered seat, one row per registered channel, and one row per seat-in-channel. They are ordinary
+registered seat, one row per registered mailbox, and one row per seat-in-mailbox. They are ordinary
 collections, so a block reads them the way it reads any other resource.
 
-**A row means registered, not open.** It records that a seat or channel was registered in this
-organization, not that the seat is working or the channel is open now. Nothing deletes a row for
+**A row means registered, not open.** It records that a seat or mailbox was registered in this
+organization, not that the seat is working or the mailbox is open now. Nothing deletes a row for
 going missing. A runtime-hired seat's row is removed when it is fired, and only the row its own
-hire published (it carries that hire's `incarnation`). When a `CHANNEL.md` becomes a project talk
-template (`mintFor: projects`), the next `openInventory` removes its channel row and membership
-rows, and discovery never lists a template as a channel. A channel's `members` are the ones it had
+hire published (it carries that hire's `incarnation`). When a `MAILBOX.md` becomes a project talk
+template (`mintFor: projects`), the next `openInventory` removes its mailbox row and membership
+rows, and discovery never lists a template as a mailbox. A mailbox's `members` are the ones it had
 when it registered.
 
 | Factory | One row per | Fields |
 |---------|-------------|--------|
 | `defineSeatInventoryCollection()` | registered seat, at `inventory/seats/<seatId>` | `id`, `kind` (the worker kind the seat was hired into), `door` (the action that takes a person's message, or `null`), `hired` (`true` for a seat hired at runtime, `false` for a declared one, `null` on a row written before the field), `incarnation` (the hire or repair that published it; `null` on a declared seat's row and an older row) |
-| `defineChannelInventoryCollection()` | registered channel, at `inventory/channels/<channelId>` | `id`, `kind` (the channel kind that opened it), `members` (seat ids, `[]` when absent), `openedAt` (ISO string, or `null` when absent) |
-| `defineMembershipIndexCollection()` | seat-in-channel, at `inventory/members/<seatId>/<channelId>` | `seatId`, `channelId` |
+| `defineMailboxInventoryCollection()` | registered mailbox, at `inventory/mailboxes/<mailboxId>` | `id`, `kind` (the mailbox kind that opened it), `members` (seat ids, `[]` when absent), `openedAt` (ISO string, or `null` when absent) |
+| `defineMembershipIndexCollection()` | seat-in-mailbox, at `inventory/members/<seatId>/<mailboxId>` | `seatId`, `mailboxId` |
 
 All three are readable by a browser through the ordinary collection read
 (`listCollectionItems` from `@flow-state-dev/client`), from any session whose flow declares them.
@@ -1795,95 +1815,95 @@ own organization, which the server takes from the session, never from the reques
 
 ### Writing the inventory at boot
 
-The rows are written by `openInventory`, which runs after `openChannels`:
+The rows are written by `openInventory`, which runs after `openMailboxes`:
 
 ```ts
 import {
-  channelInstances,
+  mailboxInstances,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   openInventory,
 } from "@flow-state-dev/workforce";
 
 const seats = hireWorkforce(roster.workers);
-const instances = channelInstances(roster.channels, { inventory: true });
+const instances = mailboxInstances(roster.mailboxes, { inventory: true });
 
 flowRegistry.registerMany([...seats, ...instances]);
 // server starts here
 
-await openChannels(roster.channels, { client, userId: "u_boot" });
+await openMailboxes(roster.mailboxes, { client, userId: "u_boot" });
 
 await openInventory(
-  { seats, channels: roster.channels },
+  { seats, mailboxes: roster.mailboxes },
   {
     run,
-    seatWriter: { flowKind: "channel" },
+    seatWriter: { flowKind: "mailbox" },
     userId: "u_boot",
     orgId: "org_acme",
   }
 );
 ```
 
-The writer needs both halves. `channelInstances(roster.channels, { inventory: true })` builds the
-built-in channel kind carrying the registration actions and the three collections.
-`openInventory(...)` runs those actions: once per channel, once for all seats.
+The writer needs both halves. `mailboxInstances(roster.mailboxes, { inventory: true })` builds the
+built-in mailbox kind carrying the registration actions and the three collections.
+`openInventory(...)` runs those actions: once per mailbox, once for all seats.
 
-Leave both out and channels work without an inventory. Nothing is declared, nothing is written.
+Leave both out and mailboxes work without an inventory. Nothing is declared, nothing is written.
 
 **What `openInventory` writes:**
 
 - One row per seat at `inventory/seats/<seatId>`, carrying `{ id, kind, door }`.
-- One row per channel at `inventory/channels/<channelId>`, carrying `{ id, kind, members, openedAt }`.
-- One row per member per channel at `inventory/members/<seatId>/<channelId>`.
+- One row per mailbox at `inventory/mailboxes/<mailboxId>`, carrying `{ id, kind, members, openedAt }`.
+- One row per member per mailbox at `inventory/members/<seatId>/<mailboxId>`.
 
 **The `run` callback.** `run` is the callback your app hands `openInventory` to run an action: it
 takes the request `openInventory` builds, runs it through your runtime, and rejects when the action
 fails. A `run` callback that hands back a
-failed run as an ordinary value reports every channel registered while writing nothing. **It must
+failed run as an ordinary value reports every mailbox registered while writing nothing. **It must
 also forward `request.source` into `runAction`'s own `source` option**
 (`runAction({ ..., source: request.source })`). The seat write's request carries
 `source: "internal"`, and it runs only when that value arrives. A `run` callback that drops `source` makes
 the seat write fail, and `problems` names it.
 
 **Where the seat rows go.** Seat rows need a flow to run in, because a resource collection can only
-be written from inside a flow. `seatWriter: { flowKind: "channel" }` names the built-in, which
+be written from inside a flow. `seatWriter: { flowKind: "mailbox" }` names the built-in, which
 carries the writer when built with `inventory: true`. Any flow carrying the writer actions will do
-(see [Custom channel kinds](#custom-channel-kinds)).
+(see [Custom mailbox kinds](#custom-mailbox-kinds)).
 
-**`registerSeatsInInventory` is a boot-only action.** Channel registration takes no input and
-builds its row from the channel's own open session, so it is safe as a public action. The seat
+**`registerSeatsInInventory` is a boot-only action.** Mailbox registration takes no input and
+builds its row from the mailbox's own open session, so it is safe as a public action. The seat
 write's whole input is the row data, so it lives only in the flow's `internal.actions` map. An HTTP
 or MCP request never reaches that map; the only way in is the direct
 `runAction({ source: "internal", ... })` call `openInventory` makes. A kind of your own makes the
-same split: see [Custom channel kinds](#custom-channel-kinds).
+same split: see [Custom mailbox kinds](#custom-mailbox-kinds).
 
-**What the channel rows hold.** `members` is the seat ids the channel's session held when it
-registered, read by the channel itself. An edit to `members:` in a `CHANNEL.md` does not reach a channel that is already
+**What the mailbox rows hold.** `members` is the seat ids the mailbox's session held when it
+registered, read by the mailbox itself. An edit to `members:` in a `MAILBOX.md` does not reach a mailbox that is already
 open, so it does not reach the row either. The `post` and `fileTask` blocks check membership against
-the channel's session state, not the inventory; the row is a copy for finding things, not the check.
+the mailbox's session state, not the inventory; the row is a copy for finding things, not the check.
 
 **Running it twice.** Every write is an upsert keyed by the record's id. Nothing duplicates, and a
-channel registered on an earlier boot keeps its original `openedAt`. A row stays where it is when a
-later roster no longer names the seat or channel. Seat rows are the exception to the upsert: the
+mailbox registered on an earlier boot keeps its original `openedAt`. A row stays where it is when a
+later roster no longer names the seat or mailbox. Seat rows are the exception to the upsert: the
 roster a boot read can be older than the store, so the boot creates a seat's row only where there was
 none when it read the inventory, and otherwise replaces it only while the stored row is the same kind
 of seat — a declared row for a declared seat, and for a hired seat a hired row carrying the same
 incarnation. A runtime hire's row is never replaced by another hire's or a declared seat's, and a row
 a fire removed after the boot read it is not written back.
 
-**What lands in `problems`.** `openInventory` returns `{ seats, channels, problems }`. `seats` counts
+**What lands in `problems`.** `openInventory` returns `{ seats, mailboxes, problems }`. `seats` counts
 the seat rows that landed, as the seat action reports it when `run` returns the action's output (or a
-run result carrying it as `output`); a row the boot left for a newer hire isn't counted. A channel
+run result carrying it as `output`); a row the boot left for a newer hire isn't counted. A mailbox
 whose session is not open, or whose kind declares no registration action, is named in `problems` and
 the rest of the roster is still attempted.
 
-### Custom channel kinds
+### Custom mailbox kinds
 
-A channel kind you wrote yourself gets rows when it carries the blocks
-`inventoryWriterActions(kind)` returns. Put `registerChannelInInventory` in `actions`, and
-`registerSeatsInInventory` and `retireChannelsInInventory` in `internal.actions`; do not spread the
+A mailbox kind you wrote yourself gets rows when it carries the blocks
+`inventoryWriterActions(kind)` returns. Put `registerMailboxInInventory` in `actions`, and
+`registerSeatsInInventory` and `retireMailboxesInInventory` in `internal.actions`; do not spread the
 whole return into `actions`. The string you pass is the value that appears as `kind` on that
-channel's rows.
+mailbox's rows.
 
 ```ts
 const writer = inventoryWriterActions("briefing");
@@ -1891,18 +1911,18 @@ const writer = inventoryWriterActions("briefing");
 defineFlow({
   kind: "briefing",
   cardinality: "singleton",
-  session: { stateSchema: channelSessionStateSchema },
-  actions: { ...myActions, registerChannelInInventory: writer.registerChannelInInventory },
+  session: { stateSchema: mailboxSessionStateSchema },
+  actions: { ...myActions, registerMailboxInInventory: writer.registerMailboxInInventory },
   internal: {
     actions: {
       registerSeatsInInventory: writer.registerSeatsInInventory,
-      retireChannelsInInventory: writer.retireChannelsInInventory,
+      retireMailboxesInInventory: writer.retireMailboxesInInventory,
     },
   },
 });
 ```
 
-A kind passed under `channelInstances`'s `kinds` option is yours to build. The `inventory: true`
+A kind passed under `mailboxInstances`'s `kinds` option is yours to build. The `inventory: true`
 flag reaches the built-in only.
 
 ### Reading the inventory
@@ -1911,7 +1931,7 @@ Each factory takes no options. Install what it returns under any block's `resour
 
 ```ts
 import {
-  defineChannelInventoryCollection,
+  defineMailboxInventoryCollection,
   defineMembershipIndexCollection,
   defineSeatInventoryCollection,
   membershipPrefix,
@@ -1920,17 +1940,17 @@ import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 
 const seats = defineSeatInventoryCollection();
-const channels = defineChannelInventoryCollection();
+const mailboxes = defineMailboxInventoryCollection();
 const memberships = defineMembershipIndexCollection();
 
-const seatChannels = handler({
-  name: "seat-channels",
+const seatMailboxes = handler({
+  name: "seat-mailboxes",
   inputSchema: z.object({ seatId: z.string() }),
-  outputSchema: z.object({ channelIds: z.array(z.string()) }),
+  outputSchema: z.object({ mailboxIds: z.array(z.string()) }),
   resources: { memberships },
   execute: async (input, ctx) => {
     const rows = await ctx.resources.memberships.list(membershipPrefix(input.seatId));
-    return { channelIds: rows.map((row) => row.state.channelId) };
+    return { mailboxIds: rows.map((row) => row.state.mailboxId) };
   },
 });
 ```
@@ -1942,8 +1962,8 @@ builds; the next section covers it.
 
 A row joins back to the declared record on the id and nothing else. The `id` on a seat row is the
 id `discover` looks up: the `WORKER.md` folder's id for a file-declared seat, or `<orgId>.<seatId>`
-for a seat written by `hire`. The `id` on a channel row is the `"<teamId>.<channelName>"` that is
-also the channel's session id.
+for a seat written by `hire`. The `id` on a mailbox row is the `"<teamId>.<mailboxName>"` that is
+also the mailbox's session id.
 
 The rows are org-scoped and shared across flows. Every flow running under the same `orgId` reads the
 same rows, whichever flow wrote them and whichever
@@ -1954,26 +1974,26 @@ sets [`isolateOrgState`](https://flow-state.dev/docs/advanced/flow-isolation).
 Each row schema is closed, so a key it does not declare is dropped on the way in rather than stored.
 `id` and `kind` are required and the schema rejects a row without them. `members` and `openedAt` are
 optional, and a row without them parses. The schemas ship as `seatInventoryRowSchema`,
-`channelInventoryRowSchema` and `membershipIndexRowSchema` alongside the row types, for checking what
+`mailboxInventoryRowSchema` and `membershipIndexRowSchema` alongside the row types, for checking what
 you are about to write.
 
-### Listing one seat's channels
+### Listing one seat's mailboxes
 
-The channel inventory answers who is in a channel. The membership index answers the reverse: one row
-per membership, keyed seat first, so a seat's channels are something you can list by prefix.
+The mailbox inventory answers who is in a mailbox. The membership index answers the reverse: one row
+per membership, keyed seat first, so a seat's mailboxes are something you can list by prefix.
 `membershipKey` builds the key for a single row; `membershipPrefix` builds the prefix for the list.
 
 ```ts
 import { membershipPrefix } from "@flow-state-dev/workforce";
 
-const seatChannels = handler({
-  name: "seat-channels",
+const seatMailboxes = handler({
+  name: "seat-mailboxes",
   inputSchema: z.object({ seatId: z.string() }),
-  outputSchema: z.object({ channelIds: z.array(z.string()) }),
+  outputSchema: z.object({ mailboxIds: z.array(z.string()) }),
   resources: { memberships },
   execute: async (input, ctx) => {
     const rows = await ctx.resources.memberships.list(membershipPrefix(input.seatId));
-    return { channelIds: rows.map((row) => row.state.channelId) };
+    return { mailboxIds: rows.map((row) => row.state.mailboxId) };
   },
 });
 ```
@@ -1983,9 +2003,9 @@ Both helpers return keys relative to the collection's prefix, which is what `ups
 `"engineering.lead/engineering.standup"`, and `membershipPrefix("engineering.lead")` is
 `"engineering.lead/"`. That trailing slash is the reason to use the helper rather than build the
 string yourself: without it, `"engineering.lead"` also matches `"engineering.leadership"`, and one
-seat reads another seat's channels.
+seat reads another seat's mailboxes.
 
-**Listing a seat's channels reads every membership row.** `list(membershipPrefix(seatId))` fetches
+**Listing a seat's mailboxes reads every membership row.** `list(membershipPrefix(seatId))` fetches
 every membership row under the org before the prefix narrows it, so the cost grows with the org
 rather than with the seat.
 
@@ -2002,7 +2022,7 @@ membershipPrefix("");
 ## Projects
 
 A project is a row in the organization's `projects` collection: a title, a brief, an owner, its
-`members`, the workstreams (declared channels, from any team) it groups, and each member's talk
+`members`, the workstreams (declared mailboxes, from any team) it groups, and each member's talk
 session. Declare the collection once in `workforce/org/resources/projects.ts` with
 `defineProjectsCollection()`. The guide is the docs site's Workforce → Projects page.
 
@@ -2015,7 +2035,7 @@ defineFlow({ kind: "lab", actions: { ...projects.actions } });
 
 - **`createProject { id, title, brief?, members?, workstreams? }`** writes a row with `create`.
   The owner is the calling session's owner, and is always a member. An id held by another owner,
-  `unassigned`, a workstream not in the channel inventory, and a workstream another project holds
+  `unassigned`, a workstream not in the mailbox inventory, and a workstream another project holds
   are each refused, and nothing is half written. The same owner re-sending an id gets the row back
   (`created: false`) and its talk session bound if it wasn't.
 - **`setWorkstreams { projectId, workstreams }`** replaces the list. Members only.
@@ -2023,23 +2043,23 @@ defineFlow({ kind: "lab", actions: { ...projects.actions } });
   `tools:` spells. A catalog key must be the tool's own name, so wrap each in a one-step
   `sequencer({ name: "createProject", inputSchema: createProjectInputSchema, outputSchema:
   createProjectOutputSchema }).step(projects.createProject)`. The owner is the session the seat
-  answers in, so the project belongs to the person who asked. A kind that also reads the channel
-  inventory (the `discover` door) declares it with `projectWritesChannelInventory`: a flow refuses a
+  answers in, so the project belongs to the person who asked. A kind that also reads the mailbox
+  inventory (the `discover` door) declares it with `projectWritesMailboxInventory`: a flow refuses a
   second declaration of the collection beside the writes'.
-- **The talk entries** are built into every channel kind. A talk session is a channel-kind session
+- **The talk entries** are built into every mailbox kind. A talk session is a mailbox-kind session
   whose state names a project (`resourceId`), which grants nothing: every entry checks the
   session's owner against the row's `members` first, and refuses `not-a-member`.
   `join { projectId }` returns the member's one talk session: the one the project lists for them,
   or else the calling session. `bind` does what `join` does, as an internal entry for trusted code.
   `post { body }` adds a person's line to `room-lines`. `answer` is how a seat's reply reaches the
   room; you don't call it. `read { after }` returns committed lines after a cursor, 200 at most,
-  with the room's `charter` and `seats`. On any other channel session, `post`, `read` and `answer`
-  work on the channel's transcript, and `read` ignores `after`.
+  with the room's `charter` and `seats`. On any other mailbox session, `post`, `read` and `answer`
+  work on the mailbox's transcript, and `read` ignores `after`.
 
 Refusals are `ProjectRefusedError`, with a `reason`.
 
 **The talk template** is a room's seats and charter, shared by every project. Declare the
-org-level default beside the collection, and pass the org's resource map to `channelInstances`:
+org-level default beside the collection, and pass the org's resource map to `mailboxInstances`:
 
 ```ts
 // workforce/org/resources/projects.ts
@@ -2049,20 +2069,20 @@ export default defineProjectsCollection({
 
 // at boot
 const { resources } = splitResourceModules(resourceModules);
-channelInstances(channels, { kinds, resources });
+mailboxInstances(mailboxes, { kinds, resources });
 ```
 
-Or declare it in a team's `CHANNEL.md` with `mintFor: projects`: its `members:` are the seats, and
+Or declare it in a team's `MAILBOX.md` with `mintFor: projects`: its `members:` are the seats, and
 its body is the charter. A template is never opened and never registered in the inventory. Seats
 are full seat ids from any team (`engineering.lead`) or a dotless org seat id (`chief-of-staff`).
-Talk sessions run on the built-in `channel` kind, so pass it built with a `notify` block, as
-`kinds: { channel: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }`.
-`channelInstances` refuses, with its other refusals, a template that declares `flow:`, `boards:`,
+Talk sessions run on the built-in `mailbox` kind, so pass it built with a `notify` block, as
+`kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats) }) }`.
+`mailboxInstances` refuses, with its other refusals, a template that declares `flow:`, `boards:`,
 `routing:` or `boardActions:`, a `mintFor:` that names no collection in `resources` or names one
-other than the projects collection (under whatever key you passed it), a bad or repeated seat id, seats on a `channel` kind built with no `notify`
+other than the projects collection (under whatever key you passed it), a bad or repeated seat id, seats on a `mailbox` kind built with no `notify`
 block (none of them would wake), and a second template for the collection at either site.
 The first call that finds the template registers it for the process. Every later call builds its
-`channel` kind holding it, with or without `resources`, and a later call that finds a different
+`mailbox` kind holding it, with or without `resources`, and a later call that finds a different
 template throws.
 `createProject` always gets the creator's talk session ready. With a template, so does any other
 code that creates a project inside a flow turn. A `post` in a project's room wakes each seat once,
@@ -2076,22 +2096,22 @@ restart.
 
 ## Importing from a browser component
 
-The package root is server code. The channel floor reaches the task board, which imports
+The package root is server code. The mailbox floor reaches the task board, which imports
 `node:async_hooks`, so a bundler building a client component can fail on any root import it cannot
 drop. A client component imports the few names a panel reads with from the `./browser` subpath:
 
 ```ts
 "use client";
 import {
-  CHANNEL_POST_COMPONENT,
+  MAILBOX_POST_COMPONENT,
   HIRED_ROSTER_RESOURCE,
   splitSeatAddress,
-  type ChannelTranscriptLine,
+  type MailboxTranscriptLine,
 } from "@flow-state-dev/workforce/browser";
 ```
 
 It exports `HIRED_ROSTER_RESOURCE`, `SEAT_INVENTORY_RESOURCE`, `HIRED_ROSTER_BROWSER_PATTERN`, `splitSeatAddress`,
-`CHANNEL_POST_COMPONENT`, `channelTranscriptLineSchema` and `ChannelTranscriptLine`, the same values
+`MAILBOX_POST_COMPONENT`, `mailboxTranscriptLineSchema` and `MailboxTranscriptLine`, the same values
 the root exports, and reaches no Node built-in. It also exports `listedSeatRows(orgId, rows, roster, owned?)`,
 the team-list rule: of the seat inventory rows, a hired seat's is kept only while a roster row
 names its address (pass `undefined` when the roster didn't load, and no hired seat is kept), and
@@ -2109,13 +2129,13 @@ before fire removed inventory rows is left out that way.
 
 | Export | Description |
 |--------|-------------|
-| `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `run` (public) and `onChannelPost` (internal, for a channel's notify block). |
+| `defineAgentWorkerFlow(options?)` | Build the flow behind the `agent` worker kind — `agent` is one kind of worker, and this is the flow it resolves to. Called with no arguments it *is* the built-in a record with no `flow:` is hired into; called with factory options (`AgentWorkerFlowOptions`) it is the replacement you register under `agent`. Its flow declares `run` (public) and `onMailboxPost` (internal, for a mailbox's notify block). |
 | `AGENT_KIND` | The kind name (`"agent"`) the hire step defaults to, and the key a replacement registers under. |
 | `definePersona(config)` | Declare a persona resource or collection. |
-| `createWorkforceCapability({ roster, inventory, hiredRoster?, sources? })` | The discovery door. Installs the seat and channel sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`. Pass `hiredRoster` so a runtime hire is listed the same way a file-declared seat is. Omit it and `discover` lists only file-declared seats. |
-| `workforceManifestSources({ roster, inventory, hiredRoster? })` | The seat and channel sources on their own, for an app assembling its own manifest registry. Same `hiredRoster?` meaning as `createWorkforceCapability`. |
-| `createSeatHireCapability({ kinds, register, unregister, kindAt?, instanceAt?, allowKinds?, refuseRosterAdmin?, channelBoards?, askBefore? })` | Puts catalog tools `hire`, `fire`, `brokenSeats` and `rehire` on a worker kind; `askBefore` puts `hire` and/or `fire` behind a person's approval, and `rehire` is always behind one. Compose it into `defineAgentWorkerFlow({ uses })`. A seat calls them by selecting `seat-hire: [tools]` with no `tools:` line, or by naming them in `tools:`; `tools: []` withholds them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. The roster row carries that organization as `owningOrgId`, so a copy read under another organization is a reload problem rather than a seat. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
-| `createSeatHireBlocks({ kinds, register, unregister, kindAt?, instanceAt?, allowKinds?, refuseRosterAdmin?, channelBoards? })` | Returns `{ hire, fire, brokenSeats, rehire }`; `hire` and `fire` are the handlers behind `createSeatHireCapability`'s catalog tools, for mounting as a flow's actions, where they never ask for approval. Same options, inputs, outputs and refusals. Declare `defineHiredRosterCollection()` under `HIRED_ROSTER_RESOURCE` and `defineSeatInventoryCollection()` under `SEAT_INVENTORY_RESOURCE` on that flow. The organization comes from the session's principal; a body `orgId` is ignored, and with no resolver in play the session is in the default organization, so the hire lands there. Each hire and re-hire stamps a fresh `incarnation` on its roster row, its inventory row and the seat it mints; `fire` deletes only that incarnation's inventory row and, given `instanceAt` (the registry's instance at an address), releases only the seat minted from the row. Without `instanceAt` those checks fall back to the kind, and a `rehire` retry that finds the address already served is refused. `refuseRosterAdmin: true` refuses a hire or re-hire whose settings would give the seat the roster tools; off by default. |
+| `createWorkforceCapability({ roster, inventory, hiredRoster?, sources? })` | The discovery door. Installs the seat and mailbox sources plus whatever other domains' sources you pass, and contributes one control tool, `discover`. Pass `hiredRoster` so a runtime hire is listed the same way a file-declared seat is. Omit it and `discover` lists only file-declared seats. |
+| `workforceManifestSources({ roster, inventory, hiredRoster? })` | The seat and mailbox sources on their own, for an app assembling its own manifest registry. Same `hiredRoster?` meaning as `createWorkforceCapability`. |
+| `createSeatHireCapability({ kinds, register, unregister, kindAt?, instanceAt?, allowKinds?, refuseRosterAdmin?, mailboxBoards?, askBefore? })` | Puts catalog tools `hire`, `fire`, `brokenSeats` and `rehire` on a worker kind; `askBefore` puts `hire` and/or `fire` behind a person's approval, and `rehire` is always behind one. Compose it into `defineAgentWorkerFlow({ uses })`. A seat calls them by selecting `seat-hire: [tools]` with no `tools:` line, or by naming them in `tools:`; `tools: []` withholds them. Writes the hired roster and `inventory/seats/*`. The seat is hired in the caller's organization; a body `orgId` is ignored. The roster row carries that organization as `owningOrgId`, so a copy read under another organization is a reload problem rather than a seat. `register` receives `{ orgId, userId? }` from the hire row's roster owner; hire refuses rather than omit it. |
+| `createSeatHireBlocks({ kinds, register, unregister, kindAt?, instanceAt?, allowKinds?, refuseRosterAdmin?, mailboxBoards? })` | Returns `{ hire, fire, brokenSeats, rehire }`; `hire` and `fire` are the handlers behind `createSeatHireCapability`'s catalog tools, for mounting as a flow's actions, where they never ask for approval. Same options, inputs, outputs and refusals. Declare `defineHiredRosterCollection()` under `HIRED_ROSTER_RESOURCE` and `defineSeatInventoryCollection()` under `SEAT_INVENTORY_RESOURCE` on that flow. The organization comes from the session's principal; a body `orgId` is ignored, and with no resolver in play the session is in the default organization, so the hire lands there. Each hire and re-hire stamps a fresh `incarnation` on its roster row, its inventory row and the seat it mints; `fire` deletes only that incarnation's inventory row and, given `instanceAt` (the registry's instance at an address), releases only the seat minted from the row. Without `instanceAt` those checks fall back to the kind, and a `rehire` retry that finds the address already served is refused. `refuseRosterAdmin: true` refuses a hire or re-hire whose settings would give the seat the roster tools; off by default. |
 | `registerHiredSeat(register, seat, pin)` | The hire writer's register path. Refuses when `pin` has no `orgId`. The pin is the hire row's roster owner, not the address. |
 | `HiredSeatOwnerPin` | Another name for core's `InstanceOwnerPin`: `{ orgId, userId? }`, with `userId` present only for a user-owned hire row. Either name works wherever the other is expected. |
 | `SEAT_HIRE_CAPABILITY` | The capability name, `"seat-hire"`. |
@@ -2123,7 +2143,7 @@ before fire removed inventory rows is left out that way.
 | `SEAT_INVENTORY_RESOURCE` | Registry key the seat-hire capability installs the seat inventory under, `"seatInventory"`. Pass it as `inventory.seats` on `createWorkforceCapability`. |
 | `HIRED_ROSTER_PRIVATE_RESOURCE` | Registry key, `"hiredRosterPrivate"`, a flow mounts `defineHiredRosterPrivateCollection()` under so `createSeatHireBlocks`' `fire`, `brokenSeats` and `rehire` reach the caller's own user-owned seats. The capability does not install it. |
 | `SEAT_DISCOVER_KEY` | The pinned worker-file key, `"discover"` — the domains one seat sees, out of what its scope carries. Narrows only: a seat can never reach a domain the app did not install. |
-| `readDeclaredRoster(root)` | Read the whole tree in one call — workers with their skills and packages in reach, teams, documents and channels — plus one list of everything that failed to load, each entry tagged with the layer that reported it. Collects rather than throws, so the boot policy stays yours. Ships from the `./loader` subpath (Node only). |
+| `readDeclaredRoster(root)` | Read the whole tree in one call — workers with their skills and packages in reach, teams, documents and mailboxes — plus one list of everything that failed to load, each entry tagged with the layer that reported it. Collects rather than throws, so the boot policy stays yours. Ships from the `./loader` subpath (Node only). |
 | `readWorkforce(root)` | Read the tree into worker records that already carry their own skills and the packages in their reach — `readWorkforceDirectory` joined with `readSeatSkills` per seat and `readPackagesDirectory`. Returns `{ workers, errors, skillErrors, teams, teamErrors, packageErrors }`. Reach for it when seats are all you need. Ships from the `./loader` subpath (Node only). |
 | `readWorkforceDirectory(root)` | Read every `org/workers/<name>/` and `teams/<id>/workers/<name>/` folder into one `WorkerManifest` per worker, org seats first, without their skills. Ships from the `./loader` subpath (Node only). |
 | `readPackagesDirectory(root)` | Read every `packages/<name>/PACKAGE.md` at the org, team and worker levels into one `PackageManifest` each, returning `{ packages, errors }`. Ships from the `./loader` subpath (Node only). |
@@ -2133,10 +2153,13 @@ before fire removed inventory rows is left out that way.
 | `classify(path)` / `openStructuralDirectory(path, reportAs)` | One path's kind without following symlinks, and one structural folder's entries — or the reason the walk stops there, or neither when it is simply absent. Ships from the `./loader` subpath (Node only). |
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
-| `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/channels/` and `blocks/` one level deep, every `resources/` folder the convention reads, every `blocks/` folder inside the team tree, and every package's `blocks/` folder, returning what they hold on `files`, `resourceModules`, `seatBlocks` and `packageBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
-| `renderWorkforceCode(files, modules, seatBlocks?, packageBlocks?)` | Render a discovery's `files`, `resourceModules`, `seatBlocks` and `packageBlocks` as a module of static imports exporting `kinds`, `channelKinds`, `blocks`, `resourceModules`, `seatBlocks` and `packageBlocks`. Pass all four: the last two default to `[]`, so omitting one renders an empty map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
-| `hireWorkforce(manifests, { kinds, seatBlocks, packageBlocks, channelBoards, documents, references })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, `workforce.gen.ts`'s `seatBlocks` and `packageBlocks` exports under the same names, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. Pass the map `referencesFromDocs` returns as `references` whenever a kind installs any: it is what marks those entries as references, which references each seat reaches is worked out against it, and a kind holding references it was not given refuses the whole roster. `channelBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
-| `mergeSeatFlows(flows, seats)` | Add the hired seats to your app's flows record under their ids, for `createFlowState({ flows })`. Throws, naming the id, when a seat's id is already one of `flows`' keys (an org seat's id is its bare folder name, so a folder named `channel` would otherwise replace the channel flow) or when two seats share an id. Returns a new record; `flows` is not changed. |
+| `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/mailboxes/` and `blocks/` one level deep, every `resources/` folder the convention reads, every `blocks/` folder inside the team tree, and every package's `blocks/` folder, returning what they hold on `files`, `resourceModules`, `seatBlocks` and `packageBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
+| `findPreRenameMarks(store, { mailboxIds, orgIds })` | Read a store for what marks it as written before the rename: any session on the old built-in kind, a listed mailbox whose request history holds an old item (read page by page, all of it), an organization holding inventory rows under the old key. Returns `{ sessions, organizations }`, both empty for a store that is not old. Reads only. Keyed on the store rather than the kind, since a custom kind kept its name. For a host's boot check before `openMailboxes`. |
+| `describePreRenameMarks(marks)` | The marks above as one clause for a boot message ("written before … : mailbox "…" (…)"). The host adds what to do about it. |
+| `PRE_RENAME_NAMES` | The names the rename retired, frozen: record file and folder, kinds folder, kind, item components, inventory prefix and discovery domain. For recognising old data and seeding tests, never for reading it. |
+| `renderWorkforceCode(files, modules, seatBlocks?, packageBlocks?)` | Render a discovery's `files`, `resourceModules`, `seatBlocks` and `packageBlocks` as a module of static imports exporting `kinds`, `mailboxKinds`, `blocks`, `resourceModules`, `seatBlocks` and `packageBlocks`. Pass all four: the last two default to `[]`, so omitting one renders an empty map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
+| `hireWorkforce(manifests, { kinds, seatBlocks, packageBlocks, mailboxBoards, documents, references })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, `workforce.gen.ts`'s `seatBlocks` and `packageBlocks` exports under the same names, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. Pass the map `referencesFromDocs` returns as `references` whenever a kind installs any: it is what marks those entries as references, which references each seat reaches is worked out against it, and a kind holding references it was not given refuses the whole roster. `mailboxBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
+| `mergeSeatFlows(flows, seats)` | Add the hired seats to your app's flows record under their ids, for `createFlowState({ flows })`. Throws, naming the id, when a seat's id is already one of `flows`' keys (an org seat's id is its bare folder name, so a folder named `mailbox` would otherwise replace the mailbox flow) or when two seats share an id. Returns a new record; `flows` is not changed. |
 | `unattendedBoardWarnings(boardIds, seats)` | The unattended-board warning strings `hireWorkforce` prints. The `hire` tool puts the same sentences on `warning` when a named board has no seat that declares it. |
 | `workerConfigSchema()` | The admission contract every hireable worker kind composes: `configSchema: workerConfigSchema().extend({ ...its own settings })`. Declares `instructions?`, `teamInstructions?`, `seatSkills`, `seatTools`, `seatPackages?` and `seatId`. A kind whose schema cannot take what hiring imposes refuses the whole roster at startup. A fresh schema per call. |
 | `seatPackageSchema` | One held package as it rides into the bag — `{ name, path, instructions?, tools }`, closed. The shape `seatPackages` is an array of. |
@@ -2148,7 +2171,7 @@ before fire removed inventory rows is left out that way.
 | `referencesFromDocs(references)` | Turn reference records into the flow resource map, keyed by ref. Each entry is served from its file and is read-only. Throws naming the ref for a record with no `filePath`. |
 | `clearShadowedReferences(input)` / `describeShadowedReferences(result)` | Clear the stored rows left behind when a document moves from `resources/` to `references/`, for one org, and render the result as one log line. Takes `{ references, orgId, content, installedOn, dryRun? }`; returns `{ cleared, checked, dryRun, scopeId }`. |
 | `splitResourceModules(resourceModules)` | Split the generated map into `{ capabilities, resources }` — the capabilities a worker kind installs through `uses`, and the resources that merge into the one resource map. Installs nothing: you pass both on, at your own call site. Throws naming the ref when an entry can be neither. |
-| `DeclaredRoster` / `DeclaredProblem` | What `readDeclaredRoster` returns: `{ workers, teams, documents, references, channels, problems }`, and one problem: `{ layer, path, error, worker? }`, where `layer` is `worker`, `skill`, `team`, `package`, `document`, `reference` or `channel`. |
+| `DeclaredRoster` / `DeclaredProblem` | What `readDeclaredRoster` returns: `{ workers, teams, documents, references, mailboxes, problems }`, and one problem: `{ layer, path, error, worker? }`, where `layer` is `worker`, `skill`, `team`, `package`, `document`, `reference` or `mailbox`. |
 | `WorkerManifest` | One worker record: `{ id, declared, body, skills?, teamInstructions?, packages? }`. |
 | `PackageManifest` | One package record: `{ name, path, level, team?, worker?, description, instructions? }`, where `level` is `org`, `team` or `worker` and `path` is the key its blocks sit under on `packageBlocks`. |
 | `ResourceDoc` | One document record: `{ ref, declared, body, filePath? }`. |
@@ -2156,29 +2179,29 @@ before fire removed inventory rows is left out that way.
 | `ResourceModules` | The generated `resourceModules` map: one entry per discovered module, keyed by its ref. |
 | `ResourceModuleExport` / `WorkerResourceModuleExport` | What a module in the organisation's or a team's `resources/` folder may be — a capability or a resource — and the narrower type a worker's own folder is held to: a resource, never a capability. |
 | `SeatCapabilitySelection` | What a worker file's `capabilities:` key parses to — capability name to the presets that seat wants. Read by the built-in `agent` kind; validated at the hire. |
-| `defineChannelFlow(options?)` | Build a channel kind. `options.notify` is the per-member fan-out block. `options.route` is the route from `routeByPurpose`. |
-| `wakeMemberSeats(seats, options?)` | The notify block for `defineChannelFlow({ notify })`. Wakes each member whose hired seat declares `onChannelPost`, once per post, and never on a seat's line (`seatAuthored: true`). A client `post` wakes hearing members whether or not it sets `author`. `options.fallback` runs for members whose seat can't hear a post, including on a seat's line. |
-| `routeByPurpose(seats, { model })` | The route a channel kind takes as `defineChannelFlow({ route })`. For a channel that declares `routing:`, each client `post` goes to one member: the member the last client `post` was routed to, until it answers (a held post holds nothing), else one evaluator call's pick among the members with a description (block name `channel-route`), else the declared fallback. A seat's line (`seatAuthored: true`) is not routed. A member of the built-in `agent` kind answers with the channel's last 20 lines in view, and its reply is posted into the channel as its line, once per post. Needs in-process dispatch or queue workers that share a lease backend. Throws without a `model`. |
-| `channelRouteRecordSchema` / `ChannelRouteRecord` / `CHANNEL_ROUTE_COMPONENT` / `CHANNEL_ROUTE_EVALUATOR` | One route decision as it is kept on the channel's session (`{ postId, by, member?, reason? }`, where `by` is `held`, `evaluated`, `fallback` or `failed`), the component name it is kept under, and the route evaluator's block name. Both names are `"channel-route"`. |
-| `ChannelRoute` / `ChannelRouting` | What `routeByPurpose` returns, and a channel file's `routing:` as read (`{ fallback }`). |
-| `channelFlow` | The built-in channel kind, seeded by `channelInstances` when you register none. |
-| `channelInstances(manifests, { kinds?, inventory?, resources? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in channel kind. Pass the org's resource map as `resources` to read project talk templates (see [Projects](#projects)); with a template registered, the `channel` kind is returned holding it even when no channel runs on it. Register these. |
+| `defineMailboxFlow(options?)` | Build a mailbox kind. `options.notify` is the per-member fan-out block. `options.route` is the route from `routeByPurpose`. |
+| `wakeMemberSeats(seats, options?)` | The notify block for `defineMailboxFlow({ notify })`. Wakes each member whose hired seat declares `onMailboxPost`, once per post, and never on a seat's line (`seatAuthored: true`). A client `post` wakes hearing members whether or not it sets `author`. `options.fallback` runs for members whose seat can't hear a post, including on a seat's line. |
+| `routeByPurpose(seats, { model })` | The route a mailbox kind takes as `defineMailboxFlow({ route })`. For a mailbox that declares `routing:`, each client `post` goes to one member: the member the last client `post` was routed to, until it answers (a held post holds nothing), else one evaluator call's pick among the members with a description (block name `mailbox-route`), else the declared fallback. A seat's line (`seatAuthored: true`) is not routed. A member of the built-in `agent` kind answers with the mailbox's last 20 lines in view, and its reply is posted into the mailbox as its line, once per post. Needs in-process dispatch or queue workers that share a lease backend. Throws without a `model`. |
+| `mailboxRouteRecordSchema` / `MailboxRouteRecord` / `MAILBOX_ROUTE_COMPONENT` / `MAILBOX_ROUTE_EVALUATOR` | One route decision as it is kept on the mailbox's session (`{ postId, by, member?, reason? }`, where `by` is `held`, `evaluated`, `fallback` or `failed`), the component name it is kept under, and the route evaluator's block name. Both names are `"mailbox-route"`. |
+| `MailboxRoute` / `MailboxRouting` | What `routeByPurpose` returns, and a mailbox file's `routing:` as read (`{ fallback }`). |
+| `mailboxFlow` | The built-in mailbox kind, seeded by `mailboxInstances` when you register none. |
+| `mailboxInstances(manifests, { kinds?, inventory?, resources? })` | Build time. One `FlowInstance` per distinct kind across the roster, the built-in seeded. Pass `inventory: true` to install the registration actions and the three inventory collections on the built-in mailbox kind. Pass the org's resource map as `resources` to read project talk templates (see [Projects](#projects)); with a template registered, the `mailbox` kind is returned holding it even when no mailbox runs on it. Register these. |
 | `defineProjectsCollection({ talk? })` | The organization's `projects` collection: org-scoped, shared across flows, browser-readable through `expose`. `talk` is the org-level talk template: the first one declared stands, the same one again is a no-op, and a different one throws. You can call `defineProjectsCollection()` anywhere you need it. Every call returns the same declaration, so they never conflict. `defineRoomLinesCollection`, `defineRoomSeqCollection` and `defineWorkstreamClaimsCollection` declare the room and the claims; none has a browser read. |
-| `projectWritesChannelInventory` | The channel inventory declaration the project writes read. A flow that installs the writes and reads the inventory itself declares that read with this object, under any accessor; its own `defineChannelInventoryCollection()` there is a resource collision when the flow is built. |
-| `defineProjectBlocks()` | Returns `{ createProject, setWorkstreams, actions }`. See [Projects](#projects). A created project's `bind` is dispatched to the built-in `channel` kind. |
-| `openChannels(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. The server binds each session's organization. Idempotent. |
-| `readChannelsDirectory(root)` | Read a `teams/<id>/channels/<name>/` tree into one `ChannelManifest` per channel. Ships from the `./loader` subpath (Node only). |
-| `ChannelManifest` | One channel record: `{ id, declared, body }`. |
-| `channelBoard(channelId, boardName)` | The one declaration for a channel's board, carrying its minted `id`. Pass it to `taskBoard({ collection })`, and to `channelBoardTaskTools`. Throws when the name is not a plain local name. |
-| `channelBoardTaskTools(board)` | Capability granting a seat all eight task tools over one channel board, board-qualified by name. List it in the seat kind's `uses`; it declares the ledger too. |
-| `channelBoardIds(manifests)` | Every minted id across a roster, sorted and deduped — what `hireWorkforce`'s `channelBoards` takes. |
-| `ChannelBoardCollection` | A `DefinedTaskCollection` carrying its minted `id`. |
-| `channelBoardRowSchema` | One row as `readBoard` publishes it: the board's facts and the `run` working the task, without the claim's coordinates (`claimedBy`, the lease) or write provenance. |
-| `channelFileTaskInputSchema` / `channelFileTaskOutputSchema` / `channelReadBoardInputSchema` / `channelReadBoardOutputSchema` | The `fileTask` and `readBoard` contracts. |
-| `ChannelPostRefusedError` | A post refused on the channel's own terms; `reason` is `channel-not-bound` or `author-not-a-member`. |
-| `channelPostInputSchema` / `channelReadOutputSchema` / `channelNotifyInputSchema` | The post, read and notify contracts. |
-| `channelSessionStateSchema` / `channelTranscriptLineSchema` | A channel session's state, and one transcript line. On a kind built with a route, a channel's state also carries `channelRouteLedger`, which this schema does not describe. |
-| `CHANNEL_POST_COMPONENT` / `emitChannelPostLine(ctx, line)` / `readChannelPostLines(ctx, schema)` | The component name a post's line is kept under; keep a line as that item, resolving once it is stored and rejecting if the write fails; read the posted lines in the history window back, parsed by the kind's own line schema. For a channel kind of your own. |
+| `projectWritesMailboxInventory` | The mailbox inventory declaration the project writes read. A flow that installs the writes and reads the inventory itself declares that read with this object, under any accessor; its own `defineMailboxInventoryCollection()` there is a resource collision when the flow is built. |
+| `defineProjectBlocks()` | Returns `{ createProject, setWorkstreams, actions }`. See [Projects](#projects). A created project's `bind` is dispatched to the built-in `mailbox` kind. |
+| `openMailboxes(manifests, { client, userId })` | Runtime. One named session per record, carrying its members, charter and description. The server binds each session's organization. Idempotent. |
+| `readMailboxesDirectory(root)` | Read a `teams/<id>/mailboxes/<name>/` tree into one `MailboxManifest` per mailbox. Ships from the `./loader` subpath (Node only). |
+| `MailboxManifest` | One mailbox record: `{ id, declared, body }`. |
+| `mailboxBoard(mailboxId, boardName)` | The one declaration for a mailbox's board, carrying its minted `id`. Pass it to `taskBoard({ collection })`, and to `mailboxBoardTaskTools`. Throws when the name is not a plain local name. |
+| `mailboxBoardTaskTools(board)` | Capability granting a seat all eight task tools over one mailbox board, board-qualified by name. List it in the seat kind's `uses`; it declares the ledger too. |
+| `mailboxBoardIds(manifests)` | Every minted id across a roster, sorted and deduped — what `hireWorkforce`'s `mailboxBoards` takes. |
+| `MailboxBoardCollection` | A `DefinedTaskCollection` carrying its minted `id`. |
+| `mailboxBoardRowSchema` | One row as `readBoard` publishes it: the board's facts and the `run` working the task, without the claim's coordinates (`claimedBy`, the lease) or write provenance. |
+| `mailboxFileTaskInputSchema` / `mailboxFileTaskOutputSchema` / `mailboxReadBoardInputSchema` / `mailboxReadBoardOutputSchema` | The `fileTask` and `readBoard` contracts. |
+| `MailboxPostRefusedError` | A post refused on the mailbox's own terms; `reason` is `mailbox-not-bound` or `author-not-a-member`. |
+| `mailboxPostInputSchema` / `mailboxReadOutputSchema` / `mailboxNotifyInputSchema` | The post, read and notify contracts. |
+| `mailboxSessionStateSchema` / `mailboxTranscriptLineSchema` | A mailbox session's state, and one transcript line. On a kind built with a route, a mailbox's state also carries `mailboxRouteLedger`, which this schema does not describe. |
+| `MAILBOX_POST_COMPONENT` / `emitMailboxPostLine(ctx, line)` / `readMailboxPostLines(ctx, schema)` | The component name a post's line is kept under; keep a line as that item, resolving once it is stored and rejecting if the write fails; read the posted lines in the history window back, parsed by the kind's own line schema. For a mailbox kind of your own. |
 | `defineHiredRosterCollection()` | The hired roster's browser collection: one org-scoped row per org-visible seat, at `workforce/roster/<seatId>`. One segment, so a user-owned row is not listed. Takes no options. Write org-visible rows with `create()` — its already-exists throw is what refuses a duplicate hire, and `upsert()` loses that refusal silently. |
 | `defineHiredRosterPrivateCollection()` | The server-side writer for a user-owned row, at `workforce/roster/~<escaped user>/<seatId>`. No browser read. It is an owner-private collection (`ownerPrivate: { param: "owner" }`): a row is served only to the member it belongs to, and any other collection whose pattern can reach those rows is refused at startup. Declare `workforce/roster/*` for the org roster. |
 | `hiredSeatRowSchema` / `HiredSeatRow` | One roster row — `{ seatId, flow, settings, instructions, owningOrgId, ownerUserId, pendingRepair, incarnation }`. `owningOrgId`, `ownerUserId`, `pendingRepair` (set only while a `rehire` is unfinished) and `incarnation` (the hire or re-hire that wrote it) are nullable and default to `null`. `pendingRepair` is server-only; `incarnation` is published to browsers by `defineHiredRosterCollection`, beside `seatId`, `flow` and `instructions`, so a browser can join a roster row to its inventory row. The envelope is closed when parsed; the roster collections store it with unknown keys kept, so a key a newer version wrote survives this version's rewrite of the row (a re-hire). `settings` is a passthrough bag belonging to the kind's own schema. |
@@ -2195,18 +2218,18 @@ before fire removed inventory rows is left out that way.
 | `DEFAULT_MAX_RELOAD_ORGS` / `DEFAULT_ROSTER_READ_TIMEOUT_MS` | The two bounds' defaults: 100 organizations, and 10000 ms for the whole read. |
 | `HiredRosterReload` / `HiredRosterOrgReload` / `HiredRosterStores` / `ReloadHiredSeatsOptions` / `RowProblem` | What the reload returns, one organization's share of it, the slice of the runtime's stores it reads through, its options, and the `{ problem }` shape a row that could not be read comes back as. |
 | `defineSeatInventoryCollection()` | The seat inventory: one org-scoped row per registered seat, at `inventory/seats/<seatId>`. Takes no options; install what it returns under a block's `resources`. |
-| `defineChannelInventoryCollection()` | The channel inventory: one org-scoped row per registered channel, at `inventory/channels/<channelId>`, carrying the channel's `members` and `openedAt`. Takes no options. |
-| `defineMembershipIndexCollection()` | The membership index: one org-scoped row per seat-in-channel, at `inventory/members/<seatId>/<channelId>`, so one seat's channels can be listed by prefix. Takes no options. |
-| `membershipKey(seatId, channelId)` | The membership index key for one row, relative to the collection's prefix. Throws when either id is not one whole path segment. |
+| `defineMailboxInventoryCollection()` | The mailbox inventory: one org-scoped row per registered mailbox, at `inventory/mailboxes/<mailboxId>`, carrying the mailbox's `members` and `openedAt`. Takes no options. |
+| `defineMembershipIndexCollection()` | The membership index: one org-scoped row per seat-in-mailbox, at `inventory/members/<seatId>/<mailboxId>`, so one seat's mailboxes can be listed by prefix. Takes no options. |
+| `membershipKey(seatId, mailboxId)` | The membership index key for one row, relative to the collection's prefix. Throws when either id is not one whole path segment. |
 | `membershipPrefix(seatId)` | The prefix that lists one seat's memberships, trailing slash included, relative to the collection's prefix. Refuses the same ids `membershipKey` does. |
-| `SeatInventoryRow` / `ChannelInventoryRow` / `MembershipIndexRow` | One row of each of the three collections. |
-| `seatInventoryRowSchema` / `channelInventoryRowSchema` / `membershipIndexRowSchema` | The Zod schema behind each row type. Closed: an undeclared key is dropped on the way in. |
-| `openInventory(roster, options)` | Write the inventory at boot: one row per seat, one row per channel, one row per membership. Takes `InventoryRoster` (the seats and channels to register) and `OpenInventoryOptions` (the `run` callback, `seatWriter`, `userId`, `orgId`). Returns `{ seats, channels, problems }`. |
-| `inventoryWriterActions(kind)` | The three blocks a custom channel kind installs to get inventory rows, keyed by action name. Split them: `registerChannelInInventory` into `actions` (public, safe — empty input); `registerSeatsInInventory` and `retireChannelsInInventory` into `internal.actions` (their input is row data or ids to remove, with nothing to check it against). The string is the `kind` value those rows carry. |
-| `INVENTORY_REGISTER_CHANNEL` / `INVENTORY_REGISTER_SEATS` / `INVENTORY_RETIRE_CHANNELS` | The action names the writer runs: `"registerChannelInInventory"`, `"registerSeatsInInventory"` and `"retireChannelsInInventory"`. |
+| `SeatInventoryRow` / `MailboxInventoryRow` / `MembershipIndexRow` | One row of each of the three collections. |
+| `seatInventoryRowSchema` / `mailboxInventoryRowSchema` / `membershipIndexRowSchema` | The Zod schema behind each row type. Closed: an undeclared key is dropped on the way in. |
+| `openInventory(roster, options)` | Write the inventory at boot: one row per seat, one row per mailbox, one row per membership. Takes `InventoryRoster` (the seats and mailboxes to register) and `OpenInventoryOptions` (the `run` callback, `seatWriter`, `userId`, `orgId`). Returns `{ seats, mailboxes, problems }`. |
+| `inventoryWriterActions(kind)` | The three blocks a custom mailbox kind installs to get inventory rows, keyed by action name. Split them: `registerMailboxInInventory` into `actions` (public, safe — empty input); `registerSeatsInInventory` and `retireMailboxesInInventory` into `internal.actions` (their input is row data or ids to remove, with nothing to check it against). The string is the `kind` value those rows carry. |
+| `INVENTORY_REGISTER_MAILBOX` / `INVENTORY_REGISTER_SEATS` / `INVENTORY_RETIRE_MAILBOXES` | The action names the writer runs: `"registerMailboxInInventory"`, `"registerSeatsInInventory"` and `"retireMailboxesInInventory"`. |
 | `INVENTORY_SEAT_WRITER_SESSION` | The session id the seat-registration action runs under when `seatWriter` names none: `"inventory-binder"`. |
-| `InventoryRoster` / `InventorySeat` / `InventorySeatWriter` | What `openInventory` takes: the roster (`{ seats, channels }`), one seat (`{ id, kind, actions, config? }`: a hired seat as is, its `door` action read from `actions`, `{}` for a seat with none; its row's `hired` read from `config.seatId`, `null` without `config`), and which flow writes the seat rows (`{ flowKind }`). |
-| `InventoryActionRequest` / `InventoryBinding` | What the `run` callback receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the seat request and must reach `runAction`), and what one boot of `openInventory` returns (`{ seats, channels, problems }`). |
+| `InventoryRoster` / `InventorySeat` / `InventorySeatWriter` | What `openInventory` takes: the roster (`{ seats, mailboxes }`), one seat (`{ id, kind, actions, config? }`: a hired seat as is, its `door` action read from `actions`, `{}` for a seat with none; its row's `hired` read from `config.seatId`, `null` without `config`), and which flow writes the seat rows (`{ flowKind }`). |
+| `InventoryActionRequest` / `InventoryBinding` | What the `run` callback receives (`{ action, input, userId, orgId, flowKind, sessionId, source? }` — `source` is `"internal"` on the seat request and must reach `runAction`), and what one boot of `openInventory` returns (`{ seats, mailboxes, problems }`). |
 | `OpenInventoryOptions` | The options `openInventory` takes: `run`, `seatWriter`, `userId`, `orgId`. |
 | `seatDoorOf(seat)` / `SeatDoor` | A hired seat's door: the one public action its kind declares with `userMessage` and a `{ message }` input. Returns `{ door, problem? }`. `door` is the action name, or `null` when the kind has none or more than one. `problem` is set when there are two or more, and names them. `openInventory` writes it on the seat's row. |
 
@@ -2215,7 +2238,7 @@ before fire removed inventory rows is left out that way.
 | Error | When |
 |-------|------|
 | Two sources claiming one discovery domain | `createWorkforceCapability` construction, naming both registration sites |
-| A worker file's `discover:` names something that is not one of the four domains | The mint, by name, listing `seats`, `channels`, `skills`, `resources`. A correctly spelled domain the scope does not carry is *not* an error — the seat simply sees nothing for it |
+| A worker file's `discover:` names something that is not one of the four domains | The mint, by name, listing `seats`, `mailboxes`, `skills`, `resources`. A correctly spelled domain the scope does not carry is *not* an error — the seat simply sees nothing for it |
 | Worker folder unreadable | Collected in `readWorkforceDirectory`'s `errors`, keyed by the folder's path — never thrown |
 | Workforce root unreadable or symlinked | `readWorkforceDirectory` and `readWorkforce` throw — the root is never followed through a link |
 | Anything below the root, read as one tree | Collected in `readDeclaredRoster`'s `problems`, one entry per thing that did not load, tagged with the layer that reported it — never thrown |
@@ -2244,15 +2267,17 @@ before fire removed inventory rows is left out that way.
 | Reference cannot become a resource | `referencesFromDocs` throws naming the ref — a setting the convention derives, a lazy `prefetchMode`, a record with no `filePath`, or frontmatter `defineResource` itself rejects |
 | One ref passed to `hireWorkforce` as both a document and a reference | `hireWorkforce` throws before hiring anything, naming every ref in both maps |
 | A reference row cannot be addressed | `clearShadowedReferences` throws when the org id — or, for a flow that isolates its org scope, the flow id — contains `:` or a backslash |
-| A `channels/` slot, `teams/` or a team folder unreadable or symlinked | Collected in `readChannelsDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
-| Channel folder fails to load | Collected in `readChannelsDirectory`'s `errors` as `kind: "channel-load-failed"`, keyed by the folder's path — an unusable name, a symlink, or a missing, unreadable or malformed `CHANNEL.md` |
-| `system:` in a `CHANNEL.md` | Collected in `readChannelsDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the channel folder's path |
-| Workforce root unreadable or symlinked, read for channels | `readChannelsDirectory` throws — the root is never followed through a link |
-| Channel cannot be bound | `channelInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, a `boards:` that is not a list of plain names, a board name carrying a dot or declared twice, a minted board id two channels would share, or `boards:` on a custom kind that does not support them. Also `instructions:` given both in the frontmatter and as a body. For a talk template (`mintFor:`, or the org default): `boards:`, `routing:` or `boardActions:` on it, a `mintFor:` naming no collection in `resources` or one other than the projects collection, a seat that is not a seat id or is listed twice, a kind filed under another kind's key or one `defineChannelFlow` did not build, seats on a kind with no `notify` block, or a second template for the collection. Collected: one error names every bad channel, and nothing is registered |
-| Channel cannot be opened | `openChannels` throws, naming the channel — except a 409, which means the id is taken. An open channel there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable channel — is named and refused rather than released |
-| `channel-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
-| `author-not-a-member` | A `post` claiming an `author` outside the channel's declared members. Per-request; nothing is written |
-| `external-dispatcher` | A flow-to-flow post into an opened channel on a host whose dispatcher hands work to an external queue and shares no lease backend. A post through the public action route is written, but its notify block never runs: no member is woken and a routed channel doesn't answer |
+| A `mailboxes/` slot, `teams/` or a team folder unreadable or symlinked | Collected in `readMailboxesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
+| Mailbox folder fails to load | Collected in `readMailboxesDirectory`'s `errors` as `kind: "mailbox-load-failed"`, keyed by the folder's path — an unusable name, a symlink, or a missing, unreadable or malformed `MAILBOX.md` |
+| `system:` in a `MAILBOX.md` | Collected in `readMailboxesDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the mailbox folder's path |
+| A record file or records folder under its name from before the rename | Collected in `readMailboxesDirectory`'s `errors` as `kind: "pre-rename-record"`, one per old file (or one for a folder holding none), keyed by the old path and naming where it belongs now. Never read as a mailbox |
+| The kinds folder from before the rename, or a kind file named for the built-in's name from before it | `discoverWorkforceCode` refuses it by name in its `WorkforceCodeError`, so `fsdev gen` generates nothing. A session on that name would read as old data |
+| Workforce root unreadable or symlinked, read for mailboxes | `readMailboxesDirectory` throws — the root is never followed through a link |
+| Mailbox cannot be bound | `mailboxInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, a `boards:` that is not a list of plain names, a board name carrying a dot or declared twice, a minted board id two mailboxes would share, `boards:` on a custom kind that does not support them, or a `kinds` key that is the built-in's name from before the rename (refused before anything else). Also `instructions:` given both in the frontmatter and as a body. For a talk template (`mintFor:`, or the org default): `boards:`, `routing:` or `boardActions:` on it, a `mintFor:` naming no collection in `resources` or one other than the projects collection, a seat that is not a seat id or is listed twice, a kind filed under another kind's key or one `defineMailboxFlow` did not build, seats on a kind with no `notify` block, or a second template for the collection. Collected: one error names every bad mailbox, and nothing is registered |
+| Mailbox cannot be opened | `openMailboxes` throws, naming the mailbox — except a 409, which means the id is taken. An open mailbox there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable mailbox — is named and refused rather than released. A session of the kind from before the rename is refused as a store to reset, never as a collision |
+| `mailbox-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
+| `author-not-a-member` | A `post` claiming an `author` outside the mailbox's declared members. Per-request; nothing is written |
+| `external-dispatcher` | A flow-to-flow post into an opened mailbox on a host whose dispatcher hands work to an external queue and shares no lease backend. A post through the public action route is written, but its notify block never runs: no member is woken and a routed mailbox doesn't answer |
 | Inventory id is not one path segment | `membershipKey` and `membershipPrefix` throw, naming the offending argument: an empty id, one containing `/` or `\`, or `.` and `..` |
 | Unknown kind on `hire` | The tool, listing the hireable kinds. Writes nothing. |
 | Address already served | The `hire` tool, naming the address and the live kind. Writes nothing. |
@@ -2260,7 +2285,7 @@ before fire removed inventory rows is left out that way.
 | `fire` names no roster row | The tool. "This organization hired no seat" when nothing is live at that address. A live file-declared seat is refused as removed by editing its folder, not by firing it. |
 | Inventory write with no org | `openInventory` throws before writing anything — the three collections are org-scoped |
 | Seat inventory write with no seatWriter | `openInventory` throws when passed seats and no `seatWriter` — a seat has no session of its own, so its row needs a flow to run in |
-| Channel or seat registration failed | Collected in `openInventory`'s `problems`: a channel whose session is not open, whose kind declares no registration action, or whose action failed; a seat write that failed. The rest of the roster is still attempted |
+| Mailbox or seat registration failed | Collected in `openInventory`'s `problems`: a mailbox whose session is not open, whose kind declares no registration action, or whose action failed; a seat write that failed. The rest of the roster is still attempted |
 
 ## Scripts
 

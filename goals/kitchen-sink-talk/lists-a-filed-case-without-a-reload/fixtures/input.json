@@ -1,6 +1,6 @@
 {
   "port": 3042,
-  "channel": { "kind": "channel", "id": "support.help", "board": "escalations" },
+  "mailbox": { "kind": "mailbox", "id": "support.help", "board": "escalations" },
   "seat": "support.devices",
   "specialists": ["support.devices", "support.accounts", "support.fsd", "support.general"],
   "marker": "[scenario:needs-a-person]",

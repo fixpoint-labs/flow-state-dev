@@ -16,11 +16,11 @@ const ORG = "acme";
 type Lab = {
   seats: Array<{ id: string; kind: string; hired?: boolean; incarnation?: string }>;
   roster?: Array<{ seatId: string; incarnation?: string | null }> | "fails";
-  /** The channel rows; one channel when omitted. */
-  channels?: unknown[];
+  /** The mailbox rows; one mailbox when omitted. */
+  mailboxes?: unknown[];
   /**
    * The roster is declared only by an `agent` flow whose one session is a
-   * dispatch child of the channel session, as when the viewer's only agent
+   * dispatch child of the mailbox session, as when the viewer's only agent
    * session was spawned by a dispatch.
    */
   rosterOnChildSession?: boolean;
@@ -29,14 +29,14 @@ type Lab = {
 function clientsFor(lab: Lab): LabClients {
   const collections: Record<string, unknown[] | "fails"> = {
     seats: lab.seats,
-    channels: lab.channels ?? [{ id: "eng.general", kind: "channel", members: [] }],
+    mailboxes: lab.mailboxes ?? [{ id: "eng.general", kind: "mailbox", members: [] }],
     ...(lab.roster === undefined ? {} : { roster: lab.roster }),
   };
   const rosterEntry = { kind: "collection", ref: "roster", pattern: "workforce/roster/*", scope: "org", client: { state: { read: true } } };
   const manifest = {
     resources: [
       { kind: "collection", ref: "seats", pattern: "inventory/seats/*", scope: "org", client: { state: { read: true } } },
-      { kind: "collection", ref: "channels", pattern: "inventory/channels/*", scope: "org", client: { state: { read: true } } },
+      { kind: "collection", ref: "mailboxes", pattern: "inventory/mailboxes/*", scope: "org", client: { state: { read: true } } },
       ...(lab.roster === undefined || lab.rosterOnChildSession ? [] : [rosterEntry]),
     ],
   };
@@ -45,7 +45,7 @@ function clientsFor(lab: Lab): LabClients {
     userId: "u1",
     sessions: {
       listSessions: async () => [
-        { id: "s1", flowKind: "channel", parentSessionId: null, updatedAt: 0 },
+        { id: "s1", flowKind: "mailbox", parentSessionId: null, updatedAt: 0 },
         ...(lab.rosterOnChildSession ? [{ id: "s2", flowKind: "agent", parentSessionId: "s1", updatedAt: 0 }] : []),
       ],
       getSession: async () => ({ orgId: ORG }),
@@ -149,7 +149,7 @@ describe("TEAMS and the roster", () => {
   });
 
   it("BR-24 · a Lab whose only seats are hired, with the roster unread, says why they aren't listed rather than that it registers nothing", async () => {
-    const value = await teams({ seats: [{ id: "acme.support.ada", kind: "agent", hired: true }], roster: "fails", channels: [] });
+    const value = await teams({ seats: [{ id: "acme.support.ada", kind: "agent", hired: true }], roster: "fails", mailboxes: [] });
     expect(value.seats).toEqual([]);
     expect(value.rosterUnread).toMatch(/1 hired seat isn't listed: the roster didn't load.*the roster read failed/);
   });

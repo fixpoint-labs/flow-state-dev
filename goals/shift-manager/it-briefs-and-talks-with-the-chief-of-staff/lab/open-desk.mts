@@ -1,7 +1,7 @@
 /**
  * The goal's fixture Labs, opened the way Shift Manager's start script loads
  * one: a tree with one team, `desk`, whose seats run the turn goal's `asker`
- * kind or the built-in `agent` kind with a real model, in one channel with one
+ * kind or the built-in `agent` kind with a real model, in one mailbox with one
  * board. The organization's inventory is open, so each seat's row names its
  * door. In-memory stores and no credential, so every start is fresh. The check
  * raises the asks itself, through the Lab's own action route, so the Lab
@@ -18,15 +18,15 @@ import { createFlowState, inMemoryStores, runAction } from "@flow-state-dev/engi
 import { createModelResolver, DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
-  CHANNEL_KIND,
-  channelBoardIds,
-  channelInstances,
-  defineChannelFlow,
+  MAILBOX_KIND,
+  mailboxBoardIds,
+  mailboxInstances,
+  defineMailboxFlow,
   hireWorkforce,
-  openChannels,
+  openMailboxes,
   openInventory,
   type InventoryActionRequest,
-  type OpenChannelsOptions,
+  type OpenMailboxesOptions,
 } from "@flow-state-dev/workforce";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { ASKER_KIND, defineAskerFlow } from "../../it-sends-a-turn-into-a-seat-session/lab/asker/asker.mts";
@@ -46,11 +46,11 @@ export async function openDesk(root: string) {
 
   const seats = hireWorkforce(tree.workers, {
     kinds: { [ASKER_KIND]: defineAskerFlow() as never },
-    channelBoards: channelBoardIds(tree.channels),
+    mailboxBoards: mailboxBoardIds(tree.mailboxes),
   });
-  const channelKind = defineChannelFlow({ inventory: true });
+  const mailboxKind = defineMailboxFlow({ inventory: true });
   const flows: Record<string, FlowInstance> = {
-    ...Object.fromEntries(channelInstances(tree.channels, { kinds: { [CHANNEL_KIND]: channelKind as never } }).map((i) => [i.kind, i])),
+    ...Object.fromEntries(mailboxInstances(tree.mailboxes, { kinds: { [MAILBOX_KIND]: mailboxKind as never } }).map((i) => [i.kind, i])),
     ...Object.fromEntries(seats.map((seat) => [seat.id, seat])),
   };
   const flowState = createFlowState({
@@ -74,7 +74,7 @@ export async function openDesk(root: string) {
     const text = await response.text();
     return { status: response.status, body: text.length > 0 ? JSON.parse(text) : null };
   };
-  const client: OpenChannelsOptions["client"] = {
+  const client: OpenMailboxesOptions["client"] = {
     createSession: async (create) => {
       const { status, body } = await call("POST", [create.flowKind, "sessions"], create);
       if (status >= 400) throw Object.assign(new Error(`create session: ${status}`), { status });
@@ -89,11 +89,11 @@ export async function openDesk(root: string) {
       await call("DELETE", ["sessions", sessionId]);
     },
   };
-  await openChannels(tree.channels, { client, userId: USER_ID });
+  await openMailboxes(tree.mailboxes, { client, userId: USER_ID });
 
   const runtime = await flowState.getRuntime();
   const opened = await openInventory(
-    { seats, channels: tree.channels },
+    { seats, mailboxes: tree.mailboxes },
     {
       run: async (request: InventoryActionRequest) => {
         const result = (await runAction({
@@ -110,7 +110,7 @@ export async function openDesk(root: string) {
         if (result?.error !== undefined) throw new Error(String((result.error as Error).message ?? result.error));
         return result;
       },
-      seatWriter: { flowKind: CHANNEL_KIND },
+      seatWriter: { flowKind: MAILBOX_KIND },
       userId: USER_ID,
       orgId: DEFAULT_ORG_ID,
     },

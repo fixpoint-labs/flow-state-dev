@@ -1,5 +1,5 @@
 /**
- * Goal check — a post on a channel becomes work a person can open and judge.
+ * Goal check — a post on a mailbox becomes work a person can open and judge.
  *
  * **The third sibling.** `it-wakes-the-seat-a-file-declared` grades what the
  * plumbing carried, model-free. `it-commits-from-the-seats-own-file` grades that
@@ -11,7 +11,7 @@
  *
  * ## What it grades
  *
- * 1. **The channel is driven.** An operator posts one line. The line lands in
+ * 1. **The mailbox is driven.** An operator posts one line. The line lands in
  *    the transcript, reaches the EM seat and nobody else, and **the board holds
  *    exactly one row** — enumerated, not looked up, because presence is not
  *    exclusivity. Before the post there is no row (BR-6, BR-7, BR-8, BR-9).
@@ -85,7 +85,7 @@ import { harnessTaskId } from "@flow-state-dev/harness-manager/checkout";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import { z } from "zod";
 import { RUN_STAMP, runGoal, silentLogger, stripIntentOverrides } from "../../lib/index.mts";
-import { LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../lab/host.mts";
+import { boardMailboxOf, LAB_ORG_ID, LAB_TREE, LAB_USER_ID, openLab, type Lab } from "../lab/host.mts";
 import { PHASE } from "../lab/phase.mts";
 import { createNotifyLog, type NotifyLog } from "../lab/notify.mts";
 import { ACCEPTANCE_MODULE, runAcceptance } from "../lab/acceptance.mts";
@@ -108,12 +108,10 @@ stripIntentOverrides();
 
 /** The seat the board's `coder` assignee is addressed to. */
 const ASSIGNED_SEAT = "eng.coder";
-/** The seat the channel post is delivered to. */
+/** The seat the mailbox post is delivered to. */
 const COORDINATOR_SEAT = "eng.em";
-/** Declared on the channel, hired into the same kind as the coder, and never given work. */
+/** Declared on the mailbox, hired into the same kind as the coder, and never given work. */
 const REVIEWER_SEAT = "eng.reviewer";
-/** Every member `CHANNEL.md` declares, in the order the fan-out walks them. */
-const DECLARED_MEMBERS = [COORDINATOR_SEAT, ASSIGNED_SEAT, REVIEWER_SEAT];
 
 /** The feature, and the line an operator posts to ask for it. */
 const ISSUE = "greeting-module";
@@ -123,7 +121,7 @@ const POST_LINE = `${ISSUE}: Add a greeting module to the repository.`;
 const TASK_ID = harnessTaskId(ISSUE, PHASE);
 
 /**
- * The row's storage key: the channel board's minted id, then the row id.
+ * The row's storage key: the mailbox board's minted id, then the row id.
  * The id is read off the lab, which read it off the tree.
  */
 function rowKey(lab: Lab): string {
@@ -292,7 +290,7 @@ const unavailableHarness = () =>
  * Wait for the post's row to appear, or give up.
  *
  * The fan-out is deliberately **not** inside the post's own request — the
- * channel hands it off so delivery latency cannot eat the next poster's queue
+ * mailbox hands it off so delivery latency cannot eat the next poster's queue
  * budget — so the row lands a moment after `post()` returns. Reading it
  * immediately is a race that passes on a fast machine and fails on a slow one.
  */
@@ -520,7 +518,7 @@ await runGoal(async () => {
       workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
       coderSeatId: ASSIGNED_SEAT,
       logger: silentLogger,
-      channels: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log },
+      mailboxes: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log },
       harness: () => unavailableHarness(),
     });
     try {
@@ -589,7 +587,7 @@ await runGoal(async () => {
   // tell the coder from the reviewer — and that is the whole of the claim.
   //
   // The perturbation is one thing: the board's `coder` assignee is addressed to
-  // the reviewer seat. A channel *notification* to a declared member is a
+  // the reviewer seat. A mailbox *notification* to a declared member is a
   // different dispatch kind and is expected; what BR-8 forbids is work, and
   // this is what work reaching the reviewer looks like.
 
@@ -602,7 +600,7 @@ await runGoal(async () => {
       workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
       coderSeatId: REVIEWER_SEAT,
       logger: silentLogger,
-      channels: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log },
+      mailboxes: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log },
       harness: () => inertHarness(),
     });
     try {
@@ -663,7 +661,7 @@ await runGoal(async () => {
       workspace: { root: dirs.root, sourceRepo: dirs.sourceRepo, baseRef: BASE_REF },
       coderSeatId: ASSIGNED_SEAT,
       logger: silentLogger,
-      channels: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log },
+      mailboxes: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log },
       requireAcceptance: true,
       harness: ({ cwd }) => committingHarness(cwd),
     });
@@ -743,10 +741,9 @@ await runGoal(async () => {
     coderSeatId: ASSIGNED_SEAT,
     runTimeoutMs: RUN_TIMEOUT_MS,
     logger: silentLogger,
-    // Only the EM is addressed. The coder and the reviewer are declared members
-    // of the channel and are true no-ops in the fan-out — recorded and skipped,
-    // never dispatched to.
-    channels: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log: notifyLog },
+    // Only the EM is addressed. Every other declared member of the mailbox is a
+    // true no-op in the fan-out — recorded and skipped, never dispatched to.
+    mailboxes: { addresses: { [COORDINATOR_SEAT]: COORDINATOR_SEAT }, log: notifyLog },
     harness: ({ cwd, resume, onSession }) =>
       sequencer({
         name: "devforce-ships-harness",
@@ -774,14 +771,14 @@ await runGoal(async () => {
 
   /** Filled in once the run has been published, so the legs after `dispose` can read them. */
   let branch: string | undefined;
-  let channelId = "";
+  let mailboxId = "";
   let ledgerKey = "";
 
   try {
-    if (lab.post === undefined || lab.transcript === undefined || lab.channelId === undefined) {
-      return { failures: ["the lab opened no channel, so there is no door to post through"], evidence: "" };
+    if (lab.post === undefined || lab.transcript === undefined || lab.mailboxId === undefined) {
+      return { failures: ["the lab opened no mailbox, so there is no door to post through"], evidence: "" };
     }
-    channelId = lab.channelId;
+    mailboxId = lab.mailboxId;
     ledgerKey = rowKey(lab);
 
     // ---- BR-9, first: the board does not start itself -------------------
@@ -799,7 +796,7 @@ await runGoal(async () => {
     const transcript = await lab.transcript();
     if (transcript.length !== 1 || transcript[0]?.body !== POST_LINE) {
       failures.push(
-        `the channel's transcript carries ${transcript.length} line(s); wanted exactly the one ` +
+        `the mailbox's transcript carries ${transcript.length} line(s); wanted exactly the one ` +
           `that was posted`,
       );
     }
@@ -829,10 +826,12 @@ await runGoal(async () => {
     }
     if (failures.length > 0) return { failures, evidence: "" };
 
-    // BR-8's positive half: exactly the EM was addressed, and the other two
-    // declared members were seen and skipped. Not an absence — a record.
+    // BR-8's positive half: exactly the EM was addressed, and every other
+    // declared member was seen and skipped. Not an absence — a record.
     const skipped = [...notifyLog.skipped].sort();
-    const expectedSkips = DECLARED_MEMBERS.filter((m) => m !== COORDINATOR_SEAT).sort();
+    // Every member the board's `MAILBOX.md` declares, read off the tree the lab opened.
+    const declaredMembers = (boardMailboxOf(lab.roster).declared.members as string[] | undefined) ?? [];
+    const expectedSkips = declaredMembers.filter((m) => m !== COORDINATOR_SEAT).sort();
     if (notifyLog.addressed.join(",") !== COORDINATOR_SEAT) {
       failures.push(
         `the fan-out addressed [${notifyLog.addressed.join(", ")}]; wanted only ${COORDINATOR_SEAT}`,
@@ -850,7 +849,7 @@ await runGoal(async () => {
     if (failures.length > 0) return { failures, evidence: "" };
 
     evidence.push(
-      `one post on ${lab.channelId} produced exactly one row (${TASK_ID}), with ` +
+      `one post on ${lab.mailboxId} produced exactly one row (${TASK_ID}), with ` +
         `${expectedSkips.length} declared member(s) seen and skipped`,
     );
 
@@ -1047,7 +1046,7 @@ await runGoal(async () => {
   // connection, which is a weaker claim than BR-11 makes.
   const freshRead = spawnSync(
     "pnpm",
-    ["tsx", REREAD, STORE_FILE, LAB_USER_ID, LAB_ORG_ID, ledgerKey, channelId],
+    ["tsx", REREAD, STORE_FILE, LAB_USER_ID, LAB_ORG_ID, ledgerKey, mailboxId],
     { encoding: "utf8", timeout: 120_000 },
   );
   if (freshRead.status !== 0) {

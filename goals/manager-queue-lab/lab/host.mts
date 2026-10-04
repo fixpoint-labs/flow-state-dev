@@ -4,7 +4,7 @@
  * and differ by one block.
  *
  * What `openLab` does, in order, and nothing else: read the tree, build the
- * kinds, hire, register, open the channel, hand back handles. Every file it
+ * kinds, hire, register, open the mailbox, hand back handles. Every file it
  * reads is found by walking from one root; no file is named in this code.
  *
  * ## The three things that are the lab's rather than the framework's
@@ -22,9 +22,9 @@
  * ## What is NOT here, and is the point
  *
  * There is no ledger id anywhere in this file, and no `boards:` wiring. The
- * channel's own `CHANNEL.md` declares a board by local name; the framework
- * mints the id from where the folder sits, `channelBoardIds` reads it back, and
- * `channelBoard(channel.id, name)` is how the seats reach the same rows. A
+ * mailbox's own `MAILBOX.md` declares a board by local name; the framework
+ * mints the id from where the folder sits, `mailboxBoardIds` reads it back, and
+ * `mailboxBoard(mailbox.id, name)` is how the seats reach the same rows. A
  * check greps every file under this lab for the minted string, and a hit is a
  * failure — including a hit in this comment, which is why the id is not written
  * out here either.
@@ -34,14 +34,14 @@ import { createFlowState, runAction } from "@flow-state-dev/engine";
 import type { BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
 import type { Task } from "@flow-state-dev/orchestration/tasks";
 import {
-  CHANNEL_KIND,
-  channelBoard,
-  channelBoardIds,
-  channelInstances,
+  MAILBOX_KIND,
+  mailboxBoard,
+  mailboxBoardIds,
+  mailboxInstances,
   hireWorkforce,
-  openChannels,
-  type ChannelBoardCollection,
-  type ChannelManifest,
+  openMailboxes,
+  type MailboxBoardCollection,
+  type MailboxManifest,
   type WorkerManifest,
 } from "@flow-state-dev/workforce";
 import { discoverSeatBlocks } from "@flow-state-dev/workforce/codegen";
@@ -71,7 +71,7 @@ import type { HiredSeat, QueueView } from "./queue.mts";
 /** The authored tree — the one path this code names. Everything else is walked. */
 export const LAB_TREE = fileURLToPath(new URL("./workforce", import.meta.url));
 
-/** Who the lab runs as, and the org every channel session and board is bound to. */
+/** Who the lab runs as, and the org every mailbox session and board is bound to. */
 export const LAB_USER_ID = "u_manager_queue_lab";
 export const LAB_ORG_ID = "org_manager_queue_lab";
 
@@ -223,9 +223,9 @@ export interface Lab {
   coordinatorId: string;
   /** The builder seat ids, in tree order. */
   builderIds: string[];
-  /** The channel's id, as the tree minted it. */
-  channelId: string;
-  /** The board's LOCAL name, as the `CHANNEL.md` wrote it. */
+  /** The mailbox's id, as the tree minted it. */
+  mailboxId: string;
+  /** The board's LOCAL name, as the `MAILBOX.md` wrote it. */
   boardName: string;
   /** The MINTED ledger id. Appears in no file — a check greps for it. */
   boardId: string;
@@ -240,8 +240,8 @@ export interface Lab {
 
   /** Hand the coordinator a list of work and let it file. Runs the model. */
   intakeWork(work: string[]): Promise<{ error?: string }>;
-  /** File one row through the CHANNEL's own action — the other door (BR-8, BR-9). */
-  fileThroughChannel(input: Record<string, unknown>): Promise<{ output?: unknown; error?: string }>;
+  /** File one row through the MAILBOX's own action — the other door (BR-8, BR-9). */
+  fileThroughMailbox(input: Record<string, unknown>): Promise<{ output?: unknown; error?: string }>;
   /** Make every builder seat work its share, at once. They share one board. */
   drainAll(): Promise<Array<{ seat: string; error?: string }>>;
   /** Read the queue through the coordinator's own action. Writes nothing. */
@@ -275,7 +275,7 @@ export interface Lab {
 const drainSessionId = (seatId: string): string => `s_${seatId}`;
 
 /**
- * Read the tree, build the kinds, hire, and open the channel.
+ * Read the tree, build the kinds, hire, and open the mailbox.
  *
  * @param options The stores, the seat map, the drain width, and any controls.
  * @returns The live lab. Call `dispose()` when done.
@@ -287,15 +287,15 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   const roster = await loadTree(root);
   const seatBlocks = await loadSeatBlocks(root);
 
-  const channels: ChannelManifest[] = roster.channels;
-  const channel = channels[0];
-  if (channel === undefined) throw new Error(`the tree at ${root} declared no channel`);
+  const mailboxes: MailboxManifest[] = roster.mailboxes;
+  const mailbox = mailboxes[0];
+  if (mailbox === undefined) throw new Error(`the tree at ${root} declared no mailbox`);
 
-  // Read off the FILE, never hardcoded. Rename the team folder, the channel
+  // Read off the FILE, never hardcoded. Rename the team folder, the mailbox
   // folder or the board and a correct implementation still passes.
-  const boardName = (channel.declared.boards as string[] | undefined)?.[0];
-  if (boardName === undefined) throw new Error(`channel "${channel.id}" declares no board`);
-  const board: ChannelBoardCollection = channelBoard(channel.id, boardName);
+  const boardName = (mailbox.declared.boards as string[] | undefined)?.[0];
+  if (boardName === undefined) throw new Error(`mailbox "${mailbox.id}" declares no board`);
+  const board: MailboxBoardCollection = mailboxBoard(mailbox.id, boardName);
   const boardId = board.id;
 
   // The control mutates the RECORD, before the mint, so a seat with a rewritten
@@ -375,13 +375,13 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     seatBlocks,
     // Every minted id is declared by a hired seat, so this says nothing. A
     // warning on stderr here would mean a builder's declaration missed.
-    channelBoards: channelBoardIds(channels),
+    mailboxBoards: mailboxBoardIds(mailboxes),
   });
   const seats: Record<string, FlowInstance> = Object.fromEntries(
     hired.map((seat) => [seat.id, seat]),
   );
 
-  const instances = channelInstances(channels);
+  const instances = mailboxInstances(mailboxes);
 
   const state = createFlowState({
     flows: {
@@ -398,12 +398,12 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
   }
 
   /**
-   * The session client `openChannels` is handed.
+   * The session client `openMailboxes` is handed.
    *
    * Direct store writes rather than the HTTP router: the route is
    * fire-and-forget and this needs the session to exist before the next line.
-   * `orgId` is threaded through natively — a channel board is org-scoped
-   * storage, so a channel opened without one holds a board nothing can read.
+   * `orgId` is threaded through natively — a mailbox board is org-scoped
+   * storage, so a mailbox opened without one holds a board nothing can read.
    */
   const client = {
     createSession: async (create: {
@@ -426,7 +426,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
           flowKind: create.flowKind,
           flowId: create.flowKind,
           userId: create.userId,
-          // `openChannels` no longer names an org (FIX-1442); this stand-in for
+          // `openMailboxes` no longer names an org (FIX-1442); this stand-in for
           // the session route binds what the real route binds.
           orgId: create.orgId ?? LAB_ORG_ID,
           description: create.description,
@@ -464,11 +464,11 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     },
   };
 
-  await openChannels(channels, { client, userId: LAB_USER_ID });
+  await openMailboxes(mailboxes, { client, userId: LAB_USER_ID });
 
-  const channelInstance = instances.find((instance) => instance.kind === CHANNEL_KIND);
-  if (channelInstance === undefined) {
-    throw new Error(`the tree at ${root} produced no "${CHANNEL_KIND}" instance to act on`);
+  const mailboxInstance = instances.find((instance) => instance.kind === MAILBOX_KIND);
+  if (mailboxInstance === undefined) {
+    throw new Error(`the tree at ${root} produced no "${MAILBOX_KIND}" instance to act on`);
   }
 
   /**
@@ -508,7 +508,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
     seats,
     coordinatorId,
     builderIds,
-    channelId: channel.id,
+    mailboxId: mailbox.id,
     boardName,
     boardId,
     assignees,
@@ -526,8 +526,8 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
       return result.error === undefined ? {} : { error: messageOf(result.error) };
     },
 
-    fileThroughChannel: async (input: Record<string, unknown>) => {
-      const result = await act(channelInstance, channel.id, "fileTask", input);
+    fileThroughMailbox: async (input: Record<string, unknown>) => {
+      const result = await act(mailboxInstance, mailbox.id, "fileTask", input);
       return result.error === undefined
         ? { output: result.output }
         : { error: messageOf(result.error) };
@@ -565,7 +565,7 @@ export async function openLab(options: OpenLabOptions): Promise<Lab> {
 
     rows: async () => {
       // Through the coordinator's own read, which resolves the same ledger the
-      // seats drain — not through the channel's `readBoard`, whose published
+      // seats drain — not through the mailbox's `readBoard`, whose published
       // allowlist deliberately drops `claimedBy` and `leaseUntil`, the two
       // fields the queue's running/queued split is computed from.
       const result = await act(

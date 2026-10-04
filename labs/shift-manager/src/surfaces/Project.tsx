@@ -11,22 +11,26 @@
  * - **Board** draws one lane per workstream of the project that holds a
  *   board, in the workstream Board's columns.
  * - **Workstreams** lists the workstreams the project's row names, each
- *   linking to its own level. One whose channel has left the tree is shown as
+ *   linking to its own level. One whose mailbox has left the tree is shown as
  *   gone, with no link.
  * - **Brief** is the row's brief.
  *
  * No project holds the workstreams no project lists (D3): its Board and
  * Workstreams list them, and it has no room and no brief.
  *
+ * Above the tabs, the team strip from the seat inventory, as design v2 draws
+ * it (v2:513-519): each team's name in spaced mono caps and how many of its
+ * seats are on shift and on call.
+ *
  * Everything but the room comes from the one snapshot. The room is never part
  * of it: it is read only when a member opens it.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import type { ChannelTranscriptLine } from "@flow-state-dev/workforce/browser";
+import type { MailboxTranscriptLine } from "@flow-state-dev/workforce/browser";
 import { Board } from "../components/Board";
-import { EmptyState, ScreenTitle, SectionFailure, Tabs } from "../components/ui";
+import { EmptyState, Meta, PartialMark, ScreenTitle, SectionFailure, Tabs } from "../components/ui";
 import { mergeLines } from "../lib/transcript";
-import { projectsOf, talkFor, teamsOf, type ListedWorkstream, type LoadedSnapshot } from "../lib/derive";
+import { projectsOf, seatStates, shiftCounts, talkFor, teamsOf, type ListedWorkstream, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type Failure, type Project, type Workstream } from "../lib/reads";
 import { navigate, NO_PROJECT, PROJECT_TABS, type ProjectTab } from "../lib/routes";
@@ -59,6 +63,7 @@ export function ProjectView({
 }) {
   const { refresh } = useLab();
   const teams = snapshot.inventory.ok ? teamsOf(snapshot.inventory.value.seats) : [];
+  const states = seatStates(snapshot);
   const view = projectsOf(snapshot);
 
   let title = "No project";
@@ -129,19 +134,26 @@ export function ProjectView({
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="project" data-project-id={projectId}>
-      <header className="flex items-end justify-between px-4 pt-3">
-        <div>
-          <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">PROJECT</p>
-          <ScreenTitle testId="project-title">{title}</ScreenTitle>
-        </div>
-        <ul className="flex gap-2 pb-1" data-testid="team-strip" aria-label="Teams">
-          {teams.map(({ team, seats }) => (
-            <li key={team} className="border px-2 py-0.5 text-xs">
-              {team} <span className="text-muted-foreground">{seats.length}</span>
-            </li>
-          ))}
-        </ul>
+      <header className="px-4 pt-3">
+        <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">PROJECT</p>
+        <ScreenTitle testId="project-title">{title}</ScreenTitle>
       </header>
+      <ul className="flex flex-wrap items-center gap-x-[26px] gap-y-1 border-b border-foreground/[0.12] px-[22px] py-2" data-testid="team-strip" aria-label="Teams">
+        {teams.map(({ team }) => {
+          const counts = shiftCounts(states, team);
+          return (
+            <li key={team} className="flex items-center gap-2.5" data-testid="team-strip-team" data-team={team}>
+              <Meta role="count" className="tracking-[0.12em] text-muted-foreground uppercase">
+                {team}
+              </Meta>
+              <Meta>
+                {counts["on shift"]} on shift · {counts["on call"]} on call
+                {states.partial ? <PartialMark title={gaps.roster.partial} /> : null}
+              </Meta>
+            </li>
+          );
+        })}
+      </ul>
       <Tabs label="Project" tabs={PROJECT_TABS} selected={tab} onSelect={(next) => navigate({ level: "project", projectId, tab: next })} />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" role="tabpanel" data-tabpanel={tab}>
         {body}
@@ -162,7 +174,7 @@ function WorkstreamList({ listed }: { listed: readonly ListedWorkstream[] }) {
   return (
     <ul className="mx-auto w-full max-w-3xl space-y-1 p-4" data-testid="project-workstreams">
       {listed.map(({ id, workstream }) => (
-        <li key={id} data-testid="project-workstream" data-channel-id={id} data-gone={workstream === undefined ? "true" : undefined}>
+        <li key={id} data-testid="project-workstream" data-mailbox-id={id} data-gone={workstream === undefined ? "true" : undefined}>
           {workstream === undefined ? (
             <span className="text-sm text-muted-foreground">
               {id} · no longer in the Lab
@@ -171,7 +183,7 @@ function WorkstreamList({ listed }: { listed: readonly ListedWorkstream[] }) {
             <button
               type="button"
               className="text-sm underline-offset-2 hover:underline"
-              onClick={() => navigate({ level: "workstream", channelId: workstream.id, tab: "stream" })}
+              onClick={() => navigate({ level: "workstream", mailboxId: workstream.id, tab: "stream" })}
             >
               {workstream.id}
             </button>
@@ -202,7 +214,7 @@ function Lanes({ snapshot, listed, gaps }: { snapshot: LoadedSnapshot; listed: r
       {lanes.map((workstream) => {
         const boards = snapshot.boards[workstream.id]!;
         return (
-          <section key={workstream.id} data-testid="project-lane" data-channel-id={workstream.id}>
+          <section key={workstream.id} data-testid="project-lane" data-mailbox-id={workstream.id}>
             <h3 className="px-4 pt-3 text-xs font-medium">{workstream.id}</h3>
             {boards.ok ? (
               <Board rows={boards.value.rows} inReviewGap={gaps.inReview} />
@@ -306,7 +318,7 @@ export function RoomView({
   page: (after: number) => Promise<RoomPage>;
   post: (body: string) => Promise<void>;
 }) {
-  const [lines, setLines] = useState<ChannelTranscriptLine[] | undefined>(undefined);
+  const [lines, setLines] = useState<MailboxTranscriptLine[] | undefined>(undefined);
   const [failure, setFailure] = useState<{ failure: Failure; refused: boolean } | undefined>(undefined);
   /** The seq below the lines shown: 0 once the room's start is shown, unknown until it opens. */
   const [floor, setFloor] = useState<number | undefined>(undefined);
