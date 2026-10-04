@@ -1,0 +1,77 @@
+<svg viewBox="0 0 940 400" role="img" aria-label="What changes. Today, on the left: the Lab's operator wires one repository at boot, and runs for project Storefront and project Platform both cut their checkouts from it, whichever code the project is about. After, on the right: each project row records a remote or none. A run for Storefront follows its workstream to the project, takes the remote, and the host keeps one clone of it and cuts the run's checkout from it. Beside the checkout, never inside it, sits a directory of the project's own files, laid out from and saved back to the project's files collection. Platform records no repository, so its coding row is refused by name."
+     xmlns="http://www.w3.org/2000/svg">
+  <style>
+    :root { --surface:#FCFCFA; --surface-2:#E8E8E1; --ink:#191C21; --ink-2:#4C535B; --ink-3:#7A828B;
+            --rule:#D5D4CB; --accent:#3E4E8C; --accent-soft:#E0E3F0; --code:#2C7C69; --code-soft:#DCEDE7;
+            --prose:#A8761C; --prose-soft:#F3E8D2; --gone:#A9544F; }
+    @media (prefers-color-scheme: dark) {
+      :root { --surface:#181C1F; --surface-2:#202528; --ink:#E6E8E5; --ink-2:#A4ACB1; --ink-3:#737B81;
+              --rule:#2B3135; --accent:#8B9BD8; --accent-soft:#1B2140; --code:#5DBBA1; --code-soft:#14302A;
+              --prose:#D9A44B; --prose-soft:#332612; --gone:#DE8A84; } }
+    .bg    { fill:var(--surface); }
+    .pane  { fill:var(--surface-2); }
+    .n-box { fill:var(--surface); stroke:var(--rule); stroke-width:1.2; }
+    .n-new { fill:var(--code-soft); stroke:var(--code); stroke-width:1.4; }
+    .n-in  { fill:var(--prose-soft); stroke:var(--prose); stroke-width:1.2; }
+    .n-acc { fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2; }
+    .n-gone{ fill:var(--surface); stroke:var(--gone); stroke-width:1.2; stroke-dasharray:4 3; }
+    .wire  { stroke:var(--ink-3); stroke-width:1.3; fill:none; }
+    .wire-n{ stroke:var(--code); stroke-width:1.5; fill:none; }
+    .wall  { stroke:var(--gone); stroke-width:1.4; stroke-dasharray:5 4; }
+    .t-lbl { fill:var(--ink-3); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; letter-spacing:.1em; }
+    .t-b   { fill:var(--ink); font-family:system-ui,-apple-system,sans-serif; font-weight:600; font-size:12.5px; }
+    .t-s   { fill:var(--ink-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+    .t-g   { fill:var(--gone); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:9.5px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="940" height="400"/>
+
+  <g id="today">
+    <rect class="pane" x="16" y="16" width="340" height="368" rx="6"/>
+    <text class="t-lbl" x="32" y="38">TODAY</text>
+    <rect class="n-in" x="40" y="56" width="292" height="50" rx="5"/>
+    <text class="t-b" x="56" y="78">One repository, wired at boot</text>
+    <text class="t-s" x="56" y="96">workspace.sourceRepo · host-set</text>
+    <rect class="n-box" x="40" y="160" width="136" height="50" rx="5"/>
+    <text class="t-b" x="54" y="182">Storefront</text>
+    <text class="t-s" x="54" y="199">no repository field</text>
+    <rect class="n-box" x="196" y="160" width="136" height="50" rx="5"/>
+    <text class="t-b" x="210" y="182">Platform</text>
+    <text class="t-s" x="210" y="199">no repository field</text>
+    <rect class="n-box" x="40" y="270" width="292" height="50" rx="5"/>
+    <text class="t-b" x="56" y="292">Every run's checkout</text>
+    <text class="t-s" x="56" y="309">cut from the one repository</text>
+    <path class="wire" d="M186 106 L186 270"/>
+    <text class="t-s" x="40" y="350">The project says nothing about which code.</text>
+  </g>
+
+  <g id="after">
+    <rect class="pane" x="372" y="16" width="552" height="368" rx="6"/>
+    <text class="t-lbl" x="388" y="38">AFTER</text>
+    <rect class="n-new" x="396" y="56" width="220" height="50" rx="5"/>
+    <text class="t-b" x="410" y="78">Storefront</text>
+    <text class="t-s" x="410" y="96">repository: github.com/acme/…</text>
+    <rect class="n-gone" x="636" y="56" width="268" height="50" rx="5"/>
+    <text class="t-b" x="650" y="78">Platform · repository: null</text>
+    <text class="t-g" x="650" y="96">a coding row here is refused, by name</text>
+    <rect class="n-acc" x="396" y="140" width="220" height="50" rx="5"/>
+    <text class="t-b" x="410" y="162">The host's clone</text>
+    <text class="t-s" x="410" y="179">one per remote, under the root</text>
+    <path class="wire-n" d="M506 106 L506 140"/>
+    <rect class="n-new" x="396" y="250" width="220" height="62" rx="5"/>
+    <text class="t-b" x="410" y="272">The run's checkout</text>
+    <text class="t-s" x="410" y="289">a new branch of the clone</text>
+    <text class="t-s" x="410" y="303">nobody named a folder</text>
+    <path class="wire-n" d="M506 190 L506 250"/>
+    <line class="wall" x1="636" y1="236" x2="636" y2="326"/>
+    <text class="t-g" x="642" y="232">never copied either way</text>
+    <rect class="n-new" x="656" y="250" width="248" height="62" rx="5"/>
+    <text class="t-b" x="670" y="272">Project files, beside it</text>
+    <text class="t-s" x="670" y="289">laid out before, saved after</text>
+    <text class="t-s" x="670" y="303">project-files/storefront/…</text>
+    <rect class="n-in" x="656" y="140" width="248" height="50" rx="5"/>
+    <text class="t-b" x="670" y="162">The project's files collection</text>
+    <text class="t-s" x="670" y="179">members only · kept by the Lab</text>
+    <path class="wire-n" d="M780 190 L780 250"/>
+    <text class="t-s" x="396" y="350">Found through the workstream's project, never the row's input.</text>
+  </g>
+</svg>
