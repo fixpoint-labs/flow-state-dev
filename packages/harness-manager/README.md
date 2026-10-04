@@ -59,7 +59,7 @@ The source answers per run, from the block context, and it is asked when a run i
 
 When the run has files kept beside its checkout, the manager saves them at the end of each turn, when the run asks a question, and when the harness fails. The run record's `lastSave` shows the result: the time, any files left alone because someone else changed them too, and an error if the save failed. A failed save does not fail the run, and the next save tries again.
 
-A source that refuses a run fails that attempt with the source's reason, before the harness starts.
+A run its workspace refuses is not retried. That covers a source answering `refused` and a host that won't provision what the source named, such as a remote it doesn't allow. The row is cancelled on its first attempt, before the harness starts, with the refusal as its reason. The same answer would come back on every retry, so retrying would only spend the attempts. In a run with no repository, the manager's question file stays out of the saved files.
 
 ## Running a mailbox's board
 

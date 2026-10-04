@@ -52,6 +52,7 @@ import {
   getOrCreateTaskCollection,
   hasFrozenLedgerAssignee,
   resolveResourceCollection,
+  ticketForClaim,
   type DefinedTaskCollection,
   type TaskCollectionRef,
   type TaskWorker,
@@ -60,6 +61,7 @@ import { z } from "zod";
 import {
   CHECKOUT_CLEANUP_TIMEOUT_MS,
   GIT_TIMEOUT_MS,
+  WorkspaceRefusedError,
   type RunSourceAnswer,
   type WorkspaceHost,
   type WorkspacePlace,
@@ -531,6 +533,22 @@ export class HarnessAttemptFailed extends Error {
   constructor(message: string) {
     super(message);
     this.name = "HarnessAttemptFailed";
+  }
+}
+
+/**
+ * The run's workspace refused it: its source answered `refused`, or the host
+ * would not provision what the source named.
+ *
+ * Not a failed attempt. The same source and host give the same answer next
+ * time, so a retry would spend every attempt on one refusal. The manager
+ * settles the row `cancelled` with this message as its reason, under the
+ * attempt's own claim, and the board's recorder then has nothing to re-queue.
+ */
+export class HarnessRunRefused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HarnessRunRefused";
   }
 }
 
@@ -1336,7 +1354,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       const pinned = { remote: recorded?.remote ?? null, baseRef: recorded?.baseRef ?? null };
       await ctx.sequencer!.patchState({ ...pinned, place: null });
       const answer = pinnedAnswer(await host.source(ctx), pinned);
-      if (answer.kind === "refused") throw new HarnessAttemptFailed(refusedMessage(answer));
+      if (answer.kind === "refused") throw new HarnessRunRefused(refusedMessage("source", answer));
       const workspacePath = host.locate(answer, { place: placeFor(location) }).cwd;
       await ctx.sequencer!.patchState({ workspacePath });
 
@@ -1524,7 +1542,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         phase: state.phase!,
       };
       const answer = pinnedAnswer(await host.source(ctx), state);
-      if (answer.kind === "refused") throw new HarnessAttemptFailed(refusedMessage(answer));
+      if (answer.kind === "refused") throw new HarnessRunRefused(refusedMessage("source", answer));
       if (host.locate(answer, { place: placeFor(location) }).cwd !== state.workspacePath) {
         throw new HarnessAttemptFailed(
           `[harness-manager] the run's workspace source changed between opening the run and ` +
@@ -1532,11 +1550,11 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
             `Stopping before the agent runs.`,
         );
       }
-      const place = await host.provision(answer, {
-        place: placeFor(location),
-        branch: state.branch!,
-        ignored: ASK_MARKER_IGNORED,
-      });
+      const place = await host
+        .provision(answer, { place: placeFor(location), branch: state.branch!, ignored: ASK_MARKER_IGNORED })
+        .catch((cause: unknown) => {
+          throw cause instanceof WorkspaceRefusedError ? new HarnessRunRefused(refusedMessage("host", cause)) : cause;
+        });
       await ctx.sequencer!.patchState({ place });
 
       // **The repository and base the run started on, kept on its record**
@@ -1917,6 +1935,23 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
           { outcome: "failed", reason },
         );
       }
+      // **A refused run is settled, not retried** (see `HarnessRunRefused`).
+      // Under this attempt's own claim, so a superseded attempt cannot cancel
+      // a row its replacement holds. Best effort, like the write above: the
+      // error being unwound is what the caller gets either way.
+      if (error instanceof HarnessRunRefused && state?.taskId != null && state.attempt != null) {
+        try {
+          const tasks = await boardTasks(ctx);
+          const row = tasks.get(state.taskId);
+          if (row !== undefined) {
+            await tasks.cancel(state.taskId, reason, {
+              claim: { ...ticketForClaim(boardCollectionId, row), attempt: state.attempt },
+            });
+          }
+        } catch {
+          // Left to the board's recorder, which re-queues it as before.
+        }
+      }
       throw error;
     },
   });
@@ -2022,9 +2057,9 @@ function pinnedAnswer(
   };
 }
 
-/** A source's refusal, as the failure the attempt records. */
-function refusedMessage(answer: { reason: string; message: string }): string {
-  return `[harness-manager] the workspace source refused this run (${answer.reason}): ${answer.message}`;
+/** A source's or host's refusal, as the reason the run records. */
+function refusedMessage(by: "source" | "host", refusal: { reason: string; message: string }): string {
+  return `[harness-manager] the workspace ${by} refused this run (${refusal.reason}): ${refusal.message}`;
 }
 
 /**

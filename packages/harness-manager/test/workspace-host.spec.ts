@@ -98,20 +98,37 @@ function repository(dir: string, which: string): string {
   return pathToFileURL(repo).href;
 }
 
-function lab(options: { script: Step[]; source: "files" | "repo"; maxAttempts?: number }) {
+function lab(options: {
+  script: Step[];
+  source: "files" | "repo" | "refused" | "remote-not-allowed";
+  maxAttempts?: number;
+}) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-host-"));
   dirs.push(dir);
   const collection: FakeCollection = createFakeCollection("project-files/**");
   const remoteA = options.source === "repo" ? repository(dir, "A") : "";
   const remoteB = options.source === "repo" ? repository(dir, "B") : "";
   let remote = remoteA;
+  let asked = 0;
+  const answer = (): RunSourceAnswer => {
+    switch (options.source) {
+      case "files":
+        return { kind: "files", projectId: "sandbox", files: { collection, collectionId: "project-files" } };
+      case "refused":
+        return { kind: "refused", reason: "not-a-member", message: "alice is not on this project" };
+      case "remote-not-allowed":
+        return { kind: "repo", repo: "https://example.com/acme/storefront.git" };
+      default:
+        return { kind: "repo", repo: remote, baseRef: "main" };
+    }
+  };
   const workspace = localWorkspaceHost({
     root: join(dir, "places"),
     remotes: { allow: ["file"] },
-    source: (): RunSourceAnswer =>
-      options.source === "files"
-        ? { kind: "files", projectId: "sandbox", files: { collection, collectionId: "project-files" } }
-        : { kind: "repo", repo: remote, baseRef: "main" },
+    source: (): RunSourceAnswer => {
+      asked += 1;
+      return answer();
+    },
     provisionTimeoutMs: 20_000,
   });
 
@@ -220,7 +237,7 @@ function lab(options: { script: Step[]; source: "files" | "repo"; maxAttempts?: 
     return (Object.values(rows)[0] as { state: Record<string, any> }).state;
   };
 
-  return { act, settled, record, seen, collection, remoteA };
+  return { act, settled, record, seen, collection, remoteA, asked: () => asked };
 }
 
 describe("a run's kept files are saved wherever the run stops", () => {
@@ -243,6 +260,9 @@ describe("a run's kept files are saved wherever the run stops", () => {
     await run.settled("parked");
 
     expect(run.collection.contents()["sandbox/notes.md"]).toBe("what the run wrote");
+    // The question is the manager's own file, not the project's: it is never
+    // saved with the run's work.
+    expect(Object.keys(run.collection.contents())).toEqual(["sandbox/notes.md"]);
   }, 60_000);
 
   it("when the harness itself fails, so a crash loses nothing the run wrote", async () => {
@@ -271,4 +291,28 @@ describe("the repository a run started on (BR-19)", () => {
     expect(run.seen).toEqual(["switch-throw", "A"]);
     expect(await run.record()).toMatchObject({ remote: run.remoteA, baseRef: "main" });
   }, 60_000);
+});
+
+describe("a run its workspace refuses", () => {
+  // A refusal is an answer about the run, not a failed attempt: the source will
+  // say the same thing next time, and the host's refusals never clear on a
+  // retry. Retrying would spend every attempt on the same refusal.
+  for (const [source, said] of [
+    ["refused", "alice is not on this project"],
+    ["remote-not-allowed", "remote-not-allowed"],
+  ] as const) {
+    it(`settles on its first attempt and is never retried (${source})`, async () => {
+      const run = lab({ script: [], source, maxAttempts: 3 });
+      await run.act("seed");
+      await run.act("drain");
+      const row = await run.settled("cancelled");
+      await run.act("drain");
+
+      expect(row.attempts).toBe(1);
+      expect(row.retryLedger?.granted ?? 0).toBe(0);
+      expect(JSON.stringify(row)).toContain(said);
+      expect(run.seen).toEqual([]);
+      expect(run.asked()).toBe(source === "refused" ? 1 : 2);
+    }, 60_000);
+  }
 });
