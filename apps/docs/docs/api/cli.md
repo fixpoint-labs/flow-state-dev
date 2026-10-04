@@ -86,6 +86,7 @@ fsdev dev
 | `--app <package\|dir>` | Serve an app's pages at the root instead of the DevTool. See [Serving an app beside your flows](#serving-an-app-beside-your-flows). |
 | `--host <host>` | Host to bind (default `127.0.0.1`). A non-loopback host runs the same check as `fsdev serve` and refuses a config that hands its page a bearer token. |
 | `--allow-unauthenticated` | With a non-loopback `--host`, bind even when a flow has no authentication configured, as on `fsdev serve`. |
+| `--watch` | Restart when a file your config loaded changes, and reload the open pages. Loopback only. See [Restarting as you edit](#restarting-as-you-edit). |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
 | `--no-config` | Ignore any config and force directory discovery |
@@ -99,6 +100,20 @@ Without a config, the server discovers flows, registers them in an in-memory flo
 
 A non-loopback `--host` needs a config, so its flows' authentication can be checked. On such a host the debug surface the DevTool's Resources panel reads stays closed.
 
+#### Restarting as you edit
+
+Add `--watch` and leave `fsdev dev` running while you work on your flows:
+
+```bash
+fsdev dev --config ./fsdev.config.mts --watch
+```
+
+When you save a file your config loaded, such as a flow module, or any file in the config's folder, such as a `WORKER.md` read from disk, the server restarts on the same port and any page open on it reloads by itself. Saving a data file, something under `node_modules`, or a file in a folder whose name starts with a dot does nothing. With `--port 0`, the free port is picked once and kept across restarts.
+
+A restart is a new process. A config with in-memory stores starts empty each time, so use SQLite if you want your data to survive an edit. If the server fails to start after a save, for example on a syntax error, the error prints and `fsdev dev` waits for the next save.
+
+`--watch` binds loopback only: it's refused with a non-loopback `--host`.
+
 #### Serving an app beside your flows
 
 `fsdev dev` normally puts the DevTool at the root of its port. With `--app`, your own app's pages go there instead and the DevTool moves to a port of its own:
@@ -110,6 +125,8 @@ fsdev dev --config ./fsdev.config.mts --app @acme/ops-console
 `--app` takes a directory with an `index.html`, or a package that exports `getAssetPath()`, a function returning that directory. A relative path or a package name resolves from the directory you run the command in. The API stays at `/api/flows` on the same origin, so your pages call it with relative URLs and need no proxy.
 
 Every HTML page fsdev serves carries two things your app can read on boot. The connection config from your config's `devtool` block is `window.__FSD_DEVTOOL_CONFIG__`, as the DevTool gets it, on a loopback host only. The DevTool's address is `<meta name="fsdev-devtool-url" content="…">`, absent when the DevTool isn't installed, or when `--host` is `0.0.0.0` or `::`, since a browser can't reach an all-interfaces address. The command still prints the DevTool's port. In that case the app still starts, and the command says why there's no DevTool.
+
+With `--watch`, a package that also exports `getSourceRoot()` is served from that folder through Vite, loaded from the app's own install, so its pages update as you edit them. The folder needs an `index.html`, and its HTML carries the same config and meta as built pages. When `getSourceRoot()` returns nothing, or Vite isn't installed there, the built pages are served and the command says so. Saving one of those page files doesn't restart the server.
 
 This is for development. To host an app's pages in production, pass its directory as `staticDir` to [`serve()`](/docs/server/host-adapters).
 

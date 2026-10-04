@@ -7,7 +7,7 @@
  * `@flow-state-dev/devtool` build, or missing, per case.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { connect } from "node:net";
 import { join, resolve } from "node:path";
@@ -307,5 +307,109 @@ describe("fsdev dev --host", () => {
     const server = await dev({ config: unauthConfig, app: await pagesDir() });
     const debug = await fetch(`${server.url}api/flows/sessions/s1/debug/resources`);
     expect(await debug.text()).not.toContain("debug_endpoints_disabled");
+  });
+});
+
+/** A real Vite install, for an app whose own install has one. */
+const viteInstall = resolve(import.meta.dirname, "..", "..", "..", "apps", "devtool", "node_modules", "vite");
+
+/**
+ * A project with `@acme/ops-console` installed: built pages in `dist`, source in
+ * `web`, and `getSourceRoot()` as `sourceRoot` returns it. With `vite`, the
+ * package's own install has Vite.
+ */
+async function projectWithSourceApp(options: { vite: boolean; sourceRoot?: string }): Promise<string> {
+  const project = await projectWithAppPackage(
+    `import { fileURLToPath } from "node:url";\n` +
+      `export function getAssetPath() { return fileURLToPath(new URL("./dist", import.meta.url)); }\n` +
+      `export function getSourceRoot() { return ${options.sourceRoot ?? `fileURLToPath(new URL("./web", import.meta.url))`}; }\n`,
+  );
+  const pkg = join(project, "node_modules", "@acme", "ops-console");
+  await mkdir(join(pkg, "web"));
+  await writeFile(
+    join(pkg, "web", "index.html"),
+    '<!doctype html><html><head><title>src</title></head><body>from source<script type="module" src="/main.js"></script></body></html>',
+  );
+  await writeFile(join(pkg, "web", "main.js"), "document.body.dataset.ready = 'yes';\n");
+  if (options.vite) {
+    await mkdir(join(pkg, "node_modules"));
+    await symlink(await realpath(viteInstall), join(pkg, "node_modules", "vite"), "dir");
+  }
+  return project;
+}
+
+describe("fsdev dev --watch --app <package with source>", () => {
+  // These run as the child a --watch parent starts, which is where pages are served.
+  beforeEach(() => {
+    process.env.FSDEV_DEV_WATCH_CHILD = JSON.stringify({ port: 0 });
+  });
+  afterEach(() => {
+    delete process.env.FSDEV_DEV_WATCH_CHILD;
+  });
+
+  it("serves the source through the app's Vite, its index carrying Vite's client and the page config", async () => {
+    const project = await projectWithSourceApp({ vite: true });
+    const server = await dev({ cwd: project, config: bearerConfig, app: "@acme/ops-console", watch: true });
+
+    const html = await text(server.url);
+    expect(html).toContain("from source");
+    expect(html).toContain("/@vite/client");
+    expect(html).toContain(`<meta name="fsdev-devtool-url" content="${server.devtoolUrl}">`);
+    expect(html).toContain('window.__FSD_DEVTOOL_CONFIG__ = {"userId":"owner","bearerToken":"s3cret"}');
+    expect(html).toMatch(/<meta name="fsdev-dev-boot" content="[^"]+">/);
+    // A client route gets the same index; a module comes through Vite; the API stays beside it.
+    expect(await text(`${server.url}some/client/route`)).toContain("/@vite/client");
+    const mod = await fetch(`${server.url}main.js`);
+    expect(mod.headers.get("content-type")).toContain("javascript");
+    expect(await mod.text()).toContain("dataset.ready");
+    expect((await fetch(`${server.url}api/flows`)).status).toBe(200);
+    expect(stderr).toContain("through Vite");
+    // Vite's live-update socket shares the port: one origin, no second server.
+    const socket = new WebSocket(server.url.replace("http", "ws"), "vite-hmr");
+    const opened = await new Promise<string>((r) => {
+      socket.onopen = () => r("open");
+      socket.onerror = () => r("error");
+    });
+    socket.close();
+    expect(opened).toBe("open");
+  });
+
+  it("says so and serves the built pages when Vite doesn't resolve from the source", async () => {
+    const project = await projectWithSourceApp({ vite: false });
+    const server = await dev({ cwd: project, config: appConfig, app: "@acme/ops-console", watch: true });
+    const html = await text(server.url);
+    expect(html).toContain("ops console");
+    expect(html).not.toContain("/@vite/client");
+    expect(stderr).toContain("Vite doesn't resolve from");
+  });
+
+  it("serves the built pages when getSourceRoot() returns nothing", async () => {
+    const project = await projectWithSourceApp({ vite: true, sourceRoot: "undefined" });
+    const server = await dev({ cwd: project, config: appConfig, app: "@acme/ops-console", watch: true });
+    expect(await text(server.url)).toContain("ops console");
+  });
+
+  it("serves the built pages without --watch, source or not", async () => {
+    delete process.env.FSDEV_DEV_WATCH_CHILD;
+    const project = await projectWithSourceApp({ vite: true });
+    const server = await dev({ cwd: project, config: appConfig, app: "@acme/ops-console" });
+    const html = await text(server.url);
+    expect(html).toContain("ops console");
+    expect(html).not.toContain("fsdev-dev-boot");
+  });
+});
+
+describe("fsdev dev --watch, refusals", () => {
+  it("refuses a non-loopback host, exit 3", async () => {
+    const err = await refused({ config: unauthConfig, host: "0.0.0.0", allowUnauthenticated: true, watch: true });
+    expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
+    expect(err.message).toContain("--watch");
+    expect(err.message).toContain("loopback");
+  });
+
+  it("refuses bad input before it starts a child: an --app directory with no index.html", async () => {
+    const err = await refused({ config: appConfig, app: await pagesDir(false), watch: true });
+    expect(err.exitCode).toBe(EXIT_CONFIG_ERROR);
+    expect(err.message).toContain("index.html");
   });
 });
