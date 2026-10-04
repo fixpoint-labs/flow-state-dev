@@ -1,4 +1,4 @@
-# FIX-1774 · Shift Coordinator hands a coding ask to one specialist and does not stop
+# FIX-1774 · The coordinator routes work, hires as needed, sets up mailboxes, and follows work through
 
 **Spec** · [Decisions](DECISIONS.md) · [Rules](BUSINESS-RULES.md) · [Plan](PLAN.md) · [Docs](DOCS.md)
 
