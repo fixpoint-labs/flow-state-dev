@@ -2051,7 +2051,7 @@ defineFlow({ kind: "lab", actions: { ...projects.actions } });
   project keeps in the org's `project-files` collection (`defineProjectFilesCollection()`), at
   `project-files/<projectId>/<path>`. Members only. The collection is org-scoped, shared, lazy, and
   has no browser read.
-- **As a seat's tools.** Put the writes in `defineAgentWorkerFlow({ catalog })` under the names a seat's
+- **As a worker's tools.** Put the writes in `defineAgentWorkerFlow({ catalog })` under the names a worker's
   `tools:` spells. A catalog key must be the tool's own name, so wrap each in a one-step
   `sequencer({ name: "createProject", inputSchema: createProjectInputSchema, outputSchema:
   createProjectOutputSchema }).step(projects.createProject)`. The owner is the session the seat
