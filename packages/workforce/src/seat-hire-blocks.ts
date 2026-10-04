@@ -133,7 +133,13 @@ const hireInput = z
   .object({
     seatId: z.string().min(1),
     flow: z.string().min(1),
-    settings: z.record(z.unknown()).default({}),
+    settings: z
+      .record(z.unknown())
+      .default({})
+      .describe(
+        "The kind's own settings. Some kinds require one or more, such as the document a seat " +
+          "reads; your instructions name them and their values. The built-in `agent` kind needs none."
+      ),
     instructions: z.string().optional(),
     /**
      * Accepted so a body that names an org is not an extra-key refusal, and
@@ -729,7 +735,21 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
       owningOrgId: orgId,
       incarnation,
     });
-    return { orgId, address, row, incarnation, seat: mint(orgId, row, address) };
+    // The mint runs the kind's settings schema and writes nothing, so its
+    // refusal is one the caller can correct and send again. Said so, in front
+    // of the kind's own reason, because a model reading only the boot-time
+    // sentence takes it as final and asks the person instead of retrying.
+    let seat: FlowInstance;
+    try {
+      seat = mint(orgId, row, address);
+    } catch (error) {
+      throw new Error(
+        `"${address}" was not hired, and nothing was written. Kind "${input.flow}" refused it: ` +
+          `${error instanceof Error ? error.message : String(error)}\n` +
+          `If that names a setting, call hire again with it in \`settings\`.`
+      );
+    }
+    return { orgId, address, row, incarnation, seat };
   };
 
   const hireVerb: SeatHireVerb<HireInput, HireOutput> = {
@@ -1070,8 +1090,9 @@ export function buildSeatHire(options: SeatHireCapabilityOptions): {
   const hire = handler({
     name: "hire",
     description:
-      "Mint a seat of a kind this app already registered. Names the kind and a " +
-      "seat id. Does not invent a kind, and does not attach boards.",
+      "Mint a seat of a kind this app already registered. Names the kind, a seat id, and in " +
+      "`settings` whatever that kind requires: a kind refuses a hire missing a required setting, " +
+      "naming it. Does not invent a kind, and does not attach boards.",
     inputSchema: hireInput,
     outputSchema: hireOutput,
     execute: hireVerb.run,

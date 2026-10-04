@@ -1602,6 +1602,11 @@ It refuses an unknown kind or one outside `allowKinds` (and lists the hireable o
 address already served, a seat id a file-declared seat answers on, an address a declared
 seat's inventory row sits at (`hired: false`), and a request with no organization.
 
+It also refuses when the kind's settings schema refuses the seat, before anything is written, with
+`"<address>" was not hired, and nothing was written. Kind "<kind>" refused it: <the schema's message>`
+and a last line, ``If that names a setting, call hire again with it in `settings`.`` A model calling
+the tool gets this as the tool's result and can call again with the setting.
+
 **`fire`** takes `{ seatId, owner?, orgId? }` (extra keys are refused) and returns
 `{ seatId, address, released, alreadyGone? }`. It deletes the roster row, unregisters the
 address when the live kind matches the stored kind, and deletes the seat's inventory row. When
