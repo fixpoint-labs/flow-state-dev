@@ -187,6 +187,33 @@ export function addressedSeat(roster: Roster, workstream: Workstream, name: stri
   return found.length === 1 ? found[0] : undefined;
 }
 
+/**
+ * What to type after `@` to reach `seat` in `workstream`: its short name, or
+ * its full id when another member shares that name, so the line always
+ * resolves through {@link addressedSeat} to this seat.
+ */
+export function mentionOf(roster: Roster, workstream: Workstream, seat: Seat): string {
+  return addressedSeat(roster, workstream, seat.name)?.id === seat.id ? seat.name : seat.id;
+}
+
+/**
+ * The members of `workstream` running a task on its boards, in member order,
+ * at most three: who the workstream composer offers to `@` (v2:1265). A
+ * running task is one in progress; no shipped status means *in review* yet.
+ */
+export function liveWorkers(snapshot: LoadedSnapshot, workstream: Workstream): Seat[] {
+  const boards = snapshot.boards[workstream.id];
+  if (boards === undefined || !boards.ok) return [];
+  const roster = rosterOf(snapshot);
+  const running = new Set(
+    boards.value.rows.filter((row) => readStatus(row.status) === "in_progress").map((row) => seatFor(roster, row)?.id),
+  );
+  return workstream.members
+    .map((member) => roster.seats.find((seat) => seat.id === member))
+    .filter((seat): seat is Seat => seat !== undefined && running.has(seat.id))
+    .slice(0, 3);
+}
+
 /** Rows grouped by column, in column order. */
 export function byColumn(rows: readonly BoardRow[]): Map<ReturnType<typeof columnFor>, BoardRow[]> {
   const grouped = new Map<ReturnType<typeof columnFor>, BoardRow[]>();

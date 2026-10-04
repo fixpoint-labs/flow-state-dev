@@ -321,3 +321,9 @@ A fifth sends a line to a Lab's chief-of-staff seat, which runs a real model, an
 ```bash
 PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/shift-manager/it-briefs-and-talks-with-the-chief-of-staff/run.mts
 ```
+
+A sixth compares what Chromium paints with v2, the reference design the [design-system](../design-system) package is drawn from. It walks every screen in both shifts, at a wide and a narrow window. On every screen it checks that v2's two fonts actually loaded, that no corner is rounded, and that the highlight marks only what waits on you. On the sidebar and the parts every screen shares, it also checks each element's typeface and size, surface and border, and the column widths. A failure names the element, the screen, the shift and width, and the line of v2 it departs from. Its Labs run on scripted models, so it needs no model key:
+
+```bash
+PLAYWRIGHT_BROWSERS_PATH=<your Chromium pool> pnpm tsx goals/shift-manager/it-draws-v2s-look/run.mts
+```

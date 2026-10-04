@@ -10,7 +10,7 @@
  * message, which goes through the one send path (`lib/send.ts`).
  */
 import { useEffect, useState } from "react";
-import { EmptyState, SectionFailure, Tabs } from "../components/ui";
+import { EmptyState, ScreenTitle, SectionFailure, Tabs } from "../components/ui";
 import { columnFor, isDone, readStatus } from "../lib/columns";
 import { doorOf, rosterOf, seatFor, waited } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
@@ -53,9 +53,7 @@ export function TaskFrame({ tab, gaps }: { tab: TaskTab; gaps: Gaps }) {
             {boardRef}
           </button>
         </p>
-        <h1 className="text-base font-semibold" data-testid="task-title">
-          {row?.title ?? taskId}
-        </h1>
+        <ScreenTitle testId="task-title">{row?.title ?? taskId}</ScreenTitle>
         <p className="text-xs text-muted-foreground" data-testid="task-status">
           {row === undefined ? "Not on this board yet." : `${row.status} · ${columnFor(row.status)}`}
           {worker === null ? "" : ` · ${worker}`}
@@ -126,7 +124,7 @@ function Actions({ gaps }: { gaps: Gaps }) {
         disabled={!running || pending}
         onClick={() => void task.requestInterrupt()}
         data-testid="task-interrupt"
-        className="rounded-md border px-2.5 py-1 text-xs font-medium disabled:opacity-50"
+        className="border px-2.5 py-1 text-xs font-medium disabled:opacity-50"
         title={running ? "Stop this run (Esc)" : "Nothing is running"}
       >
         {pending ? "Interrupting…" : "Interrupt"}
@@ -152,7 +150,7 @@ function Actions({ gaps }: { gaps: Gaps }) {
             title={gaps.task.handOff}
             data-testid="task-disabled-action"
             data-gap={gaps.task.handOff}
-            className="rounded-md border px-2.5 py-1 text-xs opacity-50"
+            className="border px-2.5 py-1 text-xs opacity-50"
           >
             {label}
           </button>
@@ -235,7 +233,7 @@ function Composer({ gaps, worker }: { gaps: Gaps; worker: string }) {
         await sendTurn(clients, { sessionId: row!.run!.sessionId, flowId: flowId!, door: door! }, message);
       }}
       extra={
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={gaps.task.alsoPost}>
+        <label className="flex items-center gap-1.5" title={gaps.task.alsoPost}>
           <input type="checkbox" disabled data-testid="task-also-post" data-gap={gaps.task.alsoPost} />
           Also post to the workstream
         </label>

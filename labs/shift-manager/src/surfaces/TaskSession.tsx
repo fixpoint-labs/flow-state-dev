@@ -81,7 +81,7 @@ export function TaskSession() {
       }}
     >
       {parked ? (
-        <div className="mx-4 mt-3 rounded-md border px-3 py-2 text-xs" data-testid="session-parked">
+        <div className="mx-4 mt-3 border px-3 py-2 text-xs" data-testid="session-parked">
           <p className="font-medium">This task is waiting on you.</p>
           {row?.error == null ? null : <p className="mt-0.5 text-muted-foreground">{row.error}</p>}
           <button type="button" className="mt-1 underline" onClick={() => navigate({ level: "inbox", suspensionId: null })}>

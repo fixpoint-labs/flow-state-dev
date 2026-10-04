@@ -4,7 +4,7 @@
  * publishes. Pure reads of the snapshot, so each case is staged exactly.
  */
 import { describe, expect, it } from "vitest";
-import { addressedSeat, doorOf, messageableRows, type Roster } from "../src/lib/derive";
+import { addressedSeat, doorOf, mentionOf, messageableRows, type Roster } from "../src/lib/derive";
 import type { BoardRow, Seat } from "../src/lib/reads";
 
 const seat = (id: string, door: string | null = "message"): Seat => ({
@@ -48,6 +48,18 @@ describe("an @name in a workstream (BR-19)", () => {
     expect(addressedSeat(roster, feature, "eng.coder")?.id).toBe("eng.coder");
     expect(addressedSeat(roster, feature, "ops.coder")).toBeUndefined();
     expect(addressedSeat(roster, feature, "nobody")).toBeUndefined();
+  });
+
+  it("offers each member by a name that reaches it: short when unique, the full id when two members share it", () => {
+    const both = { id: "mixed", kind: "channel", members: ["eng.coder", "ops.coder", "eng.em"] };
+    const mixed: Roster = { ...roster, workstreams: [both] };
+    // Two coders: `@coder` reaches neither, so each is offered by its id, which does.
+    for (const s of [mixed.seats[0]!, mixed.seats[2]!]) {
+      expect(mentionOf(mixed, both, s)).toBe(s.id);
+      expect(addressedSeat(mixed, both, mentionOf(mixed, both, s))?.id).toBe(s.id);
+    }
+    expect(mentionOf(mixed, both, mixed.seats[1]!)).toBe("em");
+    expect(mentionOf(roster, feature, roster.seats[0]!)).toBe("coder");
   });
 
   it("goes to the worker's rows that are running, parked, or pending with a run, and no others", () => {

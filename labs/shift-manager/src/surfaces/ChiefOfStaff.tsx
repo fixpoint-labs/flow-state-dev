@@ -21,7 +21,7 @@ import { AskCard } from "../components/AskCard";
 import { chatAssistantRenderers } from "../components/flow-state/chat-assistant";
 import { SessionItemsProvider } from "../components/flow-state/session-items-context";
 import { TurnComposer } from "../components/TurnComposer";
-import { PartialMark, SectionFailure, ShiftMark } from "../components/ui";
+import { PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { currentConversation, newConversationId, readConversation, sendToChiefOfStaff } from "../lib/cos";
 import { chiefOfStaffOf, seatStates, shiftSummary, streamCounts, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
@@ -39,7 +39,7 @@ export function ChiefOfStaffView({ snapshot, gaps }: { snapshot: LoadedSnapshot;
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-5">
         <header>
           <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">SHIFT COORDINATOR</p>
-          <h1 className="text-base font-semibold">Your shift</h1>
+          <ScreenTitle scale="cos">Your shift</ScreenTitle>
         </header>
         <ShiftSummary snapshot={snapshot} />
         <Conversation snapshot={snapshot} gaps={gaps} />
@@ -54,7 +54,7 @@ function ShiftSummary({ snapshot }: { snapshot: LoadedSnapshot }) {
   const retry = () => void refresh();
   const { asks, running } = shiftSummary(snapshot);
   return (
-    <section aria-label="Shift summary" className="rounded-md border bg-card p-4" data-testid="cos-summary">
+    <section aria-label="Shift summary" className="border bg-card p-4" data-testid="cos-summary">
       <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">SHIFT SUMMARY · FROM SHIFT MANAGER</p>
       <div className="mt-2 space-y-1 text-sm">
         {asks.ok ? (
@@ -111,7 +111,7 @@ function Conversation({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps
   const cos = chiefOfStaffOf(snapshot.inventory.value.seats, snapshot.orgId);
   if (cos.kind === "none") {
     return (
-      <section className="rounded-md border border-dashed p-4 text-sm" data-testid="cos-none">
+      <section className="border border-dashed p-4 text-sm" data-testid="cos-none">
         <p className="font-medium">{gaps.chiefOfStaff.none.title}</p>
         <p className="mt-1 text-muted-foreground">{gaps.chiefOfStaff.none.body}</p>
       </section>
@@ -119,7 +119,7 @@ function Conversation({ snapshot, gaps }: { snapshot: LoadedSnapshot; gaps: Gaps
   }
   if (cos.kind === "several") {
     return (
-      <section className="rounded-md border border-dashed p-4 text-sm" data-testid="cos-several">
+      <section className="border border-dashed p-4 text-sm" data-testid="cos-several">
         <p>{gaps.chiefOfStaff.several}</p>
         <ul className="mt-1 list-inside list-disc text-muted-foreground">
           {cos.seats.map((seat) => (
@@ -178,7 +178,7 @@ function Talk({ seat, sessions, gaps }: { seat: Seat; sessions: readonly Session
           : null;
 
   return (
-    <section aria-label={`Conversation with ${seat.id}`} className="rounded-md border" data-testid="cos-conversation" data-seat-id={seat.id} data-session-id={sessionId ?? ""}>
+    <section aria-label={`Conversation with ${seat.id}`} className="border" data-testid="cos-conversation" data-seat-id={seat.id} data-session-id={sessionId ?? ""}>
       <header className="border-b px-4 py-2">
         <p className="text-sm font-medium">{seat.id}</p>
         <p className="text-xs text-muted-foreground">Your shift coordinator. What it says here is what its session holds.</p>
@@ -205,6 +205,7 @@ function Talk({ seat, sessions, gaps }: { seat: Seat; sessions: readonly Session
       ) : null}
       <TurnComposer
         testId="cos-composer"
+        scale="cos"
         label={`Message ${seat.id}`}
         placeholder={`Message ${seat.id}…`}
         blocked={blocked}
@@ -293,7 +294,7 @@ export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot
               <button
                 type="button"
                 onClick={() => navigate({ level: "workstream", channelId: workstream.id, tab: "stream" })}
-                className="flex w-full items-center justify-between gap-2 rounded px-1 py-1 text-left text-sm hover:bg-accent/60"
+                className="flex w-full items-center justify-between gap-2 px-1 py-1 text-left text-sm hover:bg-accent/60"
                 data-testid="cos-stream"
                 data-channel-id={workstream.id}
               >
@@ -330,7 +331,7 @@ export function ChiefOfStaffPanel({ snapshot, gaps }: { snapshot: LoadedSnapshot
               <button
                 type="button"
                 onClick={() => navigate({ level: "roster", team: seat.team })}
-                className="flex w-full items-center gap-2 rounded px-1 py-1 text-left text-sm hover:bg-accent/60"
+                className="flex w-full items-center gap-2 px-1 py-1 text-left text-sm hover:bg-accent/60"
                 data-testid="cos-on-call"
                 data-seat-id={seat.id}
               >

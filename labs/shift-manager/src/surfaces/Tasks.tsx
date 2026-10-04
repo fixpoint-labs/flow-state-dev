@@ -9,7 +9,7 @@ import { COLUMNS, columnFor, isBlocked, readStatus } from "../lib/columns";
 import { openRows, rosterOf, seatFor, type LoadedSnapshot } from "../lib/derive";
 import type { BoardRow } from "../lib/reads";
 import { navigate, TASK_GROUPINGS, type TaskGrouping } from "../lib/routes";
-import { EmptyState, SectionFailure } from "../components/ui";
+import { EmptyState, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSquare } from "../components/ui";
 import { useLab } from "../lib/lab-data";
 import type { Gaps } from "../gaps";
 
@@ -34,7 +34,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="tasks">
       <header className="flex flex-wrap items-center gap-4 border-b px-6 py-3">
-        <h1 className="text-base font-semibold">Tasks</h1>
+        <ScreenTitle>Tasks</ScreenTitle>
         <dl className="flex gap-4 text-xs" data-testid="tasks-summary">
           {OPEN_COLUMNS.map((column) => (
             <div key={column} className="flex gap-1">
@@ -54,7 +54,7 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
               aria-selected={g === by}
               data-grouping={g}
               onClick={() => navigate({ level: "tasks", by: g })}
-              className={`rounded-md px-2 py-1 text-xs capitalize ${g === by ? "bg-accent font-medium" : "text-muted-foreground"}`}
+              className={`px-2 py-1 text-xs capitalize ${g === by ? "bg-accent font-medium" : "text-muted-foreground"}`}
             >
               {g}
             </button>
@@ -121,8 +121,9 @@ export function Tasks({ snapshot, by, gaps }: { snapshot: LoadedSnapshot; by: Ta
                   >
                     <td className="py-1.5 pr-2">{row.title}</td>
                     <td className="py-1.5 pr-2 text-xs" data-testid="task-row-status">
+                      <StateSquare state={STATE_OF_COLUMN[columnFor(row.status)]} className="mr-1.5" />
                       {row.status}
-                      {isBlocked(row.status) ? <span className="ml-1 rounded bg-warning px-1 text-warning-foreground">blocked</span> : null}
+                      {isBlocked(row.status) ? <span className="ml-1 bg-warning px-1 text-warning-foreground">blocked</span> : null}
                     </td>
                     <td className="py-1.5 pr-2 text-xs">{seatFor(roster, row)?.id ?? row.assignee ?? "—"}</td>
                     <td className="py-1.5 pr-2 text-xs">{row.channelId}</td>

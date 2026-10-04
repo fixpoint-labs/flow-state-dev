@@ -7,6 +7,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { App } from "../src/App";
+import { Composer } from "../src/surfaces/Stream";
+import type { BoardRow } from "../src/lib/reads";
 import { GAPS } from "../src/gaps";
 import { bootColorScheme } from "../src/lib/color-scheme";
 import { createLabClients } from "../src/lib/connection";
@@ -194,7 +196,8 @@ describe("the composer (V6)", () => {
     fireEvent.change(input, { target: { value: "@asker please look" } });
     await waitFor(() => expect(screen.getByTestId("composer-status").textContent).toBe(`ops.asker ${GAPS.turn.noTask}`));
     expect((screen.getByTestId("composer-send") as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId("composer-send").textContent).toBe("Send");
+    // The button draws v2's ⏎; its name says the line goes to a worker, not the channel.
+    expect(screen.getByTestId("composer-send").getAttribute("aria-label")).toBe("Send");
 
     fireEvent.change(input, { target: { value: "@nobody please" } });
     expect(screen.getByTestId("composer-status").textContent).toBe(`@nobody ${GAPS.turn.noWorker}`);
@@ -202,6 +205,26 @@ describe("the composer (V6)", () => {
 
     const state = await clients.sessions.getSessionState("ops.side", { includeItems: true, itemTypes: ["component"] });
     expect(JSON.stringify(state.items ?? [])).not.toContain("please");
+  });
+});
+
+describe("the composer's @mentions", () => {
+  it("a new line started from an @mention is unsent, so it doesn't read delivered", async () => {
+    const row = { id: "only-task", title: "the coder's one task" } as BoardRow;
+    render(
+      <Composer
+        send={async () => {}}
+        onKept={async () => {}}
+        mentions={["coder"]}
+        addressing={() => ({ blocked: null, rows: [row], send: async () => {} })}
+      />,
+    );
+    fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "@coder first line" } });
+    fireEvent.click(screen.getByTestId("composer-send"));
+    await waitFor(() => expect(screen.getByTestId("composer-status").getAttribute("data-state")).toBe("delivered"));
+    fireEvent.click(screen.getByTestId("composer-mention"));
+    expect((screen.getByTestId("composer-input") as HTMLInputElement).value).toBe("@coder ");
+    expect(screen.getByTestId("composer-status").getAttribute("data-state")).toBe("idle");
   });
 });
 

@@ -8,7 +8,7 @@
  * snapshot and says when it was read.
  */
 import { useSyncExternalStore } from "react";
-import { PartialMark, SectionFailure, ShiftMark } from "../components/ui";
+import { PartialMark, ScreenTitle, SectionFailure, ShiftMark } from "../components/ui";
 import { pickedTeam, seatStates, SHIFT_STATUSES, shiftCounts, teamsOf, type LoadedSnapshot, type SeatState } from "../lib/derive";
 import { readStatus } from "../lib/columns";
 import type { ShiftLook } from "../lib/color-scheme";
@@ -138,12 +138,10 @@ export function RosterView({
     <div className="flex h-full min-h-0 flex-col" data-testid="roster" data-team={team ?? ""}>
       <header className="flex flex-wrap items-center justify-between gap-4 border-b px-5 py-3">
         <div className="min-w-0">
-          <p className="flex items-baseline gap-2">
-            <span className="text-lg font-semibold" data-testid="roster-title">
-              {title}
-            </span>
+          <div className="flex items-baseline gap-2">
+            <ScreenTitle testId="roster-title">{title}</ScreenTitle>
             <span className="border px-1 text-[10px] tracking-widest text-muted-foreground">ROSTER</span>
-          </p>
+          </div>
           <p className="mt-1 text-xs text-muted-foreground">
             <span data-testid="roster-summary">
               {counts["on shift"]} on shift · {counts["on call"]} on call · {counts["off shift"]} off shift · {counts.waiting} waiting on you

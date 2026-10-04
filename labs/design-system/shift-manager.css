@@ -14,7 +14,11 @@
  * `tokens` item defines (in a base layer, so these unlayered values win
  * wherever this file is loaded), plus Tailwind's font and radius variables,
  * plus the navigator's and panels' `--fsd-*` properties, pointed at the same
- * tokens so the chrome matches the cards.
+ * tokens so the chrome matches the cards, plus the design's two shell
+ * surfaces, `--sidebar` and `--inspector` (the right rail and Inbox's detail),
+ * each darker than the page. Those two are Shift Manager's names, not FSD's:
+ * Shift Manager declares them with fallbacks to the registry's tokens, so
+ * without this file they read as the registry's neutral defaults.
  *
  * Two rules the values keep: `attention` (the highlighter) means only that a
  * person must act, and no other token carries it; corners are square.
@@ -64,6 +68,9 @@
   --attention: #e8f551;
   --attention-foreground: #1b1a15;
 
+  --sidebar: #e7e2d5;
+  --inspector: #f3f0e7;
+
   --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
@@ -107,6 +114,9 @@
   --info-foreground: #16150f;
   --attention: #e8f551;
   --attention-foreground: #1b1a15;
+
+  --sidebar: #121109;
+  --inspector: #1a1913;
 }
 
 /*

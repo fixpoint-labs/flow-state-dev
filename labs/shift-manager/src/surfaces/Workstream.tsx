@@ -6,7 +6,7 @@
  */
 import { useEffect, useState } from "react";
 import { Board } from "../components/Board";
-import { EmptyState, PartialMark, SectionFailure, StatusWord, Tabs } from "../components/ui";
+import { EmptyState, PartialMark, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSquare, StatusWord, Tabs } from "../components/ui";
 import { COLUMNS } from "../lib/columns";
 import { byColumn, seatStates, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
@@ -35,13 +35,14 @@ export function WorkstreamView({
     <div className="flex h-full min-h-0 flex-col" data-testid="workstream" data-channel-id={workstream.id}>
       <header className="px-4 pt-3">
         <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">WORKSTREAM</p>
-        <h1 className="text-base font-semibold">{workstream.id}</h1>
+        <ScreenTitle>{workstream.id}</ScreenTitle>
       </header>
       <Tabs
         label="Workstream"
         tabs={WORKSTREAM_TABS}
         selected={tab}
         onSelect={(next) => navigate({ level: "workstream", channelId: workstream.id, tab: next })}
+        counts={boardCount(snapshot, workstream)}
       />
       <div className="flex min-h-0 flex-1 flex-col" role="tabpanel" data-tabpanel={tab}>
         {tab === "stream" ? <Stream workstream={workstream} snapshot={snapshot} gaps={gaps} /> : null}
@@ -51,6 +52,12 @@ export function WorkstreamView({
       </div>
     </div>
   );
+}
+
+/** The Board tab's count: every row on the workstream's boards (v2:222), once they loaded. */
+function boardCount(snapshot: LoadedSnapshot, workstream: Workstream): { board: number } | undefined {
+  const boards = snapshot.boards[workstream.id];
+  return boards?.ok === true && boards.value.refs.length > 0 ? { board: boards.value.rows.length } : undefined;
 }
 
 function BoardTab({ snapshot, workstream, gaps }: { snapshot: LoadedSnapshot; workstream: Workstream; gaps: Gaps }) {
@@ -174,10 +181,11 @@ export function WorkstreamPanel({ snapshot, workstream, gaps }: { snapshot: Load
                     <li key={`${row.boardRef}/${row.id}`}>
                       <button
                         type="button"
-                        className="truncate text-left text-xs hover:underline"
+                        className="flex max-w-full items-center gap-1.5 text-left text-xs hover:underline"
                         onClick={() => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" })}
                       >
-                        {row.title} <span className="text-muted-foreground">({row.status})</span>
+                        <StateSquare state={STATE_OF_COLUMN[column]} />
+                        <span className="truncate">{row.title}</span> <span className="text-muted-foreground">({row.status})</span>
                       </button>
                     </li>
                   ))}

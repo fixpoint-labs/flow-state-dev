@@ -53,7 +53,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
 
   return (
     <div className="fixed inset-0 z-20 flex items-start justify-center bg-foreground/20 pt-24" onClick={onClose} data-testid="jump-dialog">
-      <div role="dialog" aria-label="Jump to" className="w-full max-w-lg rounded-lg border bg-popover text-popover-foreground shadow-lg" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-label="Jump to" className="w-full max-w-lg border bg-popover text-popover-foreground shadow-lg" onClick={(e) => e.stopPropagation()}>
         <input
           ref={input}
           value={query}
@@ -91,7 +91,7 @@ export function JumpTo({ snapshot, gaps, onClose }: { snapshot: LoadedSnapshot; 
                     onClick={() => go(entry)}
                     onMouseMove={() => setActive(at)}
                     data-testid="jump-result"
-                    className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm ${at === highlighted ? "bg-accent text-accent-foreground" : ""}`}
+                    className={`flex w-full items-center justify-between px-2 py-1.5 text-left text-sm ${at === highlighted ? "bg-accent text-accent-foreground" : ""}`}
                   >
                     <span className="truncate">{entry.label}</span>
                     <span className="ml-2 truncate text-xs text-muted-foreground">{entry.hint}</span>

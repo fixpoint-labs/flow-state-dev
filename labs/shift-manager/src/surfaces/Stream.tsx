@@ -14,19 +14,23 @@
  * the composer asks which; none and Send is off, saying so. A delivered line
  * leaves a receipt in the stream, linking to the task's Session, until the
  * page reloads.
+ *
+ * The composer is v2's (v2:305-309), drawn through the shared
+ * {@link ComposerShell}: one line over a mono footer that offers `@` for each
+ * member running a task here (by its id when two members share a name) and ⏎.
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { createSessionSSEClient } from "@flow-state-dev/client";
 import type { ChannelTranscriptLine } from "@flow-state-dev/workforce/browser";
 import { AskCard } from "../components/AskCard";
 import { EmptyState, SectionFailure } from "../components/ui";
-import { addressedSeat, asksFor, doorOf, messageableRows, rosterOf, type LoadedSnapshot } from "../lib/derive";
+import { addressedSeat, asksFor, doorOf, liveWorkers, mentionOf, messageableRows, rosterOf, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import { describeFailure, type BoardRow, type Failure, type Workstream } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { resolveRunFlow } from "../lib/run";
 import { sendTurn, TurnNotDelivered } from "../lib/send";
-import { TurnSendStatus, useTurnSend } from "../components/TurnComposer";
+import { ComposerShell, TurnSendStatus, useTurnSend } from "../components/TurnComposer";
 import { lineLabel, lineOf, mergeLines, postLine, readTranscriptPage } from "../lib/transcript";
 import type { Gaps } from "../gaps";
 
@@ -159,6 +163,7 @@ export function Stream({ workstream, snapshot, gaps }: { workstream: Workstream;
         <Composer
           key={workstream.id}
           addressing={addressing}
+          mentions={liveWorkers(snapshot, workstream).map((seat) => mentionOf(rosterOf(snapshot), workstream, seat))}
           send={(body) => {
             // A channel row written before it recorded its kind names no flow to post through.
             if (workstream.kind === null) throw new Error("This channel's inventory row names no flow kind, so there is no post action to send through.");
@@ -210,7 +215,8 @@ export function TranscriptLines({ lines }: { lines: readonly ChannelTranscriptLi
 }
 
 /** Where an `@name` line goes: nowhere, and why; or one of the worker's tasks. */
-type Addressing =
+/** Where an `@name` line goes, or why it can't. */
+export type Addressing =
   | { blocked: string }
   | { blocked: null; rows: BoardRow[]; send: (row: BoardRow, message: string) => Promise<void> };
 
@@ -224,7 +230,7 @@ function parseAddress(draft: string): { name: string; message: string } | undefi
  * The composer: posts to the whole channel, keeps its draft until the channel
  * keeps the line. A line to `@name` goes to that worker's task instead, with
  * the send state every turn composer shares ({@link useTurnSend}): delivered
- * only once the run's session holds it (BR-4).
+ * only once the run's session holds it (BR-4). Exported for its tests.
  */
 export function Composer({
   send,
@@ -232,6 +238,7 @@ export function Composer({
   addressing,
   label = "Post to this workstream",
   placeholder = "Post a line to this workstream, or @worker to message one…",
+  mentions = [],
 }: {
   send: (body: string) => Promise<void>;
   onKept: () => Promise<void>;
@@ -239,6 +246,8 @@ export function Composer({
   addressing?: (name: string) => Addressing;
   label?: string;
   placeholder?: string;
+  /** The names offered as `@name` in the footer: the members running a task here. Absent: none. */
+  mentions?: readonly string[];
 }) {
   const [draft, setDraft] = useState("");
   const [posting, setPosting] = useState(false);
@@ -304,66 +313,69 @@ export function Composer({
 
   const state = blocked !== null ? "blocked" : posting ? "sending" : turn.state.kind;
   return (
-    <form onSubmit={(e) => void submit(e)} className="border-t p-3" data-testid="composer">
-      <label className="sr-only" htmlFor="composer-input">
-        {label}
-      </label>
-      <textarea
-        id="composer-input"
-        data-testid="composer-input"
-        value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          turn.reset();
-        }}
-        rows={2}
-        placeholder={placeholder}
-        className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm"
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void submit(e);
-        }}
-      />
-      {rows.length > 1 ? (
-        <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-          Which task?
-          <select
-            value={chosen}
-            onChange={(e) => setChosen(e.target.value)}
-            data-testid="composer-task-picker"
-            className="rounded-md border bg-background px-2 py-1 text-xs"
-          >
-            <option value="">Choose a task…</option>
-            {rows.map((r) => (
-              <option key={`${r.boardRef}/${r.id}`} value={r.id}>
-                {r.title}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground" data-testid="composer-status" data-state={state}>
-          {blocked !== null ? (
-            blocked
-          ) : posting ? (
-            "Posting… the line appears once it is kept."
-          ) : postError !== null ? (
-            <span role="alert" className="text-destructive" data-testid="composer-error">
-              {postError}
-            </span>
-          ) : (
-            <TurnSendStatus state={turn.state} testId="composer" onRetry={() => void submit()} />
-          )}
-        </p>
-        <button
-          type="submit"
-          disabled={!canSend}
-          data-testid="composer-send"
-          className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
-        >
-          {address === undefined ? "Post" : "Send"}
-        </button>
-      </div>
-    </form>
+    <ComposerShell
+      testId="composer"
+      label={label}
+      placeholder={placeholder}
+      draft={draft}
+      onDraft={(next) => {
+        setDraft(next);
+        turn.reset();
+      }}
+      canSend={canSend}
+      onSubmit={(e) => void submit(e)}
+      sendLabel={address === undefined ? "Post" : "Send"}
+      statusState={state}
+      status={
+        blocked !== null ? (
+          blocked
+        ) : posting ? (
+          "Posting… the line appears once it is kept."
+        ) : postError !== null ? (
+          <span role="alert" className="text-destructive" data-testid="composer-error">
+            {postError}
+          </span>
+        ) : (
+          <TurnSendStatus state={turn.state} testId="composer" onRetry={() => void submit()} />
+        )
+      }
+      lead={
+        <>
+          {mentions.map((name) => (
+            <button
+              key={name}
+              type="button"
+              className="hover:text-info"
+              onClick={() => {
+                setDraft(`@${name} `);
+                turn.reset();
+              }}
+              data-testid="composer-mention"
+              data-name={name}
+            >
+              @{name}
+            </button>
+          ))}
+          {rows.length > 1 ? (
+            <label className="flex items-center gap-2">
+              Which task?
+              <select
+                value={chosen}
+                onChange={(e) => setChosen(e.target.value)}
+                data-testid="composer-task-picker"
+                className="border bg-background px-2 py-0.5"
+              >
+                <option value="">Choose a task…</option>
+                {rows.map((r) => (
+                  <option key={`${r.boardRef}/${r.id}`} value={r.id}>
+                    {r.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </>
+      }
+    />
   );
 }

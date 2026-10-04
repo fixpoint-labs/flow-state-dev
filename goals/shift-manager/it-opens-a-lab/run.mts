@@ -40,15 +40,14 @@
  * Control:  GOAL_CONTROL=static-names pnpm tsx goals/shift-manager/it-opens-a-lab/run.mts
  * Needs:    PLAYWRIGHT_BROWSERS_PATH pointing at a Chromium pool, or Playwright's own.
  */
-import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
-import { REPO_ROOT, RUN_STAMP, goalTmpDir, intentFreeEnv, loadFixture, runGoal } from "../../lib/index.mts";
+import { REPO_ROOT, RUN_STAMP, goalTmpDir, loadFixture, runGoal } from "../../lib/index.mts";
 import { launchChromium } from "../../lib/playwright.mts";
+import { labApi, startShiftManager, type LabApi, type ServedShiftManager } from "../../lib/shift-manager.mts";
 import { Scenario, type ServedLab } from "../../multi-seat-collab/lab/run-scenario.mts";
 import { readLabTree } from "../../multi-seat-collab/lab/host.mts";
 
@@ -71,7 +70,6 @@ const fixture = loadFixture<{
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
-const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const SCRATCH = goalTmpDir("shift-manager");
 
 const LABS = {
@@ -161,95 +159,12 @@ async function buildShiftManager(control: string): Promise<string> {
 
 // ---- serving a Lab -----------------------------------------------------------
 
-type Running = { origin: string; workDir: string; child: ChildProcess; log: () => string; exited: Promise<void> };
-
 /** Shift Manager's start script over a Lab's config, from a scratch working directory. */
-async function startLab(name: LabName, pages: string, env: Record<string, string>): Promise<Running> {
-  mkdirSync(join(SCRATCH, "labs"), { recursive: true });
-  const workDir = mkdtempSync(join(SCRATCH, "labs", `${name}-`));
-  let log = "";
-  const child = spawn(TSX, [join(SHIFT_MANAGER, "bin", "start.mts"), "--config", LABS[name].config, "--port", "0", "--assets", pages], {
-    cwd: workDir,
-    // GOAL_CONTROL is this script's, not the Lab's: multi-seat-collab's config reads it too.
-    // DEVTEAM_STORE: DevTeam keeps a store across restarts; each run gets its own.
-    env: intentFreeEnv(process.env, { INIT_CWD: workDir, GOAL_CONTROL: "", DEVTEAM_STORE: join(workDir, "devteam.sqlite"), ...env }),
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  child.stdout!.on("data", (d) => (log += String(d)));
-  child.stderr!.on("data", (d) => (log += String(d)));
-  let gone = false;
-  const exited = new Promise<void>((resolve) =>
-    child.on("exit", () => {
-      gone = true;
-      resolve();
-    }),
-  );
-  for (let waited = 0; waited < 90_000; waited += 250) {
-    const match = /Shift Manager: (http:\/\/\S+)/.exec(log);
-    if (match !== null) return { origin: match[1]!, workDir, child, log: () => log, exited };
-    if (gone) break;
-    await sleep(250);
-  }
-  child.kill("SIGTERM");
-  throw new Error(`Shift Manager's start script never served ${name}. Log tail:\n${log.slice(-2000)}`);
-}
+const startLab = (name: LabName, pages: string, env: Record<string, string>): Promise<ServedShiftManager> =>
+  startShiftManager({ scratch: SCRATCH, label: name, config: LABS[name].config, pages, env });
 
 // ---- the store, read by this script -----------------------------------------
 
-/** GET/POST against the Lab's routes, with the page's bearer when the Lab has one. */
-function labApi(origin: string, bearer: string | undefined) {
-  const call = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
-    const response = await fetch(`${origin}/api/flows${path}`, {
-      method,
-      headers: {
-        "content-type": "application/json",
-        ...(bearer === undefined ? {} : { authorization: `Bearer ${bearer}` }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const text = await response.text();
-    if (text.length === 0) return { status: response.status, body: null };
-    try {
-      return { status: response.status, body: JSON.parse(text) };
-    } catch {
-      throw new Error(`${method} ${path}: ${response.status}, and the body is not JSON: ${text.slice(0, 200)}`);
-    }
-  };
-  const get = async (path: string): Promise<any> => {
-    const { status, body } = await call("GET", path);
-    if (status !== 200) throw new Error(`GET ${path}: ${status} ${JSON.stringify(body)}`);
-    return body;
-  };
-  /** Every row of a collection, through one session, page by page. */
-  const collection = async (sessionId: string, ref: string): Promise<Array<Record<string, any>>> => {
-    const rows: Array<Record<string, any>> = [];
-    let cursor: string | undefined;
-    for (let page = 0; page < 100; page += 1) {
-      const body = await get(
-        `/sessions/${encodeURIComponent(sessionId)}/resources/${encodeURIComponent(ref)}?limit=200${cursor === undefined ? "" : `&cursor=${encodeURIComponent(cursor)}`}`,
-      );
-      rows.push(...((body.items ?? []) as Array<{ clientData?: Record<string, any> }>).map((i) => i.clientData ?? {}));
-      if (body.nextCursor === undefined || body.nextCursor === null || body.nextCursor === cursor) break;
-      cursor = body.nextCursor;
-    }
-    return rows;
-  };
-  /** Every item of the given types in one session, oldest first. */
-  const items = async (sessionId: string, types: string[]): Promise<Array<Record<string, any>>> => {
-    const out: Array<Record<string, any>> = [];
-    for (let offset = 0, page = 0; page < 100; page += 1) {
-      const body = await get(
-        `/sessions/${encodeURIComponent(sessionId)}/state?include_items=true&item_types=${types.join(",")}&offset=${offset}&limit=200`,
-      );
-      out.push(...(body.items ?? []));
-      if (body.pagination?.hasMore !== true) break;
-      offset = body.pagination.nextOffset ?? offset + 200;
-    }
-    return out;
-  };
-  return { call, get, collection, items };
-}
-type LabApi = ReturnType<typeof labApi>;
 
 /** What the tree on disk declares: the oracle Shift Manager never reads. */
 type Tree = {
