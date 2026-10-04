@@ -32,7 +32,8 @@
  * Only a failure of a client call counts as one of these. A fault in this
  * module's own reading is thrown as it is.
  */
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { OutputItem, ResourceChangeItem } from "@flow-state-dev/core/items";
+import { createSSEClientFromResponse } from "@flow-state-dev/client";
 import type { LabClients } from "./connection";
 import { deriveSuspensions } from "@flow-state-dev/react";
 import { describeFailure, PERSON_REASONS } from "./reads";
@@ -225,4 +226,37 @@ export async function sendTurn(
     throw error;
   }
   return { requestId, suspended, stopped: suspended ? await stopWithin(until, stopOf(clients, actions, target.sessionId, requestId)) : null };
+}
+
+/**
+ * The organization's resources a finished request wrote, by storage path: every
+ * `resource_change` the request emitted at `org` scope. Those items are
+ * transient, so the request's stored items never hold them; its event log,
+ * replayed over the request's stream route, does.
+ *
+ * `undefined` when the log couldn't be read: the caller can't tell what the
+ * request wrote, so it treats it as having written anything.
+ */
+export async function orgWritesOf(clients: LabClients, flowId: string, requestId: string): Promise<string[] | undefined> {
+  let response: Response;
+  try {
+    response = await clients.fetcher(
+      `${clients.baseUrl ?? ""}/api/flows/${encodeURIComponent(flowId)}/requests/${encodeURIComponent(requestId)}/stream`,
+      { headers: { accept: "text/event-stream" } },
+    );
+  } catch {
+    return undefined;
+  }
+  return new Promise((resolve) => {
+    const paths = new Set<string>();
+    createSSEClientFromResponse({
+      response,
+      onItemDone: (event) => {
+        const item = event.item as OutputItem;
+        if (item.type === "resource_change" && (item as ResourceChangeItem).scope === "org") paths.add((item as ResourceChangeItem).resourcePath);
+      },
+      onError: () => resolve(undefined),
+      onClose: () => resolve([...paths]),
+    });
+  });
 }

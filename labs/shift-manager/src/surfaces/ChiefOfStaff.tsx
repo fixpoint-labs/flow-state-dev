@@ -33,9 +33,10 @@ import { currentConversation, newConversationId, readConversation, sendToChiefOf
 import { chiefOfStaffOf, seatStates, shiftSummary, streamCounts, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
 import type { SessionSummary } from "@flow-state-dev/client";
-import { describeFailure, type Failure, type Seat } from "../lib/reads";
+import { describeFailure, snapshotReads, type Failure, type Seat } from "../lib/reads";
 import { navigate } from "../lib/routes";
 import { RunReadError, type SessionItems } from "../lib/run";
+import { orgWritesOf } from "../lib/send";
 import { chiefOfStaffSuggestions, clockTime } from "../lib/shell";
 import { startChiefOfStaffWork, useChiefOfStaffWorking } from "../lib/working";
 import type { Gaps } from "../gaps";
@@ -311,6 +312,12 @@ function Talk({
           setOpened(target);
           // It stopped short, maybe on a new ask: read the Lab again so Inbox lists whatever it raised.
           if (sent.suspended) void refresh();
+          // It finished: read the Lab again only if it wrote what the snapshot holds, such as
+          // a project it created. A log that can't be read may hold any write.
+          else
+            void orgWritesOf(clients, seat.id, sent.requestId).then((wrote) => {
+              if (wrote === undefined || wrote.some(snapshotReads)) void refresh();
+            });
           return sent;
         } catch (error) {
           // The Lab may have opened the session before the line failed. The
