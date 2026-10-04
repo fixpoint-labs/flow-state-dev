@@ -54,7 +54,10 @@ export function seatAddress(
 
 /**
  * An org id as the leading segment of a seat's address: the user segment's
- * escape, applied to the org. Lowercase letters, digits and `-` pass through;
+ * escape, applied to the org. Not `validateSegment`: that rule is for names
+ * on disk (team, worker and channel folders), which an author chooses. A
+ * runtime org id comes from the principal, is opaque, and so is escaped
+ * rather than validated. Lowercase letters, digits and `-` pass through;
  * every other character (`_`, `.`, `%`, upper case) is percent-encoded, so the
  * result holds no `.` and two org ids never share one.
  *
