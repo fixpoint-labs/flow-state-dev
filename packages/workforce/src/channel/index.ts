@@ -18,10 +18,12 @@ export { emitChannelPostLine, readChannelPostLines } from "./channel-items";
 
 export {
   CHANNEL_KIND,
+  CHANNEL_SEAT_POST_ACTION,
   CHANNEL_POST_COMPONENT,
   ChannelPostRefusedError,
   INVENTORY_REGISTER_CHANNEL,
   INVENTORY_REGISTER_SEATS,
+  INVENTORY_RETIRE_CHANNELS,
   inventoryChannelRegisteredSchema,
   inventorySeatsRegisteredSchema,
   inventoryWriterActions,

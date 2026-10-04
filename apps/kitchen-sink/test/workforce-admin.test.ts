@@ -491,6 +491,34 @@ describe("V13 · a registration that fails leaves nothing behind", () => {
   });
 });
 
+describe("an admin hire's incarnation", () => {
+  it("is fresh on every hire, so a fire leaves a replacement's inventory row alone", async () => {
+    stubRegistrar();
+    const flow = adminFlow();
+    const address = `${ORG}.~admin.support.ada`;
+    // The replacement: a second admin hire of the same seat, as it would be
+    // written after this fire released the address. Its row's incarnation is
+    // what a boot would publish on its inventory row.
+    const elsewhere = createInMemoryStores();
+    expectAccepted(await callAdmin(flow, elsewhere, "hire", { seatId: "support.ada", flow: "agent", settings: { model: "front-model" } }));
+    const replacement = (await storedRow(elsewhere, "support.ada"))!.incarnation as string;
+
+    stubRegistrar();
+    const stores = createInMemoryStores();
+    expectAccepted(await callAdmin(flow, stores, "hire", { seatId: "support.ada", flow: "agent", settings: { model: "front-model" } }));
+    const own = (await storedRow(stores, "support.ada"))!.incarnation;
+    expect(typeof own).toBe("string");
+    expect(own).not.toBe(replacement);
+
+    // The replacement's boot published its inventory row before this fire's delete reached it.
+    const row = { id: address, kind: "agent", door: "run", hired: true, incarnation: replacement };
+    await stores.resourceState.set("org", ORG, `inventory/seats/${address}`, row, "any");
+    expectAccepted(await callAdmin(flow, stores, "fire", { seatId: "support.ada" }));
+
+    expect((await stores.resourceState.get("org", ORG, `inventory/seats/${address}`))?.state).toMatchObject({ incarnation: replacement });
+  });
+});
+
 describe("fire", () => {
   it("removes the row and the address, and the removal survives a re-read", async () => {
     const registrar = stubRegistrar();
@@ -508,6 +536,74 @@ describe("fire", () => {
     expect(fired.output).toMatchObject({ address: `${ORG}.~admin.support.ada`, released: true });
     expect(registrar.held.has(`${ORG}.~admin.support.ada`)).toBe(false);
     expect(await storedRow(stores, "support.ada")).toBeUndefined();
+  });
+
+  it("FIX-1621 BR-13 · a user-owned fire goes through Workforce's one removal: an inventory row at its address goes too", async () => {
+    const registrar = stubRegistrar();
+    const flow = adminFlow();
+    const stores = createInMemoryStores();
+    const address = `${ORG}.~admin.support.ada`;
+
+    await callAdmin(flow, stores, "hire", { seatId: "support.ada", flow: "agent", settings: { model: "front-model" } });
+    // This app's hire writes no inventory row; one is seeded, as a boot
+    // publishes it (the hire's own incarnation), so the shared removal has
+    // something to prove it reached.
+    const incarnation = (await storedRow(stores, "support.ada"))!.incarnation as string;
+    await stores.resourceState.set("org", ORG, `inventory/seats/${address}`, { id: address, kind: "agent", door: "run", hired: true, incarnation }, "any");
+    await stores.resourceState.set("org", ORG, `inventory/seats/${ORG}.support.bob`, { id: `${ORG}.support.bob`, kind: "agent", door: "run" }, "any");
+
+    const fired = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
+    expectAccepted(fired);
+    expect(registrar.held.has(address)).toBe(false);
+    const seats = Object.keys(await stores.resourceState.getByPrefix("org", ORG, "inventory/seats/"));
+    expect(seats).toEqual([`inventory/seats/${ORG}.support.bob`]);
+  });
+
+  it("a fire that died after removing the caller's own row: the retry removes that seat's leftover inventory row and leaves an org seat sharing the id", async () => {
+    const registrar = stubRegistrar();
+    const flow = adminFlow();
+    const stores = createInMemoryStores();
+    const address = `${ORG}.~admin.support.ada`;
+    await callAdmin(flow, stores, "hire", { seatId: "support.ada", flow: "agent", settings: { model: "front-model" } });
+    // What a boot publishes for the seat, then what the dead fire left: its
+    // own roster row and its address gone, the inventory row not.
+    await stores.resourceState.set("org", ORG, `inventory/seats/${address}`, { id: address, kind: "agent", door: "run", hired: true, incarnation: null }, "any");
+    const ownKey = Object.keys(await stores.resourceState.getByPrefix("org", ORG, "workforce/roster/")).find((key) => key.includes("~admin"))!;
+    const own = await stores.resourceState.get("org", ORG, ownKey);
+    await stores.resourceState.delete("org", ORG, ownKey, own!.version);
+    registrar.held.delete(address);
+    // An org seat under the same id, from when this app's hire wrote the flat key.
+    const legacy = { seatId: "support.ada", flow: "agent", settings: { model: "front-model" }, instructions: null };
+    await stores.resourceState.set("org", ORG, "workforce/roster/support.ada", legacy, "any");
+
+    const retried = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
+    expectAccepted(retried);
+    expect(retried.output).toMatchObject({ address, released: false });
+    expect(Object.keys(await stores.resourceState.getByPrefix("org", ORG, "inventory/seats/"))).toEqual([]);
+    expect(Object.keys(await stores.resourceState.getByPrefix("org", ORG, "workforce/roster/"))).toEqual(["workforce/roster/support.ada"]);
+  });
+
+  it("a legacy org row and the caller's own row under one seat id: no owner is refused, and owner picks the row", async () => {
+    const registrar = stubRegistrar();
+    const flow = adminFlow();
+    const stores = createInMemoryStores();
+    await callAdmin(flow, stores, "hire", { seatId: "support.ada", flow: "agent", settings: { model: "front-model" } });
+    // A row from when this app's hire wrote the flat, org-visible key.
+    const legacy = { seatId: "support.ada", flow: "agent", settings: { model: "front-model" }, instructions: null };
+    await stores.resourceState.set("org", ORG, "workforce/roster/support.ada", legacy, "any");
+    const keys = async () => Object.keys(await stores.resourceState.getByPrefix("org", ORG, "workforce/roster/")).sort();
+    const both = await keys();
+    expect(both).toHaveLength(2);
+
+    const refused = await callAdmin(flow, stores, "fire", { seatId: "support.ada" });
+    expectRefused(refused, /"support\.ada" names two seats: the organization's and yours/);
+    expect(await keys()).toEqual(both);
+
+    const fired = await callAdmin(flow, stores, "fire", { seatId: "support.ada", owner: "organization" });
+    expectAccepted(fired);
+    expect(fired.output).toMatchObject({ address: `${ORG}.support.ada` });
+    expect(await keys()).toEqual(both.filter((key) => key !== "workforce/roster/support.ada"));
+    expect(registrar.held.has(`${ORG}.~admin.support.ada`)).toBe(true);
   });
 
   it("refuses a seat this organization does not hold", async () => {

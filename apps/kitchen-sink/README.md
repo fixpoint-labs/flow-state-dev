@@ -137,7 +137,7 @@ Tools, blocks and capabilities come from files too: a file under `workforce/bloc
 
 Channels are opened at boot, and opening is idempotent. Re-opening is not a migration: an open channel keeps the members and charter it was opened with, so on a persistent store a new specialist doesn't join a channel that is already open. `boards:` and `routing:` are the exceptions, read from the file on every boot.
 
-A seat's post wakes nobody, so a specialist's answer never sets off another. The check is on the claimed `author`, which the channel does not verify; an app with a real identity model should compare whatever it resolves a caller to.
+A specialist's answer does not wake the other specialists.
 
 Which organization the channel sessions land in comes from the caller's verified identity, not from anything a file declares. If you add authentication, open them as a caller whose identity already carries the organization you want: [which organization a channel runs in](../docs/docs/workforce/channels.md#which-organization-a-channel-runs-in).
 

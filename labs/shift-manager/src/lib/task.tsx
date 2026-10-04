@@ -108,7 +108,7 @@ export function TaskProvider({
   devtoolUrl?: string;
   children: ReactNode;
 }) {
-  const { clients, reader } = useLab();
+  const { clients, reader, refresh } = useLab();
   const fromSnapshot = useMemo(() => allRows(snapshot).filter((r) => r.boardRef === boardRef), [snapshot, boardRef]);
   const [boardRows, setBoardRows] = useState<BoardRow[]>(fromSnapshot);
   const [rowFailure, setRowFailure] = useState<Failure | undefined>(undefined);
@@ -177,6 +177,8 @@ export function TaskProvider({
     [linkedSession, linkedRequest, linkedAttempt, flowId],
   );
 
+  // The run's last known status, so only a move into `suspended` re-reads the Lab.
+  const lastReported = useRef<{ requestId: string; status: string } | null>(null);
   // The request record, once per run opened: it decides whether the run is open at all.
   useEffect(() => {
     if (openRun === undefined) return;
@@ -184,7 +186,9 @@ export function TaskProvider({
     setStatus(undefined);
     readRunStatus(clients, openRun)
       .then((s) => {
-        if (live) setStatus({ requestId: openRun.requestId, status: s });
+        if (!live) return;
+        setStatus({ requestId: openRun.requestId, status: s });
+        lastReported.current = { requestId: openRun.requestId, status: s };
       })
       .catch((error: unknown) => {
         if (live) setStatus({ requestId: openRun.requestId, failure: error instanceof RunReadError ? error.failure : describeFailure(error) });
@@ -226,6 +230,11 @@ export function TaskProvider({
   const reportStatus = useCallback(
     (next: string) => {
       if (openRun === undefined) return;
+      // A run that stops to ask a person: re-read the Lab, so its ask reaches
+      // the Session, the activity line and the inspector with no reload.
+      const before = lastReported.current;
+      lastReported.current = { requestId: openRun.requestId, status: next };
+      if (next === "suspended" && (before?.requestId !== openRun.requestId || before.status !== "suspended")) void refresh();
       setStatus((held) =>
         held !== undefined && held.requestId === openRun.requestId && "status" in held && held.status === next
           ? held
@@ -237,7 +246,7 @@ export function TaskProvider({
         void readBoardNow();
       }
     },
-    [openRun, readBoardNow],
+    [openRun, readBoardNow, refresh],
   );
 
   // ---- Interrupt: the one write this screen makes.

@@ -36,6 +36,13 @@ export const channelTranscriptLineSchema = z.object({
    * of a stored line cannot mistake the `author` field for a proven one.
    */
   authorVerified: z.literal(false),
+  /**
+   * The line arrived through the channel's `seatPost` action or its answer
+   * entry: a seat's own dispatch. A `post`, public or dispatched, never sets
+   * it, and it is never copied from the caller's input. Absent on those
+   * posts, including one that claims an `author`.
+   */
+  seatAuthored: z.literal(true).optional(),
   body: z.string()
 });
 

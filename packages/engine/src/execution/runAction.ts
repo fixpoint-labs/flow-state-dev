@@ -42,6 +42,7 @@ import type { FlowError } from "../errors/flow-error";
 import { ValidationError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
 import type { RequestRecord, StoreRegistry } from "../stores/types";
+import { mergeItemsById } from "../stores/shared";
 import { createInternalResponseEmitter } from "../streaming/response-emitter";
 import { executeBlock } from "./executeBlock";
 import { recordOutput, settledRecordFields, type RecordedOutput, type RequestSettlement } from "./request-action-result";
@@ -367,6 +368,22 @@ function parseActionInput(action: ActionCore, input: unknown): unknown {
 }
 
 /**
+ * The items a request record holds: no transient item, and no ephemeral
+ * content. The one rule for every write of a record's items, so a read while
+ * a request runs (FIX-1735) shows what its settled record will. Hands the list
+ * over as it is when nothing in it is left out, since a running request calls
+ * this per streamed delta.
+ */
+function itemsForPersistedRecord(items: OutputItem[]): OutputItem[] {
+  const clean = !items.some(
+    (item) =>
+      item.transient === true ||
+      (item.type === "message" && (item as MessageItem).content?.some(isEphemeralContent) === true)
+  );
+  return clean ? items : stripEphemeralContent(items.filter((item) => item.transient !== true));
+}
+
+/**
  * Strips ephemeral content parts (e.g. output_audio) from items before
  * persistence. Ephemeral content is streamed to the client in real time
  * but should not be stored, since it may contain large binary payloads.
@@ -477,11 +494,7 @@ async function settleFreshRequestSetupFailure(options: {
           },
           now
         );
-      const items = stripEphemeralContent(
-        mergeItemsById(base.items ?? [], [...options.emittedItems, item]).filter(
-          (entry) => entry.transient !== true
-        )
-      );
+      const items = itemsForPersistedRecord(mergeItemsById(base.items ?? [], [...options.emittedItems, item]));
       const failed: RequestRecord = {
         ...base,
         ...settledRecordFields({ status: "failed", error: normalized }),
@@ -489,6 +502,15 @@ async function settleFreshRequestSetupFailure(options: {
         updatedAt: now,
         items
       };
+      // Items before the status, as every terminal write does: on a store
+      // whose `set` drops `items`, a `failed` read must not come without its
+      // error item. Only onto a record this run already holds, though; one
+      // this write creates may be lost to another request taking the id
+      // ("absent"), so its items follow the write that wins it.
+      if (current !== undefined) {
+        options.stores.request.persistItems(options.requestId, items);
+        await options.stores.request.flushItems(options.requestId);
+      }
       const written = await options.stores.request.set(
         options.requestId,
         failed,
@@ -496,8 +518,10 @@ async function settleFreshRequestSetupFailure(options: {
       );
       if (written.ok) {
         writtenIncarnation = resolveRequestIncarnation(failed);
-        options.stores.request.persistItems(options.requestId, items);
-        await options.stores.request.flushItems(options.requestId);
+        if (current === undefined) {
+          options.stores.request.persistItems(options.requestId, items);
+          await options.stores.request.flushItems(options.requestId);
+        }
         settled = true;
       }
     }
@@ -582,7 +606,7 @@ async function writeRequestRecordPatch(
   }
 
   const sanitized = patch.items !== undefined
-    ? { ...patch, items: stripEphemeralContent(patch.items.filter(item => item.transient !== true)) }
+    ? { ...patch, items: itemsForPersistedRecord(patch.items) }
     : patch;
 
   // Request-record patches (items, status, timestamps) are written outside
@@ -684,32 +708,6 @@ async function finalizeRequestRecord(
     }
   }
   return false;
-}
-
-/**
- * Union prior persisted items with this run's items by `id`, last-write-wins
- * per id, preserving order (prior items first in their original order, then
- * any new ids in re-entry order). Used for the terminal write of a same-request
- * continuation (FIX-811), where the re-entry emitter holds only post-resume
- * items but a GET must return the full pause→continue history. A backstop for
- * stores whose `persistItems` already merges (sqlite); load-bearing for the
- * in-memory store whose `persistItems` is a no-op.
- */
-function mergeItemsById(
-  prior: readonly OutputItem[],
-  reentry: readonly OutputItem[]
-): OutputItem[] {
-  const byId = new Map<string, OutputItem>();
-  const order: string[] = [];
-  for (const item of prior) {
-    if (!byId.has(item.id)) order.push(item.id);
-    byId.set(item.id, item);
-  }
-  for (const item of reentry) {
-    if (!byId.has(item.id)) order.push(item.id);
-    byId.set(item.id, item);
-  }
-  return order.map((id) => byId.get(id)!);
 }
 
 /**
@@ -1052,6 +1050,9 @@ async function runActionAttempt<
   let priorItemsForMerge: readonly OutputItem[] = [];
   const itemsToPersist = (): OutputItem[] =>
     isReplayMode ? mergeItemsById(priorItemsForMerge, response.getItems()) : response.getItems();
+  // What a running request's incremental persists write: the log its record
+  // will hold when it settles (FIX-1735).
+  const persistableItems = (): OutputItem[] => itemsForPersistedRecord(itemsToPersist());
 
   if (options.onItem !== undefined) {
     // Fan every item to the caller's listener, transient ones included (they
@@ -1220,6 +1221,19 @@ async function runActionAttempt<
   // settled, so no stored cancel is delivered: one delivered for admission's
   // request would stay on this run's controller if another request took the id.
   let incarnationSettled = false;
+  /**
+   * Hand the store the items this run's record is about to settle with, and
+   * wait out every item write, before a terminal write. The SQL stores keep
+   * items out of the record row, so the terminal write's own `items` never
+   * reach them, and the emitter's `item.done` hook fires after the event's
+   * `onEvent`, which can put a block's last items in the store after the
+   * status. A run that never settled which record it holds persists nothing
+   * (FIX-1735).
+   */
+  const flushSettlingItems = async (): Promise<void> => {
+    if (incarnationSettled) options.stores.request.persistItems(requestId, persistableItems());
+    await options.stores.request.flushItems(requestId);
+  };
   /**
    * Whether a cancel is recorded on the request this run executes as. The flag
    * is read first, as the O(1) `isAbortRequested`, and only when it is set is
@@ -1555,8 +1569,8 @@ async function runActionAttempt<
         // state_snapshot items are transient by design — no items-log persist.
         return;
       }
-      if (item.transient === true) return;
-      options.stores.request.persistItems(requestId, itemsToPersist());
+      if (item.transient === true || !incarnationSettled) return;
+      options.stores.request.persistItems(requestId, persistableItems());
     },
     // FIX-479: incremental items-snapshot checkpoint while streaming text.
     // content.delta events no longer enter the persisted events log; the
@@ -1567,8 +1581,8 @@ async function runActionAttempt<
     // delta callers do not amplify disk I/O.
     onItemUpdate: (item) => {
       if (item.type === "state_snapshot") return;
-      if (item.transient === true) return;
-      options.stores.request.persistItems(requestId, itemsToPersist());
+      if (item.transient === true || !incarnationSettled) return;
+      options.stores.request.persistItems(requestId, persistableItems());
     }
   });
 
@@ -1894,6 +1908,10 @@ async function runActionAttempt<
     }
     incarnationSettled = true;
     if (registered.signal.aborted) forwardRegisteredAbort();
+    // Items persist only into the record this run now holds: one emitted
+    // before (the caller's own line) could otherwise land in a record another
+    // principal took the id with. Whatever was held back goes now.
+    options.stores.request.persistItems(requestId, persistableItems());
 
     // First poll (FIX-1026), against the request this run executes as. It
     // closes the window where the cancel was recorded between admission and
@@ -2215,6 +2233,7 @@ async function runActionAttempt<
         await flushCheckpoints();
         await flushTraces();
 
+        await flushSettlingItems();
         await settleRequestRecord(options.stores, requestId, { status: "suspended" }, {
           items: itemsToPersist()
         });
@@ -2408,6 +2427,9 @@ async function runActionAttempt<
     await flushCheckpoints();
     await flushTraces();
 
+    // Then the items the record settles with, so the status below is never
+    // read without them on a store whose `set` drops `items`.
+    await flushSettlingItems();
     const completedAt = Date.now();
     const items = itemsToPersist();
     terminalRecordIncarnation = await settleRequestRecord(
@@ -2692,6 +2714,7 @@ async function runActionAttempt<
         await flushTraces();
 
         const abortedAt = Date.now();
+        await flushSettlingItems();
         terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "aborted" }, {
           abortedAt,
           items: itemsToPersist(),
@@ -2725,6 +2748,7 @@ async function runActionAttempt<
         await flushCheckpoints();
         await flushTraces();
 
+        await flushSettlingItems();
         terminalRecordIncarnation = await settleRequestRecord(options.stores, requestId, { status: "interrupted" }, {
           interruptedAt: Date.now(),
           items: itemsToPersist(),
@@ -2759,6 +2783,7 @@ async function runActionAttempt<
       await flushTraces();
 
       const failedAt = Date.now();
+      await flushSettlingItems();
       terminalRecordIncarnation = await settleRequestRecord(
         options.stores,
         requestId,

@@ -1,12 +1,13 @@
 /**
  * The workstream level (S7, S8): a declared channel and the boards attached
- * to it (D2). Four tabs, each mounted only when opened: Stream, Board, Brief
- * (the channel's charter) and Results. The right panel shows Progress, the
- * channel's members with their status, and its rows by column.
+ * to it (D2). A header as design v2 draws it (v2:215): `#`, the name and a
+ * boxed WORKSTREAM tag. Four tabs, each mounted only when opened: Stream,
+ * Board, Brief (the channel's charter) and Results. The right panel shows
+ * Progress, the channel's members with their status, and its rows by column.
  */
 import { useEffect, useState } from "react";
 import { Board } from "../components/Board";
-import { EmptyState, PartialMark, SectionFailure, StatusWord, Tabs } from "../components/ui";
+import { EmptyState, PartialMark, ScreenTitle, SectionFailure, STATE_OF_COLUMN, StateSquare, StatusWord, Tabs } from "../components/ui";
 import { COLUMNS } from "../lib/columns";
 import { byColumn, seatStates, type LoadedSnapshot } from "../lib/derive";
 import { useLab } from "../lib/lab-data";
@@ -33,15 +34,21 @@ export function WorkstreamView({
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="workstream" data-channel-id={workstream.id}>
-      <header className="px-4 pt-3">
-        <p className="text-[11px] font-semibold tracking-wider text-muted-foreground">WORKSTREAM</p>
-        <h1 className="text-base font-semibold">{workstream.id}</h1>
+      <header className="flex items-baseline gap-2 px-[22px] pt-3.5 pb-3" data-testid="workstream-header">
+        <span className="font-mono text-[15px] font-medium text-muted-foreground" data-look="title-hash">
+          #
+        </span>
+        <ScreenTitle>{workstream.id}</ScreenTitle>
+        <span className="border border-foreground/40 px-[5px] py-px font-mono text-[10px] font-medium tracking-[0.12em]" data-look="screen-tag">
+          WORKSTREAM
+        </span>
       </header>
       <Tabs
         label="Workstream"
         tabs={WORKSTREAM_TABS}
         selected={tab}
         onSelect={(next) => navigate({ level: "workstream", channelId: workstream.id, tab: next })}
+        counts={boardCount(snapshot, workstream)}
       />
       <div className="flex min-h-0 flex-1 flex-col" role="tabpanel" data-tabpanel={tab}>
         {tab === "stream" ? <Stream workstream={workstream} snapshot={snapshot} gaps={gaps} /> : null}
@@ -51,6 +58,12 @@ export function WorkstreamView({
       </div>
     </div>
   );
+}
+
+/** The Board tab's count: every row on the workstream's boards (v2:222), once they loaded. */
+function boardCount(snapshot: LoadedSnapshot, workstream: Workstream): { board: number } | undefined {
+  const boards = snapshot.boards[workstream.id];
+  return boards?.ok === true && boards.value.refs.length > 0 ? { board: boards.value.rows.length } : undefined;
 }
 
 function BoardTab({ snapshot, workstream, gaps }: { snapshot: LoadedSnapshot; workstream: Workstream; gaps: Gaps }) {
@@ -174,10 +187,11 @@ export function WorkstreamPanel({ snapshot, workstream, gaps }: { snapshot: Load
                     <li key={`${row.boardRef}/${row.id}`}>
                       <button
                         type="button"
-                        className="truncate text-left text-xs hover:underline"
+                        className="flex max-w-full items-center gap-1.5 text-left text-xs hover:underline"
                         onClick={() => navigate({ level: "task", boardRef: row.boardRef, taskId: row.id, tab: "session" })}
                       >
-                        {row.title} <span className="text-muted-foreground">({row.status})</span>
+                        <StateSquare state={STATE_OF_COLUMN[column]} />
+                        <span className="truncate">{row.title}</span> <span className="text-muted-foreground">({row.status})</span>
                       </button>
                     </li>
                   ))}

@@ -274,7 +274,7 @@ describe("the tools fence on seat-hire", () => {
 });
 
 describe("fire", () => {
-  it("removes the roster row and releases the address; the inventory row stays", async () => {
+  it("removes the roster row, releases the address, and removes the inventory row", async () => {
     const live = liveRoster();
     const { kinds } = kindWithHire(live);
 
@@ -291,7 +291,7 @@ describe("fire", () => {
 
     expect(live.has("acme.eng.ada")).toBe(false);
     expect(await listedIds(ctx, HIRED_ROSTER_RESOURCE, "seatId")).toEqual([]);
-    expect(await listedIds(ctx, SEAT_INVENTORY_RESOURCE, "id")).toEqual(["acme.eng.ada"]);
+    expect(await listedIds(ctx, SEAT_INVENTORY_RESOURCE, "id")).toEqual([]);
   });
 
   it("refuses to fire a seat that was declared in a worker file, not hired through this tool", async () => {
@@ -362,7 +362,7 @@ describe("Discover sees a runtime hire", () => {
     expect(await discoverSeatIds(ctx as never)).toEqual(["acme.eng.ada"]);
   });
 
-  it("fire removes the seat from Discover even though the inventory row stays", async () => {
+  it("fire removes the seat from Discover and from the inventory", async () => {
     const live = liveRoster();
     const kinds = kindThatCanHireAndDiscover(live);
     const [manager] = hireWorkforce(
@@ -377,7 +377,7 @@ describe("Discover sees a runtime hire", () => {
     ]);
 
     expect(await listedIds(ctx, HIRED_ROSTER_RESOURCE, "seatId")).toEqual([]);
-    expect(await listedIds(ctx, SEAT_INVENTORY_RESOURCE, "id")).toEqual(["acme.eng.ada"]);
+    expect(await listedIds(ctx, SEAT_INVENTORY_RESOURCE, "id")).toEqual([]);
     expect(await discoverSeatIds(ctx as never)).toEqual([]);
   });
 });

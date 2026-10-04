@@ -43,17 +43,18 @@ function makeRequestRecord(id: string): RequestRecord {
 }
 
 describe("RequestStore.persistItems — in-memory", () => {
-  it("persistItems is a no-op, flushItems resolves immediately", async () => {
+  it("persistItems puts a running request's items on its record, and ignores an unknown request", async () => {
     const store = createInMemoryRequestStore();
     await store.set("req_1", makeRequestRecord("req_1"), "any");
 
-    // Should not throw
     store.persistItems("req_1", [makeItem("item_1", 0)]);
+    store.persistItems("req_missing", [makeItem("item_2", 0)]);
     await store.flushItems("req_1");
 
-    // In-memory store doesn't persist items via persistItems
+    // Readable while the request runs (FIX-1735), not only once it settles.
     const record = await store.get("req_1");
-    expect(record!.items).toBeUndefined();
+    expect(record!.items?.map((item) => item.id)).toEqual(["item_1"]);
+    expect(await store.get("req_missing")).toBeUndefined();
   });
 });
 

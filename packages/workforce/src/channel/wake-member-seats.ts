@@ -5,14 +5,16 @@
  * block decides what that member gets. This one decides it from the seats the
  * host hired, and from nothing else:
  *
- * - **A member wakes** when the post names no `author` and the member's hired
+ * - **A member wakes** when the post is not a seat's and the member's hired
  *   seat declares the internal `onChannelPost` entry. The seat runs that entry
  *   in one conversation per channel, keyed `channel:<channelId>`, so the next
  *   post it hears lands in the same conversation.
- * - **Nothing runs** for a member that would have woken, when the post names an
- *   `author`. Every author a post can carry is a declared member, so that is a
- *   seat talking, and two seats that wake each other answer each other forever.
- *   There is no option to turn this off.
+ * - **Nothing runs** for a member that would have woken, when the post is a
+ *   seat's (`seatAuthored`). That bit is set by the seat post action and the
+ *   answer entry. A `post`, including one another flow dispatches, does not
+ *   set it, and a caller-supplied `author` does not withhold the wake: two
+ *   seats that wake each other answer each other forever, and there is no
+ *   option to turn the seat rule off.
  * - **The fallback runs** for every other member: one whose seat declares no
  *   `onChannelPost`, or who has no seat among those passed. Silent unless the
  *   host passes one.
@@ -103,8 +105,8 @@ export function reachableSeat(group: readonly FlowInstance[], ctx: BlockContext)
 
 /**
  * The notify block that wakes each member whose hired seat declares the
- * internal `onChannelPost` entry, once per post, and never on a post with an
- * `author`.
+ * internal `onChannelPost` entry, once per post, and never on a post the
+ * channel marked `seatAuthored` (a seat's own dispatch, not a claimed `author`).
  *
  * @param seats The seats `hireWorkforce` returned. Hire before you build
  *   channels: a seat not passed here is never woken.
@@ -151,12 +153,13 @@ export function wakeMemberSeats(
     inputSchema: channelNotifyInputSchema,
     routes,
     execute: (post: ChannelNotifyInput, ctx: BlockContext) => {
-      // The seat check first, so a claimed `author` can only withhold a wake,
-      // never send the fallback to a member it would not reach anyway.
+      // A member this caller cannot wake gets the fallback, including on a
+      // seat's post. The seat mark then withholds the wake, and a claimed
+      // `author` never does.
       const wake = wakeFor(post.member, ctx);
       if (wake === undefined) return fallback;
-      // A seat wrote it: silent, not the fallback (BR-3). The author only withholds.
-      if (post.author !== undefined) return silent;
+      // A seat wrote it: silent, not the fallback.
+      if (post.seatAuthored === true) return silent;
       return wake;
     }
   } as unknown as RouterConfig<typeof channelNotifyInputSchema, any, ChannelNotifyInput>) as BlockDefinition<

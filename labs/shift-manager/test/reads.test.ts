@@ -13,6 +13,7 @@ import {
   createLabReader,
   DISPATCHED_RUN_UNANSWERABLE,
   REOPENED_SOURCES,
+  roomSessionId,
   UNOWNED_SESSION_UNANSWERABLE,
   type LabSnapshot,
 } from "../src/lib/reads";
@@ -85,14 +86,84 @@ describe("the refusal (V2, BR-3)", () => {
   });
 
   it("refuses a Lab that names no organization for the person, and reads nothing from the tree", async () => {
-    // The Lab opens nothing at boot, so the person holds no session and
-    // nothing the Lab serves says which organization they are in.
+    // The Lab opens nothing at boot and serves no room kind to open one on, so
+    // the person holds no session and nothing the Lab serves says which
+    // organization they are in.
     const { baseUrl } = await lab({ channels: false });
-    const seen = countRequests();
+    const seen: string[] = [];
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      seen.push(`${init?.method ?? "GET"} ${url.pathname}`);
+      if (url.pathname === "/api/flows/channel/sessions") return new Response(JSON.stringify({ error: "no flow" }), { status: 404 });
+      return real(input, init);
+    });
     const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
     expect(snapshot.refused?.message).toMatch(/no organization/);
     expect(snapshot.refused?.message).toContain(ASK_LAB_USER_ID);
-    expect(seen).toEqual(["GET /api/flows/sessions"]);
+    expect(seen).toEqual(["GET /api/flows/sessions", "POST /api/flows/channel/sessions"]);
+  });
+
+  // FIX-1752: projects are org-wide, so a person the Lab verifies reaches them on a first
+  // visit. Their room session is opened first, and the Lab stamps it with their organization.
+  it("reads the organization off a room session it opens for a person who holds none", async () => {
+    // The Lab opens nothing at boot; its verified principal puts the person in `org_first_visit`.
+    const { baseUrl } = await lab({ channels: false, bearer: "ask-lab-secret", orgId: "org_first_visit" });
+    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID, bearerToken: "ask-lab-secret" });
+    expect(await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).toEqual([]);
+    const snapshot = loaded(await createLabReader(clients).read());
+    expect(snapshot.orgId).toBe("org_first_visit");
+    expect(snapshot.sessions.map((s) => s.flowKind)).toEqual(["channel"]);
+  });
+
+  // Two reads of a first visit can overlap: StrictMode replays the boot, or the person opens
+  // two tabs. Either way the person ends up with one room session, never two.
+  it("opens one room session for overlapping first-visit reads, on one page and across two", async () => {
+    const { baseUrl } = await lab({ channels: false });
+    const page = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    const [a, b] = await Promise.all([createLabReader(page).read(), createLabReader(page).read()]);
+    // Two tabs: two clients, so nothing in the page is shared between them.
+    const tab = () => createLabClients({ baseUrl, userId: "u_two_tabs" });
+    const [c, d] = await Promise.all([createLabReader(tab()).read(), createLabReader(tab()).read()]);
+    for (const snapshot of [a, b, c, d]) expect(loaded(snapshot).orgId).toBe(DEFAULT_ORG_ID);
+    expect((await page.sessions.listSessions({ userId: ASK_LAB_USER_ID })).map((s) => s.flowKind)).toEqual(["channel"]);
+    expect((await tab().sessions.listSessions({ userId: "u_two_tabs" })).map((s) => s.flowKind)).toEqual(["channel"]);
+  });
+
+  // Session ids aren't scoped by organization. A person whose room id is already held in
+  // another of their organizations must still reach this one, not be locked out of it.
+  it("opens the room session under a fresh id when its one id is held where this organization can't list it", async () => {
+    const { baseUrl } = await lab({ channels: false });
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      // The other organization's session under the same id: a conflict, which this listing never shows.
+      if (/\/api\/flows\/channel\/sessions$/.test(url) && String(init?.body ?? "").includes(roomSessionId(ASK_LAB_USER_ID))) {
+        return new Response(JSON.stringify({ error: "Session already exists" }), { status: 409 });
+      }
+      return real(input, init);
+    });
+    const clients = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    const snapshot = loaded(await createLabReader(clients).read());
+    expect(snapshot.orgId).toBe(DEFAULT_ORG_ID);
+    const rooms = (await clients.sessions.listSessions({ userId: ASK_LAB_USER_ID })).filter((s) => s.flowKind === "channel");
+    expect(rooms).toHaveLength(1);
+    expect(rooms[0]!.id).not.toBe(roomSessionId(ASK_LAB_USER_ID));
+  });
+
+  it("a person with no session whose room session is refused gets the Lab's refusal, and nothing else is read", async () => {
+    const { baseUrl } = await lab({ channels: false });
+    const seen: string[] = [];
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      seen.push(`${init?.method ?? "GET"} ${url.pathname}`);
+      if (url.pathname === "/api/flows/channel/sessions") return new Response(JSON.stringify({ error: "not in this Lab" }), { status: 403 });
+      return real(input, init);
+    });
+    const snapshot = await createLabReader(createLabClients({ baseUrl, userId: ASK_LAB_USER_ID })).read();
+    expect(snapshot.refused).toMatchObject({ httpStatus: 403, message: "not in this Lab" });
+    expect(seen).toEqual(["GET /api/flows/sessions", "POST /api/flows/channel/sessions"]);
   });
 
   it("refuses when the person's session carries no organization", async () => {

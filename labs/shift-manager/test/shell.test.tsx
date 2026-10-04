@@ -7,6 +7,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { App } from "../src/App";
+import { Composer } from "../src/surfaces/Stream";
+import type { BoardRow } from "../src/lib/reads";
 import { GAPS } from "../src/gaps";
 import { bootColorScheme } from "../src/lib/color-scheme";
 import { createLabClients } from "../src/lib/connection";
@@ -84,6 +86,13 @@ describe("the refusal (V2, BR-3)", () => {
   });
 
   it("a Lab that names no organization for the person gets the refusal, never an unknown one", async () => {
+    // A Lab that holds no session of theirs and serves no room kind to open one on.
+    const real = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
+      /\/api\/flows\/channel\/sessions$/.test(String(input instanceof Request ? input.url : input))
+        ? new Response(JSON.stringify({ error: "no flow" }), { status: 404 })
+        : real(input, init),
+    );
     await openApp("/inbox", { channels: false });
     await screen.findByTestId("refusal");
     expect(screen.getByTestId("refusal-message").textContent).toMatch(/no organization/);
@@ -139,9 +148,34 @@ describe("empty states (BR-14, BR-28)", () => {
 
   it("Inbox and Tasks with nothing say so in a sentence", async () => {
     await openApp("/inbox");
-    expect((await screen.findByTestId("inbox-empty")).textContent).toMatch(/No seat in this Lab is waiting/);
+    // v2's sentence, with what is still going: nothing runs and nobody is on call in this Lab.
+    expect((await screen.findByTestId("inbox-empty")).textContent).toBe("Nothing needs you. 0 sessions are still running and 0 workers are on call.");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     expect((await screen.findByTestId("tasks-empty")).textContent).toMatch(/No attached board holds a row/);
+  });
+});
+
+describe("a workstream's Stream holds its members' asks (BR-16)", () => {
+  it("draws a pending ask in the feed, marked as waiting on you, and answering it there clears Inbox too", async () => {
+    const lab = await serveLab((await openAskLab()).flowState);
+    served.push(lab);
+    (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/w/ops.desk/stream`);
+    const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
+    // ops.asker sits in #ops.desk, so its ask belongs in that Stream.
+    await clients.actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
+    render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
+
+    const ask = await screen.findByTestId("feed-ask");
+    // In the feed itself, not beside it.
+    expect(screen.getByTestId("transcript").contains(ask)).toBe(true);
+    expect(within(ask).getByText("NEEDS YOU").getAttribute("data-look")).toBe("needs-tag");
+    expect(within(ask).getByTestId("ask-card").textContent).toMatch(/ship it/);
+    await waitFor(() => expect(screen.getByTestId("nav-inbox-count").textContent).toBe("1"));
+
+    act(() => fireEvent.click(within(ask).getByRole("button", { name: "Approve" })));
+    // The ask leaves the feed and Inbox together: there is one list of pending asks.
+    await waitFor(() => expect(screen.queryByTestId("feed-ask")).toBeNull(), { timeout: 10_000 });
+    await waitFor(() => expect(screen.getByTestId("nav-inbox-count").textContent).toBe("0"));
   });
 });
 
@@ -194,7 +228,8 @@ describe("the composer (V6)", () => {
     fireEvent.change(input, { target: { value: "@asker please look" } });
     await waitFor(() => expect(screen.getByTestId("composer-status").textContent).toBe(`ops.asker ${GAPS.turn.noTask}`));
     expect((screen.getByTestId("composer-send") as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId("composer-send").textContent).toBe("Send");
+    // The button draws v2's ⏎; its name says the line goes to a worker, not the channel.
+    expect(screen.getByTestId("composer-send").getAttribute("aria-label")).toBe("Send");
 
     fireEvent.change(input, { target: { value: "@nobody please" } });
     expect(screen.getByTestId("composer-status").textContent).toBe(`@nobody ${GAPS.turn.noWorker}`);
@@ -205,14 +240,35 @@ describe("the composer (V6)", () => {
   });
 });
 
+describe("the composer's @mentions", () => {
+  it("a new line started from an @mention is unsent, so it doesn't read delivered", async () => {
+    const row = { id: "only-task", title: "the coder's one task" } as BoardRow;
+    render(
+      <Composer
+        send={async () => {}}
+        onKept={async () => {}}
+        mentions={["coder"]}
+        addressing={() => ({ blocked: null, rows: [row], send: async () => {} })}
+      />,
+    );
+    fireEvent.change(screen.getByTestId("composer-input"), { target: { value: "@coder first line" } });
+    fireEvent.click(screen.getByTestId("composer-send"));
+    await waitFor(() => expect(screen.getByTestId("composer-status").getAttribute("data-state")).toBe("delivered"));
+    fireEvent.click(screen.getByTestId("composer-mention"));
+    expect((screen.getByTestId("composer-input") as HTMLInputElement).value).toBe("@coder ");
+    expect(screen.getByTestId("composer-status").getAttribute("data-state")).toBe("idle");
+  });
+});
+
 describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
   /** An ask in the asker's session, then Inbox open on it. */
-  async function openOnAsk(options: Parameters<typeof openAskLab>[0] = {}) {
+  async function openOnAsk(options: Parameters<typeof openAskLab>[0] = {}, beforeRender?: () => void) {
     const lab = await serveLab((await openAskLab(options)).flowState);
     served.push(lab);
     const clients = createLabClients({ baseUrl: lab.baseUrl, userId: ASK_LAB_USER_ID });
     await clients.actions("ops.asker").sendAction("ask", { what: "ship it" }, { sessionId: "s_ops_asker" });
     (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(`${lab.baseUrl}/inbox`);
+    beforeRender?.();
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
     const item = await screen.findByTestId("inbox-item");
     act(() => fireEvent.click(item));
@@ -228,6 +284,9 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
 
   it("shows delivered only once the seat's session holds the line, through its door", async () => {
     const { clients } = await openOnAsk();
+    // The asker asks before doing anything, so its session holds no tool call before the ask.
+    expect((await screen.findByTestId("inbox-from-session-none")).textContent).toBe("No tool call before this ask.");
+    expect(screen.queryAllByTestId("inbox-reply-line")).toHaveLength(0);
     const input = screen.getByTestId("inbox-reply-input") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
     // Hold the door's request open: nothing may read delivered while it is.
@@ -246,8 +305,33 @@ describe("Inbox's reply (V6; BR-4, BR-5, BR-21, BR-22)", () => {
     await waitFor(() => expect(screen.getByTestId("inbox-reply-status").getAttribute("data-state")).toBe("delivered"));
     expect(input.value).toBe("");
     expect(await userLines(clients, "s_ops_asker")).toContain("a reply line");
+    // Read back from the session, the line is drawn under the ask as the person's reply.
+    await waitFor(() => expect(screen.getAllByTestId("inbox-reply-line-text").map((el) => el.textContent)).toEqual(["a reply line"]));
+    expect(screen.getByTestId("inbox-reply-line-label").textContent).toMatch(/^You · \d\d:\d\d · sent into s_ops_asker$/);
     // The ask is untouched: a reply isn't an answer.
     expect(screen.getByTestId("inbox-detail").textContent).toMatch(/Approve/);
+  });
+
+  it("says so when the ask's session holds more than one read returns, rather than dropping later replies unseen", async () => {
+    // Every page of the session read says more remain, so the read stops at its cap.
+    await openOnAsk({}, () => {
+      const real = globalThis.fetch;
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (i, init) => {
+        const url = String(i instanceof Request ? i.url : i);
+        const response = await real(i, init);
+        // Only the whole-session read Inbox's detail makes; the asks read filters by item type.
+        if (!url.includes("/sessions/s_ops_asker/state") || url.includes("item_types")) return response;
+        const body = (await response.json()) as { pagination?: Record<string, unknown> };
+        return Response.json({ ...body, pagination: { ...body.pagination, hasMore: true, nextOffset: 200 } });
+      });
+    });
+    expect((await screen.findByTestId("inbox-session-truncated")).textContent).toMatch(/^More than shown/);
+  });
+
+  it("draws no truncation note when the session's read is whole", async () => {
+    await openOnAsk();
+    await screen.findByTestId("inbox-from-session-none");
+    expect(screen.queryByTestId("inbox-session-truncated")).toBeNull();
   });
 
   it("keeps the draft and shows the seat's own reason when its door refuses", async () => {
@@ -375,6 +459,12 @@ describe("Chief of Staff (FIX-1722)", () => {
     expect(screen.getByTestId("nav-inbox").getAttribute("aria-current")).toBeNull();
     expect(screen.queryByTestId("nav-cos-count")).toBeNull();
     expect(screen.getByTestId("centre").getAttribute("data-level")).toBe("cos");
+    // Shift Manager names the view Shift Coordinator; the seat keeps its id (FIX-1747).
+    // The entry's label and the screen's title carry the name; v2's square beside each carries initials.
+    expect(screen.getByTestId("nav-cos").querySelector("[data-look=nav-label]")!.textContent).toBe("Shift Coordinator");
+    expect(within(screen.getByTestId("cos-header")).getByText("Shift Coordinator")).toBeTruthy();
+    expect(screen.getByTestId("sidebar").textContent).not.toMatch(/chief of staff/i);
+    expect(screen.getByTestId("cos").textContent).not.toMatch(/chief of staff/i);
     cleanup();
     setURL(`${served[0]!.baseUrl}/no/such/place`);
     render(<App clients={createLabClients({ userId: ASK_LAB_USER_ID })} />);
@@ -385,9 +475,10 @@ describe("Chief of Staff (FIX-1722)", () => {
     await openCos("/");
     act(() => fireEvent.click(screen.getByTestId("nav-tasks")));
     act(() => fireEvent.click(screen.getByTestId("jump-to")));
-    act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "chief" } }));
+    act(() => fireEvent.change(screen.getByTestId("jump-input"), { target: { value: "coordinator" } }));
     const [result, ...rest] = await screen.findAllByTestId("jump-result");
     expect(rest).toEqual([]);
+    expect(result!.textContent).toMatch(/^Shift Coordinator/);
     act(() => fireEvent.click(result!));
     await screen.findByTestId("cos");
     expect(window.location.pathname).toBe("/cos");
@@ -435,7 +526,11 @@ describe("Chief of Staff (FIX-1722)", () => {
 
   it("names the missing seat in place of the conversation, with the summary still drawn (BR-11)", async () => {
     await openCos("/");
-    expect((await screen.findByTestId("cos-none")).textContent).toContain(GAPS.chiefOfStaff.none.title);
+    const none = (await screen.findByTestId("cos-none")).textContent ?? "";
+    expect(none).toContain(GAPS.chiefOfStaff.none.title);
+    // Org seats have shipped: the copy names where to declare the seat today, and promises nothing.
+    expect(none).toContain("org/workers/chief-of-staff/");
+    expect(none).not.toMatch(/once .* ship|FIX-\d+/);
     expect(screen.getByTestId("cos-summary")).toBeTruthy();
     expect(screen.queryByTestId("cos-composer")).toBeNull();
   });
@@ -444,6 +539,7 @@ describe("Chief of Staff (FIX-1722)", () => {
     const { clients } = await openCos("/", { chiefOfStaff: true });
     const conversation = await screen.findByTestId("cos-conversation");
     expect(conversation.getAttribute("data-seat-id")).toBe("ops.chief-of-staff");
+    expect(conversation.textContent).not.toMatch(/chief of staff/i);
     expect(screen.getByTestId("cos-conversation-empty")).toBeTruthy();
 
     // Hold the door's request open: nothing may read delivered, or draw a reply, while it is.
@@ -632,7 +728,7 @@ describe("Jump to from the keyboard", () => {
     act(() => fireEvent.change(input, { target: { value: "" } }));
 
     // Enter opens the highlighted result, not the first one: the ask Lab's
-    // first three results are Chief of Staff, then its workstreams, ops.desk
+    // first three results are Shift Coordinator, then its workstreams, ops.desk
     // then ops.side.
     act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));
     act(() => fireEvent.keyDown(input, { key: "ArrowDown" }));

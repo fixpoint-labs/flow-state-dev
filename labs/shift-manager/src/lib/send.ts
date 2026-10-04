@@ -47,8 +47,12 @@ export class TurnNotDelivered extends Error {
   }
 }
 
-/** How long a send waits for the door to answer. The door waits up to a minute for a run to stop. */
-const SEND_TIMEOUT_MS = 90_000;
+/**
+ * How long a send waits for the door to answer. The door waits up to a minute
+ * for a starting run to name its session, then up to a minute for it to stop,
+ * so this covers both with room for the reads around them.
+ */
+const SEND_TIMEOUT_MS = 130_000;
 const SEND_POLL_MS = 250;
 /** Message items per session-state page while looking for the line. */
 const ITEM_PAGE = 200;

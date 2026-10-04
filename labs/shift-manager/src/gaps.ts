@@ -4,22 +4,6 @@
  * the issue that fills a surface replaces its entry here and nothing else.
  */
 export const GAPS = {
-  projectStream: {
-    title: "No project stream yet",
-    body: "Projects arrive with FIX-1650. Until then every workstream is listed on its own under PROJECTS.",
-  },
-  projectBoard: {
-    title: "No project board yet",
-    body: "A project's board gathers its workstreams' boards once projects ship (FIX-1650).",
-  },
-  projectWorkstreams: {
-    title: "No project holds a workstream yet",
-    body: "Grouping workstreams into projects arrives with FIX-1650. The sidebar lists every workstream directly meanwhile.",
-  },
-  projectBrief: {
-    title: "No project brief yet",
-    body: "A project's brief arrives with FIX-1650.",
-  },
   results: {
     title: "No results yet",
     body: "What a workstream has produced arrives with FIX-1651.",
@@ -31,7 +15,7 @@ export const GAPS = {
   inReview: "What counts as in review arrives with FIX-1651.",
   now: "What a task is doing now arrives with FIX-1651.",
   harness: "Which harness a seat runs arrives with FIX-1652.",
-  cost: "A task's time and cost arrive with FIX-1651.",
+  cost: "A task's cost arrives with FIX-1652.",
   /**
    * The task screen's gaps (FIX-1664's gap registry, BUSINESS-RULES.md): each
    * names what arrives and who ships it, or says it is not planned in the
@@ -86,8 +70,8 @@ export const GAPS = {
   chiefOfStaff: {
     /** BR-11: the Lab's inventory holds no chief-of-staff seat. */
     none: {
-      title: "This Lab declares no chief of staff",
-      body: "Shift Manager talks to the seat named chief-of-staff. Declare one on the built-in agent kind: in a team's workers/ folder today, or under org/workers/ once org seats ship (FIX-1719).",
+      title: "This Lab declares no shift coordinator",
+      body: "Shift Manager talks to the seat named chief-of-staff. Declare one on the built-in agent kind at org/workers/chief-of-staff/.",
     },
     /** BR-12: drawn before the seats' ids. */
     several: "More than one seat is named chief-of-staff, so Shift Manager talks to neither:",

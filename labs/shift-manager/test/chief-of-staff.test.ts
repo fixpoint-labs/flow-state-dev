@@ -71,6 +71,7 @@ describe("which seat is the chief of staff (V2, D2)", () => {
       id: "chief-of-staff",
       kind: "agent",
       door: "run",
+      hired: null,
       seatId: "chief-of-staff",
       team: STAFF_TEAM,
       name: "chief-of-staff",
@@ -126,6 +127,7 @@ function snapshotOf(over: Partial<LoadedSnapshot> = {}): LoadedSnapshot {
         ],
       },
     },
+    projects: { ok: true, value: { rows: [] } },
     boards: {
       "ops.desk": { ok: true, value: { refs: ["ops.desk.work"], rows: [row("ops.desk", "1", "in_progress"), row("ops.desk", "2", "in_progress"), row("ops.desk", "3", "pending")] } },
       "ops.side": { ok: true, value: { refs: ["ops.side.work"], rows: [row("ops.side", "4", "in_progress"), row("ops.side", "5", "completed")] } },

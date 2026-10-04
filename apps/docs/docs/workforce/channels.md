@@ -11,17 +11,13 @@ Several agents working one topic. Each of them reads what the others said. Posti
 
 That is a channel. The framework ships the flow that runs them, and each channel you open is a named session on it.
 
-A channel can also be [routed](#routing-a-channel). Each post from a person then goes to the one member whose job fits it, and that member answers in the channel. A support desk works that way: the printer question goes to the devices specialist, and nobody else hears it.
+A channel can also be [routed](#routing-a-channel). A post someone sends then goes to the one member whose job fits it, and that member answers in the channel. A support desk works that way: the printer question goes to the devices specialist, and nobody else hears it.
 
 ## What a channel is
 
-A **flow kind** is a definition you register. A **session** is one conversation running on a registered flow, with its own durable state. A channel's **members** are the names it lists, usually [hired workers](./workers-on-disk.md).
+![Where each part of a channel lives. The channel kind is one registered instance, and every channel is a session on it. The support.desk session holds its members and charter in session state, and its transcript as channel-post items, with channel-route items recording where a routed post went. A woken seat answers from a session of its own. A post is checked against the members in the session's state, never the inventory's copy. The board's rows live in the organization's task ledger, under the channel's id plus the board's name, and the board names are read from CHANNEL.md at every start. The inventory row is organization data too: a copy of the members, for finding which channels a seat is in. Only the seat's answer line reaches the channel.](./channel-parts.svg)
 
-A channel is a session, not a new type beside flows and collections. The framework ships the kind, which is called `channel`, and every channel you open is another named session on that one registered instance. Two channels, one instance. A hundred channels, still one instance.
-
-If you arrived from [workers on disk](./workers-on-disk.md), where one `WORKER.md` becomes one running flow copy, channels work differently. What differs per channel (who the members are, what the charter says, what has been said) lives in each session's own state.
-
-Session state is also why the conversation stays in one place. A post is a request into the channel's session, so the work and the record land on the channel rather than on whoever posted.
+Each channel is a session on a channel kind, the built-in `channel` unless its file names another. Look at what sits inside the session (members, charter and transcript) and what sits outside it (a member's seat, the board's rows, the inventory row). A post's `author` is checked against the members in the session. The inventory's list is only for finding which channels a seat is in.
 
 :::tip When a channel, and when something else
 
@@ -50,7 +46,7 @@ No line says which kind it runs. An omitted `flow:` selects the built-in, which 
 
 `members` is the channel's roster. It decides who gets woken when somebody posts, and it is checked when a post claims to be from a particular member. It is the declared list and nothing else writes it: there is no join or leave verb yet, so changing who is in a channel means editing the record and opening a fresh channel. An edit to `members` does not reach a channel that is already open.
 
-Six keys are declarable: `flow`, `description`, `members`, `boards`, `instructions` and `routing`. [Routing a channel](#routing-a-channel) covers the last. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
+Eight keys are declarable: `flow`, `description`, `members`, `boards`, `instructions`, `routing`, `boardActions` and `mintFor`. [Routing a channel](#routing-a-channel) covers `routing`, [Holding a board](#holding-a-board) covers `boards` and `boardActions`, and [A room per project](#a-room-per-project) covers `mintFor`. The list is closed. Anything else is refused by name when you bind the roster, along with an `id:`, a `system:`, and a body given alongside `instructions:`.
 
 ## Channels on disk
 
@@ -103,7 +99,7 @@ Both folder names follow [the tree's name rule](./workers-on-disk.md#names-in-th
 
 ### What the file is checked for
 
-`description` is the only key the file itself requires, and `system:` the only one it refuses. Everything else lands on `declared` spelled exactly as you spelled it, and the closed list of seven keys is checked later. So a `CHANNEL.md` that says `member:` instead of `members:` reads without complaint and is refused by name when you bind the roster.
+`description` is the only key the file itself requires, and `system:` the only one it refuses. Everything else lands on `declared` spelled exactly as you spelled it, and the closed list of eight keys is checked later. So a `CHANNEL.md` that says `member:` instead of `members:` reads without complaint and is refused by name when you bind the roster.
 
 ### When a folder is wrong
 
@@ -177,7 +173,7 @@ A session's organization is fixed when the session is created, and re-opening ca
 
 ## Posting and reading
 
-A channel has two actions, `post` and `read`, reachable both by a client and by another flow.
+A channel has two actions, `post` and `read`, reachable both by a client and by another flow. A client `post` and a dispatched `post` are the same kind of line: neither is a seat's. `read` is the same call either way.
 
 ```ts
 const postToStandup = dispatcher({
@@ -192,6 +188,8 @@ const postToStandup = dispatcher({
 
 The flow you address is the **kind**; the channel is the **session id**. Address `{ id }`, never `{ key }`: a key-derived session is a child of whoever dispatched it, so the same key lands somewhere different for every poster and the channel never sees the post. Nothing detects that mistake.
 
+That dispatch is a `post`. It does not set `seatAuthored`, so [`wakeMemberSeats`](#waking-agent-seats) wakes hearing members, whether or not the payload sets `author`. `author` is an unverified label. It has to name a declared member, or the post is refused (`author-not-a-member`) and nothing is written. A seat's `post-to-channel` tool and a routed answer are the lines with `seatAuthored: true`, and those wake nobody.
+
 Over HTTP the address is the same: the kind where the flow goes in the URL, and the channel's id where the session goes.
 
 ```bash
@@ -201,6 +199,8 @@ curl -X POST https://your-app.example/api/flows/channel/engineering.standup/acti
 ```
 
 The call answers `202` with the request it started. The action's return value isn't part of that answer, so read the posted lines from the session's items, as [Showing a channel on screen](#showing-a-channel-on-screen) does.
+
+That HTTP call is a client `post`. It may include `author`. The line keeps that claim with `authorVerified: false`, and it never has `seatAuthored`, including when `author` is set. `wakeMemberSeats` wakes each hearing hired member on it, whether or not `author` is set. A woken seat of the built-in `agent` kind sees the writer as `author`, or as `principal` when there is no `author`. An `author` who is not a declared member is refused (`author-not-a-member`) and nothing is written.
 
 `read` gives back the channel: its description, its members, and the transcript.
 
@@ -216,6 +216,10 @@ The call answers `202` with the request it started. The action's return value is
   ],
 }
 ```
+
+That line is a client `post` that set `author`. `authorVerified` is `false`. There is no `seatAuthored`. The same body through the dispatcher above is the same kind of line.
+
+`read` takes no input on a channel. An `after` cursor is ignored there: it only means something on a [project's talk session](#a-room-per-project).
 
 The transcript is the channel's `channel-post` items and nothing else from its history, which also carries fan-out requests, dispatch handles and refusals. `read` returns the recent lines: the ones inside the session's history window, which is 50 requests by default. On a channel with a notify block, each post uses two of them.
 
@@ -240,7 +244,7 @@ To post from the page, call the channel's own action on the same session:
 await channel.sendAction("post", { body });
 ```
 
-Leave `author` out when a person is posting. `author` has to be one of the channel's members, and a person using your app usually isn't one, so naming them is refused. The line still says who posted: `principal` is the identity your server resolved for the request. A post with no `author` notifies every member, which is right here, because the person who wrote it is not among them.
+`post` takes `{ body, author? }`. `author` is an unverified label, kept on the line with `authorVerified: false`. An `author` who is not a declared member is refused (`author-not-a-member`) and nothing is written. It does not decide who `wakeMemberSeats` wakes. A client `post` wakes each hearing hired member whether or not you set `author`. `principal` is the identity your server resolved for the request, and it is the same on every line of the channel.
 
 An agent's answer, or a post from another tab, is a request the page didn't send. Add `live: true` and it appears within about a second, with no reload:
 
@@ -257,11 +261,13 @@ const busy = channel.childSessions.filter((run) => run.status === "active");
 
 ## What the transcript proves, and what it doesn't
 
-A session belongs to one user. That means **every line of a given channel carries the same `principal`**, the server-derived identity the post ran under. It is a real value and the framework sets it, but it does not tell you which participant wrote a line, because it is the same for all of them.
+A session belongs to one user. That means **every line of a given channel carries the same `principal`**, the server-derived identity the post ran under. It is a real value and the framework sets it, but it does not name the poster, because it is the same on every line.
 
-The `author` field is what distinguishes participants, and the framework cannot verify it. The poster supplies it, and it is stored beside `authorVerified: false` to say so. A post claiming an `author` who is not in the channel's members is refused, but that is a check against the declared roster, not proof of who is calling.
+`author`, when the caller set one, is an unverified label. The line stores it beside `authorVerified: false`, and `authorVerified` is always `false`. There is no verified per-participant identity on a line. A post claiming an `author` who is not in the channel's members is refused (`author-not-a-member`) and nothing is written. That check is against the declared roster, not proof of who is calling.
 
-So: a channel transcript is evidence that the channel's own principal wrote a line. It is close to no evidence about which member did. If you are building an audit trail or an approval flow, this gives you a much weaker guarantee than the field names suggest. Naming the posting member needs something the framework does not expose yet.
+A line a seat wrote also has `seatAuthored: true`. A client `post` never does, including one that sets `author`. `wakeMemberSeats` does not wake anyone for a line with `seatAuthored: true`. `seatAuthored` is not a verified name.
+
+A channel transcript shows that the channel's own principal ran the post. It is close to no evidence about which member did. If you are building an audit trail or an approval flow, these fields give you a much weaker guarantee than their names suggest.
 
 ## Waking members
 
@@ -283,17 +289,15 @@ const wakeMember = handler({
   inputSchema: channelNotifyInputSchema,
   outputSchema: z.object({ notified: z.string() }),
   execute: (input: ChannelNotifyInput) => {
-    // input: { channelId, member, postId, body, principal, author? }
-    if (input.author !== undefined && input.member === input.author) {
-      return { notified: "" };
-    }
+    // { channelId, member, postId, body, principal, author?, seatAuthored?, routed?, recent? }
+    if (input.seatAuthored === true) return { notified: "" };
     // send to whatever address you hold for `input.member`
     return { notified: input.member };
   },
 });
 ```
 
-Compare on `author`, not `principal`: `principal` is the id the channel was opened under, the same value for every post, so it never tells one member from another. `author` is the poster's own claim and nothing verifies it, so the skip is only as good as the claim.
+`seatAuthored` is `true` on a seat's own post and absent otherwise. Skip on `true` and nobody is told about that post. `author` is an unverified claim. Comparing `input.author` to `input.member` only skips a delivery when the caller claimed that name, which a client `post` can do without being a seat. `principal` is the channel session's user and is the same on every line, so it does not name the poster.
 
 The delivery runs in its own request, outside the post's turn, so a slow notification never delays the next post. A delivery that fails is recorded and the rest are still attempted; the post stays written either way, because the transcript is the durable record and waking people is best-effort.
 
@@ -320,14 +324,18 @@ const channelFlows = channelInstances(channels, {
 
 For each post, it decides per member whether that member runs:
 
-- **A member runs** when the post names no `author` and the member's seat can hear a post. A seat
-  of the built-in `agent` kind can. It runs its ordinary answer, with the post as its turn,
-  `<writer> in <channel>: <body>`. The writer is the post's `author`, or its `principal` when it
-  has none: `support.lead in support.desk: can someone look at the refund queue?`.
-- **Nobody runs** when the post names an `author`. Every author a post can carry is a member, so
-  that is a seat talking, and two agents that wake each other answer each other forever. A member
-  that would have run gets nothing at all. If you want agents to hear each other, write your own
-  notify block.
+- **A member runs** when the line is not a seat's (`seatAuthored` is absent) and the member's seat
+  can hear a post. A client `post` is that line, whether or not it sets `author`. A seat of the
+  built-in `agent` kind can hear a post. It runs its ordinary answer, with the post as its turn,
+  `<writer> in <channel>: <body>`. The writer is the post's `author`, or its `principal` when there
+  is no `author`: `support.lead in support.desk: can someone look at the refund queue?`.
+- **Nobody runs** when the line is a seat's (`seatAuthored: true`). A seat's `post-to-channel`
+  call and a routed answer are that line. A post another flow dispatches with action `post` is not.
+  A member that would have run
+  gets nothing at all. Members whose seat can't hear a post get `fallback`, or nothing if you
+  passed none. The fallback is not sent to a member who would have been woken. To have
+  agents hear a seat's post, write your own notify block and run it when `seatAuthored`
+  is `true`.
 - **Nobody runs** for a member whose kind can't hear a post, or who has no seat in the list you
   passed. A seat hired while the app is running isn't in that list until the app restarts and
   passes it in.
@@ -353,9 +361,9 @@ never for a member the wake would have run. It receives the same input a notify 
 defineChannelFlow({ notify: wakeMemberSeats(seats, { fallback: tellByEmail }) });
 ```
 
-When the writer is one of those members, the fallback receives the writer's own delivery. Skip
-it there if you don't want to tell someone about their own post, as the handler earlier on this
-page does.
+On a seat's line, members whose seat can't hear a post get the fallback. To skip a seat's line in a block of your own, read
+`input.seatAuthored === true`, as the handler earlier on this page does. `author` is an unverified
+claim, so comparing it to `member` only skips a delivery when the caller claimed that name.
 
 #### Making a kind of your own hear posts
 
@@ -378,19 +386,20 @@ export const triager = defineFlow({
 });
 ```
 
-#### What the author check can and can't promise
+#### What `author` is
 
-A post's `author` is the poster's own claim, and the channel does not verify it. Someone who can
-post can name a member as the author and so stop that one post from waking anyone. They can't make
-a seat run, make your fallback reach anyone it wouldn't reach anyway, or reach anyone outside the
-channel.
+`author` is an optional label on a `post`. The line keeps it with `authorVerified: false`, and
+`authorVerified` is always `false`. There is no verified per-participant identity on a line. An
+`author` who is not a declared member is refused (`author-not-a-member`) and nothing is written.
+Setting `author` does not set `seatAuthored`, and it does not decide who `wakeMemberSeats` wakes.
 
 ## Routing a channel
 
 Waking every agent in a channel suits a standup. It doesn't suit a support channel, where a
 question about a printer should reach the one specialist who handles devices and nobody else.
-Routing does that: each post from a person goes to one member, picked by what the post is about,
-and that member's answer shows in the channel.
+Routing does that: each client `post` goes to one member, picked by what the post is about,
+and that member's answer shows in the channel. A client `post` may include `author`. That label
+does not change who is picked.
 
 Turn it on in the channel's file by naming a fallback, the member who takes a post the route can't place:
 
@@ -417,7 +426,7 @@ defineChannelFlow({
 The route picks a member with an evaluator: a block that asks a model a question with a fixed set
 of answers and gets one of them back. Not every model can do that; see
 [Evaluation models](/docs/fundamentals/models#evaluation-models). A channel without the
-`routing:` line is not routed, even on a kind built with a route: it wakes every agent member.
+`routing:` line is not routed, even on a kind built with a route: a client `post` wakes every agent member.
 
 The fallback has to be a member whose hired seat can hear a post, or the app refuses to start and
 names the channel. So does a `routing:` line on a kind built without a route. The line is read
@@ -426,9 +435,9 @@ channel from the next start, with its lines kept.
 
 ### How a post finds its member
 
-For each post from a person, in this order:
+For each client `post`, in this order:
 
-1. **The member already on it.** If the person's last post was routed to a member by the
+1. **The member already on it.** If the last client `post` was routed to a member by the
    evaluator or the fallback, and that member hasn't answered yet, this one goes there too, with no
    model call. A post held this way holds nothing, so the one after it is routed by what it says.
    A post whose route isn't recorded yet holds nothing either, so of two posts sent close together,
@@ -439,7 +448,7 @@ For each post from a person, in this order:
    is how "it fails right after the password" reaches the specialist who asked about the password.
    A seat [hired while the app runs](./durable-hire.md) has no description, because `hire` takes
    none, so it is never a choice. It can still take a post as the fallback, and step 1 then sends
-   it the person's next post. When no member has a description, there is no call and the fallback
+   it the next client `post`. When no member has a description, there is no call and the fallback
    takes the post.
 3. **The fallback.** If the call fails, or answers with anything outside the choices, the
    fallback member takes the post. A model that can't evaluate fails every call, so every post
@@ -448,8 +457,9 @@ For each post from a person, in this order:
    in step 2, so a description such as "Anything that fits none of the other specialists" lets the
    evaluator send it the posts that fit nobody else.
 
-Only that member receives the post. Nobody else in the channel is told about it. A post a seat
-wrote is never routed and wakes nobody, as in any channel.
+Only that member receives the post. Nobody else in the channel is told about it. A seat's line
+(`seatAuthored: true`) is never routed, and `wakeMemberSeats` wakes nobody for it. A client `post`
+is routed whether or not it sets `author`.
 
 Write the `description:` lines for the route to read. "Printers, laptops, phones and wifi" routes
 better than "Our devices person".
@@ -462,7 +472,7 @@ renderers skip it.
 ### What the route remembers
 
 Every channel on a kind built with a route (`defineChannelFlow({ route })`) keeps a record in its
-session state under `channelRouteLedger`: its last 20 lines, and the person's last post with where
+session state under `channelRouteLedger`: its last 20 lines, and the last client `post` with where
 it went. Each post updates it, whether or not the channel's `CHANNEL.md` declares `routing:`.
 Because of that record, neither the lines a routed member sees nor the hold in step 1 is limited by
 the session's [history window](#posting-and-reading).
@@ -472,7 +482,7 @@ first post on a kind built with one, or its first after the channel was posted t
 its kind without a route. That post is never held, and its member sees only the earlier lines still
 inside the history window, which can be fewer than 20.
 
-Removing `routing:` from a channel's file and restoring it loses no lines. A person's post made
+Removing `routing:` from a channel's file and restoring it loses no lines. A client `post` made
 while it was removed holds nothing, so the next routed post after it is placed by the evaluator or
 the fallback. A channel on a kind built without a route keeps no record.
 
@@ -491,7 +501,7 @@ Whether it comes from the tool or the reply, the answer lands through an
 internal entry is one only a dispatch can reach, never a client, so no client can answer for a
 member. The entry checks the line the way `post` does: the
 `author` is the seat's `seatId`, which the model can't set, and an author who isn't a member is
-refused.
+refused. The line has `seatAuthored: true`.
 
 Each post gets at most one answer line. Once one lands, any other answer to that post lands
 nothing, even one sent at the same moment. An answer the channel refuses writes nothing and doesn't
@@ -584,20 +594,22 @@ that wants to say something in a channel.
 
 The model calls `post-to-channel` with the channel's id and what to say. A woken seat reads the id
 off the post it heard, from the turn described in [Waking agent seats](#waking-agent-seats). The
-tool posts through that channel's own `post`, except for a routed member's answer (below). Either
-way the line's `author` is the seat's `seatId`: its record id, the name the channel's `members:`
-lists. The model cannot set it. The tool's input is `{ channel, body }` and nothing
-else, so a call that adds an `author` is refused. A seat that doesn't name the tool is never
+tool's input is `{ channel, body }` and nothing else, so a call that adds an `author` is refused.
+The line's `author` is the seat's `seatId`: its record id, the name the channel's `members:` lists.
+The model cannot set it. The line has `seatAuthored: true`. A routed member's first call into that
+channel is the post's answer (below). Any other call is the seat's own post, not the `post` another
+flow reaches with `dispatcher({ action: "post" })`. A seat that doesn't name the tool is never
 offered it.
 
 On a turn answering a routed post, the first call into that post's channel is the post's answer. It lands
 the way [a routed answer](#the-answer-lands-in-the-channel) does: at most one line per post, under
 the same author, and the turn's reply lands only if the tool's answer didn't. A later call there in
 that turn posts nothing and tells the model its answer was already handed to the channel. A call
-into any other channel goes through `post`.
+into any other channel goes through `seatPost`.
 
-A seat's post always carries an `author`, and `wakeMemberSeats` wakes nobody on a post with an
-`author` (see [Waking agent seats](#waking-agent-seats)), so seats won't wake each other.
+`wakeMemberSeats` wakes nobody for that line, because it has `seatAuthored: true` (see
+[Waking agent seats](#waking-agent-seats)), so seats won't wake each other. A client `post` that
+sets the same `author` wakes hearing members.
 
 What it won't do:
 
@@ -777,6 +789,64 @@ A board's rows are stored at organization scope, so they sit in [the organizatio
 Rename or move a channel's folder and its boards move with it, since a board's id comes from where the channel sits. Rows filed under the old id stay there and nothing migrates them. The unattended-board warning is what makes that visible.
 
 The rows themselves are [task substrate](../orchestration/task-substrate.md) rows, with the same fields, statuses and transitions any other board's carry.
+
+## A room per project
+
+A [project](./projects.md) has one room, a conversation its members share. A room isn't a channel you declare. It's built from a **template**: the seats that answer in it and the charter they work under. Every project's room shares one template.
+
+The default template is declared once for the organization, beside the projects collection in `workforce/org/resources/projects.ts`:
+
+```ts
+import { defineProjectsCollection } from "@flow-state-dev/workforce";
+
+export default defineProjectsCollection({
+  talk: {
+    seats: ["engineering.lead", "chief-of-staff"],
+    charter: "Plan the work, and say what is blocked.",
+  },
+});
+```
+
+A seat is named by its full id from any team, like `engineering.lead`, or by an organization-level seat's own name, like `chief-of-staff`. These seats are not the project's members. Members are the people who can read and post; seats are who a post wakes.
+
+Pass the organization's resource map to `channelInstances`, so `channelInstances` can find the template:
+
+```ts
+const { resources } = splitResourceModules(resourceModules);
+const instances = channelInstances(channels, { kinds, resources });
+```
+
+Rooms run on the built-in channel kind, and that kind has to be able to wake seats, so build it with a notify block, as in `kinds: { channel: defineChannelFlow({ notify: wakeMemberSeats(seats) }) }`. Left as the plain built-in, a template that names seats is refused, because no post would wake them.
+
+If your app calls `channelInstances` more than once, say once per flow, only one call needs `resources`. The first call that finds the template keeps it for the whole process, and every other call builds its channel kind with the same seats and charter. A call that finds a different template is refused.
+
+A team can declare the template in a `CHANNEL.md` instead, by marking it `mintFor: projects`. Its `members:` are the seats and its body is the charter:
+
+```md
+---
+description: The room every project gets.
+mintFor: projects
+members: [engineering.lead, operations.lead]
+---
+
+Plan the work, and say what is blocked.
+```
+
+That file is a template, not a channel. It's never opened, and it never shows up in the [inventory](./inventory.md). If the file used to be a channel, its old session is kept in the store, but every channel action on it, including inventory registration, is refused with `channel-is-a-template`.
+
+What a template does:
+
+- **It applies to every project's room, and edits land at the next restart.** The seats and charter are built onto the channel kind each time the app boots and are never copied into a session. An edit reaches every room, including ones that already exist.
+- **A post wakes each seat once, as the person who posted.** Each seat keeps one conversation per person per room, and gets the room's last 20 lines along with the post. Its reply goes into the room, where every member reads it. A seat answers a post once, even when the post reaches it twice, and only for itself: each delivery carries an `answerToken` for that seat, which the answer hands back as `token`. The built-in agent kind does this for you, and a kind of your own passes it through. The answer must come back through the poster's session. A member posts and reads through the one talk session the project lists for them, the one `join` returns; any other session is refused with `talk-session-not-listed`. A seat's reply wakes nobody.
+- **Other members' lines arrive on the next read, not live.** Your own post shows up when you post it. Everyone else's appears the next time your view calls `read`.
+- **It holds no board, routes no post, and picks no kind.** A template that declares `flow:`, `boards:`, `routing:` or `boardActions:` is refused.
+- **Rooms aren't in the inventory.** The inventory lists the channels you declared, and no talk session is ever one of its rows.
+
+When a template is in place, any code that creates a project inside a flow turn also gets the creator's talk session ready, in the same turn. `createProject` does that with or without a template. A row your code writes outside a turn gets none, and its members reach the room through `join`.
+
+A room's lines aren't in any session's history. Read them with `read` on a member's talk session.
+
+`channelInstances` checks templates along with your channels and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or one that isn't `projects`, a seat that isn't a seat id or is listed twice, seats on a kind that can't wake them, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `CHANNEL.md`.
 
 ## Registering a kind of your own
 

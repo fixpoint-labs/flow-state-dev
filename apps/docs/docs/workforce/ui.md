@@ -126,15 +126,11 @@ Loading, an empty board and a failed read look different from each other. A fail
 
 ## Where each component reads from
 
-What a component reads decides what it shows and when it updates.
+![Three columns. One session's items, read by messages, task plans and approval cards: they arrive live and are still there after a reload. An organization's collection, read by the roster, board columns and board list: everyone sees the same rows, read once on mount. Your server's flow list, read by the navigator: read once, with a leaf's sessions read only when that leaf opens. A footer says how each reads again: items keep arriving, a panel reads again when its React key changes, and the navigator's leafToolbar slot is handed a refresh function](./ui-read-sources.svg)
 
-**The session's item stream.** Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) draw on the items a session persisted. They update as items arrive, and they are still there after a reload.
+What a component reads decides when it updates. Messages, task plans and approval cards from the [component registry](../ui/flow-aware-components) follow one session's items as they arrive. The roster and board panels read a standing collection once, when they mount; a `BoardList` with `live` is the exception ([A board as a list](#a-board-as-a-list)). The navigator reads the flow list once, and a leaf's sessions only when that leaf opens. A leaf is a singleton kind, or one instance of a collection kind, so opening a collection kind's own row reads nothing and a roster of two hundred seats costs one request to draw.
 
-**A standing collection.** The roster, the board columns and the board list read a collection that lives outside any one session. Everyone in the organization sees the same rows. Each reads on mount and does not watch. The exception is a `BoardList` with `live`, which reads again when the session it follows records a change to the board ([A board as a list](#a-board-as-a-list)). To read one on demand, change the component's React `key`.
-
-**The flow list.** The navigator reads your server's flow list once, however many sections you give it. It reads a leaf's sessions only when that **leaf** opens: a singleton kind, or one instance of a collection kind. Opening a collection kind's row asks your server for nothing, so a roster of two hundred seats costs one request to draw, and one more when somebody opens a seat.
-
-Like the panels, the navigator reads on mount and doesn't watch. To re-read a leaf's sessions on demand, use the `leafToolbar` slot. It's handed a `refresh` function, and what it returns sits on the open leaf's own row, after any `rowTrailing` content.
+To read again on demand, change a panel's React `key`, or use the `refresh` function the navigator's `leafToolbar` slot is handed. What that slot returns sits on the open leaf's own row, after any `rowTrailing` content.
 
 ## Styling it
 

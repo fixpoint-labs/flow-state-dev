@@ -33,7 +33,7 @@ const artifactResource = defineResource({
 
 `defineResource() requires an explicit scope of "session", "user", or "org" (got …)`
 
-The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. Both are versioned, both support atomic operations. A state write persists only when the result satisfies `stateSchema` and is an object, not an array (see [What gets stored](#what-gets-stored) for how its values are saved). See [Writing resource state](#writing-resource-state) for the write methods, and [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes) for what a rejected write does.
+The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. The state is versioned and supports atomic operations. The content is not versioned: a later write replaces an earlier one. A state write persists only when the result satisfies `stateSchema` and is an object, not an array (see [What gets stored](#what-gets-stored) for how its values are saved). See [Writing resource state](#writing-resource-state) for the write methods, and [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes) for what a rejected write does.
 
 Config options:
 
@@ -47,13 +47,9 @@ Config options:
 
 ## Resources vs scope state
 
-| | Scope state | Resources |
-|--|-------------|-----------|
-| **Mental model** | Config flags and counters | Files with structured metadata |
-| **Shape** | Flat key-value object | Named container: content body + typed state |
-| **Content** | No | Yes — rich text, markdown, code, templates |
-| **Identity** | Field names (shared namespace) | Resource name (isolated namespace) |
-| **Collision risk** | Fields can conflict across blocks | Each resource is self-contained |
+![Session state is flat fields on the session record; a resource is its own record in the resource store](./state-vs-resources.svg)
+
+Scope state is one flat set of fields that every block in the flow shares, so two blocks can collide on a field name. A resource is its own named record, with a content body and typed state, so it can't collide with anything.
 
 Use **scope state** for simple fields: mode flags, counters, config values. Use **resources** when you're working with content that has structure — documents, plans, artifacts, knowledge bases. See [State vs Resources](/docs/resources/storage) for more guidance on when to use which.
 
@@ -221,6 +217,26 @@ One `incState` call is one write. If any field in a multi-field call is wrong-ty
 `incState` also refuses a result that isn't finite. `z.number()` accepts `Infinity`, so the schema won't catch one, and a stored `Infinity` would read back as `null` (see [What gets stored](#what-gets-stored)). Two finite numbers can reach it, since adding `Number.MAX_VALUE` to a field already holding `Number.MAX_VALUE` overflows. The check is on the result, so a delta that is an ordinary number can still be turned away.
 
 A delta that commits is validated against `stateSchema` like every other state write. `incState({ retries: -1 })` on a `z.number().nonnegative()` field throws and stores nothing; see [Schema-invalid resource writes](/docs/state/mutation-model#schema-invalid-resource-writes). And a resource declared `writable: false` refuses `incState` and `pushState` alongside `patchState`, `setState`, and `updateState`.
+
+### Reading what another request wrote
+
+A request reads each resource as it was when the request first touched it. If another request writes the same resource afterwards, `ref.state` in this one keeps showing the older value. That's usually what you want, since a handler sees one consistent picture for the length of its run.
+
+It gets in the way when you're waiting on someone else. Say a block polls a row until another request moves its `status` from `"pending"` to `"done"`. Reading `ref.state.status` in a loop never sees the change.
+
+`readCommitted` reads the value as it's stored right now:
+
+```ts
+import { readCommitted } from "@flow-state-dev/core/helpers";
+
+const status = await readCommitted(rowRef, (row) => row?.status);
+```
+
+The second argument picks out what you want from the stored state, and that's what comes back. The call writes nothing.
+
+It needs a resource or collection ref the block is allowed to write. On a resource declared `writable: false`, the call is refused with a `resource_read_only` error and your function never runs.
+
+On a writable resource, your function always runs, so you get `undefined` back only when it returns `undefined` itself, for example because the field isn't set yet. A read that can't happen, such as one on a collection row deleted since you fetched it, throws instead. So a fallback like `?? "pending"` is only needed for a field that may be missing. It takes the same refs as [`updateStateWith`](/docs/state/mutation-model#writing-an-updater-that-may-run-twice), which is the helper to use when you also want to change the value.
 
 ## Working with content
 

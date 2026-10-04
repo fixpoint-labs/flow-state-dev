@@ -10,6 +10,7 @@ import type {
 import { buildFlowApiUrl, resolveFetch } from "../internal/http";
 import type {
   ClientFetch,
+  ClientTransportOptions,
   RequestSSECallbacks,
   RequestStreamHandle,
   SessionSSECallbacks,
@@ -21,26 +22,24 @@ import type {
 /**
  * Configuration for canonical request-stream SSE client creation.
  */
-export type CreateSSEClientOptions = RequestSSECallbacks & {
-  url: string;
-  baseUrl?: string;
-  fetcher?: ClientFetch;
-  lastEventId?: string;
-  startingAfter?: number;
-  dedupWindowSize?: number;
-};
+export type CreateSSEClientOptions = RequestSSECallbacks &
+  ClientTransportOptions & {
+    url: string;
+    lastEventId?: string;
+    startingAfter?: number;
+    dedupWindowSize?: number;
+  };
 
 /**
  * Configuration for optional user-stream SSE client creation.
  */
-export type CreateUserSSEClientOptions = UserSSECallbacks & {
-  url: string;
-  baseUrl?: string;
-  fetcher?: ClientFetch;
-  lastEventId?: string;
-  startingAfter?: number;
-  dedupWindowSize?: number;
-};
+export type CreateUserSSEClientOptions = UserSSECallbacks &
+  ClientTransportOptions & {
+    url: string;
+    lastEventId?: string;
+    startingAfter?: number;
+    dedupWindowSize?: number;
+  };
 
 type Frame = {
   id?: string;
@@ -187,6 +186,7 @@ export function createSSEClient(options: CreateSSEClientOptions): RequestStreamH
 
   const url = buildFlowApiUrl({
     baseUrl: options.baseUrl,
+    apiPath: options.apiPath,
     path: options.url,
     query:
       options.startingAfter === undefined
@@ -275,6 +275,7 @@ export function createUserSSEClient(
 
   const url = buildFlowApiUrl({
     baseUrl: options.baseUrl,
+    apiPath: options.apiPath,
     path: options.url,
     query:
       options.startingAfter === undefined
@@ -346,28 +347,27 @@ export function createUserSSEClient(
  * Configuration for following a whole session over
  * `GET /api/flows/sessions/:sessionId/stream`.
  */
-export type CreateSessionSSEClientOptions = SessionSSECallbacks & {
-  sessionId: string;
-  baseUrl?: string;
-  fetcher?: ClientFetch;
-  /**
-   * A server time to start from: one an earlier connection heard
-   * (`handle.lastAt`), or the session snapshot's `at` when the stream follows a
-   * snapshot. The server's first read reaches a few seconds before it.
-   * Omitted, it reaches back about a minute.
-   */
-  since?: number;
-  /**
-   * The session snapshot's `sessionCreatedAt`, when the stream follows a
-   * snapshot. Every connection then follows that session only: once its id
-   * holds another session, the server answers 404 and the client stops.
-   */
-  sessionCreatedAt?: number;
-  /** The session snapshot's type filter, so the stream sends what the snapshot shows. */
-  itemTypes?: string[];
-  /** Reconnect backoff: `initialDelayMs` (default 1000) doubling to `maxDelayMs` (default 30000). */
-  retry?: { initialDelayMs?: number; maxDelayMs?: number };
-};
+export type CreateSessionSSEClientOptions = SessionSSECallbacks &
+  ClientTransportOptions & {
+    sessionId: string;
+    /**
+     * A server time to start from: one an earlier connection heard
+     * (`handle.lastAt`), or the session snapshot's `at` when the stream follows a
+     * snapshot. The server's first read reaches a few seconds before it.
+     * Omitted, it reaches back about a minute.
+     */
+    since?: number;
+    /**
+     * The session snapshot's `sessionCreatedAt`, when the stream follows a
+     * snapshot. Every connection then follows that session only: once its id
+     * holds another session, the server answers 404 and the client stops.
+     */
+    sessionCreatedAt?: number;
+    /** The session snapshot's type filter, so the stream sends what the snapshot shows. */
+    itemTypes?: string[];
+    /** Reconnect backoff: `initialDelayMs` (default 1000) doubling to `maxDelayMs` (default 30000). */
+    retry?: { initialDelayMs?: number; maxDelayMs?: number };
+  };
 
 /**
  * Answers that mean the stream is not there for this caller: refused, absent,
@@ -430,6 +430,7 @@ export function createSessionSSEClient(
       const response = await fetcher(
         buildFlowApiUrl({
           baseUrl: options.baseUrl,
+          apiPath: options.apiPath,
           path,
           query: { since: lastAt, session_created_at: options.sessionCreatedAt, item_types: itemTypes }
         }),

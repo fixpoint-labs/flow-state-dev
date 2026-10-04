@@ -45,10 +45,12 @@ describe("@flow-state-dev/workforce/browser", () => {
     const entry = await import("@flow-state-dev/workforce/browser");
     expect(entry.CHANNEL_POST_COMPONENT).toBe("channel-post");
     expect(entry.HIRED_ROSTER_RESOURCE).toBe("hiredRoster");
+    expect(entry.HIRED_ROSTER_BROWSER_PATTERN).toBe("workforce/roster/*");
     expect(entry.SEAT_INVENTORY_RESOURCE).toBe("seatInventory");
     expect(typeof entry.splitSeatAddress).toBe("function");
+    expect(typeof entry.listedSeatRows).toBe("function");
     expect(typeof entry.channelTranscriptLineSchema.parse).toBe("function");
-    // The sixth, the `ChannelTranscriptLine` type, is pinned in `browser-exports.test-d.ts`.
+    // The eighth, the `ChannelTranscriptLine` type, is pinned in `browser-exports.test-d.ts`.
   });
 
   it("finds the Node built-in the package root reaches through the channel floor", () => {

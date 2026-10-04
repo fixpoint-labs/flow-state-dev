@@ -8,6 +8,7 @@
  * option/resolution interfaces shared across the path.
  */
 import { z } from "zod";
+import type { ClaudeAgentSpawnOptions } from "./process-exit";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { harnessRunHandleSchema } from "@flow-state-dev/core";
 import type { HarnessRunHandle, HarnessRunOutcome } from "@flow-state-dev/core/types";
@@ -396,6 +397,12 @@ export interface ClaudeAgentQueryOptions {
   sandbox?: unknown;
   /** Forwarded to the SDK so an aborted `ctx.signal` stops the run. */
   abortController?: AbortController;
+  /**
+   * The SDK's process-spawn hook. The block sets it so it holds the real
+   * process and can wait for it to exit on abort; a scripted `query` may
+   * ignore it.
+   */
+  spawnClaudeCodeProcess?: (options: ClaudeAgentSpawnOptions) => unknown;
 }
 
 /**

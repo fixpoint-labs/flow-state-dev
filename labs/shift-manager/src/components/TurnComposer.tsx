@@ -11,6 +11,12 @@
  * (BR-5). A line that never got there keeps the draft and offers Retry. A line
  * that may have arrived keeps the draft and offers no Retry, so it isn't sent
  * twice.
+ *
+ * Every composer draws through {@link ComposerShell}, v2's composer: one line,
+ * sent with ⏎ (Enter). Most composers are a
+ * 14px input over a mono footer that holds the send state and ⏎ (v2:305-309,
+ * 430-433, 639-644); Chief of Staff's is the larger one, a 16px input in a
+ * 1.5px ink box with ⏎ beside it and the send state under it (v2:175-178).
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { TurnNotDelivered } from "../lib/send";
@@ -75,6 +81,124 @@ export function TurnSendStatus({ state, testId, onRetry }: { state: TurnSendStat
   );
 }
 
+/**
+ * The one composer markup every composer draws through: v2's one-line input
+ * over a mono footer (or Chief of Staff's larger box), with the send state in
+ * the footer and ⏎ at its end. It only draws: the draft, what Send does and
+ * the state shown are the caller's. `lead` sits before the status in the
+ * footer (the workstream's `@name` chips and task picker); `extra` sits beside
+ * ⏎ (a task's also-post toggle).
+ */
+export function ComposerShell({
+  testId,
+  label,
+  placeholder,
+  draft,
+  onDraft,
+  disabled = false,
+  canSend,
+  onSubmit,
+  sendLabel = "Send",
+  status,
+  statusState,
+  lead,
+  extra,
+  above,
+  scale = "default",
+}: {
+  testId: string;
+  label: string;
+  placeholder: string;
+  draft: string;
+  onDraft: (draft: string) => void;
+  disabled?: boolean;
+  canSend: boolean;
+  onSubmit: (event: FormEvent) => void;
+  /** The send button's accessible name. */
+  sendLabel?: string;
+  status: ReactNode;
+  /** `data-state` on the status: what the composer is doing. */
+  statusState: string;
+  lead?: ReactNode;
+  extra?: ReactNode;
+  /** Drawn above Chief of Staff's box: its suggestions (v2:174). */
+  above?: ReactNode;
+  /** `cos`: Chief of Staff's larger composer (v2:175-178). */
+  scale?: "default" | "cos";
+}) {
+  const input = (
+    <input
+      type="text"
+      value={draft}
+      onChange={(e) => onDraft(e.target.value)}
+      disabled={disabled}
+      placeholder={placeholder}
+      aria-label={label}
+      className={`block w-full min-w-0 bg-transparent outline-none placeholder:text-muted-foreground disabled:opacity-60 ${
+        scale === "cos" ? "p-4 text-base" : "px-3 py-[11px] text-sm"
+      }`}
+      data-testid={`${testId}-input`}
+      data-look="composer-input"
+    />
+  );
+  const statusLine = (
+    <span className="min-w-0" data-testid={`${testId}-status`} data-state={statusState}>
+      {status}
+    </span>
+  );
+  const sendButton = (
+    <button
+      type="submit"
+      disabled={!canSend}
+      aria-label={sendLabel}
+      data-testid={`${testId}-send`}
+      data-look="composer-send"
+      className={`shrink-0 bg-primary font-mono font-medium text-primary-foreground hover:bg-info disabled:opacity-50 ${
+        scale === "cos" ? "m-2 px-3 py-2 text-xs" : "px-[9px] py-1"
+      }`}
+    >
+      ⏎
+    </button>
+  );
+
+  return (
+    <form onSubmit={onSubmit} className={scale === "cos" ? "flex flex-col gap-2.5" : "px-[22px] pt-2.5 pb-4"} data-testid={testId}>
+      {scale === "cos" ? (
+        <>
+          {above}
+          <div className="flex items-center border-[1.5px] border-foreground bg-card" data-look="composer">
+            {input}
+            {extra}
+            {sendButton}
+          </div>
+          <div className="font-mono text-[11px] font-medium text-muted-foreground" data-look="composer-footer">
+            {lead}
+            {statusLine}
+          </div>
+        </>
+      ) : (
+        <div className="border border-foreground bg-card" data-look="composer">
+          {input}
+          <div
+            className="flex flex-wrap items-center justify-between gap-x-3.5 gap-y-1 border-t border-foreground/10 py-1.5 pr-2 pl-3 font-mono text-[11px] font-medium text-muted-foreground"
+            data-look="composer-footer"
+          >
+            <span className="flex min-w-0 flex-wrap items-center gap-3.5">
+              {lead}
+              {statusLine}
+            </span>
+            <span className="flex shrink-0 items-center gap-2.5">
+              {extra}
+              {sendButton}
+            </span>
+          </div>
+        </div>
+      )}
+    </form>
+  );
+}
+
+/** A composer whose line goes to one worker: {@link ComposerShell} with {@link useTurnSend}'s state. */
 export function TurnComposer({
   testId,
   label,
@@ -83,6 +207,8 @@ export function TurnComposer({
   send,
   onDelivered,
   extra,
+  suggestions,
+  scale = "default",
 }: {
   testId: string;
   label: string;
@@ -94,6 +220,13 @@ export function TurnComposer({
   onDelivered?: (message: string) => void;
   /** Controls drawn beside Send. */
   extra?: ReactNode;
+  /**
+   * Lines offered above Chief of Staff's box as v2's dashed chips (v2:174).
+   * A click only puts the line in the draft; nothing is sent until Send.
+   */
+  suggestions?: readonly string[];
+  /** `cos`: Chief of Staff's larger composer (v2:175-178). */
+  scale?: "default" | "cos";
 }) {
   const [draft, setDraft] = useState("");
   const { state, run, reset } = useTurnSend();
@@ -104,49 +237,60 @@ export function TurnComposer({
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSend) return;
+    const submitted = draft;
     const message = draft.trim();
     if (await run(() => send(message))) {
-      setDraft("");
+      // Only the line that was sent goes: anything typed since stays.
+      setDraft((current) => (current === submitted ? "" : current));
       onDelivered?.(message);
     }
   };
 
   return (
-    <form onSubmit={(e) => void submit(e)} className="border-t p-3" data-testid={testId}>
-      <textarea
-        value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          reset();
-        }}
-        disabled={blocked !== null}
-        rows={2}
-        placeholder={placeholder}
-        aria-label={label}
-        className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm disabled:opacity-60"
-        data-testid={`${testId}-input`}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void submit();
-        }}
-      />
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground" data-testid={`${testId}-status`} data-state={blocked !== null ? "blocked" : state.kind}>
-          {blocked !== null ? (
-            <span data-testid={`${testId}-blocked`}>{blocked}</span>
-          ) : (
-            <TurnSendStatus state={state} testId={testId} onRetry={() => void submit()} />
-          )}
-        </p>
-        {extra}
-        <button
-          type="submit"
-          disabled={!canSend}
-          data-testid={`${testId}-send`}
-          className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
-        >
-          Send
-        </button>
-      </div>
-    </form>
+    <ComposerShell
+      testId={testId}
+      label={label}
+      placeholder={placeholder}
+      draft={draft}
+      onDraft={(next) => {
+        setDraft(next);
+        reset();
+      }}
+      disabled={blocked !== null}
+      canSend={canSend}
+      onSubmit={(e) => void submit(e)}
+      statusState={blocked !== null ? "blocked" : state.kind}
+      status={
+        blocked !== null ? (
+          <span data-testid={`${testId}-blocked`}>{blocked}</span>
+        ) : (
+          <TurnSendStatus state={state} testId={testId} onRetry={() => void submit()} />
+        )
+      }
+      extra={extra}
+      above={
+        suggestions === undefined || suggestions.length === 0 ? undefined : (
+          <div className="flex flex-wrap gap-1.5" data-testid={`${testId}-suggestions`}>
+            {suggestions.map((line) => (
+              <button
+                key={line}
+                type="button"
+                disabled={blocked !== null}
+                onClick={() => {
+                  setDraft(line);
+                  reset();
+                }}
+                className="border border-dashed border-foreground/45 px-[9px] py-[5px] font-mono text-[11.5px] font-medium text-muted-foreground hover:border-foreground hover:text-foreground disabled:opacity-60"
+                data-testid={`${testId}-suggestion`}
+                data-look="suggestion"
+              >
+                {line}
+              </button>
+            ))}
+          </div>
+        )
+      }
+      scale={scale}
+    />
   );
 }

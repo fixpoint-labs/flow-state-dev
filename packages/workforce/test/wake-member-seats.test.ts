@@ -15,9 +15,11 @@
  *                     own kind (BR-6) alike.
  *   BR-2              a member whose kind declares no entry runs nothing and
  *                     gets the fallback.
- *   BR-3, BR-13       a post with an author runs no seat, and a member that
- *                     would have woken gets nothing, not even the fallback;
- *                     every other member gets the fallback as on any post.
+ *   BR-3, BR-13       a post on the seat post action runs no seat, and a
+ *                     member that would have woken gets nothing, not even the
+ *                     fallback. A public post, and a dispatched `post`, that
+ *                     only claim an author still wake. Every other member
+ *                     gets the fallback as on any post.
  *   BR-4, BR-15       a member with no seat among those passed gets the
  *                     fallback; an empty seat list gives everyone the
  *                     fallback. A hired seat in no channel never runs.
@@ -192,17 +194,18 @@ async function post(
   channel: FlowInstance,
   sessionId: string,
   body: string,
-  options: { author?: string; orgId?: string } = {}
+  options: { author?: string; orgId?: string; source?: "internal"; actionName?: string } = {}
 ) {
   const result = await runAction({
     orgId: options.orgId ?? DEFAULT_ORG_ID,
     flow: channel,
-    actionName: "post",
+    actionName: options.actionName ?? "post",
     input: options.author === undefined ? { body } : { body, author: options.author },
     userId: USER_ID,
     sessionId,
     stores: runtime.stores,
-    runtimeConfig: { ...runtime.runtimeConfig }
+    runtimeConfig: { ...runtime.runtimeConfig },
+    ...(options.source === undefined ? {} : { source: options.source })
   });
   expect(result.error).toBeUndefined();
 }
@@ -304,7 +307,56 @@ describe("wakeMemberSeats · who a post wakes", () => {
     }
   });
 
-  it("wakes nobody on a post with an author; only members that could not wake get the fallback (BR-3, BR-13)", async () => {
+  it("wakes hearing members when a public post claims a hire address as author", async () => {
+    const { heard, map } = kinds();
+    const seats = hireWorkforce(
+      [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
+      { kinds: map }
+    );
+    const fallback = recordingFallback();
+    const { channel, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, "desk.front", ["desk.amy", "desk.ivy", "desk.oz", "desk.ned", "desk.gone"]);
+
+      // The caller-supplied string is a display claim. It must not withhold the wake.
+      await post(runtime, channel, "desk.front", "claimed", { author: "desk.ivy" });
+      await settle(runtime, "desk.front", 1);
+
+      expect(heard.filter((h) => h.body === "claimed").map((h) => h.seat).sort()).toEqual(["desk.ivy", "desk.oz"]);
+      expect((await agentTurns(runtime, "desk.amy", "desk.front")).flat().filter((t) => t.includes("claimed"))).toHaveLength(1);
+      // Members that could not wake still get the fallback, and only those.
+      expect(fallback.ran.sort()).toEqual(["desk.gone|claimed", "desk.ned|claimed"]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("wakes hearing members when a dispatched post claims a hire address as author", async () => {
+    const { heard, map } = kinds();
+    const seats = hireWorkforce(
+      [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
+      { kinds: map }
+    );
+    const fallback = recordingFallback();
+    const { channel, state } = host(seats, wakeMemberSeats(seats, { fallback: fallback.block }));
+    try {
+      const runtime = await state.getRuntime();
+      await bind(runtime.stores, "desk.front", ["desk.amy", "desk.ivy", "desk.oz", "desk.ned", "desk.gone"]);
+
+      // `internal` is the cross-flow address, not proof the sender is a seat.
+      await post(runtime, channel, "desk.front", "relayed", { author: "desk.ivy", source: "internal" });
+      await settle(runtime, "desk.front", 1);
+
+      expect(heard.filter((h) => h.body === "relayed").map((h) => h.seat).sort()).toEqual(["desk.ivy", "desk.oz"]);
+      expect((await agentTurns(runtime, "desk.amy", "desk.front")).flat().filter((t) => t.includes("relayed"))).toHaveLength(1);
+      expect(fallback.ran.sort()).toEqual(["desk.gone|relayed", "desk.ned|relayed"]);
+    } finally {
+      await state.dispose();
+    }
+  });
+
+  it("wakes nobody when the post arrives on the seat post action; the fallback stays with members that could not wake", async () => {
     const { heard, map } = kinds();
     const seats = hireWorkforce(
       [worker("desk.amy"), worker("desk.ivy", "listener"), worker("desk.oz", "listener"), worker("desk.ned", "note")],
@@ -318,21 +370,21 @@ describe("wakeMemberSeats · who a post wakes", () => {
 
       await post(runtime, channel, "desk.front", "from a person");
       await settle(runtime, "desk.front", 1);
-      await post(runtime, channel, "desk.front", "from ivy", { author: "desk.ivy" });
+      await post(runtime, channel, "desk.front", "from ivy", {
+        author: "desk.ivy",
+        source: "internal",
+        actionName: "seatPost"
+      });
       await settle(runtime, "desk.front", 2);
 
-      // The seat's post ran no seat.
       expect(heard.filter((h) => h.body === "from ivy")).toEqual([]);
       expect((await agentTurns(runtime, "desk.amy", "desk.front")).flat().filter((t) => t.includes("from ivy"))).toEqual([]);
-      // On both posts the fallback ran for exactly the members that could not
-      // wake, and never for one that could: the author withholds, never widens.
       expect(fallback.ran.sort()).toEqual([
         "desk.gone|from a person",
         "desk.gone|from ivy",
         "desk.ned|from a person",
         "desk.ned|from ivy"
       ]);
-      // The person's post did wake them.
       expect(heard.filter((h) => h.body === "from a person").map((h) => h.seat).sort()).toEqual(["desk.ivy", "desk.oz"]);
     } finally {
       await state.dispose();

@@ -16,12 +16,14 @@
  * record id, the name a channel's `members:` lists. The tool declares it as
  * the flow config it requires, so a seat whose settings carry none is refused
  * by name before the model is offered the tool, never posted as the request's
- * principal: a post with no author skips the channel's member check and wakes
- * every member.
+ * principal. The line's `author` is that `seatId`: the roster check and the
+ * name on the line. It is not what withholds member wakes. The post goes
+ * through the channel's `seatPost` action, and that action is what marks
+ * the line a seat's. A dispatched `post` does not.
  *
  * ## One gate
  *
- * The line is written by the built-in channel kind's own `post`, or for a
+ * The line is written by the built-in channel kind's `seatPost`, or for a
  * routed post's answer its `answer`, which checks the line as `post` does:
  * membership against the channel as opened. The tool checks nothing of its
  * own. A dispatch into another session starts a request there and returns, so
@@ -55,7 +57,7 @@
 import { defineCapability, dispatcher, handler, sequencer } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
 import { z } from "zod";
-import { CHANNEL_ANSWER_ACTION, CHANNEL_KIND } from "./channel/channel-flow";
+import { CHANNEL_ANSWER_ACTION, CHANNEL_KIND, CHANNEL_SEAT_POST_ACTION } from "./channel/channel-flow";
 import { SEAT_ID_KEY } from "./manifest";
 
 /** The capability name a worker file spells under `capabilities:`. */
@@ -92,6 +94,8 @@ export const ROUTED_TURN_STATE = "channelRoutedPost";
 export const routedTurnSchema = z.object({
   channelId: z.string(),
   postId: z.string(),
+  /** The delivery's `answerToken`, when it carried one (a project's talk session). Handed back with the answer. */
+  answerToken: z.string().optional(),
   handed: z.literal(true).optional(),
 });
 
@@ -124,14 +128,14 @@ type PostAsSeatInput = z.infer<typeof postAsSeatInputSchema>;
 const postAsSeat = dispatcher({
   name: "post-to-channel-dispatch",
   flowKind: CHANNEL_KIND,
-  action: "post",
+  action: CHANNEL_SEAT_POST_ACTION,
   inputSchema: postAsSeatInputSchema,
   session: { id: (input: PostAsSeatInput) => input.channel },
   payload: (input: PostAsSeatInput) => ({ body: input.body, author: input.author }),
 });
 
 /** What {@link answerRoutedPost} is handed: a routed post's answer, as the seat. */
-const answerAsSeatInputSchema = postAsSeatInputSchema.extend({ postId: z.string() });
+const answerAsSeatInputSchema = postAsSeatInputSchema.extend({ postId: z.string(), token: z.string().optional() });
 
 type AnswerAsSeatInput = z.infer<typeof answerAsSeatInputSchema>;
 
@@ -145,7 +149,12 @@ const answerAsSeat = dispatcher({
   action: CHANNEL_ANSWER_ACTION,
   inputSchema: answerAsSeatInputSchema,
   session: { id: (input: AnswerAsSeatInput) => input.channel },
-  payload: (input: AnswerAsSeatInput) => ({ postId: input.postId, body: input.body, author: input.author }),
+  payload: (input: AnswerAsSeatInput) => ({
+    postId: input.postId,
+    body: input.body,
+    author: input.author,
+    ...(input.token === undefined ? {} : { token: input.token }),
+  }),
 });
 
 /**
@@ -180,7 +189,7 @@ export const answerRoutedPost = sequencer({ name: "answer-in-channel", inputSche
  * `answer`, a plain `post` (not a routed turn, or another channel), or
  * nothing because the turn has `answered` it.
  */
-type ToolLine = PostAsSeatInput & { postId?: string; as: "answer" | "post" | "answered" };
+type ToolLine = PostAsSeatInput & { postId?: string; token?: string; as: "answer" | "post" | "answered" };
 
 /** The tool's line as the seat, and what it is against the turn's routed post. */
 const toolLine = handler({
@@ -188,6 +197,7 @@ const toolLine = handler({
   inputSchema: postToChannelInputSchema,
   outputSchema: postAsSeatInputSchema.extend({
     postId: z.string().optional(),
+    token: z.string().optional(),
     as: z.enum(["answer", "post", "answered"]),
   }),
   requestStateSchema: routedTurnStateSchema,
@@ -196,7 +206,13 @@ const toolLine = handler({
     const line = { ...input, author: ctx.flow.config.seatId };
     const routed = ctx.request.state.channelRoutedPost;
     if (routed === undefined || routed.channelId !== input.channel) return { ...line, as: "post" };
-    return routed.handed === true ? { ...line, as: "answered" } : { ...line, postId: routed.postId, as: "answer" };
+    if (routed.handed === true) return { ...line, as: "answered" };
+    return {
+      ...line,
+      postId: routed.postId,
+      ...(routed.answerToken === undefined ? {} : { token: routed.answerToken }),
+      as: "answer",
+    };
   },
 });
 
@@ -204,7 +220,11 @@ const toolLine = handler({
 const toPost = (line: ToolLine): PostAsSeatInput => ({ channel: line.channel, body: line.body, author: line.author });
 
 /** The line, as {@link answerRoutedPost} takes it. */
-const toAnswer = (line: ToolLine): AnswerAsSeatInput => ({ ...toPost(line), postId: line.postId! });
+const toAnswer = (line: ToolLine): AnswerAsSeatInput => ({
+  ...toPost(line),
+  postId: line.postId!,
+  ...(line.token === undefined ? {} : { token: line.token }),
+});
 
 /**
  * The tool: one dispatch into the named channel, then "handed over"; or, for
