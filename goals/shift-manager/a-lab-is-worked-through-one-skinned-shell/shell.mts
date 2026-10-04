@@ -1,27 +1,24 @@
 /**
- * The closure check's scaffolding: building Shift Manager (as written, with a
- * scratch patch, or with a control module swapped in), serving it over a Lab
- * with its own start script, reading the Lab's store through its HTTP routes,
- * and reading what Chromium paints.
+ * The closure check's scaffolding: building Shift Manager, serving it over a
+ * Lab, reading the store through the Lab's routes, and reading what Chromium paints.
  *
- * Every piece is lifted from the child checks under `goals/shift-manager/`
- * (`it-opens-a-lab` for the swap build, the start script and the store reads;
- * `it-takes-its-look-from-the-design-system` for the scratch-copy build and
- * the colour sweep; `it-sends-a-turn-into-a-seat-session` for watching a
- * composer settle). Their run files execute on import, so the helpers are
- * lifted here rather than imported. The grading lives in `legs.mts`.
+ * Patch builds and the route client come from `goals/lib/shift-manager.mts`.
+ * The start script stays here: `--team` or `--config`, an optional `--shift`,
+ * a fresh DevTeam sqlite in the work dir, and the devtool URL on the ready line.
+ * The grading lives in `legs.mts`.
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Page } from "playwright";
 import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import { REPO_ROOT, intentFreeEnv } from "../../lib/index.mts";
+import { SHIFT_MANAGER, buildShiftManagerCopy, labApi as labRoutes, type Patch } from "../../lib/shift-manager.mts";
 
-/** Shift Manager's package, in this checkout. */
-export const SHIFT_MANAGER = join(REPO_ROOT, "labs", "shift-manager");
+export { SHIFT_MANAGER, type Patch };
+
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 
 export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -37,8 +34,9 @@ export const diff = (want: Iterable<string>, got: Iterable<string>) => {
 
 // ---- building ----------------------------------------------------------------
 
-/** One edit to a scratch copy of Shift Manager. A patch that matches nothing fails the setup. */
-export type Patch = { file: string; from: string | RegExp; to: string; why: string };
+/** The design-system import leg c removes, as a scratch patch or in the bundler when a swap build cannot use a copy. */
+export const THEME_IMPORT = /^@import "@flow-state-dev\/design-system\/shift-manager\.css";\n/m;
+
 /** A source module swapped for a control module at build time (a child check's control). */
 export type Swap = { target: string | string[]; with: string };
 /** A build: where its pages are, and the full diff of every patch applied to it. */
@@ -53,73 +51,73 @@ async function vite() {
 /**
  * Build Shift Manager's pages into `scratch/<name>`.
  *
- * - With `patches`, Shift Manager is copied to scratch and patched there,
- *   never in the checkout (Tailwind reads class names off the files on disk,
- *   so a patch has to land in a copy). The diff of every patched file is
- *   returned in full, for the report.
- * - With `swap`, the build runs from the checkout and one module is swapped
- *   for a control module, as the child checks' controls do. The build fails
- *   if the swap never fired.
- * - `staticSeats` feeds the `static-names` control module its written-in list.
+ * `patches` go through {@link buildShiftManagerCopy}. The unified diff of each
+ * patched file is what the report prints.
+ *
+ * `swap` builds from the checkout and replaces one module. `staticSeats` is the
+ * list the `static-names` control reads. `stripTheme` drops {@link THEME_IMPORT}
+ * in the bundler, for a swap build that cannot use a scratch copy.
  */
 export async function buildPages(
   scratch: string,
   name: string,
-  options: { patches?: Patch[]; swap?: Swap; staticSeats?: Array<{ id: string; kind: string }> } = {},
+  options: { patches?: Patch[]; swap?: Swap; staticSeats?: Array<{ id: string; kind: string }>; stripTheme?: boolean } = {},
 ): Promise<Built> {
   const pages = join(scratch, name, "pages");
-  const define = { __STATIC_SEATS__: JSON.stringify(options.staticSeats ?? []) };
   const patches = options.patches ?? [];
   if (patches.length === 0) {
     let swapped = 0;
     const hit = new Set<string>();
+    const theme = { stripped: 0 };
     const swap = options.swap;
+    const plugins: Array<Record<string, unknown>> = [];
+    if (swap !== undefined) {
+      plugins.push({
+        name: "goal-control-swap",
+        enforce: "pre",
+        async resolveId(this: any, source: string, importer: string | undefined, opts: Record<string, unknown>) {
+          if (importer === undefined || importer === swap.with) return null;
+          const resolved = await this.resolve(source, importer, { ...opts, skipSelf: true });
+          if (resolved?.id === undefined || ![swap.target].flat().includes(resolved.id)) return null;
+          hit.add(resolved.id);
+          swapped += 1;
+          return swap.with;
+        },
+      });
+    }
+    if (options.stripTheme === true) {
+      plugins.push({
+        name: "goal-no-theme",
+        enforce: "pre",
+        load(id: string) {
+          if (id.includes("?") || !id.endsWith("/src/styles.css")) return null;
+          const code = readFileSync(id, "utf8");
+          const out = code.replace(THEME_IMPORT, "");
+          if (out !== code) theme.stripped += 1;
+          return out;
+        },
+      });
+    }
     await (await vite()).build({
       root: SHIFT_MANAGER,
       configFile: join(SHIFT_MANAGER, "vite.config.ts"),
       logLevel: "error",
       build: { outDir: pages, emptyOutDir: true },
-      define,
-      plugins:
-        swap === undefined
-          ? []
-          : [
-              {
-                name: "goal-control-swap",
-                enforce: "pre",
-                async resolveId(this: any, source: string, importer: string | undefined, opts: Record<string, unknown>) {
-                  if (importer === undefined || importer === swap.with) return null;
-                  const resolved = await this.resolve(source, importer, { ...opts, skipSelf: true });
-                  if (resolved?.id === undefined || ![swap.target].flat().includes(resolved.id)) return null;
-                  hit.add(resolved.id);
-                  swapped += 1;
-                  return swap.with;
-                },
-              },
-            ],
+      define: { __STATIC_SEATS__: JSON.stringify(options.staticSeats ?? []) },
+      plugins,
     });
     const missed = swap === undefined ? [] : [swap.target].flat().filter((t) => !hit.has(t));
     if (swapped === 0 && swap !== undefined || missed.length > 0) throw new Error(`setup [${name}]: the build never imported ${missed.join(", ")}, so nothing was swapped`);
+    if (options.stripTheme === true && theme.stripped === 0) throw new Error("the theme import was never removed");
     return { pages, diff: "" };
   }
 
-  const root = join(scratch, name, "shift-manager");
-  cpSync(SHIFT_MANAGER, root, { recursive: true, filter: (src) => !/[/\\](node_modules|dist)$/.test(src) });
-  symlinkSync(join(SHIFT_MANAGER, "node_modules"), join(root, "node_modules"));
-  // The copy sits outside the workspace; its tsconfig still extends the workspace's.
-  const tsconfig = join(root, "tsconfig.json");
-  writeFileSync(tsconfig, readFileSync(tsconfig, "utf8").replace('"../../tsconfig.base.json"', JSON.stringify(join(REPO_ROOT, "tsconfig.base.json"))));
-  const diffs: string[] = [];
-  for (const patch of patches) {
-    const path = join(root, patch.file);
-    const before = readFileSync(path, "utf8");
-    const after = before.replace(patch.from, patch.to);
-    if (after === before) throw new Error(`setup [${name}]: ${patch.why}, but ${patch.file} has nothing to patch (looked for ${String(patch.from)})`);
-    writeFileSync(path, after);
-    diffs.push(`# ${patch.why}\n${unifiedDiff(join(SHIFT_MANAGER, patch.file), path, `labs/shift-manager/${patch.file}`)}`);
-  }
-  await (await vite()).build({ root, configFile: join(root, "vite.config.ts"), logLevel: "error", build: { outDir: pages, emptyOutDir: true }, define });
-  return { pages, diff: diffs.join("\n") };
+  const built = await buildShiftManagerCopy(scratch, name, patches);
+  const diffs = patches.map((patch) => {
+    const patched = join(scratch, name, "shift-manager", patch.file);
+    return `# ${patch.why}\n${unifiedDiff(join(SHIFT_MANAGER, patch.file), patched, `labs/shift-manager/${patch.file}`)}`;
+  });
+  return { pages: built.pages, diff: diffs.join("\n") };
 }
 
 /** `diff -u` of the checkout's file against its patched copy, labelled with the repo path. */
@@ -186,62 +184,12 @@ export async function startShiftManager(
 
 // ---- the store, read by this script -----------------------------------------
 
-/** GET/POST against the Lab's routes, with the page's bearer when the Lab has one. */
+/** The shared Lab routes, plus whether a session holds a message of `role` containing `needle`. */
 export function labApi(origin: string, bearer: string | undefined) {
-  const enc = encodeURIComponent;
-  const call = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
-    const response = await fetch(`${origin}/api/flows${path}`, {
-      method,
-      headers: { "content-type": "application/json", ...(bearer === undefined ? {} : { authorization: `Bearer ${bearer}` }) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const text = await response.text();
-    if (text.length === 0) return { status: response.status, body: null };
-    try {
-      return { status: response.status, body: JSON.parse(text) };
-    } catch {
-      throw new Error(`${method} ${path}: ${response.status}, and the body is not JSON: ${text.slice(0, 200)}`);
-    }
-  };
-  const get = async (path: string): Promise<any> => {
-    const { status, body } = await call("GET", path);
-    if (status !== 200) throw new Error(`GET ${path}: ${status} ${JSON.stringify(body)}`);
-    return body;
-  };
-  /** Every row of a collection, through one session, page by page. */
-  const collection = async (sessionId: string, ref: string): Promise<Array<Record<string, any>>> => {
-    const rows: Array<Record<string, any>> = [];
-    let cursor: string | undefined;
-    for (let page = 0; page < 100; page += 1) {
-      const body = await get(`/sessions/${enc(sessionId)}/resources/${enc(ref)}?limit=200${cursor === undefined ? "" : `&cursor=${enc(cursor)}`}`);
-      rows.push(...((body.items ?? []) as Array<{ clientData?: Record<string, any> }>).map((i) => i.clientData ?? {}));
-      if (body.nextCursor === undefined || body.nextCursor === null || body.nextCursor === cursor) break;
-      cursor = body.nextCursor;
-    }
-    return rows;
-  };
-  /** Every item of the given types in one session, oldest first (all types when none are given). */
-  const items = async (sessionId: string, types: string[] = []): Promise<Array<Record<string, any>>> => {
-    const out: Array<Record<string, any>> = [];
-    for (let offset = 0, page = 0; page < 100; page += 1) {
-      const filter = types.length === 0 ? "" : `&item_types=${types.join(",")}`;
-      const body = await get(`/sessions/${enc(sessionId)}/state?include_items=true${filter}&offset=${offset}&limit=200`);
-      out.push(...(body.items ?? []));
-      if (body.pagination?.hasMore !== true) break;
-      offset = body.pagination.nextOffset ?? offset + 200;
-    }
-    return out;
-  };
-  /** Whether the session holds a message of `role` whose content contains `needle`. */
+  const api = labRoutes(origin, bearer);
   const holds = async (sessionId: string, role: string, needle: string): Promise<boolean> =>
-    (await items(sessionId, ["message"])).some((m) => m.role === role && JSON.stringify(m.content ?? m.text ?? m).includes(needle));
-  const ownerOf = async (sessionId: string): Promise<string> => {
-    const body = await get(`/sessions/${enc(sessionId)}`);
-    return String((body.session ?? body).flowId);
-  };
-  const requestStatus = async (flowId: string, requestId: string): Promise<string> =>
-    String((await get(`/${enc(flowId)}/requests/${enc(requestId)}/status`)).status);
-  return { call, get, collection, items, holds, ownerOf, requestStatus };
+    (await api.items(sessionId, ["message"])).some((m) => m.role === role && JSON.stringify(m.content ?? m.text ?? m).includes(needle));
+  return { ...api, holds };
 }
 export type LabApi = ReturnType<typeof labApi>;
 
