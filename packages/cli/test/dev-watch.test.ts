@@ -212,6 +212,22 @@ describe("fsdev dev --watch on a real child", () => {
     await nextBoot(run, after);
   }, 90_000);
 
+  it("still restarts on a created file after one was created while a save restarted it", async () => {
+    // Both at once: the start-over lands while `node --watch` restarts its child.
+    const before = await bootId(run);
+    await mkdir(join(lab, "tree", "c"));
+    await Promise.all([
+      writeFile(join(lab, "tree", "c", "WORKER.md"), "# c\n"),
+      writeFile(join(lab, "flows", "hello.mts"), flowModule("hello-a")),
+    ]);
+    await nextBoot(run, before);
+    await new Promise((r) => setTimeout(r, 4_000));
+    const after = await bootId(run);
+    await mkdir(join(lab, "tree", "d"));
+    await writeFile(join(lab, "tree", "d", "WORKER.md"), "# d\n");
+    await nextBoot(run, after);
+  }, 90_000);
+
   it.each([
     ["a new data file", "data/new.sqlite"],
     ["a new file in a dot directory", ".fsdev/new.json"],

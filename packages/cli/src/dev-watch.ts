@@ -107,6 +107,16 @@ export async function superviseDev(options: SuperviseOptions): Promise<Superviso
   let restarting = false;
   let watcher: ChildProcess;
   let exited: Promise<void>;
+  // `node --watch` can miss a SIGTERM that lands while it is restarting its
+  // child (it then waits on an exit that already happened), so send it again
+  // until it exits.
+  const stop = () => {
+    if (watcher.exitCode !== null || watcher.signalCode !== null) return;
+    const current = watcher;
+    current.kill("SIGTERM");
+    const again = setInterval(() => current.kill("SIGTERM"), 2_000);
+    current.once("exit", () => clearInterval(again));
+  };
   const run = () => {
     watcher = start();
     exited = new Promise<void>((resolve) => watcher.once("exit", () => resolve()));
@@ -119,7 +129,7 @@ export async function superviseDev(options: SuperviseOptions): Promise<Superviso
       // A file appeared that `node --watch` can't know of: start it over, on the same ports.
       if ("fsdevDevRestart" in message && !restarting && !closing) {
         restarting = true;
-        watcher.kill("SIGTERM");
+        stop();
         void exited.then(() => {
           restarting = false;
           if (!closing) run();
@@ -134,7 +144,7 @@ export async function superviseDev(options: SuperviseOptions): Promise<Superviso
     devtoolUrl: devtoolPort === undefined ? undefined : `http://${host}:${devtoolPort}/`,
     async close() {
       closing = true;
-      if (watcher.exitCode === null && watcher.signalCode === null) watcher.kill("SIGTERM");
+      stop();
       await exited;
     },
   };
@@ -167,13 +177,14 @@ export function watchLabFiles(dir: string, skip: readonly string[]): void {
   // Returns whether a file not known before was found.
   const walk = (at: string): boolean => {
     let found = false;
+    // Watched before it is read, so a file created in between is still seen.
+    watchDir(at);
     let entries;
     try {
       entries = readdirSync(at, { withFileTypes: true });
     } catch {
       return false;
     }
-    watchDir(at);
     for (const entry of entries) {
       const path = join(at, entry.name);
       if (skipped(entry.name, path)) continue;
