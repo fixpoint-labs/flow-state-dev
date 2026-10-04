@@ -48,6 +48,11 @@ import {
   unreadable,
   walkTeams,
 } from "./structural-directory";
+import {
+  PRE_RENAME_NAMES,
+  preRenameRecordFolderProblem,
+  preRenameRecordProblem,
+} from "../mailbox/pre-rename";
 
 /** The slot a mailbox folder sits in, under a team. */
 const MAILBOXES_SLOT = "mailboxes";
@@ -59,7 +64,7 @@ const MAILBOX_MD = "MAILBOX.md";
  * Why one thing that should have produced a mailbox did not — the discriminant
  * on every entry in {@link ReadMailboxesDirectoryResult.errors}.
  *
- * Three conditions land in one flat array, and a caller that wants to tolerate
+ * Four conditions land in one flat array, and a caller that wants to tolerate
  * one class while refusing another needs to tell them apart without matching on
  * `error.message`. Every entry still carries the `path` it was observed at.
  */
@@ -69,7 +74,9 @@ export type MailboxManifestErrorKind =
   /** One mailbox folder did not load: an unusable name, a symlinked folder, or a missing, unreadable or malformed `MAILBOX.md`. */
   | "mailbox-load-failed"
   /** A `MAILBOX.md` declares the refused `system:` key, so the mailbox is left out. */
-  | "refused-declaration";
+  | "refused-declaration"
+  /** A record file or a records folder under the name it had before mailboxes were renamed. Never read; the message names where it belongs now. */
+  | "pre-rename-record";
 
 /** One path that should have produced a mailbox and did not. */
 export type MailboxManifestError = PathReport<MailboxManifestErrorKind>;
@@ -126,6 +133,8 @@ export async function readMailboxesDirectory(
   };
 
   for await (const team of walkTeams(root, report)) {
+    errors.push(...(await preRenameRecords(team)));
+
     const slotPath = `${team.path}/${MAILBOXES_SLOT}`;
     const slot = await openStructuralDirectory(
       path.join(team.dir, MAILBOXES_SLOT),
@@ -149,13 +158,28 @@ export async function readMailboxesDirectory(
       // meant it to be one.
       if (entry.kind === "absent" || entry.kind === "file") continue;
 
+      // A record left under its old name in a renamed folder is reported as
+      // what it is, rather than as a mailbox with no record.
+      if (entry.kind === "directory") {
+        const leftover = await classify(path.join(mailboxDir, PRE_RENAME_NAMES.recordFile));
+        if (leftover.kind !== "absent") {
+          const at = `${entryPath}/${PRE_RENAME_NAMES.recordFile}`;
+          errors.push({
+            path: at,
+            error: new Error(preRenameRecordProblem(at, `${entryPath}/${MAILBOX_MD}`)),
+            kind: "pre-rename-record",
+          });
+          continue;
+        }
+      }
+
       let loaded: MailboxManifest;
       try {
         if (entry.kind === "symlink") throw refusedSymlink("mailbox folder", mailboxName);
         if (entry.kind === "unreadable") {
           throw unreadable("Mailbox folder", mailboxName, entry.error);
         }
-        loaded = await readMailboxeslot(team.id, mailboxName, mailboxDir);
+        loaded = await readMailboxSlot(team.id, mailboxName, mailboxDir);
       } catch (err) {
         errors.push({ path: entryPath, error: err as Error, kind: "mailbox-load-failed" });
         continue;
@@ -185,10 +209,53 @@ export async function readMailboxesDirectory(
 }
 
 /**
+ * A team's records folder from before the rename, reported rather than
+ * skipped: one entry per old record file in it, or one for the folder itself
+ * when it holds none. Nothing in it is read as a mailbox.
+ */
+async function preRenameRecords(team: { dir: string; path: string }): Promise<MailboxManifestError[]> {
+  const oldDir = path.join(team.dir, PRE_RENAME_NAMES.recordFolder);
+  const oldPath = `${team.path}/${PRE_RENAME_NAMES.recordFolder}`;
+  const newPath = `${team.path}/${MAILBOXES_SLOT}`;
+  const found = await classify(oldDir);
+  if (found.kind === "absent") return [];
+  if (found.kind !== "directory") return [folderReport(oldPath, newPath)];
+
+  let names: string[];
+  try {
+    names = (await fs.readdir(oldDir)).sort();
+  } catch {
+    return [folderReport(oldPath, newPath)];
+  }
+  const reports: MailboxManifestError[] = [];
+  for (const name of names) {
+    if (IGNORED_ENTRIES.has(name)) continue;
+    const file = await classify(path.join(oldDir, name, PRE_RENAME_NAMES.recordFile));
+    if (file.kind === "absent") continue;
+    const at = `${oldPath}/${name}/${PRE_RENAME_NAMES.recordFile}`;
+    reports.push({
+      path: at,
+      error: new Error(preRenameRecordProblem(at, `${newPath}/${name}/${MAILBOX_MD}`)),
+      kind: "pre-rename-record",
+    });
+  }
+  return reports.length > 0 ? reports : [folderReport(oldPath, newPath)];
+}
+
+/** The one report for an old records folder that holds no old record file. */
+function folderReport(oldPath: string, newPath: string): MailboxManifestError {
+  return {
+    path: oldPath,
+    error: new Error(preRenameRecordFolderProblem(oldPath, newPath)),
+    kind: "pre-rename-record",
+  };
+}
+
+/**
  * Read one mailbox slot into a manifest. Throws when the slot cannot produce
  * one; the caller turns that into an `errors` entry keyed by the slot's path.
  */
-async function readMailboxeslot(
+async function readMailboxSlot(
   teamId: string,
   mailboxName: string,
   mailboxDir: string,

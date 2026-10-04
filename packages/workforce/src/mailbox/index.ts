@@ -36,7 +36,7 @@ export {
   mailboxReadBoardInputSchema,
   mailboxReadBoardOutputSchema,
   mailboxReadOutputSchema,
-  mailboxesessionStateSchema,
+  mailboxSessionStateSchema,
   mailboxTranscriptLineSchema,
   defineMailboxFlow,
   type MailboxFileTaskInput,
@@ -47,7 +47,7 @@ export {
   type MailboxReadBoardOutput,
   type MailboxReadOutput,
   type MailboxRefusalReason,
-  type MailboxesessionState,
+  type MailboxSessionState,
   type MailboxTranscriptLine,
   type DefineMailboxFlowOptions
 } from "./mailbox-flow";
@@ -73,6 +73,14 @@ export {
   type MailboxKind,
   type OpenMailboxesOptions
 } from "./mailbox-binder";
+
+export {
+  PRE_RENAME_NAMES,
+  describePreRenameMarks,
+  findPreRenameMarks,
+  type PreRenameMarks,
+  type PreRenameStoreView
+} from "./pre-rename";
 
 export {
   mailboxBoard,

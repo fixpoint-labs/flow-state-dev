@@ -45,12 +45,12 @@ import { readDeclaredRoster } from "@flow-state-dev/workforce/loader";
 import type { AskFeature } from "../../../../goals/devforce-lab/lab/ask.mts";
 import { ASSIGNEE } from "../../../../goals/devforce-lab/lab/board.mts";
 import { selectHarness } from "../../../../goals/devforce-lab/lab/harness.mts";
-import { boardMailboxOf, LAB_CROWD, LAB_TREE, LAB_USERS, openLab } from "../../../../goals/devforce-lab/lab/host.mts";
+import { boardMailboxOf, LAB_CROWD, LAB_ORG_ID, LAB_TREE, LAB_USERS, openLab } from "../../../../goals/devforce-lab/lab/host.mts";
 import { createNotifyLog } from "../../../../goals/devforce-lab/lab/notify.mts";
 import { BASE_REF, createScratchRepo } from "../../../../goals/devforce-lab/lab/scratch-repo.mts";
 import { CODER_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/coder.mts";
 import { EM_KIND } from "../../../../goals/devforce-lab/lab/workforce/flows/workers/em.mts";
-import { setAsideLegacyOrgStore } from "./legacy-org-store.mts";
+import { setAsideLegacyOrgStore, setAsidePreRenameStore } from "./legacy-org-store.mts";
 
 /**
  * The feature the EM seat asks a person to approve when the server opens: the
@@ -106,6 +106,8 @@ const STORE = process.env.DEVTEAM_STORE ?? fileURLToPath(new URL("../../.fsdev/d
 mkdirSync(dirname(STORE), { recursive: true });
 // A store from before the lab's org id changed is set aside, loudly, not reused.
 await setAsideLegacyOrgStore(STORE);
+// So is one from before mailboxes were renamed.
+await setAsidePreRenameStore(STORE, { mailboxIds: roster.mailboxes.map((m) => m.id), orgIds: [LAB_ORG_ID] });
 
 const scratch = createScratchRepo("shift-manager");
 const harness = selectHarness();

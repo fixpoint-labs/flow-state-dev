@@ -236,6 +236,12 @@ jobs:
       - name: No doc teaches per-kind flowIsolation
         run: node scripts/check-isolation-coordinate.mjs
 
+      # Unconditional for the same reason: a surface that still calls the
+      # mailbox a channel is as wrong on main as on a PR. The script header
+      # owns what is in scope, the survivors and the allowlist.
+      - name: The mailbox is never called a channel
+        run: node scripts/check-mailbox-rename.mjs
+
   knip:
     name: Knip (unused files & broken imports)
     runs-on: ubuntu-latest

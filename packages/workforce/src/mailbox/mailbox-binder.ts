@@ -44,7 +44,7 @@ import {
   holdsBoards,
   routeOf,
   wakesSeats,
-  type MailboxesessionState
+  type MailboxSessionState
 } from "./mailbox-flow";
 import {
   MAILBOX_BOARDS_KEY,
@@ -52,6 +52,7 @@ import {
   mailboxBoardNameProblem
 } from "./mailbox-board";
 import type { MailboxRouting } from "./mailbox-route";
+import { PRE_RENAME_NAMES, preRenameOccupantProblem } from "./pre-rename";
 import { PROJECTS_COLLECTION } from "../projects/collections";
 import {
   orgTalkTemplateOf,
@@ -775,7 +776,7 @@ export function mailboxInstances(
   if (problems.length > 0) {
     // Worded as before when every declaration is a mailbox file.
     const declarations = ordered.length + orgDeclarations;
-    const noun = orgDeclarations > 0 ? "declarations" : `mailbox${ordered.length === 1 ? "" : "s"}`;
+    const noun = orgDeclarations > 0 ? "declarations" : ordered.length === 1 ? "mailbox" : "mailboxes";
     throw new Error(
       `mailboxInstances refused ${problems.length} of ${declarations} ` +
         `${noun}; nothing was registered:\n  - ${problems.join("\n  - ")}`
@@ -886,7 +887,7 @@ function talkKindProblem(kinds: Record<string, MailboxKind>, facts: TalkTemplate
  * for it to go. `resourceId` is a talk session's alone, and a declared
  * mailbox's state carries no such key.
  */
-function stateFor(manifest: MailboxManifest): Omit<MailboxesessionState, "resourceId"> {
+function stateFor(manifest: MailboxManifest): Omit<MailboxSessionState, "resourceId"> {
   const declared = manifest.declared;
   const charter =
     manifest.body.trim().length > 0
@@ -933,6 +934,10 @@ async function occupantOf(
   userId: string
 ): Promise<MailboxOccupant> {
   const session = await client.getSession(sessionId);
+
+  // Before the collision answer, which would send someone to rename their
+  // mailbox: a session from before the rename is old data, not somebody else's.
+  if (session.flowKind === PRE_RENAME_NAMES.kind) return { problem: preRenameOccupantProblem() };
 
   if (session.flowKind !== kind) {
     return {

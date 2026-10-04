@@ -44,7 +44,7 @@ import path from "node:path";
 import { DEFAULT_ORG_ID } from "@flow-state-dev/core";
 import { createFilesystemStores, createFlowState, filesystemStores, type FlowState } from "@flow-state-dev/engine";
 import { createSessionClient } from "@flow-state-dev/client";
-import { openMailboxes } from "@flow-state-dev/workforce";
+import { PRE_RENAME_NAMES, openMailboxes } from "@flow-state-dev/workforce";
 
 type ScriptStep =
   | { toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }> }
@@ -260,5 +260,72 @@ describe("V19 · a store written before the app named its organization", () => {
     const help = await call(router, "GET", ["sessions", "support.help"]);
     expect(help.status, help.text).toBe(200);
     expect(json(help.text).session.orgId).toBe(ORG);
+  });
+});
+
+/**
+ * A store written before mailboxes were renamed is not carried over either.
+ * The boot stops before opening anything, names each stale mailbox and what
+ * gave it away, and says how to reset, as the organization check above does.
+ * It only reads: the old data is still there afterwards.
+ *
+ * Two marks: a session on the old built-in kind, and a mailbox whose kind
+ * never said anything (a custom kind keeps its name) but whose transcript
+ * holds a line under the old item name.
+ */
+describe("a store written before mailboxes were renamed", () => {
+  const now = Date.now();
+
+  async function seedSession(dataDir: string, flowKind: string) {
+    await storeAt(dataDir).session.set(
+      "support.help",
+      {
+        id: "support.help", flowKind, flowId: flowKind, userId: "devuser", orgId: ORG, state: { members: [], instructions: "" },
+        lineageId: "lin_support.help", version: 0, createdAt: now, updatedAt: now, journal: [],
+      } as never,
+      "absent",
+    );
+  }
+
+  async function seedOldLine(dataDir: string) {
+    await storeAt(dataDir).request.set(
+      "req_old_line",
+      {
+        id: "req_old_line", flowKind: "mailbox", flowId: "mailbox", actionName: "post", userId: "devuser", sessionId: "support.help",
+        orgId: ORG, source: "http", status: "completed", startedAtMs: now, state: {}, lineageId: "lin_req_old_line", version: 0,
+        createdAt: now, updatedAt: now, journal: [],
+        items: [{ id: "item_old_line", type: "component", component: PRE_RENAME_NAMES.postComponent, data: { body: "hi" }, status: "completed", createdAt: now }],
+      } as never,
+      "absent",
+    );
+  }
+
+  async function refusedBoot(dataDir: string) {
+    const boot = bootApp({ dataDir });
+    await expect(boot).rejects.toThrow(/were renamed to mailboxes/);
+    await expect(boot).rejects.toThrow(/Delete the store and restart: .*remove \.fsdev\/data/);
+    return boot.catch((error: Error) => error.message);
+  }
+
+  it("refuses to boot over a session on the old built-in kind, naming the mailbox, and moves nothing", async () => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), "ks-pre-rename-"));
+    cleanups.push(() => rm(dataDir, { recursive: true, force: true }));
+    await seedSession(dataDir, PRE_RENAME_NAMES.kind);
+
+    const message = await refusedBoot(dataDir);
+
+    expect(message).toContain(`mailbox "support.help" (it is a session on the "${PRE_RENAME_NAMES.kind}" kind)`);
+    expect((await storeAt(dataDir).session.get("support.help"))?.flowKind).toBe(PRE_RENAME_NAMES.kind);
+  });
+
+  it("refuses to boot over a mailbox whose transcript holds a line under the old item name", async () => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), "ks-pre-rename-"));
+    cleanups.push(() => rm(dataDir, { recursive: true, force: true }));
+    await seedSession(dataDir, "mailbox");
+    await seedOldLine(dataDir);
+
+    const message = await refusedBoot(dataDir);
+
+    expect(message).toContain(`mailbox "support.help" (its transcript holds "${PRE_RENAME_NAMES.postComponent}" items)`);
   });
 });

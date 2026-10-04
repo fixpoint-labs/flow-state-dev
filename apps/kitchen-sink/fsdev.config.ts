@@ -40,7 +40,13 @@ import richTextComponentFlow from "@/flows/rich-text-component/flow";
 import weeklyDigestFlow from "@/flows/weekly-digest/flow";
 import workforceAdminFlow from "@/flows/workforce-admin/flow";
 import { hireKitchenSinkWorkforce, kitchenSinkKinds } from "@/workforce/hire";
-import { mergeSeatFlows, openMailboxes, reloadHiredSeats } from "@flow-state-dev/workforce";
+import {
+  describePreRenameMarks,
+  findPreRenameMarks,
+  mergeSeatFlows,
+  openMailboxes,
+  reloadHiredSeats,
+} from "@flow-state-dev/workforce";
 import { bullmqWorker } from "@flow-state-dev/bullmq";
 
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
@@ -368,7 +374,7 @@ const MAILBOX_OWNER = KITCHEN_SINK_USER_ID;
 // The session client, over this app's own router rather than over the network:
 // the app is the server, so a loopback fetcher hands the request straight to
 // the handler the Next route would have called.
-const mailboxesessions = createSessionClient({
+const mailboxSessions = createSessionClient({
   fetcher: async (input, init) => {
     const router = await flowstate.getRouter();
     // The client builds `/api/flows/...`; the catch-all handler takes the
@@ -386,6 +392,11 @@ const mailboxesessions = createSessionClient({
     return await router[method](new Request(url, init), { params: { path } });
   },
 });
+
+/** What to do about a store this app will not open: the same for every reason it refuses one. */
+const RESET_THE_STORE =
+  `Earlier data is not carried over. Delete the store and restart: for the dev profile ` +
+  `(STORE_TYPE=filesystem) remove .fsdev/data; for the prod profile, point FSD_DB_URL at an empty database.`;
 
 // A store written before this app named its organization holds its mailbox
 // sessions under the framework's development organization, and this app can
@@ -407,15 +418,28 @@ const mailboxesessions = createSessionClient({
     throw new Error(
       `[workforce] this store was written before kitchen-sink ran as organization ` +
         `"${KITCHEN_SINK_ORG_ID}", and its mailboxes belong to another organization: ` +
-        `${stale.join(", ")}. Earlier data is not carried over. Delete the store and restart: ` +
-        `for the dev profile (STORE_TYPE=filesystem) remove .fsdev/data; for the prod profile, ` +
-        `point FSD_DB_URL at an empty database.`,
+        `${stale.join(", ")}. ${RESET_THE_STORE}`,
     );
   }
 }
 
+// A store written before mailboxes were renamed holds sessions, transcript
+// lines and inventory rows under names nothing reads any more, so it is not
+// carried over either. Same answer as above: stop, name each mark, say how to
+// reset. Keyed on the store rather than the kind, because a custom kind kept
+// its name through the rename. Reads only.
+{
+  const marks = await findPreRenameMarks(runtime.stores, {
+    mailboxIds: workforce.mailboxes.map((mailbox) => mailbox.id),
+    orgIds: [KITCHEN_SINK_ORG_ID],
+  });
+  if (marks.sessions.length > 0 || marks.organizations.length > 0) {
+    throw new Error(`[workforce] this store was ${describePreRenameMarks(marks)}. ${RESET_THE_STORE}`);
+  }
+}
+
 await openMailboxes(workforce.mailboxes, {
-  client: mailboxesessions,
+  client: mailboxSessions,
   userId: MAILBOX_OWNER,
 });
 

@@ -1172,7 +1172,7 @@ Post what you finished, what you're on, and what's blocking you.
 import { readMailboxesDirectory } from "@flow-state-dev/workforce/loader";
 
 const { mailboxes, errors } = await readMailboxesDirectory("./workforce");
-if (errors.length) throw new Error(`workforce: ${errors.length} mailbox(s) failed to load`);
+if (errors.length) throw new Error(`workforce: ${errors.length} mailbox(es) failed to load`);
 
 flowRegistry.registerMany(mailboxInstances(mailboxes));
 ```
@@ -1439,6 +1439,21 @@ every bind and is never stored on the session, so adding a board to an open mail
 usable the next time you run.
 It does repair a mailbox whose id was claimed before it was opened — a post that arrives first
 leaves an empty session there, and re-running binds it.
+
+### Upgrading from channels
+
+Mailboxes used to be called channels, everywhere, and the old names are not read.
+
+- **Files.** Rename `teams/<team>/channels/<name>/CHANNEL.md` to `teams/<team>/mailboxes/<name>/MAILBOX.md`,
+  and `workforce/flows/channels/` to `workforce/flows/mailboxes/`. A tree that still has the old
+  names reports an error for each one, and `fsdev gen` refuses to run. Neither is skipped.
+- **Code.** Every `channel` export has a `mailbox` name: `channelFlow` is `mailboxFlow`,
+  `openChannels` is `openMailboxes`, `ChannelManifest` is `MailboxManifest`. A transcript line is a
+  `mailbox-post` item.
+- **Stored data.** A store written before the rename does not open: `openMailboxes` stops on a
+  session of the old kind, and `findPreRenameMarks` finds the rest for a host's boot check. Start
+  from an empty store. Old conversations, and the inventory rows that listed old channels, are not
+  carried over.
 
 ## Hiring at runtime, and reloading at boot
 
@@ -1889,7 +1904,7 @@ const writer = inventoryWriterActions("briefing");
 defineFlow({
   kind: "briefing",
   cardinality: "singleton",
-  session: { stateSchema: mailboxesessionStateSchema },
+  session: { stateSchema: mailboxSessionStateSchema },
   actions: { ...myActions, registerMailboxInInventory: writer.registerMailboxInInventory },
   internal: {
     actions: {
@@ -2132,6 +2147,9 @@ before fire removed inventory rows is left out that way.
 | `refusedSymlink(what, name)` / `unreadable(what, name, cause)` / `IGNORED_ENTRIES` | The one wording for each refusal, and the one set of names that never denote anything in the tree — a `ReadonlySet` that cannot be written to, since every reader in the process reads it. Ships from the `./loader` subpath (Node only). |
 | `validateSegment(segment, label)` | The one rule for what a name in this tree may be — lowercase letters, digits and single hyphens, under 64 characters, not reserved. Throws naming the segment and what it would have become. Ships from the `./loader` subpath (Node only). |
 | `discoverWorkforceCode(root)` | Walk `flows/workers/`, `flows/mailboxes/` and `blocks/` one level deep, every `resources/` folder the convention reads, every `blocks/` folder inside the team tree, and every package's `blocks/` folder, returning what they hold on `files`, `resourceModules`, `seatBlocks` and `packageBlocks` — each ordered by path — plus the `searched` patterns. Reads the tree only — it opens none of the modules it finds. Throws a `WorkforceCodeError` carrying every refusal. Ships from the `./codegen` subpath (Node only). |
+| `findPreRenameMarks(store, { mailboxIds, orgIds })` | Read a store for what marks it as written before the rename: any session on the old built-in kind, a listed mailbox whose recent transcript holds an old item, an organization holding inventory rows under the old key. Returns `{ sessions, organizations }`, both empty for a store that is not old. Reads only. Keyed on the store rather than the kind, since a custom kind kept its name. For a host's boot check before `openMailboxes`. |
+| `describePreRenameMarks(marks)` | The marks above as one clause for a boot message ("written before … : mailbox "…" (…)"). The host adds what to do about it. |
+| `PRE_RENAME_NAMES` | The names the rename retired, frozen: record file and folder, kinds folder, kind, item components, inventory prefix and discovery domain. For recognising old data and seeding tests, never for reading it. |
 | `renderWorkforceCode(files, modules, seatBlocks?, packageBlocks?)` | Render a discovery's `files`, `resourceModules`, `seatBlocks` and `packageBlocks` as a module of static imports exporting `kinds`, `mailboxKinds`, `blocks`, `resourceModules`, `seatBlocks` and `packageBlocks`. Pass all four: the last two default to `[]`, so omitting one renders an empty map and reports nothing. Deterministic: the same tree renders the same bytes. `fsdev gen` is a thin command over this and the call above. Ships from the `./codegen` subpath. |
 | `hireWorkforce(manifests, { kinds, seatBlocks, packageBlocks, mailboxBoards, documents, references })` | Turn worker records into one configured flow copy each, ordered by id. Pass `defineFlow(...)` results directly as `kinds`, `workforce.gen.ts`'s `seatBlocks` and `packageBlocks` exports under the same names, and, when any seat file declares `resources:`, the map `resourcesFromDocs` returns as `documents`. Pass the map `referencesFromDocs` returns as `references` whenever a kind installs any: it is what marks those entries as references, which references each seat reaches is worked out against it, and a kind holding references it was not given refuses the whole roster. `mailboxBoards` is optional and advisory: give it the roster's minted board ids and unattended boards are warned about on stderr. |
 | `mergeSeatFlows(flows, seats)` | Add the hired seats to your app's flows record under their ids, for `createFlowState({ flows })`. Throws, naming the id, when a seat's id is already one of `flows`' keys (an org seat's id is its bare folder name, so a folder named `mailbox` would otherwise replace the mailbox flow) or when two seats share an id. Returns a new record; `flows` is not changed. |
@@ -2175,7 +2193,7 @@ before fire removed inventory rows is left out that way.
 | `mailboxFileTaskInputSchema` / `mailboxFileTaskOutputSchema` / `mailboxReadBoardInputSchema` / `mailboxReadBoardOutputSchema` | The `fileTask` and `readBoard` contracts. |
 | `MailboxPostRefusedError` | A post refused on the mailbox's own terms; `reason` is `mailbox-not-bound` or `author-not-a-member`. |
 | `mailboxPostInputSchema` / `mailboxReadOutputSchema` / `mailboxNotifyInputSchema` | The post, read and notify contracts. |
-| `mailboxesessionStateSchema` / `mailboxTranscriptLineSchema` | A mailbox session's state, and one transcript line. On a kind built with a route, a mailbox's state also carries `mailboxRouteLedger`, which this schema does not describe. |
+| `mailboxSessionStateSchema` / `mailboxTranscriptLineSchema` | A mailbox session's state, and one transcript line. On a kind built with a route, a mailbox's state also carries `mailboxRouteLedger`, which this schema does not describe. |
 | `MAILBOX_POST_COMPONENT` / `emitMailboxPostLine(ctx, line)` / `readMailboxPostLines(ctx, schema)` | The component name a post's line is kept under; keep a line as that item, resolving once it is stored and rejecting if the write fails; read the posted lines in the history window back, parsed by the kind's own line schema. For a mailbox kind of your own. |
 | `defineHiredRosterCollection()` | The hired roster's browser collection: one org-scoped row per org-visible seat, at `workforce/roster/<seatId>`. One segment, so a user-owned row is not listed. Takes no options. Write org-visible rows with `create()` — its already-exists throw is what refuses a duplicate hire, and `upsert()` loses that refusal silently. |
 | `defineHiredRosterPrivateCollection()` | The server-side writer for a user-owned row, at `workforce/roster/~<escaped user>/<seatId>`. No browser read. It is an owner-private collection (`ownerPrivate: { param: "owner" }`): a row is served only to the member it belongs to, and any other collection whose pattern can reach those rows is refused at startup. Declare `workforce/roster/*` for the org roster. |
@@ -2245,9 +2263,11 @@ before fire removed inventory rows is left out that way.
 | A `mailboxes/` slot, `teams/` or a team folder unreadable or symlinked | Collected in `readMailboxesDirectory`'s `errors` as `kind: "unreadable-slot"`, keyed by that folder's path — an absent folder is empty instead |
 | Mailbox folder fails to load | Collected in `readMailboxesDirectory`'s `errors` as `kind: "mailbox-load-failed"`, keyed by the folder's path — an unusable name, a symlink, or a missing, unreadable or malformed `MAILBOX.md` |
 | `system:` in a `MAILBOX.md` | Collected in `readMailboxesDirectory`'s `errors` as `kind: "refused-declaration"`, keyed by the mailbox folder's path |
+| A record file or records folder under its name from before the rename | Collected in `readMailboxesDirectory`'s `errors` as `kind: "pre-rename-record"`, one per old file (or one for a folder holding none), keyed by the old path and naming where it belongs now. Never read as a mailbox |
+| The kinds folder from before the rename | `discoverWorkforceCode` refuses it by name in its `WorkforceCodeError`, so `fsdev gen` generates nothing |
 | Workforce root unreadable or symlinked, read for mailboxes | `readMailboxesDirectory` throws — the root is never followed through a link |
 | Mailbox cannot be bound | `mailboxInstances` — a `flow:` naming a kind nobody passed, a kind filed under another kind's key, a duplicate id, an `id:`, a `system:`, an undeclared key, a `members:` that is not a list of names, a `boards:` that is not a list of plain names, a board name carrying a dot or declared twice, a minted board id two mailboxes would share, or `boards:` on a custom kind that does not support them. Also `instructions:` given both in the frontmatter and as a body. For a talk template (`mintFor:`, or the org default): `boards:`, `routing:` or `boardActions:` on it, a `mintFor:` naming no collection in `resources` or one other than `projects`, a seat that is not a seat id or is listed twice, a kind filed under another kind's key or one `defineMailboxFlow` did not build, seats on a kind with no `notify` block, or a second template for the collection. Collected: one error names every bad mailbox, and nothing is registered |
-| Mailbox cannot be opened | `openMailboxes` throws, naming the mailbox — except a 409, which means the id is taken. An open mailbox there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable mailbox — is named and refused rather than released |
+| Mailbox cannot be opened | `openMailboxes` throws, naming the mailbox — except a 409, which means the id is taken. An open mailbox there is left alone, and this kind's own empty session is bound. Anything else holding the id — another flow's session, another user's, or one carrying state that is not a readable mailbox — is named and refused rather than released. A session of the kind from before the rename is refused as a store to reset, never as a collision |
 | `mailbox-not-bound` | A `post` or `read` naming a session nobody opened. Per-request; nothing is written and the session stays inert |
 | `author-not-a-member` | A `post` claiming an `author` outside the mailbox's declared members. Per-request; nothing is written |
 | `external-dispatcher` | A flow-to-flow post into an opened mailbox on a host whose dispatcher hands work to an external queue and shares no lease backend. A post through the public action route is written, but its notify block never runs: no member is woken and a routed mailbox doesn't answer |
