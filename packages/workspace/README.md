@@ -243,6 +243,27 @@ Several hosts, in one process or several, can share a `root`. Provisioning a pla
 
 Kept files go in `project/` next to the checkout, never inside it, so `git status` never sees them. With no repository they go in `workspace/`, which is also the run's working directory. Either way they're hydrated from one key prefix of the collection and flushed back by `save`, with the same conflict reporting as any projection. The first run in an empty prefix starts from an empty directory. A retry in the same process gets the same live directory back, unsaved edits included. A directory the process didn't fill itself, after a restart or because it was deleted, is rebuilt from the collection. The collection is the record, so anything a run never saved is gone.
 
+### A repository on this machine
+
+A repository the host's own machine already holds doesn't need a clone. List its absolute path in `localRepositories`, and a source that answers that path as its `repo` gets a worktree of the repository itself:
+
+```ts
+const host = localWorkspaceHost({
+  root: "/var/fsd/runs",
+  remotes: { allow: [] },
+  localRepositories: ["/srv/storefront"],
+  source: () => ({ kind: "repo", repo: "/srv/storefront", baseRef: "main" }),
+});
+```
+
+The run's branch is cut from `baseRef` (or `HEAD`) and stays in that repository. Nothing is fetched, on the first run or a retry. The place directory is the checkout itself, so there is no `checkout/` level and no `project/` beside it, and a source that names kept files with a local repository is refused. Any bare path not on the list is still refused as `invalid-remote`, before git runs.
+
+### Keeping a directory out of git
+
+A caller that writes its own files inside the checkout can name that directory in the place request: `ignored: { dir, rule, why }`. Before the checkout is handed over, the host checks that the repository ignores `dir` and doesn't already track files under it. If either check fails, it refuses with a message that names `rule` as the line to add to `.gitignore`, and removes a checkout it had only just made.
+
+One provision, every git command in it included, is held to `provisionTimeoutMs` (ten minutes by default). `host.locate(answer, { place })` says where `provision` would put a place, without making anything, for a caller that has to name the working directory first.
+
 `checkpoint` and `restore` exist on the host and do nothing yet. They mark where keeping uncommitted repository work across a lost machine will plug in.
 
 ### Which remotes a host reaches
@@ -272,7 +293,13 @@ Git itself runs with `GIT_ALLOW_PROTOCOL` set to the listed schemes, with `--` b
 | `principalFromContext(ctx)` | The scoping identity, read off a block's execution context. |
 | `collectionIdFor(collection, principal)` | A `Mount.collectionId` for a scoped door. |
 | `unscopedCollectionId(collection)` | A `Mount.collectionId` for a door with no principal. |
-| `localWorkspaceHost({ root, remotes, source })` | A workspace host on this machine. Returns `{ root, source, provision, save, checkpoint, restore, release }`. |
+| `localWorkspaceHost({ root, remotes, source, localRepositories?, provisionTimeoutMs? })` | A workspace host on this machine. Returns `{ root, source, provisionTimeoutMs, locate, provision, save, checkpoint, restore, release }`. |
+| `IgnoredDirectory` | The `ignored` field of a place request: `{ dir, rule, why }`. |
+| `repositoryIdentity(dir)`, `identityFromCommonDir(dir, commonDir)` | Which repository a directory belongs to, as the real path of its git common directory. Two worktrees of one repository answer the same. |
+| `resolvesToCommit(repo, ref)` | Whether `ref` names a commit in `repo`. |
+| `isStrictlyInside(candidate, root)` | Whether `candidate` is a path below `root`, never `root` itself. |
+| `run(cmd, args, options)`, `GIT_TIMEOUT_MS`, `CHECKOUT_CLEANUP_TIMEOUT_MS` | The bounded child-process runner the host runs git with, and its timeouts. |
+| `acquireLock`, `releaseLock`, `sleep` | The lock file the host takes on a place or a clone, for a caller that holds one of its own. |
 | `WorkspaceRefusedError` | What `provision` rejects with when it won't make a place. Carries `reason`. |
 | `RunSource`, `RunSourceAnswer` | The run-source function type and its three answers. |
 

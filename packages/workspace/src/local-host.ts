@@ -14,6 +14,11 @@
  *     checkout/    a git worktree on the run's own branch (a repository run)
  *     project/     the kept files, beside the checkout and never inside it
  *     workspace/   the kept files as the working directory (a run with no repository)
+ *
+ * <root>/<place…>/                  a repository the operator named in
+ *                                   `localRepositories`: the place IS the checkout,
+ * <root>/<place…>.provisioning      with its marker and lock beside it, and the
+ * <root>/<place…>.place.lock        branch kept in that repository, never cloned
  * ```
  *
  * Three rules shape it, and each is enforced here rather than trusted to the
@@ -41,7 +46,7 @@
  * the seam is here so that slice adds behaviour rather than a method.
  */
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 import { createHostPlace } from "./host-place";
@@ -50,6 +55,7 @@ import { assertScope, createProjection, type Projection } from "./projection";
 import { allowedProtocols, checkRemote, redactRemote, type AllowedRemote } from "./remotes";
 import type { RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import type { FlushReport } from "./types";
+import { gitAnsweredNo, provisionWorktree, type IgnoredDirectory } from "./worktree";
 
 /** The directory names inside a place. People and agents read them. */
 const CHECKOUT_DIR = "checkout";
@@ -68,6 +74,13 @@ const LOCK_SUFFIX = ".lock";
  * than handed to a run.
  */
 const PROVISIONING_MARKER = ".checkout.provisioning";
+/**
+ * A local repository's place is its checkout, so its marker and lock sit
+ * beside the place rather than in it. Different from `.lock`, which a caller
+ * may already hold beside its own checkout.
+ */
+const LOCAL_MARKER_SUFFIX = ".provisioning";
+const LOCAL_LOCK_SUFFIX = ".place.lock";
 
 /**
  * The host would not provision this run, and says why — before anything was
@@ -98,6 +111,25 @@ export interface LocalWorkspaceHostOptions {
   remotes: { allow: readonly string[] };
   /** Where each run's files come from. Kept on the host for its callers to ask. */
   source: RunSource;
+  /**
+   * Repositories on this machine that runs are cut from directly, as their
+   * absolute paths. A source answering one of these paths as its `repo` gets a
+   * worktree of that repository itself: no clone, no fetch, and the run's
+   * branch kept in it. The place's directory is the checkout, and a source may
+   * not name kept files beside it.
+   *
+   * Any other bare path is still refused. Listing a path is the operator's
+   * allowance, judged before any git process, the same as `remotes.allow`.
+   */
+  localRepositories?: readonly string[];
+  /**
+   * How long one whole provision may take, every git command in it included,
+   * in milliseconds. Defaults to ten minutes. A caller that holds a lock
+   * across provisioning reads it as the longest provisioning can hold it.
+   */
+  provisionTimeoutMs?: number;
+  /** The clock the provision budget is measured on. For tests. */
+  now?: () => number;
 }
 
 /** Which place a run gets, named by its caller. */
@@ -110,6 +142,13 @@ export interface PlaceRequest {
   place: readonly string[];
   /** The run's own branch. Required for a repository run. */
   branch?: string;
+  /**
+   * A directory inside the checkout that the repository must keep out of git.
+   * A checkout whose repository tracks the caller's files there, or does not
+   * ignore the directory, is refused before it is handed over, and one this
+   * call made is removed again.
+   */
+  ignored?: IgnoredDirectory;
 }
 
 /** A provisioned place. Hand it back to `save`, `checkpoint`, `restore` and `release`. */
@@ -126,14 +165,17 @@ export interface WorkspacePlace {
   repo?: {
     /** The remote as the source gave it. */
     remote: string;
-    /** The shared clone this checkout is a worktree of. Log it so an operator can find it. */
+    /**
+     * The repository this checkout is a worktree of: the shared clone, or the
+     * local repository itself. Log it so an operator can find it.
+     */
     clone: string;
     branch: string;
     /** Whether this call cut the branch. `false` for a checkout handed back. */
     created: boolean;
-    /** The remote branch the run's branch was cut from. Only when `created`. */
+    /** The branch the run's branch was cut from. Only when `created`. */
     baseRef?: string;
-    /** The commit it was cut at. Only when `created`. */
+    /** The commit it was cut at. Only when `created`, and only for a clone. */
     baseCommit?: string;
   };
 }
@@ -144,6 +186,14 @@ export interface WorkspaceHost {
   readonly root: string;
   /** The run source the host was built with. Ask it, then hand its answer to `provision`. */
   readonly source: RunSource;
+  /** The budget one provision is held to. See `LocalWorkspaceHostOptions.provisionTimeoutMs`. */
+  readonly provisionTimeoutMs: number;
+  /**
+   * Where `provision` would put a place for this answer, without making
+   * anything: its directory, and where the worker runs. For a caller that
+   * has to name the working directory (in a prompt, say) before provisioning.
+   */
+  locate(answer: RunSourceAnswer, request: Pick<PlaceRequest, "place">): { dir: string; cwd: string };
   /**
    * Make (or hand back) the place for one run.
    *
@@ -174,6 +224,9 @@ const EMPTY_REPORT: FlushReport = { outcomes: [], conflicts: [], contested: [] }
 export function localWorkspaceHost(options: LocalWorkspaceHostOptions): WorkspaceHost {
   const root = resolve(options.root);
   const allow = options.remotes.allow;
+  const localRepositories = new Set((options.localRepositories ?? []).map((path) => resolve(path)));
+  const provisionTimeoutMs = options.provisionTimeoutMs ?? GIT_TIMEOUT_MS;
+  const now = options.now ?? Date.now;
   const env = {
     GIT_ALLOW_PROTOCOL: allowedProtocols(allow),
     // A remote that wants a password fails instead of waiting on a prompt
@@ -186,8 +239,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   /** The tail of each place's and each clone's queue, in this process. */
   const queues = new Map<string, Promise<unknown>>();
 
-  async function git(cwd: string, args: string[]): Promise<string> {
-    const { stdout } = await run("git", args, { cwd, timeoutMs: GIT_TIMEOUT_MS, env });
+  async function git(cwd: string, args: string[], timeoutMs: number): Promise<string> {
+    const { stdout } = await run("git", args, { cwd, timeoutMs, env });
     return stdout.trim();
   }
 
@@ -282,58 +335,20 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   }
 
   /**
-   * `true` when the clone holds `refs/heads/<branch>`. Local; never touches the
-   * remote. Only git's "no such ref" answer is `false`; any other failure is
-   * raised, so a clone git cannot read is not taken for one without the branch.
-   */
-  async function hasBranch(clone: string, branch: string): Promise<boolean> {
-    try {
-      await git(clone, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]);
-      return true;
-    } catch (error) {
-      if (gitAnsweredNo(error)) return false;
-      throw error;
-    }
-  }
-
-  /**
-   * Does this checkout look like a `git worktree add` that was killed
-   * part-way, with nothing worked in it since? Ported from harness-manager's
-   * `looksHalfBuilt`.
-   *
-   * A killed `add` can leave `.git`, the branch and the worktree registration
-   * in place with tracked files missing. So: no `.git` at all, or tracked
-   * files missing and NOTHING else changed — no edit, no addition, no staged
-   * change. A missing file alone is not enough, because a run that deletes a
-   * file reads the same; anything an agent could have written means work, and
-   * work is never cleared. A tree git cannot answer about does not look
-   * half-built: unknown never authorises a delete.
-   */
-  async function looksHalfBuilt(checkout: string): Promise<boolean> {
-    if (!existsSync(join(checkout, ".git"))) return true;
-    try {
-      if ((await git(checkout, ["ls-files", "--deleted"])) === "") return false;
-      return everyChangeIsADeletion(await git(checkout, ["status", "--porcelain", "--untracked-files=all"]));
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * Fetch the remote into `clone` and record its default branch.
    *
    * The default branch is read from the remote every time rather than kept,
    * so a remote that renamed `main` to `trunk` is followed on the next new
    * branch instead of cut from a ref that no longer moves.
    */
-  async function refresh(clone: string, remote: AllowedRemote): Promise<string> {
+  async function refresh(clone: string, remote: AllowedRemote, left: () => number): Promise<string> {
     try {
-      const head = await git(clone, ["ls-remote", "--symref", "--", remote.url, "HEAD"]);
+      const head = await git(clone, ["ls-remote", "--symref", "--", remote.url, "HEAD"], left());
       const match = /^ref: refs\/heads\/(\S+)\s+HEAD$/m.exec(head);
       if (match === null) throw new Error("the remote reports no default branch");
       const defaultBranch = match[1]!;
-      await git(clone, ["fetch", "--quiet", "--prune", "--", remote.url, "+refs/heads/*:refs/remotes/origin/*"]);
-      await git(clone, ["symbolic-ref", "refs/remotes/origin/HEAD", `refs/remotes/origin/${defaultBranch}`]);
+      await git(clone, ["fetch", "--quiet", "--prune", "--", remote.url, "+refs/heads/*:refs/remotes/origin/*"], left());
+      await git(clone, ["symbolic-ref", "refs/remotes/origin/HEAD", `refs/remotes/origin/${defaultBranch}`], left());
       return defaultBranch;
     } catch (error) {
       throw unreadable(remote, error);
@@ -341,13 +356,17 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   }
 
   /** The clone for `remote`, made whole and in place, and whether this call made it. */
-  async function ensureClone(remote: AllowedRemote, clone: string): Promise<{ fresh: boolean; defaultBranch?: string }> {
+  async function ensureClone(
+    remote: AllowedRemote,
+    clone: string,
+    left: () => number,
+  ): Promise<{ fresh: boolean; defaultBranch?: string }> {
     if (existsSync(clone)) return { fresh: false };
     mkdirSync(join(root, CLONES_DIR), { recursive: true });
     const making = `${clone}.making-${randomUUID()}`;
     try {
-      await git(root, ["init", "--quiet", "--bare", making]);
-      const defaultBranch = await refresh(making, remote);
+      await git(root, ["init", "--quiet", "--bare", making], left());
+      const defaultBranch = await refresh(making, remote, left);
       try {
         renameSync(making, clone);
       } catch (error) {
@@ -364,102 +383,115 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     }
   }
 
-  /** Called holding the place's lock. */
-  async function provisionCheckout(
+  /**
+   * A worktree of the host's clone of `remote`, in `<dir>/checkout`. Called
+   * holding the place's lock; takes the clone's lock for everything that
+   * touches the clone.
+   */
+  async function provisionClonedCheckout(
     remote: AllowedRemote,
     baseRef: string | undefined,
     dir: string,
     branch: string,
+    ignored: IgnoredDirectory | undefined,
   ): Promise<NonNullable<WorkspacePlace["repo"]>> {
     const clone = join(root, CLONES_DIR, `${remote.cloneKey}.git`);
-    const checkout = join(dir, CHECKOUT_DIR);
-    const marker = join(dir, PROVISIONING_MARKER);
     const shown = redactRemote(remote.url);
-
-    // A checkout already here is the last attempt's work. It is handed back
-    // as it is, or refused — never fetched, reset or rebased.
-    const handBack = async (): Promise<NonNullable<WorkspacePlace["repo"]>> => {
-      if (!existsSync(join(checkout, ".git"))) {
-        throw new Error(
-          `the checkout at ${checkout} has no .git, so it is not one this host made. It may ` +
-            `hold work, and nothing here clears it — inspect it and remove it by hand.`,
-        );
-      }
-      const head = await git(checkout, ["rev-parse", "--abbrev-ref", "HEAD"]);
-      if (head !== branch) {
-        throw new Error(
-          `the checkout at ${checkout} is on branch "${head}", not "${branch}". Refusing to ` +
-            `use it, and nothing here resets a tree — restore the branch or remove the checkout.`,
-        );
-      }
-      // Compared as real paths: git answers with one, and a root under a
-      // symlinked directory would otherwise never match.
-      const common = realpathSync(resolve(checkout, await git(checkout, ["rev-parse", "--git-common-dir"])));
-      if (!existsSync(clone) || common !== realpathSync(clone)) {
-        throw new Error(
-          `the checkout at ${checkout} is not a worktree of the clone of "${shown}". Refusing ` +
-            `to hand it to a run that expects that repository; it may hold work, so it is kept.`,
-        );
-      }
-      return { remote: remote.url, clone, branch, created: false };
-    };
-
-    if (existsSync(checkout)) {
-      // The marker alone does not clear a tree: it sits where a run could
-      // write it. The tree has to agree that it is half-built, and when the
-      // two disagree the tree is kept and refused, not reused or cleared.
-      const marked = existsSync(marker);
-      if (!marked || !(await looksHalfBuilt(checkout))) {
-        if (marked && existsSync(join(checkout, ".git"))) {
-          throw new Error(
-            `${marker} records an interrupted provision, but the checkout at ${checkout} is ` +
-              `not a half-built one — it holds more than missing files. One of the two is ` +
-              `wrong and this will not guess: the tree may hold work. Inspect it, then delete ` +
-              `the marker to reuse the checkout or delete the checkout to have it rebuilt.`,
-          );
-        }
-        return await handBack();
-      }
-      // Never used: the provision that made it never returned it to a run.
-      rmSync(checkout, { recursive: true, force: true });
-    }
-
-    /** `git worktree add`, with the marker up for exactly as long as it runs. */
-    const addWorktree = async (clone: string, args: string[]): Promise<void> => {
-      writeFileSync(marker, "");
-      await git(clone, ["worktree", "add", "--quiet", ...args]);
-      rmSync(marker, { force: true });
-    };
+    let made: { fresh: boolean; defaultBranch?: string } = { fresh: false };
 
     return await locked(join(root, CLONES_DIR, `${remote.cloneKey}${LOCK_SUFFIX}`), async () => {
-      const made = await ensureClone(remote, clone);
-      // Bookkeeping for a worktree whose directory was removed, which would
-      // otherwise make `worktree add` refuse the path. Not a reset: it
-      // touches no tree.
-      await git(clone, ["worktree", "prune"]);
-
-      // The run's branch already exists: its checkout was lost, the run was
-      // not. Put the branch back where it was — without a fetch, so nothing
-      // it started from moves.
-      if (!made.fresh && (await hasBranch(clone, branch))) {
-        await addWorktree(clone, [checkout, branch]);
-        return { remote: remote.url, clone, branch, created: false };
-      }
-
-      const defaultBranch = made.fresh ? made.defaultBranch! : await refresh(clone, remote);
-      const base = baseRef ?? defaultBranch;
-      let baseCommit: string;
-      try {
-        baseCommit = await git(clone, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${base}^{commit}`]);
-      } catch {
-        throw new WorkspaceRefusedError(
-          "remote-unreadable",
-          `the remote "${shown}" has no branch "${base}" to cut the run's branch from.`,
-        );
-      }
-      await addWorktree(clone, ["-b", branch, checkout, baseCommit]);
-      return { remote: remote.url, clone, branch, created: true, baseRef: base, baseCommit };
+      const worktree = await provisionWorktree({
+        repo: clone,
+        repoLabel: `the clone of "${shown}"`,
+        checkout: join(dir, CHECKOUT_DIR),
+        marker: join(dir, PROVISIONING_MARKER),
+        root,
+        branch,
+        env,
+        deadline: now() + provisionTimeoutMs,
+        now,
+        ...(ignored !== undefined ? { ignored } : {}),
+        prepare: async (left) => {
+          made = await ensureClone(remote, clone, left);
+        },
+        // Only a NEW branch is cut from a freshly fetched remote. A branch
+        // that exists is the run's own, put back where it was without a fetch.
+        base: async (left) => {
+          const defaultBranch = made.fresh ? made.defaultBranch! : await refresh(clone, remote, left);
+          const base = baseRef ?? defaultBranch;
+          let commit: string;
+          try {
+            commit = await git(clone, ["rev-parse", "--verify", "--quiet", `refs/remotes/origin/${base}^{commit}`], left());
+          } catch (error) {
+            if (!gitAnsweredNo(error)) throw error;
+            throw new WorkspaceRefusedError(
+              "remote-unreadable",
+              `the remote "${shown}" has no branch "${base}" to cut the run's branch from.`,
+            );
+          }
+          return { ref: base, commitish: commit, commit };
+        },
+      });
+      return {
+        remote: remote.url,
+        clone,
+        branch,
+        created: worktree.created,
+        ...(worktree.baseRef !== undefined ? { baseRef: worktree.baseRef } : {}),
+        ...(worktree.baseCommit !== undefined ? { baseCommit: worktree.baseCommit } : {}),
+      };
     });
+  }
+
+  /**
+   * A worktree of a repository the operator named, with the place itself as
+   * the checkout. No clone and no fetch: the base is read in the repository
+   * as it stands, and the run's branch stays in it.
+   */
+  async function provisionLocalCheckout(
+    repo: string,
+    baseRef: string | undefined,
+    dir: string,
+    branch: string,
+    ignored: IgnoredDirectory | undefined,
+  ): Promise<NonNullable<WorkspacePlace["repo"]>> {
+    mkdirSync(root, { recursive: true });
+    return await locked(`${dir}${LOCAL_LOCK_SUFFIX}`, async () => {
+      const base = baseRef ?? "HEAD";
+      const worktree = await provisionWorktree({
+        repo,
+        repoLabel: repo,
+        checkout: dir,
+        marker: `${dir}${LOCAL_MARKER_SUFFIX}`,
+        root,
+        branch,
+        deadline: now() + provisionTimeoutMs,
+        now,
+        ...(ignored !== undefined ? { ignored } : {}),
+        base: async () => ({ ref: base, commitish: base }),
+      });
+      return {
+        remote: repo,
+        clone: repo,
+        branch,
+        created: worktree.created,
+        ...(worktree.baseRef !== undefined ? { baseRef: worktree.baseRef } : {}),
+      };
+    });
+  }
+
+  /** The repository a source's `repo` names, when the operator listed it as local. */
+  function localRepository(repo: string): string | undefined {
+    if (!isAbsolute(repo)) return undefined;
+    const path = resolve(repo);
+    return localRepositories.has(path) ? path : undefined;
+  }
+
+  function locate(answer: RunSourceAnswer, request: Pick<PlaceRequest, "place">): { dir: string; cwd: string } {
+    const dir = placeDir(request.place);
+    if (answer.kind === "files") return { dir, cwd: join(dir, WORKSPACE_DIR) };
+    if (answer.kind === "repo" && localRepository(answer.repo) !== undefined) return { dir, cwd: dir };
+    return { dir, cwd: join(dir, CHECKOUT_DIR) };
   }
 
   async function provision(answer: RunSourceAnswer, request: PlaceRequest): Promise<WorkspacePlace> {
@@ -486,12 +518,26 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     if (branch === undefined || !isPlainBranch(branch)) {
       throw new Error(`a repository run needs a plain branch name to cut; got ${JSON.stringify(branch)}.`);
     }
+
+    // A repository the operator named on this machine, used as it stands.
+    const local = localRepository(answer.repo);
+    if (local !== undefined) {
+      if (answer.files !== undefined) {
+        throw new Error(
+          `a repository on this machine (${local}) is its own place, so it takes no kept ` +
+            `files beside it. Name a remote to keep files in project/, or none.`,
+        );
+      }
+      const repo = await provisionLocalCheckout(local, answer.baseRef, dir, branch, request.ignored);
+      return { kind: "repo", dir, cwd: dir, repo };
+    }
+
     // Judged before anything is created or spawned.
     const remote = checkRemote(answer.repo, allow);
     if ("reason" in remote) throw new WorkspaceRefusedError(remote.reason, remote.message);
 
     return await locked(join(dir, LOCK_SUFFIX), async () => {
-      const repo = await provisionCheckout(remote, answer.baseRef, dir, branch);
+      const repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored);
       const place: WorkspacePlace = { kind: "repo", dir, cwd: join(dir, CHECKOUT_DIR), repo };
       if (answer.projectId !== undefined && answer.files !== undefined) {
         await provisionFiles(dir, PROJECT_DIR, answer.projectId, answer.files);
@@ -516,6 +562,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   return {
     root,
     source: options.source,
+    provisionTimeoutMs,
+    locate,
     provision,
     save,
     async checkpoint() {},
@@ -538,31 +586,6 @@ function unreadable(remote: AllowedRemote, error: unknown): WorkspaceRefusedErro
     "remote-unreadable",
     `the remote "${shown}" could not be read${detail ? `: ${detail}` : ""}.`,
   );
-}
-
-/**
- * Did git answer **no**, or did the probe itself fail? Ported from
- * harness-manager: a ref probe exits 1, unkilled, when the ref is absent; a
- * timeout comes back `killed`, an unreadable repository exits 128, and a git
- * that cannot be spawned carries a string `code`.
- */
-function gitAnsweredNo(error: unknown): boolean {
-  const { code, killed } = (error ?? {}) as { code?: unknown; killed?: unknown };
-  return killed !== true && code === 1;
-}
-
-/**
- * Whether every entry of `git status --porcelain` is a deletion — files
- * removed, nothing added, edited, renamed or staged. Ported from
- * harness-manager's `everyChangeIsADeletion`.
- */
-function everyChangeIsADeletion(porcelain: string): boolean {
-  for (const line of porcelain.split("\n")) {
-    if (line.length === 0) continue;
-    if (line[0] !== " " && line[0] !== "D") return false;
-    if (line[1] !== " " && line[1] !== "D") return false;
-  }
-  return true;
 }
 
 /**

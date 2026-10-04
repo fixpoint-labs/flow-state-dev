@@ -10,6 +10,10 @@
  * Kept as a module of its own so a test can watch every process this package
  * starts — which is how "refused before any git process" is checked rather
  * than asserted.
+ *
+ * Exported from the package too: harness-manager re-exports it, and hosts
+ * that run their own `gh` or `git` calls beside a run use it rather than a
+ * copy of their own.
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -26,6 +30,13 @@ export interface RunOptions {
   timeoutMs: number;
   /** Extra environment, laid over the process's own. */
   env?: Record<string, string>;
+  /**
+   * Cancellation, where interrupting is safe. Never passed on a call that
+   * makes a worktree: a `worktree add` killed halfway leaves a tree the next
+   * provision has to disentangle. A listing that writes nothing has no such
+   * problem.
+   */
+  signal?: AbortSignal;
   maxBuffer?: number;
 }
 
@@ -40,6 +51,7 @@ export async function run(
     timeout: options.timeoutMs,
     maxBuffer: options.maxBuffer ?? 8 * 1024 * 1024,
     env: options.env === undefined ? process.env : { ...process.env, ...options.env },
+    ...(options.signal !== undefined ? { signal: options.signal } : {}),
   });
   return { stdout: String(result.stdout), stderr: String(result.stderr) };
 }
@@ -49,3 +61,13 @@ export async function run(
  * fetch of a large repository is genuinely slow.
  */
 export const GIT_TIMEOUT_MS = 600_000;
+
+/**
+ * Undoing a checkout a provision just made and is refusing: `worktree prune`
+ * and `branch -D`, local bookkeeping that takes milliseconds.
+ *
+ * Its own budget rather than the provision's, because the case it exists for
+ * is that budget running out. A caller holding a lock across provisioning has
+ * to count it in the longest it can hold that lock.
+ */
+export const CHECKOUT_CLEANUP_TIMEOUT_MS = 60_000;
