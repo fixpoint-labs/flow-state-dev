@@ -18,9 +18,11 @@
  * What the transcript can prove, said once here so no reader has to infer it: a
  * session is bound to ONE user, so the server-derived `principal` on every line
  * of a given channel is the SAME value. The `author` label is caller-supplied,
- * stored with `authorVerified: false`, and is the only thing distinguishing
- * participants. The members check on `author` is a validity check against the
- * declared roster, not authentication.
+ * stored with `authorVerified: false`, and is a display claim, not a proof of
+ * who wrote the line. The members check on `author` is a validity check against
+ * the declared roster, not authentication. Whether a line is a seat's — and so
+ * wakes nobody — is `seatAuthored`, set only by the seat post action and the
+ * answer entry. A `post`, public or dispatched, never sets it.
  *
  * The same kind also serves a project's talk sessions: a session whose state
  * names a project (`resourceId`) is a person's way into that project's room,
@@ -147,6 +149,13 @@ export type ChannelPostInput = z.infer<typeof channelPostInputSchema>;
  * notify slot, the only kind that routes a post.
  */
 export const CHANNEL_ANSWER_ACTION = "answer";
+
+/**
+ * The internal action a seat's own channel post goes through. A cross-flow
+ * `post` is not this: `internal` is the generic address, and a claimed
+ * `author` on it does not mark the line a seat's.
+ */
+export const CHANNEL_SEAT_POST_ACTION = "seatPost";
 
 /**
  * What an answer carries: the post it answers, the words, and the seat.
@@ -301,7 +310,7 @@ function openChannelOf(ctx: { session: { identity: { id: string }; state: Readon
  * The line a post makes, or the channel's refusal. Writes nothing: each append
  * keeps the line itself.
  */
-function lineFor(input: ChannelPostInput, ctx: BlockContext): ChannelTranscriptLine {
+function lineFor(input: ChannelPostInput, ctx: BlockContext, seatAuthored: boolean): ChannelTranscriptLine {
   const channel = openChannelOf(ctx);
   if (channel === undefined) {
     throw new ChannelPostRefusedError(
@@ -329,36 +338,45 @@ function lineFor(input: ChannelPostInput, ctx: BlockContext): ChannelTranscriptL
     // closed so there is no caller value to take.
     principal: ctx.session.identity.userId ?? ctx.session.identity.id,
     ...(input.author === undefined ? {} : { author: input.author }),
+    ...(seatAuthored ? { seatAuthored: true as const } : {}),
     authorVerified: false as const,
     body: input.body
   };
 }
 
-/** The append: the whole of what the post entry's queue hold covers. */
-const appendPost = handler({
-  name: "channel-append-post",
-  inputSchema: channelPostInputSchema,
-  outputSchema: channelTranscriptLineSchema,
-  sessionStateSchema: routeLedgerStateSchema,
-  execute: async (input: ChannelPostInput, ctx): Promise<ChannelTranscriptLine> => {
-    const line = lineFor(input, ctx);
-    // A route ledger left by a kind built with a route would miss this line,
-    // and every line after it, so it goes before the line is kept. Once: the
-    // next post finds none, and posts on a channel that never had one write
-    // nothing.
-    if (ctx.session.state[ROUTE_LEDGER_STATE] !== undefined) {
-      await ctx.session.atomicState(() => ({ [ROUTE_LEDGER_STATE]: undefined }));
+/**
+ * The append: the whole of what the post entry's queue hold covers.
+ *
+ * `seatAuthored` is which entry this handler serves. The seat post action
+ * passes true. Public `post` and a dispatched `post` pass false. It is not
+ * read from `input`.
+ */
+function appendPostFor(seatAuthored: boolean) {
+  return handler({
+    name: seatAuthored ? "channel-append-seat-post" : "channel-append-post",
+    inputSchema: channelPostInputSchema,
+    outputSchema: channelTranscriptLineSchema,
+    sessionStateSchema: routeLedgerStateSchema,
+    execute: async (input: ChannelPostInput, ctx): Promise<ChannelTranscriptLine> => {
+      const line = lineFor(input, ctx, seatAuthored);
+      // A route ledger left by a kind built with a route would miss this line,
+      // and every line after it, so it goes before the line is kept. Once: the
+      // next post finds none, and posts on a channel that never had one write
+      // nothing.
+      if (ctx.session.state[ROUTE_LEDGER_STATE] !== undefined) {
+        await ctx.session.atomicState(() => ({ [ROUTE_LEDGER_STATE]: undefined }));
+      }
+      // The line is this request's own item, and that item is the record: a
+      // client reads a channel by filtering its session's items to
+      // `channel-post`, the way it reads any conversation. Nothing is copied into
+      // state — a second record of the post could only disagree with the first.
+      // A kind built with a route is the one exception, and keeps only what its
+      // route reads (`appendRoutedPostFor`).
+      await emitChannelPostLine(ctx, line);
+      return line;
     }
-    // The line is this request's own item, and that item is the record: a
-    // client reads a channel by filtering its session's items to
-    // `channel-post`, the way it reads any conversation. Nothing is copied into
-    // state — a second record of the post could only disagree with the first.
-    // A kind built with a route is the one exception, and keeps only what its
-    // route reads (`appendRoutedPostFor`).
-    await emitChannelPostLine(ctx, line);
-    return line;
-  }
-});
+  });
+}
 
 /** What a routed kind's append hands on: the line, and for a person's post on a routed channel, its case. */
 const keptPostSchema = z.object({ line: channelTranscriptLineSchema, postCase: postCaseSchema.optional() });
@@ -386,7 +404,7 @@ type KeptPost = z.infer<typeof keptPostSchema>;
  * restores it has every line in the ledger. A person's post while it is not
  * routed becomes the last post with no route, so it holds nothing. A kind
  * built without a route keeps no ledger, and drops one left from before
- * (`appendPost`).
+ * (`appendPostFor`).
  *
  * A channel's first line with no ledger starts one from the lines in the
  * request's history window, the same window `read` sees, with no post to hold
@@ -433,14 +451,14 @@ async function keepRoutedLine(
  * {@link keepRoutedLine}. On a channel that declares `routing:`, a person's
  * post comes out with its case.
  */
-const appendRoutedPostFor = (routing: Readonly<Record<string, ChannelRouting>>) =>
+const appendRoutedPostFor = (routing: Readonly<Record<string, ChannelRouting>>, seatAuthored: boolean) =>
   handler({
-    name: "channel-append-routed-post",
+    name: seatAuthored ? "channel-append-routed-seat-post" : "channel-append-routed-post",
     inputSchema: channelPostInputSchema,
     outputSchema: keptPostSchema,
     sessionStateSchema: routedChannelStateSchema,
     execute: async (input: ChannelPostInput, ctx): Promise<KeptPost> => {
-      const line = lineFor(input, ctx);
+      const line = lineFor(input, ctx, seatAuthored);
       const postCase = (await keepRoutedLine(ctx, line))?.postCase;
       return postCase === undefined || routing[ctx.session.identity.id] === undefined ? { line } : { line, postCase };
     }
@@ -459,7 +477,7 @@ const appendAnswer = handler({
   outputSchema: channelTranscriptLineSchema.nullable(),
   sessionStateSchema: routedChannelStateSchema,
   execute: async ({ postId, body, author }: ChannelAnswerInput, ctx): Promise<ChannelTranscriptLine | null> => {
-    const line = lineFor({ body, author }, ctx);
+    const line = lineFor({ body, author }, ctx, true);
     return (await keepRoutedLine(ctx, line, postId)) === undefined ? null : line;
   }
 });
@@ -799,6 +817,11 @@ const channelFanOutInputSchema = z.object({
   body: z.string(),
   principal: z.string(),
   author: z.string().optional(),
+  /**
+   * The post arrived on the internal seat entry. Set by that entry when it
+   * builds this payload. A caller's `author` never sets it.
+   */
+  seatAuthored: z.literal(true).optional(),
   postCase: postCaseSchema.optional()
 });
 
@@ -808,8 +831,8 @@ export type ChannelFanOutInput = z.infer<typeof channelFanOutInputSchema>;
  * What a notify block is handed, once per declared member per post, or once
  * in all for a routed post.
  *
- * `routed` and `recent` are set by the channel's own fan-out and nothing else:
- * a caller's post has no field that reaches them.
+ * `seatAuthored`, `routed` and `recent` are set by the channel's own fan-out
+ * and nothing else: a caller's post has no field that reaches them.
  */
 export const channelNotifyInputSchema = z.object({
   /** The channel's session id. */
@@ -819,7 +842,14 @@ export const channelNotifyInputSchema = z.object({
   postId: z.string(),
   body: z.string(),
   principal: z.string(),
+  /** The poster's unverified claim. Display only; it does not withhold a wake. */
   author: z.string().optional(),
+  /**
+   * The channel marked this delivery as a seat's own post or answer. Copied
+   * from the internal entry. Absent on a public post, including one that
+   * claims an `author`.
+   */
+  seatAuthored: z.literal(true).optional(),
   /**
    * `true` when the channel's route picked this member, the one member the
    * post is delivered to; and on a project's talk session, for each of the
@@ -1542,11 +1572,12 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
 
   /**
    * This channel's `routing:` fallback, when the route places this post: a
-   * person's post (no `author`) to a channel that declares the line, on a kind
-   * built with a route. A seat's post is never routed; it fans out as unrouted.
+   * person's post (not `seatAuthored`) to a channel that declares the line, on
+   * a kind built with a route. A seat's post is never routed; it fans out as
+   * unrouted. A claimed `author` is not that mark.
    */
   const fallbackFor = (post: ChannelFanOutInput, ctx: BlockContext): string | undefined =>
-    routeBlock === undefined || post.author !== undefined
+    routeBlock === undefined || post.seatAuthored === true
       ? undefined
       : routing[ctx.session.identity.id]?.fallback;
 
@@ -1560,7 +1591,8 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
       postId: post.postId,
       body: post.body,
       principal: post.principal,
-      ...(post.author === undefined ? {} : { author: post.author })
+      ...(post.author === undefined ? {} : { author: post.author }),
+      ...(post.seatAuthored === true ? { seatAuthored: true as const } : {})
     }));
 
   /** A routed post's delivery: the one member the route picked, or none when it placed the post with nobody. */
@@ -1574,6 +1606,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
             postId: post.postId,
             body: post.body,
             principal: post.principal,
+            ...(post.author === undefined ? {} : { author: post.author }),
             routed: true,
             recent
           }
@@ -1643,29 +1676,34 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     postId: line.id,
     body: line.body,
     principal: line.principal,
-    ...(line.author === undefined ? {} : { author: line.author })
-  });
-  const postHead = sequencer({
-    name: "channel-post",
-    inputSchema: channelPostInputSchema,
-    outputSchema: channelTranscriptLineSchema
+    ...(line.author === undefined ? {} : { author: line.author }),
+    ...(line.seatAuthored === true ? { seatAuthored: true as const } : {})
   });
 
-  // A tap: the post's own output stays the appended line, and the hand-off's
-  // refusal is rescued rather than rolled back. The post's `channel-post` item
-  // is the durable record; delivery is best-effort.
-  const post =
-    handOff === undefined
-      ? appendPost
-      : routeBlock === undefined
-        ? postHead.step(appendPost).tap(fanOutOf, handOff)
-        : postHead
-            .step(appendRoutedPostFor(routing))
-            .tap(
-              ({ line, postCase }: KeptPost) => ({ ...fanOutOf(line), ...(postCase === undefined ? {} : { postCase }) }),
-              handOff
-            )
-            .map(({ line }: KeptPost) => line);
+  /**
+   * One channel post. Public `post` and a dispatched `post` share the
+   * non-seat append. The seat post action is the only one that passes
+   * `seatAuthored`, and it does not read that from `input`.
+   */
+  const channelPostFor = (seatAuthored: boolean) => {
+    const appendPlain = appendPostFor(seatAuthored);
+    if (handOff === undefined) return appendPlain;
+    const head = sequencer({
+      name: seatAuthored ? "channel-post-internal" : "channel-post",
+      inputSchema: channelPostInputSchema,
+      outputSchema: channelTranscriptLineSchema
+    });
+    if (routeBlock === undefined) return head.step(appendPlain).tap(fanOutOf, handOff);
+    return head
+      .step(appendRoutedPostFor(routing, seatAuthored))
+      .tap(
+        ({ line, postCase }: KeptPost) => ({ ...fanOutOf(line), ...(postCase === undefined ? {} : { postCase }) }),
+        handOff
+      )
+      .map(({ line }: KeptPost) => line);
+  };
+  const post = channelPostFor(false);
+  const seatLine = channelPostFor(true);
 
   // A seat's answer to a routed post, on the only kind that routes one: the
   // line, handed off like any seat's line, or nothing when the post has its
@@ -1926,8 +1964,10 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
     },
     internal: {
       actions: {
-        // The same blocks a client reaches, so another flow's dispatch lands on
-        // one implementation rather than a second spelling of it.
+        // `read`, the board actions, and `post` are the same blocks a client
+        // reaches. A dispatched `post` is not a seat: `internal` is the
+        // generic cross-flow address. A seat's own line is `seatPost`, and
+        // only that entry sets `seatAuthored`.
         //
         // Both registrations are required, and so is repeating `concurrency`:
         // `resolveEntry` reads one map per dispatch type and never falls
@@ -1935,6 +1975,7 @@ export function defineChannelFlow(options: DefineChannelFlowOptions = {}): Chann
         // internal dispatch, and the arbiter reads `concurrency` off whichever
         // entry it resolved. Sharing the block ref is the whole dedupe there is.
         post: { block: postEntry, concurrency: "queue" },
+        [CHANNEL_SEAT_POST_ACTION]: { block: seatLine, concurrency: "queue" },
         // Here only, never in `actions`: the answer names the post it answers,
         // so a caller who could reach it could take that post's one answer.
         // On the post queue's key (the session), so answers and posts are one

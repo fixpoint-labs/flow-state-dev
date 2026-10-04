@@ -91,6 +91,50 @@ describe("scope attribution", () => {
   });
 });
 
+describe("reasoning item shape", () => {
+  async function emitted(kind: "message" | "reasoning", text: string) {
+    const runtime = await createTestContext({});
+    const state = createEmitState();
+    await emitTranslatedEvent({ kind, text }, runtime.ctx as never, state, "codex-agent");
+    return { state, events: runtime.response.getEvents() };
+  }
+
+  it("puts reasoning text in summary as reasoning_text, on every event the item travels on", async () => {
+    const { events } = await emitted("reasoning", "weighing the options");
+    const items = events
+      .filter((e) => e.type === "item.added" || e.type === "item.done")
+      .map((e) => (e as { item: Record<string, unknown> }).item);
+
+    expect(items.map((item) => item.type)).toEqual(["reasoning", "reasoning"]);
+    expect(items.map((item) => item.summary)).toEqual([
+      [{ type: "reasoning_text", text: "" }],
+      [{ type: "reasoning_text", text: "weighing the options" }],
+    ]);
+    for (const item of items) {
+      expect(item).not.toHaveProperty("content");
+    }
+
+    expect(
+      events
+        .filter((e) => e.type === "content.added" || e.type === "content.done")
+        .map((e) => (e as { content: unknown }).content),
+    ).toEqual([
+      { type: "reasoning_text", text: "" },
+      { type: "reasoning_text", text: "weighing the options" },
+    ]);
+  });
+
+  it("leaves message items on content as output_text", async () => {
+    const { state, events } = await emitted("message", "all done");
+    const done = events.find((e) => e.type === "item.done") as { item: Record<string, unknown> };
+    expect(done.item).not.toHaveProperty("summary");
+    expect(done.item.content).toEqual([{ type: "output_text", text: "all done" }]);
+    const contentDone = events.find((e) => e.type === "content.done") as { content: unknown };
+    expect(contentDone.content).toEqual({ type: "output_text", text: "all done" });
+    expect(state.finalMessage).toBe("all done");
+  });
+});
+
 // Characterization of the task scope every item carries: which of `taskId` and
 // `ownedBy` are present, and with what value, for each identity the runtime can
 // hand over, on every item kind and every close path. Asserted on the item's

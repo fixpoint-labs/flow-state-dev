@@ -11,7 +11,7 @@ Several agents working one topic. Each of them reads what the others said. Posti
 
 That is a channel. The framework ships the flow that runs them, and each channel you open is a named session on it.
 
-A channel can also be [routed](#routing-a-channel). Each post from a person then goes to the one member whose job fits it, and that member answers in the channel. A support desk works that way: the printer question goes to the devices specialist, and nobody else hears it.
+A channel can also be [routed](#routing-a-channel). A post someone sends then goes to the one member whose job fits it, and that member answers in the channel. A support desk works that way: the printer question goes to the devices specialist, and nobody else hears it.
 
 ## What a channel is
 
@@ -173,7 +173,7 @@ A session's organization is fixed when the session is created, and re-opening ca
 
 ## Posting and reading
 
-A channel has two actions, `post` and `read`, reachable both by a client and by another flow.
+A channel has two actions, `post` and `read`, reachable both by a client and by another flow. A client `post` and a dispatched `post` are the same kind of line: neither is a seat's. `read` is the same call either way.
 
 ```ts
 const postToStandup = dispatcher({
@@ -188,6 +188,8 @@ const postToStandup = dispatcher({
 
 The flow you address is the **kind**; the channel is the **session id**. Address `{ id }`, never `{ key }`: a key-derived session is a child of whoever dispatched it, so the same key lands somewhere different for every poster and the channel never sees the post. Nothing detects that mistake.
 
+That dispatch is a `post`. It does not set `seatAuthored`, so [`wakeMemberSeats`](#waking-agent-seats) wakes hearing members, whether or not the payload sets `author`. `author` is an unverified label. It has to name a declared member, or the post is refused (`author-not-a-member`) and nothing is written. A seat's `post-to-channel` tool and a routed answer are the lines with `seatAuthored: true`, and those wake nobody.
+
 Over HTTP the address is the same: the kind where the flow goes in the URL, and the channel's id where the session goes.
 
 ```bash
@@ -197,6 +199,8 @@ curl -X POST https://your-app.example/api/flows/channel/engineering.standup/acti
 ```
 
 The call answers `202` with the request it started. The action's return value isn't part of that answer, so read the posted lines from the session's items, as [Showing a channel on screen](#showing-a-channel-on-screen) does.
+
+That HTTP call is a client `post`. It may include `author`. The line keeps that claim with `authorVerified: false`, and it never has `seatAuthored`, including when `author` is set. `wakeMemberSeats` wakes each hearing hired member on it, whether or not `author` is set. A woken seat of the built-in `agent` kind sees the writer as `author`, or as `principal` when there is no `author`. An `author` who is not a declared member is refused (`author-not-a-member`) and nothing is written.
 
 `read` gives back the channel: its description, its members, and the transcript.
 
@@ -212,6 +216,8 @@ The call answers `202` with the request it started. The action's return value is
   ],
 }
 ```
+
+That line is a client `post` that set `author`. `authorVerified` is `false`. There is no `seatAuthored`. The same body through the dispatcher above is the same kind of line.
 
 `read` takes no input on a channel. An `after` cursor is ignored there: it only means something on a [project's talk session](#a-room-per-project).
 
@@ -238,7 +244,7 @@ To post from the page, call the channel's own action on the same session:
 await channel.sendAction("post", { body });
 ```
 
-Leave `author` out when a person is posting. `author` has to be one of the channel's members, and a person using your app usually isn't one, so naming them is refused. The line still says who posted: `principal` is the identity your server resolved for the request. A post with no `author` notifies every member, which is right here, because the person who wrote it is not among them.
+`post` takes `{ body, author? }`. `author` is an unverified label, kept on the line with `authorVerified: false`. An `author` who is not a declared member is refused (`author-not-a-member`) and nothing is written. It does not decide who `wakeMemberSeats` wakes. A client `post` wakes each hearing hired member whether or not you set `author`. `principal` is the identity your server resolved for the request, and it is the same on every line of the channel.
 
 An agent's answer, or a post from another tab, is a request the page didn't send. Add `live: true` and it appears within about a second, with no reload:
 
@@ -255,11 +261,13 @@ const busy = channel.childSessions.filter((run) => run.status === "active");
 
 ## What the transcript proves, and what it doesn't
 
-A session belongs to one user. That means **every line of a given channel carries the same `principal`**, the server-derived identity the post ran under. It is a real value and the framework sets it, but it does not tell you which participant wrote a line, because it is the same for all of them.
+A session belongs to one user. That means **every line of a given channel carries the same `principal`**, the server-derived identity the post ran under. It is a real value and the framework sets it, but it does not name the poster, because it is the same on every line.
 
-The `author` field is what distinguishes participants, and the framework cannot verify it. The poster supplies it, and it is stored beside `authorVerified: false` to say so. A post claiming an `author` who is not in the channel's members is refused, but that is a check against the declared roster, not proof of who is calling.
+`author`, when the caller set one, is an unverified label. The line stores it beside `authorVerified: false`, and `authorVerified` is always `false`. There is no verified per-participant identity on a line. A post claiming an `author` who is not in the channel's members is refused (`author-not-a-member`) and nothing is written. That check is against the declared roster, not proof of who is calling.
 
-So: a channel transcript is evidence that the channel's own principal wrote a line. It is close to no evidence about which member did. If you are building an audit trail or an approval flow, this gives you a much weaker guarantee than the field names suggest. Naming the posting member needs something the framework does not expose yet.
+A line a seat wrote also has `seatAuthored: true`. A client `post` never does, including one that sets `author`. `wakeMemberSeats` does not wake anyone for a line with `seatAuthored: true`. `seatAuthored` is not a verified name.
+
+A channel transcript shows that the channel's own principal ran the post. It is close to no evidence about which member did. If you are building an audit trail or an approval flow, these fields give you a much weaker guarantee than their names suggest.
 
 ## Waking members
 
@@ -281,17 +289,15 @@ const wakeMember = handler({
   inputSchema: channelNotifyInputSchema,
   outputSchema: z.object({ notified: z.string() }),
   execute: (input: ChannelNotifyInput) => {
-    // input: { channelId, member, postId, body, principal, author? }
-    if (input.author !== undefined && input.member === input.author) {
-      return { notified: "" };
-    }
+    // { channelId, member, postId, body, principal, author?, seatAuthored?, routed?, recent? }
+    if (input.seatAuthored === true) return { notified: "" };
     // send to whatever address you hold for `input.member`
     return { notified: input.member };
   },
 });
 ```
 
-Compare on `author`, not `principal`: `principal` is the id the channel was opened under, the same value for every post, so it never tells one member from another. `author` is the poster's own claim and nothing verifies it, so the skip is only as good as the claim.
+`seatAuthored` is `true` on a seat's own post and absent otherwise. Skip on `true` and nobody is told about that post. `author` is an unverified claim. Comparing `input.author` to `input.member` only skips a delivery when the caller claimed that name, which a client `post` can do without being a seat. `principal` is the channel session's user and is the same on every line, so it does not name the poster.
 
 The delivery runs in its own request, outside the post's turn, so a slow notification never delays the next post. A delivery that fails is recorded and the rest are still attempted; the post stays written either way, because the transcript is the durable record and waking people is best-effort.
 
@@ -318,14 +324,18 @@ const channelFlows = channelInstances(channels, {
 
 For each post, it decides per member whether that member runs:
 
-- **A member runs** when the post names no `author` and the member's seat can hear a post. A seat
-  of the built-in `agent` kind can. It runs its ordinary answer, with the post as its turn,
-  `<writer> in <channel>: <body>`. The writer is the post's `author`, or its `principal` when it
-  has none: `support.lead in support.desk: can someone look at the refund queue?`.
-- **Nobody runs** when the post names an `author`. Every author a post can carry is a member, so
-  that is a seat talking, and two agents that wake each other answer each other forever. A member
-  that would have run gets nothing at all. If you want agents to hear each other, write your own
-  notify block.
+- **A member runs** when the line is not a seat's (`seatAuthored` is absent) and the member's seat
+  can hear a post. A client `post` is that line, whether or not it sets `author`. A seat of the
+  built-in `agent` kind can hear a post. It runs its ordinary answer, with the post as its turn,
+  `<writer> in <channel>: <body>`. The writer is the post's `author`, or its `principal` when there
+  is no `author`: `support.lead in support.desk: can someone look at the refund queue?`.
+- **Nobody runs** when the line is a seat's (`seatAuthored: true`). A seat's `post-to-channel`
+  call and a routed answer are that line. A post another flow dispatches with action `post` is not.
+  A member that would have run
+  gets nothing at all. Members whose seat can't hear a post get `fallback`, or nothing if you
+  passed none. The fallback is not sent to a member who would have been woken. To have
+  agents hear a seat's post, write your own notify block and run it when `seatAuthored`
+  is `true`.
 - **Nobody runs** for a member whose kind can't hear a post, or who has no seat in the list you
   passed. A seat hired while the app is running isn't in that list until the app restarts and
   passes it in.
@@ -351,9 +361,9 @@ never for a member the wake would have run. It receives the same input a notify 
 defineChannelFlow({ notify: wakeMemberSeats(seats, { fallback: tellByEmail }) });
 ```
 
-When the writer is one of those members, the fallback receives the writer's own delivery. Skip
-it there if you don't want to tell someone about their own post, as the handler earlier on this
-page does.
+On a seat's line, members whose seat can't hear a post get the fallback. To skip a seat's line in a block of your own, read
+`input.seatAuthored === true`, as the handler earlier on this page does. `author` is an unverified
+claim, so comparing it to `member` only skips a delivery when the caller claimed that name.
 
 #### Making a kind of your own hear posts
 
@@ -376,19 +386,20 @@ export const triager = defineFlow({
 });
 ```
 
-#### What the author check can and can't promise
+#### What `author` is
 
-A post's `author` is the poster's own claim, and the channel does not verify it. Someone who can
-post can name a member as the author and so stop that one post from waking anyone. They can't make
-a seat run, make your fallback reach anyone it wouldn't reach anyway, or reach anyone outside the
-channel.
+`author` is an optional label on a `post`. The line keeps it with `authorVerified: false`, and
+`authorVerified` is always `false`. There is no verified per-participant identity on a line. An
+`author` who is not a declared member is refused (`author-not-a-member`) and nothing is written.
+Setting `author` does not set `seatAuthored`, and it does not decide who `wakeMemberSeats` wakes.
 
 ## Routing a channel
 
 Waking every agent in a channel suits a standup. It doesn't suit a support channel, where a
 question about a printer should reach the one specialist who handles devices and nobody else.
-Routing does that: each post from a person goes to one member, picked by what the post is about,
-and that member's answer shows in the channel.
+Routing does that: each client `post` goes to one member, picked by what the post is about,
+and that member's answer shows in the channel. A client `post` may include `author`. That label
+does not change who is picked.
 
 Turn it on in the channel's file by naming a fallback, the member who takes a post the route can't place:
 
@@ -415,7 +426,7 @@ defineChannelFlow({
 The route picks a member with an evaluator: a block that asks a model a question with a fixed set
 of answers and gets one of them back. Not every model can do that; see
 [Evaluation models](/docs/fundamentals/models#evaluation-models). A channel without the
-`routing:` line is not routed, even on a kind built with a route: it wakes every agent member.
+`routing:` line is not routed, even on a kind built with a route: a client `post` wakes every agent member.
 
 The fallback has to be a member whose hired seat can hear a post, or the app refuses to start and
 names the channel. So does a `routing:` line on a kind built without a route. The line is read
@@ -424,9 +435,9 @@ channel from the next start, with its lines kept.
 
 ### How a post finds its member
 
-For each post from a person, in this order:
+For each client `post`, in this order:
 
-1. **The member already on it.** If the person's last post was routed to a member by the
+1. **The member already on it.** If the last client `post` was routed to a member by the
    evaluator or the fallback, and that member hasn't answered yet, this one goes there too, with no
    model call. A post held this way holds nothing, so the one after it is routed by what it says.
    A post whose route isn't recorded yet holds nothing either, so of two posts sent close together,
@@ -437,7 +448,7 @@ For each post from a person, in this order:
    is how "it fails right after the password" reaches the specialist who asked about the password.
    A seat [hired while the app runs](./durable-hire.md) has no description, because `hire` takes
    none, so it is never a choice. It can still take a post as the fallback, and step 1 then sends
-   it the person's next post. When no member has a description, there is no call and the fallback
+   it the next client `post`. When no member has a description, there is no call and the fallback
    takes the post.
 3. **The fallback.** If the call fails, or answers with anything outside the choices, the
    fallback member takes the post. A model that can't evaluate fails every call, so every post
@@ -446,8 +457,9 @@ For each post from a person, in this order:
    in step 2, so a description such as "Anything that fits none of the other specialists" lets the
    evaluator send it the posts that fit nobody else.
 
-Only that member receives the post. Nobody else in the channel is told about it. A post a seat
-wrote is never routed and wakes nobody, as in any channel.
+Only that member receives the post. Nobody else in the channel is told about it. A seat's line
+(`seatAuthored: true`) is never routed, and `wakeMemberSeats` wakes nobody for it. A client `post`
+is routed whether or not it sets `author`.
 
 Write the `description:` lines for the route to read. "Printers, laptops, phones and wifi" routes
 better than "Our devices person".
@@ -460,7 +472,7 @@ renderers skip it.
 ### What the route remembers
 
 Every channel on a kind built with a route (`defineChannelFlow({ route })`) keeps a record in its
-session state under `channelRouteLedger`: its last 20 lines, and the person's last post with where
+session state under `channelRouteLedger`: its last 20 lines, and the last client `post` with where
 it went. Each post updates it, whether or not the channel's `CHANNEL.md` declares `routing:`.
 Because of that record, neither the lines a routed member sees nor the hold in step 1 is limited by
 the session's [history window](#posting-and-reading).
@@ -470,7 +482,7 @@ first post on a kind built with one, or its first after the channel was posted t
 its kind without a route. That post is never held, and its member sees only the earlier lines still
 inside the history window, which can be fewer than 20.
 
-Removing `routing:` from a channel's file and restoring it loses no lines. A person's post made
+Removing `routing:` from a channel's file and restoring it loses no lines. A client `post` made
 while it was removed holds nothing, so the next routed post after it is placed by the evaluator or
 the fallback. A channel on a kind built without a route keeps no record.
 
@@ -489,7 +501,7 @@ Whether it comes from the tool or the reply, the answer lands through an
 internal entry is one only a dispatch can reach, never a client, so no client can answer for a
 member. The entry checks the line the way `post` does: the
 `author` is the seat's `seatId`, which the model can't set, and an author who isn't a member is
-refused.
+refused. The line has `seatAuthored: true`.
 
 Each post gets at most one answer line. Once one lands, any other answer to that post lands
 nothing, even one sent at the same moment. An answer the channel refuses writes nothing and doesn't
@@ -582,20 +594,22 @@ that wants to say something in a channel.
 
 The model calls `post-to-channel` with the channel's id and what to say. A woken seat reads the id
 off the post it heard, from the turn described in [Waking agent seats](#waking-agent-seats). The
-tool posts through that channel's own `post`, except for a routed member's answer (below). Either
-way the line's `author` is the seat's `seatId`: its record id, the name the channel's `members:`
-lists. The model cannot set it. The tool's input is `{ channel, body }` and nothing
-else, so a call that adds an `author` is refused. A seat that doesn't name the tool is never
+tool's input is `{ channel, body }` and nothing else, so a call that adds an `author` is refused.
+The line's `author` is the seat's `seatId`: its record id, the name the channel's `members:` lists.
+The model cannot set it. The line has `seatAuthored: true`. A routed member's first call into that
+channel is the post's answer (below). Any other call is the seat's own post, not the `post` another
+flow reaches with `dispatcher({ action: "post" })`. A seat that doesn't name the tool is never
 offered it.
 
 On a turn answering a routed post, the first call into that post's channel is the post's answer. It lands
 the way [a routed answer](#the-answer-lands-in-the-channel) does: at most one line per post, under
 the same author, and the turn's reply lands only if the tool's answer didn't. A later call there in
 that turn posts nothing and tells the model its answer was already handed to the channel. A call
-into any other channel goes through `post`.
+into any other channel goes through `seatPost`.
 
-A seat's post always carries an `author`, and `wakeMemberSeats` wakes nobody on a post with an
-`author` (see [Waking agent seats](#waking-agent-seats)), so seats won't wake each other.
+`wakeMemberSeats` wakes nobody for that line, because it has `seatAuthored: true` (see
+[Waking agent seats](#waking-agent-seats)), so seats won't wake each other. A client `post` that
+sets the same `author` wakes hearing members.
 
 What it won't do:
 
