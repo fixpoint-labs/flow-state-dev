@@ -115,6 +115,20 @@ describe("the refusal (V2, BR-3)", () => {
     expect(snapshot.sessions.map((s) => s.flowKind)).toEqual(["channel"]);
   });
 
+  // Two reads of a first visit can overlap: StrictMode replays the boot, or the person opens
+  // two tabs. Either way the person ends up with one room session, never two.
+  it("opens one room session for overlapping first-visit reads, on one page and across two", async () => {
+    const { baseUrl } = await lab({ channels: false });
+    const page = createLabClients({ baseUrl, userId: ASK_LAB_USER_ID });
+    const [a, b] = await Promise.all([createLabReader(page).read(), createLabReader(page).read()]);
+    // Two tabs: two clients, so nothing in the page is shared between them.
+    const tab = () => createLabClients({ baseUrl, userId: "u_two_tabs" });
+    const [c, d] = await Promise.all([createLabReader(tab()).read(), createLabReader(tab()).read()]);
+    for (const snapshot of [a, b, c, d]) expect(loaded(snapshot).orgId).toBe(DEFAULT_ORG_ID);
+    expect((await page.sessions.listSessions({ userId: ASK_LAB_USER_ID })).map((s) => s.flowKind)).toEqual(["channel"]);
+    expect((await tab().sessions.listSessions({ userId: "u_two_tabs" })).map((s) => s.flowKind)).toEqual(["channel"]);
+  });
+
   it("a person with no session whose room session is refused gets the Lab's refusal, and nothing else is read", async () => {
     const { baseUrl } = await lab({ channels: false });
     const seen: string[] = [];

@@ -499,6 +499,20 @@ export type LabReader = {
 };
 
 /** Build the reader for one connection. */
+/**
+ * The id of `userId`'s own session on the room kind: one per person, so two
+ * first visits at once (two tabs) open the same session rather than two.
+ */
+export function roomSessionId(userId: string): string {
+  return `${ROOM_KIND}-own-${userId}`;
+}
+
+/**
+ * Room-session opens in flight, per client, so reads that overlap on one page
+ * (StrictMode replaying the boot) share one open rather than racing it.
+ */
+const openingRoom = new WeakMap<LabClients, Promise<void>>();
+
 export function createLabReader(clients: LabClients): LabReader {
   const manifests = new Map<string, Promise<ResourceManifest>>();
 
@@ -707,7 +721,8 @@ export function createLabReader(clients: LabClients): LabReader {
    * who hasn't joined a room yet may hold only a seat's session, or none at
    * all on a first visit, and nothing of theirs can read the organization's
    * inventory or projects; a session on
-   * the room kind can, since that kind declares both. It is opened once and
+   * the room kind can, since that kind declares both. It is opened once, under
+   * {@link roomSessionId} so overlapping first reads can't open two, and
    * listed from then on. If it can't be opened, the sessions are returned as
    * they were, with why: `null` when there is nothing to open (the Lab serves
    * no room kind, a 404), so nothing declares what it would have read.
@@ -717,11 +732,25 @@ export function createLabReader(clients: LabClients): LabReader {
   ): Promise<{ sessions: SessionSummary[]; failure: Failure | null }> => {
     if (sessions.some((s) => s.parentSessionId == null && s.flowKind === ROOM_KIND)) return { sessions, failure: null };
     try {
-      await clients.sessions.createSession({ flowKind: ROOM_KIND, userId: clients.userId });
+      let opening = openingRoom.get(clients);
+      if (opening === undefined) {
+        opening = openRoomSession().finally(() => openingRoom.delete(clients));
+        openingRoom.set(clients, opening);
+      }
+      await opening;
       return { sessions: await clients.sessions.listSessions({ userId: clients.userId, include: "dispatch-runs" }), failure: null };
     } catch (error) {
       const failure = describeFailure(error);
       return { sessions, failure: failure.httpStatus === 404 ? null : failure };
+    }
+  };
+
+  /** Open the person's room session under its one id; a 409 is another page that opened it first. */
+  const openRoomSession = async (): Promise<void> => {
+    try {
+      await clients.sessions.createSession({ flowKind: ROOM_KIND, userId: clients.userId, sessionId: roomSessionId(clients.userId) });
+    } catch (error) {
+      if (describeFailure(error).httpStatus !== 409) throw error;
     }
   };
 
@@ -810,9 +839,7 @@ export function createLabReader(clients: LabClients): LabReader {
     // The first read, and the organization off it, before anything from the
     // tree is read. A 401/403, no session, or a session with no organization is
     // the refusal; any other failure means the Lab couldn't be reached. Either
-    // is the whole snapshot. The person's room session is opened before the
-    // organization is read, so a person on their first visit has a session the
-    // Lab stamped with theirs.
+    // is the whole snapshot.
     const firstFailure = (failure: Failure): LabSnapshot =>
       failure.httpStatus === 401 || failure.httpStatus === 403 ? { refused: failure } : { unreachable: failure };
     let sessions: SessionSummary[];
@@ -821,6 +848,9 @@ export function createLabReader(clients: LabClients): LabReader {
     } catch (error) {
       return firstFailure(describeFailure(error));
     }
+    // Before the organization is read, on purpose, even though a Lab with no
+    // room kind answers it 404 on every refused read: the room session is the
+    // only session a first-visit person can have for the org to be read off.
     const room = await withRoomSession(sessions);
     sessions = room.sessions;
     let orgId: string | undefined;
