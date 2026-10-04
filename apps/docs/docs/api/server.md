@@ -143,9 +143,15 @@ const router = createFlowApiRouter({
 export const { GET, POST, PATCH, DELETE } = router;
 ```
 
-### `parseFlowRoute(path)`
+### `parseFlowRoute(method, path)`
 
 Parse a flow API path into its components (the addressed flow id, action, sessionId, and so on). The first segment of an action or stream route is an instance id, which for a singleton is its kind. See [Addressing an instance](../server/setup.md#addressing-an-instance).
+
+`path` is an array of path segments beneath the mount prefix, each already percent-decoded once. A framework catch-all such as Next's `params.path` hands over that shape. `parseFlowRoute` decodes nothing further, so a segment that still contains `%5F` or `/` after that one decode is read as written.
+
+### `decodePathSegments(rawPath)`
+
+Splits a raw, still-encoded URL path (the part beneath the mount prefix) on `/` and decodes each segment once. The result is the array `parseFlowRoute` takes. Use it in a host that only has the raw URL. A segment with invalid percent-encoding is kept as written.
 
 ## Execution
 

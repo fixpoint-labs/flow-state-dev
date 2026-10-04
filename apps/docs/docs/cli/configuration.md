@@ -156,7 +156,7 @@ fsdev run billing refund -i '{"id":"r_1"}' --org acme --user support-bot
 ```
 
 `--org` skips your resolver entirely and runs as `--user`, or `cli-user` without it. It can't be
-blank or `DEFAULT_ORG_ID`. `fsdev serve` and `fsdev dev` have no such flag, so requests that arrive
+blank, not well-formed Unicode (a lone UTF-16 surrogate), or `DEFAULT_ORG_ID`. `fsdev serve` and `fsdev dev` have no such flag, so requests that arrive
 over the network always go through your resolver.
 
 `--user` on its own asks your resolver as usual, keeps the organization it returns, and replaces

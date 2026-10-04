@@ -819,7 +819,23 @@ const { resources } = splitResourceModules(resourceModules);
 const instances = mailboxInstances(mailboxes, { kinds, resources });
 ```
 
+An app that doesn't run `fsdev gen` imports the file's default export and passes it in `resources` under a key of its choosing. `fsdev gen` uses `projects`, the basename of `projects.ts`, and so does this example:
+
+```ts
+import projectsCollection from "./workforce/org/resources/projects";
+
+// mailboxes and kinds as above
+const instances = mailboxInstances(mailboxes, {
+  kinds,
+  resources: { projects: projectsCollection },
+});
+```
+
+The other arguments are as in the snippet above. If you declare the template in a `MAILBOX.md` instead (below), its `mintFor:` must name the key you passed the collection under (`projects` here).
+
 Rooms run on the built-in mailbox kind, and that kind has to be able to wake seats, so build it with a notify block, as in `kinds: { mailbox: defineMailboxFlow({ notify: wakeMemberSeats(seats) }) }`. Left as the plain built-in, a template that names seats is refused, because no post would wake them.
+
+`wakeMemberSeats(seats)` wakes a member whose seat is in the `seats` list and whose kind hears mailbox posts, as the built-in `agent` kind does. A notify block you write yourself wakes only the members its own code wakes; `mailboxInstances` doesn't check that it reaches the template's seats. A seat hired after you built `wakeMemberSeats(seats)` isn't in its list and isn't woken.
 
 If your app calls `mailboxInstances` more than once, say once per flow, only one call needs `resources`. The first call that finds the template keeps it for the whole process, and every other call builds its mailbox kind with the same seats and charter. A call that finds a different template is refused.
 
@@ -849,7 +865,7 @@ When a template is in place, any code that creates a project inside a flow turn 
 
 A room's lines aren't in any session's history. Read them with `read` on a member's talk session.
 
-`mailboxInstances` checks templates along with your mailboxes and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or one that isn't `projects`, a seat that isn't a seat id or is listed twice, seats on a kind that can't wake them, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `MAILBOX.md`.
+`mailboxInstances` checks templates along with your mailboxes and reports every problem at once. It refuses a template whose `mintFor:` names no collection in the resources you passed, or names something other than the projects collection, a seat that isn't a seat id or is listed twice, seats on a kind that can't wake them, and a second template for the same collection, whether it's in `org/resources/projects.ts` or another `MAILBOX.md`.
 
 ## Registering a kind of your own
 

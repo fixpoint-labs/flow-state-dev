@@ -112,6 +112,12 @@ const ASSIGNED_SEAT = "eng.coder";
 const COORDINATOR_SEAT = "eng.em";
 /** Declared on the mailbox, hired into the same kind as the coder, and never given work. */
 const REVIEWER_SEAT = "eng.reviewer";
+/**
+ * The members this check's claim names. The mailbox's full member list is read
+ * off `MAILBOX.md` at run time, not restated here: a list this check typed out
+ * goes stale the moment the tree adds a member.
+ */
+const CLAIMED_MEMBERS = [COORDINATOR_SEAT, ASSIGNED_SEAT, REVIEWER_SEAT];
 
 /** The feature, and the line an operator posts to ask for it. */
 const ISSUE = "greeting-module";
@@ -832,6 +838,13 @@ await runGoal(async () => {
     // Every member the board's `MAILBOX.md` declares, read off the tree the lab opened.
     const declaredMembers = (boardMailboxOf(lab.roster).declared.members as string[] | undefined) ?? [];
     const expectedSkips = declaredMembers.filter((m) => m !== COORDINATOR_SEAT).sort();
+    const unseated = CLAIMED_MEMBERS.filter((member) => !declaredMembers.includes(member));
+    if (unseated.length > 0) {
+      failures.push(
+        `the mailbox declares [${declaredMembers.join(", ")}], without [${unseated.join(", ")}] — ` +
+          `the claim is about those members, so it would hold vacuously`,
+      );
+    }
     if (notifyLog.addressed.join(",") !== COORDINATOR_SEAT) {
       failures.push(
         `the fan-out addressed [${notifyLog.addressed.join(", ")}]; wanted only ${COORDINATOR_SEAT}`,

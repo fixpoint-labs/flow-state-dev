@@ -83,7 +83,7 @@ Use the same standalone server pattern from the [Railway guide](/guides/deployin
 
 ```ts title="src/server.ts"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createFlowState } from "@flow-state-dev/engine";
+import { createFlowState, decodePathSegments } from "@flow-state-dev/engine";
 import { sqliteStores } from "@flow-state-dev/store-sqlite";
 import myFlow from "./flows/my-flow/flow.js";
 
@@ -140,7 +140,8 @@ async function handleFlowRequest(
   const method = (req.method ?? "GET").toUpperCase();
   const pathAfterPrefix = url.replace(/^\/api\/flows\/?/, "");
   const [pathPart] = pathAfterPrefix.split("?", 2);
-  const pathSegments = pathPart.split("/").filter((s) => s.length > 0);
+  // The router takes decoded segments, one decode each, as Next hands them.
+  const pathSegments = decodePathSegments(pathPart);
 
   let body: string | undefined;
   if (method === "POST" || method === "PATCH") {
