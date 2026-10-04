@@ -1,5 +1,45 @@
 # @flow-state-dev/tools
 
+## 0.2.0
+
+### Minor Changes
+
+- 7725f5c: The `local` bash provider no longer passes the server's full environment to commands: they get `PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR` and `TZ`, plus anything named in the new `env` option. That stops commands inheriting the server's secrets by accident; it is not an isolation boundary, since commands still run as the server's user. Use the `moat` provider or a container for untrusted commands. Commands now stop after 60 seconds (configurable with `execTimeoutMs`): the command's process group is killed (a process that detaches into its own session, such as a daemon, can survive) and the result reports `exitCode: 124`. `exitCode` is now always a number — a command killed by a signal reports `128 + signal` instead of `0` (FIX-1709).
+- 9510a03: Requests now carry `ctx.request.incarnation`, a token that stays the same across a request's retries and resumes and that request-scoped workspace keys and local `scope: "run"` bash directories now include, so a request reusing a deleted request's id starts empty; existing run workspaces move once on upgrade, and a run in flight at deploy continues in an empty directory (FIX-1286).
+
+### Patch Changes
+
+- Updated dependencies [53b50f0]
+- Updated dependencies [456fe85]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [7d4c413]
+- Updated dependencies [9510a03]
+- Updated dependencies [385d01e]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [a021cd1]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [84cc226]
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/workspace@0.2.0
+
 ## 0.1.3
 
 ### Patch Changes

@@ -1,5 +1,41 @@
 # @flow-state-dev/memory
 
+## 0.1.4
+
+### Patch Changes
+
+- 63762a8: `system()` takes an optional `evaluator` that decides, before the observer runs, whether a turn is worth remembering: `remember` observes it as before, `skip` writes nothing and marks it read. `captureEvaluator(model)` builds that block on the app's model, and `captureQuestions` is its question for apps that build their own. Without an evaluator, capture is unchanged (FIX-1555).
+- 470b49e: When memory consolidation or prune output can't be recovered, the step now fails with an output validation error on the trace instead of returning an empty result that looked like "nothing to record"; a genuine empty result still succeeds, and the turn it runs beside is unaffected (FIX-1326).
+- Updated dependencies [53b50f0]
+- Updated dependencies [456fe85]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [7d4c413]
+- Updated dependencies [9510a03]
+- Updated dependencies [385d01e]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [a021cd1]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [84cc226]
+  - @flow-state-dev/core@0.3.0
+
 ## 0.1.3
 
 ### Patch Changes

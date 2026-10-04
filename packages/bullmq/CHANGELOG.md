@@ -1,5 +1,87 @@
 # @flow-state-dev/bullmq
 
+## 0.3.0
+
+### Minor Changes
+
+- 9f06d39: On a `bullmqWorker` deployment, a declared `queue` or `reject` concurrency policy is now enforced across every web and worker process, for every run: two `queue` runs into one session run one after the other in the order they were accepted, and a `reject` duplicate is refused. If you declared `queue` or `reject` on a BullMQ app and relied on it being ignored there, declare `concurrency: "allow"` on those entries to keep running in parallel. Upgrade workers before the processes that enqueue: a new job taken by an old worker runs once without the policy, and its session can wait up to `leaseMs` (10 seconds by default) before the next run starts.
+
+  A `dispatcher()` delivery into an existing session (`session: { id }`) is accepted on BullMQ and runs under the recipient's policy, where it was refused `external-dispatcher`. A waiting job gives its worker slot back and requeues itself without using an attempt. The lease backend lives on the same Redis (`createRedisLeaseBackend`, new option `leaseMs`). A worker that can't renew the place its running job holds aborts the run's signal at half the lease, and the request ends `interrupted`; a run that honours the signal has ended before another can take the session.
+
+  For custom lease backends, `isMyTurn` may answer `"missing"` (the waiter is re-admitted at the back of the line), `renew` may answer `false` (a running holder is stopped), and a backend may declare `leaseMs`. The engine exports `holdLeasePlace`, `settleUnstartedRequest` and `ConcurrencyLeaseLostError` for adapter workers (FIX-1634).
+
+- 8195995: Schedule index rows are now identified by the storage cell the schedule lives in plus its key, so a person's same-named schedules in two hired seats (or a seat and their app-wide flow) are two rows and turning one off no longer stops the other (FIX-1546). `ScheduleIndexRow` gains a required `cell`, `ScheduleIndex.remove` takes `{ cell, key }` instead of `(userId, key)`, and `CollectionHookContext` gains `cell`, the storage key the instance is persisted under. A custom `ScheduleIndex` must key its storage on `(cell, key)` and store `cell`; the conformance suite covers it. The SQLite and Postgres `schedule_index` tables are re-keyed on `(cell, key)` automatically at schema init, adopting every existing row as its person's own cell; with `skipSchemaInit: true`, apply the upgrade SQL in the schedule index reference. BullMQ scheduler ids are built from the cell and key; an app-wide schedule for an ordinary user id keeps its existing scheduler id.
+
+### Patch Changes
+
+- Updated dependencies [283fb2a]
+- Updated dependencies [9f06d39]
+- Updated dependencies [53b50f0]
+- Updated dependencies [e4fb1f1]
+- Updated dependencies [538cd1a]
+- Updated dependencies [585b75b]
+- Updated dependencies [b75c1ed]
+- Updated dependencies [25ac53a]
+- Updated dependencies [456fe85]
+- Updated dependencies [6453d2c]
+- Updated dependencies [f282bcb]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [55c62a6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [85b2965]
+- Updated dependencies [1355483]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [8a55e23]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [21ffcbb]
+- Updated dependencies [5a55080]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [2d2518b]
+- Updated dependencies [c57890d]
+- Updated dependencies [7d4c413]
+- Updated dependencies [a64132b]
+- Updated dependencies [0abbcd9]
+- Updated dependencies [d9d00a4]
+- Updated dependencies [72c5b17]
+- Updated dependencies [65ddb90]
+- Updated dependencies [47a02d0]
+- Updated dependencies [e0f10e2]
+- Updated dependencies [9083569]
+- Updated dependencies [9510a03]
+- Updated dependencies [d2f77fc]
+- Updated dependencies [d9d00a4]
+- Updated dependencies [229de7a]
+- Updated dependencies [4ca0e99]
+- Updated dependencies [385d01e]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [8b8ba8d]
+- Updated dependencies [3c2ab06]
+- Updated dependencies [64b3ed7]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [b7c523b]
+- Updated dependencies [6bf61dc]
+- Updated dependencies [a021cd1]
+- Updated dependencies [1f2dadd]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [a26e426]
+- Updated dependencies [84cc226]
+  - @flow-state-dev/engine@0.3.0
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/scheduled@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

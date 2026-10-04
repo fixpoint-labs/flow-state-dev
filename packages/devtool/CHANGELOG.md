@@ -1,5 +1,61 @@
 # @flow-state-dev/devtool
 
+## 0.3.0
+
+### Minor Changes
+
+- a3bfbc2: An Inventory tab on any session whose flow declares a readable inventory collection: the organization's registered seats (with their kind and channels), channels (with their members and registration time) and memberships, read through the production collection route with the configured bearer token, so it works with the debug endpoints off. A collection the flow does not declare reads "not installed on this flow", and a refused read names its status (FIX-1502).
+- 211679a: New core block kind: `evaluator` (FIX-1554). It asks an evaluation model typed questions (`choice`, `score`, `boolean`) and returns typed answers, with the model's confidence when it reports one. Model strings resolve through your existing providers and gateways; models that can only generate are refused before any call. `BlockKind` and the trace's `blockKind` gain `"evaluator"`: code that switches on block kind should handle it. `ai` minimum raised to the first release with evaluation. `@ai-sdk/typesafe-ai` is an optional peer. `ModelResolver` gains an optional `resolveEvaluationModel`; a custom resolver without it runs generators as before and refuses evaluator model strings. Evaluation through Vercel's AI Gateway needs `@ai-sdk/gateway` 4.0.85 or later. `@flow-state-dev/testing` adds `mockEvaluationModel`.
+
+### Patch Changes
+
+- f469423: The DevTool opens a session from its address: `?session=<id>` on the page opens that session under the flow that owns it, or says why it can't. The link takes precedence over the session last open under that flow, and a read that fails for a reason that may pass is tried again when the flow list reloads. `DevToolPanel` takes the same as an `openSessionId` prop, and `readSessionAddress()` reads it off the page (FIX-1691).
+- bb1c224: `FlowNavigator` now draws an open leaf's `leafToolbar` on that leaf's own row, showing both row slots only when the row is hovered or focused (always on touch screens), so give them icon buttons with an `aria-label`, it adds dashed tree lines you can colour with `--fsd-nav-guide` and a `leafDetail` slot for content that sits on its own lines under an open leaf's row, and untitled session rows show a shortened id with the full id on hover (FIX-1561).
+- 65ddb90: Each request's record now stores its action result (`output` as JSON, and/or `error`) with its final status, `listSessionRequests` returns it (the output with `includeResultOutput`), the DevTool task row reads it instead of reconstructing it from traces, and a run a completion hook failed after the action answered now reports that answer as `output` (including `fsdev run`'s result, where it was `null`) (FIX-1661).
+- 912ae98: A durable task board's task tools can now run as flow actions (`taskToolActions(board)`, or `boardActions: true` in a `CHANNEL.md`), and the DevTool's Tasks tab opens a task's full record and runs those actions from the row, showing a refusal as a refusal (FIX-1629).
+- Updated dependencies [91a5afd]
+- Updated dependencies [53b50f0]
+- Updated dependencies [585b75b]
+- Updated dependencies [49852d9]
+- Updated dependencies [698e06b]
+- Updated dependencies [456fe85]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [bb1c224]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [7d4c413]
+- Updated dependencies [931fdf9]
+- Updated dependencies [736e719]
+- Updated dependencies [65ddb90]
+- Updated dependencies [9510a03]
+- Updated dependencies [385d01e]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [0e7e07e]
+- Updated dependencies [b7c523b]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [a021cd1]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [b7c523b]
+- Updated dependencies [84cc226]
+  - @flow-state-dev/react@0.3.0
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/client@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes

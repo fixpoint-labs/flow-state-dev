@@ -1,5 +1,89 @@
 # @flow-state-dev/workforce
 
+## 0.4.0
+
+### Minor Changes
+
+- 8297186: A channel `post` now keeps the line as one `channel-post` component item on the channel's session (`CHANNEL_POST_COMPONENT`), so a page can render the transcript from the session's items. The post resolves only once that item is stored, and fails if the write does. New posts no longer land in `state.transcript`; `read` returns the lines already there first, then the posted ones inside the session's history window (50 requests by default). A channel kind of your own keeps and reads its lines the same way with `emitChannelPostLine` and `readChannelPostLines`. A message sent to an `agent` seat's `run` is now kept as the caller's turn in that seat's conversation (FIX-1585).
+- 80f6e25: `createSeatHireCapability` gives a seat `brokenSeats` and `rehire` tools, and takes `askBefore` to make `hire` or `fire` wait for a person's approval (`rehire` always waits) and `refuseRosterAdmin` to keep those tools off the seats it hires, so a chief of staff can change the roster with a human in the loop (FIX-1719).
+- 98fa8da: `hiredSeatOwnerPin` now refuses a missing or empty organization id with the same error `registerHiredSeat` throws, instead of returning a pin with an empty `orgId` (FIX-1572).
+- a3bfbc2: The seat, channel and membership inventory collections (`defineSeatInventoryCollection`, `defineChannelInventoryCollection`, `defineMembershipIndexCollection`) declare a browser read. A session on any flow that installs one can list its rows through the collection-state route, for that session's own organization only, with the row's named fields (`id`, `kind` for a seat; `id`, `kind`, `members`, `openedAt` for a channel; `seatId`, `channelId` for a membership) and nothing else. Every member of an organization can now list its registered seats, channels and memberships from the browser (FIX-1502).
+- 02019e2: Seats declared under `org/workers/<name>/` now load as org seats, with the folder name as their id, and `parseDeclaredSeatId` reads any declared seat's id back into its team (if any) and name (FIX-1719).
+- 7d4c413: Resource collections can be declared owner-private with `ownerPrivate: { param }`, and `ownerSegment(userId)` builds the owner key segment. Key segments beginning `~` are reserved for owner-private collections in every app, and flow registration refuses a single resource whose key has one. `defineResourceCollection` and flow registration no longer refuse collection patterns on Workforce's account, and `@flow-state-dev/core` no longer exports `assertRosterCollectionIsNotDeep`. Workforce's private roster collection is now owner-private; its refusal messages name the owner-private collection instead of the roster (FIX-1549).
+- 9427a4d: `createSeatHireBlocks` adds `brokenSeats` and `rehire` to list and repair stored seats whose kind is gone, and `fire` now removes the seat's own inventory row too (FIX-1621).
+- bb16f3a: A channel whose `CHANNEL.md` declares `routing:` with a `fallback:` member now sends each post from a person to one member, picked by `routeByPurpose(seats, { model })` passed as `defineChannelFlow({ route })`, and that member's reply is posted into the channel as its line, with the channel's last 20 lines in view (the `routed` and `recent` fields on the notify input) (FIX-1610).
+
+  A seat of the built-in `agent` kind now needs a `seatId` setting when it is minted, which `hireWorkforce` writes on every seat: one minted straight off the kind without it is refused at the mint, naming the key. On any other kind, the `post-to-channel` tool refuses a seat without one before the model is offered the tool (FIX-1610).
+
+- ecca6d0: A worker on the built-in `agent` kind with no `tools:` line can now call the tools of the capability presets its file picks under `capabilities:`, where before it got only their context. Write `tools: []` to keep the old reach; a worker that writes a `tools:` line is unchanged. For a worker with no line, the hired seat's `config.tools` is now absent rather than `[]`, and the worker is refused at startup if two presets it picks list different tools under one name (FIX-1459).
+- b092e17: Every hired seat now carries its own id as the `seatId` setting (for a runtime-hired seat, its roster id, the one a channel's `members:` lists), a `WORKER.md` that sets `seatId:` is refused by name, and a worker kind whose settings schema is hand-written rather than built from `workerConfigSchema()` must admit `seatId` or it refuses at boot naming the key (FIX-1589).
+- e9f9316: A worker can now hold packages, folders of a `PACKAGE.md` and a `blocks/` folder found in its own `packages/` folder or taken by name from its team's or the org's through `packages:`: the built-in `agent` kind adds their instructions to its prompt and, when the worker writes no `tools:` line, their blocks to its tools, with `readWorkforce` returning them on each record, `hireWorkforce` taking the generated `packageBlocks`, and a custom kind receiving them under `seatPackages` (FIX-1459).
+- 00a9347: Projects get talk templates: declare a room's seats and charter once, with `defineProjectsCollection({ talk })` or a `CHANNEL.md` marked `mintFor: projects`, and every project's room wakes those seats on each post and keeps their answers (FIX-1718).
+- 1bde68a: Projects: an organization's `projects` collection (`defineProjectsCollection`), and `defineProjectBlocks` for writing rows. `createProject` creates a row owned by the calling session's owner, with its members and the workstreams (declared channels, from any team) it groups; a workstream belongs to at most one project, claimed with `create` before the row is written. `setWorkstreams` replaces the list, members only. Each project has one room, stored as `room-lines` rows, that its members reach through their own talk session on the channel kind: the channel kind gains `join` (and an internal `bind`), and `post`, `read { after }` and `answer` on a session bound to a project read and write the room, members only (`not-a-member` otherwise). On every other session they behave as before. Refusals are `ProjectRefusedError` (FIX-1718).
+- a1b122e: A channel can no longer declare a board named `lock`, in any case. It would mint an id ending in `.lock`, which no git branch can carry, so a coding run could never work that board. A tree that declares one now fails to load with the board-name rule's wording (FIX-1667).
+- c364ebb: Each seat's inventory row now names its **door** (FIX-1690), the action that takes a person's message: the one public action its kind declares with `userMessage` and a `{ message }` input. A kind with none publishes `door: null`. A kind with two also publishes `null`, and the hire warns, naming both. `openInventory` reads the door from the seats you pass it, and `InventorySeat` now requires `actions`: pass `hireWorkforce`'s seats as they are, or `actions: {}` for a seat you build by hand that takes no message. Also exports `seatDoorOf(seat)`.
+
+  Rows written before this read `door: null` until the next boot rewrites them.
+
+### Patch Changes
+
+- 7c533fc: The built-in `agent` kind now declares an internal `onChannelPost` entry, so a channel's notify block can dispatch a post to an agent seat and have it answer with the post as its turn (FIX-1590).
+- 5ab09d4: A seat on the built-in `agent` kind now hands its model the earlier turns of its own conversation, up to the session's history window (the last 50 turns by default) and never another conversation's, so a follow-up keeps its subject (FIX-1612).
+- 4a367f6: A boot now publishes the inventory row of the hire the roster holds over a row left by an interrupted fire, so a replacement hire that stopped before publishing is listed again after the next restart (FIX-1621).
+- b69ec61: A channel `post` that claims an `author`, including one another flow dispatches, still wakes hearing members. Only a seat's own post, through the `seatPost` action, withholds those wakes (FIX-1715).
+- 50b5273: The workforce discovery door now leaves out a stored roster row it cannot address, such as one an app's own hire action wrote under the development organization or one whose seat id starts with `~`, instead of dropping the organization's whole seat listing, and `reloadHiredSeats` now files a row stamped for another organization under the organization it was read from in `byOrg` as well as in the flat `problems` (FIX-1541).
+- 01b29f0: A hired seat stays with the organization and user that hired it, so another organization or roster peer cannot list, open, or run that seat (FIX-1529).
+- 718e84c: Adds `mergeSeatFlows(flows, seats)`, which refuses a hired seat whose id is already a flow's instead of replacing that flow, and exports `newIncarnation()` and `tagIncarnation()` so a host that writes roster rows itself can stamp its hires (FIX-1719).
+- f704d4a: FIX-1594: `channelPostCapability` adds a `post-to-channel` tool a seat names in `tools:` to post into a channel it belongs to, under its own `seatId`.
+- 536b1f0: `reloadHiredSeats` no longer rejects when a stored roster row cannot be addressed, such as a runtime hire made under the development organization or a seat id starting with `~`. That row is skipped and named in `problems`, and every other organization's seats still reload (FIX-1536).
+- 3311cc2: `HIRED_ROSTER_BROWSER_PATTERN` and `HIRED_ROSTER_PRIVATE_PATTERN` are now exported from `@flow-state-dev/workforce` instead of `@flow-state-dev/core/types`, and `@flow-state-dev/core` no longer exports `HIRED_ROSTER_PRIVATE_BRAND`, `markHiredRosterPrivateCollection` or `isHiredRosterPrivateCollection` (FIX-1549).
+- 24a0829: `reloadHiredSeats` also returns `byOrg`, one `{ orgId, seats, problems }` per organization passed in, so each organization's skipped seats can be reported to that organization alone (FIX-1477).
+- 02120a2: Added `createSeatHireBlocks(options)`, returning the seat-hire sequence's `hire` and `fire` handlers with no model in front of them — the same two handlers `createSeatHireCapability` mounts as catalog tools, for a caller that wants to dispatch `hire` (or `fire`) directly from an action (FIX-1500).
+- b823e03: `createSeatHireCapability` adds catalog `hire` and `fire` on the existing mint, and `createWorkforceCapability({ hiredRoster })` lets Discover list those runtime hires (FIX-1525, FIX-1526). Hire refuses to register a seat without an owner pin `{ orgId, userId? }` from the hire row's roster owner (FIX-1529 / F2-PLAN).
+- 4f03fae: A seat hired through `createSeatHireCapability` now records the organization that hired it, so a copy of its roster row read under another organization is refused on reload instead of becoming that organization's seat. Rows written before this change still reload in the organization they are stored under (FIX-1542).
+- 2e8f640: A handed-off task now names the run working it: its row carries `run: { sessionId, requestId, attempt }`, written by the run before its worker starts and published as a `run_linked` task change, and a channel board's `readBoard` and browser read both return it. `TaskCollectionRef` gains a required `linkRun` verb, so a hand-written collection must implement it (FIX-1668).
+- 912ae98: A durable task board's task tools can now run as flow actions (`taskToolActions(board)`, or `boardActions: true` in a `CHANNEL.md`), and the DevTool's Tasks tab opens a task's full record and runs those actions from the row, showing a refusal as a refusal (FIX-1629).
+- b36a8a5: A hand-built worker manifest with `tools: undefined` is now treated as having no `tools:` line everywhere (FIX-1459). Before, every turn already granted it its picked presets' tools, but the startup check read it as a written line and skipped the clash refusal, so a preset tool-name clash surfaced mid-turn instead of at hire.
+- ea0d0bf: Add `wakeMemberSeats(seats, { fallback? })`, a channel notify block that wakes each member whose hired seat declares `onChannelPost`, once per post (FIX-1602).
+- 1f2650b: Add a `@flow-state-dev/workforce/browser` subpath that exports the roster keys, `splitSeatAddress` and the channel post names without reaching any Node built-in, so client components can import them where the server-only package root would fail to compile (FIX-1605).
+- Updated dependencies [53b50f0]
+- Updated dependencies [456fe85]
+- Updated dependencies [9d02ac6]
+- Updated dependencies [8dc242e]
+- Updated dependencies [7d4158f]
+- Updated dependencies [211679a]
+- Updated dependencies [2969b30]
+- Updated dependencies [a74429a]
+- Updated dependencies [9e3b823]
+- Updated dependencies [df3de3b]
+- Updated dependencies [0b37a7f]
+- Updated dependencies [01b29f0]
+- Updated dependencies [712dc22]
+- Updated dependencies [afb512f]
+- Updated dependencies [a7f1c41]
+- Updated dependencies [80f6e25]
+- Updated dependencies [7d4c413]
+- Updated dependencies [69a9e29]
+- Updated dependencies [9510a03]
+- Updated dependencies [385d01e]
+- Updated dependencies [3311cc2]
+- Updated dependencies [7c9e932]
+- Updated dependencies [0503c38]
+- Updated dependencies [8195995]
+- Updated dependencies [9ed6b29]
+- Updated dependencies [a021cd1]
+- Updated dependencies [d994f51]
+- Updated dependencies [afb512f]
+- Updated dependencies [edb3d46]
+- Updated dependencies [2e8f640]
+- Updated dependencies [912ae98]
+- Updated dependencies [407964a]
+- Updated dependencies [5708f16]
+- Updated dependencies [50edfd4]
+- Updated dependencies [84cc226]
+  - @flow-state-dev/core@0.3.0
+  - @flow-state-dev/orchestration@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
