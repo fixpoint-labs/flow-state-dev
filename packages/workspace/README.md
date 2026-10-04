@@ -241,7 +241,7 @@ A checkout that already exists is handed back exactly as it was left. The host d
 
 Several hosts, in one process or several, can share a `root`. Provisioning a place, and working on a clone, take a lock file under the root, so a second host waits for the first instead of racing it. A lock left by a process that died is taken over after a minute.
 
-Kept files go in `project/` next to the checkout, never inside it, so `git status` never sees them. With no repository they go in `workspace/`, which is also the run's working directory. Either way they're hydrated from one key prefix of the collection and flushed back by `save`, with the same conflict reporting as any projection. The first run in an empty prefix starts from an empty directory. A retry in the same process gets the same live directory back, unsaved edits included. A directory the process didn't fill itself, after a restart or because it was deleted, is rebuilt from the collection. The collection is the record, so anything a run never saved is gone.
+Kept files go in `project/` next to the checkout, never inside it, so `git status` never sees them. With no repository they go in `workspace/`, which is also the run's working directory. Either way they're hydrated from one key prefix of the collection and flushed back by `save`, with the same conflict reporting as any projection. The first run in an empty prefix starts from an empty directory. A retry in the same process gets the same live directory back, unsaved edits included. From then on the kept files are the retry's: `save` refuses the earlier place handle, and `release` on it does nothing. A directory the process didn't fill itself, after a restart or because it was deleted, is rebuilt from the collection. The collection is the record, so anything a run never saved is gone.
 
 ### A repository on this machine
 
@@ -262,7 +262,7 @@ The run's branch is cut from `baseRef` (or `HEAD`) and stays in that repository.
 
 A caller that writes its own files inside the checkout can name that directory in the place request: `ignored: { dir, rule, why }`. Before the checkout is handed over, the host checks that the repository ignores `dir` and doesn't already track files under it. If either check fails, it refuses with a message that names `rule` as the line to add to `.gitignore`, and removes a checkout it had only just made. In a run with no repository, `save` leaves `dir` inside `workspace/` out of the kept files.
 
-One provision, every git command in it included, is held to `provisionTimeoutMs` (ten minutes by default). `host.locate(answer, { place })` says where `provision` would put a place, without making anything, for a caller that has to name the working directory first.
+One provision, every git command and every wait for another provision of the same place or clone included, is held to `provisionTimeoutMs` (ten minutes by default). `host.locate(answer, { place })` says where `provision` would put a place, without making anything, for a caller that has to name the working directory first.
 
 `checkpoint` and `restore` exist on the host and do nothing yet. They mark where keeping uncommitted repository work across a lost machine will plug in.
 

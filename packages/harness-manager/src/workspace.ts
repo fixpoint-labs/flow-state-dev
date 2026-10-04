@@ -540,11 +540,14 @@ export const ASK_MARKER_IGNORED: IgnoredDirectory = {
  * The run source is constant.
  */
 export function hostForConfig(config: WorkspaceConfig, now: () => number = Date.now): WorkspaceHost {
+  // Absolute, because the host takes only an absolute path as a repository on
+  // this machine; a relative `sourceRepo` would otherwise be judged a remote.
+  const sourceRepo = resolve(config.sourceRepo);
   return localWorkspaceHost({
     root: config.root,
     remotes: { allow: [] },
-    localRepositories: [config.sourceRepo],
-    source: () => ({ kind: "repo", repo: config.sourceRepo, baseRef: config.baseRef }),
+    localRepositories: [sourceRepo],
+    source: () => ({ kind: "repo", repo: sourceRepo, baseRef: config.baseRef }),
     ...(config.provisionTimeoutMs !== undefined ? { provisionTimeoutMs: config.provisionTimeoutMs } : {}),
     now,
   });
@@ -568,7 +571,7 @@ export async function provisionCheckout(
 ): Promise<Checkout> {
   const branch = branchFor(location);
   const place = await hostForConfig(config, now).provision(
-    { kind: "repo", repo: config.sourceRepo, baseRef: config.baseRef },
+    { kind: "repo", repo: resolve(config.sourceRepo), baseRef: config.baseRef },
     { place: placeFor(location), branch, ignored: ASK_MARKER_IGNORED },
   );
   return { path: place.cwd, branch, created: place.repo?.created ?? false };

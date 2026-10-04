@@ -50,12 +50,12 @@ import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { GIT_TIMEOUT_MS, run } from "./exec";
 import { createHostPlace } from "./host-place";
-import { acquireLock, releaseLock } from "./lock";
+import { acquireLock, HOST_LOCK_BOUNDS, releaseLock } from "./lock";
 import { assertScope, createProjection, type Projection } from "./projection";
 import { allowedProtocols, checkRemote, redactRemote, type AllowedRemote } from "./remotes";
 import type { RunFiles, RunSource, RunSourceAnswer } from "./run-source";
 import type { FlushReport, Place } from "./types";
-import { gitAnsweredNo, provisionWorktree, type IgnoredDirectory } from "./worktree";
+import { gitAnsweredNo, provisionWorktree, remainingBudget, type IgnoredDirectory } from "./worktree";
 
 /** The directory names inside a place. People and agents read them. */
 const CHECKOUT_DIR = "checkout";
@@ -164,6 +164,12 @@ export interface WorkspacePlace {
   cwd: string;
   /** The directory synced with the kept files, when the run has any. */
   filesDir?: string;
+  /**
+   * Which provision of the place this is, when it has kept files. A place
+   * provisioned again hands its kept files to the newer provision, so `save`
+   * refuses an older one and `release` leaves the newer one's link alone.
+   */
+  holder?: string;
   /** What the checkout is, for a repository run. Record `remote` and `baseRef` on the run. */
   repo?: {
     /** The remote as the source gave it. */
@@ -207,7 +213,8 @@ export interface WorkspaceHost {
   /**
    * Flush the place's kept files back to their collection. A conflict is an
    * outcome in the report, never an overwrite. A place with no kept files
-   * reports nothing.
+   * reports nothing. Refuses a place provisioned again since: its kept files
+   * are the newer provision's to save.
    */
   save(place: WorkspacePlace): Promise<FlushReport>;
   /** Hold uncommitted repository work durably. Declared for a later slice; does nothing yet. */
@@ -216,7 +223,8 @@ export interface WorkspaceHost {
   restore(place: WorkspacePlace): Promise<void>;
   /**
    * Let the place go. The directory is kept; the live link to its kept files
-   * is dropped, so a later provision rebuilds them from the collection.
+   * is dropped, so a later provision rebuilds them from the collection. Does
+   * nothing for a place provisioned again since.
    */
   release(place: WorkspacePlace): Promise<void>;
 }
@@ -239,6 +247,8 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
 
   /** Live kept-files projections, by the directory they fill. */
   const live = new Map<string, Promise<Projection>>();
+  /** The latest provision of each live directory: the one `save` and `release` answer to. */
+  const holders = new Map<string, string>();
   /** The tail of each place's and each clone's queue, in this process. */
   const queues = new Map<string, Promise<unknown>>();
 
@@ -267,16 +277,46 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   /**
    * Run `operation` holding the lock at `lockPath`: queued behind this
    * process's earlier callers, then behind any other host's on disk.
+   *
+   * **The wait draws from the provision's one deadline.** A caller holding a
+   * lease across provisioning sizes it from `provisionTimeoutMs`, so time
+   * spent queued for a place or a clone counts against that budget rather
+   * than starting a fresh one once the lock is taken. A wait that outlasts
+   * the deadline fails, and an operation whose turn comes after it never
+   * starts.
    */
-  function locked<T>(lockPath: string, operation: () => Promise<T>): Promise<T> {
-    return serially(lockPath, async () => {
-      const lease = await acquireLock(lockPath);
+  function locked<T>(lockPath: string, deadline: number, operation: () => Promise<T>): Promise<T> {
+    let started = false;
+    const turn = serially(lockPath, async () => {
+      started = true;
+      const waitMs = Math.min(HOST_LOCK_BOUNDS.waitMs, remainingBudget(deadline, now));
+      const lease = await acquireLock(lockPath, { ...HOST_LOCK_BOUNDS, waitMs }, { now });
       try {
         return await operation();
       } finally {
         releaseLock(lease);
       }
     });
+    // The in-process queue has no clock of its own, so a turn still queued
+    // at the deadline is abandoned here; when it does come, `remainingBudget`
+    // stops it before it takes the lock. The wait on disk is bounded by
+    // `waitMs` above.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => {
+          if (started) return;
+          try {
+            remainingBudget(deadline, now);
+          } catch (error) {
+            reject(error);
+          }
+        },
+        Math.max(0, deadline - now()),
+      );
+      timer.unref?.();
+    });
+    return Promise.race([turn, expired]).finally(() => clearTimeout(timer));
   }
 
   /** The place's directory, refusing any name that could leave the root or shadow the clones. */
@@ -403,12 +443,13 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     dir: string,
     branch: string,
     ignored: IgnoredDirectory | undefined,
+    deadline: number,
   ): Promise<NonNullable<WorkspacePlace["repo"]>> {
     const clone = join(root, CLONES_DIR, `${remote.cloneKey}.git`);
     const shown = redactRemote(remote.url);
     let made: { fresh: boolean; defaultBranch?: string } = { fresh: false };
 
-    return await locked(join(root, CLONES_DIR, `${remote.cloneKey}${LOCK_SUFFIX}`), async () => {
+    return await locked(join(root, CLONES_DIR, `${remote.cloneKey}${LOCK_SUFFIX}`), deadline, async () => {
       const worktree = await provisionWorktree({
         repo: clone,
         repoLabel: `the clone of "${shown}"`,
@@ -417,7 +458,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         root,
         branch,
         env,
-        deadline: now() + provisionTimeoutMs,
+        deadline,
         now,
         ...(ignored !== undefined ? { ignored } : {}),
         prepare: async (left) => {
@@ -463,9 +504,10 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     dir: string,
     branch: string,
     ignored: IgnoredDirectory | undefined,
+    deadline: number,
   ): Promise<NonNullable<WorkspacePlace["repo"]>> {
     mkdirSync(root, { recursive: true });
-    return await locked(`${dir}${LOCAL_LOCK_SUFFIX}`, async () => {
+    return await locked(`${dir}${LOCAL_LOCK_SUFFIX}`, deadline, async () => {
       const base = baseRef ?? "HEAD";
       const worktree = await provisionWorktree({
         repo,
@@ -474,7 +516,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
         marker: `${dir}${LOCAL_MARKER_SUFFIX}`,
         root,
         branch,
-        deadline: now() + provisionTimeoutMs,
+        deadline,
         now,
         ...(ignored !== undefined ? { ignored } : {}),
         base: async () => ({ ref: base, commitish: base }),
@@ -506,14 +548,16 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
   async function provision(answer: RunSourceAnswer, request: PlaceRequest): Promise<WorkspacePlace> {
     if (answer.kind === "refused") throw new WorkspaceRefusedError(answer.reason, answer.message);
     const dir = placeDir(request.place);
+    // One budget for the whole provision, lock waits included.
+    const deadline = now() + provisionTimeoutMs;
 
     if (answer.kind === "files") {
       assertScope(answer.projectId);
       const filesDir = join(dir, WORKSPACE_DIR);
-      await locked(join(dir, LOCK_SUFFIX), () =>
+      await locked(join(dir, LOCK_SUFFIX), deadline, () =>
         provisionFiles(dir, WORKSPACE_DIR, answer.projectId, answer.files, request.ignored),
       );
-      return { kind: "files", dir, cwd: filesDir, filesDir };
+      return { kind: "files", dir, cwd: filesDir, filesDir, holder: hold(filesDir) };
     }
 
     // The key prefix is checked before anything is made, so a bad one never
@@ -539,7 +583,7 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
             `files beside it. Name a remote to keep files in project/, or none.`,
         );
       }
-      const repo = await provisionLocalCheckout(local, answer.baseRef, dir, branch, request.ignored);
+      const repo = await provisionLocalCheckout(local, answer.baseRef, dir, branch, request.ignored, deadline);
       return { kind: "repo", dir, cwd: dir, repo };
     }
 
@@ -547,15 +591,23 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     const remote = checkRemote(answer.repo, allow);
     if ("reason" in remote) throw new WorkspaceRefusedError(remote.reason, remote.message);
 
-    return await locked(join(dir, LOCK_SUFFIX), async () => {
-      const repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored);
+    return await locked(join(dir, LOCK_SUFFIX), deadline, async () => {
+      const repo = await provisionClonedCheckout(remote, answer.baseRef, dir, branch, request.ignored, deadline);
       const place: WorkspacePlace = { kind: "repo", dir, cwd: join(dir, CHECKOUT_DIR), repo };
       if (answer.projectId !== undefined && answer.files !== undefined) {
         await provisionFiles(dir, PROJECT_DIR, answer.projectId, answer.files);
         place.filesDir = join(dir, PROJECT_DIR);
+        place.holder = hold(place.filesDir);
       }
       return place;
     });
+  }
+
+  /** Make this provision the one a directory's kept files answer to. */
+  function hold(filesDir: string): string {
+    const holder = randomUUID();
+    holders.set(filesDir, holder);
+    return holder;
   }
 
   async function save(place: WorkspacePlace): Promise<FlushReport> {
@@ -565,6 +617,12 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
       throw new Error(
         `the place at ${place.dir} has no live kept files in this process — it was released, ` +
           `or provisioned elsewhere. Provision it again before saving.`,
+      );
+    }
+    if (holders.get(place.filesDir) !== place.holder) {
+      throw new Error(
+        `the place at ${place.dir} was provisioned again since this handle was made, so its ` +
+          `kept files are the newer provision's to save. Not saving them from here.`,
       );
     }
     return await (await projection).flush();
@@ -580,7 +638,9 @@ export function localWorkspaceHost(options: LocalWorkspaceHostOptions): Workspac
     async checkpoint() {},
     async restore() {},
     async release(place) {
-      if (place.filesDir !== undefined) live.delete(place.filesDir);
+      if (place.filesDir === undefined || holders.get(place.filesDir) !== place.holder) return;
+      live.delete(place.filesDir);
+      holders.delete(place.filesDir);
     },
   };
 }

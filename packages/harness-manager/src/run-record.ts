@@ -128,6 +128,14 @@ export const runRecordStateSchema = z.object({
   /** The branch {@link remote}'s run branch was cut from, recorded with it. */
   baseRef: z.string().nullable().default(null),
   /**
+   * The run was first provisioned with no repository: its kept files alone.
+   * Kept across attempts for the reason {@link remote} is, so a project that
+   * gains a repository later never moves a files run onto a checkout and away
+   * from the files it saved. `null` on a row written before this field
+   * existed, or before the run was first provisioned (BP-030).
+   */
+  filesOnly: z.boolean().nullable().default(null),
+  /**
    * What the last save of the run's kept files did, when the run has any.
    *
    * A conflict is an outcome, not a failure: the files named here were changed

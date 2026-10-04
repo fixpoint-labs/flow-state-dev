@@ -15,7 +15,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { defineFlow, dispatcher, handler } from "@flow-state-dev/core";
@@ -50,8 +50,9 @@ afterAll(() => {
  * - `write-throw` — writes `notes.md`, then the harness itself throws.
  * - `switch-throw` — moves the run source to another repository, then throws.
  * - `read` — reads `which.txt` from its checkout, then finishes.
+ * - `where` — records the name of the directory it was handed, then finishes.
  */
-type Step = "write" | "write-ask" | "write-throw" | "switch-throw" | "read";
+type Step = "write" | "write-ask" | "write-throw" | "switch-throw" | "read" | "where";
 
 function stubHarness(script: Step[], seen: string[], switchSource: () => void) {
   return (feeds: HarnessFeeds): HarnessBlock =>
@@ -62,7 +63,13 @@ function stubHarness(script: Step[], seen: string[], switchSource: () => void) {
       execute: async (input, ctx) => {
         const cwd = feeds.cwd(ctx as never);
         const step = script[seen.length] ?? "write";
-        seen.push(step === "read" ? readFileSync(join(cwd, "which.txt"), "utf8").trim() : step);
+        seen.push(
+          step === "read"
+            ? readFileSync(join(cwd, "which.txt"), "utf8").trim()
+            : step === "where"
+              ? basename(cwd)
+              : step,
+        );
         if (step.startsWith("write")) writeFileSync(join(cwd, "notes.md"), "what the run wrote");
         if (step === "write-ask") {
           const marker = /write it as the entire contents of this file:\n {2}(\S+)/.exec(input.prompt)?.[1];
@@ -100,20 +107,32 @@ function repository(dir: string, which: string): string {
 
 function lab(options: {
   script: Step[];
-  source: "files" | "repo" | "refused" | "remote-not-allowed";
+  source: "files" | "repo" | "files-then-repo" | "refused" | "remote-not-allowed";
   maxAttempts?: number;
 }) {
   const dir = mkdtempSync(join(tmpdir(), "harness-manager-host-"));
   dirs.push(dir);
   const collection: FakeCollection = createFakeCollection("project-files/**");
-  const remoteA = options.source === "repo" ? repository(dir, "A") : "";
+  const remoteA = options.source !== "files" && options.source.includes("repo") ? repository(dir, "A") : "";
   const remoteB = options.source === "repo" ? repository(dir, "B") : "";
   let remote = remoteA;
+  // `files-then-repo`: the project gains a repository when the source switches.
+  let gainedRepository = false;
   let asked = 0;
   const answer = (): RunSourceAnswer => {
     switch (options.source) {
       case "files":
         return { kind: "files", projectId: "sandbox", files: { collection, collectionId: "project-files" } };
+      case "files-then-repo":
+        return gainedRepository
+          ? {
+              kind: "repo",
+              repo: remoteA,
+              baseRef: "main",
+              projectId: "sandbox",
+              files: { collection, collectionId: "project-files" },
+            }
+          : { kind: "files", projectId: "sandbox", files: { collection, collectionId: "project-files" } };
       case "refused":
         return { kind: "refused", reason: "not-a-member", message: "alice is not on this project" };
       case "remote-not-allowed":
@@ -157,6 +176,7 @@ function lab(options: {
     ownership: { pollMs: 25 },
     harness: stubHarness(options.script, seen, () => {
       remote = remoteB;
+      gainedRepository = true;
     }),
   });
   const board = taskBoard({
@@ -265,6 +285,23 @@ describe("a run's kept files are saved wherever the run stops", () => {
     expect(Object.keys(run.collection.contents())).toEqual(["sandbox/notes.md"]);
   }, 60_000);
 
+  it("and a run is not completed on files it could not save, so the retry saves them", async () => {
+    // Completing is a run's last save point. Settling the row while the save
+    // failed would leave the work only in this machine's workspace.
+    const run = lab({ script: ["write", "write"], source: "files", maxAttempts: 2 });
+    await run.act("seed");
+    run.collection.breakWrites();
+    await run.act("drain");
+    await run.settled("pending");
+    expect((await run.record()).lastSave?.error).toMatch(/unavailable/);
+    expect(run.collection.contents()).toEqual({});
+
+    run.collection.mendWrites();
+    await run.act("drain");
+    await run.settled("completed");
+    expect(run.collection.contents()["sandbox/notes.md"]).toBe("what the run wrote");
+  }, 60_000);
+
   it("when the harness itself fails, so a crash loses nothing the run wrote", async () => {
     const run = lab({ script: ["write-throw"], source: "files" });
     await run.act("seed");
@@ -290,6 +327,23 @@ describe("the repository a run started on (BR-19)", () => {
 
     expect(run.seen).toEqual(["switch-throw", "A"]);
     expect(await run.record()).toMatchObject({ remote: run.remoteA, baseRef: "main" });
+  }, 60_000);
+});
+
+describe("a run with no repository stays one", () => {
+  it("when its project gains a repository before a retry", async () => {
+    // Attempt 1 works in workspace/ on the project's files, then the project
+    // gains a repository. Moving the retry to a checkout would leave what
+    // attempt 1 wrote behind in a directory nothing reads again.
+    const run = lab({ script: ["switch-throw", "where"], source: "files-then-repo", maxAttempts: 2 });
+    await run.act("seed");
+    await run.act("drain");
+    await run.settled("pending");
+    await run.act("drain");
+    await run.settled("completed");
+
+    expect(run.seen).toEqual(["switch-throw", "workspace"]);
+    expect(await run.record()).toMatchObject({ filesOnly: true, remote: null });
   }, 60_000);
 });
 

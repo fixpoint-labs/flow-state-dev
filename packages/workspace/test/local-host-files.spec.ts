@@ -136,6 +136,42 @@ describe("a run with no repository works in workspace/", () => {
     expect(collection.contents()).toEqual({ "sandbox/draft.md": "not saved yet" });
   });
 
+  it("leaves a place provisioned again to its newer holder: the older one neither saves nor releases it", async () => {
+    // A superseded attempt still holds its handle when its replacement
+    // provisions the same place. Its save would flush the replacement's
+    // half-written files, and its release would cut the replacement's link,
+    // so the replacement's own save would fail.
+    const h = host();
+    const older = await h.provision(files("sandbox"), { place: ["run-1"] });
+    const newer = await h.provision(files("sandbox"), { place: ["run-1"] });
+    writeFileSync(join(newer.cwd, "half.md"), "half written");
+
+    await expect(h.save(older)).rejects.toThrow(/provisioned again/);
+    await h.release(older);
+    expect(collection.contents()).toEqual({});
+
+    await h.save(newer);
+    expect(collection.contents()).toEqual({ "sandbox/half.md": "half written" });
+  });
+
+  it("counts a wait for a held place against the provision's budget", async () => {
+    // A caller sizes its lease from provisionTimeoutMs, so a provision queued
+    // behind another holder fails inside that budget instead of starting a
+    // fresh one once the lock is free.
+    const h = localWorkspaceHost({
+      root,
+      remotes: { allow: [] },
+      source: () => ({ kind: "refused", reason: "unused", message: "unused" }),
+      provisionTimeoutMs: 300,
+    });
+    mkdirSync(join(root, "run-1"), { recursive: true });
+    writeFileSync(join(root, "run-1", ".lock"), JSON.stringify({ owner: "another host", token: "t" }));
+
+    const started = Date.now();
+    await expect(h.provision(files("sandbox"), { place: ["run-1"] })).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
   it("reports two runs editing one file as a conflict, never an overwrite", async () => {
     collection.setExternal("sandbox/shared.md", "v1");
     const h = host();

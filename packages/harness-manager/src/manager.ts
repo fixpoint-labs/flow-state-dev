@@ -510,6 +510,8 @@ const managerStateSchema = z.object({
    */
   remote: z.string().nullable().default(null),
   baseRef: z.string().nullable().default(null),
+  /** The run was first provisioned as kept files alone, read off its run record with them. */
+  filesOnly: z.boolean().nullable().default(null),
   /**
    * The place this attempt was provisioned into, as the workspace host
    * described it — what a save hands back to the host. `null` until
@@ -1051,7 +1053,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
 
   const { ownership } = resolveOwnership({
     runTimeoutMs,
-    provisionTimeoutMs: isWorkspaceHost(workspace) ? workspace.provisionTimeoutMs : workspace.provisionTimeoutMs,
+    provisionTimeoutMs: host.provisionTimeoutMs,
     ...(options.ownership !== undefined ? { ownership: options.ownership } : {}),
   });
 
@@ -1185,16 +1187,16 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
   /**
    * Save the run's kept files, and let them go once saved.
    *
-   * Never throws: a save that fails is recorded on the run record's
-   * `lastSave` and leaves the files live, so the next save point tries again
-   * with nothing lost. Conflicted and contested paths were left as they were
-   * by the flush and are named on the record. A place with no kept files
-   * (a fixed repository) writes nothing.
+   * A save that fails is recorded on the run record's `lastSave` and leaves
+   * the files live, so the next save point tries again with nothing lost; it
+   * answers `false` rather than throwing. Conflicted and contested paths were
+   * left as they were by the flush and are named on the record. A place with
+   * no kept files (a fixed repository) writes nothing and answers `true`.
    */
-  const saveKeptFiles = async (ctx: BlockContext): Promise<void> => {
+  const saveKeptFiles = async (ctx: BlockContext): Promise<boolean> => {
     const state = harnessCtxState(ctx);
     const place = state?.place;
-    if (place == null || place.filesDir === undefined) return;
+    if (place == null || place.filesDir === undefined) return true;
     let error: string | null = null;
     let leftAlone: string[] = [];
     try {
@@ -1211,10 +1213,10 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
         "the run's kept files were saved",
       );
     }
-    if (error === null) {
-      await host.release(place);
-      await ctx.sequencer!.patchState({ place: null });
-    }
+    if (error !== null) return false;
+    await host.release(place);
+    await ctx.sequencer!.patchState({ place: null });
+    return true;
   };
 
   /**
@@ -1351,7 +1353,11 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // keeps the repository its record names (see `pinnedAnswer`). With a
       // fixed `sourceRepo` this is the path `checkoutPathFor` derives.
       const recorded = await readRunRow(ctx, topic);
-      const pinned = { remote: recorded?.remote ?? null, baseRef: recorded?.baseRef ?? null };
+      const pinned = {
+        remote: recorded?.remote ?? null,
+        baseRef: recorded?.baseRef ?? null,
+        filesOnly: recorded?.filesOnly ?? null,
+      };
       await ctx.sequencer!.patchState({ ...pinned, place: null });
       const answer = pinnedAnswer(await host.source(ctx), pinned);
       if (answer.kind === "refused") throw new HarnessRunRefused(refusedMessage("source", answer));
@@ -1559,12 +1565,17 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
 
       // **The repository and base the run started on, kept on its record**
       // the first time it is provisioned, so a later change to its source
-      // applies to new rows and never moves this one.
-      if (state.remote == null && place.repo !== undefined) {
-        const pin = { remote: place.repo.remote, baseRef: place.repo.baseRef ?? null };
+      // applies to new rows and never moves this one. A run with no
+      // repository is kept as one, so a repository added later does not
+      // move it off the files it saved.
+      if (state.remote == null && state.filesOnly !== true) {
+        const pin =
+          place.repo !== undefined
+            ? { remote: place.repo.remote, baseRef: place.repo.baseRef ?? null }
+            : { filesOnly: true };
         await fenced(
           writeRunRow(ctx, identityFrom(harnessCtxState(ctx), boardCollectionId), pin),
-          "the run's repository was recorded",
+          "the run's source was recorded",
         );
         await ctx.sequencer!.patchState(pin);
       }
@@ -1723,7 +1734,7 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
       // **The run's kept files, saved at the end of its turn** — before any
       // arm, so a run that parks on a question, completes, or fails its check
       // has saved what it wrote either way.
-      await saveKeptFiles(ctx);
+      const saved = await saveKeptFiles(ctx);
 
       // **The ask, before any arm.** Reading THIS attempt's marker path — never
       // a fixed one: the checkout survives a retry, so last attempt's question
@@ -1812,6 +1823,16 @@ export function harnessManager(options: ManagerOptions): HarnessManager {
           `the ${state.phase} phase's completion check`,
         );
         if (done) {
+          // **Not completed on files it could not save.** Completing is the
+          // last save point a run has, so a failed save here would settle the
+          // row with the run's work only on this machine. Failing the attempt
+          // makes the retry the next save point (`lastSave` names why).
+          if (!saved) {
+            throw new HarnessAttemptFailed(
+              `the ${state.phase} phase is done, but the run's kept files could not be saved, ` +
+                `so it is not completed on work that exists only in its workspace`,
+            );
+          }
           // No question to withdraw: arm 1 returned on every attempt that asked
           // one, so reaching here with a succeeded verdict means the marker was
           // empty.
@@ -2034,21 +2055,35 @@ function isWorkspaceHost(workspace: WorkspaceConfig | WorkspaceHost): workspace 
 
 /**
  * What a run provisions from: its source's answer, except that a run already
- * provisioned keeps the repository and base its record names (BR-19). The
+ * provisioned keeps the repository and base its record names (BR-19), and a
+ * run first provisioned with no repository stays on its kept files alone. The
  * answer's kept files still come from the source, which is the only thing
  * that can hand back a collection bound to this context.
  */
 function pinnedAnswer(
   answer: RunSourceAnswer,
-  pinned: { remote: string | null; baseRef: string | null },
+  pinned: { remote: string | null; baseRef: string | null; filesOnly: boolean | null },
 ): RunSourceAnswer {
-  if (answer.kind === "refused" || pinned.remote === null) return answer;
+  if (answer.kind === "refused") return answer;
   const files =
     answer.kind === "files"
       ? { projectId: answer.projectId, files: answer.files }
       : answer.projectId !== undefined && answer.files !== undefined
         ? { projectId: answer.projectId, files: answer.files }
         : {};
+  if (pinned.filesOnly === true) {
+    if (files.projectId !== undefined && files.files !== undefined) {
+      return { kind: "files", projectId: files.projectId, files: files.files };
+    }
+    return {
+      kind: "refused",
+      reason: "files-run-without-files",
+      message:
+        "this run started on its project's kept files alone, and its source no longer names " +
+        "them, so there is nothing to put it back on.",
+    };
+  }
+  if (pinned.remote === null) return answer;
   return {
     kind: "repo",
     repo: pinned.remote,

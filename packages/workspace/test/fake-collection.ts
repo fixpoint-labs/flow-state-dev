@@ -25,6 +25,8 @@ export interface FakeCollection extends ResourceCollectionRef<ProjectedEntryStat
   forgetStatePath(key: string): void;
   /** Make every content write reject, the way a store that is down does. */
   breakWrites(reason?: string): void;
+  /** Let content writes through again, the way a store that came back does. */
+  mendWrites(): void;
   /** The `prefix` argument of every `list` call, in order (`undefined` for an unfiltered one). */
   listCalls(): readonly (string | undefined)[];
   /** Every key whose content was read, in order. */
@@ -122,6 +124,9 @@ export function createFakeCollection(
     },
     breakWrites: (reason = "the store is unavailable") => {
       writeFailure = reason;
+    },
+    mendWrites: () => {
+      writeFailure = undefined;
     },
     forgetStatePath: (key: string) => {
       const current = state.get(key);
