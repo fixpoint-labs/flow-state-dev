@@ -242,6 +242,15 @@ describe("V4 · the org segment is what makes the address unambiguous", () => {
     expect(seatAddress("😀", "ada")).toBe("%F0%9F%98%80.ada");
   });
 
+  it("finds no seat, rather than throwing, under an org id seatAddress refuses", () => {
+    // `splitSeatAddress` is a lookup: an address is never under such an org.
+    for (const orgId of ["", "   ", "\uD800", "acme\uDC00"]) {
+      expect(() => splitSeatAddress(orgId, "%EF%BF%BD.ada")).not.toThrow();
+      expect(splitSeatAddress(orgId, "%EF%BF%BD.ada")).toBeUndefined();
+      expect(splitSeatAddress(orgId, "%20%20%20.ada")).toBeUndefined();
+    }
+  });
+
   it("refuses an empty org id", () => {
     expect(() => seatAddress("", "support.ada")).toThrow(/organization id must not be empty/);
     expect(splitSeatAddress("", ".ada")).toBeUndefined();

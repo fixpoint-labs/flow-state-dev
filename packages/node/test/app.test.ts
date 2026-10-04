@@ -104,6 +104,15 @@ describe("createServerApp — translation", () => {
     expect(await res.json()).toEqual({ method: "GET", path: [] });
   });
 
+  it("strips a basePath that needs encoding, and decodes only what follows it", async () => {
+    // The request URL carries the base path encoded (`/api/my%20path`); the
+    // option is written decoded. The prefix must still come off.
+    const { app } = createServerApp(echoRouter, { basePath: "/api/my path" });
+    const res = await app.fetch(new Request(url("/api/my%20path/chat/actions/a%2Fb")));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ method: "GET", path: ["chat", "actions", "a/b"] });
+  });
+
   it("reads the body for POST and forwards it to the router", async () => {
     const payload = JSON.stringify({ hello: "world" });
     const { app } = createServerApp(echoRouter);

@@ -12,9 +12,14 @@ import { parseFlowRoute, type ParsedFlowRoute } from "../src/routes/parseFlowRou
 const TOPIC = " report ";
 const KIND = "org%5Fpentest%5Flab.helper";
 
-async function routeVia(url: string, params: Record<string, unknown>): Promise<ParsedFlowRoute> {
+async function routeVia(
+  url: string,
+  params: Record<string, unknown>,
+  basePath?: string
+): Promise<ParsedFlowRoute> {
   let parsed: ParsedFlowRoute | undefined;
   const adapter = createHttpTransportAdapter({
+    ...(basePath === undefined ? {} : { basePath }),
     handle: async (request, { path }) => {
       parsed = parseFlowRoute(request.method, path);
       return new Response(null, { status: 204 });
@@ -36,6 +41,11 @@ describe("createHttpTransportAdapter — ids reach the route as the client encod
 
   it("keeps a whitespace-bearing topic from the Request.url fallback", async () => {
     expect(await routeVia(contentUrl, {})).toEqual(expected);
+  });
+
+  it("strips a basePath that needs encoding on the Request.url fallback", async () => {
+    const url = `http://localhost/api/my%20path/sessions/s1/resources/notes/${encodeURIComponent(TOPIC)}/content`;
+    expect(await routeVia(url, {}, "/api/my path")).toEqual(expected);
   });
 
   it("keeps a percent escape in a flow kind from the Request.url fallback", async () => {

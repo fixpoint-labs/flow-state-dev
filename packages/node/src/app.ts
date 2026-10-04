@@ -73,10 +73,13 @@ function escapeRegExp(value: string): string {
 /**
  * Decoded segments after the mount prefix, e.g. `/api/flows/chat/send` →
  * `["chat","send"]`. `pathname` is the raw URL path; each segment is decoded
- * once, the same shape Next hands the router as `params.path`.
+ * once, the same shape Next hands the router as `params.path`. The prefix is
+ * matched in its encoded form, the one `URL.pathname` carries, so a basePath
+ * holding a space or other escaped character still comes off.
  */
 function pathSegments(pathname: string, basePath: string): string[] {
-  const prefix = new RegExp(`^${escapeRegExp(basePath)}/?`);
+  const encodedBase = new URL(basePath, "http://base.invalid").pathname;
+  const prefix = new RegExp(`^${escapeRegExp(encodedBase)}/?`);
   return decodePathSegments(pathname.replace(prefix, ""));
 }
 

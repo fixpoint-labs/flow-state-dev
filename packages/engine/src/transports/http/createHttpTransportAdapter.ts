@@ -92,8 +92,10 @@ function pathFromContextOrUrl(
 
   // The raw URL is still encoded, while framework params arrive decoded.
   // Decode here so both reach `parseFlowRoute` in the same shape.
+  // The prefix is compared in its encoded form, the one `url.pathname` holds.
   const url = new URL(request.url);
-  const prefix = basePath.endsWith("/") ? basePath : `${basePath}/`;
+  const encodedBase = new URL(basePath, url.origin).pathname;
+  const prefix = encodedBase.endsWith("/") ? encodedBase : `${encodedBase}/`;
   if (!url.pathname.startsWith(prefix)) return [];
   return decodePathSegments(url.pathname.slice(prefix.length));
 }

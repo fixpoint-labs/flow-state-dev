@@ -79,7 +79,8 @@ function orgSegment(orgId: string): string {
 }
 
 /**
- * The seat id inside an address this org owns, or `undefined`.
+ * The seat id inside an address this org owns, or `undefined` — including
+ * for an org id `seatAddress` would refuse. Never throws.
  *
  * One split at the first dot, which is correct only because the escaped org
  * holds no dot. A user-owned address is `<org>.~<user>.<seatId>`; the user
@@ -87,7 +88,9 @@ function orgSegment(orgId: string): string {
  * hire row.
  */
 export function splitSeatAddress(orgId: string, address: string): string | undefined {
-  if (orgId.length === 0) return undefined;
+  // No address is under an org id `seatAddress` refuses (empty, whitespace-only,
+  // a lone surrogate), so answer that rather than throwing.
+  if (!isValidOrgId(orgId)) return undefined;
   const prefix = `${orgSegment(orgId)}.`;
   if (!address.startsWith(prefix)) return undefined;
   const rest = address.slice(prefix.length);

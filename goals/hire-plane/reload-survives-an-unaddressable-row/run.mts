@@ -41,7 +41,7 @@ type Router = {
 const fixture = loadFixture<Fixture>(import.meta.url);
 
 /**
- * The address a hire under `orgId` should answer on, written out here from
+ * The address an org-visible hire under `orgId` answers on, written out here from
  * the documented rule (`[a-z0-9-]` kept, every other UTF-8 byte as `%XX`)
  * rather than taken from `seatAddress`, the helper under test.
  */
@@ -171,7 +171,7 @@ await runGoal(async () => {
   const failures: string[] = [];
   const fail = (leg: string, line: string) => failures.push(`[${leg}] ${line}`);
   const stores = inMemoryStores();
-  const namedAddress = `${fixture.namedOrg}.${fixture.namedSeatId}`;
+  const namedAddress = expectedAddress(fixture.namedOrg, fixture.namedSeatId);
 
   // (a) An app with no resolver hires at runtime. One store is shared by both
   //     apps below because it is ONE deployment's database seen twice.
