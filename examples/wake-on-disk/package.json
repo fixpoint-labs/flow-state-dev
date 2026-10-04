@@ -1,0 +1,26 @@
+{
+  "name": "@flow-state-dev/example-wake-on-disk",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "On-disk night-watch layouts: central ingress vs per-flow schedules/webhooks (FIX-1641 / FIX-1637). Examples only — not a product.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root .",
+    "fsdev": "tsx ../../packages/cli/bin/fsdev.ts"
+  },
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/scheduled": "workspace:*",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
