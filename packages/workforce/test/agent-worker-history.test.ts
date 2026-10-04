@@ -161,14 +161,14 @@ describe("an agent seat's conversation", () => {
         return conversation(call!.input).map((m) => m.text).join("\n");
       };
       const directSecond = callFor("What is my badge number?");
-      const mailboxesecond = callFor("devuser in support.desk: Any update?");
+      const mailboxSecond = callFor("devuser in support.desk: Any update?");
 
       // Each conversation remembers its own earlier turn...
       expect(directSecond).toContain("My badge number is 4417.");
-      expect(mailboxesecond).toContain("The printer on floor 3 is jammed.");
+      expect(mailboxSecond).toContain("The printer on floor 3 is jammed.");
       // ...and never hears the other one's.
       expect(directSecond).not.toContain("printer");
-      expect(mailboxesecond).not.toContain("badge");
+      expect(mailboxSecond).not.toContain("badge");
     } finally {
       await state.dispose();
     }

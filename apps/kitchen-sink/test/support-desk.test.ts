@@ -80,8 +80,8 @@ describe("V1 · the boot serves one routed mailbox and four specialists", () => 
     // The workforce's kinds are the two built-ins; the rest are the app's own flows.
     expect([...new Set(flows.map((flow) => flow.kind))].sort()).toEqual([
       "agent",
-      "mailbox",
       "chat-agent",
+      "mailbox",
       "rich-text-component",
       "weekly-digest",
     ]);

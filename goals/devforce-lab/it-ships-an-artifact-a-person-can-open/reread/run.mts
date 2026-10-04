@@ -38,13 +38,13 @@ interface Reread {
   transcriptLines: number | null;
 }
 
-const [dbFile, userId, orgId, ledgerKey, mailboxesessionId] = process.argv.slice(2);
+const [dbFile, userId, orgId, ledgerKey, mailboxSessionId] = process.argv.slice(2);
 if (
   dbFile === undefined ||
   userId === undefined ||
   orgId === undefined ||
   ledgerKey === undefined ||
-  mailboxesessionId === undefined
+  mailboxSessionId === undefined
 ) {
   console.error("usage: run.mts <db-file> <user-id> <org-id> <ledger-key> <mailbox-session-id>");
   process.exit(1);
@@ -54,7 +54,7 @@ const stores = createSQLiteStores({ filename: dbFile });
 try {
   const row = await stores.resourceState.get("org", orgId, ledgerKey);
   const runs = await stores.resourceState.getByPrefix("user", userId, "runs/");
-  const session = (await stores.session.get(mailboxesessionId)) as
+  const session = (await stores.session.get(mailboxSessionId)) as
     | { state?: { transcript?: unknown[] } }
     | undefined;
 
@@ -63,7 +63,7 @@ try {
   // A post is kept as a `mailbox-post` component item on the mailbox's
   // session; lines written before that lived in `state.transcript`. Both are
   // counted, so a store from either side reads back whole.
-  const requests = await stores.request.list({ sessionId: mailboxesessionId, withItems: true } as never);
+  const requests = await stores.request.list({ sessionId: mailboxSessionId, withItems: true } as never);
   const postedLines = requests
     .flatMap((request) => (request as { items?: unknown[] }).items ?? [])
     .filter((item) => {

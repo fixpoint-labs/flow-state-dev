@@ -109,7 +109,7 @@ export { MAILBOX_POST_COMPONENT, mailboxTranscriptLineSchema, type MailboxTransc
  * `coordinate` carry no authority by declared contract, and `members` is read
  * on a refusal path.
  */
-export const mailboxesessionStateSchema = z.object({
+export const mailboxSessionStateSchema = z.object({
   /** The declared roster. Written once at open; read-only on the post path. */
   members: z.array(z.string()),
   /** The mailbox's charter — the `MAILBOX.md` body. */
@@ -129,7 +129,7 @@ export const mailboxesessionStateSchema = z.object({
   resourceId: z.string().nullable().default(null)
 });
 
-export type MailboxesessionState = z.infer<typeof mailboxesessionStateSchema>;
+export type MailboxSessionState = z.infer<typeof mailboxSessionStateSchema>;
 
 /** What a caller may put in a post. Closed: a caller has nowhere to put a `principal`. */
 export const mailboxPostInputSchema = z
@@ -187,11 +187,11 @@ type MailboxAnswerInput = z.infer<typeof mailboxAnswerInputSchema>;
 const ANSWERED_POSTS_STATE = "mailboxAnsweredPosts";
 
 /** A routed kind's mailbox state, as far as its appends go: the route ledger and the answered posts. */
-const routedMailboxestateSchema = routeLedgerStateSchema.extend({
+const routedMailboxStateSchema = routeLedgerStateSchema.extend({
   [ANSWERED_POSTS_STATE]: z.record(z.string(), z.string()).optional()
 });
 
-type RoutedMailboxestate = z.infer<typeof routedMailboxestateSchema>;
+type RoutedMailboxState = z.infer<typeof routedMailboxStateSchema>;
 
 /** What `read` projects: the mailbox, not the session's machinery. */
 export const mailboxReadOutputSchema = z.object({
@@ -272,8 +272,8 @@ export class MailboxPostRefusedError extends Error {
  */
 export function boundMailbox(
   state: Readonly<Record<string, unknown>>
-): MailboxesessionState | undefined {
-  const parsed = mailboxesessionStateSchema.safeParse(state);
+): MailboxSessionState | undefined {
+  const parsed = mailboxSessionStateSchema.safeParse(state);
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -415,7 +415,7 @@ type KeptPost = z.infer<typeof keptPostSchema>;
  *   post `answerPostId` names has its answer already, and nothing was written.
  */
 async function keepRoutedLine(
-  ctx: BlockContext<Record<string, unknown>, RoutedMailboxestate>,
+  ctx: BlockContext<Record<string, unknown>, RoutedMailboxState>,
   line: MailboxTranscriptLine,
   answerPostId?: string
 ): Promise<{ postCase?: PostCase } | undefined> {
@@ -428,8 +428,8 @@ async function keepRoutedLine(
   // The outcome comes back from the invocation that committed: `atomicState`
   // may run its mutator more than once.
   const kept = await withOutcome(
-    (mutator: (state: RoutedMailboxestate) => RoutedMailboxestate) => ctx.session.atomicState(mutator),
-    (state: RoutedMailboxestate) => {
+    (mutator: (state: RoutedMailboxState) => RoutedMailboxState) => ctx.session.atomicState(mutator),
+    (state: RoutedMailboxState) => {
       const answered = state[ANSWERED_POSTS_STATE] ?? {};
       if (answerPostId !== undefined && Object.hasOwn(answered, answerPostId)) return { state: {}, result: undefined };
       const next = keepLine(state[ROUTE_LEDGER_STATE] ?? seed, line);
@@ -456,7 +456,7 @@ const appendRoutedPostFor = (routing: Readonly<Record<string, MailboxRouting>>, 
     name: seatAuthored ? "mailbox-append-routed-seat-post" : "mailbox-append-routed-post",
     inputSchema: mailboxPostInputSchema,
     outputSchema: keptPostSchema,
-    sessionStateSchema: routedMailboxestateSchema,
+    sessionStateSchema: routedMailboxStateSchema,
     execute: async (input: MailboxPostInput, ctx): Promise<KeptPost> => {
       const line = lineFor(input, ctx, seatAuthored);
       const postCase = (await keepRoutedLine(ctx, line))?.postCase;
@@ -475,7 +475,7 @@ const appendAnswer = handler({
   name: "mailbox-append-answer",
   inputSchema: mailboxAnswerInputSchema,
   outputSchema: mailboxTranscriptLineSchema.nullable(),
-  sessionStateSchema: routedMailboxestateSchema,
+  sessionStateSchema: routedMailboxStateSchema,
   execute: async ({ postId, body, author }: MailboxAnswerInput, ctx): Promise<MailboxTranscriptLine | null> => {
     const line = lineFor({ body, author }, ctx, true);
     return (await keepRoutedLine(ctx, line, postId)) === undefined ? null : line;
@@ -642,7 +642,7 @@ async function ledgerNamed(
   ctx: BlockContext,
   boardIds: readonly string[],
   name: string
-): Promise<{ boardId: string; mailbox: MailboxesessionState; ledger: MailboxTaskLedger }> {
+): Promise<{ boardId: string; mailbox: MailboxSessionState; ledger: MailboxTaskLedger }> {
   const mailbox = openMailboxOf(ctx);
   if (mailbox === undefined) {
     throw new MailboxPostRefusedError(
@@ -1900,7 +1900,7 @@ export function defineMailboxFlow(options: DefineMailboxFlowOptions = {}): Mailb
     // Not a preference: it is the declared mechanism for "one kind means one
     // thing". The registry throws `singleton-id-mismatch` unless id === kind.
     cardinality: "singleton",
-    session: { stateSchema: mailboxesessionStateSchema },
+    session: { stateSchema: mailboxSessionStateSchema },
     // The ledgers, and nothing else: no board, no drain, no task entry. A
     // mailbox HOLDS rows; running them stays on the seat's side of the fence,
     // and `defineFlow` asks nothing of a flow that declares only a collection.

@@ -155,7 +155,7 @@ export async function hireKitchenSinkWorkforce(): Promise<HiredWorkforce> {
   // the ones that did open as though nothing were missing.
   if (mailboxErrors.length > 0) {
     throw new Error(
-      `mailboxes: ${mailboxErrors.length} mailbox(s) failed to load\n` +
+      `mailboxes: ${mailboxErrors.length} mailbox(es) failed to load\n` +
         mailboxErrors.map(({ path, error }) => `  ${path}: ${error.message}`).join("\n"),
     );
   }

@@ -41,7 +41,7 @@ import {
 import { workforceManifestSources } from "../src/manifest-sources";
 import { defineProjectsCollection } from "../src/projects/collections";
 import { forgetOrgTalkTemplate, forgetTalkTemplate } from "../src/projects/talk-template";
-import { mailboxesessionStateSchema } from "../src/index";
+import { mailboxSessionStateSchema } from "../src/index";
 
 const USER_ID = "u_boot";
 const ORG_ID = DEFAULT_ORG_ID;
@@ -121,7 +121,7 @@ function briefingKind() {
   const flow = defineFlow({
     kind: BRIEFING_KIND,
     cardinality: "singleton",
-    session: { stateSchema: mailboxesessionStateSchema },
+    session: { stateSchema: mailboxSessionStateSchema },
     actions: { ...inventoryWriterActions(BRIEFING_KIND) }
   } as never);
   return Object.assign(() => (flow as any)(), { kind: BRIEFING_KIND });
@@ -145,7 +145,7 @@ function silentKind() {
   const flow = defineFlow({
     kind: SILENT_KIND,
     cardinality: "singleton",
-    session: { stateSchema: mailboxesessionStateSchema },
+    session: { stateSchema: mailboxSessionStateSchema },
     actions: { ping: { block: noop } }
   } as never);
   return Object.assign(() => (flow as any)(), { kind: SILENT_KIND });

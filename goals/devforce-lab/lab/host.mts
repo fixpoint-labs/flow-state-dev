@@ -249,7 +249,7 @@ export function boardMailboxOf(roster: Pick<DeclaredRoster, "mailboxes">): Decla
   );
   if (holding.length !== 1) {
     throw new Error(
-      `the tree has ${holding.length} mailbox(s) holding a board` +
+      `the tree has ${holding.length} mailbox(es) holding a board` +
         `${holding.length === 0 ? "" : ` (${holding.map((c) => c.id).join(", ")})`}; this lab runs one`,
     );
   }

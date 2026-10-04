@@ -14,7 +14,7 @@ const flow = (id: string, kind = id) => ({ id, kind }) as never;
 describe("mergeSeatFlows", () => {
   it("adds each seat under its id beside the app's flows", () => {
     const merged = mergeSeatFlows({ mailbox: flow("mailbox") }, [flow("eng.em", "em"), flow("chief-of-staff", "agent")]);
-    expect(Object.keys(merged).sort()).toEqual(["mailbox", "chief-of-staff", "eng.em"]);
+    expect(Object.keys(merged).sort()).toEqual(["chief-of-staff", "eng.em", "mailbox"]);
   });
 
   it("refuses a seat whose id is already a flow's, naming both, and leaves the input alone", () => {

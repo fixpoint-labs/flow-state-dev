@@ -365,7 +365,7 @@ export async function gradeRow5(options: {
         // Mailboxes: each with its kind, its members and its registration time.
         if (mailboxes?.status === "loaded") {
           if (mailboxes.rows.length !== storedMailboxes.length) {
-            fail("step 4", `the tab lists ${mailboxes.rows.length} mailbox(s); the store holds ${storedMailboxes.length}`);
+            fail("step 4", `the tab lists ${mailboxes.rows.length} mailbox(es); the store holds ${storedMailboxes.length}`);
           }
           for (const mailbox of storedMailboxes) {
             const row = rowById(mailboxes, "Id", String(mailbox.id));

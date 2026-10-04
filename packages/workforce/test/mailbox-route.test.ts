@@ -939,8 +939,8 @@ describe("posts the route does not place", () => {
       // The session keeps the route's ledger of lines, which names no fallback.
       const record = await runtime.stores.session.get(HELP);
       expect(Object.keys(record?.state ?? {}).sort()).toEqual([
-        "mailboxRouteLedger",
         "instructions",
+        "mailboxRouteLedger",
         "members",
         "transcript"
       ]);

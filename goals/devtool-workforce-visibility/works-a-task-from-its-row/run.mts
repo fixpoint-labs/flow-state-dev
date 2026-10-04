@@ -544,8 +544,8 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
     // mailbox with a board has whether or not it opted in to task actions, so
     // the mailbox's Tasks tab has it in both runs. Filed after the answer,
     // whose drain would otherwise take it.
-    const mailboxesession = tree.mailbox.id;
-    const spare = await lab.act(MAILBOX_KIND, mailboxesession, "fileTask", {
+    const mailboxSession = tree.mailbox.id;
+    const spare = await lab.act(MAILBOX_KIND, mailboxSession, "fileTask", {
       board: tree.boardName,
       goal: fixture.spare.goal,
     });
@@ -553,7 +553,7 @@ async function main(): Promise<{ failures: string[]; evidence: string }> {
     if (spare.status !== "completed" || spareId === undefined) {
       throw new Error(`filing the spare row on the mailbox ended ${spare.status ?? spare.refusal}`);
     }
-    await openSession(page, MAILBOX_KIND, MAILBOX_KIND, mailboxesession);
+    await openSession(page, MAILBOX_KIND, MAILBOX_KIND, mailboxSession);
     await openTasksTab(page);
     let settled: Record<string, unknown> | undefined;
     let toolRowOpen = false;
